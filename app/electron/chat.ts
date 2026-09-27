@@ -58,8 +58,10 @@ async function escolherModelo(): Promise<{ provedor: string; modelo: string } | 
  * Lido a cada envio, e não uma vez por subida: o idioma do processo principal
  * pode ter mudado desde que este módulo carregou.
  */
-export function promptDoSistema(): string {
-  return t("assistant.system");
+export function promptDoSistema(context?: { initiative?: string }): string {
+  const base = t("assistant.system");
+  if (!context?.initiative) return base;
+  return `${base}\n\n${t("assistant.systemInitiative", { slug: context.initiative })}`;
 }
 
 export class ChatSession {
@@ -97,7 +99,7 @@ export class ChatSession {
     this.cancelar = null;
   }
 
-  async enviar(texto: string, alvo: WebContents): Promise<void> {
+  async enviar(texto: string, alvo: WebContents, context?: { initiative?: string }): Promise<void> {
     const escolha = await escolherModelo();
     if (!escolha) {
       const { motivo } = await this.status();
@@ -130,7 +132,7 @@ export class ChatSession {
     try {
       const resultado = streamText({
         model: entry.model!(escolha.modelo),
-        system: promptDoSistema(),
+        system: promptDoSistema(context),
         messages: this.historico,
         tools: chatTools(),
         stopWhen: stepCountIs(10),

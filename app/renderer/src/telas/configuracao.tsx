@@ -177,6 +177,10 @@ export function Configuracao({ detalhe, navegar }: TelaProps) {
           <Secao descricao={t("settings.staleDays.description")} titulo={t("settings.staleDays.title")}>
             <EscolhaDeStaleDays />
           </Secao>
+
+          <Secao descricao={t("settings.initiativesRoot.description")} titulo={t("settings.initiativesRoot.title")}>
+            <EscolhaDaRaiz />
+          </Secao>
         </>
       ) : null}
 
@@ -511,6 +515,53 @@ function EscolhaDeStaleDays() {
         size="sm"
         variant="secondary"
       >
+        {t("common.save")}
+      </Button>
+      {erro && <span className="text-sev-critical text-xs">{erro}</span>}
+    </div>
+  );
+}
+
+/**
+ * A pasta raiz onde a pasta de contexto de cada iniciativa mora.
+ *
+ * Vazio volta ao padrao; caminho relativo e recusado pelo servico, porque a
+ * pasta de contexto sai daqui concatenada com o slug.
+ */
+function EscolhaDaRaiz() {
+  const { t } = useTranslation();
+  const lido = useRead("initiatives.root");
+  const [rascunho, setRascunho] = useState<string | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [ocupado, setOcupado] = useState(false);
+
+  if (lido.data === undefined) return <Vazio>{t("settings.initiativesRoot.title")}</Vazio>;
+
+  const valor = rascunho ?? lido.data;
+
+  const gravar = (): void => {
+    setOcupado(true);
+    setErro(null);
+    call("initiatives.setRoot", valor).then(
+      () => setRascunho(null),
+      () => setErro(t("settings.initiativesRoot.refused")),
+    ).finally(() => setOcupado(false));
+  };
+
+  return (
+    <div className="flex items-center gap-3 px-4 py-3" data-locum-probe="initiatives-root">
+      <label className="sr-only" htmlFor="initiatives-root">
+        {t("settings.initiativesRoot.label")}
+      </label>
+      <input
+        className="border-border bg-background flex-1 rounded border px-2 py-1 font-mono text-sm"
+        id="initiatives-root"
+        onChange={(e) => setRascunho(e.target.value)}
+        placeholder={t("settings.initiativesRoot.label")}
+        type="text"
+        value={valor}
+      />
+      <Button disabled={ocupado || valor === lido.data} onClick={gravar} size="sm" variant="secondary">
         {t("common.save")}
       </Button>
       {erro && <span className="text-sev-critical text-xs">{erro}</span>}

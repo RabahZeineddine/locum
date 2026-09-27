@@ -352,6 +352,26 @@ export class InitiativeService {
     return value;
   }
 
+  /** A pasta raiz onde a pasta de contexto de cada iniciativa mora. */
+  async rootFolder(): Promise<string> {
+    return initiativesRoot(this.settings);
+  }
+
+  /**
+   * Grava a pasta raiz. Caminho vazio volta ao padrao (`~/Locum/initiatives`);
+   * caminho relativo e recusado, porque a pasta de contexto de cada iniciativa
+   * sai daqui concatenada com o slug, e um caminho relativo dependeria de qual
+   * for o diretorio de trabalho do processo no momento da leitura.
+   */
+  async setRootFolder(path: string | null): Promise<string> {
+    const bruto = path?.trim() ?? "";
+    if (bruto.length > 0 && !isAbsolute(bruto)) {
+      throw new Error("a pasta raiz de iniciativas precisa de um caminho absoluto");
+    }
+    await this.settings.set("initiatives.root", bruto);
+    return initiativesRoot(this.settings);
+  }
+
   /**
    * Propoe uma mudanca no `context.md` da iniciativa pela mesma fila de
    * aprovacao de qualquer outra acao. Nao escreve nada no arquivo: so cria o

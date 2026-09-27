@@ -8,6 +8,7 @@ import type { MachineService } from "../src/services/machine-service.js";
 import type { McpService } from "../src/services/mcp-service.js";
 import type { MetricsService } from "../src/services/metrics-service.js";
 import type { PriceService } from "../src/services/price-service.js";
+import type { PromptService } from "../src/services/prompt-service.js";
 import type { ProviderService } from "../src/services/provider-service.js";
 import type { RunService } from "../src/services/run-service.js";
 import type { SlackService } from "../src/services/slack-service.js";
@@ -96,6 +97,20 @@ interface ServiceApi {
   "initiatives.overview": InitiativeService["overview"];
   "initiatives.staleDays": InitiativeService["staleDays"];
   "initiatives.setStaleDays": InitiativeService["setStaleDays"];
+  /** A pasta raiz onde a pasta de contexto de cada iniciativa mora. */
+  "initiatives.root": InitiativeService["rootFolder"];
+  "initiatives.setRoot": InitiativeService["setRootFolder"];
+  /** Criar ou editar iniciativa: titulo, objetivo, criterio de pronto, prazo. */
+  "initiatives.upsert": InitiativeService["upsert"];
+  "initiatives.setStatus": InitiativeService["setStatus"];
+  "initiatives.setServers": InitiativeService["setServers"];
+  "initiatives.linkAgent": InitiativeService["linkAgent"];
+  "initiatives.setWorkspaces": InitiativeService["setWorkspaces"];
+  "initiatives.addLink": InitiativeService["addLink"];
+  "initiatives.removeLink": InitiativeService["removeLink"];
+
+  /** Prompts salvos, para copiar na aba de acoes da iniciativa. */
+  "prompts.list": PromptService["list"];
 
   "runs.list": RunService["list"];
   "runs.get": RunService["get"];
@@ -311,7 +326,7 @@ interface ServiceApi {
    */
   "chat.status": () => Promise<{ disponivel: boolean; modelo: string | null; motivo?: string }>;
   "chat.setModel": (modelo: string) => Promise<void>;
-  "chat.send": (texto: string) => Promise<void>;
+  "chat.send": (texto: string, context?: { initiative?: string }) => Promise<void>;
   "chat.cancel": () => Promise<void>;
 }
 
@@ -341,6 +356,16 @@ export const BRIDGE_CHANNELS = [
   "initiatives.overview",
   "initiatives.staleDays",
   "initiatives.setStaleDays",
+  "initiatives.root",
+  "initiatives.setRoot",
+  "initiatives.upsert",
+  "initiatives.setStatus",
+  "initiatives.setServers",
+  "initiatives.linkAgent",
+  "initiatives.setWorkspaces",
+  "initiatives.addLink",
+  "initiatives.removeLink",
+  "prompts.list",
   "runs.list",
   "runs.get",
   "runs.findings",

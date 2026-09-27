@@ -8,9 +8,10 @@ import { EditorDeAgent } from "../editor-agent";
 import { LinhaDoOrcamento, Observados, Secao } from "./configuracao";
 import { comContexto, diffJson, type LinhaDoDiff } from "@/lib/diff";
 import { cn } from "@/lib/utils";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
+import { useCurrentInitiative } from "../current-initiative";
 import type { TelaProps } from "../rotas";
 
 type Versao = ReadResult<"agents.versions">[number];
@@ -40,8 +41,20 @@ export function Agents({ detalhe, navegar }: TelaProps) {
 function Lista({ navegar }: { navegar: TelaProps["navegar"] }) {
   const { t } = useTranslation();
   const agents = useRead("agents.overview");
-  const linhas = agents.data ?? [];
+  const todasAsLinhas = agents.data ?? [];
   const [erroDeImportar, setErroDeImportar] = useState<string | null>(null);
+
+  // O chip so aparece quando ha iniciativa atual; filtrar por ela e um clique
+  // a mais, nunca o padrao, porque quem entra em agents sem escolher iniciativa
+  // nenhuma espera ver todos.
+  const { slug } = useCurrentInitiative();
+  const iniciativas = useRead("initiatives.list");
+  const iniciativaAtual = slug === null ? undefined : iniciativas.data?.find((i) => i.slug === slug);
+  const [filtrando, setFiltrando] = useState(false);
+  const aplicarFiltro = filtrando && iniciativaAtual !== undefined;
+  const linhas = aplicarFiltro
+    ? todasAsLinhas.filter((a) => a.initiativeId === iniciativaAtual.id)
+    : todasAsLinhas;
 
   /*
    * O Locum não traz agent de fábrica: importar é a porta de entrada. Agent
@@ -60,6 +73,29 @@ function Lista({ navegar }: { navegar: TelaProps["navegar"] }) {
 
   return (
     <div className="flex flex-col gap-3">
+      {iniciativaAtual !== undefined ? (
+        <div className="flex items-center gap-1.5">
+          <button
+            aria-pressed={aplicarFiltro}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs transition-colors",
+              aplicarFiltro
+                ? "bg-primary text-primary-foreground"
+                : "bg-accent text-accent-foreground hover:bg-accent/70",
+            )}
+            data-aplicado={aplicarFiltro}
+            data-locum-probe="agents-initiative"
+            data-slug={iniciativaAtual.slug}
+            onClick={() => setFiltrando((v) => !v)}
+            title={t("common.filterByInitiative")}
+            type="button"
+          >
+            {iniciativaAtual.title}
+            {aplicarFiltro ? <X className="size-3" /> : null}
+          </button>
+        </div>
+      ) : null}
+
       <div className="flex items-center gap-3">
         <div
           className="text-muted-foreground text-xs"

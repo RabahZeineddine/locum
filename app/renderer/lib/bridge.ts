@@ -53,6 +53,11 @@ export const READ_CHANNELS = [
   // O limite de dias parados, para a tela de configuracao mostrar o valor
   // gravado. Gravar vai por `initiatives.setStaleDays`, em ACTION_CHANNELS.
   "initiatives.staleDays",
+  // Pasta raiz onde a pasta de contexto de cada iniciativa mora. Gravar vai
+  // por `initiatives.setRoot`, em ACTION_CHANNELS.
+  "initiatives.root",
+  // Prompts salvos, para a aba de acoes da iniciativa copiar.
+  "prompts.list",
   "runs.list",
   "runs.get",
   "runs.findings",
@@ -188,6 +193,16 @@ export const ACTION_CHANNELS = [
   // Gravar o limite de dias parados e um clique na secao geral da
   // configuracao, nao uma leitura que dispara ao montar a tela.
   "initiatives.setStaleDays",
+  "initiatives.setRoot",
+  // Criar, editar e ligar iniciativa: cada um e um clique de um formulario,
+  // nunca uma leitura que dispara ao montar a tela.
+  "initiatives.upsert",
+  "initiatives.setStatus",
+  "initiatives.setServers",
+  "initiatives.linkAgent",
+  "initiatives.setWorkspaces",
+  "initiatives.addLink",
+  "initiatives.removeLink",
 ] as const satisfies readonly BridgeChannel[];
 
 export type ActionChannel = (typeof ACTION_CHANNELS)[number];

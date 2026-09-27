@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { call, useRead } from "@/lib/bridge";
 import { assinarEventosDoChat, type ChatEvent } from "@/lib/chat";
 import { cn } from "@/lib/utils";
+import { useCurrentInitiative } from "./current-initiative";
 import { CornerDownLeft, MessageSquare, Square, Wrench, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -38,6 +39,7 @@ export function Assistente() {
   const [resumido, setResumido] = useState(false);
   const status = useRead("chat.status");
   const campo = useRef<HTMLTextAreaElement>(null);
+  const { slug: iniciativaAtual } = useCurrentInitiative();
 
   useEffect(() => {
     function ouvir(evento: KeyboardEvent) {
@@ -87,7 +89,7 @@ export function Assistente() {
       { de: "user", texto, ferramentas: [] },
       { de: "assistant", texto: "", ferramentas: [] },
     ]);
-    await call("chat.send", texto);
+    await call("chat.send", texto, iniciativaAtual ? { initiative: iniciativaAtual } : undefined);
   }
 
   if (!aberto) return <BotaoFlutuante aoAbrir={() => setAberto(true)} />;

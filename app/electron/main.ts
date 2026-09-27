@@ -4444,6 +4444,15 @@ async function checkRuns(window: BrowserWindow, runId: string): Promise<string> 
   )) as number;
   if (desenhadas === 0) throw new Error("a lista de execucoes nao desenhou nenhuma linha");
 
+  // A iniciativa visitada em checkInitiatives (example) continua a ultima
+  // visitada, e o chip precisa mostrar ela mesmo fora de uma rota de iniciativa.
+  const chip = (await window.webContents.executeJavaScript(
+    `document.querySelector("[data-locum-probe=execucoes-initiative]")?.dataset.slug ?? null`,
+  )) as string | null;
+  if (chip !== "example") {
+    throw new Error(`o chip de iniciativa mostrou "${chip}" e nao "example"`);
+  }
+
   await irPara(window, "execucoes", runId);
   const detalhe = await esperarProbe<{ run: string; passos: number; chaves: string; achados: number }>(
     window,

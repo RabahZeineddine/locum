@@ -17,10 +17,11 @@ import { call, useRead, type ReadResult } from "@/lib/bridge";
 import { useJanela } from "@/lib/janela";
 import { rotuloDeEstado, rotuloDeSeveridade, rotuloDoMotivo, type Estado } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, RotateCcw } from "lucide-react";
+import { ArrowLeft, RotateCcw, X } from "lucide-react";
 import { useState } from "react";
 import type { TFunction } from "i18next";
 import { Trans, useTranslation } from "react-i18next";
+import { useCurrentInitiative } from "../current-initiative";
 import { GrafoDaExecucao } from "../grafo";
 import type { TelaProps } from "../rotas";
 
@@ -50,15 +51,50 @@ export function Execucoes({ detalhe, navegar }: TelaProps) {
 
 function Lista({ navegar }: { navegar: TelaProps["navegar"] }) {
   const { t } = useTranslation();
+  const { slug } = useCurrentInitiative();
+  // O chip so aparece quando ha iniciativa atual; filtrar a lista por ela e um
+  // clique a mais, nunca o padrao, porque quem entra em execucoes sem escolher
+  // iniciativa nenhuma espera ver todas.
+  const [filtrando, setFiltrando] = useState(false);
+  const iniciativas = useRead("initiatives.list");
+  const iniciativaAtual = slug === null ? undefined : iniciativas.data?.find((i) => i.slug === slug);
+  const aplicarFiltro = filtrando && iniciativaAtual !== undefined;
+
   // O limite e alto de proposito: a janela virtual abaixo e quem sustenta a
   // lista longa, e pedir de vinte em vinte traria paginacao para uma tela que
   // ninguem pagina, ela rola.
-  const runs = useRead("runs.list", { limit: 500 });
+  const runs = useRead(
+    "runs.list",
+    aplicarFiltro ? { limit: 500, initiativeId: iniciativaAtual.id } : { limit: 500 },
+  );
   const linhas = runs.data ?? [];
   const janela = useJanela(linhas.length, ALTURA_DA_LINHA);
 
   return (
     <div className="flex h-full flex-col items-stretch">
+      {iniciativaAtual !== undefined ? (
+        <div className="mb-3 flex items-center gap-1.5">
+          <button
+            aria-pressed={aplicarFiltro}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs transition-colors",
+              aplicarFiltro
+                ? "bg-primary text-primary-foreground"
+                : "bg-accent text-accent-foreground hover:bg-accent/70",
+            )}
+            data-aplicado={aplicarFiltro}
+            data-locum-probe="execucoes-initiative"
+            data-slug={iniciativaAtual.slug}
+            onClick={() => setFiltrando((v) => !v)}
+            title={t("common.filterByInitiative")}
+            type="button"
+          >
+            {iniciativaAtual.title}
+            {aplicarFiltro ? <X className="size-3" /> : null}
+          </button>
+        </div>
+      ) : null}
+
       <div
         className="mb-3 text-muted-foreground text-xs"
         data-estado={runs.status}

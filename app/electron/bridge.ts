@@ -21,6 +21,7 @@ import { machineService } from "../src/services/machine-service.js";
 import { mcpService } from "../src/services/mcp-service.js";
 import { metricsService } from "../src/services/metrics-service.js";
 import { priceService } from "../src/services/price-service.js";
+import { promptService } from "../src/services/prompt-service.js";
 import { providerService } from "../src/services/provider-service.js";
 import { runService } from "../src/services/run-service.js";
 import { slackService } from "../src/services/slack-service.js";
@@ -125,6 +126,17 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "initiatives.overview": () => initiativeService.overview(),
     "initiatives.staleDays": () => initiativeService.staleDays(),
     "initiatives.setStaleDays": (value) => initiativeService.setStaleDays(value),
+    "initiatives.root": () => initiativeService.rootFolder(),
+    "initiatives.setRoot": (path) => initiativeService.setRootFolder(path),
+    "initiatives.upsert": (input) => initiativeService.upsert(input),
+    "initiatives.setStatus": (slug, status) => initiativeService.setStatus(slug, status),
+    "initiatives.setServers": (slug, names) => initiativeService.setServers(slug, names),
+    "initiatives.linkAgent": (agentId, slug) => initiativeService.linkAgent(agentId, slug),
+    "initiatives.setWorkspaces": (slug, workspaces) => initiativeService.setWorkspaces(slug, workspaces),
+    "initiatives.addLink": (slug, link) => initiativeService.addLink(slug, link),
+    "initiatives.removeLink": (slug, linkId) => initiativeService.removeLink(slug, linkId),
+
+    "prompts.list": (initiativeId) => promptService.list(initiativeId),
 
     "runs.list": (filter) => runService.list(filter),
     "runs.get": (runId) => runService.get(runId),
@@ -154,9 +166,9 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     // comeca. O que chega de volta vai pelo canal de evento.
     "chat.status": () => chatSession.status(),
     "chat.setModel": (modelo) => chatSession.escolher(modelo),
-    "chat.send": async (texto) => {
+    "chat.send": async (texto, context) => {
       if (!remetente) throw new Error("sem janela para receber o fluxo");
-      await chatSession.enviar(texto, remetente);
+      await chatSession.enviar(texto, remetente, context);
     },
     "chat.cancel": async () => chatSession.interromper(),
 

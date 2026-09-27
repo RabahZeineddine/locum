@@ -3,6 +3,7 @@ import { useRead } from "@/lib/bridge";
 import { useRota } from "@/lib/router";
 import { cn } from "@/lib/utils";
 import { Assistente } from "./assistente";
+import { CurrentInitiativeProvider } from "./current-initiative";
 import { Paleta } from "./paleta";
 import { ROTA_IDS, ROTA_PADRAO, ROTAS } from "./rotas";
 
@@ -83,6 +84,7 @@ export function Layout() {
   const naFila = pendencias.data?.length ?? -1;
 
   return (
+    <CurrentInitiativeProvider ativa={ativa} detalhe={detalhe}>
     <div className="flex h-screen text-foreground">
       <nav className="regiao-de-arrasto bg-sidebar border-sidebar-border flex w-56 shrink-0 flex-col border-r">
         <div
@@ -157,7 +159,7 @@ export function Layout() {
         </main>
       </div>
 
-      <Paleta />
+      <Paleta navegar={navegar} />
       <Assistente />
 
       {/*
@@ -171,5 +173,6 @@ export function Layout() {
       */}
       <span className="hidden" data-locum-probe="tailwind" />
     </div>
+    </CurrentInitiativeProvider>
   );
 }

@@ -836,6 +836,24 @@ replicando o padrão já usado em `inbox.tsx` para `runs.findingsByRun`.
 `useRead` continua certo para leitura incondicional, como `approvals.get` na
 mesma tela.
 
+**Checks do smoke compartilham janela e estado do React.** `checkInitiatives`,
+`checkAgents` e `checkRuns` (`electron/main.ts`) rodam em sequência na mesma
+janela, então qualquer estado em memória sobrevive de um check para o outro.
+`checkInitiatives` termina navegando para `#/initiatives/example/agents`, e
+isso deixa a iniciativa "atual" (guardada pelo `CurrentInitiativeProvider`)
+marcada como `example` quando `checkAgents` e `checkRuns` rodam depois, mesmo
+essas telas não sendo de iniciativa nenhuma. Uma tela que passasse a filtrar
+por essa iniciativa atual por padrão quebraria as asserções desses dois checks,
+que comparam a lista inteira (sem filtro) contra o que o serviço devolve. Os
+chips de iniciativa em `agents.tsx` e `execucoes.tsx` nascem com o filtro
+desligado por causa disso: o chip aparece sempre que há iniciativa atual, mas
+só filtra depois de um clique.
+
+**`setWorkspaces`/`setServers` substituem a lista inteira.** Nenhum dos dois
+canais de `initiatives-service.ts` anexa um item; ambos recebem a lista
+completa e a gravam por cima da anterior. Uma tela de "adicionar" precisa
+mandar a lista atual mais o item novo, nunca só o item novo.
+
 ## Próximos passos
 
 Quebrados em tarefas atômicas em `scripts/ralph/prd.json`, na ordem revisada pelo
