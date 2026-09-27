@@ -147,6 +147,24 @@ export function resolveTools(spec: AgentSpec, step: ModelStep): ToolRef[] {
   return step.tools ?? spec.defaultTools;
 }
 
+/**
+ * Todo servidor MCP que o spec pode precisar: das ferramentas de cada passo
+ * (ja com a heranca de `resolveTools`) e de `requiresServers`.
+ *
+ * Usado para validar o escopo de um agent ligado a uma iniciativa, tanto ao
+ * ligar quanto a cada `upsert` seguinte: o agent nao pode passar a depender de
+ * um servidor de fora da frente.
+ */
+export function requiredServers(spec: AgentSpec): string[] {
+  const servers = new Set<string>();
+  for (const step of spec.steps) {
+    if (step.type !== "model") continue;
+    for (const ref of resolveTools(spec, step)) servers.add(ref.server);
+    for (const server of step.requiresServers) servers.add(server);
+  }
+  return [...servers];
+}
+
 /** Ordem topologica. Lanca em ciclo, porque ciclo aqui e bug de autoria. */
 export function topoSort(steps: Step[]): Step[] {
   const byKey = new Map(steps.map((s) => [s.key, s]));

@@ -43,14 +43,34 @@ type StepOutcome = { kind: "ok"; output: unknown; costUsd: number; tokens: numbe
 export class Executor {
   constructor(private deps: Deps) {}
 
+  /**
+   * Cria o run e fotografa a iniciativa dele em `runs.initiative_id`: o
+   * parametro explicito quando vier, senao a do agent neste instante. Essa
+   * foto nunca e reescrita depois, nem pela retomada: mudar a iniciativa do
+   * agent so vale para run criado dali em diante.
+   */
   async createRun(
     agentVersionId: string,
     eventId: string | null,
     triggerId: string | null = null,
+    initiativeId?: string | null,
   ): Promise<string> {
     const id = randomUUID();
-    await db.insert(schema.runs).values({ id, agentVersionId, eventId, triggerId, status: "queued" });
+    const resolvedInitiativeId =
+      initiativeId !== undefined ? initiativeId : await this.agentInitiativeId(agentVersionId);
+    await db
+      .insert(schema.runs)
+      .values({ id, agentVersionId, eventId, triggerId, initiativeId: resolvedInitiativeId, status: "queued" });
     return id;
+  }
+
+  private async agentInitiativeId(agentVersionId: string): Promise<string | null> {
+    const [row] = await db
+      .select({ initiativeId: schema.agents.initiativeId })
+      .from(schema.agentVersions)
+      .innerJoin(schema.agents, eq(schema.agentVersions.agentId, schema.agents.id))
+      .where(eq(schema.agentVersions.id, agentVersionId));
+    return row?.initiativeId ?? null;
   }
 
   /**
@@ -102,6 +122,21 @@ export class Executor {
       .where(eq(schema.runs.id, runId));
 
     const fallbacks = await providerService.getFallbacks(this.deps.machineId);
+
+    // Lida a cada `execute`, inclusive na retomada: tirar um servidor da
+    // iniciativa vale a partir da proxima execucao, mesmo sem novo run. `null`
+    // quando o run nao tem iniciativa (fotografia do `createRun`), e ai o
+    // agent enxerga tudo, como hoje.
+    const initiativeServers = run.initiativeId
+      ? new Set(
+          (
+            await db
+              .select({ serverName: schema.initiativeMcpServers.serverName })
+              .from(schema.initiativeMcpServers)
+              .where(eq(schema.initiativeMcpServers.initiativeId, run.initiativeId))
+          ).map((r) => r.serverName),
+        )
+      : null;
 
     const outputs = new Map<string, unknown>();
     let runCost = run.costUsd;
@@ -155,6 +190,7 @@ export class Executor {
                 fallbacks,
                 run: { usd: runCost, tokens: runTokens },
                 segment,
+                initiativeServers,
               })
             : await this.runActionStep({ runId, stepId, step, outputs, payload });
 
@@ -222,10 +258,35 @@ export class Executor {
     fallbacks: FallbackRow[];
     run: Spend;
     segment: Spend;
+    initiativeServers: Set<string> | null;
   }): Promise<StepOutcome | { kind: "skipped" }> {
-    const { runId, stepId, step, spec, payload, outputs, fallbacks } = args;
+    const { runId, stepId, step, spec, payload, outputs, fallbacks, initiativeServers } = args;
 
     await assertWithinBudget(spec.id, args.run, args.segment, spec.budget);
+
+    const toolRefs = resolveTools(spec, step);
+
+    // Antes do `missing()`: servidor fora da iniciativa conta como ausente,
+    // mesmo que esteja instalado nesta maquina. Agent sem iniciativa
+    // (`initiativeServers` nulo) nao passa por aqui, e ve tudo como hoje.
+    if (initiativeServers) {
+      const exigidos = new Set([...toolRefs.map((t) => t.server), ...step.requiresServers]);
+      const fora = [...exigidos].filter((servidor) => !initiativeServers.has(servidor));
+      if (fora.length > 0) {
+        if (!step.optional) {
+          await db
+            .update(schema.steps)
+            .set({ status: "failed", endedAt: nowSec(), error: "outside_initiative" })
+            .where(eq(schema.steps.id, stepId));
+          throw new Error(`passo "${step.key}" usa servidor fora da iniciativa: ${fora.join(", ")}`);
+        }
+        await db
+          .update(schema.steps)
+          .set({ status: "skipped", error: "outside_initiative", endedAt: nowSec() })
+          .where(eq(schema.steps.id, stepId));
+        return { kind: "skipped" };
+      }
+    }
 
     const missing = this.deps.mcp.missing(step.requiresServers);
     if (missing.length > 0) {
@@ -246,7 +307,6 @@ export class Executor {
 
     const ctx: SkillContext = { repo: payload.repo, changedFiles: payload.changedFiles };
     const skills = selectSkills(spec.skills, ctx);
-    const toolRefs = resolveTools(spec, step);
     const { tools, release } = await this.deps.mcp.toolsFor(toolRefs);
 
     await db

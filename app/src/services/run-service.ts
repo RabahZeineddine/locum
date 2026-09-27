@@ -16,6 +16,7 @@ export interface StepRunner {
 export interface RunFilter {
   status?: string | string[];
   agentId?: string;
+  initiativeId?: string;
   limit?: number;
 }
 
@@ -79,6 +80,9 @@ export class RunService {
     }
     if (filter.agentId !== undefined) {
       conditions.push(eq(schema.agentVersions.agentId, filter.agentId));
+    }
+    if (filter.initiativeId !== undefined) {
+      conditions.push(eq(schema.runs.initiativeId, filter.initiativeId));
     }
 
     const rows = await this.db

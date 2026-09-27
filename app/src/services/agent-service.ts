@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { desc, eq } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
-import { AgentBudgetPatch, AgentSpec, type ActionMode, type AgentBudget } from "../config/types.js";
+import { AgentBudgetPatch, AgentSpec, requiredServers, type ActionMode, type AgentBudget } from "../config/types.js";
 import { today } from "../executor/budget.js";
 import { splitModelId } from "../providers/registry.js";
 
@@ -202,6 +202,8 @@ export class AgentService {
     if (latest && sameSpec(latest.spec, parsed)) {
       return { ...parseVersion(latest), downgrades: guarded.downgrades };
     }
+
+    await this.assertWithinInitiativeScope(parsed);
 
     await this.db
       .insert(schema.agents)
@@ -410,6 +412,33 @@ export class AgentService {
         };
       }),
     );
+  }
+
+  /**
+   * Recusa gravar spec que passa a exigir servidor de fora da iniciativa do
+   * agent. So roda para agent que ja existe e ja esta ligado: agent novo e
+   * agent sem iniciativa (`initiativeId` nulo) nao tem frente para checar.
+   */
+  private async assertWithinInitiativeScope(spec: AgentSpec): Promise<void> {
+    const [agent] = await this.db
+      .select({ initiativeId: schema.agents.initiativeId })
+      .from(schema.agents)
+      .where(eq(schema.agents.id, spec.id));
+    if (!agent?.initiativeId) return;
+
+    const servidores = new Set(
+      (
+        await this.db
+          .select({ serverName: schema.initiativeMcpServers.serverName })
+          .from(schema.initiativeMcpServers)
+          .where(eq(schema.initiativeMcpServers.initiativeId, agent.initiativeId))
+      ).map((r) => r.serverName),
+    );
+
+    const fora = requiredServers(spec).filter((servidor) => !servidores.has(servidor));
+    if (fora.length > 0) {
+      throw new Error(`agent ligado a uma iniciativa nao pode usar servidor fora dela: ${fora.join(", ")}`);
+    }
   }
 
   private async latestRow(agentId: string): Promise<AgentVersionRow | undefined> {

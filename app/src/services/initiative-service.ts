@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
-import { AgentSpec } from "../config/types.js";
+import { AgentSpec, requiredServers } from "../config/types.js";
 import { ID_DE_AGENT } from "./agent-service.js";
 import { LocalFolderContextStore, type ContextStore } from "./context-store.js";
 import { FALLBACK_LANGUAGE, i18nService, type I18nService, type Language } from "./i18n-service.js";
@@ -45,9 +45,8 @@ export async function initiativesRoot(settings: SettingsService = settingsServic
  * Cadastro de iniciativas: frente de trabalho com objetivo, pasta de contexto
  * e os servidores MCP e workspaces que ela enxerga.
  *
- * Sem `linkAgent` e sem `proposeContextUpdate` aqui: o primeiro precisa do
- * escopo MCP no executor, o segundo precisa da fila de aprovacao, e os dois
- * ficam para depois desta fatia.
+ * Sem `proposeContextUpdate` aqui: precisa da fila de aprovacao, e fica para
+ * depois desta fatia.
  */
 export class InitiativeService {
   constructor(
@@ -186,6 +185,52 @@ export class InitiativeService {
     }
 
     return { affectedAgents: afetados };
+  }
+
+  /**
+   * Liga um agent a esta iniciativa, ou desliga com `slug` nulo.
+   *
+   * Recusa ligar quando alguma ferramenta ou `requiresServers` da versao mais
+   * recente do agent sai dos servidores da frente: ligar sem essa checagem
+   * deixaria o agent com um passo que falha na primeira execucao, com o
+   * motivo `outside_initiative`.
+   */
+  async linkAgent(agentId: string, slug: string | null): Promise<void> {
+    const [agent] = await this.db.select().from(schema.agents).where(eq(schema.agents.id, agentId));
+    if (!agent) throw new Error(`agent "${agentId}" nao cadastrado`);
+
+    if (slug === null) {
+      await this.db.update(schema.agents).set({ initiativeId: null }).where(eq(schema.agents.id, agentId));
+      return;
+    }
+
+    const linha = await this.mustGet(slug);
+    const servidores = new Set(
+      (
+        await this.db
+          .select({ serverName: schema.initiativeMcpServers.serverName })
+          .from(schema.initiativeMcpServers)
+          .where(eq(schema.initiativeMcpServers.initiativeId, linha.id))
+      ).map((r) => r.serverName),
+    );
+
+    const [versaoRow] = await this.db
+      .select()
+      .from(schema.agentVersions)
+      .where(eq(schema.agentVersions.agentId, agentId))
+      .orderBy(desc(schema.agentVersions.version))
+      .limit(1);
+    if (versaoRow) {
+      const spec = AgentSpec.safeParse(versaoRow.spec);
+      if (spec.success) {
+        const fora = requiredServers(spec.data).filter((servidor) => !servidores.has(servidor));
+        if (fora.length > 0) {
+          throw new Error(`agent usa servidor fora da iniciativa "${slug}": ${fora.join(", ")}`);
+        }
+      }
+    }
+
+    await this.db.update(schema.agents).set({ initiativeId: linha.id }).where(eq(schema.agents.id, agentId));
   }
 
   /** Substitui os workspaces. Caminho relativo, inexistente ou arquivo recusam. */
