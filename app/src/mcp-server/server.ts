@@ -6,6 +6,7 @@ import { dbPath } from "../db/path.js";
 import { RESERVED_AGENT_IDS } from "../services/agent-service.js";
 import { machineId } from "../services/machine-service.js";
 import { registerConfigTools } from "./config-tools.js";
+import { registerInitiativeTools } from "./initiative-tools.js";
 import { registerReadTools } from "./read-tools.js";
 import { registerRunTools } from "./run-tools.js";
 
@@ -37,6 +38,7 @@ export function buildMcpServer(): McpServer {
   registerReadTools(server);
   registerConfigTools(server);
   registerRunTools(server);
+  registerInitiativeTools(server);
   return server;
 }
 
