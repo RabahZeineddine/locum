@@ -92,9 +92,10 @@ em agents e execuções, paleta e assistente cientes da iniciativa.
 **I2b, redesenho visual.** Depois de dias de uso, a partir de capturas reais da
 interface do I2. Sem data.
 
-**I3, sessão.** Abrir sessão no terminal (Terminal ou iTerm) com o contexto da
+**I3, sessão. Pronto no código em 27/09, falta o teste à mão.** Abrir sessão no terminal (Terminal ou iTerm) com o contexto da
 iniciativa por `--append-system-prompt` e `--settings` negando escrita em
-`context.md`, e a passagem de volta como proposta de contexto.
+`context.md`, e a passagem de volta como proposta de contexto. O fim da sessão volta por
+`locum://session/ended`, que só funciona com o app empacotado.
 
 **I4, presets MCP genéricos.** GitHub, Jira, Confluence e Notion como preset
 público, sem endereço, projeto ou token de empresa, ligados à iniciativa pela

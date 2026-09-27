@@ -24,7 +24,7 @@ enviado ao remoto: a `main` local está à frente de `origin/main`.
 | 6 | `38e2874` | painel do Início, revisão de `context.update`, `initiatives.staleDays` |
 | F | `c6a3271` | armadilhas, contagens e roadmap do dia |
 | 5b | `97d8124` | formulários, iniciativa atual, chips em agents e execuções, paleta e assistente (fecha o I2) |
-| 7 | commit `feat: abrir sessão da iniciativa no terminal...` | sessão do Claude no Terminal ou iTerm com o contexto da iniciativa, passagem voltando como proposta `append`, deep link `locum://session/ended` (fecha o I3 no código) |
+| 7 | `ca85572` | sessão do Claude no Terminal ou iTerm com o contexto da iniciativa, passagem voltando como proposta `append`, deep link `locum://session/ended` (fecha o I3 no código) |
 
 Nenhuma fatia ficou pela metade. Há um `git stash` antigo, "fatia 3b parcial",
 com uma primeira tentativa da 3b que foi refeita do zero e está no `c18d19c`.
@@ -85,16 +85,7 @@ passagem e ler de volta pela revisão. Depois empacotar com `npm run dist:dir` e
 conferir que o fim da sessão volta pelo deep link. Com isso o I3 fecha; o que
 sobra é O1, O2 e a fatia 9.
 
-Armadilhas da fatia 7:
-
-- `sessions.workspace_id` aponta para `initiative_workspaces`, e o
-  `setWorkspaces` apaga e recria os workspaces com id novo. Com
-  `foreign_keys = ON`, gravar o workspace na sessão travaria a edição de
-  workspaces depois da primeira sessão; a sessão grava `null`.
-- O `check:i18n` não olha `src/`: a guarda de texto cravado no `session.md` é o
-  teste que confere cada linha contra `session.prompt.*` nos dois idiomas.
-- O smoke confere os botões da aba Ações por existir e nunca clica: o clique
-  abriria um terminal de verdade. A fiação vai com `exec` espião.
+As armadilhas da fatia 7 estão no fim de "Armadilhas encontradas".
 
 ## O que existe e roda
 
@@ -106,7 +97,7 @@ que a interface vai usar.
 | área | estado |
 |---|---|
 | esquema SQLite com 27 tabelas | pronto, sete a mais desde a virada para iniciativas: `initiatives`, `initiative_workspaces`, `initiative_mcp_servers`, `initiative_links`, `prompts`, `prompt_versions` e `sessions` |
-| migração de esquema no aplicativo | cinco migrações em `app/drizzle` aplicadas na subida do processo principal, banco existente adotado sem recriar tabela |
+| migração de esquema no aplicativo | sete migrações em `app/drizzle` aplicadas na subida do processo principal, banco existente adotado sem recriar tabela |
 | AgentSpec em zod, herança de ferramentas, ordenação topológica | pronto |
 | registro de provedores e resolução de fallback por máquina | pronto, com cadastro pelo serviço; a chave de cada provedor entra pela interface, vai para o keychain e o registro é remontado na hora |
 | provedor compatível com OpenAI cadastrável | identificador, nome e endereço base no banco, o registro monta os fixos mais os cadastrados, chave própria no keychain e remoção avisando onde o provedor aparece |
@@ -139,7 +130,7 @@ que a interface vai usar.
 | reconciliador de review humano | pronto, verificado com evento e reviews sintéticos, sem teste com token; disparado pela batida do agendador, com cursor próprio por execução |
 | métricas por versão de agent | agregação de `finding_outcomes` em `agent_metrics`, por versão mais conjunto de skills |
 | agendador | cursor de tempo por gatilho, batido de fora, sem relógio próprio; acordado pelo evento de energia do Electron |
-| camada de serviço, 27 serviços | pronto, com o `PriceService` do preço por modelo e `InitiativeService`/`PromptService` das iniciativas |
+| camada de serviço, 28 módulos em `src/services` | pronto, com o `PriceService` do preço por modelo, `InitiativeService`/`PromptService` das iniciativas e `SessionService` da sessão no terminal |
 | servidor MCP próprio, 32 ferramentas | pronto |
 | reconciliador de review humano | pronto, sem teste com token |
 | métricas por versão | pronto |
@@ -148,8 +139,9 @@ que a interface vai usar.
 | credenciais no keychain | `safeStorage` cifra, o banco guarda só a referência, e sem keychain vale a variável de ambiente |
 | notificação nativa | um aviso por run, para achado crítico na fila ou run que falhou, com o clique apontando para o run |
 | deep link `locum://` | esquema registrado no sistema, retorno de OAuth com PKCE roteado do `open-url` até o cofre |
-| ponte entre janela e serviços | preload em sandbox, 92 canais tipados pelos próprios métodos dos serviços (`BRIDGE_CHANNELS`; o catálogo do renderer, `READ_CHANNELS` mais `ACTION_CHANNELS`, cobre 80 deles, e deixa `approvals.decide` e alguns canais de agent fora por decisão do ADR 0003), decisão de aprovação só encaminhada, e guarda de compilação contra canal que abra tarefa ou publique no Slack |
+| ponte entre janela e serviços | preload em sandbox, 96 canais tipados pelos próprios métodos dos serviços (`BRIDGE_CHANNELS`; o catálogo do renderer, `READ_CHANNELS` mais `ACTION_CHANNELS`, cobre 82 deles, e deixa `approvals.decide` e alguns canais de agent fora por decisão do ADR 0003), decisão de aprovação só encaminhada, e guarda de compilação contra canal que abra tarefa ou publique no Slack |
 | tela de iniciativas (I2) | lista e detalhe (contexto, agents, execuções, ações) por rota com sub-rota de hash; painel de iniciativas no Início; revisão de pendência `context.update` com diff e aviso de conflito; `staleDays` (dias parados até "sem sinal") configurável na tela de configuração, de 1 a 90, padrão 7 |
+| sessão da iniciativa no terminal (I3) | `SessionService` gera em `.locum/` da pasta de contexto o prompt (`session.prompt.*` no idioma da preferência), o `deny` de `Edit` e `Write` em `context.md` e `.locum/**` e o script `open-session.command`, que o `open -a` roda no Terminal ou no iTerm (escolha na configuração); o `claude` sai de `resolveClaudeBinary`; "Ler passagem" vira proposta `append` na fila; `locum://session/ended` fecha a sessão com nonce de uso único; botões na aba Ações e comando na paleta, sem entrada no chat nem no MCP |
 | interface | esqueleto do renderer em Vite com React e Tailwind, construído para `dist/renderer` e carregado pela janela, já lendo pela ponte |
 | componentes da interface | shadcn e AI Elements vendorizados em `app/renderer/components`, tema escuro por padrão, sem dependência de rede |
 | cliente da ponte no renderer | `app/renderer/lib/bridge.ts` com catálogo de leitura escrito à mão e hook `useRead`, a janela lendo agents, execuções e fila |
@@ -158,7 +150,7 @@ que a interface vai usar.
 | tela de agents | somente leitura: lista, histórico de versões, comparação de spec linha a linha, e por passo o modelo pedido contra o que esta máquina resolve |
 | tela de configuração | provedores com disponibilidade e campo de chave por provedor, cadastro de gateway compatível com OpenAI, tabela de substituição de modelo, servidores MCP com testar conexão e listar ferramentas por token, credencial do GitHub com guardar, conferir e esquecer, repositórios observados com gatilho de varredura e filtro de autoria, canais do Slack observados por servidor MCP, preço por modelo editável na linha de cada provedor, e orçamentos com o gasto do dia em dólar e em tokens, avisando quando um modelo sem preço deixa o teto medindo só em tokens |
 | grafo da execução | desenho somente leitura sobre a família de workflow do AI Elements, lendo `needs` do spec, com estado por cor da borda |
-| base de i18n | i18next e react-i18next com dicionário em `app/locales`, idioma vindo de `app.getLocale()` pela ponte, preferência em `settings` por cima, plural por `Intl.PluralRules` e chave ausente estourando fora de app empacotado; 646 chaves-folha em `en.json` e 676 em `pt-BR.json`, as 30 a mais são a forma plural `_zero`, que o português usa e o `Intl.PluralRules` do inglês não distingue |
+| base de i18n | i18next e react-i18next com dicionário em `app/locales`, idioma vindo de `app.getLocale()` pela ponte, preferência em `settings` por cima, plural por `Intl.PluralRules` e chave ausente estourando fora de app empacotado; 699 chaves-folha em `en.json` e 729 em `pt-BR.json`, as 30 a mais são a forma plural `_zero`, que o português usa e o `Intl.PluralRules` do inglês não distingue |
 | texto do processo principal | menu da bandeja, notificação, item de login e a saída do `--smoke` pelo mesmo dicionário, com instância própria do i18next sem React |
 | texto da inbox e das execuções | as duas telas pelo dicionário, com plural de achado, execução e pendência, e os rótulos de severidade e de estado num módulo só |
 | texto das outras telas | agents, configuração, barra lateral, paleta de comandos, grafo e o painel do assistente pelo dicionário, com o prompt de sistema do assistente junto |
@@ -946,7 +938,45 @@ canais de `initiatives-service.ts` anexa um item; ambos recebem a lista
 completa e a gravam por cima da anterior. Uma tela de "adicionar" precisa
 mandar a lista atual mais o item novo, nunca só o item novo.
 
+**`sessions.workspace_id` e o `setWorkspaces`.** A coluna aponta para
+`initiative_workspaces`, e o `setWorkspaces` apaga e recria os workspaces com
+id novo a cada gravação. Com `foreign_keys = ON`, uma sessão que guardasse o
+workspace travaria a edição dos workspaces depois da primeira sessão. Contorno:
+a sessão grava `null`; o `cwd` usado fica no script.
+
+**O `check:i18n` não olha `src/`.** Texto gerado no núcleo, como o
+`session.md`, escapa da guarda de literal solto. Contorno: o teste do
+`SessionService` confere cada linha do arquivo contra as linhas de
+`session.prompt.*` do idioma certo e recusa linha do outro idioma.
+
+**App aberto pelo Finder não herda o PATH do terminal.** `claude` puro falha
+justo para quem instalou pelo `.zshrc`. Contorno: `resolveClaudeBinary` tenta
+`LOCUM_CLAUDE_BIN`, depois `zsh -ilc 'command -v claude'` com 3 s de limite e
+stdin fechado, e só aceita a última linha não vazia se for caminho absoluto
+executável (alias e função caem fora); depois a lista fixa dos instaladores.
+
+**Deep link só chega com o app empacotado.** Em `npm start` o esquema
+`locum://` não está registrado para o binário de desenvolvimento, e o `open`
+do fim do script não volta. Contorno: "Ler passagem" funciona com a sessão
+ainda `open`; o deep link só adianta o estado para `ended`.
+
+**Uma passagem por sessão, não por dia.** O plano dizia
+`handoffs/<data>.md`, e duas sessões no mesmo dia escreveriam no mesmo
+arquivo. Contorno: `handoffs/<data>-<8 primeiros do id>.md`, gravado em
+`sessions.handoff_path` na abertura, para "Ler passagem" achar a certa.
+
+**Smoke e teste nunca abrem terminal.** O clique em "Abrir sessão" chamaria
+`open -a Terminal` de verdade. Contorno: `SessionService` recebe `exec` por
+dependência; teste e smoke passam espião, e o smoke confere os botões por
+existir sem clicar. Os testes de injeção usam `touch PWNED` como sentinela,
+nunca `rm`, e rodam o script só até a linha do `claude` (com `/bin/echo`), sem
+a do `open`.
+
 ## Próximos passos
+
+Iniciativas: I1, I2 e I3 prontos no código. Falta o teste à mão da sessão
+(seção do topo) e, fora do caminho crítico, O1, O2 e a fatia 9 (I4). O resto
+desta seção é o histórico das tarefas do loop Ralph.
 
 Quebrados em tarefas atômicas em `scripts/ralph/prd.json`, na ordem revisada pelo
 ADR 0002: camada de serviço, servidor MCP próprio, casca Electron, interface,
