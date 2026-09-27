@@ -181,6 +181,10 @@ export function Configuracao({ detalhe, navegar }: TelaProps) {
           <Secao descricao={t("settings.initiativesRoot.description")} titulo={t("settings.initiativesRoot.title")}>
             <EscolhaDaRaiz />
           </Secao>
+
+          <Secao descricao={t("settings.sessionTerminal.description")} titulo={t("settings.sessionTerminal.title")}>
+            <EscolhaDoTerminal />
+          </Secao>
         </>
       ) : null}
 
@@ -568,6 +572,49 @@ function EscolhaDaRaiz() {
     </div>
   );
 }
+
+/**
+ * O terminal onde a sessao da iniciativa abre. O `useRead` nao relê depois da
+ * gravacao, entao a escolha feita aqui fica no estado local ate a tela remontar.
+ */
+function EscolhaDoTerminal() {
+  const { t } = useTranslation();
+  const lido = useRead("sessions.terminal");
+  const [escolhido, setEscolhido] = useState<SessionTerminal | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+
+  if (lido.data === undefined) return <Vazio>{t("settings.sessionTerminal.title")}</Vazio>;
+
+  const atual = escolhido ?? lido.data;
+
+  const escolher = (terminal: SessionTerminal): void => {
+    setErro(null);
+    call("sessions.setTerminal", terminal).then(
+      () => setEscolhido(terminal),
+      () => setErro(t("settings.sessionTerminal.refused")),
+    );
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 px-4 py-3" data-locum-probe="session-terminal" data-locum-terminal={atual}>
+      {TERMINAIS.map((terminal) => (
+        <Button
+          data-locum-escolhido={atual === terminal ? "sim" : "nao"}
+          key={terminal}
+          onClick={() => escolher(terminal)}
+          size="sm"
+          variant={atual === terminal ? "secondary" : "ghost"}
+        >
+          {t(`settings.sessionTerminal.${terminal}`)}
+        </Button>
+      ))}
+      {erro && <span className="text-sev-critical text-xs">{erro}</span>}
+    </div>
+  );
+}
+
+type SessionTerminal = ReadResult<"sessions.terminal">;
+const TERMINAIS: readonly SessionTerminal[] = ["terminal", "iterm"];
 
 /* --------------------------------------------------------------- provedores */
 

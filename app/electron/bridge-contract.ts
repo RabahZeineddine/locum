@@ -4,6 +4,7 @@ import type { CredentialService } from "../src/services/credential-service.js";
 import type { GithubService } from "../src/services/github-service.js";
 import type { Language, LanguageState } from "../src/services/i18n-service.js";
 import type { InitiativeService } from "../src/services/initiative-service.js";
+import type { SessionService } from "../src/services/session-service.js";
 import type { MachineService } from "../src/services/machine-service.js";
 import type { McpService } from "../src/services/mcp-service.js";
 import type { MetricsService } from "../src/services/metrics-service.js";
@@ -108,6 +109,19 @@ interface ServiceApi {
   "initiatives.setWorkspaces": InitiativeService["setWorkspaces"];
   "initiatives.addLink": InitiativeService["addLink"];
   "initiatives.removeLink": InitiativeService["removeLink"];
+
+  /**
+   * Sessao do Claude no terminal com o contexto da iniciativa. Abrir e ler a
+   * passagem sao cliques na aba de acoes ou na paleta, nunca leitura de tela, e
+   * nenhum dos dois entra no catalogo do chat nem no servidor MCP. Ler a
+   * passagem so cria a pendencia `context.update`: o contexto muda no clique
+   * da revisao.
+   */
+  "sessions.open": SessionService["open"];
+  "sessions.readHandoff": SessionService["readHandoff"];
+  /** Terminal preferido, na secao geral da configuracao. */
+  "sessions.terminal": SessionService["terminal"];
+  "sessions.setTerminal": SessionService["setTerminal"];
 
   /** Prompts salvos, para copiar na aba de acoes da iniciativa. */
   "prompts.list": PromptService["list"];
@@ -365,6 +379,10 @@ export const BRIDGE_CHANNELS = [
   "initiatives.setWorkspaces",
   "initiatives.addLink",
   "initiatives.removeLink",
+  "sessions.open",
+  "sessions.readHandoff",
+  "sessions.terminal",
+  "sessions.setTerminal",
   "prompts.list",
   "runs.list",
   "runs.get",

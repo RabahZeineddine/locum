@@ -310,7 +310,14 @@
         "empty": "Ainda sem execucao desta iniciativa."
       },
       "actions": {
-        "empty": "Ainda nada para rodar por aqui."
+        "empty": "Ainda nada para rodar por aqui.",
+        "openSession": "Abrir sessão",
+        "readHandoff": "Ler passagem",
+        "opened": "Sessão aberta no {{terminal}}.",
+        "claudeMissing": "Sessão aberta no {{terminal}}, mas o binário do claude não foi achado: o script usa o claude do PATH do terminal.",
+        "proposed": "Passagem {{file}} enviada para a fila de revisão.",
+        "noHandoff": "Nenhuma passagem nova ainda.",
+        "refused": "A ação falhou: {{message}}"
       }
     },
     "status": {
@@ -351,7 +358,8 @@
     "placeholder": "Buscar comando...",
     "empty": "Nenhum comando cadastrado ainda.",
     "goToInitiative": "Ir para a iniciativa: {{title}}",
-    "copyPrompt": "Copiar prompt: {{name}}"
+    "copyPrompt": "Copiar prompt: {{name}}",
+    "openSession": "Abrir sessão: {{title}}"
   },
   "runs": {
     "title": "Execuções",
@@ -703,6 +711,13 @@
       "description": "Onde a pasta de contexto de cada iniciativa mora. Deixe em branco para o padrão.",
       "label": "pasta raiz",
       "refused": "A pasta raiz não foi salva"
+    },
+    "sessionTerminal": {
+      "title": "Terminal da sessão",
+      "description": "Qual terminal abre a sessão do Claude de uma iniciativa.",
+      "terminal": "Terminal",
+      "iterm": "iTerm",
+      "refused": "O terminal não foi gravado"
     }
   },
   "severity": {
@@ -888,6 +903,25 @@
       "daysSinceUpdate_zero": "atualizada hoje",
       "daysSinceUpdate_one": "atualizada há {{count}}d",
       "daysSinceUpdate_other": "atualizada há {{count}}d"
+    }
+  },
+  "session": {
+    "prompt": {
+      "intro": "Você está trabalhando na iniciativa do Locum \"{{title}}\" ({{slug}}).",
+      "objective": "## Objetivo\n\n{{objective}}",
+      "doneCriteria": "## Critério de pronto\n\n{{doneCriteria}}",
+      "dueAt": "Prazo: {{date}}",
+      "workspacesTitle": "## Workspaces",
+      "workspace": "- {{path}}",
+      "workspaceWithBranch": "- {{path}} (branch {{branch}})",
+      "linksTitle": "## Links",
+      "link": "- {{url}}",
+      "linkWithLabel": "- {{label}}: {{url}}",
+      "context": "## Contexto\n\nO contexto da iniciativa está em {{file}}. Leia antes de começar. Não edite esse arquivo: mudança no contexto passa pela fila de aprovação do Locum.",
+      "handoff": "## Passagem\n\nAntes de encerrar a sessão, escreva a passagem em {{file}}: o que foi feito, o que falta e as decisões tomadas. O Locum lê a passagem e propõe a atualização do contexto."
+    },
+    "handoff": {
+      "block": "## Passagem ({{file}})\n\n{{content}}"
     }
   }
 }

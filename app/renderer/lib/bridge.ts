@@ -56,6 +56,8 @@ export const READ_CHANNELS = [
   // Pasta raiz onde a pasta de contexto de cada iniciativa mora. Gravar vai
   // por `initiatives.setRoot`, em ACTION_CHANNELS.
   "initiatives.root",
+  // O terminal preferido, so leitura. Gravar vai por `sessions.setTerminal`.
+  "sessions.terminal",
   // Prompts salvos, para a aba de acoes da iniciativa copiar.
   "prompts.list",
   "runs.list",
@@ -203,6 +205,11 @@ export const ACTION_CHANNELS = [
   "initiatives.setWorkspaces",
   "initiatives.addLink",
   "initiatives.removeLink",
+  // Abrir sessao sobe um terminal e ler a passagem cria pendencia: os dois sao
+  // clique de quem usa, e o terminal preferido e preferencia gravada.
+  "sessions.open",
+  "sessions.readHandoff",
+  "sessions.setTerminal",
 ] as const satisfies readonly BridgeChannel[];
 
 export type ActionChannel = (typeof ACTION_CHANNELS)[number];

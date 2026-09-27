@@ -1,4 +1,4 @@
-import { ArrowLeft, Copy } from "lucide-react";
+import { ArrowLeft, Copy, FileText, SquareTerminal } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
@@ -191,7 +191,7 @@ function DetalheDaIniciativa({
       {aba === "agents" && <AbaAgents iniciativa={iniciativa} />}
       {aba === "integrations" && <AbaIntegrations iniciativa={iniciativa} />}
       {aba === "runs" && <AbaRuns initiativeId={iniciativa.id} />}
-      {aba === "actions" && <AbaActions initiativeId={iniciativa.id} />}
+      {aba === "actions" && <AbaActions initiativeId={iniciativa.id} slug={iniciativa.slug} />}
     </div>
   );
 }
@@ -629,8 +629,73 @@ function AbaRuns({ initiativeId }: { initiativeId: string }) {
   );
 }
 
-/** Prompts salvos desta iniciativa, para copiar o corpo direto. */
-function AbaActions({ initiativeId }: { initiativeId: string }) {
+/** Sessao no terminal, leitura da passagem e os prompts salvos desta iniciativa. */
+function AbaActions({ initiativeId, slug }: { initiativeId: string; slug: string }) {
+  return (
+    <div className="space-y-4">
+      <AcoesDeSessao slug={slug} />
+      <ListaDePrompts initiativeId={initiativeId} />
+    </div>
+  );
+}
+
+/**
+ * Abrir a sessao e ler a passagem. "Ler passagem" e o caminho que sempre
+ * funciona: o deep link de fim de sessao so chega com o app empacotado.
+ */
+function AcoesDeSessao({ slug }: { slug: string }) {
+  const { t } = useTranslation();
+  const [ocupado, setOcupado] = useState(false);
+  const [aviso, setAviso] = useState<string | null>(null);
+
+  const falhou = (erro: unknown): void =>
+    setAviso(t("initiatives.detail.actions.refused", { message: erro instanceof Error ? erro.message : String(erro) }));
+
+  const abrir = (): void => {
+    setOcupado(true);
+    setAviso(null);
+    call("sessions.open", slug, {})
+      .then((sessao) => {
+        const terminal = t(`settings.sessionTerminal.${sessao.terminal}`);
+        setAviso(
+          t(sessao.claudeFound ? "initiatives.detail.actions.opened" : "initiatives.detail.actions.claudeMissing", {
+            terminal,
+          }),
+        );
+      }, falhou)
+      .finally(() => setOcupado(false));
+  };
+
+  const lerPassagem = (): void => {
+    setOcupado(true);
+    setAviso(null);
+    call("sessions.readHandoff", slug)
+      .then((lida) => {
+        setAviso(
+          lida === null
+            ? t("initiatives.detail.actions.noHandoff")
+            : t("initiatives.detail.actions.proposed", { file: lida.file }),
+        );
+      }, falhou)
+      .finally(() => setOcupado(false));
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-2" data-locum-probe="initiative-session">
+      <Button className="cursor-pointer" disabled={ocupado} onClick={abrir} size="sm">
+        <SquareTerminal className="size-3.5" />
+        {t("initiatives.detail.actions.openSession")}
+      </Button>
+      <Button className="cursor-pointer" disabled={ocupado} onClick={lerPassagem} size="sm" variant="secondary">
+        <FileText className="size-3.5" />
+        {t("initiatives.detail.actions.readHandoff")}
+      </Button>
+      {aviso && <span className="text-muted-foreground text-xs">{aviso}</span>}
+    </div>
+  );
+}
+
+function ListaDePrompts({ initiativeId }: { initiativeId: string }) {
   const { t } = useTranslation();
   const prompts = useRead("prompts.list", initiativeId);
   const linhas = prompts.data ?? [];

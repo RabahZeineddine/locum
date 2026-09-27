@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useRead } from "@/lib/bridge";
+import { call, useRead } from "@/lib/bridge";
+import { useCurrentInitiative } from "./current-initiative";
 import type { TelaProps } from "./rotas";
 
 interface Comando {
@@ -10,7 +11,8 @@ interface Comando {
 }
 
 /**
- * A paleta de comandos: ir para uma iniciativa, ou copiar um prompt salvo.
+ * A paleta de comandos: ir para uma iniciativa, abrir a sessao da iniciativa
+ * atual no terminal, ou copiar um prompt salvo.
  *
  * A lista e escrita a mao aqui dentro, montada a partir de `initiatives.list`
  * e `prompts.list`, pelo mesmo motivo do catalogo de canais do chat: decisao
@@ -26,6 +28,7 @@ export function Paleta({ navegar }: { navegar: TelaProps["navegar"] }) {
 
   const iniciativas = useRead("initiatives.list");
   const prompts = useRead("prompts.list");
+  const atual = useCurrentInitiative();
 
   useEffect(() => {
     const ouvir = (evento: KeyboardEvent) => {
@@ -66,8 +69,26 @@ export function Paleta({ navegar }: { navegar: TelaProps["navegar"] }) {
       },
     }));
 
-    return [...irParaIniciativa, ...copiarPrompt];
-  }, [iniciativas.data, navegar, prompts.data, t]);
+    // A aba de acoes mostra o resultado; a paleta so dispara e leva ate la.
+    const iniciativaAtual = (iniciativas.data ?? []).find((iniciativa) => iniciativa.slug === atual.slug);
+    const abrirSessao = iniciativaAtual
+      ? [
+          {
+            id: `session:${iniciativaAtual.slug}`,
+            rotulo: t("palette.openSession", { title: iniciativaAtual.title }),
+            executar: () => {
+              navegar("initiatives", `${iniciativaAtual.slug}/actions`);
+              setAberta(false);
+              call("sessions.open", iniciativaAtual.slug, {}).catch((erro: unknown) => {
+                console.error("[paleta] sessions.open recusado", erro);
+              });
+            },
+          },
+        ]
+      : [];
+
+    return [...abrirSessao, ...irParaIniciativa, ...copiarPrompt];
+  }, [atual.slug, iniciativas.data, navegar, prompts.data, t]);
 
   const filtrados =
     consulta.trim().length === 0

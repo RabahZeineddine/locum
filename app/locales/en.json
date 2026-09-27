@@ -295,7 +295,14 @@
         "empty": "No run for this initiative yet."
       },
       "actions": {
-        "empty": "Nothing to run from here yet."
+        "empty": "Nothing to run from here yet.",
+        "openSession": "Open session",
+        "readHandoff": "Read handoff",
+        "opened": "Session opened in {{terminal}}.",
+        "claudeMissing": "Session opened in {{terminal}}, but the claude binary was not found: the script uses the claude on the terminal PATH.",
+        "proposed": "Handoff {{file}} sent to the review queue.",
+        "noHandoff": "No unread handoff yet.",
+        "refused": "The action failed: {{message}}"
       }
     },
     "status": {
@@ -334,7 +341,8 @@
     "placeholder": "Search command...",
     "empty": "No command registered yet.",
     "goToInitiative": "Go to initiative: {{title}}",
-    "copyPrompt": "Copy prompt: {{name}}"
+    "copyPrompt": "Copy prompt: {{name}}",
+    "openSession": "Open session: {{title}}"
   },
   "runs": {
     "title": "Runs",
@@ -674,6 +682,13 @@
       "description": "Where each initiative's context folder lives. Leave empty for the default.",
       "label": "root folder",
       "refused": "The root folder was not saved"
+    },
+    "sessionTerminal": {
+      "title": "Session terminal",
+      "description": "Which terminal opens the Claude session of an initiative.",
+      "terminal": "Terminal",
+      "iterm": "iTerm",
+      "refused": "The terminal was not saved"
     }
   },
   "severity": {
@@ -858,6 +873,25 @@
       "daysSinceUpdate_zero": "updated today",
       "daysSinceUpdate_one": "updated {{count}}d ago",
       "daysSinceUpdate_other": "updated {{count}}d ago"
+    }
+  },
+  "session": {
+    "prompt": {
+      "intro": "You are working on the Locum initiative \"{{title}}\" ({{slug}}).",
+      "objective": "## Objective\n\n{{objective}}",
+      "doneCriteria": "## Done criteria\n\n{{doneCriteria}}",
+      "dueAt": "Due date: {{date}}",
+      "workspacesTitle": "## Workspaces",
+      "workspace": "- {{path}}",
+      "workspaceWithBranch": "- {{path}} (branch {{branch}})",
+      "linksTitle": "## Links",
+      "link": "- {{url}}",
+      "linkWithLabel": "- {{label}}: {{url}}",
+      "context": "## Context\n\nThe initiative context is in {{file}}. Read it before starting. Do not edit it: changes to the context go through Locum's approval queue.",
+      "handoff": "## Handoff\n\nBefore ending the session, write a handoff to {{file}}: what was done, what is left, and the decisions taken. Locum reads it and proposes the update to the context."
+    },
+    "handoff": {
+      "block": "## Handoff ({{file}})\n\n{{content}}"
     }
   }
 }

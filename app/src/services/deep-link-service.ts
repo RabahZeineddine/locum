@@ -11,10 +11,13 @@ export const OAUTH_REDIRECT_URI = `${LOCUM_SCHEME}://oauth/callback`;
 const STATE_TTL_MS = 10 * 60_000;
 
 const NAME = /^[a-z0-9][a-z0-9._-]*$/;
+const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const SESSION_TOKEN = /^[A-Za-z0-9_-]{16,128}$/;
 
 export type DeepLinkRoute =
   | { kind: "oauth-callback"; server: string; code: string; state: string }
   | { kind: "oauth-error"; server: string; error: string }
+  | { kind: "session-ended"; session: string; token: string }
   | { kind: "unknown"; reason: string };
 
 export interface AuthorizationStart {
@@ -82,6 +85,16 @@ export function parseDeepLink(raw: string): DeepLinkRoute {
   }
 
   const route = `${url.hostname}${url.pathname}`.replace(/\/+$/, "");
+  if (route === "session/ended") {
+    // So o formato e conferido aqui. Se o nonce e o da sessao, e se ainda nao
+    // foi usado, quem decide e `SessionService.finish`.
+    const session = url.searchParams.get("session") ?? "";
+    const token = url.searchParams.get("token") ?? "";
+    if (!SESSION_ID.test(session) || !SESSION_TOKEN.test(token)) {
+      return { kind: "unknown", reason: "fim de sessao sem sessao ou token valido" };
+    }
+    return { kind: "session-ended", session, token };
+  }
   if (route !== "oauth/callback") {
     return { kind: "unknown", reason: `rota "${route}" nao existe` };
   }

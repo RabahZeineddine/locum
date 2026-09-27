@@ -6,7 +6,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { aplicarIdioma, idiomaAtual, iniciarI18n, t } from "./i18n.js";
 import en from "../locales/en.json";
 import ptBR from "../locales/pt-BR.json";
-import { join, sep } from "node:path";
+import { dirname, join, sep } from "node:path";
 // So tipo: o `import type` e apagado no build, e um import de valor vindo de
 // `src/` aqui em cima carregaria o nucleo antes de `LOCUM_SQLITE_BINDING`
 // apontar o binario do Electron.
@@ -183,6 +183,13 @@ async function handleDeepLink(url: string): Promise<void> {
   if (route.kind === "oauth-error") {
     deepLinkService.cancelAuthorization(route.server);
     console.log(`deep link: autorizacao de ${route.server} recusada, ${route.error}`);
+    return;
+  }
+  if (route.kind === "session-ended") {
+    const { sessionService } = await import("../src/services/session-service.js");
+    const fechada = await sessionService.finish(route.session, route.token);
+    console.log(`deep link: fim de sessao ${fechada ? "registrado" : "recusado, nonce usado ou errado"}`);
+    if (fechada) showWindow();
     return;
   }
 
@@ -1250,7 +1257,49 @@ async function checkInitiatives(window: BrowserWindow): Promise<string> {
   );
   if (abaAgents.tab !== "agents") throw new Error(`a aba ficou em "${abaAgents.tab}" e nao em "agents"`);
 
+  // Os botoes de sessao sao conferidos por existir, e nunca clicados: o clique
+  // abriria um terminal de verdade. A fiacao do servico vai com um espiao.
+  await irPara(window, "initiatives", "example/actions");
+  await esperarProbe<{ botoes: number }>(
+    window,
+    "initiative-session",
+    `(() => {
+      const probe = document.querySelector("[data-locum-probe=initiative-session]");
+      const botoes = probe?.querySelectorAll("button").length ?? 0;
+      return botoes === 2 ? { botoes } : null;
+    })()`,
+  );
+  await checkSessionWiring();
+
   return t("smoke.initiatives", { initiatives: lista.total });
+}
+
+/**
+ * Abre a sessao da semente com `exec` espiao e confere o que ficaria pronto
+ * para o terminal: o script, o prompt, as regras de `deny` e o `open -a`.
+ */
+async function checkSessionWiring(): Promise<void> {
+  const { SessionService } = await import("../src/services/session-service.js");
+  const chamadas: { command: string; args: string[] }[] = [];
+  const service = new SessionService({
+    exec: async (command, args) => {
+      chamadas.push({ command, args });
+    },
+    resolveClaude: async () => "/bin/echo",
+  });
+
+  const aberta = await service.open("example", { terminal: "terminal" });
+  const pasta = dirname(dirname(aberta.scriptPath));
+  for (const arquivo of ["session.md", "session-settings.json", "open-session.command"]) {
+    if (!existsSync(join(pasta, ".locum", arquivo))) throw new Error(`a sessao nao gravou .locum/${arquivo}`);
+  }
+  const esperado = JSON.stringify([{ command: "open", args: ["-a", "Terminal", aberta.scriptPath] }]);
+  if (JSON.stringify(chamadas) !== esperado) {
+    throw new Error(`a sessao chamou ${JSON.stringify(chamadas)} e o esperado era ${esperado}`);
+  }
+  if ((await service.readHandoff("example")) !== null) {
+    throw new Error("a sessao recem aberta ja tinha passagem para ler");
+  }
 }
 
 /**

@@ -24,6 +24,7 @@ enviado ao remoto: a `main` local está à frente de `origin/main`.
 | 6 | `38e2874` | painel do Início, revisão de `context.update`, `initiatives.staleDays` |
 | F | `c6a3271` | armadilhas, contagens e roadmap do dia |
 | 5b | `97d8124` | formulários, iniciativa atual, chips em agents e execuções, paleta e assistente (fecha o I2) |
+| 7 | commit `feat: abrir sessão da iniciativa no terminal...` | sessão do Claude no Terminal ou iTerm com o contexto da iniciativa, passagem voltando como proposta `append`, deep link `locum://session/ended` (fecha o I3 no código) |
 
 Nenhuma fatia ficou pela metade. Há um `git stash` antigo, "fatia 3b parcial",
 com uma primeira tentativa da 3b que foi refeita do zero e está no `c18d19c`.
@@ -34,8 +35,9 @@ Não tem nada que falte no código; pode ser descartado com `git stash drop`.
 - I1: nada.
 - I2: nada do escopo funcional. O redesenho visual (I2b) fica para depois de
   alguns dias de uso, só registrado no roadmap.
-- I3: a fatia 7 inteira, que abre sessão do Claude no terminal com o contexto
-  da iniciativa. Seção "Fatia 7" e "Sessão no terminal" do plano.
+- I3: nada no código. Falta o teste à mão: abrir uma sessão de verdade pelo
+  botão, escrever a passagem e ler de volta; e o deep link de fim de sessão,
+  que só chega com o app empacotado (`npm run dist:dir`).
 - Fora do caminho crítico, se sobrar tempo: O1 (descrições das ferramentas em
   inglês), O2 (README em inglês, `README.pt-BR.md`, `CONTRIBUTING.md` e rename
   das rotas em português com redirecionamento) e a fatia 9 (I4, presets MCP
@@ -61,14 +63,38 @@ Não tem nada que falte no código; pode ser descartado com `git stash drop`.
   pelos dicionários `en` e `pt-BR`. O termo do produto é "iniciativa" /
   "initiative".
 - Em aberto: quando docs, ADRs e mensagens de commit passam para inglês.
+- Sessão no terminal (fatia 7): o Locum gera `.locum/session.md`,
+  `.locum/session-settings.json` e `.locum/open-session.command` na pasta de
+  contexto e roda `open -a Terminal|iTerm` no script. O `claude` é achado por
+  `LOCUM_CLAUDE_BIN`, depois `zsh -ilc 'command -v claude'`, depois a lista
+  fixa dos instaladores; sem achar, o script usa o `claude` do PATH do
+  terminal e a tela avisa. O `deny` barra `context.md` e `.locum/**` com
+  `//caminho` absoluto (confirmado no Claude Code 2.1.283).
+- Uma passagem por sessão: `handoffs/<data>-<8 primeiros do id>.md`, gravado
+  em `sessions.handoff_path` ao abrir. O plano dizia `<data>.md`, que colidiria
+  com duas sessões no mesmo dia. "Ler passagem" pega a mais nova ainda não
+  lida, de sessão aberta ou encerrada, e marca a sessão como `read`.
+- Abrir sessão e ler passagem são só clique (aba Ações e paleta); não estão
+  no chat nem no MCP.
 
 ### Primeiro passo da próxima sessão
 
-Começar a fatia 7 (I3) pelo que o plano manda conferir antes de escrever
-código: rodar `claude --help` e confirmar os nomes `--append-system-prompt`,
-`--settings` e `--add-dir`, e a sintaxe `//` do `deny` para caminho absoluto.
-Depois seguir a seção "Fatia 7" do `docs/plano-iniciativas.md`, com os testes
-de injeção de shell usando sentinela (`touch PWNED`), nunca `rm`.
+Testar a fatia 7 à mão: abrir uma sessão pela aba Ações da iniciativa
+`example`, conferir que o Claude não consegue editar o `context.md`, escrever a
+passagem e ler de volta pela revisão. Depois empacotar com `npm run dist:dir` e
+conferir que o fim da sessão volta pelo deep link. Com isso o I3 fecha; o que
+sobra é O1, O2 e a fatia 9.
+
+Armadilhas da fatia 7:
+
+- `sessions.workspace_id` aponta para `initiative_workspaces`, e o
+  `setWorkspaces` apaga e recria os workspaces com id novo. Com
+  `foreign_keys = ON`, gravar o workspace na sessão travaria a edição de
+  workspaces depois da primeira sessão; a sessão grava `null`.
+- O `check:i18n` não olha `src/`: a guarda de texto cravado no `session.md` é o
+  teste que confere cada linha contra `session.prompt.*` nos dois idiomas.
+- O smoke confere os botões da aba Ações por existir e nunca clica: o clique
+  abriria um terminal de verdade. A fiação vai com `exec` espião.
 
 ## O que existe e roda
 
