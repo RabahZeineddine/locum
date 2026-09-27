@@ -229,6 +229,11 @@
     "draft": "draft",
     "branch": "{{head}} → {{base}}"
   },
+  "initiatives": {
+    "contextTemplate": {
+      "initial": "# {{title}}\n\n## Objective\n\n_Describe the objective of this initiative._\n\n## Done criteria\n\n_Describe what \"done\" looks like for this initiative._\n"
+    }
+  },
   "loginItem": {
     "applied": "start at login: preference {{preference}}, system {{status}}"
   },

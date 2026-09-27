@@ -34,7 +34,7 @@ export interface AgentOverview extends AgentRow {
 export type Actor = "human" | "agent";
 
 /** Identificador de agent: vira nome em URL, em log e em arquivo exportado. */
-const ID_DE_AGENT = /^[a-z0-9][a-z0-9-]{1,62}$/;
+export const ID_DE_AGENT = /^[a-z0-9][a-z0-9-]{1,62}$/;
 
 /** Passo de acao que teve o modo rebaixado na gravacao. */
 export interface ActionDowngrade {

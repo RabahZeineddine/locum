@@ -41,6 +41,24 @@ function bancoAntigo(): { home: string; limpar: () => void } {
   return { home, limpar: () => rmSync(home, { recursive: true, force: true }) };
 }
 
+/** Banco migrado até uma migração específica, para testar a próxima em cima. */
+function bancoAte(quantidade: number): { home: string; pasta: string; limpar: () => void } {
+  const home = mkdtempSync(join(tmpdir(), "locum-migracao-"));
+  const pasta = join(home, "drizzle-parcial");
+  cpSync(join(APP, "drizzle"), pasta, { recursive: true });
+
+  const journal = join(pasta, "meta", "_journal.json");
+  const lido = JSON.parse(readFileSync(journal, "utf8")) as { entries: unknown[] };
+  lido.entries = lido.entries.slice(0, quantidade);
+  writeFileSync(journal, JSON.stringify(lido));
+
+  const sqlite = new Database(join(home, "watchers.db"));
+  migrate(drizzle(sqlite), { migrationsFolder: pasta });
+  sqlite.close();
+
+  return { home, pasta, limpar: () => rmSync(home, { recursive: true, force: true }) };
+}
+
 function colunas(home: string, tabela: string): string[] {
   const sqlite = new Database(join(home, "watchers.db"), { readonly: true });
   const nomes = (sqlite.prepare(`pragma table_info(${tabela})`).all() as { name: string }[]).map(
@@ -63,6 +81,47 @@ test("a linha de comando migra o banco antigo antes de consultar", () => {
 
     assert.equal(saida.status, 0, `linha de comando falhou: ${saida.stderr || saida.stdout}`);
     assert.ok(colunas(home, "steps").includes("cache_read_tokens"), "a migração pendente não rodou");
+  } finally {
+    limpar();
+  }
+});
+
+test("migração das iniciativas aplica sobre banco com dados da 0004 e preserva agents e runs", () => {
+  // Só até a 0004: a migração 0005 (iniciativas) ainda não rodou aqui.
+  const { home, limpar } = bancoAte(5);
+  try {
+    const antes = new Database(join(home, "watchers.db"));
+    antes.exec(`insert into agents (id, name) values ('agente-x', 'Agente X')`);
+    antes.exec(
+      `insert into agent_versions (id, agent_id, version, spec) values ('versao-x', 'agente-x', 1, '{}')`,
+    );
+    antes.exec(`insert into runs (id, agent_version_id) values ('run-x', 'versao-x')`);
+    antes.close();
+
+    // Pasta completa, com a 0005 no journal: pasta (truncada na 5) so serviu
+    // para deixar o banco parado na 0004 antes do teste.
+    const sqlite = new Database(join(home, "watchers.db"));
+    migrate(drizzle(sqlite), { migrationsFolder: join(APP, "drizzle") });
+
+    const agente = sqlite.prepare("select * from agents where id = ?").get("agente-x") as
+      | { id: string; name: string; initiative_id: string | null }
+      | undefined;
+    const run = sqlite.prepare("select * from runs where id = ?").get("run-x") as
+      | { id: string; agent_version_id: string; initiative_id: string | null }
+      | undefined;
+    sqlite.close();
+
+    assert.ok(agente, "agent sumiu depois da migração");
+    assert.equal(agente!.name, "Agente X");
+    assert.equal(agente!.initiative_id, null);
+
+    assert.ok(run, "run sumiu depois da migração");
+    assert.equal(run!.agent_version_id, "versao-x");
+    assert.equal(run!.initiative_id, null);
+
+    assert.ok(colunas(home, "agents").includes("initiative_id"));
+    assert.ok(colunas(home, "runs").includes("initiative_id"));
+    assert.ok(colunas(home, "initiatives").includes("context_path"));
   } finally {
     limpar();
   }

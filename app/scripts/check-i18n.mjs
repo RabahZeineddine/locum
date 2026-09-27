@@ -194,6 +194,44 @@ if (achados.length > 0) {
 }
 
 /*
+ * Paridade de chaves entre os dois dicionários.
+ *
+ * Texto gerado em `src/` (context.md, corpo de prompt) não passa pela
+ * varredura de JSX acima, porque não é tela: passa por `text-service.ts`
+ * direto. Esta checagem garante que toda chave existe nos dois lados, ainda
+ * que ninguém a leia num componente. O sufixo `_zero` fica de fora porque só
+ * pt-BR o exige, e a checagem acima já cobre esse caso.
+ */
+function achatar(objeto, caminho = "") {
+  const chaves = [];
+  for (const [chave, valor] of Object.entries(objeto)) {
+    const atual = caminho ? `${caminho}.${chave}` : chave;
+    if (valor && typeof valor === "object" && !Array.isArray(valor)) {
+      chaves.push(...achatar(valor, atual));
+    } else {
+      chaves.push(atual);
+    }
+  }
+  return chaves;
+}
+
+const semSufixoZero = (chave) => !chave.endsWith("_zero");
+const enDicionario = JSON.parse(readFileSync(new URL("../locales/en.json", import.meta.url), "utf8"));
+const ptDicionario = JSON.parse(readFileSync(new URL("../locales/pt-BR.json", import.meta.url), "utf8"));
+const enChaves = new Set(achatar(enDicionario).filter(semSufixoZero));
+const ptChaves = new Set(achatar(ptDicionario).filter(semSufixoZero));
+
+const faltaEmPt = [...enChaves].filter((chave) => !ptChaves.has(chave)).sort();
+const faltaEmEn = [...ptChaves].filter((chave) => !enChaves.has(chave)).sort();
+
+if (faltaEmPt.length > 0 || faltaEmEn.length > 0) {
+  console.error("paridade de chaves quebrada entre en.json e pt-BR.json:\n");
+  for (const chave of faltaEmPt) console.error(`  falta em pt-BR: ${chave}`);
+  for (const chave of faltaEmEn) console.error(`  falta em en: ${chave}`);
+  process.exit(1);
+}
+
+/*
  * Plural sem forma para zero, em português.
  *
  * Em pt-BR o Intl.PluralRules põe o zero na categoria "one", então uma chave só

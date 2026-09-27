@@ -35,12 +35,19 @@ export interface SmokeHome {
  *
  * Precisa rodar antes de qualquer import do núcleo, que abre o banco no import.
  */
+function definirPastaDeIniciativas(env: NodeJS.ProcessEnv, dir: string): void {
+  if (env.LOCUM_INITIATIVES_DIR && env.LOCUM_INITIATIVES_DIR.length > 0) return;
+  env.LOCUM_INITIATIVES_DIR = join(dir, "initiatives");
+}
+
 export function smokeHome(env: NodeJS.ProcessEnv = process.env): SmokeHome {
   const escolhida = env.LOCUM_HOME;
   if (escolhida && escolhida.length > 0) {
+    definirPastaDeIniciativas(env, escolhida);
     return { dir: escolhida, temporary: false, cleanup: () => {} };
   }
   const dir = mkdtempSync(join(tmpdir(), "locum-smoke-"));
   env.LOCUM_HOME = dir;
+  definirPastaDeIniciativas(env, dir);
   return { dir, temporary: true, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
 }

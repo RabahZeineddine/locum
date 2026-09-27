@@ -16,6 +16,14 @@ export const agents = sqliteTable("agents", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  /**
+   * Iniciativa dona deste agent, quando ligado a uma. Sem `.references()` de
+   * proposito: `drizzle-kit generate` recria a tabela inteira para adicionar
+   * uma coluna com chave estrangeira, e um `agents` com dado de verdade nao
+   * pode passar por isso. Fica so a coluna nula, e a referencia e garantida
+   * pelo servico.
+   */
+  initiativeId: text("initiative_id"),
   createdAt: integer("created_at").notNull().default(now),
 });
 
@@ -87,6 +95,8 @@ export const runs = sqliteTable(
     agentVersionId: text("agent_version_id").notNull().references(() => agentVersions.id),
     triggerId: text("trigger_id"),
     eventId: text("event_id").references(() => events.id),
+    /** Mesmo motivo da coluna igual em `agents`: sem `.references()`. */
+    initiativeId: text("initiative_id"),
     status: text("status").notNull().default("queued"),
     startedAt: integer("started_at"),
     endedAt: integer("ended_at"),
@@ -140,7 +150,7 @@ export const steps = sqliteTable(
 
 /* -------------------------------------------------------------- aprovacao */
 
-/** pending | approved | rejected | expired | auto */
+/** pending | approved | rejected | expired | auto | conflict */
 export const approvals = sqliteTable(
   "approvals",
   {
@@ -354,4 +364,107 @@ export const settings = sqliteTable("settings", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),
   updatedAt: integer("updated_at").notNull().default(now),
+});
+
+/* ------------------------------------------------------------ iniciativas */
+
+/**
+ * Frente de trabalho: objetivo, criterio de pronto e uma pasta de contexto
+ * propria em disco. O banco guarda o fato, a pasta guarda a prosa que a
+ * pessoa escreve e edita a mao.
+ */
+export const initiatives = sqliteTable(
+  "initiatives",
+  {
+    id: text("id").primaryKey(),
+    slug: text("slug").notNull(),
+    title: text("title").notNull(),
+    objective: text("objective").notNull(),
+    doneCriteria: text("done_criteria").notNull(),
+    dueAt: integer("due_at"),
+    /** active | paused | done | dropped */
+    status: text("status").notNull().default("active"),
+    goalRef: text("goal_ref"),
+    /** Onde a pasta de contexto desta iniciativa mora em disco. */
+    contextPath: text("context_path").notNull(),
+    createdAt: integer("created_at").notNull().default(now),
+    updatedAt: integer("updated_at").notNull().default(now),
+  },
+  (t) => [uniqueIndex("initiatives_slug_unq").on(t.slug)],
+);
+
+export const initiativeWorkspaces = sqliteTable("initiative_workspaces", {
+  id: text("id").primaryKey(),
+  initiativeId: text("initiative_id")
+    .notNull()
+    .references(() => initiatives.id, { onDelete: "cascade" }),
+  repoPath: text("repo_path").notNull(),
+  worktreePath: text("worktree_path"),
+  branch: text("branch"),
+  label: text("label"),
+});
+
+export const initiativeMcpServers = sqliteTable(
+  "initiative_mcp_servers",
+  {
+    initiativeId: text("initiative_id")
+      .notNull()
+      .references(() => initiatives.id, { onDelete: "cascade" }),
+    serverName: text("server_name").notNull(),
+  },
+  (t) => [uniqueIndex("initiative_mcp_servers_unq").on(t.initiativeId, t.serverName)],
+);
+
+/** doc | board | repo | other */
+export const initiativeLinks = sqliteTable("initiative_links", {
+  id: text("id").primaryKey(),
+  initiativeId: text("initiative_id")
+    .notNull()
+    .references(() => initiatives.id, { onDelete: "cascade" }),
+  kind: text("kind").notNull(),
+  url: text("url").notNull(),
+  label: text("label"),
+});
+
+/**
+ * Nome unico entre todos os prompts, versionado abaixo em `prompt_versions`.
+ * Iniciativa nula quando o prompt e de uso geral.
+ */
+export const prompts = sqliteTable("prompts", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  initiativeId: text("initiative_id").references(() => initiatives.id),
+  createdAt: integer("created_at").notNull().default(now),
+});
+
+/** Versao imutavel do corpo de um prompt. Nova so quando o texto muda. */
+export const promptVersions = sqliteTable(
+  "prompt_versions",
+  {
+    id: text("id").primaryKey(),
+    promptId: text("prompt_id")
+      .notNull()
+      .references(() => prompts.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    body: text("body").notNull(),
+    note: text("note"),
+    createdAt: integer("created_at").notNull().default(now),
+  },
+  (t) => [uniqueIndex("prompt_versions_unq").on(t.promptId, t.version)],
+);
+
+/** open | ended */
+export const sessions = sqliteTable("sessions", {
+  id: text("id").primaryKey(),
+  initiativeId: text("initiative_id")
+    .notNull()
+    .references(() => initiatives.id, { onDelete: "cascade" }),
+  workspaceId: text("workspace_id").references(() => initiativeWorkspaces.id),
+  /** terminal | iterm */
+  terminal: text("terminal").notNull(),
+  nonce: text("nonce").notNull().unique(),
+  status: text("status").notNull().default("open"),
+  handoffPath: text("handoff_path"),
+  startedAt: integer("started_at").notNull().default(now),
+  endedAt: integer("ended_at"),
 });

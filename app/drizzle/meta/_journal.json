@@ -36,6 +36,13 @@
       "when": 1790117809468,
       "tag": "0004_cache-de-prompt",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1790530821551,
+      "tag": "0005_initiatives",
+      "breakpoints": true
     }
   ]
 }

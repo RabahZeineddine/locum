@@ -243,6 +243,11 @@
     "failures_zero": "{{count}} execuções falharam",
     "findings_zero": "{{count}} achados"
   },
+  "initiatives": {
+    "contextTemplate": {
+      "initial": "# {{title}}\n\n## Objetivo\n\n_Descreva o objetivo desta iniciativa._\n\n## Critério de pronto\n\n_Descreva o que é \"pronto\" para esta frente._\n"
+    }
+  },
   "loginItem": {
     "applied": "início no login: preferência {{preference}}, sistema {{status}}"
   },
