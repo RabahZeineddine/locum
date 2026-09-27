@@ -387,6 +387,9 @@ export const initiatives = sqliteTable(
     goalRef: text("goal_ref"),
     /** Onde a pasta de contexto desta iniciativa mora em disco. */
     contextPath: text("context_path").notNull(),
+    /** Hash do `context.md` depois da ultima proposta aprovada. */
+    contextHash: text("context_hash"),
+    contextUpdatedAt: integer("context_updated_at"),
     createdAt: integer("created_at").notNull().default(now),
     updatedAt: integer("updated_at").notNull().default(now),
   },

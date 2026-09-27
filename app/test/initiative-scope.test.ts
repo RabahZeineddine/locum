@@ -244,7 +244,7 @@ test("retomada usa a fotografia do run, nao o agent atual, e a lista de servidor
   await initiatives.setServers(slug, []);
 
   const [pendencia] = await db.select().from(schema.approvals).where(eq(schema.approvals.runId, runId));
-  assert.equal(await executor.decide(pendencia!.id, "approved"), "done");
+  assert.deepEqual(await executor.decide(pendencia!.id, "approved"), { status: "approved", run: "done" });
 
   assert.equal((await passo(runId, "depois"))?.status, "skipped");
   assert.equal((await passo(runId, "depois"))?.error, "outside_initiative");

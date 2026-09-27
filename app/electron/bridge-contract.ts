@@ -37,6 +37,8 @@ type Asyncify<F> = F extends (...args: infer A) => infer R
 export interface DecisionResult {
   approvalId: string;
   decision: "approved" | "rejected";
+  /** O desfecho de verdade: rejeitado pode virar `conflict` quando o alvo mudou por fora. */
+  status: "approved" | "rejected" | "conflict";
 }
 
 /**

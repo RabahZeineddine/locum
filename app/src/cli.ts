@@ -571,8 +571,10 @@ async function main(): Promise<void> {
     case "approve":
     case "reject": {
       if (!arg) throw new Error(`uso: ${cmd} <approval-id>`);
-      const estado = await (await executor()).decide(arg, cmd === "approve" ? "approved" : "rejected");
-      console.log(`${arg} ${cmd === "approve" ? "aprovado e publicado" : "rejeitado"}, run ${estado}`);
+      const { status, run } = await (await executor()).decide(arg, cmd === "approve" ? "approved" : "rejected");
+      const desfecho =
+        status === "conflict" ? "conflito, nada publicado" : status === "approved" ? "aprovado e publicado" : "rejeitado";
+      console.log(`${arg} ${desfecho}, run ${run}`);
       break;
     }
     case "resume": {

@@ -1,4 +1,4 @@
-import { BRIDGE_GLOBAL } from "../../electron/bridge-contract.js";
+import { BRIDGE_GLOBAL, type DecisionResult } from "../../electron/bridge-contract.js";
 
 /**
  * Acesso estreito a decisao de aprovacao.
@@ -15,7 +15,7 @@ type Decisao = "approved" | "rejected";
 
 interface PonteDeDecisao {
   approvals: {
-    decide: (id: string, decisao: Decisao) => Promise<unknown>;
+    decide: (id: string, decisao: Decisao) => Promise<DecisionResult>;
     update: (id: string, findings: unknown[], verdict: string) => Promise<unknown>;
   };
 }
@@ -28,8 +28,8 @@ function ponte(): PonteDeDecisao {
   return achada;
 }
 
-export async function decidir(approvalId: string, decisao: Decisao): Promise<void> {
-  await ponte().approvals.decide(approvalId, decisao);
+export async function decidir(approvalId: string, decisao: Decisao): Promise<DecisionResult> {
+  return ponte().approvals.decide(approvalId, decisao);
 }
 
 /**

@@ -3,6 +3,21 @@ import { eq } from "drizzle-orm";
 import { db, schema } from "../db/index.js";
 import type { ActionMode } from "../config/types.js";
 
+/**
+ * O `db` de fora de transacao, ou o `tx` de uma transacao sincrona em
+ * andamento (como a de `InitiativeService.proposeContextUpdate`). `enqueue`
+ * so usa `insert`, presente nos dois.
+ */
+type Db = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * Publicar bateu num estado que a proposta não previa: o arquivo mudou por
+ * fora entre propor e decidir. Não é bug do agent nem do handler, então a
+ * gate fecha a pendência como `conflict` em vez de deixar o erro subir como
+ * falha comum.
+ */
+export class PublishConflict extends Error {}
+
 export type ActionRequest = {
   runId: string;
   stepId: string;
@@ -73,46 +88,80 @@ export class ApprovalGate {
     }));
   }
 
-  async submit(req: ActionRequest, mode: ActionMode): Promise<"pending" | "drafted" | "published"> {
-    const id = randomUUID();
-    const externalId = `${req.runId}:${req.stepId}`;
-    const handler = this.handlers.get(req.kind);
+  /**
+   * A parte assíncrona de submeter: valida o modo, deixa o handler montar o
+   * que vai para a fila e decide se o conteúdo precisa mesmo de clique.
+   *
+   * Separada de `enqueue` porque quem propõe fora do executor, como
+   * `InitiativeService.proposeContextUpdate`, precisa terminar isto antes de
+   * abrir a transação síncrona que grava run, passo e pendência juntos: nada
+   * async entra no callback de `db.transaction`.
+   */
+  async prepare(
+    kind: string,
+    payload: unknown,
+    mode: ActionMode,
+    target: string | null = null,
+  ): Promise<{ payload: unknown; mode: ActionMode }> {
+    const handler = this.handlers.get(kind);
 
     // Antes de gravar qualquer coisa: modo recusado nao deixa pendencia orfa na
     // fila, e quem escreveu o agent ve o erro no passo que errou.
     if (handler?.modes !== undefined && !handler.modes.includes(mode)) {
-      throw new Error(
-        `a acao "${req.kind}" so aceita o modo ${handler.modes.join(", ")}, e o passo pediu "${mode}"`,
-      );
+      throw new Error(`a acao "${kind}" so aceita o modo ${handler.modes.join(", ")}, e o passo pediu "${mode}"`);
     }
 
-    const payload = handler?.propose
-      ? await handler.propose(req.payload, req.target ?? null)
-      : req.payload;
-    if (mode === "auto" && handler?.holdForApproval?.(payload)) mode = "approve";
+    const prepared = handler?.propose ? await handler.propose(payload, target) : payload;
+    const finalMode = mode === "auto" && handler?.holdForApproval?.(prepared) ? "approve" : mode;
+    return { payload: prepared, mode: finalMode };
+  }
 
-    await db.insert(schema.approvals).values({
-      id,
-      runId: req.runId,
-      stepId: req.stepId,
-      kind: req.kind,
-      payload: payload as object,
-      status: mode === "approve" ? "pending" : mode === "draft" ? "pending" : "auto",
-      externalId,
-    });
+  /**
+   * A parte síncrona de submeter: só a gravação da pendência. Recebe o
+   * escritor (o `db` de fora de transação, ou o `tx` de uma transação em
+   * andamento) porque quem propõe fora do executor grava run, passo e
+   * pendência na mesma transação, e as três inserções têm que terminar juntas
+   * ou nenhuma.
+   */
+  enqueue(
+    writer: Db,
+    req: ActionRequest,
+    prepared: { payload: unknown; mode: ActionMode },
+  ): { id: string; externalId: string } {
+    const id = randomUUID();
+    const externalId = `${req.runId}:${req.stepId}`;
+    writer
+      .insert(schema.approvals)
+      .values({
+        id,
+        runId: req.runId,
+        stepId: req.stepId,
+        kind: req.kind,
+        payload: prepared.payload as object,
+        status: prepared.mode === "approve" ? "pending" : prepared.mode === "draft" ? "pending" : "auto",
+        externalId,
+      })
+      .run();
+    return { id, externalId };
+  }
 
-    if (mode === "approve") return "pending";
+  async submit(req: ActionRequest, mode: ActionMode): Promise<"pending" | "drafted" | "published"> {
+    const prepared = await this.prepare(req.kind, req.payload, mode, req.target ?? null);
+    const { id, externalId } = this.enqueue(db, req, prepared);
 
+    if (prepared.mode === "approve") return "pending";
+
+    const handler = this.handlers.get(req.kind);
     if (!handler) throw new Error(`acao "${req.kind}" sem handler registrado`);
 
-    if (mode === "draft") {
+    if (prepared.mode === "draft") {
       if (!handler.draft) throw new Error(`acao "${req.kind}" nao suporta modo rascunho`);
-      await handler.draft(payload, externalId);
+      await handler.draft(prepared.payload, externalId);
       await this.close(id, "drafted");
       return "drafted";
     }
 
-    await handler.publish(payload, externalId);
+    await handler.publish(prepared.payload, externalId);
     await this.close(id, "approved");
     return "published";
   }
@@ -122,20 +171,29 @@ export class ApprovalGate {
    * chamou precisa retomar: a gate só fecha a pendência e o passo, e rodar o
    * resto do pipeline é trabalho do executor.
    */
-  async decide(approvalId: string, decision: "approved" | "rejected"): Promise<string> {
+  async decide(
+    approvalId: string,
+    decision: "approved" | "rejected",
+  ): Promise<{ runId: string; status: "approved" | "rejected" | "conflict" }> {
     const [row] = await db.select().from(schema.approvals).where(eq(schema.approvals.id, approvalId));
     if (!row) throw new Error(`aprovacao ${approvalId} nao encontrada`);
     if (row.status !== "pending") throw new Error(`aprovacao ${approvalId} ja resolvida: ${row.status}`);
 
+    let status: "approved" | "rejected" | "conflict" = decision;
     if (decision === "approved") {
       const handler = this.handlers.get(row.kind);
       if (!handler) throw new Error(`acao "${row.kind}" sem handler registrado`);
-      // externalId ja esta gravado: retry depois de crash nao publica duas vezes.
-      await handler.publish(row.payload, row.externalId!);
+      try {
+        // externalId ja esta gravado: retry depois de crash nao publica duas vezes.
+        await handler.publish(row.payload, row.externalId!);
+      } catch (err) {
+        if (!(err instanceof PublishConflict)) throw err;
+        status = "conflict";
+      }
     }
-    await this.close(approvalId, decision);
-    await settleStep(row.stepId, decision);
-    return row.runId;
+    await this.close(approvalId, status);
+    await settleStep(row.stepId, status);
+    return { runId: row.runId, status };
   }
 
   private async close(id: string, status: string): Promise<void> {
@@ -157,10 +215,11 @@ export class ApprovalGate {
  */
 export async function settleStep(stepId: string, status: string): Promise<{ output: unknown }> {
   const endedAt = Math.floor(Date.now() / 1000);
-  if (status === "rejected") {
+  if (status === "rejected" || status === "conflict") {
+    const error = status === "conflict" ? "publish_conflict" : "rejected";
     await db
       .update(schema.steps)
-      .set({ status: "skipped", error: "rejeitado na fila de aprovação", output: null, endedAt })
+      .set({ status: "skipped", error, output: null, endedAt })
       .where(eq(schema.steps.id, stepId));
     return { output: null };
   }

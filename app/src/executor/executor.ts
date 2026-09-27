@@ -80,9 +80,13 @@ export class Executor {
    * depois da ação nunca roda e a tela continua mostrando aguardando numa
    * execução que já saiu.
    */
-  async decide(approvalId: string, decision: "approved" | "rejected"): Promise<"done" | "paused" | "failed"> {
-    const runId = await this.deps.gate.decide(approvalId, decision);
-    return this.execute(runId);
+  async decide(
+    approvalId: string,
+    decision: "approved" | "rejected",
+  ): Promise<{ status: "approved" | "rejected" | "conflict"; run: "done" | "paused" | "failed" }> {
+    const { runId, status } = await this.deps.gate.decide(approvalId, decision);
+    const run = await this.execute(runId);
+    return { status, run };
   }
 
   /** Runs interrompidos por fechamento do app ou por crash. */

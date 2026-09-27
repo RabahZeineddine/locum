@@ -94,7 +94,7 @@ const estadoDoRun = async (runId: string) =>
 test("execução aprovada publica uma vez, roda o passo seguinte e termina em done", async () => {
   const { runId, approvalId, executor, publicados } = await montar();
 
-  assert.equal(await executor.decide(approvalId, "approved"), "done");
+  assert.deepEqual(await executor.decide(approvalId, "approved"), { status: "approved", run: "done" });
 
   assert.equal(await estadoDoRun(runId), "done");
   assert.equal((await passo(runId, "publicar"))?.status, "done");
@@ -105,7 +105,7 @@ test("execução aprovada publica uma vez, roda o passo seguinte e termina em do
 test("execução rejeitada sai de paused sem publicar, com a ação pulada", async () => {
   const { runId, approvalId, executor, publicados } = await montar();
 
-  assert.equal(await executor.decide(approvalId, "rejected"), "done");
+  assert.deepEqual(await executor.decide(approvalId, "rejected"), { status: "rejected", run: "done" });
 
   assert.equal(await estadoDoRun(runId), "done");
   assert.equal((await passo(runId, "publicar"))?.status, "skipped");

@@ -133,7 +133,7 @@ test("execução que pausa na fila grava o gasto do dia, e a retomada soma só o
   assert.equal(pausado.runs, 1);
 
   const [pendencia] = await db.select().from(schema.approvals).where(eq(schema.approvals.runId, runId));
-  assert.equal(await executor.decide(pendencia!.id, "approved"), "done");
+  assert.deepEqual(await executor.decide(pendencia!.id, "approved"), { status: "approved", run: "done" });
 
   const terminado = await gastoDoDia(agentId);
   assert.ok(Math.abs(terminado!.costUsd - 2) < 1e-9, `gasto ${terminado!.costUsd}`);

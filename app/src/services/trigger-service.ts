@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
 import { TriggerConfig, type TriggerConfigInput } from "../config/types.js";
+import { isReserved } from "./agent-service.js";
 
 type Db = typeof defaultDb;
 
@@ -62,6 +63,7 @@ export class TriggerService {
     config: TriggerConfigInput,
     options: { id?: string; enabled?: boolean } = {},
   ): Promise<TriggerEntry> {
+    if (isReserved(agentId)) throw new Error(`"${agentId}" e um agent do sistema e nao aceita escrita`);
     const parsed = TriggerConfig.parse(config);
     const agent = await this.db
       .select({ id: schema.agents.id })
@@ -100,6 +102,11 @@ export class TriggerService {
   }
 
   async setEnabled(id: string, enabled: boolean): Promise<TriggerEntry> {
+    const existing = await this.row(id);
+    if (!existing) throw new Error(`gatilho ${id} nao cadastrado`);
+    if (isReserved(existing.agentId)) {
+      throw new Error(`"${existing.agentId}" e um agent do sistema e nao aceita escrita`);
+    }
     const [updated] = await this.db
       .update(schema.triggers)
       .set({ enabled })

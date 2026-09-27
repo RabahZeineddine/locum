@@ -2,6 +2,7 @@ import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
 import { AgentSpec } from "../config/types.js";
 import { buildExecutor } from "../executor/build.js";
+import { isReserved } from "./agent-service.js";
 
 type Db = typeof defaultDb;
 
@@ -261,6 +262,9 @@ export class RunService {
   ): Promise<"queued" | "done" | "paused" | "failed"> {
     const detail = await this.get(runId);
     if (!detail) throw new Error(`run ${runId} nao encontrado`);
+    if (isReserved(detail.agentId)) {
+      throw new Error(`"${detail.agentId}" e um agent do sistema e nao aceita escrita`);
+    }
 
     const affected = dependents(detail.spec, stepKey);
     const targets = detail.steps.filter((s) => affected.has(s.stepKey));

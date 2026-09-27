@@ -1,8 +1,9 @@
-import { sql } from "drizzle-orm";
+import { notInArray, sql } from "drizzle-orm";
 import type { SQLiteTable } from "drizzle-orm/sqlite-core";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { db, schema } from "../db/index.js";
 import { dbPath } from "../db/path.js";
+import { RESERVED_AGENT_IDS } from "../services/agent-service.js";
 import { machineId } from "../services/machine-service.js";
 import { registerConfigTools } from "./config-tools.js";
 import { registerReadTools } from "./read-tools.js";
@@ -54,7 +55,7 @@ async function health(): Promise<Health> {
     machineId,
     dbPath: dbPath(),
     counts: {
-      agents: await count(schema.agents),
+      agents: await agentCount(),
       runs: await count(schema.runs),
       mcpServers: await count(schema.mcpServers),
     },
@@ -63,5 +64,14 @@ async function health(): Promise<Health> {
 
 async function count(table: SQLiteTable): Promise<number> {
   const [row] = await db.select({ n: sql<number>`count(*)` }).from(table);
+  return row?.n ?? 0;
+}
+
+/** Conta agent como o dono da maquina enxerga: sem os agents do sistema. */
+async function agentCount(): Promise<number> {
+  const [row] = await db
+    .select({ n: sql<number>`count(*)` })
+    .from(schema.agents)
+    .where(notInArray(schema.agents.id, [...RESERVED_AGENT_IDS]));
   return row?.n ?? 0;
 }

@@ -3,9 +3,13 @@ import { existsSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { and, desc, eq, sql } from "drizzle-orm";
+import { ApprovalGate } from "../approval/gate.js";
 import { db as defaultDb, schema } from "../db/index.js";
 import { AgentSpec, requiredServers } from "../config/types.js";
+import { SYSTEM_CONTEXT_AGENT_SPEC, SYSTEM_CONTEXT_AGENT_VERSION_ID } from "../db/migrate.js";
+import { buildGate } from "../executor/build.js";
 import { ID_DE_AGENT } from "./agent-service.js";
+import type { ContextUpdateMode } from "../context/proposal.js";
 import { LocalFolderContextStore, type ContextStore } from "./context-store.js";
 import { FALLBACK_LANGUAGE, i18nService, type I18nService, type Language } from "./i18n-service.js";
 import { mcpService, type McpService } from "./mcp-service.js";
@@ -44,9 +48,6 @@ export async function initiativesRoot(settings: SettingsService = settingsServic
 /**
  * Cadastro de iniciativas: frente de trabalho com objetivo, pasta de contexto
  * e os servidores MCP e workspaces que ela enxerga.
- *
- * Sem `proposeContextUpdate` aqui: precisa da fila de aprovacao, e fica para
- * depois desta fatia.
  */
 export class InitiativeService {
   constructor(
@@ -55,6 +56,7 @@ export class InitiativeService {
     private readonly i18n: I18nService = i18nService,
     private readonly settings: SettingsService = settingsService,
     private readonly t: Translate = translate,
+    private readonly gate: ApprovalGate = buildGate(),
   ) {}
 
   async list(): Promise<InitiativeRow[]> {
@@ -289,6 +291,80 @@ export class InitiativeService {
       status: linha.status as InitiativeStatus,
       daysSinceUpdate: Math.floor(hoje / 1000 / 86_400 - linha.updatedAt / 86_400),
     }));
+  }
+
+  /**
+   * Propoe uma mudanca no `context.md` da iniciativa pela mesma fila de
+   * aprovacao de qualquer outra acao. Nao escreve nada no arquivo: so cria o
+   * run pausado, o passo aguardando aprovacao e a pendencia, e devolve o id
+   * dela para a tela mostrar. `context.update` grava de verdade no clique.
+   *
+   * `runs.started_at` ja vem marcado daqui: o agent de sistema nao chama
+   * modelo nenhum, entao nao ha gasto de verdade a contar na cota do dia. Se
+   * ficasse nulo, o `execute()` do executor trataria a decisao humana como o
+   * primeiro passo do run e contaria um run fantasma em `usage_daily.runs`.
+   */
+  async proposeContextUpdate(input: {
+    slug: string;
+    mode: ContextUpdateMode;
+    content: string;
+    baseHash?: string;
+    origin: string;
+  }): Promise<{ approvalId: string }> {
+    const linha = await this.mustGet(input.slug);
+    const [versao] = await this.db
+      .select({ id: schema.agentVersions.id })
+      .from(schema.agentVersions)
+      .where(eq(schema.agentVersions.id, SYSTEM_CONTEXT_AGENT_VERSION_ID));
+    if (!versao) throw new Error(`agent do sistema "${SYSTEM_CONTEXT_AGENT_VERSION_ID}" nao encontrado`);
+
+    const payload = {
+      initiativeId: linha.id,
+      slug: linha.slug,
+      file: "context.md" as const,
+      mode: input.mode,
+      content: input.content,
+      baseHash: input.baseHash,
+      origin: input.origin,
+    };
+
+    const prepared = await this.gate.prepare("context.update", payload, "approve");
+
+    const runId = randomUUID();
+    const stepId = randomUUID();
+    const stepName = SYSTEM_CONTEXT_AGENT_SPEC.steps[0]!.name;
+    const nowSec = Math.floor(Date.now() / 1000);
+
+    let approvalId = "";
+    this.db.transaction((tx) => {
+      tx.insert(schema.runs)
+        .values({
+          id: runId,
+          agentVersionId: SYSTEM_CONTEXT_AGENT_VERSION_ID,
+          eventId: null,
+          triggerId: null,
+          initiativeId: linha.id,
+          status: "paused",
+          startedAt: nowSec,
+        })
+        .run();
+      tx.insert(schema.steps)
+        .values({
+          id: stepId,
+          runId,
+          idx: 0,
+          stepKey: "propose",
+          name: stepName,
+          status: "awaiting_approval",
+          input: prepared.payload as object,
+          startedAt: nowSec,
+        })
+        .run();
+      approvalId = this.gate.enqueue(tx, { runId, stepId, kind: "context.update", payload: prepared.payload }, prepared)
+        .id;
+    });
+
+    return { approvalId };
   }
 
   private storeFor(contextPath: string): ContextStore {

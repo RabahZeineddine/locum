@@ -1,4 +1,5 @@
 import { ApprovalGate } from "../approval/gate.js";
+import { contextUpdateHandler } from "../context/action.js";
 import { digestDeliverHandler } from "../digest/action.js";
 import { Executor } from "./executor.js";
 import { McpRegistry } from "../mcp/registry.js";
@@ -65,6 +66,7 @@ export function buildGate(): ApprovalGate {
       ["tracker.create_issue", trackerIssueHandler()],
       ["digest.deliver", digestDeliverHandler()],
       ["slack.post", slackPostHandler()],
+      ["context.update", contextUpdateHandler()],
     ]),
   );
 }

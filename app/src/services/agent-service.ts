@@ -36,6 +36,27 @@ export type Actor = "human" | "agent";
 /** Identificador de agent: vira nome em URL, em log e em arquivo exportado. */
 export const ID_DE_AGENT = /^[a-z0-9][a-z0-9-]{1,62}$/;
 
+/**
+ * Agent do proprio sistema, semeado pela migracao e nunca por uma pessoa.
+ *
+ * `locum-context` e o unico ate aqui: ele existe so para a proposta de
+ * contexto passar pela mesma fila de aprovacao de qualquer outro agent, e
+ * nunca deveria aparecer em lista, orcamento ou tela de edicao, nem aceitar
+ * escrita por ali. O reconhecimento e pelo id, e nao por comparar spec, porque
+ * spec pode mudar de versao em versao e o id nao.
+ */
+export const RESERVED_AGENT_IDS = new Set(["locum-context"]);
+
+export function isReserved(agentId: string): boolean {
+  return RESERVED_AGENT_IDS.has(agentId);
+}
+
+function refuseReserved(agentId: string): void {
+  if (isReserved(agentId)) {
+    throw new Error(`"${agentId}" e um agent do sistema e nao aceita escrita`);
+  }
+}
+
 /** Passo de acao que teve o modo rebaixado na gravacao. */
 export interface ActionDowngrade {
   step: string;
@@ -79,7 +100,8 @@ export class AgentService {
   constructor(private readonly db: Db = defaultDb) {}
 
   async list(): Promise<AgentRow[]> {
-    return this.db.select().from(schema.agents);
+    const rows = await this.db.select().from(schema.agents);
+    return rows.filter((row) => !isReserved(row.id));
   }
 
   async get(agentId: string): Promise<AgentRow | undefined> {
@@ -117,7 +139,7 @@ export class AgentService {
    * quer a lista, nunca uma linha so.
    */
   async budgets(): Promise<AgentBudgetView[]> {
-    const rows = await this.db.select().from(schema.agents);
+    const rows = (await this.db.select().from(schema.agents)).filter((row) => !isReserved(row.id));
     const versions = await this.db
       .select()
       .from(schema.agentVersions)
@@ -199,6 +221,7 @@ export class AgentService {
     note?: string,
   ): Promise<AgentVersion> {
     const parsed = guarded.spec;
+    refuseReserved(parsed.id);
     if (latest && sameSpec(latest.spec, parsed)) {
       return { ...parseVersion(latest), downgrades: guarded.downgrades };
     }
@@ -291,6 +314,7 @@ export class AgentService {
       throw new Error("identificador em minúsculas, números e hífen, de 2 a 63 caracteres");
     }
     if (nome.length === 0) throw new Error("o agent novo precisa de nome");
+    refuseReserved(fromId);
     if (await this.get(id)) throw new Error(`já existe um agent "${id}"`);
 
     const origem = await this.getLatestVersion(fromId);
@@ -343,6 +367,7 @@ export class AgentService {
    * sincronismo entre máquinas, quando vier, vai andar por este mesmo formato.
    */
   async exportSpec(agentId: string): Promise<string> {
+    refuseReserved(agentId);
     const versao = await this.getLatestVersion(agentId);
     if (!versao) throw new Error(`agent "${agentId}" não existe`);
     return `${JSON.stringify(versao.spec, null, 2)}\n`;

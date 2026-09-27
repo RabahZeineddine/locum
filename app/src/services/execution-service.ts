@@ -4,7 +4,7 @@ import { db as defaultDb, schema } from "../db/index.js";
 import { buildExecutor } from "../executor/build.js";
 import { demoCleanPr, demoPr } from "../examples/demo-event.js";
 import { fetchPr, type PrContext } from "../sources/github.js";
-import { agentService, AgentService, type AgentVersion } from "./agent-service.js";
+import { agentService, AgentService, isReserved, type AgentVersion } from "./agent-service.js";
 
 type Db = typeof defaultDb;
 
@@ -133,6 +133,9 @@ export class ExecutionService {
    */
   private async versionFor(agentId?: string) {
     let id = agentId;
+    if (id !== undefined && isReserved(id)) {
+      throw new Error(`"${id}" e um agent do sistema e nao aceita escrita`);
+    }
     if (id === undefined) {
       const todos = await this.agents.list();
       if (todos.length === 0) {

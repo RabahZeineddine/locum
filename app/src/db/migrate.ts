@@ -1,8 +1,35 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
+import { eq } from "drizzle-orm";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
-import { db, rawDb } from "./index.js";
+import { db, rawDb, schema } from "./index.js";
+import { AgentSpec } from "../config/types.js";
+
+/**
+ * O agent do sistema que carrega a proposta de contexto pela mesma fila de
+ * aprovação de qualquer outro. Reconhecido pelo id da versão, nunca pelo
+ * spec: spec pode ganhar campo novo numa migração futura, e o id não muda.
+ */
+export const SYSTEM_CONTEXT_AGENT_ID = "locum-context";
+export const SYSTEM_CONTEXT_AGENT_VERSION_ID = `${SYSTEM_CONTEXT_AGENT_ID}@1`;
+export const SYSTEM_CONTEXT_AGENT_SPEC = AgentSpec.parse({
+  id: SYSTEM_CONTEXT_AGENT_ID,
+  name: "Locum context",
+  defaultTools: [],
+  skills: [],
+  steps: [
+    {
+      key: "propose",
+      type: "action",
+      action: "context.update",
+      mode: "approve",
+      name: "Update context",
+      needs: [],
+    },
+  ],
+  budget: {},
+});
 
 /** Tabela que o migrator do drizzle usa para saber o que já rodou. */
 const TABELA_DE_CONTROLE = "__drizzle_migrations";
@@ -120,5 +147,60 @@ export function migrateDb(folder?: string): ResultadoDaMigracao {
     rawDb.pragma(`foreign_keys = ${chaveEstrangeira === 1 ? "ON" : "OFF"}`);
   }
 
+  seedSystemAgents();
+
   return { disponiveis: journal.entries.length, adotado, criado: !tinhaEsquema };
+}
+
+/**
+ * Semeia o agent de sistema que a proposta de contexto usa, se ele ainda não
+ * existir.
+ *
+ * Roda dentro de uma transação e com escrita síncrona (`.run()` em vez de
+ * `await`) porque `migrateDb` é síncrono, e Electron, CLI e servidor MCP podem
+ * chamá-lo ao mesmo tempo sobre o mesmo arquivo: as duas linhas nascem juntas
+ * ou nenhuma nasce.
+ *
+ * Um agent com este id que já existisse antes de a versão do sistema existir
+ * é agent de alguém, não o nosso: aí a semeadura não escreve nada, porque
+ * anexar a versão do sistema a um agent alheio emprestaria a identidade de um
+ * pelo outro.
+ */
+function seedSystemAgents(): void {
+  db.transaction((tx) => {
+    const agent = tx
+      .select({ id: schema.agents.id })
+      .from(schema.agents)
+      .where(eq(schema.agents.id, SYSTEM_CONTEXT_AGENT_ID))
+      .get();
+
+    if (!agent) {
+      tx.insert(schema.agents)
+        .values({ id: SYSTEM_CONTEXT_AGENT_ID, name: SYSTEM_CONTEXT_AGENT_SPEC.name })
+        .onConflictDoNothing()
+        .run();
+
+      tx.insert(schema.agentVersions)
+        .values({
+          id: SYSTEM_CONTEXT_AGENT_VERSION_ID,
+          agentId: SYSTEM_CONTEXT_AGENT_ID,
+          version: 1,
+          spec: SYSTEM_CONTEXT_AGENT_SPEC as unknown as object,
+          note: null,
+        })
+        .onConflictDoNothing()
+        .run();
+      return;
+    }
+
+    const version = tx
+      .select({ id: schema.agentVersions.id })
+      .from(schema.agentVersions)
+      .where(eq(schema.agentVersions.id, SYSTEM_CONTEXT_AGENT_VERSION_ID))
+      .get();
+
+    // Agent ja existia sem a versao do sistema: e de alguem, e a semeadura
+    // nao mexe nele.
+    if (!version) return;
+  });
 }

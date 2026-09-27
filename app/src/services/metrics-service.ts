@@ -3,6 +3,7 @@ import { and, asc, desc, eq, gte, inArray, type SQL } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
 import { today } from "../executor/budget.js";
 import { sameSpot } from "../sources/github-reconciler.js";
+import { isReserved } from "./agent-service.js";
 
 type Db = typeof defaultDb;
 
@@ -88,14 +89,15 @@ export class MetricsService {
       .innerJoin(schema.agents, eq(schema.agentVersions.agentId, schema.agents.id))
       .where(options.agentId !== undefined ? eq(schema.agents.id, options.agentId) : undefined);
 
-    if (rows.length === 0) return [];
+    const semReservados = rows.filter((r) => !isReserved(r.agentId));
+    if (semReservados.length === 0) return [];
 
-    const runIds = [...new Set(rows.map((r) => r.runId))];
+    const runIds = [...new Set(semReservados.map((r) => r.runId))];
     const skillsByRun = await this.skillsByRun(runIds);
-    const prKeyByRun = await this.prKeyByRun(rows);
+    const prKeyByRun = await this.prKeyByRun(semReservados);
 
     const groups = new Map<string, Group>();
-    for (const row of rows) {
+    for (const row of semReservados) {
       const skills = skillsByRun.get(row.runId) ?? [];
       const key = `${row.agentVersionId}\u0000${signature(skills)}`;
       let group = groups.get(key);
@@ -182,7 +184,7 @@ export class MetricsService {
       .where(agentId !== undefined ? eq(schema.agents.id, agentId) : undefined)
       .orderBy(desc(schema.agentVersions.version), asc(schema.agentMetrics.windowStart));
 
-    return rows.map((r) => ({
+    return rows.filter((r) => !isReserved(r.agentId)).map((r) => ({
       agentId: r.agentId,
       agentName: r.agentName,
       version: r.version,
@@ -207,11 +209,12 @@ export class MetricsService {
       conditions.push(gte(schema.usageDaily.day, daysAgo(options.days)));
     }
 
-    return this.db
+    const rows = await this.db
       .select()
       .from(schema.usageDaily)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(desc(schema.usageDaily.day));
+    return rows.filter((r) => !isReserved(r.agentId));
   }
 
   /**
