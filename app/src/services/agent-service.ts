@@ -442,7 +442,7 @@ export class AgentService {
   /**
    * Recusa gravar spec que passa a exigir servidor de fora da iniciativa do
    * agent. So roda para agent que ja existe e ja esta ligado: agent novo e
-   * agent sem iniciativa (`initiativeId` nulo) nao tem frente para checar.
+   * agent sem iniciativa (`initiativeId` nulo) nao tem iniciativa para checar.
    */
   private async assertWithinInitiativeScope(spec: AgentSpec): Promise<void> {
     const [agent] = await this.db

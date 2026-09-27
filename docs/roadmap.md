@@ -78,15 +78,17 @@ assinatura.
 A partir do ADR 0004: a iniciativa como unidade de trabalho acima do agent, com
 contexto, workspaces, integrações MCP, agents, prompts e links próprios.
 
-**I1, núcleo.** Esquema, `ContextStore`, escopo MCP por `runs.initiative_id`,
-contexto que só muda por proposta aprovada na fila, agent de sistema
-`locum-context`, ferramentas no servidor MCP e no chat. Pronto quando o chat
-interno cria e configura uma iniciativa completa.
+**I1, núcleo. Pronto em 27/09.** Esquema, `ContextStore`, escopo MCP por
+`runs.initiative_id`, contexto que só muda por proposta aprovada na fila,
+agent de sistema `locum-context`, ferramentas no servidor MCP e no chat. O
+chat interno cria e configura uma iniciativa completa.
 
-**I2, interface.** Rota de iniciativas com lista e detalhe (contexto, agents,
-integrações, execuções, ações), painel de frentes no Início, revisão do tipo
-`context.update` com diff e aviso de conflito, e depois formulários, iniciativa
-atual em agents, execuções, paleta e assistente.
+**I2, interface. Parcial em 27/09.** Prontos: rota de iniciativas com lista e
+detalhe (contexto, agents, execuções, ações), painel de iniciativas no
+Início, revisão do tipo `context.update` com diff e aviso de conflito, e
+`staleDays` configurável. Pendente para a próxima sessão: formulários de
+criação e edição, iniciativa atual em agents, execuções, paleta e assistente
+(Fatia 5b).
 
 **I2b, redesenho visual.** Depois de dias de uso, a partir de capturas reais da
 interface do I2. Sem data.

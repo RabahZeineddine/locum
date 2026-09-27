@@ -75,7 +75,7 @@ function parseStaleDays(raw: string | undefined): number {
 }
 
 /**
- * Cadastro de iniciativas: frente de trabalho com objetivo, pasta de contexto
+ * Cadastro de iniciativas: unidade de trabalho com objetivo, pasta de contexto
  * e os servidores MCP e workspaces que ela enxerga.
  */
 export class InitiativeService {
@@ -222,7 +222,7 @@ export class InitiativeService {
    * Liga um agent a esta iniciativa, ou desliga com `slug` nulo.
    *
    * Recusa ligar quando alguma ferramenta ou `requiresServers` da versao mais
-   * recente do agent sai dos servidores da frente: ligar sem essa checagem
+   * recente do agent sai dos servidores da iniciativa: ligar sem essa checagem
    * deixaria o agent com um passo que falha na primeira execucao, com o
    * motivo `outside_initiative`.
    */

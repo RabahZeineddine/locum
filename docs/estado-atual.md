@@ -2,7 +2,7 @@
 
 Projeto renomeado de Agent Watchers para Locum em 19 de setembro de 2026.
 
-Atualizado em 22 de setembro de 2026.
+Atualizado em 27 de setembro de 2026.
 
 ## O que existe e roda
 
@@ -13,7 +13,7 @@ que a interface vai usar.
 
 | área | estado |
 |---|---|
-| esquema SQLite com 20 tabelas | pronto |
+| esquema SQLite com 27 tabelas | pronto, sete a mais desde a virada para iniciativas: `initiatives`, `initiative_workspaces`, `initiative_mcp_servers`, `initiative_links`, `prompts`, `prompt_versions` e `sessions` |
 | migração de esquema no aplicativo | cinco migrações em `app/drizzle` aplicadas na subida do processo principal, banco existente adotado sem recriar tabela |
 | AgentSpec em zod, herança de ferramentas, ordenação topológica | pronto |
 | registro de provedores e resolução de fallback por máquina | pronto, com cadastro pelo serviço; a chave de cada provedor entra pela interface, vai para o keychain e o registro é remontado na hora |
@@ -39,13 +39,16 @@ que a interface vai usar.
 | tracker de tarefa, Jira e GitHub Issues | adaptador, cadastro no banco e credencial no keychain; teste de conexão e lista de destinos pela interface, verificado contra um tracker de mentira em 127.0.0.1 |
 | passo de ação que abre tarefa | `tracker.create_issue` monta o item e para na fila; corpo escrito por um passo de modelo antes dele, modo travado em `approve` pelo handler |
 | descoberta de skills e seleção por arquivo alterado | pronto |
-| servidor MCP próprio | 19 ferramentas de leitura, configuração e execução sobre a camada de serviço, registrado em `.mcp.json` |
+| servidor MCP próprio | 32 ferramentas de leitura, configuração, execução e iniciativa sobre a camada de serviço, registrado em `.mcp.json` |
+| iniciativa como unidade de trabalho (I1) | `InitiativeService` cadastra, liga servidor MCP, workspace, agent e link; `ContextStore` guarda a pasta de contexto em disco e o hash do arquivo; contexto só muda por proposta aprovada na fila, decidida pelo agent de sistema `locum-context`; agent ligado a uma iniciativa não pode passar a exigir servidor de fora dela, checado ao ligar e a cada `upsert` de spec |
+| ferramentas de iniciativa no chat interno | 13 entradas do catálogo (`electron/chat-tools.ts`), de um total de 26, para criar e configurar iniciativa, ligar agent, propor mudança de contexto e cadastrar prompt |
+| prompts por iniciativa | `PromptService` com versionamento; leitura por iniciativa via `list_prompts({ initiativeId })`, sem ligação a agent nesta rodada |
 | cadastro de gatilho | serviço pronto, nasce desabilitado, cadastrado pela interface; o gatilho de varredura filtra por autoria do pull request, comparando o autor gravado no evento com a conta do token |
 | reconciliador de review humano | pronto, verificado com evento e reviews sintéticos, sem teste com token; disparado pela batida do agendador, com cursor próprio por execução |
 | métricas por versão de agent | agregação de `finding_outcomes` em `agent_metrics`, por versão mais conjunto de skills |
 | agendador | cursor de tempo por gatilho, batido de fora, sem relógio próprio; acordado pelo evento de energia do Electron |
-| camada de serviço, vinte e um serviços | pronto, com o `PriceService` do preço por modelo |
-| servidor MCP próprio, 19 ferramentas | pronto |
+| camada de serviço, 27 serviços | pronto, com o `PriceService` do preço por modelo e `InitiativeService`/`PromptService` das iniciativas |
+| servidor MCP próprio, 32 ferramentas | pronto |
 | reconciliador de review humano | pronto, sem teste com token |
 | métricas por versão | pronto |
 | agendador por cursor | pronto, batido pelo `resume` do `powerMonitor`; cada batida confere o que fechou desde a última |
@@ -53,7 +56,8 @@ que a interface vai usar.
 | credenciais no keychain | `safeStorage` cifra, o banco guarda só a referência, e sem keychain vale a variável de ambiente |
 | notificação nativa | um aviso por run, para achado crítico na fila ou run que falhou, com o clique apontando para o run |
 | deep link `locum://` | esquema registrado no sistema, retorno de OAuth com PKCE roteado do `open-url` até o cofre |
-| ponte entre janela e serviços | preload em sandbox, 65 canais tipados pelos próprios métodos dos serviços, decisão de aprovação só encaminhada, e guarda de compilação contra canal que abra tarefa ou publique no Slack |
+| ponte entre janela e serviços | preload em sandbox, 82 canais tipados pelos próprios métodos dos serviços (`BRIDGE_CHANNELS`; o catálogo do renderer, `READ_CHANNELS` mais `ACTION_CHANNELS`, cobre 75 deles, e deixa `approvals.decide` e alguns canais de agent fora por decisão do ADR 0003), decisão de aprovação só encaminhada, e guarda de compilação contra canal que abra tarefa ou publique no Slack |
+| tela de iniciativas (I2, parcial) | lista e detalhe (contexto, agents, execuções, ações) por rota com sub-rota de hash; painel de iniciativas no Início; revisão de pendência `context.update` com diff e aviso de conflito; `staleDays` (dias parados até "sem sinal") configurável na tela de configuração, de 1 a 90, padrão 7 |
 | interface | esqueleto do renderer em Vite com React e Tailwind, construído para `dist/renderer` e carregado pela janela, já lendo pela ponte |
 | componentes da interface | shadcn e AI Elements vendorizados em `app/renderer/components`, tema escuro por padrão, sem dependência de rede |
 | cliente da ponte no renderer | `app/renderer/lib/bridge.ts` com catálogo de leitura escrito à mão e hook `useRead`, a janela lendo agents, execuções e fila |
@@ -62,7 +66,7 @@ que a interface vai usar.
 | tela de agents | somente leitura: lista, histórico de versões, comparação de spec linha a linha, e por passo o modelo pedido contra o que esta máquina resolve |
 | tela de configuração | provedores com disponibilidade e campo de chave por provedor, cadastro de gateway compatível com OpenAI, tabela de substituição de modelo, servidores MCP com testar conexão e listar ferramentas por token, credencial do GitHub com guardar, conferir e esquecer, repositórios observados com gatilho de varredura e filtro de autoria, canais do Slack observados por servidor MCP, preço por modelo editável na linha de cada provedor, e orçamentos com o gasto do dia em dólar e em tokens, avisando quando um modelo sem preço deixa o teto medindo só em tokens |
 | grafo da execução | desenho somente leitura sobre a família de workflow do AI Elements, lendo `needs` do spec, com estado por cor da borda |
-| base de i18n | i18next e react-i18next com dicionário em `app/locales`, idioma vindo de `app.getLocale()` pela ponte, preferência em `settings` por cima, plural por `Intl.PluralRules` e chave ausente estourando fora de app empacotado |
+| base de i18n | i18next e react-i18next com dicionário em `app/locales`, idioma vindo de `app.getLocale()` pela ponte, preferência em `settings` por cima, plural por `Intl.PluralRules` e chave ausente estourando fora de app empacotado; 646 chaves-folha em `en.json` e 676 em `pt-BR.json`, as 30 a mais são a forma plural `_zero`, que o português usa e o `Intl.PluralRules` do inglês não distingue |
 | texto do processo principal | menu da bandeja, notificação, item de login e a saída do `--smoke` pelo mesmo dicionário, com instância própria do i18next sem React |
 | texto da inbox e das execuções | as duas telas pelo dicionário, com plural de achado, execução e pendência, e os rótulos de severidade e de estado num módulo só |
 | texto das outras telas | agents, configuração, barra lateral, paleta de comandos, grafo e o painel do assistente pelo dicionário, com o prompt de sistema do assistente junto |
@@ -77,7 +81,7 @@ que a interface vai usar.
 | repositórios observados na interface | seção na configuração cadastra dono, padrão de repositório e cadência, e mostra a última varredura e a próxima; o gatilho nasce parado e ligar é o segundo clique |
 | canais do Slack na interface | seção na configuração escolhe qual servidor MCP responde pelo Slack e quais canais o Locum lê, sem campo de token: a credencial é a do servidor MCP |
 | guia da primeira execução real | `docs/primeira-execucao.md` na ordem em que alguém faria, do provedor ao primeiro review na fila, com a seção de tracker explicando onde pegar a credencial, o que o Locum cria e por que abrir tarefa nunca é automático |
-| teste unitário | `npm test` pelo executor embutido do Node com `tsx` como carregador, sem dependência nova; testes em `app/test`, banco em memória montado pelas migrações, e `LOCUM_HOME` apontado para pasta temporária antes de qualquer importação, para que nenhum teste alcance o banco de verdade; cobre ordenação topológica, resolução de fallback com ciclo, rebaixamento de modo de ação, o run que termina depois da decisão, aprovada ou rejeitada, e o orçamento: custo pelo preço cadastrado, gasto gravado ao pausar e ao falhar, e teto em dólar e em tokens interrompendo o runtime nativo, o corte do diff: descarte por tipo de arquivo, teto por arquivo inteiro e a lista chegando ao prompt, a edição da revisão que não troca o alvo, o esquema da triagem com categoria e a categoria chegando à auditoria, o prompt da auditoria com focos, rubrica e intenção do pull request, a confiança obrigatória na saída e aceita na edição, o veredito no esquema da auditoria, como evento da review, trocável na edição e segurando a fila em modo automático, o status de CI: estado por conclusão do check, leitura pelo commit de cabeça, falha de leitura sem derrubar a ingestão, resumo gravado no evento e chegando à auditoria, o pool MCP: duas execuções no mesmo processo do servidor, fechamento depois do ócio e troca de cadastro, e o cache de prompt: ordem do estável antes do variável, marca no fim do estável e tokens de cache gravados no passo |
+| teste unitário | `npm test` pelo executor embutido do Node com `tsx` como carregador, sem dependência nova; 35 arquivos em `app/test`, banco em memória montado pelas migrações, e `LOCUM_HOME` apontado para pasta temporária antes de qualquer importação, para que nenhum teste alcance o banco de verdade; cobre ordenação topológica, resolução de fallback com ciclo, rebaixamento de modo de ação, o run que termina depois da decisão, aprovada ou rejeitada, e o orçamento: custo pelo preço cadastrado, gasto gravado ao pausar e ao falhar, e teto em dólar e em tokens interrompendo o runtime nativo, o corte do diff: descarte por tipo de arquivo, teto por arquivo inteiro e a lista chegando ao prompt, a edição da revisão que não troca o alvo, o esquema da triagem com categoria e a categoria chegando à auditoria, o prompt da auditoria com focos, rubrica e intenção do pull request, a confiança obrigatória na saída e aceita na edição, o veredito no esquema da auditoria, como evento da review, trocável na edição e segurando a fila em modo automático, o status de CI: estado por conclusão do check, leitura pelo commit de cabeça, falha de leitura sem derrubar a ingestão, resumo gravado no evento e chegando à auditoria, o pool MCP: duas execuções no mesmo processo do servidor, fechamento depois do ócio e troca de cadastro, e o cache de prompt: ordem do estável antes do variável, marca no fim do estável e tokens de cache gravados no passo; e as iniciativas: escopo de agent fora dos servidores da iniciativa, o run da decisão de contexto não contando execução nova, `InMemoryTransport` do MCP SDK ligando cliente e servidor sem processo externo, e `staleDays` configurável no painel do Início |
 
 ## Execução verificada
 
@@ -736,6 +740,101 @@ para o smoke do pacote: ele exercita o caminho desligado de verdade, e o caminho
 ligado só até a decisão, pelo `planUpdater`, que nunca arma. Chamar o
 `setupUpdater` ligado dentro de um pacote com dmg faria o smoke bater no
 servidor de releases.
+
+**Migração aditiva para o hash do contexto.** `initiatives.context_hash` e
+`initiatives.context_updated_at` não existiam no esquema antes das iniciativas.
+Como o banco já tinha linha, a migração `0006_rich_kate_bishop.sql` entrou
+como coluna aditiva, sem default quebrando linha existente, em vez de recriar
+a tabela.
+
+**O run da decisão de contexto não pode virar execução fantasma no
+orçamento.** O run criado por `proposeContextUpdate` já nasce com `startedAt`
+preenchido, dentro da mesma transação. `Executor.execute()` decide se é um
+run novo comparando `startedAt === null` na linha carregada no início da
+função, e o agent de sistema `locum-context` não chama modelo nenhum: se a
+decisão contasse como run novo, `usage_daily` ganharia uma linha e um gasto
+fantasma para `SYSTEM_CONTEXT_AGENT_ID` sem custo de verdade por trás. O
+critério de aceite é `usage_daily` sem linha nova depois de aprovar ou
+rejeitar.
+
+**O tipo de transação do drizzle não tem `$client`.** `ApprovalGate.enqueue()`
+roda dentro da transação síncrona de `proposeContextUpdate`, então recebe
+`tx`, não o `db` do módulo. O tipo `Db` em `gate.ts` era só `typeof db`, e
+teve que virar `typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0]`
+porque `SQLiteTransaction<...>`, o tipo de `tx`, não tem `$client`, que
+`BetterSQLite3Database` exige. `enqueue()` só usa `insert`, presente nos dois
+tipos.
+
+**Código de erro de step não entra no dicionário.** `"outside_initiative"`,
+`"rejected"` e `"publish_conflict"` são string de backend e de log, sem tela
+nem chave em `app/locales/*.json` associada. Confirmado por grep, só aparecem
+em arquivo `.ts` de backend, e por `npm run check:i18n` limpo. Não repetir essa
+investigação numa próxima fatia que mexa em código de erro de step.
+
+**`linkAgent` inverte a ordem de parâmetros do texto do plano, de propósito.**
+O plano descreve `linkAgent(slug, agentId | null)`; a implementação é
+`linkAgent(agentId: string, slug: string | null)`, porque o ADR trata a regra
+do ponto de vista do agent (um agent pertence a no máximo uma iniciativa), e
+`null` desliga aquele agent especificamente, sem ambiguidade sobre qual agent
+da iniciativa seria afetado. `linkAgent` recusa ligar um agent cujo spec já usa
+servidor fora da iniciativa, mas não recusa quando a iniciativa perde um
+servidor depois via `setServers`: `affectedAgents` só avisa, sem bloquear, e é
+esse segundo caminho que testa um agent ligado terminando com um passo fora do
+escopo.
+
+**`create_initiative` no chat e `upsert_initiative` no MCP são o mesmo
+método, de propósito.** Os dois nomes divergem por superfície e chamam
+`InitiativeService.upsert`; nenhum dos dois foi igualado ao outro por conta
+própria, porque o texto do plano usa cada nome como exemplo literal do
+catálogo daquele lado.
+
+**Leitura de contexto sem método na service, fechado só na fatia seguinte.**
+Na Fatia 4, `InitiativeService` ainda não expunha leitura de `context.md` com
+hash, e `read_initiative_context` (MCP e chat) abria `LocalFolderContextStore`
+direto no arquivo da ferramenta. A Fatia 5a fechou o gap com `detail(slug)` e
+`readContext(slug, file)` na service, e `initiative-tools.ts` passou a
+delegar para eles em vez de montar a mesma junção duas vezes. `PromptService`
+segue sem parâmetro `initiativeId` no `upsert`; leitura por iniciativa já
+existe via `list_prompts({ initiativeId })`.
+
+**Teste de ferramenta MCP em processo único, sem precedente no repo.**
+`InMemoryTransport.createLinkedPair()` do `@modelcontextprotocol/sdk` liga
+`Client` e `McpServer` sem stdio nem processo externo, e funcionou de
+primeira. Vale para a próxima fatia que precisar testar ferramenta MCP.
+
+**Chave de i18n no namespace `smoke` também entra na paridade.**
+`t("smoke.renderer", ...)` interpola `{{initiatives}}`, e a chave teve que
+entrar em `en.json` e `pt-BR.json` nos dois lugares, dentro de
+`smoke.renderer` e como `smoke.initiatives` novo, porque `check:i18n` cobre
+paridade de chave entre os dois dicionários mesmo no namespace que só aparece
+no log do terminal.
+
+**`approvals.get` devolve a pendência mesmo depois de resolvida.**
+Ao contrário de `approvals.listPending()`, `approvals.get(approvalId)`
+continua respondendo depois que a pendência fecha, e a tela de revisão usa
+`approvals.get` para poder abrir uma pendência já fechada (aprovada,
+rejeitada ou em conflito) pelo link direto. Como `ApprovalGate.decide()`
+lança erro se `row.status !== "pending"`, a tela precisa calcular
+`jaResolvida = pendencia.status !== "pending" || conflito` e esconder
+Aprovar e Descartar nesse caso, em vez de deixar o clique estourar.
+
+**Dois lugares com o mesmo rótulo, sem checagem cruzada.** `nav.inbox` virou
+`nav.home` em `renderer/src/rotas.tsx` (rótulo da barra lateral) e em
+`electron/menu.ts` (`DESTINOS`, rótulo do menu Visualizar), e os dois arquivos
+não se importam um com o outro: renomear um sem o outro deixa os textos
+divergentes sem erro de tipo nem de teste acusando.
+
+**`useRead` sempre dispara, mesmo para leitura condicional.** O hook
+`useRead(canal, ...args)` de `renderer/lib/bridge.ts` dispara sempre que
+`canal` ou `args` mudam, sem mecanismo de pular a leitura. Um argumento
+placeholder (string vazia) para condicionar `initiatives.context` a quando a
+pendência é `context.update` ainda manda uma chamada de verdade ao backend,
+que rejeita e loga erro no smoke sem quebrar a tela, porque o erro fica preso
+no estado interno do hook. O contorno é leitura manual com `read()` dentro de
+um `useEffect` guardado pela condição, com `useState<ReadState<...>>` local,
+replicando o padrão já usado em `inbox.tsx` para `runs.findingsByRun`.
+`useRead` continua certo para leitura incondicional, como `approvals.get` na
+mesma tela.
 
 ## Próximos passos
 

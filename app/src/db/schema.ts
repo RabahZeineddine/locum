@@ -369,7 +369,7 @@ export const settings = sqliteTable("settings", {
 /* ------------------------------------------------------------ iniciativas */
 
 /**
- * Frente de trabalho: objetivo, criterio de pronto e uma pasta de contexto
+ * Iniciativa: objetivo, criterio de pronto e uma pasta de contexto
  * propria em disco. O banco guarda o fato, a pasta guarda a prosa que a
  * pessoa escreve e edita a mao.
  */

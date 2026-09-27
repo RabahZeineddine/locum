@@ -153,7 +153,7 @@ export function resolveTools(spec: AgentSpec, step: ModelStep): ToolRef[] {
  *
  * Usado para validar o escopo de um agent ligado a uma iniciativa, tanto ao
  * ligar quanto a cada `upsert` seguinte: o agent nao pode passar a depender de
- * um servidor de fora da frente.
+ * um servidor de fora da iniciativa.
  */
 export function requiredServers(spec: AgentSpec): string[] {
   const servers = new Set<string>();

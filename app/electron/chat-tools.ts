@@ -37,7 +37,7 @@ import { machineService } from "../src/services/machine-service.js";
  * teto do paragrafo acima e especifico do rebaixamento de agent e nao se
  * estende a elas. O risco que sobra e o ADR que registra: conteudo lido pelo
  * chat pode induzir uma mudanca de configuracao, como ligar um servidor a uma
- * frente; a mudanca aparece na conversa e e reversivel.
+ * iniciativa; a mudanca aparece na conversa e e reversivel.
  */
 export function chatTools(): ToolSet {
   return {
