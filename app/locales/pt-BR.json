@@ -191,7 +191,8 @@
   "common": {
     "version": "v{{version}}",
     "pull": "PR #{{number}}",
-    "open_github": "abrir no GitHub"
+    "open_github": "abrir no GitHub",
+    "save": "Salvar"
   },
   "findings": {
     "count_one": "{{count}} achado",
@@ -241,11 +242,15 @@
     "branch": "{{head}} → {{base}}",
     "expand_zero": "ver os {{count}}",
     "failures_zero": "{{count}} execuções falharam",
-    "findings_zero": "{{count}} achados"
+    "findings_zero": "{{count}} achados",
+    "conflict": "Isso mudou desde que entrou na fila. Abra para ver o que aconteceu.",
+    "context_update": {
+      "target": "Atualização de contexto: {{slug}}"
+    }
   },
   "initiatives": {
     "contextTemplate": {
-      "initial": "# {{title}}\n\n## Objetivo\n\n_Descreva o objetivo desta iniciativa._\n\n## Critério de pronto\n\n_Descreva o que é \"pronto\" para esta frente._\n"
+      "initial": "# {{title}}\n\n## Objetivo\n\n_Descreva o objetivo desta iniciativa._\n\n## Critério de pronto\n\n_Descreva o que é \"pronto\" para esta iniciativa._\n"
     },
     "list": {
       "loading": "lendo iniciativas...",
@@ -296,7 +301,7 @@
     "applied": "início no login: preferência {{preference}}, sistema {{status}}"
   },
   "nav": {
-    "inbox": "Inbox",
+    "home": "Início",
     "initiatives": "Iniciativas",
     "runs": "Execuções",
     "agents": "Agents",
@@ -375,7 +380,12 @@
     "when_days": "{{days}}d",
     "when_date": "{{date}}",
     "count_zero": "{{count}} execuções",
-    "findings_zero": "{{count}} achados"
+    "findings_zero": "{{count}} achados",
+    "stepReason": {
+      "outside_initiative": "o passo aponta para um servidor fora do escopo desta iniciativa",
+      "rejected": "rejeitado",
+      "publish_conflict": "o alvo mudou antes disso poder ser publicado"
+    }
   },
   "settings": {
     "refused": "a ponte recusou {{channel}}: {{message}}",
@@ -656,6 +666,12 @@
       "geral": "Geral",
       "modelos": "Modelos",
       "conexoes": "Conexões"
+    },
+    "staleDays": {
+      "title": "Limite de parada",
+      "description": "Quantos dias sem atualização marcam uma iniciativa como parada na tela Início.",
+      "label": "dias",
+      "refused": "O valor não foi salvo: {{message}}"
     }
   },
   "severity": {
@@ -757,7 +773,19 @@
       "REQUEST_CHANGES": "pedir mudança"
     },
     "verdict_only": "só o veredito vai sair, sem achado",
-    "will_post_zero": "{{count}} achados vão sair"
+    "will_post_zero": "{{count}} achados vão sair",
+    "contextUpdate": {
+      "mode": {
+        "append": "acrescentar",
+        "replace": "substituir"
+      },
+      "target": "{{slug}} / {{file}}",
+      "changed": "O arquivo mudou desde que isto foi proposto. Aprovar fica desligado até isto ser revisado de novo.",
+      "conflict": {
+        "title": "Esta proposta não pôde ser publicada",
+        "body": "{{reason}}"
+      }
+    }
   },
   "schema": {
     "created": "esquema criado do zero, migrações aplicadas: {{count}}",
@@ -821,5 +849,14 @@
   "about": {
     "copyright": "© {{year}} Rabah Zeineddine · licença MIT",
     "credits": "Agents que rodam na sua máquina e param numa fila de aprovação antes de qualquer coisa sair."
+  },
+  "home": {
+    "overview": {
+      "title": "Iniciativas",
+      "stale": "parada",
+      "daysSinceUpdate_zero": "atualizada hoje",
+      "daysSinceUpdate_one": "atualizada há {{count}}d",
+      "daysSinceUpdate_other": "atualizada há {{count}}d"
+    }
   }
 }

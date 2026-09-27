@@ -82,6 +82,7 @@ function Fila({ navegar }: TelaProps) {
   const [aberto, setAberto] = useState<string | null>(null);
   const [foco, setFoco] = useState(0);
   const [ocupado, setOcupado] = useState<string | null>(null);
+  const [conflitos, setConflitos] = useState<Set<string>>(new Set());
   const listaRef = useRef<HTMLUListElement>(null);
   const [alvo, setAlvo] = useState<string | null>(null);
 
@@ -126,8 +127,16 @@ function Fila({ navegar }: TelaProps) {
     async (item: Item, decisao: "approved" | "rejected") => {
       setOcupado(item.pendencia.id);
       try {
-        await decidir(item.pendencia.id, decisao);
-        setItens((atual) => atual?.filter((x) => x.pendencia.id !== item.pendencia.id) ?? null);
+        const resultado = await decidir(item.pendencia.id, decisao);
+        if (resultado.status === "conflict") {
+          // O alvo mudou por fora antes do clique: a pendencia ja fechou como
+          // `conflict`, e o item continua na tela so para explicar o que
+          // aconteceu, sem mais botao de decisao. O motivo completo, com
+          // diff quando fizer sentido, mora na revisao.
+          setConflitos((atual) => new Set(atual).add(item.pendencia.id));
+        } else {
+          setItens((atual) => atual?.filter((x) => x.pendencia.id !== item.pendencia.id) ?? null);
+        }
       } finally {
         setOcupado(null);
       }
@@ -181,6 +190,7 @@ function Fila({ navegar }: TelaProps) {
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-3">
+      <PainelDeIniciativas navegar={navegar} />
       <Cabecalho quantidade={itens.length} />
       {falhas.length > 0 && <FaixaDeFalha quantidade={falhas.length} navegar={navegar} />}
 
@@ -198,6 +208,7 @@ function Fila({ navegar }: TelaProps) {
               focada={i === foco}
               aberta={aberto === item.pendencia.id}
               ocupada={ocupado === item.pendencia.id}
+              emConflito={conflitos.has(item.pendencia.id)}
               aoFocar={() => setFoco(i)}
               aoAlternar={() =>
                 setAberto((a) => (a === item.pendencia.id ? null : item.pendencia.id))
@@ -229,6 +240,44 @@ function ordenar(itens: Item[]): Item[] {
     if (Math.abs(idadeA - idadeB) > 3600) return idadeA - idadeB;
     return peso(a.severidade) - peso(b.severidade);
   });
+}
+
+/**
+ * O painel das iniciativas, acima da fila.
+ *
+ * Não bloqueia a fila: sem dado ainda, ou com erro, ele some. A fila é o que
+ * importa nesta tela, e uma iniciativa que não carregou não pode travar a
+ * aprovação de nada.
+ */
+function PainelDeIniciativas({ navegar }: { navegar: TelaProps["navegar"] }) {
+  const { t } = useTranslation();
+  const iniciativas = useRead("initiatives.overview");
+
+  if (iniciativas.status !== "ready" || iniciativas.data.length === 0) return null;
+
+  return (
+    <div className="border-border bg-card flex flex-wrap gap-2 rounded-lg border p-2">
+      {iniciativas.data.map((f) => (
+        <button
+          key={f.slug}
+          type="button"
+          onClick={() => navegar("initiatives", f.slug)}
+          className="border-border/60 hover:bg-accent/40 focus-visible:ring-ring flex min-h-8 cursor-pointer items-center gap-2 rounded-md border px-2.5 py-1 text-left text-xs transition-colors duration-200 focus-visible:ring-2 focus-visible:outline-none"
+        >
+          <span className="font-medium">{f.title}</span>
+          <span className="text-muted-foreground">{t(`initiatives.status.${f.status}`)}</span>
+          {f.stale && (
+            <Badge className="text-sev-medium border-sev-medium/40" variant="outline">
+              {t("home.overview.stale")}
+            </Badge>
+          )}
+          <span className="text-muted-foreground">
+            {t("home.overview.daysSinceUpdate", { count: f.daysSinceUpdate })}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
 }
 
 function Cabecalho({ quantidade }: { quantidade: number }) {
@@ -284,6 +333,7 @@ interface LinhaProps {
   focada: boolean;
   aberta: boolean;
   ocupada: boolean;
+  emConflito: boolean;
   aoFocar: () => void;
   aoAlternar: () => void;
   aoAprovar: () => void;
@@ -296,6 +346,7 @@ function Linha({
   focada,
   aberta,
   ocupada,
+  emConflito,
   aoFocar,
   aoAlternar,
   aoAprovar,
@@ -372,10 +423,18 @@ function Linha({
           </p>
         )}
 
+        {emConflito && (
+          <p className="border-sev-medium/40 bg-sev-medium/10 text-sev-medium mt-1.5 max-w-[68ch] rounded border px-2 py-1 text-xs">
+            {t("inbox.conflict")}
+          </p>
+        )}
+
         <div className="mt-2.5 flex items-center gap-1">
-          <Button className="h-7 cursor-pointer px-2.5" disabled={ocupada} onClick={aoAprovar} size="sm">
-            {t("inbox.approve")}
-          </Button>
+          {!emConflito && (
+            <Button className="h-7 cursor-pointer px-2.5" disabled={ocupada} onClick={aoAprovar} size="sm">
+              {t("inbox.approve")}
+            </Button>
+          )}
           <Button
             className="text-muted-foreground hover:text-foreground h-7 cursor-pointer px-2.5"
             disabled={ocupada}
@@ -385,15 +444,17 @@ function Linha({
           >
             {t("inbox.edit")}
           </Button>
-          <Button
-            className="text-muted-foreground hover:text-foreground h-7 cursor-pointer px-2.5"
-            disabled={ocupada}
-            onClick={aoDescartar}
-            size="sm"
-            variant="ghost"
-          >
-            {t("inbox.discard")}
-          </Button>
+          {!emConflito && (
+            <Button
+              className="text-muted-foreground hover:text-foreground h-7 cursor-pointer px-2.5"
+              disabled={ocupada}
+              onClick={aoDescartar}
+              size="sm"
+              variant="ghost"
+            >
+              {t("inbox.discard")}
+            </Button>
+          )}
           {achados.length > 1 && (
             <button
               aria-expanded={aberta}
@@ -452,6 +513,11 @@ interface Alvo {
 }
 
 function alvoDaPendencia(p: Pendencia, t: TFunction): Alvo {
+  if (p.kind === "context.update") {
+    const carga = p.payload as { slug?: string } | null;
+    return { principal: t("inbox.context_update.target", { slug: carga?.slug ?? "" }) };
+  }
+
   const c = p.payload as Partial<CargaDePr> | null;
   if (!c?.pull) {
     return { principal: t("inbox.target_unknown", { agent: p.agentName, step: p.stepName }) };

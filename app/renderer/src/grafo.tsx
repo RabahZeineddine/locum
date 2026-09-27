@@ -17,7 +17,7 @@ import type {
   NodeProps as PropsDoNo,
 } from "@xyflow/react";
 import { MarkerType } from "@xyflow/react";
-import { rotuloDeEstado } from "@/lib/rotulos";
+import { rotuloDeEstado, rotuloDoMotivo } from "@/lib/rotulos";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -114,7 +114,9 @@ type DadosDoPasso = {
   nome: string;
   status: string;
   detalhe: string;
-  motivo: string | null;
+  /** Codigo de passo pulado ou rejeitado, traduzido so na hora de pintar o no. */
+  erro: string | null;
+  substituicao: string | null;
   opcional: boolean;
   /** Preenchido so no passo de acao: e o que sai, ou nao, sem clique. */
   modo: string | null;
@@ -134,7 +136,8 @@ function dados(
     detalhe:
       doRun?.modelUsed ?? (doSpec?.type === "model" ? doSpec.model : (acao?.action ?? chave)),
     modo: acao?.mode ?? null,
-    motivo: doRun?.error ?? doRun?.substitutionReason ?? null,
+    erro: doRun?.error ?? null,
+    substituicao: doRun?.error ? null : (doRun?.substitutionReason ?? null),
     nome: doSpec?.name ?? doRun?.name ?? chave,
     opcional: doSpec?.optional ?? false,
     status: doRun?.status ?? "pending",
@@ -187,11 +190,15 @@ function NoDoPasso({ data }: PropsDoNo<NoDoFluxo<DadosDoPasso>>) {
           ) : null}
         </span>
         <span className="truncate text-muted-foreground">{data.detalhe}</span>
-        {data.motivo === null ? null : (
-          <span className="truncate text-muted-foreground" title={data.motivo}>
-            {data.motivo}
+        {data.erro !== null ? (
+          <span className="truncate text-muted-foreground" title={rotuloDoMotivo(t, data.erro)}>
+            {rotuloDoMotivo(t, data.erro)}
           </span>
-        )}
+        ) : data.substituicao !== null ? (
+          <span className="truncate text-muted-foreground" title={data.substituicao}>
+            {data.substituicao}
+          </span>
+        ) : null}
       </NodeContent>
     </Node>
   );

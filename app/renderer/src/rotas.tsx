@@ -31,7 +31,7 @@ export interface TelaProps {
  * vez e nenhum dos dois guarda uma cópia do texto.
  */
 export const ROTAS = [
-  { id: "inbox", rotulo: "nav.inbox", icone: InboxIcon, Tela: Inbox },
+  { id: "inbox", rotulo: "nav.home", icone: InboxIcon, Tela: Inbox },
   { id: "initiatives", rotulo: "nav.initiatives", icone: Target, Tela: Initiatives },
   { id: "execucoes", rotulo: "nav.runs", icone: ListTree, Tela: Execucoes },
   { id: "agents", rotulo: "nav.agents", icone: Bot, Tela: Agents },

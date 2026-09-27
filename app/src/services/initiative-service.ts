@@ -63,6 +63,17 @@ export async function initiativesRoot(settings: SettingsService = settingsServic
   return join(homedir(), "Locum", "initiatives");
 }
 
+const STALE_DAYS_KEY = "initiatives.staleDays";
+export const DEFAULT_STALE_DAYS = 7;
+const MIN_STALE_DAYS = 1;
+const MAX_STALE_DAYS = 90;
+
+/** O valor gravado, se for um inteiro de 1 a 90; senao o padrao de 7 dias. */
+function parseStaleDays(raw: string | undefined): number {
+  const n = raw === undefined ? Number.NaN : Number(raw);
+  return Number.isInteger(n) && n >= MIN_STALE_DAYS && n <= MAX_STALE_DAYS ? n : DEFAULT_STALE_DAYS;
+}
+
 /**
  * Cadastro de iniciativas: frente de trabalho com objetivo, pasta de contexto
  * e os servidores MCP e workspaces que ela enxerga.
@@ -297,18 +308,48 @@ export class InitiativeService {
    * Fato cru de cada iniciativa, para o Inicio montar a frase no idioma da
    * janela. Relogio injetavel, como em `deep-link-service.ts`, para o teste
    * fixar a data em vez de depender de `Date.now()` correndo durante o run.
+   *
+   * `stale` compara `daysSinceUpdate` contra `initiatives.staleDays`
+   * (`staleDays()` abaixo): a casca so pinta o crache, quem decide o limite e
+   * o servico.
    */
   async overview(
     now: () => number = Date.now,
-  ): Promise<{ slug: string; title: string; status: InitiativeStatus; daysSinceUpdate: number }[]> {
+  ): Promise<
+    { slug: string; title: string; status: InitiativeStatus; daysSinceUpdate: number; stale: boolean }[]
+  > {
     const linhas = await this.list();
     const hoje = now();
-    return linhas.map((linha) => ({
-      slug: linha.slug,
-      title: linha.title,
-      status: linha.status as InitiativeStatus,
-      daysSinceUpdate: Math.floor(hoje / 1000 / 86_400 - linha.updatedAt / 86_400),
-    }));
+    const limite = await this.staleDays();
+    return linhas.map((linha) => {
+      const daysSinceUpdate = Math.floor(hoje / 1000 / 86_400 - linha.updatedAt / 86_400);
+      return {
+        slug: linha.slug,
+        title: linha.title,
+        status: linha.status as InitiativeStatus,
+        daysSinceUpdate,
+        stale: daysSinceUpdate >= limite,
+      };
+    });
+  }
+
+  /**
+   * Quantos dias sem atualizar contam como parada, para o Inicio destacar.
+   * Valor gravado fora do intervalo 1-90 cai no padrao de 7, sem lançar: o
+   * texto digitado errado num campo antigo nao pode travar o Inicio, que so
+   * quer saber ha quanto tempo cada iniciativa ficou quieta.
+   */
+  async staleDays(): Promise<number> {
+    return parseStaleDays(await this.settings.get(STALE_DAYS_KEY));
+  }
+
+  /** Grava o limite de dias parados. So aceita inteiro de 1 a 90. */
+  async setStaleDays(value: number): Promise<number> {
+    if (!Number.isInteger(value) || value < MIN_STALE_DAYS || value > MAX_STALE_DAYS) {
+      throw new Error(`initiatives.staleDays precisa ser inteiro de ${MIN_STALE_DAYS} a ${MAX_STALE_DAYS}`);
+    }
+    await this.settings.set(STALE_DAYS_KEY, String(value));
+    return value;
   }
 
   /**

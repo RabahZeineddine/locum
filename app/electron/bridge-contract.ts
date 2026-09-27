@@ -92,6 +92,10 @@ interface ServiceApi {
   "initiatives.list": InitiativeService["list"];
   "initiatives.detail": InitiativeService["detail"];
   "initiatives.context": InitiativeService["readContext"];
+  /** Fato cru de cada iniciativa, para o painel do Inicio. */
+  "initiatives.overview": InitiativeService["overview"];
+  "initiatives.staleDays": InitiativeService["staleDays"];
+  "initiatives.setStaleDays": InitiativeService["setStaleDays"];
 
   "runs.list": RunService["list"];
   "runs.get": RunService["get"];
@@ -334,6 +338,9 @@ export const BRIDGE_CHANNELS = [
   "initiatives.list",
   "initiatives.detail",
   "initiatives.context",
+  "initiatives.overview",
+  "initiatives.staleDays",
+  "initiatives.setStaleDays",
   "runs.list",
   "runs.get",
   "runs.findings",

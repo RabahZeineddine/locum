@@ -15,7 +15,7 @@ export const REPO_URL = "https://github.com/RabahZeineddine/locum";
 
 /** Os destinos da janela, na ordem da barra lateral, com o atalho de cada um. */
 const DESTINOS = [
-  { id: "inbox", rotulo: "nav.inbox" },
+  { id: "inbox", rotulo: "nav.home" },
   { id: "execucoes", rotulo: "nav.runs" },
   { id: "agents", rotulo: "nav.agents" },
   { id: "configuracao", rotulo: "nav.settings" },

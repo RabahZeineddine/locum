@@ -15,7 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { call, useRead, type ReadResult } from "@/lib/bridge";
 import { useJanela } from "@/lib/janela";
-import { rotuloDeEstado, rotuloDeSeveridade, type Estado } from "@/lib/rotulos";
+import { rotuloDeEstado, rotuloDeSeveridade, rotuloDoMotivo, type Estado } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
 import { ArrowLeft, RotateCcw } from "lucide-react";
 import { useState } from "react";
@@ -293,7 +293,7 @@ function PassoDaExecucao({
       </div>
 
       {passo.error !== null ? (
-        <p className="mt-2 text-destructive text-xs">{passo.error}</p>
+        <p className="mt-2 text-destructive text-xs">{rotuloDoMotivo(t, passo.error)}</p>
       ) : null}
 
       {ferramentas.length > 0 ? (

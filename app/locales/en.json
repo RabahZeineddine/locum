@@ -181,7 +181,8 @@
   "common": {
     "version": "v{{version}}",
     "pull": "PR #{{number}}",
-    "open_github": "open on GitHub"
+    "open_github": "open on GitHub",
+    "save": "Save"
   },
   "findings": {
     "count_one": "{{count}} finding",
@@ -227,7 +228,11 @@
     "by": "by {{author}}",
     "diff": "{{files}} files · +{{additions}} −{{deletions}}",
     "draft": "draft",
-    "branch": "{{head}} → {{base}}"
+    "branch": "{{head}} → {{base}}",
+    "conflict": "This item changed since it was queued. Open it to see what happened.",
+    "context_update": {
+      "target": "Context update: {{slug}}"
+    }
   },
   "initiatives": {
     "contextTemplate": {
@@ -281,7 +286,7 @@
     "applied": "start at login: preference {{preference}}, system {{status}}"
   },
   "nav": {
-    "inbox": "Inbox",
+    "home": "Home",
     "initiatives": "Initiatives",
     "runs": "Runs",
     "agents": "Agents",
@@ -355,7 +360,12 @@
     "when_now": "now",
     "when_hours": "{{hours}}h",
     "when_days": "{{days}}d",
-    "when_date": "{{date}}"
+    "when_date": "{{date}}",
+    "stepReason": {
+      "outside_initiative": "step targets a server outside this initiative's scope",
+      "rejected": "rejected",
+      "publish_conflict": "the target changed before this could be published"
+    }
   },
   "settings": {
     "refused": "the bridge refused {{channel}}: {{message}}",
@@ -627,6 +637,12 @@
       "geral": "General",
       "modelos": "Models",
       "conexoes": "Connections"
+    },
+    "staleDays": {
+      "title": "Stale threshold",
+      "description": "How many days without an update mark an initiative as stale on the Home screen.",
+      "label": "days",
+      "refused": "The value was not saved: {{message}}"
     }
   },
   "severity": {
@@ -727,7 +743,19 @@
       "COMMENT": "comment only",
       "REQUEST_CHANGES": "request changes"
     },
-    "verdict_only": "only the verdict will be posted, with no findings"
+    "verdict_only": "only the verdict will be posted, with no findings",
+    "contextUpdate": {
+      "mode": {
+        "append": "append",
+        "replace": "replace"
+      },
+      "target": "{{slug}} / {{file}}",
+      "changed": "The file changed since this was proposed. Approving is disabled until this is reviewed again.",
+      "conflict": {
+        "title": "This proposal could not be published",
+        "body": "{{reason}}"
+      }
+    }
   },
   "schema": {
     "created": "schema created from scratch, migrations applied: {{count}}",
@@ -791,5 +819,14 @@
   "about": {
     "copyright": "© {{year}} Rabah Zeineddine · MIT license",
     "credits": "Agents that run on your machine and stop at an approval queue before anything goes out."
+  },
+  "home": {
+    "overview": {
+      "title": "Initiatives",
+      "stale": "stale",
+      "daysSinceUpdate_zero": "updated today",
+      "daysSinceUpdate_one": "updated {{count}}d ago",
+      "daysSinceUpdate_other": "updated {{count}}d ago"
+    }
   }
 }

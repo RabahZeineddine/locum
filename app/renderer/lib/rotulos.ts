@@ -46,3 +46,13 @@ export function rotuloDeSeveridade(t: TFunction, severidade: string): string {
 export function rotuloDeEstado(t: TFunction, estado: string): string {
   return (ESTADOS as readonly string[]).includes(estado) ? t(`status.${estado}`) : estado;
 }
+
+/** Codigo de passo pulado ou rejeitado, gravado em ingles por `gate.ts` e `executor.ts`. */
+export const MOTIVOS_DE_PASSO = ["outside_initiative", "rejected", "publish_conflict"] as const;
+export type MotivoDePasso = (typeof MOTIVOS_DE_PASSO)[number];
+
+export function rotuloDoMotivo(t: TFunction, motivo: string): string {
+  return (MOTIVOS_DE_PASSO as readonly string[]).includes(motivo)
+    ? t(`runs.stepReason.${motivo}`)
+    : motivo;
+}

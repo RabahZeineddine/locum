@@ -47,6 +47,12 @@ export const READ_CHANNELS = [
   "initiatives.list",
   "initiatives.detail",
   "initiatives.context",
+  // Fato cru de cada iniciativa, para o painel do Inicio: leitura pura, e a
+  // tela dispara ao montar como as outras leituras do catalogo.
+  "initiatives.overview",
+  // O limite de dias parados, para a tela de configuracao mostrar o valor
+  // gravado. Gravar vai por `initiatives.setStaleDays`, em ACTION_CHANNELS.
+  "initiatives.staleDays",
   "runs.list",
   "runs.get",
   "runs.findings",
@@ -179,6 +185,9 @@ export const ACTION_CHANNELS = [
   "updates.setEnabled",
   "updates.check",
   "updates.apply",
+  // Gravar o limite de dias parados e um clique na secao geral da
+  // configuracao, nao uma leitura que dispara ao montar a tela.
+  "initiatives.setStaleDays",
 ] as const satisfies readonly BridgeChannel[];
 
 export type ActionChannel = (typeof ACTION_CHANNELS)[number];

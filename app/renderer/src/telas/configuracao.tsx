@@ -173,6 +173,10 @@ export function Configuracao({ detalhe, navegar }: TelaProps) {
           <Secao descricao={t("settings.updates.description")} titulo={t("settings.updates.title")}>
             <Atualizacao />
           </Secao>
+
+          <Secao descricao={t("settings.staleDays.description")} titulo={t("settings.staleDays.title")}>
+            <EscolhaDeStaleDays />
+          </Secao>
         </>
       ) : null}
 
@@ -453,6 +457,63 @@ function Atualizacao() {
           {estado.enabled ? t("settings.updates.turnOff") : t("settings.updates.turnOn")}
         </Button>
       </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------ iniciativas */
+
+/**
+ * Depois de quantos dias sem atualização uma iniciativa entra como parada.
+ *
+ * O valor gravado é sempre um inteiro de 1 a 90; o serviço já cai para o
+ * padrão de 7 quando o que está guardado não bate essa faixa, então o único
+ * jeito de a gravação falhar aqui é digitar fora dela.
+ */
+function EscolhaDeStaleDays() {
+  const { t } = useTranslation();
+  const lido = useRead("initiatives.staleDays");
+  const [rascunho, setRascunho] = useState<string | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [ocupado, setOcupado] = useState(false);
+
+  if (lido.data === undefined) return <Vazio>{t("settings.staleDays.title")}</Vazio>;
+
+  const valor = rascunho ?? String(lido.data);
+
+  const gravar = (): void => {
+    const n = Number(valor);
+    setOcupado(true);
+    setErro(null);
+    call("initiatives.setStaleDays", n).then(
+      () => setRascunho(null),
+      () => setErro(t("settings.staleDays.refused")),
+    ).finally(() => setOcupado(false));
+  };
+
+  return (
+    <div className="flex items-center gap-3 px-4 py-3" data-locum-probe="stale-days">
+      <label className="text-sm" htmlFor="stale-days">
+        {t("settings.staleDays.label")}
+      </label>
+      <input
+        className="border-border bg-background w-16 rounded border px-2 py-1 text-right text-sm tabular-nums"
+        id="stale-days"
+        max={90}
+        min={1}
+        onChange={(e) => setRascunho(e.target.value)}
+        type="number"
+        value={valor}
+      />
+      <Button
+        disabled={ocupado || Number(valor) === lido.data}
+        onClick={gravar}
+        size="sm"
+        variant="secondary"
+      >
+        {t("common.save")}
+      </Button>
+      {erro && <span className="text-sev-critical text-xs">{erro}</span>}
     </div>
   );
 }

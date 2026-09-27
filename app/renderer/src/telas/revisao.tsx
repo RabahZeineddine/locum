@@ -1,9 +1,11 @@
 import { Button } from "@/components/ui/button";
 import { gravarRevisao, decidir } from "@/lib/aprovar";
-import { useRead } from "@/lib/bridge";
+import { BridgeError, read, useRead, type ReadResult, type ReadState } from "@/lib/bridge";
+import { comContexto, diffLinhas, type LinhaDoDiff } from "@/lib/diff";
 import {
   CONFIANCAS,
   rotuloDeSeveridade,
+  rotuloDoMotivo,
   SEVERIDADES,
   VEREDITOS,
   type Confianca,
@@ -15,6 +17,17 @@ import { ArrowLeft, ExternalLink } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TelaProps } from "../rotas";
+
+type Pendencia = NonNullable<ReadResult<"approvals.get">>;
+
+/** O que `context.update` guarda na pendencia. Ver `src/context/proposal.ts`. */
+interface CargaDeContexto {
+  slug: string;
+  file: string;
+  mode: "replace" | "append";
+  content: string;
+  baseHash?: string;
+}
 
 interface AchadoEditavel {
   file?: string;
@@ -44,26 +57,55 @@ const REGUA: Record<Severidade, string> = {
  * qualidade do agent.
  *
  * Editar aqui não publica nada: grava na pendência, que continua esperando.
+ *
+ * A leitura é `approvals.get`, e não `approvals.listPending`: uma pendência de
+ * `context.update` que fechou como `conflict` sai da fila pendente, mas
+ * continua precisando de tela para explicar o que aconteceu. Buscando só nas
+ * pendentes, ela sumiria assim que fechasse.
  */
 export function Revisao({ detalhe, navegar }: TelaProps) {
   const { t } = useTranslation();
-  const pendentes = useRead("approvals.listPending");
+  const aprovacao = useRead("approvals.get", detalhe ?? "");
+  const pendencia = aprovacao.status === "ready" ? aprovacao.data : undefined;
+  const contexto =
+    pendencia?.kind === "context.update" ? (pendencia.payload as CargaDeContexto) : null;
+  const [arquivo, setArquivo] = useState<ReadState<ReadResult<"initiatives.context">>>({
+    status: "loading",
+    data: undefined,
+    error: undefined,
+  });
+
+  useEffect(() => {
+    if (!contexto) return;
+    let vivo = true;
+    setArquivo({ status: "loading", data: undefined, error: undefined });
+    read("initiatives.context", contexto.slug, contexto.file as "context.md").then(
+      (data) => {
+        if (vivo) setArquivo({ status: "ready", data, error: undefined });
+      },
+      (erro: unknown) => {
+        if (!vivo) return;
+        setArquivo({
+          status: "error",
+          data: undefined,
+          error: erro instanceof BridgeError ? erro : new BridgeError("initiatives.context", String(erro)),
+        });
+      },
+    );
+    return () => {
+      vivo = false;
+    };
+  }, [contexto?.slug, contexto?.file]);
+
   const [achados, setAchados] = useState<AchadoEditavel[] | null>(null);
   const [veredito, setVeredito] = useState<Veredito>("COMMENT");
   const [gravando, setGravando] = useState(false);
   const [resolvendo, setResolvendo] = useState(false);
+  const [conflito, setConflito] = useState(false);
   const primeiroRender = useRef(true);
 
-  const pendencia = useMemo(
-    () =>
-      pendentes.status === "ready"
-        ? pendentes.data.find((p) => p.id === detalhe)
-        : undefined,
-    [pendentes, detalhe],
-  );
-
   useEffect(() => {
-    if (!pendencia || achados !== null) return;
+    if (!pendencia || contexto || achados !== null) return;
     const carga = pendencia.payload as { findings?: unknown[]; verdict?: unknown } | null;
     if ((VEREDITOS as readonly unknown[]).includes(carga?.verdict)) {
       setVeredito(carga!.verdict as Veredito);
@@ -92,7 +134,7 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
   // Grava sozinho depois que a digitação para. Botão de salvar num editor de
   // um item só é cerimônia: o risco real é fechar a tela e perder a edição.
   useEffect(() => {
-    if (achados === null || !pendencia) return;
+    if (achados === null || !pendencia || contexto) return;
     if (primeiroRender.current) {
       primeiroRender.current = false;
       return;
@@ -106,9 +148,9 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
       ).finally(() => setGravando(false));
     }, 700);
     return () => clearTimeout(id);
-  }, [achados, veredito, pendencia]);
+  }, [achados, veredito, pendencia, contexto]);
 
-  if (pendentes.status === "ready" && !pendencia) {
+  if (aprovacao.status === "ready" && !pendencia) {
     return (
       <div className="mx-auto w-full max-w-3xl">
         <Voltar navegar={navegar} />
@@ -116,7 +158,44 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
       </div>
     );
   }
-  if (!pendencia || achados === null) return null;
+  if (!pendencia) return null;
+
+  // Pendencia ja fechada, seja por outra tela ou por este mesmo clique: sem
+  // isto, `decidir` rejeitaria de novo, porque a gate so decide pendencia
+  // pendente. Ver `ApprovalGate.decide`.
+  const jaResolvida = pendencia.status !== "pending" || conflito;
+
+  async function resolver(decisao: "approved" | "rejected") {
+    if (!pendencia) return;
+    setResolvendo(true);
+    try {
+      const resultado = await decidir(pendencia.id, decisao);
+      if (resultado.status === "conflict") {
+        setConflito(true);
+        return;
+      }
+      navegar("inbox");
+    } finally {
+      setResolvendo(false);
+    }
+  }
+
+  if (contexto) {
+    return (
+      <RevisaoDeContexto
+        arquivo={arquivo}
+        conflito={conflito}
+        contexto={contexto}
+        jaResolvida={jaResolvida}
+        navegar={navegar}
+        onResolver={resolver}
+        pendencia={pendencia}
+        resolvendo={resolvendo}
+      />
+    );
+  }
+
+  if (achados === null) return null;
 
   const carga = pendencia.payload as {
     pull?: number;
@@ -130,17 +209,6 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
   // Aprovar sem achado é uma review que diz alguma coisa; comentar sem achado
   // não diz nada.
   const vazia = marcados === 0 && veredito === "COMMENT";
-
-  async function resolver(decisao: "approved" | "rejected") {
-    if (!pendencia) return;
-    setResolvendo(true);
-    try {
-      await decidir(pendencia.id, decisao);
-      navegar("inbox");
-    } finally {
-      setResolvendo(false);
-    }
-  }
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
@@ -258,14 +326,14 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
       <div className="flex items-center gap-3">
         <Button
           className="cursor-pointer"
-          disabled={resolvendo || vazia}
+          disabled={resolvendo || vazia || jaResolvida}
           onClick={() => void resolver("approved")}
         >
           {t("review.approve")}
         </Button>
         <Button
           className="text-muted-foreground hover:text-foreground cursor-pointer"
-          disabled={resolvendo}
+          disabled={resolvendo || jaResolvida}
           onClick={() => void resolver("rejected")}
           variant="ghost"
         >
@@ -290,6 +358,142 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
           {t("review.see_run")}
         </button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * A revisão de um `context.update`: o que vai substituir ou entrar em
+ * `context.md`, lado a lado com o que está lá agora.
+ *
+ * `append` não tem lado antigo para comparar: o bloco novo entra inteiro
+ * marcado como acréscimo, sobre o arquivo atual como contexto de leitura.
+ */
+function RevisaoDeContexto({
+  arquivo,
+  conflito,
+  contexto,
+  jaResolvida,
+  navegar,
+  onResolver,
+  pendencia,
+  resolvendo,
+}: {
+  arquivo: ReadState<ReadResult<"initiatives.context">>;
+  conflito: boolean;
+  contexto: CargaDeContexto;
+  jaResolvida: boolean;
+  navegar: TelaProps["navegar"];
+  onResolver: (decisao: "approved" | "rejected") => void;
+  pendencia: Pendencia;
+  resolvendo: boolean;
+}) {
+  const { t } = useTranslation();
+
+  const linhas = useMemo(() => {
+    if (arquivo.status !== "ready") return [];
+    const atual = (arquivo.data.content ?? "").split("\n");
+    const novo =
+      contexto.mode === "replace" ? contexto.content.split("\n") : [...atual, ...contexto.content.split("\n")];
+    return comContexto(diffLinhas(atual, novo));
+  }, [arquivo, contexto]);
+
+  const mudouPorFora =
+    contexto.mode === "replace" &&
+    contexto.baseHash !== undefined &&
+    arquivo.status === "ready" &&
+    arquivo.data.hash !== contexto.baseHash;
+
+  const emConflito = pendencia.status === "conflict" || conflito;
+
+  return (
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
+      <div className="flex items-baseline gap-3">
+        <Voltar navegar={navegar} />
+        <h1 className="text-lg font-semibold tracking-tight">
+          {t("inbox.context_update.target", { slug: contexto.slug })}
+        </h1>
+        <span className="text-muted-foreground font-mono text-xs">
+          {t(`review.contextUpdate.mode.${contexto.mode}`)}
+        </span>
+      </div>
+
+      <p className="text-muted-foreground text-xs">
+        {t("review.contextUpdate.target", { slug: contexto.slug, file: contexto.file })}
+      </p>
+
+      {emConflito ? (
+        <div className="border-destructive/40 bg-destructive/10 rounded-md border px-3 py-2 text-sm">
+          <p className="font-medium">{t("review.contextUpdate.conflict.title")}</p>
+          <p className="text-muted-foreground mt-1">
+            {t("review.contextUpdate.conflict.body", {
+              reason: rotuloDoMotivo(t, "publish_conflict"),
+            })}
+          </p>
+        </div>
+      ) : (
+        mudouPorFora && (
+          <p className="border-sev-medium/40 bg-sev-medium/10 text-sev-medium rounded-md border px-3 py-2 text-sm">
+            {t("review.contextUpdate.changed")}
+          </p>
+        )
+      )}
+
+      {arquivo.status === "ready" && (
+        <div
+          className="overflow-auto rounded-lg border border-border font-mono text-xs"
+          data-locum-probe="context-diff"
+        >
+          {linhas.length === 0 ? (
+            <p className="text-muted-foreground p-3">{t("agents.diff.identical")}</p>
+          ) : (
+            linhas.map((linha, i) => (
+              <LinhaDoDiffDeContexto key={`${linha.antes ?? "-"}:${linha.depois ?? "-"}:${i}`} linha={linha} />
+            ))
+          )}
+        </div>
+      )}
+
+      {!emConflito && (
+        <div className="flex items-center gap-3">
+          <Button
+            className="cursor-pointer"
+            disabled={resolvendo || jaResolvida || mudouPorFora}
+            onClick={() => onResolver("approved")}
+          >
+            {t("review.approve")}
+          </Button>
+          <Button
+            className="text-muted-foreground hover:text-foreground cursor-pointer"
+            disabled={resolvendo || jaResolvida}
+            onClick={() => onResolver("rejected")}
+            variant="ghost"
+          >
+            {t("review.discard")}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const SINAL_DO_DIFF: Record<LinhaDoDiff["tipo"], string> = { igual: " ", saiu: "-", entrou: "+" };
+
+function LinhaDoDiffDeContexto({ linha }: { linha: LinhaDoDiff }) {
+  return (
+    <div
+      className={cn(
+        "flex gap-3 whitespace-pre px-3 py-0.5",
+        linha.tipo === "saiu" && "bg-destructive/15 text-destructive-foreground",
+        linha.tipo === "entrou" && "bg-primary/15",
+        linha.tipo === "igual" && "text-muted-foreground",
+      )}
+      data-locum-linha={linha.tipo}
+    >
+      <span className="w-10 shrink-0 text-right tabular-nums opacity-60">{linha.antes ?? ""}</span>
+      <span className="w-10 shrink-0 text-right tabular-nums opacity-60">{linha.depois ?? ""}</span>
+      <span className="w-3 shrink-0">{SINAL_DO_DIFF[linha.tipo]}</span>
+      <span className="min-w-0">{linha.texto}</span>
     </div>
   );
 }
