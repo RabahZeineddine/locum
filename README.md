@@ -75,7 +75,8 @@ de fallback redireciona os passos afetados para provedores por chave.
 | [estado-atual.md](docs/estado-atual.md) | o que existe, o que falta, e as armadilhas encontradas |
 | [ADR 0002](docs/adr/0002-camada-de-servico-e-servidor-mcp.md) | camada de serviço, servidor MCP próprio, e por que aprovação fica fora dele |
 | [ADR 0003](docs/adr/0003-interface-sobre-ai-elements.md) | interface sobre AI Elements, chat como console, e a regra contra injeção de prompt |
-| [roadmap.md](docs/roadmap.md) | marcos M1 a M5, até o `.dmg` |
+| [ADR 0004](docs/adr/0004-iniciativas.md) | iniciativa como unidade de trabalho, escopo MCP, contexto por proposta aprovada, e idioma do projeto |
+| [roadmap.md](docs/roadmap.md) | marcos M1 a M5, até o `.dmg`, e as iniciativas I1 a I5 |
 | [empacotamento.md](docs/empacotamento.md) | como gerar o `.dmg`, abrir sem assinatura, e o que muda com conta Apple |
 | [primeira-execucao.md](docs/primeira-execucao.md) | ligar num repositório de verdade: token, gatilho, primeira varredura e a fila |
 | [prd.json](scripts/ralph/prd.json) | backlog como estado: tarefas atômicas com critério de pronto e comando de verificação |

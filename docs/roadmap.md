@@ -73,6 +73,48 @@ Pronto quando existir um `.dmg` que instala e abre em uma máquina limpa.
 Estimativa: um fim de semana, mais o tempo da conta Apple se você quiser
 assinatura.
 
+## Iniciativas
+
+A partir do ADR 0004: a iniciativa como unidade de trabalho acima do agent, com
+contexto, workspaces, integrações MCP, agents, prompts e links próprios.
+
+**I1, núcleo.** Esquema, `ContextStore`, escopo MCP por `runs.initiative_id`,
+contexto que só muda por proposta aprovada na fila, agent de sistema
+`locum-context`, ferramentas no servidor MCP e no chat. Pronto quando o chat
+interno cria e configura uma iniciativa completa.
+
+**I2, interface.** Rota de iniciativas com lista e detalhe (contexto, agents,
+integrações, execuções, ações), painel de frentes no Início, revisão do tipo
+`context.update` com diff e aviso de conflito, e depois formulários, iniciativa
+atual em agents, execuções, paleta e assistente.
+
+**I2b, redesenho visual.** Depois de dias de uso, a partir de capturas reais da
+interface do I2. Sem data.
+
+**I3, sessão.** Abrir sessão no terminal (Terminal ou iTerm) com o contexto da
+iniciativa por `--append-system-prompt` e `--settings` negando escrita em
+`context.md`, e a passagem de volta como proposta de contexto.
+
+**I4, presets MCP genéricos.** GitHub, Jira, Confluence e Notion como preset
+público, sem endereço, projeto ou token de empresa, ligados à iniciativa pela
+tab de integrações.
+
+**I5, uso real.** Ajustes a partir do uso do dia a dia: se status `paused` ou
+`done` da iniciativa deve bloquear gatilho de agent, e o que mais o uso pedir.
+
+## Open source bilíngue
+
+Fatias O1 e O2, fora do caminho crítico de I1 a I3.
+
+**O1.** Descrições das ferramentas existentes do servidor MCP e do catálogo do
+chat traduzidas para inglês, sem mudança de comportamento.
+
+**O2.** `README.md` em inglês, o atual como `README.pt-BR.md`, e
+`CONTRIBUTING.md` com o passo a passo de rodar, verificar e adicionar idioma
+novo. Opcional: renomear identificadores em português do código, com
+redirecionamento do hash antigo para os ids de rota que mudarem
+(`execucoes`, `configuracao`, `revisao`).
+
 ## Depois do aplicativo
 
 **Radar de Slack e Teams.** Digest em vez de notificação item a item. Depende de

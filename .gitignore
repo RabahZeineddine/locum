@@ -34,3 +34,6 @@ app/build/icon.iconset/
 
 # configuração local do Claude Code de quem desenvolve
 .claude/
+
+# estado de execução do oh-my-claudecode (planos, notepads, estado de sessão)
+.omc/
