@@ -21,6 +21,24 @@ type Db = typeof defaultDb;
 export type InitiativeRow = typeof schema.initiatives.$inferSelect;
 export type InitiativeStatus = "active" | "paused" | "done" | "dropped";
 
+export type InitiativeWorkspaceRow = typeof schema.initiativeWorkspaces.$inferSelect;
+export type InitiativeLinkRow = typeof schema.initiativeLinks.$inferSelect;
+
+/** A iniciativa com o que o MCP e a tela de detalhe precisam alem da linha crua. */
+export interface InitiativeDetail extends InitiativeRow {
+  servers: string[];
+  workspaces: InitiativeWorkspaceRow[];
+  links: InitiativeLinkRow[];
+  agents: { id: string; name: string }[];
+}
+
+export interface InitiativeContextFile {
+  slug: string;
+  file: string;
+  content: string | null;
+  hash: string | null;
+}
+
 export interface InitiativeWorkspaceInput {
   repoPath: string;
   worktreePath?: string | null;
@@ -365,6 +383,45 @@ export class InitiativeService {
     });
 
     return { approvalId };
+  }
+
+  /**
+   * A iniciativa com servidores, workspaces, links e agents ligados, numa ida
+   * so. Usada pelo MCP (`get_initiative`) e pela ponte, para as duas
+   * superficies nao duplicarem a mesma juncao.
+   */
+  async detail(slug: string): Promise<InitiativeDetail | undefined> {
+    const linha = await this.get(slug);
+    if (!linha) return undefined;
+
+    const [servers, workspaces, links, agents] = await Promise.all([
+      this.db
+        .select({ serverName: schema.initiativeMcpServers.serverName })
+        .from(schema.initiativeMcpServers)
+        .where(eq(schema.initiativeMcpServers.initiativeId, linha.id)),
+      this.db.select().from(schema.initiativeWorkspaces).where(eq(schema.initiativeWorkspaces.initiativeId, linha.id)),
+      this.db.select().from(schema.initiativeLinks).where(eq(schema.initiativeLinks.initiativeId, linha.id)),
+      this.db
+        .select({ id: schema.agents.id, name: schema.agents.name })
+        .from(schema.agents)
+        .where(eq(schema.agents.initiativeId, linha.id)),
+    ]);
+
+    return {
+      ...linha,
+      servers: servers.map((s) => s.serverName),
+      workspaces,
+      links,
+      agents,
+    };
+  }
+
+  /** Um arquivo da pasta de contexto, com o hash. `null` quando ele nao existe ainda. */
+  async readContext(slug: string, file = "context.md"): Promise<InitiativeContextFile> {
+    const linha = await this.mustGet(slug);
+    const store = this.storeFor(linha.contextPath);
+    const [content, hash] = await Promise.all([store.read(file), store.hash(file)]);
+    return { slug, file, content, hash };
   }
 
   private storeFor(contextPath: string): ContextStore {

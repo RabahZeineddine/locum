@@ -857,6 +857,7 @@ async function checkRenderer(): Promise<string> {
   const { ensureDemoRun } = await import("../src/fixtures/demo-run.js");
   const { ensureAgentHistory } = await import("../src/fixtures/agent-history.js");
   const { ensureFixtureServer } = await import("../src/fixtures/mcp-fixture.js");
+  const { ensureExampleInitiative } = await import("../src/fixtures/initiative.js");
 
   // Banco vazio faz a tela de execucoes passar sem provar nada: lista vazia e
   // detalhe inexistente batem com servico vazio por acidente. O fixture planta
@@ -877,6 +878,10 @@ async function checkRenderer(): Promise<string> {
     command: [process.execPath, foraDoAsar(join(__dirname, "mcp-fixture-server.mjs"))],
     env: { ELECTRON_RUN_AS_NODE: "1" },
   });
+  // A tela de iniciativas precisa de uma para abrir no detalhe. `upsert` e
+  // idempotente pelo slug e nunca reescreve o `context.md` depois da primeira
+  // vez, entao plantar aqui a cada subida do smoke nao acumula nada.
+  await ensureExampleInitiative();
 
   setupBridge({ inboxTarget: pendingInboxTarget });
 
@@ -930,6 +935,7 @@ async function checkRenderer(): Promise<string> {
 
     const rotas = await checkRoutes(window);
     const paleta = await checkPalette(window);
+    const iniciativas = await checkInitiatives(window);
     // Antes das execucoes de proposito: o `checkRuns` deixa a janela no detalhe
     // de um run, que e onde a verificacao do destaque procura o bloco de codigo.
     const agents = await checkAgents(window);
@@ -965,6 +971,7 @@ async function checkRenderer(): Promise<string> {
     return t("smoke.renderer", {
       routes: rotas,
       palette: paleta,
+      initiatives: iniciativas,
       agents,
       config: configuracao,
       review: revisao,
@@ -1063,7 +1070,7 @@ async function irPara(window: BrowserWindow, id: string, detalhe?: string): Prom
  * so a exigencia da story, que sao estes quatro destinos.
  */
 async function checkRoutes(window: BrowserWindow): Promise<string> {
-  const esperados = ["inbox", "execucoes", "agents", "configuracao"];
+  const esperados = ["inbox", "initiatives", "execucoes", "agents", "configuracao"];
 
   const barra = (await window.webContents.executeJavaScript(
     `Array.from(document.querySelectorAll("[data-locum-rota]")).map((b) => ({
@@ -1174,6 +1181,76 @@ async function checkPalette(window: BrowserWindow): Promise<string> {
   if (!fechou) throw new Error("o X nao fechou o painel do assistente");
 
   return t("smoke.palette");
+}
+
+/**
+ * Confere a tela de iniciativas: a lista e as abas do detalhe.
+ *
+ * So a aba de contexto e conferida a fundo, contra o que o servico devolve para
+ * `context.md`: e a unica que le de verdade nesta fatia. As outras quatro so
+ * precisam trocar a marcacao da aba ativa, porque so mostrar leitura que a
+ * janela ja pediu no detalhe composto, sem canal proprio nenhum.
+ */
+async function checkInitiatives(window: BrowserWindow): Promise<string> {
+  const { initiativeService } = await import("../src/services/initiative-service.js");
+
+  await irPara(window, "initiatives");
+  const lista = await esperarProbe<{ total: number }>(
+    window,
+    "initiatives",
+    `(() => {
+      const probe = document.querySelector("[data-locum-probe=initiatives]");
+      if (probe === null || probe.dataset.estado !== "ready") return null;
+      return { total: Number(probe.dataset.total) };
+    })()`,
+  );
+
+  const doServico = await initiativeService.list();
+  if (lista.total !== doServico.length) {
+    throw new Error(`a lista de iniciativas mostrou ${lista.total} e o servico tem ${doServico.length}`);
+  }
+
+  const linha = await initiativeService.get("example");
+  if (linha === undefined) throw new Error('a iniciativa semente "example" nao esta cadastrada');
+
+  await irPara(window, "initiatives", "example/context");
+  const contexto = await esperarProbe<{ slug: string; titulo: string }>(
+    window,
+    "initiative",
+    `(() => {
+      const probe = document.querySelector("[data-locum-probe=initiative]");
+      const conteudo = document.querySelector("[data-locum-probe=initiative-context]");
+      if (probe === null || conteudo === null || probe.dataset.tab !== "context") return null;
+      return { slug: probe.dataset.slug, titulo: probe.dataset.titulo };
+    })()`,
+  );
+
+  if (contexto.slug !== "example") throw new Error(`o detalhe abriu no slug ${contexto.slug} e nao example`);
+  if (contexto.titulo !== linha.title) {
+    throw new Error(`o detalhe mostrou o titulo "${contexto.titulo}" e o servico tem "${linha.title}"`);
+  }
+
+  const textoDoContexto = (await window.webContents.executeJavaScript(
+    `document.querySelector("[data-locum-probe=initiative-context]")?.textContent ?? ""`,
+  )) as string;
+  const doArquivo = await initiativeService.readContext("example");
+  if (doArquivo.content === null || !textoDoContexto.includes(linha.title)) {
+    throw new Error(`a aba de contexto nao mostrou o titulo "${linha.title}"`);
+  }
+
+  await irPara(window, "initiatives", "example/agents");
+  const abaAgents = await esperarProbe<{ tab: string }>(
+    window,
+    "initiative",
+    `(() => {
+      const probe = document.querySelector("[data-locum-probe=initiative]");
+      if (probe === null || probe.dataset.tab !== "agents") return null;
+      return { tab: probe.dataset.tab };
+    })()`,
+  );
+  if (abaAgents.tab !== "agents") throw new Error(`a aba ficou em "${abaAgents.tab}" e nao em "agents"`);
+
+  return t("smoke.initiatives", { initiatives: lista.total });
 }
 
 /**

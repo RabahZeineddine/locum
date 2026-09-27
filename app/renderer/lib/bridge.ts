@@ -41,6 +41,12 @@ export const READ_CHANNELS = [
   "agents.budgets",
   "agents.overview",
   "actions.describe",
+  // Lista, detalhe composto (servidores, workspaces, links, agents) e um
+  // arquivo da pasta de contexto com hash. So leitura: mudar `context.md`
+  // passa por `proposeContextUpdate`, fora de canal nenhum da janela.
+  "initiatives.list",
+  "initiatives.detail",
+  "initiatives.context",
   "runs.list",
   "runs.get",
   "runs.findings",

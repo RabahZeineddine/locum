@@ -1,9 +1,6 @@
-import { eq } from "drizzle-orm";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { db, schema } from "../db/index.js";
 import { InitiativeService, initiativeService } from "../services/initiative-service.js";
-import { LocalFolderContextStore } from "../services/context-store.js";
 import { PromptService, promptService } from "../services/prompt-service.js";
 import { respond } from "./respond.js";
 
@@ -201,41 +198,13 @@ export function registerInitiativeTools(
 }
 
 async function getInitiative(initiatives: InitiativeService, slug: string) {
-  const initiative = await initiatives.get(slug);
-  if (!initiative) throw new Error(`iniciativa "${slug}" nao cadastrada`);
-
-  const [servers, workspaces, links, agents] = await Promise.all([
-    db
-      .select({ serverName: schema.initiativeMcpServers.serverName })
-      .from(schema.initiativeMcpServers)
-      .where(eq(schema.initiativeMcpServers.initiativeId, initiative.id)),
-    db
-      .select()
-      .from(schema.initiativeWorkspaces)
-      .where(eq(schema.initiativeWorkspaces.initiativeId, initiative.id)),
-    db.select().from(schema.initiativeLinks).where(eq(schema.initiativeLinks.initiativeId, initiative.id)),
-    db
-      .select({ id: schema.agents.id, name: schema.agents.name })
-      .from(schema.agents)
-      .where(eq(schema.agents.initiativeId, initiative.id)),
-  ]);
-
-  return {
-    ...initiative,
-    servers: servers.map((s) => s.serverName),
-    workspaces,
-    links,
-    agents,
-  };
+  const detalhe = await initiatives.detail(slug);
+  if (!detalhe) throw new Error(`iniciativa "${slug}" nao cadastrada`);
+  return detalhe;
 }
 
 async function readContext(initiatives: InitiativeService, slug: string, file: string) {
-  const initiative = await initiatives.get(slug);
-  if (!initiative) throw new Error(`iniciativa "${slug}" nao cadastrada`);
-
-  const store = new LocalFolderContextStore(initiative.contextPath);
-  const [content, hash] = await Promise.all([store.read(file), store.hash(file)]);
-  return { slug, file, content, hash };
+  return initiatives.readContext(slug, file);
 }
 
 async function getPrompt(prompts: PromptService, name: string) {

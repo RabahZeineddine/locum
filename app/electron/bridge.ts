@@ -16,6 +16,7 @@ import { approvalService } from "../src/services/approval-service.js";
 import { credentialService } from "../src/services/credential-service.js";
 import { githubService } from "../src/services/github-service.js";
 import { i18nService } from "../src/services/i18n-service.js";
+import { initiativeService } from "../src/services/initiative-service.js";
 import { machineService } from "../src/services/machine-service.js";
 import { mcpService } from "../src/services/mcp-service.js";
 import { metricsService } from "../src/services/metrics-service.js";
@@ -117,6 +118,10 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
       return escolha.filePath;
     },
     "agents.budgets": () => agentService.budgets(),
+
+    "initiatives.list": () => initiativeService.list(),
+    "initiatives.detail": (slug) => initiativeService.detail(slug),
+    "initiatives.context": (slug, file) => initiativeService.readContext(slug, file),
 
     "runs.list": (filter) => runService.list(filter),
     "runs.get": (runId) => runService.get(runId),

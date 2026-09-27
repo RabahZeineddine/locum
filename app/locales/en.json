@@ -232,6 +232,49 @@
   "initiatives": {
     "contextTemplate": {
       "initial": "# {{title}}\n\n## Objective\n\n_Describe the objective of this initiative._\n\n## Done criteria\n\n_Describe what \"done\" looks like for this initiative._\n"
+    },
+    "list": {
+      "loading": "reading initiatives...",
+      "refused": "the bridge refused: {{message}}",
+      "count_one": "{{count}} initiative",
+      "count_other": "{{count}} initiatives",
+      "empty": "No initiatives yet. Create one from an assistant connected to Locum's MCP server."
+    },
+    "detail": {
+      "loading": "reading the initiative...",
+      "missing": "the initiative {{slug}} has no saved data",
+      "refused": "the bridge refused: {{message}}",
+      "back": "Initiatives",
+      "tabs": {
+        "context": "Context",
+        "agents": "Agents",
+        "integrations": "Integrations",
+        "runs": "Runs",
+        "actions": "Actions"
+      },
+      "context": {
+        "empty": "No context.md yet."
+      },
+      "agents": {
+        "empty": "No agent linked to this initiative yet."
+      },
+      "integrations": {
+        "empty": "This initiative sees no MCP server yet."
+      },
+      "runs": {
+        "loading": "reading runs...",
+        "refused": "the bridge refused: {{message}}",
+        "empty": "No run for this initiative yet."
+      },
+      "actions": {
+        "empty": "Nothing to run from here yet."
+      }
+    },
+    "status": {
+      "active": "active",
+      "paused": "paused",
+      "done": "done",
+      "dropped": "dropped"
     }
   },
   "loginItem": {
@@ -239,6 +282,7 @@
   },
   "nav": {
     "inbox": "Inbox",
+    "initiatives": "Initiatives",
     "runs": "Runs",
     "agents": "Agents",
     "settings": "Settings",
@@ -606,9 +650,10 @@
     "schemeRefused": "not accepted outside a packaged app",
     "expectedRefusal": "bridge: the next error line is the gate's expected refusal",
     "bridge": "channels: {{channels}}, window without Node, values matching the services",
-    "renderer": "built page loaded, root mounted, Tailwind sheet in effect, {{routes}}, {{palette}}, {{agents}}, {{config}}, review verdict switched on screen and saved to the pending item: {{review}}, {{runs}}, code block with highlighted spans: {{spans}}, the window reading runs: {{windowRuns}} and pending: {{windowPending}} through the bridge, {{language}}",
+    "renderer": "built page loaded, root mounted, Tailwind sheet in effect, {{routes}}, {{palette}}, {{initiatives}}, {{agents}}, {{config}}, review verdict switched on screen and saved to the pending item: {{review}}, {{runs}}, code block with highlighted spans: {{spans}}, the window reading runs: {{windowRuns}} and pending: {{windowPending}} through the bridge, {{language}}",
     "routes": "destinations: {{count}}",
     "palette": "command palette opening and closing by shortcut",
+    "initiatives": "initiatives: {{initiatives}}, detail opening on the context tab with the initiative's title and switching to the agents tab",
     "agents": "list with agents: {{agents}}, history of versions: {{versions}} for {{agent}}, comparison pointing the action step from \"{{from}}\" to \"{{to}}\"",
     "config": "providers: {{providers}}, fallbacks: {{fallbacks}}, servers: {{servers}} with {{fixture}} answering tools: {{tools}} in the interface, budgets: {{budgets}}, {{providerKeys}}, {{registered}}, GitHub: {{github}}, watched: {{watched}}, {{trackers}}, {{slackWindow}}",
     "providerKeys": "provider keys: {{path}}",

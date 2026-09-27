@@ -246,6 +246,50 @@
   "initiatives": {
     "contextTemplate": {
       "initial": "# {{title}}\n\n## Objetivo\n\n_Descreva o objetivo desta iniciativa._\n\n## Critério de pronto\n\n_Descreva o que é \"pronto\" para esta frente._\n"
+    },
+    "list": {
+      "loading": "lendo iniciativas...",
+      "refused": "a ponte recusou: {{message}}",
+      "count_one": "{{count}} iniciativa",
+      "count_other": "{{count}} iniciativas",
+      "count_zero": "{{count}} iniciativas",
+      "empty": "Nenhuma iniciativa ainda. Crie uma por um assistente ligado ao servidor MCP do Locum."
+    },
+    "detail": {
+      "loading": "lendo a iniciativa...",
+      "missing": "a iniciativa {{slug}} nao tem dado salvo",
+      "refused": "a ponte recusou: {{message}}",
+      "back": "Iniciativas",
+      "tabs": {
+        "context": "Contexto",
+        "agents": "Agents",
+        "integrations": "Integracoes",
+        "runs": "Execucoes",
+        "actions": "Acoes"
+      },
+      "context": {
+        "empty": "Ainda sem context.md."
+      },
+      "agents": {
+        "empty": "Nenhum agent ligado a esta iniciativa ainda."
+      },
+      "integrations": {
+        "empty": "Esta iniciativa ainda nao enxerga servidor MCP nenhum."
+      },
+      "runs": {
+        "loading": "lendo execucoes...",
+        "refused": "a ponte recusou: {{message}}",
+        "empty": "Ainda sem execucao desta iniciativa."
+      },
+      "actions": {
+        "empty": "Ainda nada para rodar por aqui."
+      }
+    },
+    "status": {
+      "active": "ativa",
+      "paused": "pausada",
+      "done": "concluida",
+      "dropped": "abandonada"
     }
   },
   "loginItem": {
@@ -253,6 +297,7 @@
   },
   "nav": {
     "inbox": "Inbox",
+    "initiatives": "Iniciativas",
     "runs": "Execuções",
     "agents": "Agents",
     "settings": "Configuração",
@@ -634,9 +679,10 @@
     "schemeRefused": "não aceito fora de app empacotado",
     "expectedRefusal": "ponte: a próxima linha de erro é a recusa esperada da gate",
     "bridge": "canais: {{channels}}, janela sem Node, valores batendo com os serviços",
-    "renderer": "página construída carregada, raiz montada, folha do Tailwind valendo, {{routes}}, {{palette}}, {{agents}}, {{config}}, veredito da revisão trocado pela tela e gravado na pendência: {{review}}, {{runs}}, bloco de código com trechos destacados: {{spans}}, a janela lendo execuções: {{windowRuns}} e pendências: {{windowPending}} pela ponte, {{language}}",
+    "renderer": "página construída carregada, raiz montada, folha do Tailwind valendo, {{routes}}, {{palette}}, {{initiatives}}, {{agents}}, {{config}}, veredito da revisão trocado pela tela e gravado na pendência: {{review}}, {{runs}}, bloco de código com trechos destacados: {{spans}}, a janela lendo execuções: {{windowRuns}} e pendências: {{windowPending}} pela ponte, {{language}}",
     "routes": "destinos: {{count}}",
     "palette": "paleta abrindo e fechando pelo atalho",
+    "initiatives": "iniciativas: {{initiatives}}, detalhe abrindo na aba de contexto com o título da iniciativa e trocando para a aba de agents",
     "agents": "lista com agents: {{agents}}, histórico de versões: {{versions}} de {{agent}}, comparação apontando o passo de ação de \"{{from}}\" para \"{{to}}\"",
     "config": "provedores: {{providers}}, substituições: {{fallbacks}}, servidores: {{servers}} com {{fixture}} respondendo ferramentas: {{tools}} na interface, orçamentos: {{budgets}}, {{providerKeys}}, {{registered}}, GitHub: {{github}}, observados: {{watched}}, {{trackers}}, {{slackWindow}}",
     "providerKeys": "chaves de provedor: {{path}}",

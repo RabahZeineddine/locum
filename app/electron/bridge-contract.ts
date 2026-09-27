@@ -3,6 +3,7 @@ import type { ApprovalService } from "../src/services/approval-service.js";
 import type { CredentialService } from "../src/services/credential-service.js";
 import type { GithubService } from "../src/services/github-service.js";
 import type { Language, LanguageState } from "../src/services/i18n-service.js";
+import type { InitiativeService } from "../src/services/initiative-service.js";
 import type { MachineService } from "../src/services/machine-service.js";
 import type { McpService } from "../src/services/mcp-service.js";
 import type { MetricsService } from "../src/services/metrics-service.js";
@@ -80,6 +81,17 @@ interface ServiceApi {
    */
   "agents.importFile": () => Promise<{ agentId: string; version: number; created: boolean } | null>;
   "agents.exportFile": (agentId: string) => Promise<string | null>;
+
+  /**
+   * Leitura da tela de iniciativas: a lista crua, o detalhe composto (linha
+   * mais servidores, workspaces, links e agents ligados) e um arquivo da pasta
+   * de contexto com o hash. Nenhuma escrita: mudar `context.md` so passa por
+   * `proposeContextUpdate`, que fica fora deste catalogo pela mesma razao de
+   * `approvals.decide`.
+   */
+  "initiatives.list": InitiativeService["list"];
+  "initiatives.detail": InitiativeService["detail"];
+  "initiatives.context": InitiativeService["readContext"];
 
   "runs.list": RunService["list"];
   "runs.get": RunService["get"];
@@ -319,6 +331,9 @@ export const BRIDGE_CHANNELS = [
   "agents.duplicate",
   "agents.importFile",
   "agents.exportFile",
+  "initiatives.list",
+  "initiatives.detail",
+  "initiatives.context",
   "runs.list",
   "runs.get",
   "runs.findings",

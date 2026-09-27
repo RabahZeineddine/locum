@@ -1,9 +1,10 @@
-import { Bot, Inbox as InboxIcon, ListTree, Settings } from "lucide-react";
+import { Bot, Inbox as InboxIcon, ListTree, Settings, Target } from "lucide-react";
 import type { ComponentType } from "react";
 import { Agents } from "./telas/agents";
 import { Configuracao } from "./telas/configuracao";
 import { Execucoes } from "./telas/execucoes";
 import { Inbox } from "./telas/inbox";
+import { Initiatives } from "./telas/initiatives";
 
 /**
  * O que uma tela recebe do layout.
@@ -31,6 +32,7 @@ export interface TelaProps {
  */
 export const ROTAS = [
   { id: "inbox", rotulo: "nav.inbox", icone: InboxIcon, Tela: Inbox },
+  { id: "initiatives", rotulo: "nav.initiatives", icone: Target, Tela: Initiatives },
   { id: "execucoes", rotulo: "nav.runs", icone: ListTree, Tela: Execucoes },
   { id: "agents", rotulo: "nav.agents", icone: Bot, Tela: Agents },
   { id: "configuracao", rotulo: "nav.settings", icone: Settings, Tela: Configuracao },
