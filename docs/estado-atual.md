@@ -4,6 +4,72 @@ Projeto renomeado de Agent Watchers para Locum em 19 de setembro de 2026.
 
 Atualizado em 27 de setembro de 2026.
 
+## Iniciativas: onde parou em 27/09/2026
+
+Plano completo em `docs/plano-iniciativas.md`, decisões em
+`docs/adr/0004-iniciativas.md`, motivação em `docs/briefing-iniciativas.md`.
+Cada fatia fechou com `npm run verify` e `npm test` verdes em `app/`. Nada foi
+enviado ao remoto: a `main` local está à frente de `origin/main`.
+
+### Fatias que entraram
+
+| fatia | commit | o que trouxe |
+|---|---|---|
+| 1 | `7325bce` | ADR 0004, briefing e marcos I1 a I5 no roadmap |
+| 2 | `fa39c15` | esquema e migração aditiva, `ContextStore`, `InitiativeService`, `PromptService`, paridade de chaves `en` e `pt-BR` no `check:i18n` |
+| 3a | `810d9b5` | escopo MCP: agent de iniciativa só enxerga os servidores dela, pelo `runs.initiative_id` fotografado no `createRun` |
+| 3b | `c18d19c` | contexto muda só por proposta aprovada, agent de sistema `locum-context`, conflito de publicação, `executor.decide` devolvendo `{ status, run }` |
+| 4 | `36f7eee` | 13 ferramentas de iniciativa e prompt no servidor MCP e no chat (fecha o I1) |
+| 5a | `20606a2` | rota `#/initiatives`, lista e detalhe com a aba Contexto, fixture e smoke |
+| 6 | `38e2874` | painel do Início, revisão de `context.update`, `initiatives.staleDays` |
+| F | `c6a3271` | armadilhas, contagens e roadmap do dia |
+| 5b | `97d8124` | formulários, iniciativa atual, chips em agents e execuções, paleta e assistente (fecha o I2) |
+
+Nenhuma fatia ficou pela metade. Há um `git stash` antigo, "fatia 3b parcial",
+com uma primeira tentativa da 3b que foi refeita do zero e está no `c18d19c`.
+Não tem nada que falte no código; pode ser descartado com `git stash drop`.
+
+### O que falta de I1 a I3
+
+- I1: nada.
+- I2: nada do escopo funcional. O redesenho visual (I2b) fica para depois de
+  alguns dias de uso, só registrado no roadmap.
+- I3: a fatia 7 inteira, que abre sessão do Claude no terminal com o contexto
+  da iniciativa. Seção "Fatia 7" e "Sessão no terminal" do plano.
+- Fora do caminho crítico, se sobrar tempo: O1 (descrições das ferramentas em
+  inglês), O2 (README em inglês, `README.pt-BR.md`, `CONTRIBUTING.md` e rename
+  das rotas em português com redirecionamento) e a fatia 9 (I4, presets MCP
+  genéricos).
+
+### Decisões tomadas
+
+- Um agent pertence a no máximo uma iniciativa; o escopo MCP vem do run, não
+  do agent atual, inclusive na retomada.
+- Contexto mora em pasta local (`~/Locum/initiatives/<slug>/context.md`,
+  raiz configurável por `initiatives.root`, `LOCUM_INITIATIVES_DIR` nos
+  testes); o banco só indexa. Muda só por proposta aprovada: `append` sem hash,
+  `replace` com hash, conflito fecha a pendência como `conflict`.
+- Prompt é entidade versionada, sem gatilho.
+- O chat ganha as escritas internas de iniciativa; aprovar e abrir sessão
+  continuam só por clique.
+- Status `paused` ou `done` da iniciativa não bloqueia gatilho nesta rodada.
+- `initiatives.staleDays` configurável desde já: padrão 7, de 1 a 90.
+- Na O2, os ids de rota em português (`execucoes`, `configuracao`, `revisao`)
+  viram inglês, com redirecionamento do hash antigo. O id `inbox` fica, com
+  rótulo "Início".
+- Identificador, caminho, rota, protocolo e chave em inglês; texto visível só
+  pelos dicionários `en` e `pt-BR`. O termo do produto é "iniciativa" /
+  "initiative".
+- Em aberto: quando docs, ADRs e mensagens de commit passam para inglês.
+
+### Primeiro passo da próxima sessão
+
+Começar a fatia 7 (I3) pelo que o plano manda conferir antes de escrever
+código: rodar `claude --help` e confirmar os nomes `--append-system-prompt`,
+`--settings` e `--add-dir`, e a sintaxe `//` do `deny` para caminho absoluto.
+Depois seguir a seção "Fatia 7" do `docs/plano-iniciativas.md`, com os testes
+de injeção de shell usando sentinela (`touch PWNED`), nunca `rm`.
+
 ## O que existe e roda
 
 Núcleo headless em `app/`, verificação de tipos limpa. A casca Electron já sobe
@@ -56,8 +122,8 @@ que a interface vai usar.
 | credenciais no keychain | `safeStorage` cifra, o banco guarda só a referência, e sem keychain vale a variável de ambiente |
 | notificação nativa | um aviso por run, para achado crítico na fila ou run que falhou, com o clique apontando para o run |
 | deep link `locum://` | esquema registrado no sistema, retorno de OAuth com PKCE roteado do `open-url` até o cofre |
-| ponte entre janela e serviços | preload em sandbox, 82 canais tipados pelos próprios métodos dos serviços (`BRIDGE_CHANNELS`; o catálogo do renderer, `READ_CHANNELS` mais `ACTION_CHANNELS`, cobre 75 deles, e deixa `approvals.decide` e alguns canais de agent fora por decisão do ADR 0003), decisão de aprovação só encaminhada, e guarda de compilação contra canal que abra tarefa ou publique no Slack |
-| tela de iniciativas (I2, parcial) | lista e detalhe (contexto, agents, execuções, ações) por rota com sub-rota de hash; painel de iniciativas no Início; revisão de pendência `context.update` com diff e aviso de conflito; `staleDays` (dias parados até "sem sinal") configurável na tela de configuração, de 1 a 90, padrão 7 |
+| ponte entre janela e serviços | preload em sandbox, 92 canais tipados pelos próprios métodos dos serviços (`BRIDGE_CHANNELS`; o catálogo do renderer, `READ_CHANNELS` mais `ACTION_CHANNELS`, cobre 80 deles, e deixa `approvals.decide` e alguns canais de agent fora por decisão do ADR 0003), decisão de aprovação só encaminhada, e guarda de compilação contra canal que abra tarefa ou publique no Slack |
+| tela de iniciativas (I2) | lista e detalhe (contexto, agents, execuções, ações) por rota com sub-rota de hash; painel de iniciativas no Início; revisão de pendência `context.update` com diff e aviso de conflito; `staleDays` (dias parados até "sem sinal") configurável na tela de configuração, de 1 a 90, padrão 7 |
 | interface | esqueleto do renderer em Vite com React e Tailwind, construído para `dist/renderer` e carregado pela janela, já lendo pela ponte |
 | componentes da interface | shadcn e AI Elements vendorizados em `app/renderer/components`, tema escuro por padrão, sem dependência de rede |
 | cliente da ponte no renderer | `app/renderer/lib/bridge.ts` com catálogo de leitura escrito à mão e hook `useRead`, a janela lendo agents, execuções e fila |
