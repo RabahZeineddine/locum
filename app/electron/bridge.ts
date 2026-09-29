@@ -124,6 +124,7 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "initiatives.list": () => initiativeService.list(),
     "initiatives.detail": (slug) => initiativeService.detail(slug),
     "initiatives.context": (slug, file) => initiativeService.readContext(slug, file),
+    "initiatives.deliveries": (slug) => initiativeService.deliveries(slug),
     "initiatives.overview": () => initiativeService.overview(),
     "initiatives.staleDays": () => initiativeService.staleDays(),
     "initiatives.setStaleDays": (value) => initiativeService.setStaleDays(value),

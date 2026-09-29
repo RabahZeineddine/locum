@@ -1,6 +1,7 @@
 import { ArrowLeft, Copy, FileText, SquareTerminal } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Streamdown } from "streamdown";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { call, useRead, type ReadResult } from "@/lib/bridge";
@@ -14,7 +15,7 @@ const classeDoCampo = "border-border bg-background w-full rounded border px-2 py
 
 /** As cinco abas do detalhe. So `context` le e escreve de verdade nesta fatia:
  * as outras quatro so mostram o que o detalhe composto ja trouxe. */
-const ABAS = ["context", "agents", "integrations", "runs", "actions"] as const;
+const ABAS = ["deliveries", "context", "agents", "integrations", "runs", "actions"] as const;
 type Aba = (typeof ABAS)[number];
 
 function ehAba(valor: string): valor is Aba {
@@ -35,7 +36,7 @@ export function Initiatives({ detalhe, navegar }: TelaProps) {
   const barra = detalhe.indexOf("/");
   const slug = barra === -1 ? detalhe : detalhe.slice(0, barra);
   const abaBruta = barra === -1 ? "" : detalhe.slice(barra + 1);
-  const aba: Aba = ehAba(abaBruta) ? abaBruta : "context";
+  const aba: Aba = ehAba(abaBruta) ? abaBruta : "deliveries";
 
   return <DetalheDaIniciativa aba={aba} navegar={navegar} slug={slug} />;
 }
@@ -49,36 +50,37 @@ function Lista({ navegar }: { navegar: TelaProps["navegar"] }) {
   const [criando, setCriando] = useState(false);
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-3">
-        <div
-          className="text-muted-foreground text-xs"
-          data-estado={iniciativas.status}
-          data-locum-probe="initiatives"
-          data-total={linhas.length}
-        >
-          {iniciativas.status === "error"
-            ? t("initiatives.list.refused", { message: iniciativas.error.message })
-            : iniciativas.status === "loading"
-              ? t("initiatives.list.loading")
-              : t("initiatives.list.count", { count: linhas.length })}
+    <div className="flex max-w-5xl flex-col gap-6 pt-2">
+      <header className="flex items-end gap-6">
+        <div className="flex flex-1 flex-col gap-1.5">
+          <h1 className="font-semibold text-2xl tracking-tight">{t("initiatives.list.title")}</h1>
+          <p
+            className="text-muted-foreground text-sm"
+            data-estado={iniciativas.status}
+            data-locum-probe="initiatives"
+            data-total={linhas.length}
+          >
+            {iniciativas.status === "error"
+              ? t("initiatives.list.refused", { message: iniciativas.error.message })
+              : iniciativas.status === "loading"
+                ? t("initiatives.list.loading")
+                : t("initiatives.list.lead")}
+          </p>
         </div>
         <Button
-          className="ml-auto cursor-pointer"
+          className="cursor-pointer"
           data-locum-probe="initiative-new"
           onClick={() => setCriando((v) => !v)}
-          size="sm"
-          variant="secondary"
         >
           {t("initiatives.form.new")}
         </Button>
-      </div>
+      </header>
 
       {criando && (
         <FormularioDeIniciativa
           aoSalvar={(slug) => {
             setCriando(false);
-            navegar("initiatives", `${slug}/context`);
+            navegar("initiatives", slug);
           }}
         />
       )}
@@ -86,9 +88,9 @@ function Lista({ navegar }: { navegar: TelaProps["navegar"] }) {
       {iniciativas.status === "ready" && linhas.length === 0 ? (
         <p className="text-muted-foreground text-sm">{t("initiatives.list.empty")}</p>
       ) : (
-        <ul className="divide-border border-border bg-card divide-y overflow-hidden rounded-lg border">
+        <ul className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {linhas.map((iniciativa) => (
-            <LinhaDaLista iniciativa={iniciativa} key={iniciativa.slug} navegar={navegar} />
+            <CartaoDaLista iniciativa={iniciativa} key={iniciativa.slug} navegar={navegar} />
           ))}
         </ul>
       )}
@@ -96,7 +98,13 @@ function Lista({ navegar }: { navegar: TelaProps["navegar"] }) {
   );
 }
 
-function LinhaDaLista({
+/** O titulo da entrega: o primeiro `#` do arquivo, ou o nome dele. */
+function tituloDaEntrega(entrega: { file: string; content: string }): string {
+  const titulo = entrega.content.split("\n").find((linha) => linha.startsWith("# "));
+  return titulo ? titulo.slice(2).trim() : entrega.file.replace(/^entregas\//, "").replace(/\.md$/, "");
+}
+
+function CartaoDaLista({
   iniciativa,
   navegar,
 }: {
@@ -104,22 +112,31 @@ function LinhaDaLista({
   navegar: TelaProps["navegar"];
 }) {
   const { t } = useTranslation();
+  const entregas = useRead("initiatives.deliveries", iniciativa.slug);
+  const ultima = entregas.data?.[0];
   return (
     <li>
       <button
-        className="hover:bg-accent/40 focus-visible:ring-ring w-full cursor-pointer px-4 py-3 text-left transition-colors duration-200 focus-visible:ring-2 focus-visible:-outline-offset-2"
+        className="border-border bg-card hover:border-foreground/25 focus-visible:ring-ring flex h-full w-full cursor-pointer flex-col gap-4 rounded-xl border p-5 text-left transition-colors duration-200 focus-visible:ring-2"
         data-locum-initiative={iniciativa.slug}
-        onClick={() => navegar("initiatives", `${iniciativa.slug}/context`)}
+        onClick={() => navegar("initiatives", iniciativa.slug)}
         type="button"
       >
-        <div className="flex items-baseline gap-2.5">
-          <span className="font-medium text-[15px] tracking-tight">{iniciativa.title}</span>
-          <span className="text-muted-foreground font-mono text-xs">{iniciativa.slug}</span>
-          <span className="ml-auto shrink-0">
-            <Badge variant="outline">{t(`initiatives.status.${iniciativa.status}`)}</Badge>
-          </span>
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-baseline gap-2">
+            <span className="font-semibold text-base tracking-tight">{iniciativa.title}</span>
+            {iniciativa.status === "active" ? null : (
+              <span className="ml-auto shrink-0">
+                <Badge variant="outline">{t(`initiatives.status.${iniciativa.status}`)}</Badge>
+              </span>
+            )}
+          </div>
+          <p className="text-muted-foreground line-clamp-2 text-sm leading-relaxed">{iniciativa.objective}</p>
         </div>
-        <p className="text-muted-foreground mt-1.5 truncate text-xs">{iniciativa.objective}</p>
+        <div className="mt-auto flex flex-col gap-1 text-xs">
+          <span className="text-muted-foreground">{t("initiatives.list.lastDelivery")}</span>
+          <span>{ultima ? tituloDaEntrega(ultima) : t("initiatives.list.noDelivery")}</span>
+        </div>
       </button>
     </li>
   );
@@ -154,32 +171,37 @@ function DetalheDaIniciativa({
 
   return (
     <div
-      className="flex flex-col gap-4"
+      className="flex max-w-5xl flex-col gap-5 pt-2"
       data-locum-probe="initiative"
       data-slug={slug}
       data-tab={aba}
       data-titulo={iniciativa.title}
     >
-      <div className="flex items-center gap-3">
-        <Button onClick={() => navegar("initiatives")} size="sm" variant="ghost">
+      <div>
+        <Button className="-ml-2 cursor-pointer" onClick={() => navegar("initiatives")} size="sm" variant="ghost">
           <ArrowLeft className="size-4" />
           {t("initiatives.detail.back")}
         </Button>
-        <span className="font-medium text-sm">{iniciativa.title}</span>
-        <span className="text-muted-foreground text-xs">{slug}</span>
-        <span className="ml-auto flex items-center gap-2">
-          <Badge variant="outline">{t(`initiatives.status.${iniciativa.status}`)}</Badge>
+      </div>
+      <header className="flex items-end gap-6">
+        <div className="flex flex-1 flex-col gap-1.5">
+          <h1 className="font-semibold text-2xl tracking-tight">{iniciativa.title}</h1>
+          <p className="text-muted-foreground max-w-3xl text-sm leading-relaxed">{iniciativa.objective}</p>
+        </div>
+        <span className="flex items-center gap-2">
+          {iniciativa.status === "active" ? null : (
+            <Badge variant="outline">{t(`initiatives.status.${iniciativa.status}`)}</Badge>
+          )}
           <Button
             className="cursor-pointer"
             data-locum-probe="initiative-edit"
             onClick={() => setEditando((v) => !v)}
-            size="sm"
-            variant="ghost"
+            variant="outline"
           >
             {t("initiatives.form.edit")}
           </Button>
         </span>
-      </div>
+      </header>
 
       {editando && (
         <FormularioDeIniciativa aoSalvar={() => setEditando(false)} iniciativa={iniciativa} />
@@ -187,6 +209,7 @@ function DetalheDaIniciativa({
 
       <TirasDeAba aba={aba} navegar={navegar} slug={slug} />
 
+      {aba === "deliveries" && <AbaEntregas navegar={navegar} slug={slug} />}
       {aba === "context" && <AbaContexto slug={slug} />}
       {aba === "agents" && <AbaAgents iniciativa={iniciativa} />}
       {aba === "integrations" && <AbaIntegrations iniciativa={iniciativa} />}
@@ -227,6 +250,60 @@ function TirasDeAba({
   );
 }
 
+/**
+ * O que a iniciativa ja entregou: a mais nova aberta, as anteriores numa
+ * fileira acima para trocar. E a aba padrao porque e o que se abre a
+ * iniciativa para ver.
+ */
+function AbaEntregas({ navegar, slug }: { navegar: TelaProps["navegar"]; slug: string }) {
+  const { t } = useTranslation();
+  const entregas = useRead("initiatives.deliveries", slug);
+  const [escolhida, setEscolhida] = useState<string | null>(null);
+
+  if (entregas.status === "error") {
+    return <Aviso>{t("initiatives.detail.refused", { message: entregas.error.message })}</Aviso>;
+  }
+  if (entregas.status === "loading") {
+    return <Aviso>{t("initiatives.detail.loading")}</Aviso>;
+  }
+
+  const lista = entregas.data;
+  const aberta = lista.find((entrega) => entrega.file === escolhida) ?? lista[0];
+  if (aberta === undefined) {
+    return (
+      <div className="border-border text-muted-foreground flex items-center gap-4 rounded-xl border border-dashed p-5 text-sm">
+        <span className="flex-1">{t("initiatives.detail.deliveries.empty")}</span>
+        <Button className="cursor-pointer" onClick={() => navegar("initiatives", `${slug}/actions`)} variant="outline">
+          {t("initiatives.detail.deliveries.goActions")}
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-3" data-locum-probe="initiative-deliveries" data-total={lista.length}>
+      {lista.length > 1 ? (
+        <div className="flex flex-wrap gap-2">
+          {lista.map((entrega) => (
+            <Button
+              className="cursor-pointer"
+              key={entrega.file}
+              onClick={() => setEscolhida(entrega.file)}
+              size="sm"
+              variant={entrega.file === aberta.file ? "secondary" : "ghost"}
+            >
+              {tituloDaEntrega(entrega)}
+            </Button>
+          ))}
+        </div>
+      ) : null}
+      <article className="entrega border-border bg-card rounded-xl border p-6 text-sm leading-relaxed">
+        <Streamdown>{aberta.content}</Streamdown>
+      </article>
+    </div>
+  );
+}
+
 /** A unica aba que le de verdade nesta fatia: o `context.md`, so leitura.
  * Qualquer mudanca passa por `proposeContextUpdate`, que e trabalho da 5b. */
 function AbaContexto({ slug }: { slug: string }) {
@@ -246,9 +323,9 @@ function AbaContexto({ slug }: { slug: string }) {
       {content === null ? (
         <p className="text-muted-foreground text-sm">{t("initiatives.detail.context.empty")}</p>
       ) : (
-        <pre className="border-border bg-card overflow-auto rounded-lg border p-4 text-sm whitespace-pre-wrap">
-          {content}
-        </pre>
+        <div className="border-border bg-card rounded-xl border p-6 text-sm leading-relaxed">
+          <Streamdown>{content}</Streamdown>
+        </div>
       )}
     </div>
   );

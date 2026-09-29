@@ -260,6 +260,10 @@
       "initial": "# {{title}}\n\n## Objective\n\n_Describe the objective of this initiative._\n\n## Done criteria\n\n_Describe what \"done\" looks like for this initiative._\n"
     },
     "list": {
+      "title": "Initiatives",
+      "lead": "Each initiative is recurring work. Locum runs it, you decide.",
+      "lastDelivery": "Last delivery",
+      "noDelivery": "No delivery yet",
       "loading": "reading initiatives...",
       "refused": "the bridge refused: {{message}}",
       "count_one": "{{count}} initiative",
@@ -293,11 +297,16 @@
       "refused": "the bridge refused: {{message}}",
       "back": "Initiatives",
       "tabs": {
-        "context": "Context",
+        "deliveries": "Deliveries",
+        "context": "What Locum knows",
         "agents": "Agents",
         "integrations": "Integrations",
         "runs": "Runs",
         "actions": "Actions"
+      },
+      "deliveries": {
+        "empty": "Nothing delivered yet. Run the work from the Actions tab.",
+        "goActions": "Go to Actions"
       },
       "context": {
         "empty": "No context.md yet."

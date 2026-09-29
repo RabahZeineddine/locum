@@ -1,7 +1,7 @@
 import { before, test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { migrateDb } from "../src/db/migrate.js";
@@ -112,4 +112,23 @@ test("overview devolve fato cru com data fixa", async () => {
   const linha = overview.find((item) => item.slug === slug);
   assert.ok(linha);
   assert.equal(linha!.daysSinceUpdate, 10);
+});
+
+test("deliveries lista os .md de entregas/, o mais novo primeiro", async () => {
+  const service = new InitiativeService();
+  const slug = `frente-${randomUUID()}`;
+  await service.upsert({ slug, title: "Entregas", objective: "obj", doneCriteria: "pronto" });
+
+  const pasta = join(raiz(), slug, "entregas");
+  mkdirSync(pasta, { recursive: true });
+  writeFileSync(join(pasta, "2026-W38.md"), "# W-38\n");
+  writeFileSync(join(pasta, "2026-W39.md"), "# W-39\n");
+  writeFileSync(join(pasta, "rascunho.txt"), "fora");
+
+  const entregas = await service.deliveries(slug);
+  assert.deepEqual(
+    entregas.map((entrega) => entrega.file),
+    ["entregas/2026-W39.md", "entregas/2026-W38.md"],
+  );
+  assert.equal(entregas[0]?.content, "# W-39\n");
 });

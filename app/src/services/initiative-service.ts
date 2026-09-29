@@ -39,6 +39,12 @@ export interface InitiativeContextFile {
   hash: string | null;
 }
 
+/** Um arquivo de `entregas/`, o que o trabalho da iniciativa ja produziu. */
+export interface InitiativeDelivery {
+  file: string;
+  content: string;
+}
+
 export interface InitiativeWorkspaceInput {
   repoPath: string;
   worktreePath?: string | null;
@@ -483,6 +489,26 @@ export class InitiativeService {
     const store = this.storeFor(linha.contextPath);
     const [content, hash] = await Promise.all([store.read(file), store.hash(file)]);
     return { slug, file, content, hash };
+  }
+
+  /**
+   * As entregas da iniciativa, a mais nova primeiro. Sao os `.md` de
+   * `entregas/` na pasta de contexto; o nome do arquivo ordena, entao quem
+   * grava usa data ou semana no nome (`2026-W39.md`).
+   */
+  async deliveries(slug: string): Promise<InitiativeDelivery[]> {
+    const linha = await this.mustGet(slug);
+    const store = this.storeFor(linha.contextPath);
+    const arquivos = (await store.list())
+      .filter((arquivo) => arquivo.startsWith("entregas/") && arquivo.endsWith(".md"))
+      .sort()
+      .reverse();
+    const entregas: InitiativeDelivery[] = [];
+    for (const file of arquivos) {
+      const content = await store.read(file);
+      if (content !== null) entregas.push({ file, content });
+    }
+    return entregas;
   }
 
   private storeFor(contextPath: string): ContextStore {

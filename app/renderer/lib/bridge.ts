@@ -47,6 +47,8 @@ export const READ_CHANNELS = [
   "initiatives.list",
   "initiatives.detail",
   "initiatives.context",
+  // O que a iniciativa ja entregou, os `.md` de `entregas/`. So leitura.
+  "initiatives.deliveries",
   // Fato cru de cada iniciativa, para o painel do Inicio: leitura pura, e a
   // tela dispara ao montar como as outras leituras do catalogo.
   "initiatives.overview",

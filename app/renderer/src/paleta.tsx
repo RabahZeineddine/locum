@@ -55,7 +55,7 @@ export function Paleta({ navegar }: { navegar: TelaProps["navegar"] }) {
       id: `initiative:${iniciativa.slug}`,
       rotulo: t("palette.goToInitiative", { title: iniciativa.title }),
       executar: () => {
-        navegar("initiatives", `${iniciativa.slug}/context`);
+        navegar("initiatives", iniciativa.slug);
         setAberta(false);
       },
     }));

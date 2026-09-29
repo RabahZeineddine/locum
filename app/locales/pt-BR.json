@@ -276,6 +276,10 @@
       "initial": "# {{title}}\n\n## Objetivo\n\n_Descreva o objetivo desta iniciativa._\n\n## Critério de pronto\n\n_Descreva o que é \"pronto\" para esta iniciativa._\n"
     },
     "list": {
+      "title": "Iniciativas",
+      "lead": "Cada iniciativa é um trabalho que se repete. O Locum roda, você decide.",
+      "lastDelivery": "Última entrega",
+      "noDelivery": "Nenhuma entrega ainda",
       "loading": "lendo iniciativas...",
       "refused": "a ponte recusou: {{message}}",
       "count_one": "{{count}} iniciativa",
@@ -310,11 +314,16 @@
       "refused": "a ponte recusou: {{message}}",
       "back": "Iniciativas",
       "tabs": {
-        "context": "Contexto",
+        "deliveries": "Entregas",
+        "context": "O que o Locum sabe",
         "agents": "Agents",
-        "integrations": "Integracoes",
-        "runs": "Execucoes",
-        "actions": "Acoes"
+        "integrations": "Integrações",
+        "runs": "Execuções",
+        "actions": "Ações"
+      },
+      "deliveries": {
+        "empty": "Nada entregue ainda. Rode o trabalho pela aba Ações.",
+        "goActions": "Ir para Ações"
       },
       "context": {
         "empty": "Ainda sem context.md."
