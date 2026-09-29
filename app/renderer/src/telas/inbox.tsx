@@ -5,7 +5,7 @@ import { read, useRead, type ReadResult } from "@/lib/bridge";
 import { rotuloDeSeveridade, SEVERIDADES, type Severidade } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
 import { AlertTriangle, Check, ChevronRight, Inbox as InboxIcon, Pencil, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import type { TelaProps } from "../rotas";
@@ -61,6 +61,27 @@ interface Item {
   pendencia: Pendencia;
   achados: Achado[];
   severidade: Severidade;
+  /** A iniciativa, para contexto; o repositório, para pull request. */
+  grupo: string;
+}
+
+/**
+ * Onde o item mora na fila.
+ *
+ * Cinco propostas da mesma iniciativa espalhadas entre pull requests viram
+ * cinco linhas soltas que parecem iguais; juntas, elas se leem como uma pauta.
+ */
+function grupoDaPendencia(p: Pendencia): string {
+  if (p.kind === "context.update") return `contexto:${(p.payload as { slug?: string } | null)?.slug ?? ""}`;
+  const c = p.payload as Partial<CargaDePr> | null;
+  if (c?.pull) return `pr:${c.owner ? `${c.owner}/` : ""}${c.repo ?? ""}`;
+  return "outros";
+}
+
+function rotuloDoGrupo(t: TFunction, grupo: string): string {
+  if (grupo.startsWith("contexto:")) return grupo.slice("contexto:".length);
+  if (grupo.startsWith("pr:")) return `${t("inbox.group.reviews")} · ${grupo.slice("pr:".length)}`;
+  return t("inbox.group.other");
 }
 
 /**
@@ -76,6 +97,7 @@ export function Inbox(props: TelaProps) {
 }
 
 function Fila({ navegar }: TelaProps) {
+  const { t } = useTranslation();
   const pendentes = useRead("approvals.listPending");
   const execucoes = useRead("runs.list", { status: "failed", limit: 20 });
   const [itens, setItens] = useState<Item[] | null>(null);
@@ -100,7 +122,7 @@ function Fila({ navegar }: TelaProps) {
       ).catch(() => ({}) as Record<string, Achado[]>);
       const carregados = pendentes.data.map((p) => {
         const achados = porRun[p.runId] ?? [];
-        return { pendencia: p, achados, severidade: pior(achados) };
+        return { pendencia: p, achados, severidade: pior(achados), grupo: grupoDaPendencia(p) };
       });
       if (!cancelado) setItens(ordenar(carregados));
     })();
@@ -180,7 +202,7 @@ function Fila({ navegar }: TelaProps) {
 
   useEffect(() => {
     listaRef.current
-      ?.querySelectorAll("li")
+      ?.querySelectorAll("li[data-item]")
       [foco]?.scrollIntoView({ block: "nearest" });
   }, [foco]);
 
@@ -202,21 +224,27 @@ function Fila({ navegar }: TelaProps) {
           ref={listaRef}
         >
           {itens.map((item, i) => (
-            <Linha
-              key={item.pendencia.id}
-              item={item}
-              focada={i === foco}
-              aberta={aberto === item.pendencia.id}
-              ocupada={ocupado === item.pendencia.id}
-              emConflito={conflitos.has(item.pendencia.id)}
-              aoFocar={() => setFoco(i)}
-              aoAlternar={() =>
-                setAberto((a) => (a === item.pendencia.id ? null : item.pendencia.id))
-              }
-              aoAprovar={() => void resolver(item, "approved")}
-              aoDescartar={() => void resolver(item, "rejected")}
-              aoEditar={() => navegar("inbox", item.pendencia.id)}
-            />
+            <Fragment key={item.pendencia.id}>
+              {(i === 0 || itens[i - 1]!.grupo !== item.grupo) && (
+                <li className="bg-muted/40 text-muted-foreground px-5 py-1.5 font-mono text-xs">
+                  {rotuloDoGrupo(t, item.grupo)}
+                </li>
+              )}
+              <Linha
+                item={item}
+                focada={i === foco}
+                aberta={aberto === item.pendencia.id}
+                ocupada={ocupado === item.pendencia.id}
+                emConflito={conflitos.has(item.pendencia.id)}
+                aoFocar={() => setFoco(i)}
+                aoAlternar={() =>
+                  setAberto((a) => (a === item.pendencia.id ? null : item.pendencia.id))
+                }
+                aoAprovar={() => void resolver(item, "approved")}
+                aoDescartar={() => void resolver(item, "rejected")}
+                aoEditar={() => navegar("inbox", item.pendencia.id)}
+              />
+            </Fragment>
           ))}
         </ul>
       )}
@@ -231,15 +259,26 @@ function Fila({ navegar }: TelaProps) {
  *
  * O contrario, severidade pura, deixa achado medio apodrecendo no fim da fila
  * para sempre. A severidade pesa no visual, que e onde ela precisa pesar.
+ *
+ * Depois, os grupos: cada um sobe pelo seu item mais antigo, e dentro dele a
+ * ordem acima continua valendo.
  */
 function ordenar(itens: Item[]): Item[] {
   const peso = (s: Severidade) => SEVERIDADES.indexOf(s);
-  return [...itens].sort((a, b) => {
+  const porIdade = [...itens].sort((a, b) => {
     const idadeA = a.pendencia.createdAt;
     const idadeB = b.pendencia.createdAt;
     if (Math.abs(idadeA - idadeB) > 3600) return idadeA - idadeB;
     return peso(a.severidade) - peso(b.severidade);
   });
+  const primeiro = new Map<string, number>();
+  porIdade.forEach((item, i) => {
+    if (!primeiro.has(item.grupo)) primeiro.set(item.grupo, i);
+  });
+  return porIdade
+    .map((item, i) => ({ item, i }))
+    .sort((a, b) => primeiro.get(a.item.grupo)! - primeiro.get(b.item.grupo)! || a.i - b.i)
+    .map(({ item }) => item);
 }
 
 /**
@@ -361,6 +400,7 @@ function Linha({
 
   return (
     <li
+      data-item
       className={cn(
         "group relative transition-colors duration-200",
         focada && "bg-accent/40",
@@ -370,12 +410,18 @@ function Linha({
     >
       <span
         aria-hidden
-        className={cn("absolute top-0 bottom-0 left-0 w-[3px]", REGUA[severidade])}
+        className={cn(
+          "absolute top-0 bottom-0 left-0 w-[3px]",
+          alvo.semSeveridade ? "bg-border" : REGUA[severidade],
+        )}
       />
 
       <div className="py-3 pr-4 pl-5">
         <div className="flex items-baseline gap-2.5">
           <span className="shrink-0 font-mono text-[13px] font-medium">{alvo.principal}</span>
+          {alvo.detalhe && (
+            <span className="text-muted-foreground truncate font-mono text-xs">{alvo.detalhe}</span>
+          )}
           {alvo.repo && (
             <span className="text-muted-foreground truncate font-mono text-xs">{alvo.repo}</span>
           )}
@@ -406,16 +452,26 @@ function Linha({
           {alvo.tamanho && <span className="font-mono tabular-nums">{alvo.tamanho}</span>}
         </div>
 
-        <div className="mt-1.5 flex items-baseline gap-2 text-sm">
-          <span className={cn("shrink-0 font-medium", TINTA[severidade])}>
-            {rotuloDeSeveridade(t, severidade)}
-          </span>
-          {achados.length > 0 && (
-            <span className="text-muted-foreground shrink-0">
-              {t("inbox.findings", { count: achados.length })}
+        {alvo.resumo && (
+          <p className="text-muted-foreground mt-1 line-clamp-2 max-w-[68ch] text-sm leading-relaxed">
+            {alvo.resumo}
+          </p>
+        )}
+
+        {alvo.origem && <p className="text-muted-foreground/80 mt-1 text-xs">{alvo.origem}</p>}
+
+        {!alvo.semSeveridade && (
+          <div className="mt-1.5 flex items-baseline gap-2 text-sm">
+            <span className={cn("shrink-0 font-medium", TINTA[severidade])}>
+              {rotuloDeSeveridade(t, severidade)}
             </span>
-          )}
-        </div>
+            {achados.length > 0 && (
+              <span className="text-muted-foreground shrink-0">
+                {t("inbox.findings", { count: achados.length })}
+              </span>
+            )}
+          </div>
+        )}
 
         {principal && (
           <p className="text-muted-foreground mt-1.5 line-clamp-2 max-w-[68ch] text-sm leading-relaxed">
@@ -442,7 +498,7 @@ function Linha({
             size="sm"
             variant="ghost"
           >
-            {t("inbox.edit")}
+            {alvo.somenteLeitura ? t("inbox.review") : t("inbox.edit")}
           </Button>
           {!emConflito && (
             <Button
@@ -504,6 +560,15 @@ function Linha({
  */
 interface Alvo {
   principal: string;
+  /** Ao lado do principal, apagado: o modo e o tamanho de uma proposta de contexto. */
+  detalhe?: string;
+  /** O começo do que vai entrar, para decidir sem abrir. */
+  resumo?: string;
+  origem?: string;
+  /** Proposta de contexto não tem achado, e "Baixa" ali seria invenção. */
+  semSeveridade?: boolean;
+  /** A revisão só mostra o diff: o botão diz "Revisar" e não promete edição. */
+  somenteLeitura?: boolean;
   repo?: string;
   titulo?: string;
   autor?: string;
@@ -514,8 +579,24 @@ interface Alvo {
 
 function alvoDaPendencia(p: Pendencia, t: TFunction): Alvo {
   if (p.kind === "context.update") {
-    const carga = p.payload as { slug?: string } | null;
-    return { principal: t("inbox.context_update.target", { slug: carga?.slug ?? "" }) };
+    const carga = p.payload as Partial<CargaDeContexto> | null;
+    const linhas = (carga?.content ?? "")
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+    const titulo = linhas.find((l) => l.startsWith("#"))?.replace(/^#+\s*/, "") ?? linhas[0];
+    const corpo = linhas.filter((l) => !l.startsWith("#") && l !== titulo).join(" ");
+    return {
+      principal: t("inbox.context_update.kind"),
+      detalhe: carga?.mode
+        ? t(`inbox.context_update.mode.${carga.mode}`, { count: linhas.length })
+        : undefined,
+      titulo: titulo ?? t("inbox.context_update.untitled"),
+      resumo: corpo.length > 0 ? corpo : undefined,
+      origem: origemDaProposta(t, carga?.origin),
+      semSeveridade: true,
+      somenteLeitura: true,
+    };
   }
 
   const c = p.payload as Partial<CargaDePr> | null;
@@ -542,6 +623,20 @@ function alvoDaPendencia(p: Pendencia, t: TFunction): Alvo {
           }),
     rascunho: c.draft,
   };
+}
+
+/** O que `context.update` guarda na pendencia. Ver `src/context/proposal.ts`. */
+interface CargaDeContexto {
+  slug: string;
+  mode: "append" | "replace";
+  content: string;
+  origin: string;
+}
+
+function origemDaProposta(t: TFunction, origem: string | undefined): string | undefined {
+  if (!origem) return undefined;
+  if (origem === "mcp" || origem === "chat") return t(`inbox.context_update.origin.${origem}`);
+  return t("inbox.context_update.origin.other", { origin: origem });
 }
 
 interface CargaDePr {
@@ -582,7 +677,7 @@ function Atalhos() {
     ["j / k", t("inbox.shortcuts.move")],
     ["enter", t("inbox.shortcuts.open")],
     ["a", t("inbox.shortcuts.approve")],
-    ["e", t("inbox.shortcuts.edit")],
+    ["e", `${t("inbox.shortcuts.review")} / ${t("inbox.shortcuts.edit")}`],
     ["x", t("inbox.shortcuts.discard")],
   ];
   return (

@@ -233,7 +233,8 @@
       "open": "abrir",
       "approve": "aprovar",
       "edit": "editar",
-      "discard": "descartar"
+      "discard": "descartar",
+      "review": "revisar"
     },
     "findings_one": "{{count}} achado",
     "findings_other": "{{count}} achados",
@@ -247,7 +248,27 @@
     "findings_zero": "{{count}} achados",
     "conflict": "Isso mudou desde que entrou na fila. Abra para ver o que aconteceu.",
     "context_update": {
-      "target": "Atualização de contexto: {{slug}}"
+      "target": "Atualização de contexto: {{slug}}",
+      "kind": "Contexto",
+      "untitled": "Proposta sem título",
+      "mode": {
+        "append_one": "acrescenta {{count}} linha",
+        "append_other": "acrescenta {{count}} linhas",
+        "append_zero": "acrescenta {{count}} linhas",
+        "replace_one": "substitui o arquivo ({{count}} linha)",
+        "replace_other": "substitui o arquivo ({{count}} linhas)",
+        "replace_zero": "substitui o arquivo ({{count}} linhas)"
+      },
+      "origin": {
+        "mcp": "proposto via MCP",
+        "chat": "proposto no chat",
+        "other": "proposto por {{origin}}"
+      }
+    },
+    "review": "Revisar",
+    "group": {
+      "reviews": "Revisão de pull request",
+      "other": "Outros"
     }
   },
   "initiatives": {

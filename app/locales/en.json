@@ -222,7 +222,8 @@
       "open": "open",
       "approve": "approve",
       "edit": "edit",
-      "discard": "discard"
+      "discard": "discard",
+      "review": "review"
     },
     "findings_one": "{{count}} finding",
     "findings_other": "{{count}} findings",
@@ -233,7 +234,25 @@
     "branch": "{{head}} → {{base}}",
     "conflict": "This item changed since it was queued. Open it to see what happened.",
     "context_update": {
-      "target": "Context update: {{slug}}"
+      "target": "Context update: {{slug}}",
+      "kind": "Context",
+      "untitled": "Untitled proposal",
+      "mode": {
+        "append_one": "adds {{count}} line",
+        "append_other": "adds {{count}} lines",
+        "replace_one": "replaces the file ({{count}} line)",
+        "replace_other": "replaces the file ({{count}} lines)"
+      },
+      "origin": {
+        "mcp": "proposed via MCP",
+        "chat": "proposed in chat",
+        "other": "proposed by {{origin}}"
+      }
+    },
+    "review": "Review",
+    "group": {
+      "reviews": "Pull request review",
+      "other": "Other"
     }
   },
   "initiatives": {
