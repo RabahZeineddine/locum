@@ -361,7 +361,8 @@
     "applied": "início no login: preferência {{preference}}, sistema {{status}}"
   },
   "nav": {
-    "home": "Início",
+    "today": "Hoje",
+    "queue": "Fila",
     "initiatives": "Iniciativas",
     "runs": "Execuções",
     "agents": "Agents",
@@ -933,6 +934,34 @@
       "daysSinceUpdate_zero": "atualizada hoje",
       "daysSinceUpdate_one": "atualizada há {{count}}d",
       "daysSinceUpdate_other": "atualizada há {{count}}d"
+    },
+    "today": {
+      "title": "Hoje",
+      "lead": "O que espera você, o que roda a seguir e o que já terminou.",
+      "loading": "lendo...",
+      "refused": "a ponte recusou: {{message}}",
+      "waiting": {
+        "title_zero": "Espera você · {{count}}",
+        "title_one": "Espera você · {{count}}",
+        "title_other": "Espera você · {{count}}",
+        "empty": "Nada esperando você. Bom trabalho.",
+        "open": "Abrir",
+        "more_zero": "mais {{count}} na fila",
+        "more_one": "mais {{count}} na fila",
+        "more_other": "mais {{count}} na fila"
+      },
+      "next": {
+        "title": "Roda a seguir",
+        "empty": "Nenhum watcher no relógio.",
+        "due": "agora",
+        "when": "{{day}} {{time}}"
+      },
+      "done": {
+        "title": "Terminou",
+        "empty": "Nada terminou nos últimos dois dias.",
+        "when": "{{day}}, {{time}}",
+        "view": "Ver"
+      }
     }
   },
   "session": {

@@ -344,7 +344,8 @@
     "applied": "start at login: preference {{preference}}, system {{status}}"
   },
   "nav": {
-    "home": "Home",
+    "today": "Today",
+    "queue": "Queue",
     "initiatives": "Initiatives",
     "runs": "Runs",
     "agents": "Agents",
@@ -901,6 +902,34 @@
       "daysSinceUpdate_zero": "updated today",
       "daysSinceUpdate_one": "updated {{count}}d ago",
       "daysSinceUpdate_other": "updated {{count}}d ago"
+    },
+    "today": {
+      "title": "Today",
+      "lead": "What is waiting for you, what runs next and what already finished.",
+      "loading": "reading...",
+      "refused": "the bridge refused: {{message}}",
+      "waiting": {
+        "title_zero": "Waiting for you · {{count}}",
+        "title_one": "Waiting for you · {{count}}",
+        "title_other": "Waiting for you · {{count}}",
+        "empty": "Nothing waiting for you. Nice work.",
+        "open": "Open",
+        "more_zero": "{{count}} more in the queue",
+        "more_one": "{{count}} more in the queue",
+        "more_other": "{{count}} more in the queue"
+      },
+      "next": {
+        "title": "Runs next",
+        "empty": "No watcher on the clock.",
+        "due": "now",
+        "when": "{{day}} {{time}}"
+      },
+      "done": {
+        "title": "Finished",
+        "empty": "Nothing finished in the last two days.",
+        "when": "{{day}}, {{time}}",
+        "view": "View"
+      }
     }
   },
   "session": {

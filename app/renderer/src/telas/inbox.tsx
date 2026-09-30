@@ -49,7 +49,7 @@ function pior(achados: Achado[]): Severidade {
 }
 
 /** Idade em palavra, porque timestamp exige conta mental. */
-function idade(t: TFunction, segundos: number): { texto: string; velho: boolean } {
+export function idade(t: TFunction, segundos: number): { texto: string; velho: boolean } {
   const h = Math.floor((Date.now() / 1000 - segundos) / 3600);
   if (h < 1) return { texto: t("inbox.age.now"), velho: false };
   if (h < 24) return { texto: t("inbox.age.hours", { hours: h }), velho: false };
@@ -577,7 +577,7 @@ interface Alvo {
   rascunho?: boolean;
 }
 
-function alvoDaPendencia(p: Pendencia, t: TFunction): Alvo {
+export function alvoDaPendencia(p: Pendencia, t: TFunction): Alvo {
   if (p.kind === "context.update") {
     const carga = p.payload as Partial<CargaDeContexto> | null;
     const linhas = (carga?.content ?? "")

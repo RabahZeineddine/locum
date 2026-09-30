@@ -1077,7 +1077,7 @@ async function irPara(window: BrowserWindow, id: string, detalhe?: string): Prom
  * so a exigencia da story, que sao estes quatro destinos.
  */
 async function checkRoutes(window: BrowserWindow): Promise<string> {
-  const esperados = ["inbox", "initiatives", "execucoes", "agents", "configuracao"];
+  const esperados = ["hoje", "inbox", "initiatives", "execucoes", "agents", "configuracao"];
 
   const barra = (await window.webContents.executeJavaScript(
     `Array.from(document.querySelectorAll("[data-locum-rota]")).map((b) => ({
@@ -5397,6 +5397,7 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
   const primeiraPendencia = (await approvalService.listPending())[0]?.id;
 
   const destinos: [string, string | undefined][] = [
+    ["hoje", undefined],
     ["inbox", undefined],
     ["inbox", primeiraPendencia],
     ["execucoes", undefined],
