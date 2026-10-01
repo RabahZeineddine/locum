@@ -18,6 +18,7 @@ import type { AftermathFetcher } from "../src/services/reconcile-service.js";
 import type { SlackService } from "../src/services/slack-service.js";
 // Valor, e não só tipo, mas sem efeito no import: `path.ts` não abre banco.
 import { smokeHome } from "../src/db/path.js";
+import { escreverSessoesDeExemplo, SESSOES_DE_EXEMPLO } from "../src/services/claude-sessions-sample.js";
 
 const smoke = process.argv.includes("--smoke");
 const capturas = process.argv.includes("--capturas");
@@ -57,6 +58,13 @@ if (pastaDaFumaca?.temporary) {
   console.log(`fumaça em pasta de rascunho: ${pastaDaFumaca.dir}`);
   // `app.exit` não passa pelo `will-quit`, mas o `exit` do processo sai sempre.
   process.on("exit", () => pastaDaFumaca.cleanup());
+}
+// A tela de sessões lê `~/.claude`, que é conversa de trabalho de quem roda.
+// A fumaça e as capturas leem uma pasta de exemplo no lugar.
+if (pastaDaFumaca) {
+  const pasta = join(pastaDaFumaca.dir, "claude");
+  escreverSessoesDeExemplo(pasta, join(pastaDaFumaca.dir, "projeto"), process.pid);
+  process.env.LOCUM_CLAUDE_DIR = pasta;
 }
 
 // Antes de qualquer espera: com o app fechado, o macOS sobe o processo para
@@ -957,6 +965,7 @@ async function checkRenderer(): Promise<string> {
     const agents = await checkAgents(window);
     const configuracao = await checkConfig(window);
     const revisao = await checkReviewVerdict(window);
+    const sessoes = await checkClaudeSessions(window);
 
     const execucoes = await checkRuns(window, fixture);
     // O bloco de codigo mora no detalhe de uma execucao, que e quem vai usa-lo
@@ -991,6 +1000,7 @@ async function checkRenderer(): Promise<string> {
       agents,
       config: configuracao,
       review: revisao,
+      sessions: sessoes,
       runs: execucoes,
       spans: destacado,
       windowRuns: ponte.runs,
@@ -1110,7 +1120,7 @@ async function irPara(window: BrowserWindow, id: string, detalhe?: string): Prom
  * so a exigencia da story, que sao estes quatro destinos.
  */
 async function checkRoutes(window: BrowserWindow): Promise<string> {
-  const esperados = ["hoje", "inbox", "initiatives", "execucoes", "agents", "configuracao"];
+  const esperados = ["hoje", "inbox", "initiatives", "execucoes", "agents", "sessoes", "configuracao"];
 
   const barra = (await window.webContents.executeJavaScript(
     `Array.from(document.querySelectorAll("[data-locum-rota]")).map((b) => ({
@@ -1168,6 +1178,47 @@ async function checkRoutes(window: BrowserWindow): Promise<string> {
   }
 
   return t("smoke.routes", { count: barra.length });
+}
+
+/**
+ * A tela de sessões do Claude, lendo a pasta de exemplo: a chamada por
+ * programa fica de fora, cada estado aparece onde deve, e "Terminei" tira a
+ * sessão de "pela metade" e "Reabrir" devolve.
+ */
+async function checkClaudeSessions(window: BrowserWindow): Promise<string> {
+  await irPara(window, "sessoes");
+  const contar = `(() => {
+    const p = document.querySelector("[data-locum-probe=sessoes]");
+    return p && p.dataset.estado === "ready" ? Number(p.dataset.sessoes) : null;
+  })()`;
+  const total = await esperarProbe<number>(window, "sessoes", contar);
+  if (total !== 3) throw new Error(`a tela de sessões mostrou ${total} sessão(ões) e não 3`);
+
+  const estadoDe = (id: string) =>
+    `document.querySelector('[data-locum-sessao="${id}"]')?.dataset.locumSessaoEstado ?? null`;
+  const estados = (await window.webContents.executeJavaScript(
+    `[${[SESSOES_DE_EXEMPLO.aberta, SESSOES_DE_EXEMPLO.interrompida, SESSOES_DE_EXEMPLO.pelaMetade].map(estadoDe).join(",")}]`,
+  )) as (string | null)[];
+  if (estados.join(",") !== "working,interrupted,unfinished") {
+    throw new Error(`a tela de sessões classificou como ${estados.join(",")}`);
+  }
+
+  const alvo = SESSOES_DE_EXEMPLO.pelaMetade;
+  await window.webContents.executeJavaScript(
+    `(document.querySelector('[data-locum-sessao="${alvo}"] [data-locum-sessao-terminar]')?.click(), null)`,
+  );
+  await esperarProbe(window, "sessao terminada", `(${estadoDe(alvo)}) === "done" || document.querySelector('[data-locum-sessao="${alvo}"]') === null ? true : null`);
+  // Terminadas ficam recolhidas; abrir o grupo e reabrir devolve a sessão.
+  await window.webContents.executeJavaScript(
+    `(document.querySelector("[aria-expanded=false]")?.click(), null)`,
+  );
+  await esperarProbe(window, "grupo de terminadas", `document.querySelector('[data-locum-sessao="${alvo}"] [data-locum-sessao-reabrir]') ? true : null`);
+  await window.webContents.executeJavaScript(
+    `(document.querySelector('[data-locum-sessao="${alvo}"] [data-locum-sessao-reabrir]')?.click(), null)`,
+  );
+  await esperarProbe(window, "sessao reaberta", `(${estadoDe(alvo)}) === "unfinished" ? true : null`);
+
+  return t("smoke.claudeSessions", { count: total });
 }
 
 /**
@@ -5538,6 +5589,7 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
     ["agents", primeiroAgent],
     ["initiatives", undefined],
     ["initiatives", primeiraIniciativa],
+    ["sessoes", undefined],
     // Uma foto por seção, com o nome dela: a Configuração tem três.
     ["configuracao", "geral"],
     ["configuracao", "modelos"],

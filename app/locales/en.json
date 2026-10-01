@@ -373,7 +373,8 @@
     "agents": "Agents",
     "settings": "Settings",
     "version": "version {{version}}",
-    "versionHint": "Updates, in Settings"
+    "versionHint": "Updates, in Settings",
+    "sessions": "Sessions"
   },
   "notification": {
     "runFailed": {
@@ -845,7 +846,7 @@
     "schemeRefused": "not accepted outside a packaged app",
     "expectedRefusal": "bridge: the next error line is the gate's expected refusal",
     "bridge": "channels: {{channels}}, window without Node, values matching the services",
-    "renderer": "built page loaded, root mounted, Tailwind sheet in effect, {{routes}}, {{palette}}, {{initiatives}}, {{agents}}, {{config}}, review verdict switched on screen and saved to the pending item: {{review}}, {{runs}}, code block with highlighted spans: {{spans}}, the window reading runs: {{windowRuns}} and pending: {{windowPending}} through the bridge, {{language}}",
+    "renderer": "built page loaded, root mounted, Tailwind sheet in effect, {{routes}}, {{palette}}, {{initiatives}}, {{agents}}, {{config}}, review verdict switched on screen and saved to the pending item: {{review}}, {{sessions}}, {{runs}}, code block with highlighted spans: {{spans}}, the window reading runs: {{windowRuns}} and pending: {{windowPending}} through the bridge, {{language}}",
     "routes": "destinations: {{count}}",
     "palette": "command palette opening and closing by shortcut",
     "initiatives": "initiatives: {{initiatives}}, detail opening on the context tab with the initiative's title and switching to the agents tab",
@@ -872,7 +873,8 @@
     "slack": "a watched channel produced {{events}} normalized message(s) with author, channel, text and thread, one cursor per channel, and the second sweep reprocessed none",
     "digest": "conversation from {{channels}} channel(s) grouped by subject into {{messages}} message(s), {{dropped}} noise message(s) dropped before the model, the next delivery repeating none, and the digest parked in the inbox as reading, with the gate refusing draft, auto and an empty digest",
     "slackPost": "written reply became a pending item in channel {{channel}}, thread {{thread}}, with the model's text word for word, channel and thread taken from the event, made-up timestamp refused, and the gate refusing draft and auto",
-    "slackWindow": "Slack: {{server}} saved through the window and channel {{channel}} watched, with no bridge channel that publishes"
+    "slackWindow": "Slack: {{server}} saved through the window and channel {{channel}} watched, with no bridge channel that publishes",
+    "claudeSessions": "{{count}} Claude sessions classified, Mark done and Reopen round trip"
   },
   "status": {
     "done": "done",
@@ -1170,5 +1172,42 @@
         "description": "Figma's remote MCP server. Agents read frames and variables to compare screens with the design."
       }
     }
+  },
+  "claudeSessions": {
+    "title": "Claude sessions",
+    "lead": "Every Claude Code conversation on this machine in the last two weeks. Anything left halfway stays here until you resume it or mark it done.",
+    "refresh": "Refresh",
+    "loading": "Reading sessions…",
+    "refused": "Could not read sessions: {{message}}",
+    "empty": "No Claude Code sessions in the last two weeks.",
+    "groups": {
+      "unfinished_one": "Left halfway, {{count}}",
+      "unfinished_other": "Left halfway, {{count}}",
+      "unfinishedEmpty": "Nothing left halfway. Everything closed is marked done.",
+      "open_one": "Open now, {{count}}",
+      "open_other": "Open now, {{count}}",
+      "openEmpty": "No Claude Code open right now.",
+      "done_one": "Done, {{count}}",
+      "done_other": "Done, {{count}}"
+    },
+    "state": {
+      "working": "Working",
+      "waiting": "Waiting for you",
+      "interrupted": "Stopped mid-turn",
+      "unfinished": "Closed, not done",
+      "done": "Done"
+    },
+    "tally": {
+      "unfinished": "Halfway",
+      "done": "Done"
+    },
+    "asked": "ended with a question",
+    "uncommitted_one": "{{count}} uncommitted file",
+    "uncommitted_other": "{{count}} uncommitted files",
+    "you": "You",
+    "openHint": "Open in a terminal",
+    "resume": "Resume",
+    "markDone": "Mark done",
+    "reopen": "Reopen"
   }
 }

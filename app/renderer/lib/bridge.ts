@@ -60,6 +60,8 @@ export const READ_CHANNELS = [
   "initiatives.root",
   // O terminal preferido, so leitura. Gravar vai por `sessions.setTerminal`.
   "sessions.terminal",
+  // As sessões do Claude Code da máquina. Só lê `~/.claude`, nunca escreve.
+  "claudeSessions.list",
   // Prompts salvos, para a aba de acoes da iniciativa copiar.
   "prompts.list",
   "runs.list",
@@ -233,6 +235,11 @@ export const ACTION_CHANNELS = [
   "sessions.open",
   "sessions.readHandoff",
   "sessions.setTerminal",
+  // Marcar sessão do Claude Code como terminada, desfazer a marca e retomar
+  // no terminal: preferência gravada e processo subindo, atrás de um clique.
+  "claudeSessions.markDone",
+  "claudeSessions.reopen",
+  "claudeSessions.resume",
 ] as const satisfies readonly BridgeChannel[];
 
 export type ActionChannel = (typeof ACTION_CHANNELS)[number];

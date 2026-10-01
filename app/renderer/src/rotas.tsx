@@ -1,4 +1,4 @@
-import { Bot, Inbox as InboxIcon, ListTree, Settings, Sun, Target } from "lucide-react";
+import { Bot, Inbox as InboxIcon, ListTree, Settings, Sun, Target, TerminalSquare } from "lucide-react";
 import type { ComponentType } from "react";
 import { Agents } from "./telas/agents";
 import { Configuracao } from "./telas/configuracao";
@@ -6,6 +6,7 @@ import { Execucoes } from "./telas/execucoes";
 import { Hoje } from "./telas/hoje";
 import { Inbox } from "./telas/inbox";
 import { Initiatives } from "./telas/initiatives";
+import { Sessoes } from "./telas/sessoes";
 
 /**
  * O que uma tela recebe do layout.
@@ -37,6 +38,7 @@ export const ROTAS = [
   { id: "initiatives", rotulo: "nav.initiatives", icone: Target, Tela: Initiatives },
   { id: "execucoes", rotulo: "nav.runs", icone: ListTree, Tela: Execucoes },
   { id: "agents", rotulo: "nav.agents", icone: Bot, Tela: Agents },
+  { id: "sessoes", rotulo: "nav.sessions", icone: TerminalSquare, Tela: Sessoes },
   { id: "configuracao", rotulo: "nav.settings", icone: Settings, Tela: Configuracao },
 ] as const satisfies readonly {
   id: string;

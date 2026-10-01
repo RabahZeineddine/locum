@@ -28,6 +28,7 @@ import { promptService } from "../src/services/prompt-service.js";
 import { providerService } from "../src/services/provider-service.js";
 import { runService } from "../src/services/run-service.js";
 import { sessionService } from "../src/services/session-service.js";
+import { claudeSessionsService } from "../src/services/claude-sessions-service.js";
 import { slackService } from "../src/services/slack-service.js";
 import { startupService } from "../src/services/startup-service.js";
 import { updateService } from "../src/services/update-service.js";
@@ -153,6 +154,10 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "sessions.readHandoff": (slug) => sessionService.readHandoff(slug),
     "sessions.terminal": () => sessionService.terminal(),
     "sessions.setTerminal": (value) => sessionService.setTerminal(value),
+    "claudeSessions.list": () => claudeSessionsService.list(),
+    "claudeSessions.markDone": (id, lastActivityAt) => claudeSessionsService.markDone(id, lastActivityAt),
+    "claudeSessions.reopen": (id) => claudeSessionsService.reopen(id),
+    "claudeSessions.resume": (id) => claudeSessionsService.resume(id),
     "prompts.list": (initiativeId) => promptService.list(initiativeId),
 
     "runs.list": (filter) => runService.list(filter),

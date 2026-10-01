@@ -390,7 +390,8 @@
     "agents": "Agents",
     "settings": "Configuração",
     "version": "versão {{version}}",
-    "versionHint": "Atualização, em Configuração"
+    "versionHint": "Atualização, em Configuração",
+    "sessions": "Sessões"
   },
   "notification": {
     "runFailed": {
@@ -877,7 +878,7 @@
     "schemeRefused": "não aceito fora de app empacotado",
     "expectedRefusal": "ponte: a próxima linha de erro é a recusa esperada da gate",
     "bridge": "canais: {{channels}}, janela sem Node, valores batendo com os serviços",
-    "renderer": "página construída carregada, raiz montada, folha do Tailwind valendo, {{routes}}, {{palette}}, {{initiatives}}, {{agents}}, {{config}}, veredito da revisão trocado pela tela e gravado na pendência: {{review}}, {{runs}}, bloco de código com trechos destacados: {{spans}}, a janela lendo execuções: {{windowRuns}} e pendências: {{windowPending}} pela ponte, {{language}}",
+    "renderer": "página construída carregada, raiz montada, folha do Tailwind valendo, {{routes}}, {{palette}}, {{initiatives}}, {{agents}}, {{config}}, veredito da revisão trocado pela tela e gravado na pendência: {{review}}, {{sessions}}, {{runs}}, bloco de código com trechos destacados: {{spans}}, a janela lendo execuções: {{windowRuns}} e pendências: {{windowPending}} pela ponte, {{language}}",
     "routes": "destinos: {{count}}",
     "palette": "paleta abrindo e fechando pelo atalho",
     "initiatives": "iniciativas: {{initiatives}}, detalhe abrindo na aba de contexto com o título da iniciativa e trocando para a aba de agents",
@@ -904,7 +905,8 @@
     "slack": "canal observado virou {{events}} mensagem(ns) normalizada(s) com autor, canal, texto e thread, um cursor por canal, e a segunda varredura não reprocessou nenhuma",
     "digest": "conversa de {{channels}} canal(is) agrupada por assunto em {{messages}} mensagem(ns), {{dropped}} de ruído descartada(s) antes do modelo, a entrega seguinte sem repetir nada, e o digest parado na inbox como leitura, com a gate recusando rascunho, automático e digest vazio",
     "slackPost": "resposta escrita virou pendência no canal {{channel}}, thread {{thread}}, com o texto do modelo palavra por palavra, canal e thread vindos do evento, carimbo inventado recusado, e a gate recusando rascunho e automático",
-    "slackWindow": "Slack: {{server}} guardado pela tela e o canal {{channel}} observado, sem canal de ponte que publique"
+    "slackWindow": "Slack: {{server}} guardado pela tela e o canal {{channel}} observado, sem canal de ponte que publique",
+    "claudeSessions": "{{count}} sessões do Claude classificadas, Terminei e Reabrir de ida e volta"
   },
   "status": {
     "done": "concluído",
@@ -1203,5 +1205,46 @@
         "description": "Servidor MCP remoto do Figma. Os agents leem frames e variáveis para comparar tela com design."
       }
     }
+  },
+  "claudeSessions": {
+    "title": "Sessões do Claude",
+    "lead": "Toda conversa do Claude Code nesta máquina nas últimas duas semanas. O que ficou pela metade fica aqui até você retomar ou marcar que terminou.",
+    "refresh": "Atualizar",
+    "loading": "Lendo as sessões…",
+    "refused": "Não consegui ler as sessões: {{message}}",
+    "empty": "Nenhuma sessão do Claude Code nas últimas duas semanas.",
+    "groups": {
+      "unfinished_one": "Ficou pela metade, {{count}}",
+      "unfinished_other": "Ficaram pela metade, {{count}}",
+      "unfinishedEmpty": "Nada pela metade. Tudo que foi fechado está marcado como terminado.",
+      "open_one": "Aberta agora, {{count}}",
+      "open_other": "Abertas agora, {{count}}",
+      "openEmpty": "Nenhum Claude Code aberto agora.",
+      "done_one": "Terminada, {{count}}",
+      "done_other": "Terminadas, {{count}}",
+      "unfinished_zero": "Ficaram pela metade, {{count}}",
+      "open_zero": "Abertas agora, {{count}}",
+      "done_zero": "Terminadas, {{count}}"
+    },
+    "state": {
+      "working": "Trabalhando",
+      "waiting": "Esperando você",
+      "interrupted": "Parou no meio",
+      "unfinished": "Fechada sem terminar",
+      "done": "Terminada"
+    },
+    "tally": {
+      "unfinished": "Pela metade",
+      "done": "Terminadas"
+    },
+    "asked": "terminou com uma pergunta",
+    "uncommitted_one": "{{count}} arquivo sem commit",
+    "uncommitted_other": "{{count}} arquivos sem commit",
+    "you": "Você",
+    "openHint": "Aberta no terminal",
+    "resume": "Retomar",
+    "markDone": "Terminei",
+    "reopen": "Reabrir",
+    "uncommitted_zero": "{{count}} arquivos sem commit"
   }
 }

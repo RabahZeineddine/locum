@@ -8,6 +8,7 @@ import type { GithubService } from "../src/services/github-service.js";
 import type { Language, LanguageState } from "../src/services/i18n-service.js";
 import type { InitiativeService } from "../src/services/initiative-service.js";
 import type { SessionService } from "../src/services/session-service.js";
+import type { ClaudeSessionsService } from "../src/services/claude-sessions-service.js";
 import type { MachineService } from "../src/services/machine-service.js";
 import type { McpService } from "../src/services/mcp-service.js";
 import type { MetricsService } from "../src/services/metrics-service.js";
@@ -132,6 +133,14 @@ interface ServiceApi {
   /** Terminal preferido, na secao geral da configuracao. */
   "sessions.terminal": SessionService["terminal"];
   "sessions.setTerminal": SessionService["setTerminal"];
+  /**
+   * As sessões do Claude Code da máquina, lidas de `~/.claude`, para a tela que
+   * mostra o que ficou pela metade. Marcar e retomar são cliques.
+   */
+  "claudeSessions.list": ClaudeSessionsService["list"];
+  "claudeSessions.markDone": ClaudeSessionsService["markDone"];
+  "claudeSessions.reopen": ClaudeSessionsService["reopen"];
+  "claudeSessions.resume": ClaudeSessionsService["resume"];
 
   /** Prompts salvos, para copiar na aba de acoes da iniciativa. */
   "prompts.list": PromptService["list"];
@@ -423,6 +432,10 @@ export const BRIDGE_CHANNELS = [
   "sessions.readHandoff",
   "sessions.terminal",
   "sessions.setTerminal",
+  "claudeSessions.list",
+  "claudeSessions.markDone",
+  "claudeSessions.reopen",
+  "claudeSessions.resume",
   "prompts.list",
   "runs.list",
   "runs.get",
