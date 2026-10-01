@@ -44,7 +44,7 @@ skill conforme os arquivos alterados, e a review parada na fila até você manda
 | Execuções | histórico, custo, saída de cada passo, e reexecução de um passo só |
 | Iniciativas | unidade de trabalho com contexto próprio, servidores MCP escopados e sessão do Claude Code aberta com esse contexto |
 | Gatilhos | varredura de PR no GitHub, mensagem no Slack, agenda |
-| Conexões | vitrine com Claude Code, GitHub, Slack, Jira e servidores MCP remotos (Linear, Notion, Sentry, Figma e outros) com OAuth de um clique |
+| Conexões | vitrine com Claude Code, GitHub, Slack e servidores MCP remotos (Atlassian, Linear, Notion, Sentry, Figma e outros) com OAuth de um clique; a conexão Atlassian também serve de destino para as tarefas no Jira |
 | Provedores | Anthropic, OpenAI, Google e qualquer endpoint compatível com OpenAI (GLM, Ollama, OpenRouter, Groq e afins), com tabela de fallback |
 | Servidor MCP | `Locum --mcp` expõe 32 ferramentas; o Claude Code se conecta num clique e consegue montar agent, gatilho e iniciativa conversando |
 

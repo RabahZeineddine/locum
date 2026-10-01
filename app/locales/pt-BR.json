@@ -650,7 +650,8 @@
       "description": "Onde a tarefa vai parar quando um achado virar trabalho: um Jira ou um repositório de issues do GitHub. A credencial fica no keychain, e a tela mostra se existe e o que o último teste alcançou, nunca o valor.",
       "empty": "nenhum tracker cadastrado",
       "kind": "tipo de tracker",
-      "kindJira": "Jira",
+      "kindJiraAtlassian": "Jira pela conexão Atlassian",
+      "kindJira": "Jira com API token",
       "kindGithub": "GitHub Issues",
       "id": "identificador do tracker",
       "idHint": "meu-jira",
@@ -678,6 +679,8 @@
       "testing": "testando...",
       "stored": "credencial guardada no keychain",
       "absent": "nenhuma credencial guardada",
+      "viaAtlassian": "usa a credencial da conexão Atlassian",
+      "atlassianMissing": "a Atlassian não está conectada: conecte acima",
       "lastCheck_one": "{{count}} destino visível em {{when}}",
       "lastCheck_other": "{{count}} destinos visíveis em {{when}}",
       "answered_one": "respondeu {{count}} destino visível",
@@ -687,6 +690,7 @@
       "bridgeRefused": "a ponte recusou: {{message}}",
       "refused": "a ponte recusou: {{message}}",
       "howTo": "No Jira, o token sai de id.atlassian.com/manage-profile/security/api-tokens e vai junto com o e-mail da conta, porque a autenticação é básica. No GitHub Issues, um token com escrita em Issues no repositório de destino basta, e ele é separado do token que lê pull request de propósito. Cadastrar não abre tarefa nenhuma: quem abre é o passo de ação, que para na fila até você aprovar.",
+      "howToAtlassian": "Pela conexão Atlassian não há token para colar: o tracker usa a autorização feita acima. O endereço é o do site, como empresa.atlassian.net, e o destino padrão é a chave do projeto. Quem não quer passar pela conexão escolhe Jira com API token. Cadastrar não abre tarefa nenhuma: quem abre é o passo de ação, que para na fila até você aprovar.",
       "answered_zero": "respondeu {{count}} destinos visíveis",
       "lastCheck_zero": "{{count}} destinos visíveis em {{when}}"
     },
@@ -1064,11 +1068,7 @@
       },
       "atlassian": {
         "tagline": "Jira e Confluence pelo servidor oficial",
-        "description": "Servidor MCP oficial da Atlassian (Rovo), com Jira e Confluence. A autorização escolhe o site e o que o Locum enxerga."
-      },
-      "jira": {
-        "tagline": "Destino das tarefas que os agents abrem",
-        "description": "Jira como tracker de tarefa, com e-mail e API token. É o destino do que um agent propõe abrir, sempre depois da sua aprovação."
+        "description": "Servidor MCP oficial da Atlassian (Rovo), com Jira e Confluence. A autorização escolhe o site e o que o Locum enxerga, e a mesma conexão serve de destino para as tarefas que um agent propõe abrir, sempre depois da sua aprovação."
       },
       "slack": {
         "tagline": "Canais que o Locum acompanha",

@@ -2184,7 +2184,8 @@ async function checkRegisteredProviders(window: BrowserWindow): Promise<string> 
  */
 async function checkTrackers(window: BrowserWindow): Promise<string> {
   await irPara(window, "configuracao", "conexoes");
-  await abrirConexao(window, "jira");
+  // O GitHub Issues mora no painel do GitHub, e o Jira no da Atlassian.
+  await abrirConexao(window, "github");
   const { createServer } = await import("node:http");
   const { eq } = await import("drizzle-orm");
   const { db, schema } = await import("../src/db/index.js");
@@ -2209,6 +2210,7 @@ async function checkTrackers(window: BrowserWindow): Promise<string> {
 
   const idDoServico = `locum-smoke-jira-${randomUUID().slice(0, 6)}`;
   const idDaTela = `locum-smoke-gh-${randomUUID().slice(0, 6)}`;
+  const idDaAtlassian = `locum-smoke-atl-${randomUUID().slice(0, 6)}`;
   const contaDoJira = `smoke-${randomUUID().slice(0, 8)}@exemplo.invalido`;
   const tokenDoJira = `token-de-mentira-${randomUUID()}`;
   const tokenDoGithub = `token-de-mentira-${randomUUID()}`;
@@ -2218,6 +2220,7 @@ async function checkTrackers(window: BrowserWindow): Promise<string> {
   const tarefaExistente = `${projetoDoJira}-7`;
   const nomeDoServico = `Jira ${idDoServico}`;
   const nomeDaTela = `Issues ${idDaTela}`;
+  const nomeDaAtlassian = `Atlassian ${idDaAtlassian}`;
 
   /**
    * Um tracker de mentira que fala as duas línguas.
@@ -2370,14 +2373,9 @@ async function checkTrackers(window: BrowserWindow): Promise<string> {
           campo.dispatchEvent(new Event("input", { bubbles: true }));
           return true;
         };
-        const tipo = document.querySelector("[data-locum-tracker-tipo]");
-        if (tipo === null) return false;
-        const seletorDeTipo = Object.getOwnPropertyDescriptor(
-          window.HTMLSelectElement.prototype,
-          "value",
-        ).set;
-        seletorDeTipo.call(tipo, "github-issues");
-        tipo.dispatchEvent(new Event("change", { bubbles: true }));
+        // O painel do GitHub só cadastra GitHub Issues, então não há tipo a
+        // escolher, e um seletor aqui seria o Jira aparecendo fora do lugar.
+        if (document.querySelector("[data-locum-tracker-tipo]") !== null) return false;
         if (!digitar("[data-locum-tracker-id]", ${JSON.stringify(idDaTela)})) return false;
         if (!digitar("[data-locum-tracker-nome]", ${JSON.stringify(nomeDaTela)})) return false;
         if (!digitar("[data-locum-tracker-url]", ${JSON.stringify(baseUrl)})) return false;
@@ -2401,8 +2399,8 @@ async function checkTrackers(window: BrowserWindow): Promise<string> {
         return ${JSON.stringify(idDaTela)} in achados ? achados : null;
       })()`,
     );
-    if (naTela[idDoServico] !== "jira" || naTela[idDaTela] !== "github-issues") {
-      throw new Error(`a tela listou ${JSON.stringify(naTela)}`);
+    if (naTela[idDaTela] !== "github-issues" || idDoServico in naTela) {
+      throw new Error(`o painel do GitHub listou ${JSON.stringify(naTela)}`);
     }
 
     // A credencial indo da tela para o cofre, e voltando como "guardada" e
@@ -2489,6 +2487,49 @@ async function checkTrackers(window: BrowserWindow): Promise<string> {
       throw new Error("a credencial do tracker removido ficou no cofre");
     }
 
+    // O Jira pela conexão Atlassian. O site entra como se copia da barra do
+    // navegador, e o tracker não guarda credencial própria: quem autoriza é a
+    // conexão. O teste de conexão não roda aqui porque, com a Atlassian
+    // conectada na máquina, ele sairia para o site de verdade.
+    await trackerService.register({
+      id: idDaAtlassian,
+      kind: "jira-atlassian",
+      label: nomeDaAtlassian,
+      baseUrl: "locum-smoke.atlassian.invalid",
+      project: projetoDoJira,
+    });
+    const atlassian = (await trackerService.list()).find((tracker) => tracker.id === idDaAtlassian);
+    if (atlassian?.baseUrl !== "https://locum-smoke.atlassian.invalid") {
+      throw new Error(`o site da Atlassian ficou ${atlassian?.baseUrl}`);
+    }
+    const guardouNaAtlassian = await trackerService.setSecret(idDaAtlassian, tokenDoJira).then(
+      () => true,
+      () => false,
+    );
+    if (guardouNaAtlassian) throw new Error("o tracker pela Atlassian aceitou credencial propria");
+
+    await abrirConexao(window, "atlassian");
+    const naAtlassian = await esperarProbe<{ kind: string; credencial: boolean; outros: number }>(
+      window,
+      "trackers no painel da Atlassian",
+      `(() => {
+        const linha = document.querySelector('[data-locum-tracker="${idDaAtlassian}"]');
+        if (linha === null) return null;
+        return {
+          kind: linha.dataset.locumTrackerKind,
+          credencial: linha.querySelector("[data-locum-tracker-credencial]") !== null,
+          outros: document.querySelectorAll('[data-locum-tracker-kind="github-issues"]').length,
+        };
+      })()`,
+    );
+    if (naAtlassian.kind !== "jira-atlassian" || naAtlassian.credencial || naAtlassian.outros > 0) {
+      throw new Error(`o painel da Atlassian mostrou ${JSON.stringify(naAtlassian)}`);
+    }
+
+    if (!(await trackerService.remove(idDaAtlassian))) {
+      throw new Error("o tracker pela Atlassian nao saiu");
+    }
+
     if (!(await trackerService.remove(idDoServico))) {
       throw new Error("o tracker cadastrado pelo servico nao saiu");
     }
@@ -2499,7 +2540,7 @@ async function checkTrackers(window: BrowserWindow): Promise<string> {
     // A limpeza não confia em o exame ter chegado ao fim: o que ele planta no
     // banco e no cofre de quem desenvolve sai daqui mesmo quando uma linha
     // acima estourou.
-    for (const id of [idDoServico, idDaTela]) {
+    for (const id of [idDoServico, idDaTela, idDaAtlassian]) {
       const ref = trackerCredentialRef(id);
       secretService.remove(ref);
       await settingsService.remove(`tracker:${ref}:checkedAt`);

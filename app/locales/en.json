@@ -623,7 +623,8 @@
       "description": "Where a task lands when a finding becomes work: a Jira or a GitHub Issues repository. The credential stays in the keychain, and the screen shows whether one exists and what the last test reached, never the value.",
       "empty": "no tracker registered",
       "kind": "tracker kind",
-      "kindJira": "Jira",
+      "kindJiraAtlassian": "Jira through the Atlassian connection",
+      "kindJira": "Jira with API token",
       "kindGithub": "GitHub Issues",
       "id": "tracker identifier",
       "idHint": "my-jira",
@@ -651,6 +652,8 @@
       "testing": "testing...",
       "stored": "credential stored in the keychain",
       "absent": "no credential stored",
+      "viaAtlassian": "uses the Atlassian connection credential",
+      "atlassianMissing": "Atlassian is not connected: connect it above",
       "lastCheck_one": "{{count}} destination visible at {{when}}",
       "lastCheck_other": "{{count}} destinations visible at {{when}}",
       "answered_one": "answered with {{count}} visible destination",
@@ -659,7 +662,8 @@
       "failed": "the tracker refused: {{error}}",
       "bridgeRefused": "the bridge refused: {{message}}",
       "refused": "the bridge refused: {{message}}",
-      "howTo": "On Jira, the token comes from id.atlassian.com/manage-profile/security/api-tokens and travels with the account email, because the authentication is basic. On GitHub Issues, a token with write access to Issues on the target repository is enough, and it is deliberately separate from the token that reads pull requests. Registering opens no task: the action step does that, and it waits in the queue for your approval."
+      "howTo": "On Jira, the token comes from id.atlassian.com/manage-profile/security/api-tokens and travels with the account email, because the authentication is basic. On GitHub Issues, a token with write access to Issues on the target repository is enough, and it is deliberately separate from the token that reads pull requests. Registering opens no task: the action step does that, and it waits in the queue for your approval.",
+      "howToAtlassian": "Through the Atlassian connection there is no token to paste: the tracker uses the authorization made above. The address is the site, such as company.atlassian.net, and the default destination is the project key. If you prefer not to go through the connection, pick Jira with API token. Registering opens no task: the action step does that, and it waits in the queue for your approval."
     },
     "budgets": {
       "title": "Budget",
@@ -1032,11 +1036,7 @@
       },
       "atlassian": {
         "tagline": "Jira and Confluence through the official server",
-        "description": "Atlassian's official MCP server (Rovo), with Jira and Confluence. Authorization picks the site and what Locum sees."
-      },
-      "jira": {
-        "tagline": "Where tasks opened by agents go",
-        "description": "Jira as the task tracker, with email and API token. It receives what an agent proposes to open, always after your approval."
+        "description": "Atlassian's official MCP server (Rovo), with Jira and Confluence. Authorization picks the site and what Locum sees, and the same connection is where tasks proposed by an agent go, always after your approval."
       },
       "slack": {
         "tagline": "Channels Locum follows",

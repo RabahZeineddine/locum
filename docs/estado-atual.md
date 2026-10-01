@@ -120,6 +120,7 @@ que a interface vai usar.
 | ação de review com modo rascunho e modo aprovação | escrita, sem teste com token; publica com o veredito da auditoria como evento da review, APPROVE, COMMENT ou REQUEST_CHANGES, e pendência sem veredito sai como comentário; aprovar ou pedir mudança nunca sai sozinho, porque o handler segura a proposta na fila mesmo com o passo em modo automático |
 | veredito da review | a auditoria devolve `verdict` preso no esquema de saída, com o critério de cada um no prompt; a tela de revisão mostra o veredito e deixa trocar antes de aprovar, gravando na pendência junto com os achados; aprovar sem achado é publicável, comentar sem achado não |
 | tracker de tarefa, Jira e GitHub Issues | adaptador, cadastro no banco e credencial no keychain; teste de conexão e lista de destinos pela interface, verificado contra um tracker de mentira em 127.0.0.1 |
+| Jira pela conexão Atlassian | tipo `jira-atlassian`, que fala com o servidor MCP oficial usando a autorização da vitrine, sem e-mail nem token; o Jira mora no painel da Atlassian e o GitHub Issues no do GitHub, e o cartão Jira separado saiu |
 | passo de ação que abre tarefa | `tracker.create_issue` monta o item e para na fila; corpo escrito por um passo de modelo antes dele, modo travado em `approve` pelo handler |
 | descoberta de skills e seleção por arquivo alterado | pronto |
 | servidor MCP próprio | 32 ferramentas de leitura, configuração, execução e iniciativa sobre a camada de serviço, servido pelo próprio app em `--mcp` e cadastrado no Claude Code por um botão em Conexões |
@@ -1016,6 +1017,18 @@ faz o texto ser legível antes de sair: prosa gerada dentro da publicação só
 apareceria depois de publicada. Os dois passos saem prontos em
 `app/src/seed/tracker-issue.ts`, como fragmento para concatenar num agent, e não
 como agent semente: o `pr-review` não tem tracker para apontar.
+
+O Jira tem dois caminhos. O `jira` fala REST com e-mail e API token, e o
+`jira-atlassian` passa pelo servidor MCP oficial da Atlassian, com a autorização
+que a vitrine já fez. O segundo não guarda credencial própria: o cadastro só tem
+o site, `setSecret` recusa, e remover o tracker não apaga `mcp/atlassian`,
+porque essa autorização serve a outras coisas além dele. O site vai como
+`cloudId`, que as ferramentas aceitam no lugar do UUID. O tipo da tarefa sai dos
+tipos do projeto, porque num site em português ele se chama `Tarefa` e um `Task`
+fixo seria recusado. O teste de conexão desse tipo não roda no smoke: com a
+Atlassian conectada na máquina de quem desenvolve, ele sairia para o site de
+verdade. Quem cobre a conversa com o servidor é `test/jira-atlassian.test.ts`,
+com um servidor de mentira injetado no serviço.
 
 Para exercitar cliente MCP sem depender de nada instalado na máquina, existe
 `app/src/fixtures/mcp-fixture-server.ts`, um servidor stdio de brinquedo com as

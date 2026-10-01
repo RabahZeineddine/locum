@@ -3,7 +3,6 @@ import { githubService, type GithubService } from "./github-service.js";
 import { mcpOAuthService, type McpOAuthService } from "./mcp-oauth-service.js";
 import { mcpService, type McpService } from "./mcp-service.js";
 import { slackService, type SlackService } from "./slack-service.js";
-import { trackerService, type TrackerService } from "./tracker-service.js";
 
 export type ConnectionCategory = "dev" | "communication" | "work" | "observability" | "data";
 
@@ -45,7 +44,6 @@ export const CATALOG: CatalogEntry[] = [
   { id: "linear", name: "Linear", category: "work", kind: "oauth", url: "https://mcp.linear.app/mcp", logo: "linear", color: "5E6AD2" },
   { id: "notion", name: "Notion", category: "work", kind: "oauth", url: "https://mcp.notion.com/mcp", logo: "notion", color: "000000" },
   { id: "atlassian", name: "Atlassian", category: "work", kind: "oauth", url: "https://mcp.atlassian.com/v1/mcp", logo: "atlassian", color: "0052CC" },
-  { id: "jira", name: "Jira", category: "work", kind: "panel", logo: "atlassian", color: "0052CC" },
   { id: "slack", name: "Slack", category: "communication", kind: "panel", logo: null, color: "4A154B" },
   { id: "teams", name: "Microsoft Teams", category: "communication", kind: "soon", logo: null, color: "5059C9" },
   { id: "sentry", name: "Sentry", category: "observability", kind: "oauth", url: "https://mcp.sentry.dev/mcp", logo: "sentry", color: "362D59" },
@@ -70,7 +68,6 @@ export interface ConnectionServiceDeps {
   claudeCode: ClaudeCodeService;
   github: GithubService;
   slack: SlackService;
-  trackers: TrackerService;
 }
 
 /**
@@ -89,7 +86,6 @@ export class ConnectionService {
       claudeCode: claudeCodeService,
       github: githubService,
       slack: slackService,
-      trackers: trackerService,
       ...deps,
     };
   }
@@ -210,10 +206,6 @@ export class ConnectionService {
         return { ...base, state: s.connected ? "connected" : "attention" };
       }
       case "panel": {
-        if (entry.id === "jira") {
-          const jira = (await this.deps.trackers.list()).filter((t) => t.kind === "jira");
-          return { ...base, state: jira.some((t) => t.stored) ? "connected" : "available" };
-        }
         if (entry.id === "slack") {
           const s = await this.deps.slack.get();
           return { ...base, state: s.server === null ? "available" : "connected" };

@@ -1,5 +1,8 @@
 import { eq } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
+import { McpRegistry } from "../mcp/registry.js";
+import type { McpCaller } from "../sources/mcp-poll.js";
+import { ATLASSIAN_SERVER, JiraAtlassianAdapter } from "../trackers/jira-atlassian.js";
 import {
   buildTracker,
   isTrackerKind,
@@ -10,6 +13,7 @@ import {
   type TrackerKind,
   type TrackerProject,
 } from "../trackers/registry.js";
+import { mcpService } from "./mcp-service.js";
 import { secretService, type SecretService } from "./secret-service.js";
 import { settingsService, type SettingsService } from "./settings-service.js";
 
@@ -28,6 +32,33 @@ export function trackerCredentialRef(id: string): string {
   return `tracker/${id}`;
 }
 
+/**
+ * Onde mora o token da conexão Atlassian, que o `jira-atlassian` usa.
+ *
+ * É o endereço que o `McpOAuthService` grava para o servidor da vitrine. O
+ * tracker só pergunta se ele existe; quem lê e renova é o serviço de OAuth.
+ */
+const ATLASSIAN_TOKEN_REF = `mcp/${ATLASSIAN_SERVER}`;
+
+/** Credencial que vem de uma conexão, e não de um token guardado pelo tracker. */
+function pelaConexao(kind: string): boolean {
+  return kind === "jira-atlassian";
+}
+
+/**
+ * Chama uma ferramenta de um servidor MCP habilitado, abrindo e fechando a
+ * conexão na mesma chamada, como a resposta no Slack faz.
+ */
+const chamarMcp: McpCaller = async (server, tool, args) => {
+  const registry = McpRegistry.fromList(await mcpService.enabledConfigs());
+  if (!registry.has(server)) throw new Error(`servidor MCP "${server}" nao esta conectado`);
+  try {
+    return await registry.callTool(server, tool, args);
+  } finally {
+    await registry.closeAll();
+  }
+};
+
 /** O que a última conferência descobriu, guardado por referência de cofre. */
 const CONFERIDO_EM = "checkedAt";
 const PROJETOS = "projects";
@@ -40,12 +71,15 @@ export interface TrackerInfo {
   baseUrl: string;
   /** Destino padrão do cadastro, ou nulo quando ninguém escolheu ainda. */
   project: string | null;
-  /** O e-mail que o Jira exige junto do token. Nulo no GitHub. */
+  /** O e-mail que o Jira exige junto do token. Nulo no GitHub e pela Atlassian. */
   account: string | null;
   enabled: boolean;
   /** Endereço do segredo no cofre. O valor não cabe neste tipo, de propósito. */
   ref: string;
-  /** Existe texto cifrado guardado. Vale mesmo sem keychain neste processo. */
+  /**
+   * Existe texto cifrado guardado. Vale mesmo sem keychain neste processo. No
+   * `jira-atlassian`, diz se a conexão Atlassian está autorizada.
+   */
   stored: boolean;
   /** Este processo alcança o keychain, isto é, dá para gravar valor. */
   vault: boolean;
@@ -95,6 +129,7 @@ export class TrackerService {
     private readonly db: Db = defaultDb,
     private readonly secrets: SecretService = secretService,
     private readonly settings: SettingsService = settingsService,
+    private readonly mcp: McpCaller = chamarMcp,
   ) {}
 
   private chave(ref: string, sufixo: string): string {
@@ -125,7 +160,7 @@ export class TrackerService {
           account: row.account,
           enabled: row.enabled,
           ref,
-          stored: this.secrets.has(ref),
+          stored: this.secrets.has(pelaConexao(row.kind) ? ATLASSIAN_TOKEN_REF : ref),
           vault: this.secrets.available,
           checkedAt: conferidoEm === undefined ? null : Number(conferidoEm),
           projectCount: projetos === undefined ? null : Number(projetos),
@@ -164,8 +199,11 @@ export class TrackerService {
       throw new Error("o Jira autentica por e-mail e token, entao o e-mail da conta e obrigatorio");
     }
 
-    const baseUrl = (input.baseUrl?.trim() ?? "") || TRACKER_DEFAULT_BASE_URL[input.kind];
+    let baseUrl = (input.baseUrl?.trim() ?? "") || TRACKER_DEFAULT_BASE_URL[input.kind];
     if (baseUrl.length === 0) throw new Error("tracker sem endereco base nao se cadastra");
+    // Pela Atlassian o endereço é o do site, e quem copia da barra do navegador
+    // costuma trazer só `empresa.atlassian.net`.
+    if (input.kind === "jira-atlassian" && !/^https?:\/\//.test(baseUrl)) baseUrl = `https://${baseUrl}`;
 
     let endereco: URL;
     try {
@@ -254,6 +292,9 @@ export class TrackerService {
     const limpo = secret.trim();
     if (limpo.length === 0) throw new Error("credencial vazia nao se guarda, use clearSecret");
 
+    if (pelaConexao(row.kind)) {
+      throw new Error(`o tracker "${id}" usa a conexão Atlassian e nao guarda credencial propria`);
+    }
     const ref = row.credentialRef ?? trackerCredentialRef(id);
     this.secrets.set(ref, limpo);
     await this.esquecerConferencia(ref);
@@ -290,7 +331,8 @@ export class TrackerService {
   async testConnection(id: string): Promise<TrackerCheck> {
     const row = await this.linha(id);
     const ref = row.credentialRef ?? trackerCredentialRef(id);
-    if (this.secrets.get(ref) === undefined) return { ok: false, reason: "missing" };
+    const credencial = pelaConexao(row.kind) ? ATLASSIAN_TOKEN_REF : ref;
+    if (!this.secrets.has(credencial)) return { ok: false, reason: "missing" };
 
     try {
       const projetos = await this.listProjects(id);
@@ -357,6 +399,12 @@ export class TrackerService {
    */
   private async adapter(id: string): Promise<TrackerAdapter> {
     const row = await this.linha(id);
+    if (pelaConexao(row.kind)) {
+      if (!this.secrets.has(ATLASSIAN_TOKEN_REF)) {
+        throw new Error(`o tracker "${id}" usa a conexão Atlassian, que nao esta autorizada`);
+      }
+      return new JiraAtlassianAdapter(row.baseUrl, (tool, args) => this.mcp(ATLASSIAN_SERVER, tool, args));
+    }
     const ref = row.credentialRef ?? trackerCredentialRef(id);
     const secret = this.secrets.get(ref);
 

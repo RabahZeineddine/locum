@@ -11,8 +11,13 @@
  * para isso custaria mais em tempo de subida do que economiza em código.
  */
 
-/** Os dois que existiam na versão Python, e nada além deles. */
-export const TRACKER_KINDS = ["jira", "github-issues"] as const;
+/**
+ * Os dois que existiam na versão Python, e o Jira pela conexão Atlassian.
+ *
+ * `jira-atlassian` não tem token próprio: fala pelo servidor MCP da Atlassian
+ * que a vitrine conectou por OAuth, e o adaptador mora em `jira-atlassian.ts`.
+ */
+export const TRACKER_KINDS = ["jira", "jira-atlassian", "github-issues"] as const;
 export type TrackerKind = (typeof TRACKER_KINDS)[number];
 
 export function isTrackerKind(value: string): value is TrackerKind {
@@ -372,6 +377,7 @@ class GithubIssuesAdapter implements TrackerAdapter {
 /** O endereço de fábrica de cada tipo, para o cadastro que não quer escolher. */
 export const TRACKER_DEFAULT_BASE_URL: Record<TrackerKind, string> = {
   jira: "",
+  "jira-atlassian": "",
   "github-issues": "https://api.github.com",
 };
 
@@ -381,5 +387,9 @@ export function buildTracker(conexao: TrackerConnection): TrackerAdapter {
       return new JiraAdapter(conexao);
     case "github-issues":
       return new GithubIssuesAdapter(conexao);
+    case "jira-atlassian":
+      // Não há segredo para montar este: a credencial é a da conexão, e quem
+      // sabe chamar o servidor MCP é o `TrackerService`.
+      throw new Error("o Jira pela conexão Atlassian se monta pelo TrackerService");
   }
 }

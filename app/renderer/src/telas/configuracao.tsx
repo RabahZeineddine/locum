@@ -242,9 +242,14 @@ export function Configuracao({ detalhe, navegar }: TelaProps) {
           <Vitrine
             paineis={{
               "claude-code": <ClaudeCode />,
-              github: <Github />,
+              github: (
+                <>
+                  <Github />
+                  <Trackers kinds={["github-issues"]} />
+                </>
+              ),
               slack: <Slack />,
-              jira: <Trackers />,
+              atlassian: <Trackers kinds={["jira-atlassian", "jira"]} />,
             }}
           />
 
@@ -1746,11 +1751,17 @@ type ExameDoTracker =
  * Abrir tarefa não tem botão aqui, e nem canal na ponte. Quem abre é o passo
  * de ação, que nasce em modo de aprovação e para na fila até alguém clicar.
  */
-function Trackers() {
+const ROTULO_DO_TRACKER: Record<Tracker["kind"], string> = {
+  "jira-atlassian": "settings.trackers.kindJiraAtlassian",
+  jira: "settings.trackers.kindJira",
+  "github-issues": "settings.trackers.kindGithub",
+};
+
+function Trackers({ kinds }: { kinds: Tracker["kind"][] }) {
   const { t } = useTranslation();
   const inicial = useRead("trackers.list");
   const [relido, setRelido] = useState<Tracker[] | null>(null);
-  const [tipo, setTipo] = useState<Tracker["kind"]>("jira");
+  const [tipo, setTipo] = useState<Tracker["kind"]>(kinds[0] ?? "jira");
   const [id, setId] = useState("");
   const [nome, setNome] = useState("");
   const [url, setUrl] = useState("");
@@ -1759,7 +1770,9 @@ function Trackers() {
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
-  const lista = relido ?? inicial.data ?? [];
+  // Cada painel da vitrine mostra só os trackers do serviço dele: o Jira mora
+  // com a Atlassian, o GitHub Issues com o GitHub.
+  const lista = (relido ?? inicial.data ?? []).filter((tracker) => kinds.includes(tracker.kind));
   const recusa = erro ?? inicial.error?.message ?? null;
 
   const reler = (): Promise<void> =>
@@ -1785,7 +1798,7 @@ function Trackers() {
         kind: tipo,
         label: nome.trim(),
         baseUrl: url.trim(),
-        account: conta.trim(),
+        account: tipo === "jira" ? conta.trim() : "",
         project: projeto.trim(),
       }).then(() => {
         setId("");
@@ -1797,12 +1810,15 @@ function Trackers() {
     );
   };
 
-  // O e-mail só é exigido no Jira, e o endereço só no Jira também: o GitHub
+  // O e-mail só é exigido no Jira por token, e o endereço só no Jira: o GitHub
   // tem um de fábrica, e pedir que alguém digite api.github.com é cerimônia.
+  // Pela Atlassian o site basta, porque a credencial é a da conexão.
+  const jira = tipo === "jira" || tipo === "jira-atlassian";
   const valido =
     id.trim() !== "" &&
     nome.trim() !== "" &&
-    (tipo !== "jira" || (url.trim() !== "" && conta.trim() !== ""));
+    (!jira || url.trim() !== "") &&
+    (tipo !== "jira" || conta.trim() !== "");
 
   return (
     <div
@@ -1826,16 +1842,21 @@ function Trackers() {
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        <select
-          aria-label={t("settings.trackers.kind")}
-          className="border-border bg-background focus-visible:ring-ring rounded-md border px-2 py-1.5 text-xs outline-none focus-visible:ring-1"
-          data-locum-tracker-tipo=""
-          onChange={(evento) => setTipo(evento.target.value as Tracker["kind"])}
-          value={tipo}
-        >
-          <option value="jira">{t("settings.trackers.kindJira")}</option>
-          <option value="github-issues">{t("settings.trackers.kindGithub")}</option>
-        </select>
+        {kinds.length > 1 ? (
+          <select
+            aria-label={t("settings.trackers.kind")}
+            className="border-border bg-background focus-visible:ring-ring rounded-md border px-2 py-1.5 text-xs outline-none focus-visible:ring-1"
+            data-locum-tracker-tipo=""
+            onChange={(evento) => setTipo(evento.target.value as Tracker["kind"])}
+            value={tipo}
+          >
+            {kinds.map((kind) => (
+              <option key={kind} value={kind}>
+                {t(ROTULO_DO_TRACKER[kind])}
+              </option>
+            ))}
+          </select>
+        ) : null}
         <input
           aria-label={t("settings.trackers.id")}
           autoComplete="off"
@@ -1863,7 +1884,7 @@ function Trackers() {
           data-locum-tracker-url=""
           onChange={(evento) => setUrl(evento.target.value)}
           placeholder={t(
-            tipo === "jira" ? "settings.trackers.baseUrlHint" : "settings.trackers.baseUrlDefault",
+            jira ? "settings.trackers.baseUrlHint" : "settings.trackers.baseUrlDefault",
           )}
           spellCheck={false}
           value={url}
@@ -1887,7 +1908,7 @@ function Trackers() {
           data-locum-tracker-projeto=""
           onChange={(evento) => setProjeto(evento.target.value)}
           placeholder={t(
-            tipo === "jira" ? "settings.trackers.projectHint" : "settings.trackers.repoHint",
+            jira ? "settings.trackers.projectHint" : "settings.trackers.repoHint",
           )}
           spellCheck={false}
           value={projeto}
@@ -1903,7 +1924,9 @@ function Trackers() {
         </Button>
       </div>
 
-      <p className="text-muted-foreground max-w-[68ch] text-xs">{t("settings.trackers.howTo")}</p>
+      <p className="text-muted-foreground max-w-[68ch] text-xs">
+        {t(tipo === "jira-atlassian" ? "settings.trackers.howToAtlassian" : "settings.trackers.howTo")}
+      </p>
 
       {recusa === null ? null : (
         <p className="text-destructive text-xs" data-locum-trackers-erro={recusa}>
@@ -1964,6 +1987,10 @@ function LinhaDoTracker({
     );
   };
 
+  // Pela Atlassian não há token do tracker: a credencial é a da conexão, que
+  // se autoriza e se esquece no próprio cartão da Atlassian.
+  const pelaConexao = tracker.kind === "jira-atlassian";
+
   const testadoEm =
     tracker.checkedAt === null
       ? null
@@ -1983,11 +2010,7 @@ function LinhaDoTracker({
         <span className="font-mono text-[13px]">{tracker.id}</span>
         <span className="text-muted-foreground text-xs">{tracker.label}</span>
         <Badge variant="outline">
-          {t(
-            tracker.kind === "jira"
-              ? "settings.trackers.kindJira"
-              : "settings.trackers.kindGithub",
-          )}
+          {t(ROTULO_DO_TRACKER[tracker.kind])}
         </Badge>
         <span className="text-muted-foreground font-mono text-xs">{tracker.baseUrl}</span>
         {tracker.project === null ? null : (
@@ -2024,29 +2047,33 @@ function LinhaDoTracker({
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <input
-          aria-label={t("settings.trackers.field", { tracker: tracker.id })}
-          autoComplete="off"
-          className="border-border bg-background focus-visible:ring-ring min-w-56 flex-1 rounded-md border px-3 py-1.5 font-mono text-xs outline-none focus-visible:ring-1"
-          data-locum-tracker-credencial={tracker.id}
-          disabled={!tracker.vault}
-          onChange={(evento) => setValor(evento.target.value)}
-          placeholder={t(
-            tracker.vault ? "settings.trackers.placeholder" : "settings.trackers.noVault",
-          )}
-          spellCheck={false}
-          type="password"
-          value={valor}
-        />
-        <Button
-          data-locum-tracker-guardar={tracker.id}
-          disabled={salvando || !tracker.vault || valor.trim().length === 0}
-          onClick={guardar}
-          size="sm"
-          variant="secondary"
-        >
-          {t(salvando ? "settings.trackers.saving" : "settings.trackers.save")}
-        </Button>
+        {pelaConexao ? null : (
+          <>
+            <input
+              aria-label={t("settings.trackers.field", { tracker: tracker.id })}
+              autoComplete="off"
+              className="border-border bg-background focus-visible:ring-ring min-w-56 flex-1 rounded-md border px-3 py-1.5 font-mono text-xs outline-none focus-visible:ring-1"
+              data-locum-tracker-credencial={tracker.id}
+              disabled={!tracker.vault}
+              onChange={(evento) => setValor(evento.target.value)}
+              placeholder={t(
+                tracker.vault ? "settings.trackers.placeholder" : "settings.trackers.noVault",
+              )}
+              spellCheck={false}
+              type="password"
+              value={valor}
+            />
+            <Button
+              data-locum-tracker-guardar={tracker.id}
+              disabled={salvando || !tracker.vault || valor.trim().length === 0}
+              onClick={guardar}
+              size="sm"
+              variant="secondary"
+            >
+              {t(salvando ? "settings.trackers.saving" : "settings.trackers.save")}
+            </Button>
+          </>
+        )}
         <Button
           data-locum-tracker-testar={tracker.id}
           disabled={exame.fase === "testando"}
@@ -2056,7 +2083,7 @@ function LinhaDoTracker({
         >
           {t(exame.fase === "testando" ? "settings.trackers.testing" : "settings.trackers.test")}
         </Button>
-        {tracker.stored ? (
+        {tracker.stored && !pelaConexao ? (
           <Button
             data-locum-tracker-esquecer={tracker.id}
             onClick={esquecer}
@@ -2069,7 +2096,15 @@ function LinhaDoTracker({
       </div>
 
       <p className="text-muted-foreground text-xs">
-        {t(tracker.stored ? "settings.trackers.stored" : "settings.trackers.absent")}
+        {t(
+          pelaConexao
+            ? tracker.stored
+              ? "settings.trackers.viaAtlassian"
+              : "settings.trackers.atlassianMissing"
+            : tracker.stored
+              ? "settings.trackers.stored"
+              : "settings.trackers.absent",
+        )}
         {testadoEm === null
           ? null
           : ` · ${t("settings.trackers.lastCheck", {
@@ -2078,12 +2113,20 @@ function LinhaDoTracker({
             })}`}
       </p>
 
-      <ResultadoDoTracker exame={exame} tracker={tracker.id} />
+      <ResultadoDoTracker exame={exame} pelaConexao={pelaConexao} tracker={tracker.id} />
     </li>
   );
 }
 
-function ResultadoDoTracker({ exame, tracker }: { exame: ExameDoTracker; tracker: string }) {
+function ResultadoDoTracker({
+  exame,
+  pelaConexao,
+  tracker,
+}: {
+  exame: ExameDoTracker;
+  pelaConexao: boolean;
+  tracker: string;
+}) {
   const { t } = useTranslation();
   if (exame.fase === "parado" || exame.fase === "testando") return null;
 
@@ -2123,7 +2166,7 @@ function ResultadoDoTracker({ exame, tracker }: { exame: ExameDoTracker; tracker
       data-locum-tracker-teste={tracker}
     >
       {resultado.reason === "missing"
-        ? t("settings.trackers.missing")
+        ? t(pelaConexao ? "settings.trackers.atlassianMissing" : "settings.trackers.missing")
         : t("settings.trackers.failed", { error: resultado.message })}
     </p>
   );

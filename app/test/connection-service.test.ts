@@ -11,7 +11,6 @@ import type { McpOAuthService } from "../src/services/mcp-oauth-service.js";
 import { McpService } from "../src/services/mcp-service.js";
 import { SecretService } from "../src/services/secret-service.js";
 import type { SlackService } from "../src/services/slack-service.js";
-import type { TrackerService } from "../src/services/tracker-service.js";
 
 before(() => {
   migrateDb();
@@ -51,7 +50,6 @@ function montar(sonda = { oauth: true, registration: true }) {
     claudeCode: { status: async () => ({ registered: false, current: false }) } as unknown as ClaudeCodeService,
     github: { status: async () => ({ stored: true, env: false, identity: { login: "octo" } }) } as unknown as GithubService,
     slack: { get: async () => ({ server: null }) } as unknown as SlackService,
-    trackers: { list: async () => [] } as unknown as TrackerService,
   });
   return { servico, mcp, chamadas };
 }
