@@ -1,7 +1,7 @@
 // Primeiro import de propósito: com `--mcp`, desvia o log do stdout antes que
 // qualquer outro módulo escreva nele.
 import { modoMcp } from "./mcp-stdout.js";
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, shell } from "electron";
 import { captureDeepLinks } from "./deep-link.js";
 import { VERSAO } from "./versao.js";
 import { randomUUID } from "node:crypto";
@@ -1047,6 +1047,30 @@ async function esperarPonte(
  * o hash e exatamente o que o clique na barra lateral faz: o caminho exercitado
  * aqui e o mesmo que uma pessoa usa.
  */
+/**
+ * Abre o painel de uma conexão na vitrine, que é onde mora o formulário dela.
+ * Painel de outra conexão aberto antes é fechado primeiro, para o formulário
+ * procurado não ficar escondido atrás dele.
+ */
+async function abrirConexao(window: BrowserWindow, id: string): Promise<void> {
+  await esperarProbe<true>(
+    window,
+    `cartão ${id}`,
+    `(() => {
+      const aberto = document.querySelector("[data-locum-painel-conexao]");
+      if (aberto !== null && aberto.dataset.locumPainelConexao !== ${JSON.stringify(id)}) {
+        aberto.querySelector("header button")?.click();
+        return null;
+      }
+      if (aberto !== null) return true;
+      const botao = document.querySelector('[data-locum-conexao=${JSON.stringify(id)}] button');
+      if (botao === null) return null;
+      botao.click();
+      return null;
+    })()`,
+  );
+}
+
 async function irPara(window: BrowserWindow, id: string, detalhe?: string): Promise<void> {
   const cauda = detalhe === undefined ? "" : `/${encodeURIComponent(detalhe)}`;
   const esperado = `${id}|${detalhe ?? ""}`;
@@ -2160,6 +2184,7 @@ async function checkRegisteredProviders(window: BrowserWindow): Promise<string> 
  */
 async function checkTrackers(window: BrowserWindow): Promise<string> {
   await irPara(window, "configuracao", "conexoes");
+  await abrirConexao(window, "jira");
   const { createServer } = await import("node:http");
   const { eq } = await import("drizzle-orm");
   const { db, schema } = await import("../src/db/index.js");
@@ -3770,6 +3795,7 @@ async function checkMcpPoll(): Promise<string> {
  */
 async function checkSlackWindow(window: BrowserWindow): Promise<string> {
   await irPara(window, "configuracao", "conexoes");
+  await abrirConexao(window, "slack");
   const { slackService } = await import("../src/services/slack-service.js");
   const { FIXTURE_SERVER } = await import("../src/fixtures/mcp-fixture.js");
 
@@ -4179,6 +4205,7 @@ async function esperarDoServico<T>(
  */
 async function checkGithub(window: BrowserWindow): Promise<string> {
   await irPara(window, "configuracao", "conexoes");
+  await abrirConexao(window, "github");
   const { secretService } = await import("../src/services/secret-service.js");
   const { settingsService } = await import("../src/services/settings-service.js");
   const {
@@ -5526,6 +5553,14 @@ async function main(): Promise<void> {
     command: process.execPath,
     args: app.isPackaged ? [] : [join(__dirname, "main.cjs")],
   });
+
+  // Conexão por OAuth abre o navegador padrão para a pessoa autorizar, e todo
+  // uso de servidor MCP renova antes o token que estiver perto de vencer. Vale
+  // também no modo MCP, que usa os mesmos servidores pelo Claude Code.
+  const { mcpOAuthService } = await import("../src/services/mcp-oauth-service.js");
+  const { mcpService } = await import("../src/services/mcp-service.js");
+  mcpOAuthService.useBrowser((url) => shell.openExternal(url));
+  mcpService.useRefresher((name) => mcpOAuthService.refreshIfNeeded(name));
 
   if (modoMcp) {
     await serveMcp();

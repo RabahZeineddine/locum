@@ -970,5 +970,107 @@
     "handoff": {
       "block": "## Handoff ({{file}})\n\n{{content}}"
     }
+  },
+  "connections": {
+    "title": "Connections",
+    "description": "What Locum reaches outside this machine. Services with OAuth connect in one click: the browser opens, you authorize in the service itself and the token stays in the keychain.",
+    "search": "Search connections",
+    "loading": "loading...",
+    "none": "No connection matches this filter.",
+    "connect": "Connect",
+    "reconnect": "Reconnect",
+    "connecting": "connecting...",
+    "disconnect": "Disconnect",
+    "manage": "Manage",
+    "setup": "Set up",
+    "soon": "Coming soon",
+    "close": "Close",
+    "categories": {
+      "all": "All",
+      "dev": "Development",
+      "work": "Work",
+      "communication": "Communication",
+      "observability": "Observability",
+      "data": "Data and payments"
+    },
+    "state": {
+      "connected": "connected",
+      "attention": "needs attention",
+      "soon": "coming soon"
+    },
+    "oauth": {
+      "how": "Opens the browser on the service's authorization page. No client id or token to copy.",
+      "waiting": "Authorize in the browser window that opened. This screen updates by itself when you come back."
+    },
+    "custom": {
+      "open": "Add MCP server",
+      "title": "Your own MCP server",
+      "description": "Any remote MCP server, by address. If it asks for OAuth with dynamic registration, the browser opens for you to authorize; if not, it is just registered.",
+      "name": "Name",
+      "namePlaceholder": "my-server",
+      "url": "Address",
+      "urlPlaceholder": "https://example.com/mcp",
+      "urlHint": "Must be https, except on localhost.",
+      "submit": "Add"
+    },
+    "catalog": {
+      "claude-code": {
+        "tagline": "Your agents and queue in any Claude Code session",
+        "description": "Registers Locum as an MCP server in this machine's Claude Code. Every new session sees agents, runs and the queue, using the credentials stored here."
+      },
+      "github": {
+        "tagline": "PRs, issues and watched repositories",
+        "description": "Personal GitHub token, stored in the keychain. PR triggers and reviews use it to read the repository."
+      },
+      "linear": {
+        "tagline": "Issues, projects and cycles",
+        "description": "Linear's official MCP server. Agents read issues and projects; writing still goes through the approval queue."
+      },
+      "notion": {
+        "tagline": "Workspace pages and databases",
+        "description": "Notion's official MCP server. Agents search and read the pages and databases you allow during authorization."
+      },
+      "atlassian": {
+        "tagline": "Jira and Confluence through the official server",
+        "description": "Atlassian's official MCP server (Rovo), with Jira and Confluence. Authorization picks the site and what Locum sees."
+      },
+      "jira": {
+        "tagline": "Where tasks opened by agents go",
+        "description": "Jira as the task tracker, with email and API token. It receives what an agent proposes to open, always after your approval."
+      },
+      "slack": {
+        "tagline": "Channels Locum follows",
+        "description": "Picks which channels Locum reads, and through which MCP server. Slack's official server does not accept dynamic registration yet, so it comes in as your own MCP server."
+      },
+      "teams": {
+        "tagline": "Microsoft Teams channels and chats",
+        "description": "Read Teams channels and chats from agents.",
+        "soon": "Teams' official MCP server is in preview and needs a Copilot license and tenant admin consent. It lands here when it leaves preview."
+      },
+      "sentry": {
+        "tagline": "Errors, issues and releases",
+        "description": "Sentry's official MCP server. Agents look up errors and releases to investigate incidents."
+      },
+      "cloudflare": {
+        "tagline": "Workers, logs and observability",
+        "description": "Cloudflare's official MCP server, with access to Workers and observability of the authorized account."
+      },
+      "vercel": {
+        "tagline": "Deployments, projects and logs",
+        "description": "Vercel's official MCP server. Agents read deployments, projects and build logs."
+      },
+      "supabase": {
+        "tagline": "Project database, schema and logs",
+        "description": "Supabase's official MCP server. Pick during authorization which organization Locum sees."
+      },
+      "stripe": {
+        "tagline": "Customers, payments and subscriptions",
+        "description": "Stripe's official MCP server. Use a test account if the agent does not need real data."
+      },
+      "figma": {
+        "tagline": "Files, frames and design system",
+        "description": "Figma's remote MCP server. Agents read frames and variables to compare screens with the design."
+      }
+    }
   }
 }

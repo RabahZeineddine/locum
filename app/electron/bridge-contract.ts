@@ -1,6 +1,7 @@
 import type { AgentService } from "../src/services/agent-service.js";
 import type { ApprovalService } from "../src/services/approval-service.js";
 import type { ClaudeCodeService } from "../src/services/claude-code-service.js";
+import type { ConnectionService } from "../src/services/connection-service.js";
 import type { CredentialService } from "../src/services/credential-service.js";
 import type { ExecutionService } from "../src/services/execution-service.js";
 import type { GithubService } from "../src/services/github-service.js";
@@ -242,6 +243,19 @@ interface ServiceApi {
   "claudeCode.connect": ClaudeCodeService["connect"];
 
   /**
+   * A vitrine de conexões: catálogo e estado de cada uma nesta máquina.
+   *
+   * `connect` de servidor remoto abre o navegador para a pessoa autorizar no
+   * próprio serviço; o token volta pelo loopback e vai direto ao keychain,
+   * sem atravessar a ponte. `addCustom` cadastra um servidor MCP pelo
+   * endereço, e só conecta se ele pedir OAuth com registro automático.
+   */
+  "connections.list": ConnectionService["list"];
+  "connections.connect": ConnectionService["connect"];
+  "connections.disconnect": ConnectionService["disconnect"];
+  "connections.addCustom": ConnectionService["addCustom"];
+
+  /**
    * O tracker de tarefa: cadastrar, apontar destino e testar.
    *
    * O segredo atravessa numa direção só, como no GitHub e nos provedores:
@@ -428,6 +442,10 @@ export const BRIDGE_CHANNELS = [
   "github.check",
   "claudeCode.status",
   "claudeCode.connect",
+  "connections.list",
+  "connections.connect",
+  "connections.disconnect",
+  "connections.addCustom",
   "trackers.list",
   "trackers.register",
   "trackers.remove",

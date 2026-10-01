@@ -33,10 +33,20 @@ export interface McpServerEntry {
  * quem entra no executor precisam valer para os tres.
  */
 export class McpService {
+  private refresher: ((name: string) => Promise<void>) | null = null;
+
   constructor(
     private readonly db: Db = defaultDb,
     private readonly secrets: SecretService = secretService,
   ) {}
+
+  /**
+   * Quem renova token antes de conectar. Fica injetado, e não importado, porque
+   * a renovação de OAuth depende deste serviço para gravar a credencial.
+   */
+  useRefresher(refresher: (name: string) => Promise<void>): void {
+    this.refresher = refresher;
+  }
 
   async list(): Promise<McpServerEntry[]> {
     const rows = await this.db.select().from(schema.mcpServers);
@@ -57,7 +67,12 @@ export class McpService {
       .select()
       .from(schema.mcpServers)
       .where(eq(schema.mcpServers.enabled, true));
-    return rows.map((row) => this.connectable(row));
+    await this.refreshAll(rows);
+    const atuais = await this.db
+      .select()
+      .from(schema.mcpServers)
+      .where(eq(schema.mcpServers.enabled, true));
+    return atuais.map((row) => this.connectable(row));
   }
 
   /** Cadastra ou atualiza pelo nome, que e a chave que o passo referencia. */
@@ -150,14 +165,29 @@ export class McpService {
    * fecha, sem deixar processo para tras.
    */
   private async probe<T>(name: string, fn: (registry: McpRegistry) => Promise<T>): Promise<T> {
-    const row = await this.row(name);
-    if (!row) throw new Error(`servidor MCP "${name}" nao cadastrado`);
+    if (!(await this.row(name))) throw new Error(`servidor MCP "${name}" nao cadastrado`);
+    await this.refreshAll([{ name }]);
+    const row = (await this.row(name))!;
 
     const registry = McpRegistry.fromList([this.connectable(row)]);
     try {
       return await fn(registry);
     } finally {
       await registry.closeAll();
+    }
+  }
+
+  /**
+   * Renova o que estiver para vencer. Falha de renovação não derruba a
+   * conexão: o servidor responde 401 com o token velho, e a tela mostra
+   * "reconectar", que é o desfecho certo para refresh token revogado.
+   */
+  private async refreshAll(rows: { name: string }[]): Promise<void> {
+    if (this.refresher === null) return;
+    for (const { name } of rows) {
+      await this.refresher(name).catch((err: unknown) => {
+        console.error(`renovar o token de ${name} falhou: ${err instanceof Error ? err.message : String(err)}`);
+      });
     }
   }
 

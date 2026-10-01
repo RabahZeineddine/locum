@@ -14,6 +14,7 @@ import { VERSAO } from "./versao.js";
 import { agentService } from "../src/services/agent-service.js";
 import { approvalService } from "../src/services/approval-service.js";
 import { claudeCodeService } from "../src/services/claude-code-service.js";
+import { connectionService } from "../src/services/connection-service.js";
 import { credentialService } from "../src/services/credential-service.js";
 import { executionService } from "../src/services/execution-service.js";
 import { githubService } from "../src/services/github-service.js";
@@ -209,6 +210,10 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "github.check": () => githubService.check(),
     "claudeCode.status": () => claudeCodeService.status(),
     "claudeCode.connect": () => claudeCodeService.connect(),
+    "connections.list": () => connectionService.list(),
+    "connections.connect": (id) => connectionService.connect(id),
+    "connections.disconnect": (id) => connectionService.disconnect(id),
+    "connections.addCustom": (input) => connectionService.addCustom(input),
 
     "trackers.list": () => trackerService.list(),
     "trackers.register": (cadastro) => trackerService.register(cadastro),

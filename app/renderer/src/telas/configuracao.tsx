@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { call, read, useRead, type ReadResult } from "@/lib/bridge";
 import { cn } from "@/lib/utils";
 import { EscolhaDoModelo } from "../assistente-modelo";
+import { Vitrine } from "./conexoes";
 import { useIdioma } from "../idioma";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -238,26 +239,14 @@ export function Configuracao({ detalhe, navegar }: TelaProps) {
 
       {secao === "conexoes" ? (
         <>
-          <Secao descricao={t("settings.claudeCode.description")} titulo={t("settings.claudeCode.title")}>
-            <ClaudeCode />
-          </Secao>
-          <Secao
-            descricao={t("settings.github.description")}
-            titulo={t("settings.github.title")}
-          >
-            <Github />
-          </Secao>
-
-          <Secao descricao={t("settings.slack.description")} titulo={t("settings.slack.title")}>
-            <Slack />
-          </Secao>
-
-          <Secao
-            descricao={t("settings.trackers.description")}
-            titulo={t("settings.trackers.title")}
-          >
-            <Trackers />
-          </Secao>
+          <Vitrine
+            paineis={{
+              "claude-code": <ClaudeCode />,
+              github: <Github />,
+              slack: <Slack />,
+              jira: <Trackers />,
+            }}
+          />
 
           <Secao
             descricao={t("settings.servers.description")}

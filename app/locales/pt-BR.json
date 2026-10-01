@@ -1002,5 +1002,107 @@
     "handoff": {
       "block": "## Passagem ({{file}})\n\n{{content}}"
     }
+  },
+  "connections": {
+    "title": "Conexões",
+    "description": "O que o Locum alcança fora desta máquina. Serviço com OAuth liga num clique: o navegador abre, você autoriza no próprio serviço e o token fica no keychain.",
+    "search": "Buscar conexão",
+    "loading": "carregando...",
+    "none": "Nenhuma conexão com esse filtro.",
+    "connect": "Conectar",
+    "reconnect": "Reconectar",
+    "connecting": "conectando...",
+    "disconnect": "Desconectar",
+    "manage": "Gerenciar",
+    "setup": "Configurar",
+    "soon": "Em breve",
+    "close": "Fechar",
+    "categories": {
+      "all": "Todas",
+      "dev": "Desenvolvimento",
+      "work": "Trabalho",
+      "communication": "Comunicação",
+      "observability": "Observabilidade",
+      "data": "Dados e pagamentos"
+    },
+    "state": {
+      "connected": "conectado",
+      "attention": "precisa de atenção",
+      "soon": "em breve"
+    },
+    "oauth": {
+      "how": "Abre o navegador na tela de autorização do serviço. Nada de client id nem token para copiar.",
+      "waiting": "Autorize na janela do navegador que abriu. Esta tela atualiza sozinha quando voltar."
+    },
+    "custom": {
+      "open": "Adicionar servidor MCP",
+      "title": "Servidor MCP próprio",
+      "description": "Qualquer servidor MCP remoto, pelo endereço. Se ele pedir OAuth com registro automático, o navegador abre para você autorizar; se não pedir, ele só entra no cadastro.",
+      "name": "Nome",
+      "namePlaceholder": "meu-servidor",
+      "url": "Endereço",
+      "urlPlaceholder": "https://exemplo.com/mcp",
+      "urlHint": "Precisa ser https, exceto em localhost.",
+      "submit": "Adicionar"
+    },
+    "catalog": {
+      "claude-code": {
+        "tagline": "Seus agents e a fila em qualquer sessão do Claude Code",
+        "description": "Cadastra o Locum como servidor MCP do Claude Code desta máquina. Qualquer sessão nova passa a ver agents, execuções e a fila, usando as credenciais guardadas aqui."
+      },
+      "github": {
+        "tagline": "PRs, issues e repositórios observados",
+        "description": "Token pessoal do GitHub, guardado no keychain. É ele que os gatilhos de PR e as revisões usam para ler o repositório."
+      },
+      "linear": {
+        "tagline": "Issues, projetos e ciclos",
+        "description": "Servidor MCP oficial do Linear. Os agents leem issues e projetos; escrever continua passando pela fila de aprovação."
+      },
+      "notion": {
+        "tagline": "Páginas e bases do workspace",
+        "description": "Servidor MCP oficial do Notion. Os agents buscam e leem páginas e bases que você liberar na autorização."
+      },
+      "atlassian": {
+        "tagline": "Jira e Confluence pelo servidor oficial",
+        "description": "Servidor MCP oficial da Atlassian (Rovo), com Jira e Confluence. A autorização escolhe o site e o que o Locum enxerga."
+      },
+      "jira": {
+        "tagline": "Destino das tarefas que os agents abrem",
+        "description": "Jira como tracker de tarefa, com e-mail e API token. É o destino do que um agent propõe abrir, sempre depois da sua aprovação."
+      },
+      "slack": {
+        "tagline": "Canais que o Locum acompanha",
+        "description": "Escolhe quais canais o Locum lê, e por qual servidor MCP. O servidor oficial do Slack ainda não aceita registro automático, então ele entra como servidor MCP próprio."
+      },
+      "teams": {
+        "tagline": "Canais e chats do Microsoft Teams",
+        "description": "Ler canais e chats do Teams pelos agents.",
+        "soon": "O servidor MCP oficial do Teams está em prévia e exige licença do Copilot e consentimento do administrador do tenant. Entra aqui quando sair da prévia."
+      },
+      "sentry": {
+        "tagline": "Erros, issues e releases",
+        "description": "Servidor MCP oficial do Sentry. Os agents consultam erros e releases para investigar incidente."
+      },
+      "cloudflare": {
+        "tagline": "Workers, logs e observabilidade",
+        "description": "Servidor MCP oficial da Cloudflare, com acesso a Workers e observabilidade da conta autorizada."
+      },
+      "vercel": {
+        "tagline": "Deploys, projetos e logs",
+        "description": "Servidor MCP oficial da Vercel. Os agents leem deploys, projetos e logs de build."
+      },
+      "supabase": {
+        "tagline": "Banco, schema e logs do projeto",
+        "description": "Servidor MCP oficial do Supabase. Escolha na autorização a organização que o Locum enxerga."
+      },
+      "stripe": {
+        "tagline": "Clientes, pagamentos e assinaturas",
+        "description": "Servidor MCP oficial da Stripe. Use uma conta de teste se o agent não precisa de dado real."
+      },
+      "figma": {
+        "tagline": "Arquivos, frames e design system",
+        "description": "Servidor MCP remoto do Figma. Os agents leem frames e variáveis para comparar tela com design."
+      }
+    }
   }
 }
