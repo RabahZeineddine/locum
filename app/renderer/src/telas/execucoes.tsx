@@ -459,13 +459,88 @@ function Json({
   rotulo: string;
   valor: unknown;
 }) {
+  const { t } = useTranslation();
+  const legivel = valor !== null && typeof valor === "object";
+
   return (
     <div className="mt-2" {...(marcado ? { "data-locum-probe": "code-block" } : {})}>
       <p className="mb-1 text-muted-foreground text-xs">{rotulo}</p>
-      <CodeBlock code={JSON.stringify(valor, null, 2)} language="json">
-        <CodeBlockCopyButton />
-      </CodeBlock>
+      {/*
+        O que o modelo devolveu é um objeto, e lido como lista de campos ele se
+        entende sem saber JSON. O texto cru continua a um clique, para copiar
+        ou conferir o que a ação recebeu.
+      */}
+      {legivel ? (
+        <div className="rounded-md border border-border px-3 py-2">
+          <Valor valor={valor} />
+        </div>
+      ) : null}
+      <details className="mt-1" open={!legivel}>
+        <summary className="cursor-pointer text-muted-foreground text-xs">{t("runs.step.raw")}</summary>
+        <div className="mt-1">
+          <CodeBlock code={JSON.stringify(valor, null, 2)} language="json">
+            <CodeBlockCopyButton />
+          </CodeBlock>
+        </div>
+      </details>
     </div>
+  );
+}
+
+/** `risk_areas` e `riskAreas` viram "Risk areas". */
+function rotuloDoCampo(chave: string): string {
+  const palavras = chave
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .trim()
+    .toLowerCase();
+  return palavras.charAt(0).toUpperCase() + palavras.slice(1);
+}
+
+function simples(valor: unknown): boolean {
+  return valor === null || typeof valor !== "object";
+}
+
+/**
+ * Um valor qualquer da saída, desenhado pelo formato: texto vira parágrafo,
+ * lista de textos vira lista, objeto vira campos com rótulo. Três níveis
+ * bastam para o que um passo devolve; abaixo disso vai o JSON compacto.
+ */
+function Valor({ valor, nivel = 0 }: { valor: unknown; nivel?: number }) {
+  if (simples(valor)) {
+    return <span className="whitespace-pre-wrap text-sm">{valor === null ? "-" : String(valor)}</span>;
+  }
+  if (nivel >= 3) {
+    return <code className="break-all font-mono text-xs">{JSON.stringify(valor)}</code>;
+  }
+  if (Array.isArray(valor)) {
+    if (valor.length === 0) return <span className="text-muted-foreground text-sm">-</span>;
+    return (
+      <ul className={cn("flex flex-col gap-1", valor.every(simples) && "list-disc pl-5")}>
+        {valor.map((item, i) => (
+          <li
+            className={simples(item) ? undefined : "rounded-md border border-border/60 px-2 py-1"}
+            // A posição é a identidade: a saída não muda depois de gravada.
+            key={i}
+          >
+            <Valor nivel={nivel + 1} valor={item} />
+          </li>
+        ))}
+      </ul>
+    );
+  }
+  const campos = Object.entries(valor as Record<string, unknown>);
+  return (
+    <dl className="flex flex-col gap-1.5">
+      {campos.map(([chave, item]) => (
+        <div className={simples(item) ? "flex flex-wrap items-baseline gap-x-2" : "flex flex-col gap-0.5"} key={chave}>
+          <dt className="text-muted-foreground text-xs leading-5">{rotuloDoCampo(chave)}</dt>
+          <dd>
+            <Valor nivel={nivel + 1} valor={item} />
+          </dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 

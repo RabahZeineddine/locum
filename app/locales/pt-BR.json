@@ -439,7 +439,8 @@
         "attempt_one": "Tentativa {{attempt}}, {{count}} token de entrada e {{completion}} de saída.",
         "attempt_other": "Tentativa {{attempt}}, {{count}} tokens de entrada e {{completion}} de saída.",
         "attempt_zero": "Tentativa {{attempt}}, {{count}} tokens de entrada e {{completion}} de saída."
-      }
+      },
+      "raw": "Ver o JSON"
     },
     "progress": "{{done}}/{{total}} passos",
     "waiting_steps": "{{count}} aguardando",
