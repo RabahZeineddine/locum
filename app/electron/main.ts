@@ -3852,6 +3852,26 @@ async function checkSlackWindow(window: BrowserWindow): Promise<string> {
     `document.querySelector('[data-locum-slack-escolha] option[value="${FIXTURE_SERVER}"]') === null ? null : true`,
   );
 
+  // O bloco do servidor oficial aparece no mesmo painel, com o campo do client
+  // id e o botão que cria o app. Conectar abriria o navegador, então o smoke
+  // só confere que o caminho está lá e que nada foi ligado sozinho.
+  const oficial = await esperarProbe<{ conectado: string; campo: boolean; manifesto: boolean }>(
+    window,
+    "bloco do Slack oficial",
+    `(() => {
+      const bloco = document.querySelector('[data-locum-probe="slack-oficial"]');
+      if (bloco === null) return null;
+      return {
+        conectado: bloco.getAttribute("data-locum-slack-oficial-conectado"),
+        campo: bloco.querySelector("[data-locum-slack-client-id]") !== null,
+        manifesto: bloco.querySelector("[data-locum-slack-manifesto]") !== null,
+      };
+    })()`,
+  );
+  if (!oficial.campo || !oficial.manifesto) {
+    throw new Error(`bloco do Slack oficial incompleto: ${JSON.stringify(oficial)}`);
+  }
+
   try {
     const guardou = await window.webContents.executeJavaScript(
       `(() => {

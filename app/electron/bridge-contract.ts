@@ -254,6 +254,11 @@ interface ServiceApi {
   "connections.connect": ConnectionService["connect"];
   "connections.disconnect": ConnectionService["disconnect"];
   "connections.addCustom": ConnectionService["addCustom"];
+  /** Slack pelo servidor oficial, com o app que a pessoa criou no workspace. */
+  "connections.slackApp": ConnectionService["slackApp"];
+  "connections.connectSlack": ConnectionService["connectSlack"];
+  "connections.disconnectSlack": ConnectionService["disconnectSlack"];
+  "connections.openSlackManifest": ConnectionService["openSlackManifest"];
 
   /**
    * O tracker de tarefa: cadastrar, apontar destino e testar.
@@ -446,6 +451,10 @@ export const BRIDGE_CHANNELS = [
   "connections.connect",
   "connections.disconnect",
   "connections.addCustom",
+  "connections.slackApp",
+  "connections.connectSlack",
+  "connections.disconnectSlack",
+  "connections.openSlackManifest",
   "trackers.list",
   "trackers.register",
   "trackers.remove",

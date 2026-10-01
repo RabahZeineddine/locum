@@ -773,6 +773,24 @@
       "reconnect": "Reconectar",
       "connecting": "conectando...",
       "connectedHint": "Abra uma sessão nova do Claude Code e as ferramentas do Locum já aparecem."
+    },
+    "slackOfficial": {
+      "title": "Slack pelo servidor oficial",
+      "description": "O servidor MCP oficial do Slack não aceita registro automático, então ele usa um app criado por você no seu workspace. O app é público com PKCE: não há segredo, e o client id fica só nesta máquina.",
+      "stepCreate": "Crie o app pelo manifesto. O botão abre o Slack com tudo preenchido; se a tela vier vazia, copie o manifesto e cole em \"From a manifest\".",
+      "stepMcp": "No app, em Agents & AI Apps, ligue o acesso ao MCP.",
+      "stepInstall": "Instale o app no workspace como app interno. O Slack não deixa app fora do diretório usar o MCP de outro jeito.",
+      "stepClientId": "Copie o Client ID de Basic Information, cole abaixo e conecte. O navegador abre para você autorizar.",
+      "openManifest": "Criar o app no Slack",
+      "copyManifest": "Copiar manifesto",
+      "copied": "Copiado",
+      "clientId": "Client ID do app de Slack",
+      "clientIdHint": "1234567890.1234567890",
+      "connect": "Conectar",
+      "reconnect": "Conectar de novo",
+      "disconnect": "Desconectar",
+      "connected": "conectado",
+      "waiting": "Esperando a autorização no navegador."
     }
   },
   "severity": {
@@ -1072,7 +1090,7 @@
       },
       "slack": {
         "tagline": "Canais que o Locum acompanha",
-        "description": "Escolhe quais canais o Locum lê, e por qual servidor MCP. O servidor oficial do Slack ainda não aceita registro automático, então ele entra como servidor MCP próprio."
+        "description": "Canais que o Locum lê pelo servidor oficial do Slack, com um app criado no seu workspace, ou por outro servidor MCP que você já tenha."
       },
       "teams": {
         "tagline": "Canais e chats do Microsoft Teams",

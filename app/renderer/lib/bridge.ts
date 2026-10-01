@@ -88,6 +88,7 @@ export const READ_CHANNELS = [
   // escrever nada. Ligar é o `claudeCode.connect`, que mora entre as ações.
   "claudeCode.status",
   "connections.list",
+  "connections.slackApp",
   // Mesma razão de `github.status`: endereço, sim ou não, e o que a última
   // conferência contou. A credencial do tracker não volta por canal nenhum, e
   // criar tarefa não tem canal em lista nenhuma.
@@ -152,6 +153,9 @@ export const ACTION_CHANNELS = [
   "connections.connect",
   "connections.disconnect",
   "connections.addCustom",
+  "connections.connectSlack",
+  "connections.disconnectSlack",
+  "connections.openSlackManifest",
   // A chave de provedor indo para o keychain, e o exame que pergunta o
   // catálogo àquele provedor. Escrita e rede, os dois atrás de um clique, pelo
   // mesmo motivo dos canais do GitHub logo acima.

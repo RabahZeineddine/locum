@@ -26,6 +26,7 @@ type Tracker = ReadResult<"trackers.list">[number];
 type TesteDoTracker = ReadResult<"trackers.test">;
 type Gatilho = ReadResult<"triggers.schedule">[number];
 type CadastroDoSlack = ReadResult<"slack.get">;
+type AppDoSlack = ReadResult<"connections.slackApp">;
 type Ferramenta = ReadResult<"mcp.tools">[number];
 type Teste = ReadResult<"mcp.test">;
 
@@ -248,7 +249,12 @@ export function Configuracao({ detalhe, navegar }: TelaProps) {
                   <Trackers kinds={["github-issues"]} />
                 </>
               ),
-              slack: <Slack />,
+              slack: (
+                <>
+                  <SlackOficial />
+                  <Slack />
+                </>
+              ),
               atlassian: <Trackers kinds={["jira-atlassian", "jira"]} />,
             }}
           />
@@ -2496,6 +2502,120 @@ function LinhaDoObservado({
  * de resposta só diz por onde ela sairia: responder em thread é passo de ação,
  * que para na fila de aprovação e espera o clique de alguém.
  */
+/**
+ * Slack pelo servidor MCP oficial, com o app que a pessoa cria no workspace.
+ *
+ * O Slack não tem registro automático de cliente, então o caminho é guiado:
+ * criar o app pelo manifesto, ligar o MCP nele, colar o client id e autorizar.
+ * O client id não é segredo (o app é público, com PKCE) e fica na máquina.
+ */
+function SlackOficial() {
+  const { t } = useTranslation();
+  const inicial = useRead("connections.slackApp");
+  const [relido, setRelido] = useState<AppDoSlack | null>(null);
+  const [clientId, setClientId] = useState<string | null>(null);
+  const [ocupado, setOcupado] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [copiado, setCopiado] = useState(false);
+
+  const app = relido ?? inicial.data ?? null;
+  const valorDoClientId = clientId ?? app?.clientId ?? "";
+  const recusa = erro ?? inicial.error?.message ?? null;
+
+  const agir = (acao: Promise<unknown>): void => {
+    setOcupado(true);
+    acao
+      .then(
+        () => setErro(null),
+        (falha: unknown) => setErro(falha instanceof Error ? falha.message : String(falha)),
+      )
+      .then(() => read("connections.slackApp").then(setRelido, () => undefined))
+      .finally(() => setOcupado(false));
+  };
+
+  const copiar = (): void => {
+    if (app === null) return;
+    void navigator.clipboard.writeText(app.manifest).then(() => {
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 2000);
+    });
+  };
+
+  return (
+    <div
+      className="border-border flex flex-col gap-3 border-b px-4 py-3"
+      data-locum-probe="slack-oficial"
+      data-locum-slack-oficial-conectado={app?.connected ? "sim" : "nao"}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm font-medium">{t("settings.slackOfficial.title")}</span>
+        {app?.connected ? <Badge variant="secondary">{t("settings.slackOfficial.connected")}</Badge> : null}
+      </div>
+      <p className="text-muted-foreground text-xs">{t("settings.slackOfficial.description")}</p>
+
+      <ol className="text-muted-foreground flex list-decimal flex-col gap-1 pl-5 text-xs">
+        <li>{t("settings.slackOfficial.stepCreate")}</li>
+        <li>{t("settings.slackOfficial.stepMcp")}</li>
+        <li>{t("settings.slackOfficial.stepInstall")}</li>
+        <li>{t("settings.slackOfficial.stepClientId")}</li>
+      </ol>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          data-locum-slack-manifesto=""
+          disabled={ocupado}
+          onClick={() => agir(call("connections.openSlackManifest"))}
+          size="sm"
+          variant="secondary"
+        >
+          {t("settings.slackOfficial.openManifest")}
+        </Button>
+        <Button disabled={app === null} onClick={copiar} size="sm" variant="ghost">
+          {copiado ? t("settings.slackOfficial.copied") : t("settings.slackOfficial.copyManifest")}
+        </Button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          aria-label={t("settings.slackOfficial.clientId")}
+          autoComplete="off"
+          className="border-border bg-background focus-visible:ring-ring w-64 rounded-md border px-3 py-1.5 font-mono text-xs outline-none focus-visible:ring-1"
+          data-locum-slack-client-id=""
+          onChange={(evento) => setClientId(evento.target.value)}
+          placeholder={t("settings.slackOfficial.clientIdHint")}
+          spellCheck={false}
+          value={valorDoClientId}
+        />
+        <Button
+          data-locum-slack-conectar=""
+          disabled={ocupado || valorDoClientId.trim() === ""}
+          onClick={() => agir(call("connections.connectSlack", valorDoClientId.trim()))}
+          size="sm"
+        >
+          {app?.connected ? t("settings.slackOfficial.reconnect") : t("settings.slackOfficial.connect")}
+        </Button>
+        {app?.connected ? (
+          <Button
+            disabled={ocupado}
+            onClick={() => agir(call("connections.disconnectSlack"))}
+            size="sm"
+            variant="ghost"
+          >
+            {t("settings.slackOfficial.disconnect")}
+          </Button>
+        ) : null}
+      </div>
+
+      {ocupado ? <p className="text-muted-foreground text-xs">{t("settings.slackOfficial.waiting")}</p> : null}
+      {recusa !== null ? (
+        <p className="text-destructive text-xs" data-locum-slack-oficial-erro="">
+          {recusa}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function Slack() {
   const { t } = useTranslation();
   const servidores = useRead("mcp.list");

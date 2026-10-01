@@ -120,6 +120,7 @@ que a interface vai usar.
 | ação de review com modo rascunho e modo aprovação | escrita, sem teste com token; publica com o veredito da auditoria como evento da review, APPROVE, COMMENT ou REQUEST_CHANGES, e pendência sem veredito sai como comentário; aprovar ou pedir mudança nunca sai sozinho, porque o handler segura a proposta na fila mesmo com o passo em modo automático |
 | veredito da review | a auditoria devolve `verdict` preso no esquema de saída, com o critério de cada um no prompt; a tela de revisão mostra o veredito e deixa trocar antes de aprovar, gravando na pendência junto com os achados; aprovar sem achado é publicável, comentar sem achado não |
 | tracker de tarefa, Jira e GitHub Issues | adaptador, cadastro no banco e credencial no keychain; teste de conexão e lista de destinos pela interface, verificado contra um tracker de mentira em 127.0.0.1 |
+| Slack pelo servidor oficial | o painel do Slack guia a criação de um app no workspace a partir de manifesto (cliente público com PKCE, retorno fixo em `http://localhost:41753/callback`), recebe o client id e autoriza no navegador; a origem do Slack passa a usar `slack_read_channel` e `slack_send_message`. Verificado com servidor de autorização de mentira; contra o Slack de verdade, ainda não |
 | Jira pela conexão Atlassian | tipo `jira-atlassian`, que fala com o servidor MCP oficial usando a autorização da vitrine, sem e-mail nem token; o Jira mora no painel da Atlassian e o GitHub Issues no do GitHub, e o cartão Jira separado saiu |
 | passo de ação que abre tarefa | `tracker.create_issue` monta o item e para na fila; corpo escrito por um passo de modelo antes dele, modo travado em `approve` pelo handler |
 | descoberta de skills e seleção por arquivo alterado | pronto |
@@ -1029,6 +1030,31 @@ fixo seria recusado. O teste de conexão desse tipo não roda no smoke: com a
 Atlassian conectada na máquina de quem desenvolve, ele sairia para o site de
 verdade. Quem cobre a conversa com o servidor é `test/jira-atlassian.test.ts`,
 com um servidor de mentira injetado no serviço.
+
+## Slack pelo servidor oficial
+
+O `https://mcp.slack.com/mcp` pede OAuth mas não tem registro automático de
+cliente, e só atende app interno ou publicado no diretório. Usar o client id de
+outro produto seria se passar por ele. O caminho é cada workspace criar o seu
+app a partir do manifesto em `app/src/services/slack-app.ts`, e o Locum guardar
+só o client id, em `settings` (`slack:clientId`), porque app público com PKCE não
+tem segredo.
+
+`McpOAuthService.connect` aceita um cliente cadastrado à mão: pula o registro e
+volta por um endereço fixo, porque o Slack confere o retorno contra o que está
+no app. Sendo `localhost`, o retorno escuta em `127.0.0.1` e em `::1`. O
+servidor de autorização do Slack anuncia só `client_secret_post`, e o SDK cai
+para `none` quando o cliente não tem segredo, que é o que se quer.
+
+O que a pessoa faz no Slack, e o Locum não consegue fazer por ela: criar o app
+(o botão abre `api.slack.com/apps?new_app=1&manifest_json=...`, e há o manifesto
+para copiar se a tela vier vazia), ligar o MCP em Agents & AI Apps e instalar o
+app como interno. Ligar PKCE no app não tem volta.
+
+Falta ver com o Slack de verdade o formato do que `slack_read_channel` devolve.
+A fonte do Slack procura `messages` com `ts` em cada item; se o servidor oficial
+devolver texto formatado em vez de lista, a varredura não acha mensagem e
+`slackMessages` precisa aprender esse formato.
 
 Para exercitar cliente MCP sem depender de nada instalado na máquina, existe
 `app/src/fixtures/mcp-fixture-server.ts`, um servidor stdio de brinquedo com as

@@ -1,5 +1,5 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { createServer, type Server } from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import {
   discoverOAuthServerInfo,
@@ -23,6 +23,8 @@ const REFRESH_MARGIN_MS = 2 * 60_000;
 
 /** Quanto a janela espera a pessoa autorizar no navegador. */
 const DEFAULT_TIMEOUT_MS = 5 * 60_000;
+
+const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 /** O que se descobre de um servidor MCP remoto antes de cadastrar. */
 export interface OAuthProbe {
@@ -48,6 +50,21 @@ interface StoredGrant {
   refreshToken?: string;
   expiresAt: number | null;
   resource?: string;
+}
+
+/**
+ * Cliente cadastrado à mão no serviço, para quem não aceita registro automático.
+ *
+ * É cliente público com PKCE: só o client id, sem segredo. O endereço de
+ * retorno é fixo porque o serviço confere o que foi cadastrado no app, e uma
+ * porta sorteada a cada conexão nunca bateria.
+ */
+export interface PreRegisteredClient {
+  clientId: string;
+  /** Precisa ser loopback, `http://localhost:<porta>/<caminho>` ou `http://127.0.0.1:...`. */
+  redirectUri: string;
+  /** Escopos pedidos. Sem eles, vale o que o recurso anuncia. */
+  scope?: string;
 }
 
 export interface McpOAuthDeps {
@@ -99,6 +116,11 @@ export class McpOAuthService {
     this.deps.openBrowser = openBrowser;
   }
 
+  /** Abre um endereço no navegador do sistema, o mesmo que a autorização usa. */
+  async openInBrowser(url: string): Promise<void> {
+    await this.deps.openBrowser(url);
+  }
+
   /** Pergunta ao servidor se ele pede OAuth e se aceita registro automático. */
   async probe(url: string): Promise<OAuthProbe> {
     try {
@@ -128,8 +150,11 @@ export class McpOAuthService {
    *
    * O servidor precisa já estar cadastrado como `http`; o cabeçalho
    * `Authorization` é posto aqui, para que conectar seja o único passo.
+   *
+   * Com `client`, pula o registro automático e usa o app que a pessoa criou no
+   * serviço. É o caminho do Slack, que não tem registro automático.
    */
-  async connect(name: string): Promise<OAuthStatus> {
+  async connect(name: string, client?: PreRegisteredClient): Promise<OAuthStatus> {
     const entry = await this.deps.mcp.get(name);
     if (entry === undefined) throw new Error(`servidor MCP "${name}" nao cadastrado`);
     const url = entry.config.url;
@@ -141,28 +166,30 @@ export class McpOAuthService {
     const info = await discoverOAuthServerInfo(url, { fetchFn });
     const metadata = info.authorizationServerMetadata;
     if (metadata === undefined) throw new Error(`${url} não anunciou servidor de autorização`);
-    if (metadata.registration_endpoint === undefined) {
+    if (client === undefined && metadata.registration_endpoint === undefined) {
       throw new Error(`o servidor de autorização de ${url} não aceita registro automático de cliente`);
     }
     const resource = info.resourceMetadata?.resource === undefined ? undefined : new URL(info.resourceMetadata.resource);
-    const scope = info.resourceMetadata?.scopes_supported?.join(" ") || undefined;
+    const scope = client?.scope ?? (info.resourceMetadata?.scopes_supported?.join(" ") || undefined);
 
-    const retorno = await this.listen();
+    const retorno = await this.listen(client?.redirectUri);
     try {
-      const clientInformation = await registerClient(info.authorizationServerUrl, {
-        metadata,
-        fetchFn,
-        scope,
-        clientMetadata: {
-          client_name: "Locum",
-          redirect_uris: [retorno.redirectUri],
-          grant_types: ["authorization_code", "refresh_token"],
-          response_types: ["code"],
-          token_endpoint_auth_method: metadata.token_endpoint_auth_methods_supported?.includes("none") === false
-            ? "client_secret_post"
-            : "none",
-        },
-      });
+      const clientInformation: OAuthClientInformationMixed = client !== undefined
+        ? { client_id: client.clientId }
+        : await registerClient(info.authorizationServerUrl, {
+            metadata,
+            fetchFn,
+            scope,
+            clientMetadata: {
+              client_name: "Locum",
+              redirect_uris: [retorno.redirectUri],
+              grant_types: ["authorization_code", "refresh_token"],
+              response_types: ["code"],
+              token_endpoint_auth_method: metadata.token_endpoint_auth_methods_supported?.includes("none") === false
+                ? "client_secret_post"
+                : "none",
+            },
+          });
 
       const state = randomBytes(32).toString("base64url");
       const { authorizationUrl, codeVerifier } = await startAuthorization(info.authorizationServerUrl, {
@@ -253,12 +280,16 @@ export class McpOAuthService {
   }
 
   /**
-   * Sobe o endereço de loopback numa porta livre e devolve quem espera o código.
+   * Sobe o endereço de loopback e devolve quem espera o código.
    *
-   * Só `/callback` responde. Qualquer outra coisa recebe 404 e não encerra a
-   * espera, para que um favicon pedido pelo navegador não conte como retorno.
+   * Sem endereço fixo, numa porta livre em `127.0.0.1/callback`. Com endereço
+   * fixo, na porta e no caminho dele; sendo `localhost`, escuta também em
+   * `::1`, porque o navegador pode resolver o nome para qualquer um dos dois.
+   *
+   * Só o caminho de retorno responde. Qualquer outra coisa recebe 404 e não
+   * encerra a espera, para que um favicon pedido pelo navegador não conte.
    */
-  private async listen(): Promise<{
+  private async listen(fixo?: string): Promise<{
     redirectUri: string;
     code: (state: string) => Promise<string>;
     close: () => void;
@@ -268,25 +299,58 @@ export class McpOAuthService {
       entregar = resolve;
     });
 
-    const server: Server = createServer((req, res) => {
+    const alvo = fixo === undefined ? undefined : new URL(fixo);
+    if (alvo !== undefined && (alvo.protocol !== "http:" || !LOOPBACK.has(alvo.hostname) || alvo.port === "")) {
+      throw new Error(`o retorno ${fixo} precisa ser loopback com porta, como http://localhost:41753/callback`);
+    }
+    const caminho = alvo?.pathname ?? "/callback";
+
+    const atender = (req: IncomingMessage, res: ServerResponse) => {
       const url = new URL(req.url ?? "/", "http://127.0.0.1");
-      if (url.pathname !== "/callback") {
+      if (url.pathname !== caminho) {
         res.writeHead(404).end();
         return;
       }
       const falhou = url.searchParams.has("error");
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" }).end(paginaDeRetorno(falhou));
       entregar?.(url.searchParams);
-    });
-    await new Promise<void>((resolve, reject) => {
-      server.once("error", reject);
-      server.listen(0, "127.0.0.1", () => resolve());
-    });
-    const { port } = server.address() as AddressInfo;
+    };
+
+    const servidores: Server[] = [];
+    const subir = (porta: number, host: string) =>
+      new Promise<Server>((resolve, reject) => {
+        const server = createServer(atender);
+        server.once("error", reject);
+        server.listen(porta, host, () => resolve(server));
+      });
+
+    let redirectUri: string;
+    if (alvo === undefined) {
+      const server = await subir(0, "127.0.0.1");
+      servidores.push(server);
+      redirectUri = `http://127.0.0.1:${(server.address() as AddressInfo).port}/callback`;
+    } else {
+      const porta = Number(alvo.port);
+      const hosts = alvo.hostname === "localhost" ? ["127.0.0.1", "::1"] : [alvo.hostname.replace(/^\[|\]$/g, "")];
+      for (const host of hosts) {
+        try {
+          servidores.push(await subir(porta, host));
+        } catch (erro) {
+          // Máquina sem IPv6 não derruba a conexão; porta ocupada no IPv4 derruba.
+          if (host !== "::1") {
+            for (const s of servidores) s.close();
+            throw new Error(`a porta ${porta} do retorno está ocupada: ${(erro as Error).message}`);
+          }
+        }
+      }
+      redirectUri = fixo!;
+    }
 
     return {
-      redirectUri: `http://127.0.0.1:${port}/callback`,
-      close: () => server.close(),
+      redirectUri,
+      close: () => {
+        for (const s of servidores) s.close();
+      },
       code: async (state) => {
         let teto: NodeJS.Timeout | undefined;
         const venceu = new Promise<never>((_, reject) => {

@@ -40,7 +40,17 @@ function corpo(req: IncomingMessage): Promise<string> {
  * registro de cliente, autorização que devolve código e troca por token.
  */
 async function servicoFalso({ registro = true, recusar = false } = {}) {
-  const visto = { registros: 0, trocas: 0, renovacoes: 0, desafio: "", recurso: "" };
+  const visto = {
+    registros: 0,
+    trocas: 0,
+    renovacoes: 0,
+    desafio: "",
+    recurso: "",
+    cliente: "",
+    retorno: "",
+    escopo: "",
+    form: new URLSearchParams(),
+  };
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", base);
     const json = (status: number, valor: unknown): void => {
@@ -57,7 +67,8 @@ async function servicoFalso({ registro = true, recusar = false } = {}) {
         ...(registro ? { registration_endpoint: `${base}/register` } : {}),
         response_types_supported: ["code"],
         code_challenge_methods_supported: ["S256"],
-        token_endpoint_auth_methods_supported: ["none"],
+        // Sem registro, como o Slack: anuncia só segredo, e cliente público tem que passar mesmo assim.
+        token_endpoint_auth_methods_supported: registro ? ["none"] : ["client_secret_post"],
       });
     }
     if (url.pathname === "/register") {
@@ -68,6 +79,9 @@ async function servicoFalso({ registro = true, recusar = false } = {}) {
     if (url.pathname === "/authorize") {
       visto.desafio = url.searchParams.get("code_challenge") ?? "";
       visto.recurso = url.searchParams.get("resource") ?? "";
+      visto.cliente = url.searchParams.get("client_id") ?? "";
+      visto.retorno = url.searchParams.get("redirect_uri") ?? "";
+      visto.escopo = url.searchParams.get("scope") ?? "";
       const volta = new URL(url.searchParams.get("redirect_uri")!);
       if (recusar) volta.searchParams.set("error", "access_denied");
       else volta.searchParams.set("code", "codigo-1");
@@ -82,6 +96,7 @@ async function servicoFalso({ registro = true, recusar = false } = {}) {
         return json(200, { access_token: "token-2", token_type: "Bearer", expires_in: 3600 });
       }
       visto.trocas++;
+      visto.form = form;
       assert.equal(form.get("code"), "codigo-1");
       assert.ok((form.get("code_verifier") ?? "").length >= 43);
       return json(200, { access_token: "token-1", token_type: "Bearer", expires_in: 600, refresh_token: "renova-1" });
@@ -170,6 +185,48 @@ test("servidor sem registro automático recusa com o motivo", async () => {
   try {
     assert.deepEqual(await oauth.probe(`${base}/mcp`), { oauth: true, registration: false });
     await assert.rejects(oauth.connect(name), /não aceita registro automático/);
+  } finally {
+    fechar();
+  }
+});
+
+/** Uma porta livre agora, para o retorno fixo não brigar com outro teste. */
+async function portaLivre(): Promise<number> {
+  const s = createServer();
+  await new Promise<void>((resolve) => s.listen(0, "127.0.0.1", resolve));
+  const { port } = s.address() as AddressInfo;
+  await new Promise((resolve) => s.close(resolve));
+  return port;
+}
+
+test("cliente cadastrado à mão pula o registro e volta pelo retorno fixo", async () => {
+  const { visto, fechar, secrets, oauth, name } = await montar({ registro: false });
+  try {
+    const redirectUri = `http://localhost:${await portaLivre()}/callback`;
+    const estado = await oauth.connect(name, { clientId: "111.222", redirectUri, scope: "a:read b:write" });
+    assert.equal(estado.connected, true);
+    assert.equal(visto.registros, 0);
+    assert.equal(visto.cliente, "111.222");
+    assert.equal(visto.retorno, redirectUri);
+    assert.equal(visto.escopo, "a:read b:write");
+    // Cliente público: a troca leva o client id e o verificador, nunca segredo.
+    assert.equal(visto.form.get("client_id"), "111.222");
+    assert.equal(visto.form.get("redirect_uri"), redirectUri);
+    assert.equal(visto.form.has("client_secret"), false);
+    assert.equal(secrets.get(`mcp/${name}`), "Bearer token-1");
+  } finally {
+    fechar();
+  }
+});
+
+test("retorno fixo fora do loopback é recusado antes de abrir o navegador", async () => {
+  const { visto, fechar, oauth, name } = await montar({ registro: false });
+  try {
+    await assert.rejects(
+      oauth.connect(name, { clientId: "111.222", redirectUri: "https://exemplo.invalid/callback" }),
+      /precisa ser loopback/,
+    );
+    assert.equal(visto.trocas, 0);
   } finally {
     fechar();
   }

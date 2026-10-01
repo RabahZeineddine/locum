@@ -2,7 +2,31 @@ import { claudeCodeService, type ClaudeCodeService } from "./claude-code-service
 import { githubService, type GithubService } from "./github-service.js";
 import { mcpOAuthService, type McpOAuthService } from "./mcp-oauth-service.js";
 import { mcpService, type McpService } from "./mcp-service.js";
+import { settingsService, type SettingsService } from "./settings-service.js";
+import {
+  SLACK_MCP_URL,
+  SLACK_OFFICIAL_SOURCE,
+  SLACK_REDIRECT_URI,
+  SLACK_USER_SCOPES,
+  slackManifest,
+  slackManifestUrl,
+  validSlackClientId,
+} from "./slack-app.js";
 import { slackService, type SlackService } from "./slack-service.js";
+
+/** Onde fica o client id do app de Slack desta máquina. Não é segredo: app público com PKCE. */
+const CHAVE_CLIENT_ID_SLACK = "slack:clientId";
+
+/** O que a tela precisa para guiar a criação do app de Slack. */
+export interface SlackAppSetup {
+  manifest: string;
+  manifestUrl: string;
+  redirectUri: string;
+  /** Client id já informado nesta máquina, para reconectar sem colar de novo. */
+  clientId: string | null;
+  /** Há token do servidor oficial no cofre. */
+  connected: boolean;
+}
 
 export type ConnectionCategory = "dev" | "communication" | "work" | "observability" | "data";
 
@@ -68,6 +92,7 @@ export interface ConnectionServiceDeps {
   claudeCode: ClaudeCodeService;
   github: GithubService;
   slack: SlackService;
+  settings: SettingsService;
 }
 
 /**
@@ -86,6 +111,7 @@ export class ConnectionService {
       claudeCode: claudeCodeService,
       github: githubService,
       slack: slackService,
+      settings: settingsService,
       ...deps,
     };
   }
@@ -151,6 +177,60 @@ export class ConnectionService {
     await this.deps.oauth.disconnect(id);
     await this.deps.mcp.remove(id);
     return (await this.list()).find((c) => c.id === id) ?? null;
+  }
+
+  /** Manifesto do app e o client id já informado, para a tela do Slack. */
+  async slackApp(): Promise<SlackAppSetup> {
+    return {
+      manifest: JSON.stringify(slackManifest(), null, 2),
+      manifestUrl: slackManifestUrl(),
+      redirectUri: SLACK_REDIRECT_URI,
+      clientId: (await this.deps.settings.get(CHAVE_CLIENT_ID_SLACK)) ?? null,
+      connected: this.deps.oauth.status("slack").connected,
+    };
+  }
+
+  /** Abre a criação de app no Slack com o manifesto já preenchido. */
+  async openSlackManifest(): Promise<void> {
+    await this.deps.oauth.openInBrowser(slackManifestUrl());
+  }
+
+  /**
+   * Liga o Slack pelo servidor MCP oficial, com o app que a pessoa criou.
+   *
+   * Cadastra o servidor, autoriza no navegador com o client id informado, e
+   * aponta a origem do Slack para as ferramentas oficiais. Os canais já
+   * observados ficam como estavam.
+   */
+  async connectSlack(clientId: string): Promise<Connection> {
+    const id = clientId.trim();
+    if (!validSlackClientId(id)) throw new Error("client id do Slack tem o formato 1234567890.1234567890");
+    await this.deps.settings.set(CHAVE_CLIENT_ID_SLACK, id);
+
+    const atual = await this.deps.mcp.get("slack");
+    if (atual === undefined || atual.config.url !== SLACK_MCP_URL) {
+      await this.deps.mcp.register({ name: "slack", transport: "http", url: SLACK_MCP_URL });
+    }
+    await this.deps.oauth.connect("slack", {
+      clientId: id,
+      redirectUri: SLACK_REDIRECT_URI,
+      scope: SLACK_USER_SCOPES.join(" "),
+    });
+    const origem = await this.deps.slack.get();
+    await this.deps.slack.setSource({ ...SLACK_OFFICIAL_SOURCE, server: "slack", limit: Math.min(origem.limit, 100) });
+    return this.um("slack");
+  }
+
+  /**
+   * Desliga o servidor oficial: token, cadastro e origem. O client id fica,
+   * porque o app continua existindo no Slack e reconectar não deve pedir de novo.
+   */
+  async disconnectSlack(): Promise<Connection> {
+    await this.deps.oauth.disconnect("slack");
+    if ((await this.deps.mcp.get("slack")) !== undefined) await this.deps.mcp.remove("slack");
+    const origem = await this.deps.slack.get();
+    if (origem.server === "slack") await this.deps.slack.setSource({ server: null });
+    return this.um("slack");
   }
 
   /**

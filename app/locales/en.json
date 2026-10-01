@@ -742,6 +742,24 @@
       "reconnect": "Reconnect",
       "connecting": "connecting...",
       "connectedHint": "Open a new Claude Code session and the Locum tools show up."
+    },
+    "slackOfficial": {
+      "title": "Slack through the official server",
+      "description": "Slack's official MCP server does not accept dynamic registration, so it uses an app you create in your workspace. The app is public with PKCE: there is no secret, and the client id stays on this machine.",
+      "stepCreate": "Create the app from the manifest. The button opens Slack with everything filled in; if the screen comes up empty, copy the manifest and paste it under \"From a manifest\".",
+      "stepMcp": "In the app, under Agents & AI Apps, turn on MCP access.",
+      "stepInstall": "Install the app in the workspace as an internal app. Slack does not let apps outside the directory use MCP any other way.",
+      "stepClientId": "Copy the Client ID from Basic Information, paste it below and connect. The browser opens for you to authorize.",
+      "openManifest": "Create the app in Slack",
+      "copyManifest": "Copy manifest",
+      "copied": "Copied",
+      "clientId": "Slack app Client ID",
+      "clientIdHint": "1234567890.1234567890",
+      "connect": "Connect",
+      "reconnect": "Connect again",
+      "disconnect": "Disconnect",
+      "connected": "connected",
+      "waiting": "Waiting for authorization in the browser."
     }
   },
   "severity": {
@@ -1040,7 +1058,7 @@
       },
       "slack": {
         "tagline": "Channels Locum follows",
-        "description": "Picks which channels Locum reads, and through which MCP server. Slack's official server does not accept dynamic registration yet, so it comes in as your own MCP server."
+        "description": "Channels Locum reads through Slack's official server, with an app created in your workspace, or through another MCP server you already have."
       },
       "teams": {
         "tagline": "Microsoft Teams channels and chats",
