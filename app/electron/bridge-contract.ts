@@ -259,6 +259,11 @@ interface ServiceApi {
   "connections.connectSlack": ConnectionService["connectSlack"];
   "connections.disconnectSlack": ConnectionService["disconnectSlack"];
   "connections.openSlackManifest": ConnectionService["openSlackManifest"];
+  /** Teams pelo Graph, com o app que a organização registrou no Entra. */
+  "connections.teamsApp": ConnectionService["teamsApp"];
+  "connections.connectTeams": ConnectionService["connectTeams"];
+  "connections.disconnectTeams": ConnectionService["disconnectTeams"];
+  "connections.teamsAdminConsent": ConnectionService["teamsAdminConsent"];
 
   /**
    * O tracker de tarefa: cadastrar, apontar destino e testar.
@@ -455,6 +460,10 @@ export const BRIDGE_CHANNELS = [
   "connections.connectSlack",
   "connections.disconnectSlack",
   "connections.openSlackManifest",
+  "connections.teamsApp",
+  "connections.connectTeams",
+  "connections.disconnectTeams",
+  "connections.teamsAdminConsent",
   "trackers.list",
   "trackers.register",
   "trackers.remove",

@@ -800,6 +800,30 @@
       "dms": "Só mensagens diretas",
       "what": "O que avisar",
       "add": "Ligar"
+    },
+    "teams": {
+      "title": "Teams pelo Microsoft Graph",
+      "description": "O Locum fala com o Teams pelo Microsoft Graph, com a sua conta e um app registrado no Microsoft Entra da sua organização. O app é cliente público com PKCE: não há segredo, e tenant e client id ficam só nesta máquina.",
+      "stepRegister": "Registre o app no Entra (App registrations, New registration): só esta organização, plataforma \"Mobile and desktop applications\" com o retorno {{redirect}}. O comando abaixo faz o mesmo pela CLI do Azure.",
+      "stepPermissions": "Não precisa adicionar permissão: o Locum pede ao conectar as permissões delegadas do Graph {{scopes}}, e nenhuma exige administrador.",
+      "stepIds": "Cole o Directory (tenant) ID e o Application (client) ID da página do app e conecte. O navegador abre para você autorizar.",
+      "copyCommand": "Copiar comando",
+      "copied": "Copiado",
+      "tenant": "Tenant do Entra",
+      "tenantHint": "tenant ID ou empresa.com.br",
+      "clientId": "Client ID do app no Entra",
+      "clientIdHint": "00000000-0000-0000-0000-000000000000",
+      "connect": "Conectar",
+      "reconnect": "Conectar de novo",
+      "disconnect": "Desconectar",
+      "connected": "conectado",
+      "admin": "Consentimento do administrador",
+      "adminHow": "Se a sua empresa não deixa o usuário autorizar app sozinho, um administrador do tenant clica em \"Consentimento do administrador\" uma vez, e o app fica liberado para todos.",
+      "adminDone": "Consentimento do administrador registrado. Agora é só conectar.",
+      "waiting": "Esperando a autorização no navegador."
+    },
+    "teamsInbox": {
+      "description": "Acorda um agent quando alguém menciona você ou manda mensagem num chat do Teams. O Locum lê pelo Graph, com a sua conta, as conversas que se mexeram a cada 5 minutos; a resposta que o agent propuser para na fila. Canais de equipe ainda não entram."
     }
   },
   "severity": {
@@ -1102,9 +1126,8 @@
         "description": "Canais que o Locum lê pelo servidor oficial do Slack, com um app criado no seu workspace, ou por outro servidor MCP que você já tenha."
       },
       "teams": {
-        "tagline": "Canais e chats do Microsoft Teams",
-        "description": "Ler canais e chats do Teams pelos agents.",
-        "soon": "O servidor MCP oficial do Teams está em prévia e exige licença do Copilot e consentimento do administrador do tenant. Entra aqui quando sair da prévia."
+        "tagline": "Menções e chats do Microsoft Teams",
+        "description": "Teams pelo Microsoft Graph, com um app registrado no Entra da sua organização. Acorda agents com menções e mensagens de chat, e a resposta proposta sai com o seu nome depois da sua aprovação."
       },
       "sentry": {
         "tagline": "Erros, issues e releases",

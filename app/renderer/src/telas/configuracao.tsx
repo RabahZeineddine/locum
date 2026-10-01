@@ -27,6 +27,7 @@ type TesteDoTracker = ReadResult<"trackers.test">;
 type Gatilho = ReadResult<"triggers.schedule">[number];
 type CadastroDoSlack = ReadResult<"slack.get">;
 type AppDoSlack = ReadResult<"connections.slackApp">;
+type AppDoTeams = ReadResult<"connections.teamsApp">;
 type Ferramenta = ReadResult<"mcp.tools">[number];
 type Teste = ReadResult<"mcp.test">;
 
@@ -255,6 +256,7 @@ export function Configuracao({ detalhe, navegar }: TelaProps) {
                   <Slack />
                 </>
               ),
+              teams: <TeamsPeloGraph />,
               atlassian: <Trackers kinds={["jira-atlassian", "jira"]} />,
             }}
           />
@@ -2416,7 +2418,7 @@ function LinhaDoObservado({
           owner: config.owner ?? t("settings.watched.fromEnv"),
           repo: config.repoMatch,
         })
-      : config.kind === "slack-inbox"
+      : config.kind === "slack-inbox" || config.kind === "teams-inbox"
         ? t(ROTULO_DA_CAIXA[config.mentions ? (config.dms ? "both" : "mentions") : "dms"])
         : "";
 
@@ -2608,7 +2610,7 @@ function SlackOficial() {
         ) : null}
       </div>
 
-      {app?.connected ? <CaixaDoSlack /> : null}
+      {app?.connected ? <CaixaDeEntrada servico="slack" /> : null}
 
       {ocupado ? <p className="text-muted-foreground text-xs">{t("settings.slackOfficial.waiting")}</p> : null}
       {recusa !== null ? (
@@ -2629,13 +2631,15 @@ const ROTULO_DA_CAIXA: Record<Caixa, string> = {
 };
 
 /**
- * O gatilho de menção e mensagem direta, que só existe com a conexão oficial.
+ * O gatilho de menção e mensagem direta, que só existe com a conexão do
+ * serviço: a oficial do Slack ou a do Teams.
  *
  * Fica dentro do bloco da conexão, e não em Gatilhos, porque não tem o que
- * escolher além do agent e do que avisar: servidor, ferramenta e canal são os
- * da conta de quem conectou.
+ * escolher além do agent e do que avisar: servidor, ferramenta e conversa são
+ * os da conta de quem conectou.
  */
-function CaixaDoSlack() {
+function CaixaDeEntrada({ servico }: { servico: "slack" | "teams" }) {
+  const kind = servico === "slack" ? "slack-inbox" : "teams-inbox";
   const { i18n, t } = useTranslation();
   const agents = useRead("agents.list");
   const inicial = useRead("triggers.schedule");
@@ -2647,7 +2651,7 @@ function CaixaDoSlack() {
 
   const agenda = recarregado ?? inicial.data ?? null;
   const recusa = erro ?? inicial.error?.message ?? null;
-  const gatilhos = (agenda ?? []).filter((g) => g.kind === "slack-inbox");
+  const gatilhos = (agenda ?? []).filter((g) => g.kind === kind);
   const listaDeAgents = agents.data ?? [];
   const escolhido = agentId !== "" ? agentId : (listaDeAgents[0]?.id ?? "");
 
@@ -2665,7 +2669,7 @@ function CaixaDoSlack() {
   const ligar = (): void => {
     agir(
       call("triggers.set", escolhido, {
-        kind: "slack-inbox",
+        kind,
         mentions: caixa !== "dms",
         dms: caixa !== "mentions",
       }),
@@ -2673,9 +2677,11 @@ function CaixaDoSlack() {
   };
 
   return (
-    <div className="flex flex-col gap-2" data-locum-probe="slack-caixa">
+    <div className="flex flex-col gap-2" data-locum-probe={`${servico}-caixa`}>
       <span className="text-sm font-medium">{t("settings.slackInbox.title")}</span>
-      <p className="text-muted-foreground text-xs">{t("settings.slackInbox.description")}</p>
+      <p className="text-muted-foreground text-xs">
+        {t(servico === "slack" ? "settings.slackInbox.description" : "settings.teamsInbox.description")}
+      </p>
 
       {gatilhos.length === 0 ? null : (
         <ul className="flex flex-col gap-2">
@@ -2696,7 +2702,7 @@ function CaixaDoSlack() {
         <select
           aria-label={t("settings.watched.agent")}
           className="border-border bg-background cursor-pointer rounded-md border px-2 py-1.5 text-xs"
-          data-locum-slack-caixa-agent=""
+          {...{ [`data-locum-${servico}-caixa-agent`]: "" }}
           onChange={(evento) => setAgentId(evento.target.value)}
           value={escolhido}
         >
@@ -2709,7 +2715,7 @@ function CaixaDoSlack() {
         <select
           aria-label={t("settings.slackInbox.what")}
           className="border-border bg-background cursor-pointer rounded-md border px-2 py-1.5 text-xs"
-          data-locum-slack-caixa-tipo=""
+          {...{ [`data-locum-${servico}-caixa-tipo`]: "" }}
           onChange={(evento) => setCaixa(evento.target.value as Caixa)}
           value={caixa}
         >
@@ -2720,7 +2726,7 @@ function CaixaDoSlack() {
           ))}
         </select>
         <Button
-          data-locum-slack-caixa-ligar=""
+          {...{ [`data-locum-${servico}-caixa-ligar`]: "" }}
           disabled={ocupado || escolhido === ""}
           onClick={ligar}
           size="sm"
@@ -2731,6 +2737,160 @@ function CaixaDoSlack() {
       </div>
 
       {recusa === null ? null : <p className="text-destructive text-xs">{recusa}</p>}
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------- teams */
+
+/**
+ * Teams pelo Microsoft Graph, com o app que a organização registra no Entra.
+ *
+ * O caminho é guiado como o do Slack: registrar o app (pelo portal ou pelo
+ * comando da CLI do Azure), colar tenant e client id e autorizar. Nenhum dos
+ * dois é segredo, e os dois ficam na máquina. O consentimento do administrador
+ * é opcional e só serve à empresa que não deixa o usuário consentir sozinho.
+ */
+function TeamsPeloGraph() {
+  const { t } = useTranslation();
+  const inicial = useRead("connections.teamsApp");
+  const [relido, setRelido] = useState<AppDoTeams | null>(null);
+  const [tenant, setTenant] = useState<string | null>(null);
+  const [clientId, setClientId] = useState<string | null>(null);
+  const [ocupado, setOcupado] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [aviso, setAviso] = useState<string | null>(null);
+  const [copiado, setCopiado] = useState(false);
+
+  const app = relido ?? inicial.data ?? null;
+  const valorDoTenant = tenant ?? app?.tenantId ?? "";
+  const valorDoClientId = clientId ?? app?.clientId ?? "";
+  const preenchido = valorDoTenant.trim() !== "" && valorDoClientId.trim() !== "";
+  const recusa = erro ?? inicial.error?.message ?? null;
+
+  const agir = (acao: Promise<unknown>, sucesso: string | null = null): void => {
+    setOcupado(true);
+    setAviso(null);
+    acao
+      .then(
+        () => {
+          setErro(null);
+          setAviso(sucesso);
+        },
+        (falha: unknown) => setErro(falha instanceof Error ? falha.message : String(falha)),
+      )
+      .then(() => read("connections.teamsApp").then(setRelido, () => undefined))
+      .finally(() => setOcupado(false));
+  };
+
+  const copiar = (): void => {
+    if (app === null) return;
+    void navigator.clipboard.writeText(app.command).then(() => {
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 2000);
+    });
+  };
+
+  const campo =
+    "border-border bg-background focus-visible:ring-ring w-80 rounded-md border px-3 py-1.5 font-mono text-xs outline-none focus-visible:ring-1";
+
+  return (
+    <div
+      className="border-border flex flex-col gap-3 border-b px-4 py-3"
+      data-locum-probe="teams"
+      data-locum-teams-conectado={app?.connected ? "sim" : "nao"}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm font-medium">{t("settings.teams.title")}</span>
+        {app?.connected ? <Badge variant="secondary">{t("settings.teams.connected")}</Badge> : null}
+      </div>
+      <p className="text-muted-foreground text-xs">{t("settings.teams.description")}</p>
+
+      <ol className="text-muted-foreground flex list-decimal flex-col gap-1 pl-5 text-xs">
+        <li>{t("settings.teams.stepRegister", { redirect: app?.redirectUri ?? "" })}</li>
+        <li>{t("settings.teams.stepPermissions", { scopes: (app?.scopes ?? []).join(", ") })}</li>
+        <li>{t("settings.teams.stepIds")}</li>
+      </ol>
+
+      <div className="flex flex-col gap-1">
+        <code className="bg-muted text-muted-foreground block overflow-x-auto rounded-md px-2 py-1 font-mono text-[11px] whitespace-nowrap">
+          {app?.command ?? ""}
+        </code>
+        <div>
+          <Button disabled={app === null} onClick={copiar} size="sm" variant="ghost">
+            {copiado ? t("settings.teams.copied") : t("settings.teams.copyCommand")}
+          </Button>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          aria-label={t("settings.teams.tenant")}
+          autoComplete="off"
+          className={campo}
+          data-locum-teams-tenant=""
+          onChange={(evento) => setTenant(evento.target.value)}
+          placeholder={t("settings.teams.tenantHint")}
+          spellCheck={false}
+          value={valorDoTenant}
+        />
+        <input
+          aria-label={t("settings.teams.clientId")}
+          autoComplete="off"
+          className={campo}
+          data-locum-teams-client-id=""
+          onChange={(evento) => setClientId(evento.target.value)}
+          placeholder={t("settings.teams.clientIdHint")}
+          spellCheck={false}
+          value={valorDoClientId}
+        />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          data-locum-teams-conectar=""
+          disabled={ocupado || !preenchido}
+          onClick={() => agir(call("connections.connectTeams", valorDoTenant.trim(), valorDoClientId.trim()))}
+          size="sm"
+        >
+          {app?.connected ? t("settings.teams.reconnect") : t("settings.teams.connect")}
+        </Button>
+        <Button
+          data-locum-teams-admin=""
+          disabled={ocupado || !preenchido}
+          onClick={() =>
+            agir(
+              call("connections.teamsAdminConsent", valorDoTenant.trim(), valorDoClientId.trim()),
+              t("settings.teams.adminDone"),
+            )
+          }
+          size="sm"
+          variant="secondary"
+        >
+          {t("settings.teams.admin")}
+        </Button>
+        {app?.connected ? (
+          <Button
+            disabled={ocupado}
+            onClick={() => agir(call("connections.disconnectTeams"))}
+            size="sm"
+            variant="ghost"
+          >
+            {t("settings.teams.disconnect")}
+          </Button>
+        ) : null}
+      </div>
+      <p className="text-muted-foreground text-xs">{t("settings.teams.adminHow")}</p>
+
+      {app?.connected ? <CaixaDeEntrada servico="teams" /> : null}
+
+      {ocupado ? <p className="text-muted-foreground text-xs">{t("settings.teams.waiting")}</p> : null}
+      {aviso !== null ? <p className="text-muted-foreground text-xs">{aviso}</p> : null}
+      {recusa !== null ? (
+        <p className="text-destructive text-xs" data-locum-teams-erro="">
+          {recusa}
+        </p>
+      ) : null}
     </div>
   );
 }

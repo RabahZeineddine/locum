@@ -172,11 +172,92 @@ export class McpOAuthService {
     const resource = info.resourceMetadata?.resource === undefined ? undefined : new URL(info.resourceMetadata.resource);
     const scope = client?.scope ?? (info.resourceMetadata?.scopes_supported?.join(" ") || undefined);
 
-    const retorno = await this.listen(client?.redirectUri);
+    const clientInformation: OAuthClientInformationMixed | undefined =
+      client === undefined ? undefined : { client_id: client.clientId };
+    await this.authorize(name, {
+      authorizationServerUrl: info.authorizationServerUrl,
+      metadata,
+      clientInformation,
+      redirectUri: client?.redirectUri,
+      scope,
+      resource,
+    });
+    await this.ensureHeader(name);
+    return this.status(name);
+  }
+
+  /**
+   * Conecta direto num servidor de autorização, sem servidor MCP no meio.
+   *
+   * É o caminho do Teams: o Graph não é servidor MCP e não anuncia quem
+   * autoriza, então os endereços do Entra chegam prontos. O token fica no mesmo
+   * cofre, em `mcp/<nome>`, e `accessToken` e a renovação valem igual.
+   *
+   * Não manda `resource`: o endpoint v2 do Entra recusa o parâmetro e tira o
+   * recurso dos escopos.
+   */
+  async connectDirect(
+    name: string,
+    authorizationServerUrl: string,
+    metadata: AuthorizationServerMetadata,
+    client: PreRegisteredClient,
+  ): Promise<OAuthStatus> {
+    await this.authorize(name, {
+      authorizationServerUrl,
+      metadata,
+      clientInformation: { client_id: client.clientId },
+      redirectUri: client.redirectUri,
+      scope: client.scope,
+      semPromptDeConsentimento: true,
+    });
+    return this.status(name);
+  }
+
+  /**
+   * Abre um endereço no navegador e espera a volta dele no loopback.
+   *
+   * Serve ao que não termina em token, como o consentimento do administrador
+   * no Entra: o retorno só diz se deu certo. `montar` recebe o `state` que o
+   * retorno precisa devolver, para que uma volta que não foi pedida aqui não
+   * conte.
+   */
+  async openAndWait(redirectUri: string, montar: (state: string) => string): Promise<URLSearchParams> {
+    const retorno = await this.listen(redirectUri);
     try {
-      const clientInformation: OAuthClientInformationMixed = client !== undefined
-        ? { client_id: client.clientId }
-        : await registerClient(info.authorizationServerUrl, {
+      const state = randomBytes(32).toString("base64url");
+      await this.deps.openBrowser(montar(state));
+      return await retorno.query(state);
+    } finally {
+      retorno.close();
+    }
+  }
+
+  /** O vaivém do navegador: monta a autorização, espera o código e troca pelo token. */
+  private async authorize(
+    name: string,
+    pedido: {
+      authorizationServerUrl: string;
+      metadata: AuthorizationServerMetadata;
+      /** Sem ele, o Locum se registra sozinho no servidor. */
+      clientInformation?: OAuthClientInformationMixed;
+      redirectUri?: string;
+      scope?: string;
+      resource?: URL;
+      /**
+       * O SDK pede `prompt=consent` sempre que há `offline_access`. No Entra,
+       * isso faz o consentimento ser pedido de novo à pessoa, e quem não é
+       * administrador esbarra no escopo que só o administrador concede, mesmo
+       * com o consentimento já dado para a organização.
+       */
+      semPromptDeConsentimento?: boolean;
+    },
+  ): Promise<void> {
+    const { fetchFn } = this.deps;
+    const { authorizationServerUrl, metadata, scope, resource } = pedido;
+    const retorno = await this.listen(pedido.redirectUri);
+    try {
+      const clientInformation: OAuthClientInformationMixed = pedido.clientInformation
+        ?? await registerClient(authorizationServerUrl, {
             metadata,
             fetchFn,
             scope,
@@ -192,7 +273,7 @@ export class McpOAuthService {
           });
 
       const state = randomBytes(32).toString("base64url");
-      const { authorizationUrl, codeVerifier } = await startAuthorization(info.authorizationServerUrl, {
+      const { authorizationUrl, codeVerifier } = await startAuthorization(authorizationServerUrl, {
         metadata,
         clientInformation,
         redirectUrl: retorno.redirectUri,
@@ -200,11 +281,12 @@ export class McpOAuthService {
         state,
         resource,
       });
+      if (pedido.semPromptDeConsentimento === true) authorizationUrl.searchParams.delete("prompt");
 
       await this.deps.openBrowser(authorizationUrl.toString());
       const code = await retorno.code(state);
 
-      const tokens = await exchangeAuthorization(info.authorizationServerUrl, {
+      const tokens = await exchangeAuthorization(authorizationServerUrl, {
         metadata,
         clientInformation,
         authorizationCode: code,
@@ -215,13 +297,11 @@ export class McpOAuthService {
       });
 
       await this.store(name, tokens, {
-        authorizationServerUrl: info.authorizationServerUrl,
+        authorizationServerUrl,
         metadata,
         clientInformation,
         resource: resource?.toString(),
       });
-      await this.ensureHeader(name);
-      return this.status(name);
     } finally {
       retorno.close();
     }
@@ -248,7 +328,8 @@ export class McpOAuthService {
    *
    * Existe para quem precisa falar com a API do mesmo serviço fora do servidor
    * MCP, com a mesma autorização: a busca de menções do Slack, que o servidor
-   * oficial só devolve em texto corrido. Nulo quando não há conexão.
+   * oficial só devolve em texto corrido, e o Graph do Teams. Nulo quando não
+   * há conexão.
    */
   async accessToken(name: string): Promise<string | null> {
     await this.refreshIfNeeded(name);
@@ -281,7 +362,8 @@ export class McpOAuthService {
       expiresAt: tokens.expires_in === undefined ? null : this.deps.now() + tokens.expires_in * 1000,
     };
     this.deps.secrets.set(this.grantRef(name), JSON.stringify(stored));
-    await this.deps.mcp.setCredentialRef(name, tokenRef);
+    // Conexão direta, como a do Teams, não tem cadastro de servidor para apontar.
+    if ((await this.deps.mcp.get(name)) !== undefined) await this.deps.mcp.setCredentialRef(name, tokenRef);
   }
 
   /** Põe o `Authorization: ${credential}` no cadastro, se ele ainda não tiver. */
@@ -305,6 +387,7 @@ export class McpOAuthService {
    */
   private async listen(fixo?: string): Promise<{
     redirectUri: string;
+    query: (state: string) => Promise<URLSearchParams>;
     code: (state: string) => Promise<string>;
     close: () => void;
   }> {
@@ -328,6 +411,25 @@ export class McpOAuthService {
       const falhou = url.searchParams.has("error");
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" }).end(paginaDeRetorno(falhou));
       entregar?.(url.searchParams);
+    };
+
+    const esperar = async (state: string): Promise<URLSearchParams> => {
+      let teto: NodeJS.Timeout | undefined;
+      const venceu = new Promise<never>((_, reject) => {
+        teto = setTimeout(
+          () => reject(new Error("a autorização não voltou do navegador a tempo, tente de novo")),
+          this.deps.timeoutMs,
+        );
+      });
+      try {
+        const query = await Promise.race([chegou, venceu]);
+        const erro = query.get("error");
+        if (erro !== null) throw new Error(`o serviço recusou a autorização: ${erro}`);
+        if (!mesmoValor(query.get("state") ?? "", state)) throw new Error("o state do retorno não confere");
+        return query;
+      } finally {
+        clearTimeout(teto);
+      }
     };
 
     const servidores: Server[] = [];
@@ -365,25 +467,12 @@ export class McpOAuthService {
       close: () => {
         for (const s of servidores) s.close();
       },
+      query: (state) => esperar(state),
       code: async (state) => {
-        let teto: NodeJS.Timeout | undefined;
-        const venceu = new Promise<never>((_, reject) => {
-          teto = setTimeout(
-            () => reject(new Error("a autorização não voltou do navegador a tempo, tente de novo")),
-            this.deps.timeoutMs,
-          );
-        });
-        try {
-          const query = await Promise.race([chegou, venceu]);
-          const erro = query.get("error");
-          if (erro !== null) throw new Error(`o serviço recusou a autorização: ${erro}`);
-          if (!mesmoValor(query.get("state") ?? "", state)) throw new Error("o state do retorno não confere");
-          const code = query.get("code");
-          if (code === null || code === "") throw new Error("o retorno veio sem código de autorização");
-          return code;
-        } finally {
-          clearTimeout(teto);
-        }
+        const query = await esperar(state);
+        const code = query.get("code");
+        if (code === null || code === "") throw new Error("o retorno veio sem código de autorização");
+        return code;
       },
     };
   }

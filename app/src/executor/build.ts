@@ -11,6 +11,7 @@ import { mcpService } from "../services/mcp-service.js";
 import { providerService } from "../services/provider-service.js";
 import { slackPostHandler } from "../slack/action.js";
 import { githubReviewHandler } from "../sources/github.js";
+import { teamsPostHandler } from "../teams/action.js";
 import { trackerIssueHandler } from "../trackers/issue-action.js";
 
 /**
@@ -66,6 +67,7 @@ export function buildGate(): ApprovalGate {
       ["tracker.create_issue", trackerIssueHandler()],
       ["digest.deliver", digestDeliverHandler()],
       ["slack.post", slackPostHandler()],
+      ["teams.post", teamsPostHandler()],
       ["context.update", contextUpdateHandler()],
     ]),
   );

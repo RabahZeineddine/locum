@@ -218,6 +218,10 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "connections.connectSlack": (clientId) => connectionService.connectSlack(clientId),
     "connections.disconnectSlack": () => connectionService.disconnectSlack(),
     "connections.openSlackManifest": () => connectionService.openSlackManifest(),
+    "connections.teamsApp": () => connectionService.teamsApp(),
+    "connections.connectTeams": (tenantId, clientId) => connectionService.connectTeams(tenantId, clientId),
+    "connections.disconnectTeams": () => connectionService.disconnectTeams(),
+    "connections.teamsAdminConsent": (tenantId, clientId) => connectionService.teamsAdminConsent(tenantId, clientId),
 
     "trackers.list": () => trackerService.list(),
     "trackers.register": (cadastro) => trackerService.register(cadastro),

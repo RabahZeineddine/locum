@@ -174,7 +174,7 @@ export function registerConfigTools(server: McpServer): void {
         config: z
           .record(z.string(), z.unknown())
           .describe(
-            'por tipo: {"kind":"schedule","everyMinutes":30}, {"kind":"webhook","path":"..."}, {"kind":"poll","source":"github","owner":"...","repoMatch":"...","authorship":"any|mine|others","includeDrafts":false} {"kind":"mcp-poll","server":"...","tool":"..."} ou {"kind":"slack-inbox","mentions":true,"dms":true}, este último só com o Slack conectado pelo servidor oficial',
+            'por tipo: {"kind":"schedule","everyMinutes":30}, {"kind":"webhook","path":"..."}, {"kind":"poll","source":"github","owner":"...","repoMatch":"...","authorship":"any|mine|others","includeDrafts":false} {"kind":"mcp-poll","server":"...","tool":"..."} , {"kind":"slack-inbox","mentions":true,"dms":true}, só com o Slack conectado pelo servidor oficial, ou {"kind":"teams-inbox","mentions":true,"dms":true}, só com o Teams conectado',
           ),
         triggerId: z.string().optional().describe("ausente cadastra, presente atualiza aquele"),
         enabled: z.boolean().optional(),

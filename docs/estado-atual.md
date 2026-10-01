@@ -121,6 +121,7 @@ que a interface vai usar.
 | veredito da review | a auditoria devolve `verdict` preso no esquema de saída, com o critério de cada um no prompt; a tela de revisão mostra o veredito e deixa trocar antes de aprovar, gravando na pendência junto com os achados; aprovar sem achado é publicável, comentar sem achado não |
 | tracker de tarefa, Jira e GitHub Issues | adaptador, cadastro no banco e credencial no keychain; teste de conexão e lista de destinos pela interface, verificado contra um tracker de mentira em 127.0.0.1 |
 | Slack pelo servidor oficial | o painel do Slack guia a criação de um app no workspace a partir de manifesto (cliente público com PKCE, retorno fixo em `http://localhost:41753/callback`), recebe o client id e autoriza no navegador; a origem do Slack passa a usar `slack_read_channel` e `slack_send_message`; com a conexão feita, o gatilho `slack-inbox` acorda um agent em menção e mensagem direta. Verificado com servidor de autorização de mentira; contra o Slack de verdade, ainda não |
+| Teams pelo Microsoft Graph | cada organização registra um app no Entra (tenant único, cliente público com PKCE, retorno fixo em `http://localhost:41754/callback`), e o painel recebe tenant e client id e autoriza no navegador; escopos `User.Read`, `Chat.Read` e `ChatMessage.Send`, nenhum de administrador; o gatilho `teams-inbox` acorda um agent em menção e mensagem direta, e a ação `teams.post` responde na conversa depois do clique. Verificado com Graph de mentira; contra o Teams de verdade, ainda não |
 | Jira pela conexão Atlassian | tipo `jira-atlassian`, que fala com o servidor MCP oficial usando a autorização da vitrine, sem e-mail nem token; o Jira mora no painel da Atlassian e o GitHub Issues no do GitHub, e o cartão Jira separado saiu |
 | passo de ação que abre tarefa | `tracker.create_issue` monta o item e para na fila; corpo escrito por um passo de modelo antes dele, modo travado em `approve` pelo handler |
 | descoberta de skills e seleção por arquivo alterado | pronto |
@@ -1085,6 +1086,42 @@ coisas: se o token emitido para o servidor MCP vale na API Web, se o filtro
 `to:` separa mensagem direta como na barra de busca, e se o `after` vale pelo
 segundo ou pelo dia (a varredura segue até quatro páginas por pergunta para que
 um dia cheio não trave o cursor, e a chave externa descarta o repetido).
+
+### Teams
+
+Não existe servidor MCP do Teams que atenda app de desktop, então o Locum fala
+direto com o Microsoft Graph, com a identidade de quem conectou. Cada
+organização registra o próprio app no Entra (`app/src/services/teams-app.ts`
+traz o comando da CLI do Azure), de um tenant só e como cliente público com
+PKCE. Assim quem decide o que o Locum lê é o administrador do tenant, e o
+projeto não depende de verificação de publicador para funcionar em qualquer
+empresa. Tenant e client id ficam em `settings` (`teams:tenantId` e
+`teams:clientId`); o token vai para o cofre por `McpOAuthService.connectDirect`,
+que autoriza sem servidor MCP, sem o parâmetro `resource` e sem
+`prompt=consent`. Para a empresa que desliga o consentimento do próprio
+usuário, o painel abre o consentimento do administrador do tenant e espera a
+volta pelo mesmo retorno.
+
+A varredura (`app/src/sources/teams-inbox.ts`) lê `/me/chats` ordenado pela
+última mensagem e para na primeira conversa mais velha que o cursor; em cada
+conversa nova, pede as mensagens alteradas desde o cursor e descarta as criadas
+antes dele, para que editar uma mensagem antiga não acorde o agent. Menção vale
+em qualquer tipo de conversa, inclusive chat de reunião; mensagem direta vale
+em `oneOnOne` e `group`. O que a própria pessoa escreveu, aviso de sistema,
+mensagem apagada e mensagem de app ficam de fora. O cursor é ISO normalizado em
+milissegundos, porque o Graph devolve frações de tamanhos diferentes e o cursor
+compara como texto. O teto é de quatro páginas de 50 conversas; o que passar
+disso numa batida se perde, de propósito, para um dia cheio não travar a
+varredura.
+
+Canal de equipe ficou de fora. Ler canal pede `ChannelMessage.Read.All`, que só
+o administrador libera, e pedir escopo que nada usa ainda seria pedir acesso a
+mais.
+
+Verificado contra um Graph de mentira. Falta ver com o Teams de verdade se o
+`$orderby` de `/me/chats` pela última mensagem vale em todos os tenants e se o
+`$filter` por `lastModifiedDateTime` nas mensagens do chat responde sem pedir
+permissão de aplicativo.
 
 Para exercitar cliente MCP sem depender de nada instalado na máquina, existe
 `app/src/fixtures/mcp-fixture-server.ts`, um servidor stdio de brinquedo com as

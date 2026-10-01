@@ -49,6 +49,7 @@ async function servicoFalso({ registro = true, recusar = false } = {}) {
     cliente: "",
     retorno: "",
     escopo: "",
+    prompt: null as string | null,
     form: new URLSearchParams(),
   };
   const server = createServer(async (req, res) => {
@@ -82,6 +83,7 @@ async function servicoFalso({ registro = true, recusar = false } = {}) {
       visto.cliente = url.searchParams.get("client_id") ?? "";
       visto.retorno = url.searchParams.get("redirect_uri") ?? "";
       visto.escopo = url.searchParams.get("scope") ?? "";
+      visto.prompt = url.searchParams.get("prompt");
       const volta = new URL(url.searchParams.get("redirect_uri")!);
       if (recusar) volta.searchParams.set("error", "access_denied");
       else volta.searchParams.set("code", "codigo-1");
@@ -227,6 +229,63 @@ test("retorno fixo fora do loopback é recusado antes de abrir o navegador", asy
       /precisa ser loopback/,
     );
     assert.equal(visto.trocas, 0);
+  } finally {
+    fechar();
+  }
+});
+
+test("conexão direta autoriza sem servidor MCP, sem recurso e sem pedir consentimento de novo", async () => {
+  const { base, visto, fechar, secrets, oauth } = await montar({ registro: false });
+  try {
+    const redirectUri = `http://localhost:${await portaLivre()}/callback`;
+    const name = `direta-${randomUUID().slice(0, 8)}`;
+    const estado = await oauth.connectDirect(
+      name,
+      base,
+      {
+        issuer: base,
+        authorization_endpoint: `${base}/authorize`,
+        token_endpoint: `${base}/token`,
+        response_types_supported: ["code"],
+        code_challenge_methods_supported: ["S256"],
+      },
+      { clientId: "cliente-entra", redirectUri, scope: "offline_access Chat.Read" },
+    );
+    assert.equal(estado.connected, true);
+    assert.equal(estado.renewable, true);
+    assert.equal(visto.registros, 0);
+    assert.equal(visto.cliente, "cliente-entra");
+    assert.equal(visto.escopo, "offline_access Chat.Read");
+    // O SDK poria `prompt=consent` por causa do `offline_access`.
+    assert.equal(visto.prompt, null);
+    assert.equal(visto.recurso, "");
+    assert.ok(visto.desafio.length > 0);
+    assert.equal(visto.form.get("client_id"), "cliente-entra");
+    assert.equal(visto.form.has("client_secret"), false);
+    assert.equal(visto.form.has("resource"), false);
+    assert.equal(secrets.get(`mcp/${name}`), "Bearer token-1");
+    assert.equal(await oauth.accessToken(name), "token-1");
+  } finally {
+    fechar();
+  }
+});
+
+test("abrir e esperar devolve o que voltou no loopback, conferindo o state", async () => {
+  const { fechar, oauth } = await montar();
+  try {
+    const redirectUri = `http://localhost:${await portaLivre()}/callback`;
+    const volta = await oauth.openAndWait(redirectUri, (state) => {
+      const url = new URL(redirectUri);
+      url.searchParams.set("admin_consent", "True");
+      url.searchParams.set("state", state);
+      return url.toString();
+    });
+    assert.equal(volta.get("admin_consent"), "True");
+
+    await assert.rejects(
+      oauth.openAndWait(redirectUri, () => `${redirectUri}?admin_consent=True&state=outro`),
+      /state do retorno não confere/,
+    );
   } finally {
     fechar();
   }

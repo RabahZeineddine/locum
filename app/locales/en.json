@@ -769,6 +769,30 @@
       "dms": "Direct messages only",
       "what": "What to watch",
       "add": "Turn on"
+    },
+    "teams": {
+      "title": "Teams through Microsoft Graph",
+      "description": "Locum talks to Teams through Microsoft Graph, with your account and an app registered in your organization's Microsoft Entra. The app is a public client with PKCE: there is no secret, and tenant and client id stay on this machine.",
+      "stepRegister": "Register the app in Entra (App registrations, New registration): this organization only, platform \"Mobile and desktop applications\" with the redirect {{redirect}}. The command below does the same through the Azure CLI.",
+      "stepPermissions": "No need to add permissions: when connecting, Locum asks for the delegated Graph permissions {{scopes}}, and none of them needs an admin.",
+      "stepIds": "Paste the Directory (tenant) ID and the Application (client) ID from the app page and connect. The browser opens for you to authorize.",
+      "copyCommand": "Copy command",
+      "copied": "Copied",
+      "tenant": "Entra tenant",
+      "tenantHint": "tenant ID or company.com",
+      "clientId": "Entra app client ID",
+      "clientIdHint": "00000000-0000-0000-0000-000000000000",
+      "connect": "Connect",
+      "reconnect": "Connect again",
+      "disconnect": "Disconnect",
+      "connected": "connected",
+      "admin": "Admin consent",
+      "adminHow": "If your company does not let users authorize apps on their own, a tenant admin clicks \"Admin consent\" once, and the app is allowed for everyone.",
+      "adminDone": "Admin consent recorded. Now just connect.",
+      "waiting": "Waiting for authorization in the browser."
+    },
+    "teamsInbox": {
+      "description": "Wakes an agent when someone mentions you or messages you in a Teams chat. Every 5 minutes Locum reads, through Graph and with your account, the chats that changed; any reply the agent proposes waits in the queue. Team channels are not covered yet."
     }
   },
   "severity": {
@@ -1070,9 +1094,8 @@
         "description": "Channels Locum reads through Slack's official server, with an app created in your workspace, or through another MCP server you already have."
       },
       "teams": {
-        "tagline": "Microsoft Teams channels and chats",
-        "description": "Read Teams channels and chats from agents.",
-        "soon": "Teams' official MCP server is in preview and needs a Copilot license and tenant admin consent. It lands here when it leaves preview."
+        "tagline": "Microsoft Teams mentions and chats",
+        "description": "Teams through Microsoft Graph, with an app registered in your organization's Entra. Wakes agents on mentions and chat messages, and a proposed reply goes out under your name after you approve it."
       },
       "sentry": {
         "tagline": "Errors, issues and releases",

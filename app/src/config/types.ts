@@ -57,7 +57,7 @@ export const ModelStep = StepBase.extend({
 
 export const ActionStep = StepBase.extend({
   type: z.literal("action"),
-  /** github.review_comment | slack.post | tracker.create_issue */
+  /** github.review_comment | slack.post | teams.post | tracker.create_issue */
   action: z.string(),
   mode: ActionMode.default("approve"),
   input: z.string().optional(),
@@ -315,12 +315,25 @@ export const SlackInboxTrigger = z.object({
   everyMinutes: z.number().int().min(1).default(5),
 });
 
+/**
+ * O mesmo do Slack, para o Teams: menção e mensagem direta, pela conexão do
+ * Teams. Cada batida custa uma chamada ao Graph por conversa que se mexeu, e
+ * os mesmos cinco minutos ficam bem abaixo do limite dele.
+ */
+export const TeamsInboxTrigger = z.object({
+  kind: z.literal("teams-inbox"),
+  mentions: z.boolean().default(true),
+  dms: z.boolean().default(true),
+  everyMinutes: z.number().int().min(1).default(5),
+});
+
 export const TriggerConfig = z.discriminatedUnion("kind", [
   ScheduleTrigger,
   WebhookTrigger,
   PollTrigger,
   McpPollTrigger,
   SlackInboxTrigger,
+  TeamsInboxTrigger,
 ]);
 export type TriggerConfig = z.infer<typeof TriggerConfig>;
 /** O que se passa para cadastrar, antes dos defaults do zod. */

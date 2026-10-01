@@ -13,9 +13,37 @@ import {
   validSlackClientId,
 } from "./slack-app.js";
 import { slackService, type SlackService } from "./slack-service.js";
+import {
+  TEAMS_REDIRECT_URI,
+  TEAMS_SCOPES,
+  TEAMS_SERVER,
+  entraAuthorizationServer,
+  entraMetadata,
+  teamsAdminConsentUrl,
+  teamsAppCommand,
+  teamsScope,
+  validTeamsClientId,
+  validTeamsTenant,
+} from "./teams-app.js";
 
 /** Onde fica o client id do app de Slack desta máquina. Não é segredo: app público com PKCE. */
 const CHAVE_CLIENT_ID_SLACK = "slack:clientId";
+
+/** Tenant e client id do app do Entra desta máquina. Também não são segredo. */
+const CHAVE_TENANT_TEAMS = "teams:tenantId";
+const CHAVE_CLIENT_ID_TEAMS = "teams:clientId";
+
+/** O que a tela precisa para guiar o registro do app do Teams. */
+export interface TeamsAppSetup {
+  redirectUri: string;
+  /** Permissões delegadas do Graph que o app pede, para a tela listar. */
+  scopes: string[];
+  /** O registro pela CLI do Azure, para copiar. */
+  command: string;
+  tenantId: string | null;
+  clientId: string | null;
+  connected: boolean;
+}
 
 /** O que a tela precisa para guiar a criação do app de Slack. */
 export interface SlackAppSetup {
@@ -36,7 +64,7 @@ export type ConnectionCategory = "dev" | "communication" | "work" | "observabili
  * - `claude-code`: cadastra o Locum no Claude Code.
  * - `github`: token pessoal no cofre, pelo painel.
  * - `oauth`: servidor MCP remoto que aceita registro automático; um clique abre o navegador.
- * - `panel`: liga por um formulário do próprio Locum (Jira, Slack sobre um servidor MCP).
+ * - `panel`: liga por um formulário do próprio Locum (Jira, Slack, Teams).
  * - `soon`: ainda sem caminho que não exija terminal, e a tela diz o porquê.
  */
 export type ConnectionKind = "claude-code" | "github" | "oauth" | "panel" | "soon";
@@ -69,7 +97,7 @@ export const CATALOG: CatalogEntry[] = [
   { id: "notion", name: "Notion", category: "work", kind: "oauth", url: "https://mcp.notion.com/mcp", logo: "notion", color: "000000" },
   { id: "atlassian", name: "Atlassian", category: "work", kind: "oauth", url: "https://mcp.atlassian.com/v1/mcp", logo: "atlassian", color: "0052CC" },
   { id: "slack", name: "Slack", category: "communication", kind: "panel", logo: null, color: "4A154B" },
-  { id: "teams", name: "Microsoft Teams", category: "communication", kind: "soon", logo: null, color: "5059C9" },
+  { id: "teams", name: "Microsoft Teams", category: "communication", kind: "panel", logo: null, color: "5059C9" },
   { id: "sentry", name: "Sentry", category: "observability", kind: "oauth", url: "https://mcp.sentry.dev/mcp", logo: "sentry", color: "362D59" },
   { id: "cloudflare", name: "Cloudflare", category: "observability", kind: "oauth", url: "https://mcp.cloudflare.com/mcp", logo: "cloudflare", color: "F38020" },
   { id: "vercel", name: "Vercel", category: "dev", kind: "oauth", url: "https://mcp.vercel.com", logo: "vercel", color: "000000" },
@@ -233,6 +261,64 @@ export class ConnectionService {
     return this.um("slack");
   }
 
+  /** Comando de registro e o que já foi informado, para a tela do Teams. */
+  async teamsApp(): Promise<TeamsAppSetup> {
+    return {
+      redirectUri: TEAMS_REDIRECT_URI,
+      scopes: TEAMS_SCOPES,
+      command: teamsAppCommand(),
+      tenantId: (await this.deps.settings.get(CHAVE_TENANT_TEAMS)) ?? null,
+      clientId: (await this.deps.settings.get(CHAVE_CLIENT_ID_TEAMS)) ?? null,
+      connected: this.deps.oauth.status(TEAMS_SERVER).connected,
+    };
+  }
+
+  /**
+   * Liga o Teams com o app que a organização registrou no Entra.
+   *
+   * Não há servidor MCP para cadastrar: o token vai para o cofre e quem o usa
+   * é a caixa do Teams e a resposta aprovada, direto no Graph.
+   */
+  async connectTeams(tenantId: string, clientId: string): Promise<Connection> {
+    const { tenant, client } = await this.guardarTeams(tenantId, clientId);
+    await this.deps.oauth.connectDirect(TEAMS_SERVER, entraAuthorizationServer(tenant), entraMetadata(tenant), {
+      clientId: client,
+      redirectUri: TEAMS_REDIRECT_URI,
+      scope: teamsScope(),
+    });
+    return this.um(TEAMS_SERVER);
+  }
+
+  /**
+   * Abre o consentimento do administrador para o tenant inteiro e espera a
+   * volta. Serve para a empresa que não deixa o próprio usuário consentir.
+   */
+  async teamsAdminConsent(tenantId: string, clientId: string): Promise<void> {
+    const { tenant, client } = await this.guardarTeams(tenantId, clientId);
+    const volta = await this.deps.oauth.openAndWait(TEAMS_REDIRECT_URI, (state) =>
+      teamsAdminConsentUrl(tenant, client, state),
+    );
+    if (volta.get("admin_consent")?.toLowerCase() !== "true") {
+      throw new Error("o Entra voltou sem confirmar o consentimento do administrador");
+    }
+  }
+
+  /** Esquece o token. Tenant e client id ficam, porque o app continua registrado. */
+  async disconnectTeams(): Promise<Connection> {
+    await this.deps.oauth.disconnect(TEAMS_SERVER);
+    return this.um(TEAMS_SERVER);
+  }
+
+  private async guardarTeams(tenantId: string, clientId: string): Promise<{ tenant: string; client: string }> {
+    const tenant = tenantId.trim().toLowerCase();
+    const client = clientId.trim().toLowerCase();
+    if (!validTeamsTenant(tenant)) throw new Error("tenant do Entra é um GUID ou um domínio, como empresa.com.br");
+    if (!validTeamsClientId(client)) throw new Error("client id do Entra é um GUID");
+    await this.deps.settings.set(CHAVE_TENANT_TEAMS, tenant);
+    await this.deps.settings.set(CHAVE_CLIENT_ID_TEAMS, client);
+    return { tenant, client };
+  }
+
   /**
    * Servidor MCP remoto qualquer, pelo endereço. Pergunta antes se ele pede
    * OAuth com registro automático: sendo assim, cadastra e conecta no mesmo
@@ -289,6 +375,9 @@ export class ConnectionService {
         if (entry.id === "slack") {
           const s = await this.deps.slack.get();
           return { ...base, state: s.server === null ? "available" : "connected" };
+        }
+        if (entry.id === TEAMS_SERVER) {
+          return { ...base, state: this.deps.oauth.status(TEAMS_SERVER).connected ? "connected" : "available" };
         }
         return { ...base, state: "available" };
       }
