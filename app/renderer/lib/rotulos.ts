@@ -61,6 +61,9 @@ const PROVEDORES_CONHECIDOS: Record<string, string> = {
   "claude-code": "Claude Code",
   anthropic: "Anthropic",
   openai: "OpenAI",
+  google: "Google",
+  glm: "GLM",
+  ollama: "Ollama",
 };
 
 /**
