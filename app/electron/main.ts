@@ -62,7 +62,13 @@ if (pastaDaFumaca?.temporary) {
 // Antes de qualquer espera: com o app fechado, o macOS sobe o processo para
 // entregar a URL, e o `open-url` sai logo no lancamento. Ouvinte registrado
 // depois do `whenReady` chega tarde e perde justamente a URL que subiu o app.
-captureDeepLinks({ singleInstance: !smoke });
+//
+// Servidor MCP e comando de cofre ficam fora da trava de instância única: o
+// Claude Code abre o `--mcp` com o Locum já aberto na bandeja, e a trava faria
+// o processo sair calado, sem responder ao primeiro pedido.
+const comandoDeLinha =
+  modoMcp || process.argv.includes("--set-secret") || process.argv.includes("--remove-secret");
+captureDeepLinks({ singleInstance: !smoke && !comandoDeLinha });
 
 let mainWindow: BrowserWindow | null = null;
 
