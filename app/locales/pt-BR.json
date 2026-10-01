@@ -598,8 +598,8 @@
       "agent": "agent que vai revisar",
       "owner": "dono da organização ou da conta",
       "ownerHint": "organização",
-      "repo": "padrão do nome do repositório",
-      "repoHint": "^meu-servico$",
+      "repo": "nome do repositório",
+      "repoHint": "meu-servico, api-*",
       "authorship": "de quem são os pull requests",
       "authorshipAny": "de qualquer pessoa",
       "authorshipMine": "meus",
@@ -619,9 +619,11 @@
       "beats": "última varredura {{last}} · próxima {{next}}",
       "never": "nunca",
       "parked": "nenhuma, o gatilho está parado",
-      "howTo": "O padrão do repositório é uma expressão regular aplicada ao nome, então \"^api-\" pega todos os que começam assim e \"^meu-servico$\" pega um só. A varredura precisa do token do GitHub guardado em Configuração > Conexões, e filtrar por autoria precisa dele conferido: é a conta dele que diz quais pull requests são seus. Achado nenhum vira comentário sozinho: ele para na fila e espera o seu clique.",
+      "howTo": "Escreva o nome do repositório, vários separados por vírgula, ou use * para pegar todos que começam igual (api-*). A varredura usa o token do GitHub de Configuração > Conexões. Nada vira comentário sozinho: o achado para na fila e espera o seu clique.",
       "refused": "a ponte recusou: {{message}}",
-      "every_zero": "a cada {{count}} minutos"
+      "every_zero": "a cada {{count}} minutos",
+      "advanced": "Quero usar expressão regular",
+      "advancedHow": "Se o texto tiver ^, $, parênteses ou |, ele vale como expressão regular aplicada ao nome, sem mudança: \"^api-\" pega todos que começam assim. Filtrar por autoria precisa do token conferido, porque é a conta dele que diz quais pull requests são seus."
     },
     "slack": {
       "title": "Slack observado",

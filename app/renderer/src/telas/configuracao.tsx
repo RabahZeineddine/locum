@@ -2,6 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { call, read, useRead, type ReadResult } from "@/lib/bridge";
 import { instalarResposta } from "@/lib/editar-agent";
+import { nomeDoPadrao, padraoDoRepo } from "@/lib/padrao-do-repo";
 import { rotuloDoProvedor } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
 import { EscolhaDoModelo } from "../assistente-modelo";
@@ -2291,7 +2292,7 @@ export function Observados({ agentId: fixo }: { agentId?: string } = {}) {
         kind: "poll",
         source: FONTE,
         owner: dono.trim(),
-        repoMatch: repo.trim(),
+        repoMatch: padraoDoRepo(repo),
         authorship: autoria,
         everyMinutes: minutos,
       }).then(() => {
@@ -2401,6 +2402,10 @@ export function Observados({ agentId: fixo }: { agentId?: string } = {}) {
       </div>
 
       <p className="text-muted-foreground max-w-[68ch] text-xs">{t("settings.watched.howTo")}</p>
+      <details className="text-muted-foreground max-w-[68ch] text-xs">
+        <summary className="cursor-pointer">{t("settings.watched.advanced")}</summary>
+        <p className="mt-1">{t("settings.watched.advancedHow")}</p>
+      </details>
 
       {recusa === null ? null : (
         <p className="text-destructive text-xs" data-locum-observados-erro={recusa}>
@@ -2432,7 +2437,7 @@ function LinhaDoObservado({
     config.kind === "poll"
       ? t("settings.watched.target", {
           owner: config.owner ?? t("settings.watched.fromEnv"),
-          repo: config.repoMatch,
+          repo: nomeDoPadrao(config.repoMatch),
         })
       : config.kind === "slack-inbox" || config.kind === "teams-inbox"
         ? t(ROTULO_DA_CAIXA[config.mentions ? (config.dms ? "both" : "mentions") : "dms"])
