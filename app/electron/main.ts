@@ -5529,6 +5529,8 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
 
   const { approvalService } = await import("../src/services/approval-service.js");
   const primeiraPendencia = (await approvalService.listPending())[0]?.id;
+  const { initiativeService } = await import("../src/services/initiative-service.js");
+  const primeiraIniciativa = (await initiativeService.list())[0]?.slug;
 
   const destinos: [string, string | undefined][] = [
     ["hoje", undefined],
@@ -5538,6 +5540,8 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
     ["execucoes", primeiroRun],
     ["agents", undefined],
     ["agents", primeiroAgent],
+    ["initiatives", undefined],
+    ["initiatives", primeiraIniciativa],
     // Uma foto por seção, com o nome dela: a Configuração tem três.
     ["configuracao", "geral"],
     ["configuracao", "modelos"],

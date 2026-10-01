@@ -10,8 +10,8 @@ import { initiativeService, type InitiativeRow } from "../services/initiative-se
 export async function ensureExampleInitiative(): Promise<InitiativeRow> {
   return initiativeService.upsert({
     slug: "example",
-    title: "Example initiative",
-    objective: "Show what an initiative looks like once it has a context, agents and servers.",
-    doneCriteria: "Someone opens the initiatives screen and understands the shape without asking.",
+    title: "Iniciativa de exemplo",
+    objective: "Mostrar como fica uma iniciativa que já tem contexto, agents e servidores.",
+    doneCriteria: "Quem abre a tela de iniciativas entende o formato sem precisar perguntar.",
   });
 }
