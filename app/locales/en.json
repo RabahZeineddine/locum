@@ -760,6 +760,15 @@
       "disconnect": "Disconnect",
       "connected": "connected",
       "waiting": "Waiting for authorization in the browser."
+    },
+    "slackInbox": {
+      "title": "Mentions and direct messages",
+      "description": "Wakes an agent when someone mentions you or sends you a direct message. Locum queries Slack search with your account every 5 minutes; any reply the agent proposes waits in the queue.",
+      "both": "Mentions and direct messages",
+      "mentions": "Mentions only",
+      "dms": "Direct messages only",
+      "what": "What to watch",
+      "add": "Turn on"
     }
   },
   "severity": {

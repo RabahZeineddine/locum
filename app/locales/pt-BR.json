@@ -791,6 +791,15 @@
       "disconnect": "Desconectar",
       "connected": "conectado",
       "waiting": "Esperando a autorização no navegador."
+    },
+    "slackInbox": {
+      "title": "Menções e mensagens diretas",
+      "description": "Acorda um agent quando alguém menciona você ou manda mensagem direta. O Locum consulta a busca do Slack com a sua conta a cada 5 minutos; a resposta que o agent propuser para na fila.",
+      "both": "Menções e mensagens diretas",
+      "mentions": "Só menções",
+      "dms": "Só mensagens diretas",
+      "what": "O que avisar",
+      "add": "Ligar"
     }
   },
   "severity": {

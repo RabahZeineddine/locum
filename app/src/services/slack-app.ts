@@ -19,16 +19,27 @@ export const SLACK_MCP_URL = "https://mcp.slack.com/mcp";
  */
 export const SLACK_REDIRECT_URI = "http://localhost:41753/callback";
 
+/** Nome do cadastro do servidor oficial. */
+export const SLACK_SERVER = "slack";
+
 /**
  * Escopos de usuário: ler canal público e privado, achar canal e pessoa, e
  * responder em thread. Responder continua passando pela fila de aprovação; o
  * escopo só existe para que a resposta aprovada consiga sair.
+ *
+ * Os seis `search:read.*` são os que a busca de menções e mensagens diretas
+ * (`assistant.search.context`) pede a token de usuário. Sem os de `im` e
+ * `mpim`, a busca simplesmente não enxerga conversa direta.
  */
 export const SLACK_USER_SCOPES = [
   "channels:history",
   "groups:history",
   "search:read.public",
   "search:read.private",
+  "search:read.im",
+  "search:read.mpim",
+  "search:read.files",
+  "search:read.users",
   "users:read",
   "chat:write",
 ];

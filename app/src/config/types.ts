@@ -301,11 +301,26 @@ export const McpPollTrigger = z.object({
   everyMinutes: z.number().int().min(1).default(15),
 });
 
+/**
+ * O que pede a atenção da pessoa no Slack: menção a ela e mensagem direta.
+ *
+ * Não tem servidor nem ferramenta no cadastro porque só existe um jeito de
+ * fazer isto, que é a conexão oficial do Slack. Cinco minutos de padrão porque
+ * quem menciona alguém espera resposta antes de quem posta num canal.
+ */
+export const SlackInboxTrigger = z.object({
+  kind: z.literal("slack-inbox"),
+  mentions: z.boolean().default(true),
+  dms: z.boolean().default(true),
+  everyMinutes: z.number().int().min(1).default(5),
+});
+
 export const TriggerConfig = z.discriminatedUnion("kind", [
   ScheduleTrigger,
   WebhookTrigger,
   PollTrigger,
   McpPollTrigger,
+  SlackInboxTrigger,
 ]);
 export type TriggerConfig = z.infer<typeof TriggerConfig>;
 /** O que se passa para cadastrar, antes dos defaults do zod. */

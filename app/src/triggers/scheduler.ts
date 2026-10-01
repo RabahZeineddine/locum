@@ -6,6 +6,7 @@ import { matchesAuthorship } from "../services/github-service.js";
 import { mcpService, type McpService } from "../services/mcp-service.js";
 import { pollMcpServer } from "../sources/mcp-poll.js";
 import { pollSlack, slackWatchFor, type SlackPollOutcome } from "../sources/slack.js";
+import { pollSlackInbox, type SlackInboxOutcome } from "../sources/slack-inbox.js";
 import { slackService, type SlackService } from "../services/slack-service.js";
 import { triggerService, type TriggerEntry, type TriggerService } from "../services/trigger-service.js";
 // So tipo: o servico de reconciliacao puxa o octokit pelo topo do modulo, e
@@ -176,6 +177,7 @@ export class Scheduler {
     private readonly poll: PollFn = varrerNoGithub,
     private readonly sweep: SweepFn = conferirFechados,
     private readonly viewer: ViewerFn = contaConferida,
+    private readonly slackInbox: typeof pollSlackInbox = pollSlackInbox,
   ) {}
 
   /** Batida vinda do evento de acordar da maquina, que o M3 vai ligar. */
@@ -410,6 +412,12 @@ export class Scheduler {
         };
       }
 
+      case "slack-inbox": {
+        const caixa = await this.slackInbox(config, { db: this.db });
+        const runs = await this.runsFor(trigger, caixa.eventIds, wait);
+        return { events: caixa.eventIds.length, runs, detail: slackInboxDetail(caixa) };
+      }
+
       default:
         // `runTrigger` ja devolveu o webhook antes de chegar aqui. Se um tipo
         // novo entrar no zod e nao passar por este switch, e melhor estourar do
@@ -551,6 +559,15 @@ function slackDetail(varredura: SlackPollOutcome): string | undefined {
     if (canal.error !== undefined) partes.push(`${canal.channel}: ${canal.error}`);
   }
 
+  return partes.length === 0 ? undefined : partes.join("; ");
+}
+
+/** O mesmo que `slackDetail`, para a caixa de mencoes e mensagens diretas. */
+function slackInboxDetail(caixa: SlackInboxOutcome): string | undefined {
+  const partes: string[] = [];
+  const repetidos = caixa.seen - caixa.eventIds.length;
+  if (repetidos > 0) partes.push(`${repetidos} mensagem(ns) ja conhecida(s)`);
+  for (const falha of caixa.errors) partes.push(`${falha.kind}: ${falha.error}`);
   return partes.length === 0 ? undefined : partes.join("; ");
 }
 

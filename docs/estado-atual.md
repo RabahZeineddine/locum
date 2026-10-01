@@ -120,7 +120,7 @@ que a interface vai usar.
 | ação de review com modo rascunho e modo aprovação | escrita, sem teste com token; publica com o veredito da auditoria como evento da review, APPROVE, COMMENT ou REQUEST_CHANGES, e pendência sem veredito sai como comentário; aprovar ou pedir mudança nunca sai sozinho, porque o handler segura a proposta na fila mesmo com o passo em modo automático |
 | veredito da review | a auditoria devolve `verdict` preso no esquema de saída, com o critério de cada um no prompt; a tela de revisão mostra o veredito e deixa trocar antes de aprovar, gravando na pendência junto com os achados; aprovar sem achado é publicável, comentar sem achado não |
 | tracker de tarefa, Jira e GitHub Issues | adaptador, cadastro no banco e credencial no keychain; teste de conexão e lista de destinos pela interface, verificado contra um tracker de mentira em 127.0.0.1 |
-| Slack pelo servidor oficial | o painel do Slack guia a criação de um app no workspace a partir de manifesto (cliente público com PKCE, retorno fixo em `http://localhost:41753/callback`), recebe o client id e autoriza no navegador; a origem do Slack passa a usar `slack_read_channel` e `slack_send_message`. Verificado com servidor de autorização de mentira; contra o Slack de verdade, ainda não |
+| Slack pelo servidor oficial | o painel do Slack guia a criação de um app no workspace a partir de manifesto (cliente público com PKCE, retorno fixo em `http://localhost:41753/callback`), recebe o client id e autoriza no navegador; a origem do Slack passa a usar `slack_read_channel` e `slack_send_message`; com a conexão feita, o gatilho `slack-inbox` acorda um agent em menção e mensagem direta. Verificado com servidor de autorização de mentira; contra o Slack de verdade, ainda não |
 | Jira pela conexão Atlassian | tipo `jira-atlassian`, que fala com o servidor MCP oficial usando a autorização da vitrine, sem e-mail nem token; o Jira mora no painel da Atlassian e o GitHub Issues no do GitHub, e o cartão Jira separado saiu |
 | passo de ação que abre tarefa | `tracker.create_issue` monta o item e para na fila; corpo escrito por um passo de modelo antes dele, modo travado em `approve` pelo handler |
 | descoberta de skills e seleção por arquivo alterado | pronto |
@@ -1055,6 +1055,36 @@ Falta ver com o Slack de verdade o formato do que `slack_read_channel` devolve.
 A fonte do Slack procura `messages` com `ts` em cada item; se o servidor oficial
 devolver texto formatado em vez de lista, a varredura não acha mensagem e
 `slackMessages` precisa aprender esse formato.
+
+### Menções e mensagens diretas
+
+O gatilho `slack-inbox` acorda um agent quando alguém menciona a pessoa ou
+manda mensagem direta. Não dá para receber evento do Slack sem um endereço
+público (Socket Mode não entra no diretório e reparte os eventos entre
+conexões), então ele varre, a cada 5 minutos por padrão.
+
+A varredura (`app/src/sources/slack-inbox.ts`) fala com a API Web do Slack e não
+com o servidor MCP, porque a busca do servidor oficial devolve markdown, sem
+canal nem carimbo separados. Usa o mesmo token de usuário que a conexão oficial
+guardou (`McpOAuthService.accessToken`, que renova antes) e o método
+`assistant.search.context`, que com token de usuário não pede `action_token`.
+São duas perguntas, cada uma com o próprio cursor: `<@eu>` em qualquer tipo de
+conversa, e `to:<@eu>` em `im` e `mpim`. A pessoa é descoberta por `auth.test`.
+O que ela mesma escreveu e o que veio de bot ficam de fora. A chave externa é a
+mesma da fonte de canal, então a menção num canal observado não acorda o agent
+duas vezes. A busca não devolve `thread_ts`, e o vínculo da thread sai do
+permalink. O primeiro cursor é um dia atrás, para que ligar o gatilho não acorde
+o agent para a história inteira da conta.
+
+O manifesto ganhou os escopos `search:read.im`, `search:read.mpim`,
+`search:read.files` e `search:read.users`. Quem já tinha o app precisa
+reinstalar para eles valerem.
+
+Verificado contra uma API de mentira. Falta ver com o Slack de verdade três
+coisas: se o token emitido para o servidor MCP vale na API Web, se o filtro
+`to:` separa mensagem direta como na barra de busca, e se o `after` vale pelo
+segundo ou pelo dia (a varredura segue até quatro páginas por pergunta para que
+um dia cheio não trave o cursor, e a chave externa descarta o repetido).
 
 Para exercitar cliente MCP sem depender de nada instalado na máquina, existe
 `app/src/fixtures/mcp-fixture-server.ts`, um servidor stdio de brinquedo com as

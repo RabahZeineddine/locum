@@ -243,6 +243,20 @@ export class McpOAuthService {
     await this.store(name, tokens, grant);
   }
 
+  /**
+   * O token de acesso, renovado se estiver para vencer, sem o "Bearer ".
+   *
+   * Existe para quem precisa falar com a API do mesmo serviço fora do servidor
+   * MCP, com a mesma autorização: a busca de menções do Slack, que o servidor
+   * oficial só devolve em texto corrido. Nulo quando não há conexão.
+   */
+  async accessToken(name: string): Promise<string | null> {
+    await this.refreshIfNeeded(name);
+    const valor = this.deps.secrets.get(this.tokenRef(name));
+    if (valor === undefined) return null;
+    return valor.startsWith("Bearer ") ? valor.slice("Bearer ".length) : valor;
+  }
+
   /** Esquece token e registro. O cadastro do servidor fica, sem credencial. */
   async disconnect(name: string): Promise<void> {
     this.deps.secrets.remove(this.tokenRef(name));

@@ -2416,7 +2416,9 @@ function LinhaDoObservado({
           owner: config.owner ?? t("settings.watched.fromEnv"),
           repo: config.repoMatch,
         })
-      : "";
+      : config.kind === "slack-inbox"
+        ? t(ROTULO_DA_CAIXA[config.mentions ? (config.dms ? "both" : "mentions") : "dms"])
+        : "";
 
   // "De qualquer pessoa" é o padrão e não vira texto: repetir o que vale para
   // todo gatilho em toda linha só faria a distinção pesar menos onde ela existe.
@@ -2606,12 +2608,129 @@ function SlackOficial() {
         ) : null}
       </div>
 
+      {app?.connected ? <CaixaDoSlack /> : null}
+
       {ocupado ? <p className="text-muted-foreground text-xs">{t("settings.slackOfficial.waiting")}</p> : null}
       {recusa !== null ? (
         <p className="text-destructive text-xs" data-locum-slack-oficial-erro="">
           {recusa}
         </p>
       ) : null}
+    </div>
+  );
+}
+
+type Caixa = "both" | "mentions" | "dms";
+const CAIXAS: Caixa[] = ["both", "mentions", "dms"];
+const ROTULO_DA_CAIXA: Record<Caixa, string> = {
+  both: "settings.slackInbox.both",
+  mentions: "settings.slackInbox.mentions",
+  dms: "settings.slackInbox.dms",
+};
+
+/**
+ * O gatilho de menção e mensagem direta, que só existe com a conexão oficial.
+ *
+ * Fica dentro do bloco da conexão, e não em Gatilhos, porque não tem o que
+ * escolher além do agent e do que avisar: servidor, ferramenta e canal são os
+ * da conta de quem conectou.
+ */
+function CaixaDoSlack() {
+  const { i18n, t } = useTranslation();
+  const agents = useRead("agents.list");
+  const inicial = useRead("triggers.schedule");
+  const [recarregado, setRecarregado] = useState<Gatilho[] | null>(null);
+  const [agentId, setAgentId] = useState("");
+  const [caixa, setCaixa] = useState<Caixa>("both");
+  const [ocupado, setOcupado] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  const agenda = recarregado ?? inicial.data ?? null;
+  const recusa = erro ?? inicial.error?.message ?? null;
+  const gatilhos = (agenda ?? []).filter((g) => g.kind === "slack-inbox");
+  const listaDeAgents = agents.data ?? [];
+  const escolhido = agentId !== "" ? agentId : (listaDeAgents[0]?.id ?? "");
+
+  const agir = (acao: Promise<unknown>): void => {
+    setOcupado(true);
+    acao
+      .then(
+        () => setErro(null),
+        (falha: unknown) => setErro(falha instanceof Error ? falha.message : String(falha)),
+      )
+      .then(() => read("triggers.schedule").then(setRecarregado, () => undefined))
+      .finally(() => setOcupado(false));
+  };
+
+  const ligar = (): void => {
+    agir(
+      call("triggers.set", escolhido, {
+        kind: "slack-inbox",
+        mentions: caixa !== "dms",
+        dms: caixa !== "mentions",
+      }),
+    );
+  };
+
+  return (
+    <div className="flex flex-col gap-2" data-locum-probe="slack-caixa">
+      <span className="text-sm font-medium">{t("settings.slackInbox.title")}</span>
+      <p className="text-muted-foreground text-xs">{t("settings.slackInbox.description")}</p>
+
+      {gatilhos.length === 0 ? null : (
+        <ul className="flex flex-col gap-2">
+          {gatilhos.map((gatilho) => (
+            <LinhaDoObservado
+              aoLigar={(ligado) => agir(call("triggers.setEnabled", gatilho.triggerId, ligado))}
+              aoRemover={() => agir(call("triggers.remove", gatilho.triggerId))}
+              gatilho={gatilho}
+              idioma={i18n.language}
+              key={gatilho.triggerId}
+              ocupado={ocupado}
+            />
+          ))}
+        </ul>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          aria-label={t("settings.watched.agent")}
+          className="border-border bg-background cursor-pointer rounded-md border px-2 py-1.5 text-xs"
+          data-locum-slack-caixa-agent=""
+          onChange={(evento) => setAgentId(evento.target.value)}
+          value={escolhido}
+        >
+          {listaDeAgents.map((agent) => (
+            <option key={agent.id} value={agent.id}>
+              {agent.id}
+            </option>
+          ))}
+        </select>
+        <select
+          aria-label={t("settings.slackInbox.what")}
+          className="border-border bg-background cursor-pointer rounded-md border px-2 py-1.5 text-xs"
+          data-locum-slack-caixa-tipo=""
+          onChange={(evento) => setCaixa(evento.target.value as Caixa)}
+          value={caixa}
+        >
+          {CAIXAS.map((valor) => (
+            <option key={valor} value={valor}>
+              {t(ROTULO_DA_CAIXA[valor])}
+            </option>
+          ))}
+        </select>
+        <Button
+          data-locum-slack-caixa-ligar=""
+          disabled={ocupado || escolhido === ""}
+          onClick={ligar}
+          size="sm"
+          variant="secondary"
+        >
+          {t("settings.slackInbox.add")}
+        </Button>
+      </div>
+
+      {recusa === null ? null : <p className="text-destructive text-xs">{recusa}</p>}
     </div>
   );
 }
