@@ -3,12 +3,12 @@ import { Button } from "@/components/ui/button";
 import { call, read, useRead, type ReadResult } from "@/lib/bridge";
 import { instalarResposta } from "@/lib/editar-agent";
 import { nomeDoPadrao, padraoDoRepo } from "@/lib/padrao-do-repo";
-import { rotuloDoProvedor } from "@/lib/rotulos";
+import { rotuloDoModelo, rotuloDoProvedor } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
 import { EscolhaDoModelo } from "../assistente-modelo";
 import { Vitrine } from "./conexoes";
 import { useIdioma } from "../idioma";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { Language } from "../../../src/services/i18n-service.js";
 import type { UpdaterState } from "../../../src/update/state.js";
@@ -87,6 +87,9 @@ export function Configuracao({ detalhe, navegar }: TelaProps) {
     );
 
   const listaDeProvedores = provedoresRecarregados?.lista ?? provedores.data ?? [];
+  const ligados = listaDeProvedores.filter((p) => p.available);
+  const paraLigar = listaDeProvedores.filter((p) => !p.available);
+  const modelos = useModelosLigados(ligados.map((p) => p.name).join(","));
   const chavesPorProvedor = new Map(
     (provedoresRecarregados?.chaves ?? chaves.data ?? []).map((c) => [c.provider, c]),
   );
@@ -201,17 +204,41 @@ export function Configuracao({ detalhe, navegar }: TelaProps) {
             descricao={t("settings.providers.description")}
             titulo={t("settings.providers.title")}
           >
-            {listaDeProvedores.map((provedor) => (
-              <LinhaDoProvedor
-                chave={chavesPorProvedor.get(provedor.name)}
-                key={provedor.name}
-                precos={listaDePrecos.filter((p) => p.provider === provedor.name)}
-                provedor={provedor}
-                recarregar={recarregarProvedores}
-                recarregarPrecos={recarregarPrecos}
-              />
-            ))}
+            {ligados.length === 0 ? (
+              <Vazio>{t("settings.providers.empty")}</Vazio>
+            ) : (
+              ligados.map((provedor) => (
+                <LinhaDoProvedor
+                  chave={chavesPorProvedor.get(provedor.name)}
+                  key={provedor.name}
+                  modelos={modelos === null ? null : (modelos.get(provedor.name) ?? null)}
+                  precos={listaDePrecos.filter((p) => p.provider === provedor.name)}
+                  provedor={provedor}
+                  recarregar={recarregarProvedores}
+                  recarregarPrecos={recarregarPrecos}
+                />
+              ))
+            )}
           </Secao>
+
+          {paraLigar.length === 0 ? null : (
+            <Secao
+              descricao={t("settings.providers.addDescription")}
+              titulo={t("settings.providers.addTitle")}
+            >
+              {paraLigar.map((provedor) => (
+                <LinhaDoProvedor
+                  chave={chavesPorProvedor.get(provedor.name)}
+                  key={provedor.name}
+                  modelos={null}
+                  precos={[]}
+                  provedor={provedor}
+                  recarregar={recarregarProvedores}
+                  recarregarPrecos={recarregarPrecos}
+                />
+              ))}
+            </Secao>
+          )}
 
           <Secao
             descricao={t("settings.registered.description")}
@@ -627,14 +654,87 @@ const TERMINAIS: readonly SessionTerminal[] = ["terminal", "iterm"];
 
 /* --------------------------------------------------------------- provedores */
 
+type ModelosDoProvedor = { modelos: string[]; erro?: string };
+
+/*
+ * Os modelos de cada provedor ligado, lidos uma vez por conjunto de ligados.
+ * Bate no catálogo de quem tem chave, que é de graça e só lista nomes; guardar
+ * ou esquecer uma chave muda o conjunto, e a leitura refaz sozinha. Enquanto
+ * não volta, o valor é nulo, e a linha diz que está lendo.
+ */
+function useModelosLigados(nomes: string): Map<string, ModelosDoProvedor> | null {
+  const [lidos, setLidos] = useState<{ nomes: string; mapa: Map<string, ModelosDoProvedor> } | null>(null);
+  useEffect(() => {
+    if (nomes === "") return;
+    let vivo = true;
+    call("providers.allModels", { assinatura: true }).then(
+      (lista) => vivo && setLidos({ nomes, mapa: new Map(lista.map((c) => [c.provedor, c])) }),
+      () => vivo && setLidos({ nomes, mapa: new Map() }),
+    );
+    return () => {
+      vivo = false;
+    };
+  }, [nomes]);
+  return lidos?.nomes === nomes ? lidos.mapa : null;
+}
+
+const MODELOS_VISIVEIS = 12;
+
+function ListaDeModelos({ modelos, provedor }: { modelos: ModelosDoProvedor | null; provedor: string }) {
+  const { t } = useTranslation();
+  const [todos, setTodos] = useState(false);
+
+  if (modelos === null) {
+    return <p className="text-muted-foreground pl-5 text-xs">{t("settings.providers.modelsLoading")}</p>;
+  }
+  if (modelos.erro !== undefined && modelos.modelos.length === 0) {
+    return (
+      <p className="text-muted-foreground pl-5 text-xs">
+        {t("settings.providers.modelsError", { message: modelos.erro })}
+      </p>
+    );
+  }
+  if (modelos.modelos.length === 0) {
+    return <p className="text-muted-foreground pl-5 text-xs">{t("settings.providers.modelsNone")}</p>;
+  }
+
+  const visiveis = todos ? modelos.modelos : modelos.modelos.slice(0, MODELOS_VISIVEIS);
+  const resto = modelos.modelos.length - visiveis.length;
+  return (
+    <div className="flex flex-wrap gap-1.5 pl-5" data-locum-modelos={provedor}>
+      {visiveis.map((m) => (
+        <span
+          className="bg-muted text-foreground rounded px-2 py-0.5 text-xs"
+          data-locum-modelo={m}
+          key={m}
+          title={m}
+        >
+          {rotuloDoModelo(m)}
+        </span>
+      ))}
+      {resto > 0 ? (
+        <button
+          className="text-muted-foreground hover:text-foreground cursor-pointer rounded px-2 py-0.5 text-xs"
+          onClick={() => setTodos(true)}
+          type="button"
+        >
+          {t("settings.providers.modelsMore", { count: resto })}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 function LinhaDoProvedor({
   chave,
+  modelos,
   precos,
   provedor,
   recarregar,
   recarregarPrecos,
 }: {
   chave: ChaveDeProvedor | undefined;
+  modelos: ModelosDoProvedor | null;
   precos: Preco[];
   provedor: Provedor;
   recarregar: () => Promise<void>;
@@ -664,22 +764,16 @@ function LinhaDoProvedor({
         <span className="w-36 shrink-0 truncate text-[13px] font-medium" title={provedor.name}>
           {rotuloDoProvedor(provedor.name)}
         </span>
-        <span
-          className={cn(
-            "shrink-0 text-xs",
-            provedor.available ? "text-chart-2" : "text-muted-foreground",
-          )}
-        >
-          {t(
-            provedor.available ? "settings.providers.available" : "settings.providers.unavailable",
-          )}
-        </span>
+        {/* Na seção de adicionar, dizer "indisponível" em cada linha só repete o título. */}
+        {provedor.available ? (
+          <span className="text-chart-2 shrink-0 text-xs">{t("settings.providers.available")}</span>
+        ) : null}
         {provedor.subscription ? (
           <span className="text-muted-foreground border-border shrink-0 rounded border px-1.5 text-[11px]">
             {t("settings.providers.subscription")}
           </span>
         ) : null}
-        {chave === undefined || chave.ref === null ? null : (
+        {chave === undefined || chave.ref === null || (!chave.stored && !provedor.available) ? null : (
           <Badge
             data-locum-credencial={chave.ref}
             data-locum-guardado={chave.stored ? "sim" : "nao"}
@@ -699,6 +793,8 @@ function LinhaDoProvedor({
           </span>
         ) : null}
       </div>
+
+      {provedor.available ? <ListaDeModelos modelos={modelos} provedor={provedor.name} /> : null}
 
       {chave === undefined || chave.variable === null ? null : (
         <ChaveDoProvedor chave={chave} provedor={provedor} recarregar={recarregar} />
@@ -940,6 +1036,8 @@ function ChaveDoProvedor({
         >
           {t(salvando ? "settings.providerKey.saving" : "settings.providerKey.save")}
         </Button>
+        {/* Sem chave guardada nem no ambiente, conferir só responderia "falta chave". */}
+        {chave.stored || chave.env ? (
         <Button
           data-locum-chave-conferir={provedor.name}
           disabled={exame.fase === "conferindo"}
@@ -953,6 +1051,7 @@ function ChaveDoProvedor({
               : "settings.providerKey.check",
           )}
         </Button>
+        ) : null}
         {chave.stored ? (
           <Button
             data-locum-chave-esquecer={provedor.name}

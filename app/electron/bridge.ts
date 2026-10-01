@@ -198,7 +198,7 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "providers.fallbacks": (machine) => providerService.getFallbacks(machine),
     "providers.preview": (models, machine) => providerService.resolvePreviews(models, machine),
     "providers.models": (nome) => providerService.listModels(nome),
-    "providers.allModels": () => providerService.listAllModels(),
+    "providers.allModels": (opcoes) => providerService.listAllModels(opcoes),
     "providers.registered": () => providerService.listRegistered(),
     "providers.register": (cadastro) => providerService.register(cadastro),
     "providers.remove": (id, force) => providerService.remove(id, force),

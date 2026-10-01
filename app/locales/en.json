@@ -20,9 +20,9 @@
     "step": {
       "optional": "optional",
       "dependsOn": "depends on {{steps}}",
-      "action": "Goes out through <code>{{action}}</code>, with what {{input}} produced.",
+      "action": "Publishes {{action}} with what {{input}} produced.",
       "noInput": "no step",
-      "requires": "Requires {{servers}}.",
+      "requires": "Needs the {{servers}} MCP server turned on.",
       "resolving": "Requested <code>{{model}}</code>, resolving on this machine...",
       "unresolved": "Requested <code>{{model}}</code>, and it does not resolve here: {{error}}",
       "resolved": "Requested <code>{{model}}</code>, runs <code>{{used}}</code>",
@@ -32,6 +32,14 @@
         "approve": "waits for your approval",
         "draft": "becomes a draft",
         "auto": "publishes on its own"
+      },
+      "actionKind": {
+        "github.review_comment": "a GitHub review comment",
+        "tracker.create_issue": "a tracker issue",
+        "digest.deliver": "a digest in the queue",
+        "slack.post": "a Slack message",
+        "teams.post": "a Teams message",
+        "context.update": "an initiative context update"
       }
     },
     "tools": {
@@ -88,10 +96,9 @@
         "optional": "Optional: skip without failing if a server is missing",
         "tools": "Tools",
         "mode": "Mode",
-        "notInCatalog": "not in this machine's catalog",
+        "notInCatalog": "no connected provider offers this model",
         "loadingCatalog": "reading provider catalogs...",
-        "catalogEmpty": "no provider with a catalog on this machine",
-        "subscription": "subscription: Claude Code resolves the name"
+        "catalogEmpty": "no provider connected. Connect one in Settings > Models"
       },
       "mode": {
         "approve": "Approval: waits for your click",
@@ -103,14 +110,14 @@
       "tools": {
         "inherits_one": "inherits {{count}} tool from the agent",
         "inherits_other": "inherits {{count}} tools from the agent",
-        "customize": "use its own tools",
+        "customize": "choose tools",
         "inherit": "inherit again",
         "noServers": "no MCP server registered",
         "open": "show tools",
         "loading": "starting the server...",
         "tokens": "~{{tokens}} tok",
         "total": "{{count}} selected, ~{{tokens}} tokens per call",
-        "inherits_zero": "inherits no tools from the agent"
+        "inherits_zero": "no MCP tools"
       },
       "budget": {
         "title": "Budget",
@@ -128,6 +135,10 @@
         "create": "Create and edit",
         "creating": "Creating...",
         "copyName": "{{name}} (copy)"
+      },
+      "kind": {
+        "model": "model",
+        "action": "action"
       }
     },
     "io": {
@@ -455,13 +466,19 @@
       "description": "Which model answers in the console. The catalog comes from each provider, not from a list in the code."
     },
     "providers": {
-      "title": "Providers",
-      "description": "What runs on this computer, and what the rest is missing to run.",
+      "title": "Connected providers",
+      "description": "The models agents can use on this computer.",
       "available": "available",
-      "unavailable": "unavailable",
       "subscription": "subscription",
       "uses": "uses {{requirements}}",
-      "missing": "missing {{requirements}}"
+      "missing": "set {{requirements}} in the environment and reopen Locum",
+      "empty": "No provider connected yet. Save a key under Add provider, right below.",
+      "addTitle": "Add provider",
+      "addDescription": "Save a key for one of these and its models show up above.",
+      "modelsLoading": "reading models...",
+      "modelsNone": "the provider listed no models",
+      "modelsError": "could not read the models: {{message}}",
+      "modelsMore": "+{{count}}"
     },
     "prices": {
       "rate": "input {{input}} and output {{output}} USD per million tokens",
@@ -836,7 +853,7 @@
     "config": "providers: {{providers}}, fallbacks: {{fallbacks}}, servers: {{servers}} with {{fixture}} answering tools: {{tools}} in the interface, budgets: {{budgets}}, {{providerKeys}}, {{registered}}, GitHub: {{github}}, watched: {{watched}}, {{trackers}}, {{slackWindow}}",
     "providerKeys": "provider keys: {{path}}",
     "providerKeysStored": "every provider with a key already has a credential, registration checked without leaving the machine",
-    "providerKeysRoundTrip": "saved, became available at once, counted the catalog and forgot it; {{provider}} checked without a key from the screen",
+    "providerKeysRoundTrip": "saved, became available at once, counted the catalog and forgot it; {{provider}} with no key and no check button",
     "registeredProviders": "compatible providers: {{service}} through the service and {{window}} through the screen, distinct catalogs each with its own key, a step pointing at both, removal warning about the use first",
     "github": "credential: {{path}}",
     "githubStored": "the vault already holds the developer's token, registration checked without leaving the machine",

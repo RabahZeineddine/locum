@@ -33,6 +33,16 @@ export type ProviderEntry = {
    */
   catalog?: () => { url: string; headers: Record<string, string> };
   /**
+   * Modelos que valem sem perguntar a ninguém, para quem não publica catálogo.
+   *
+   * Só a assinatura usa: o binário do Claude Code aceita os apelidos de
+   * família e resolve sozinho a versão mais nova de cada uma, então a lista
+   * não envelhece como envelheceria uma lista de ids datados.
+   */
+  fixedModels?: string[];
+  /** Prefixo que o catálogo põe no id e que a chamada não usa. */
+  catalogPrefix?: string;
+  /**
    * A variavel de ambiente que o segredo do cofre preenche, quando existe uma.
    *
    * Mora na propria entrada, e nao numa tabela em paralelo, porque e o unico
@@ -133,7 +143,7 @@ export function buildProviders(
   };
 
   const fixos: Record<string, ProviderEntry> = {
-    "claude-code": { available: claudeCodeAvailable, requires: [] },
+    "claude-code": { available: claudeCodeAvailable, requires: [], fixedModels: ["opus", "sonnet", "haiku"] },
 
     anthropic: {
       available: () => Boolean(env("ANTHROPIC_API_KEY")),
@@ -163,6 +173,11 @@ export function buildProviders(
       requires: ["GOOGLE_GENERATIVE_AI_API_KEY"],
       secretVar: "GOOGLE_GENERATIVE_AI_API_KEY",
       model: (id) => createGoogleGenerativeAI({ apiKey: env("GOOGLE_GENERATIVE_AI_API_KEY")! })(id),
+      catalog: () => ({
+        url: "https://generativelanguage.googleapis.com/v1beta/models",
+        headers: { "x-goog-api-key": env("GOOGLE_GENERATIVE_AI_API_KEY")! },
+      }),
+      catalogPrefix: "models/",
     },
 
     glm: compat("glm", "GLM_API_KEY", "GLM_BASE_URL"),

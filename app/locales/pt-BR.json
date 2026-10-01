@@ -21,9 +21,9 @@
     "step": {
       "optional": "opcional",
       "dependsOn": "depende de {{steps}}",
-      "action": "Sai por <code>{{action}}</code>, com o que {{input}} produziu.",
+      "action": "Publica {{action}} com o que {{input}} produziu.",
       "noInput": "nenhum passo",
-      "requires": "Exige {{servers}}.",
+      "requires": "Precisa do servidor MCP {{servers}} ligado.",
       "resolving": "Pedido <code>{{model}}</code>, resolvendo nesta máquina...",
       "unresolved": "Pedido <code>{{model}}</code>, e nesta máquina não resolve: {{error}}",
       "resolved": "Pedido <code>{{model}}</code>, roda <code>{{used}}</code>",
@@ -33,6 +33,14 @@
         "approve": "espera sua aprovação",
         "draft": "vira rascunho",
         "auto": "publica sozinho"
+      },
+      "actionKind": {
+        "github.review_comment": "comentário de revisão no GitHub",
+        "tracker.create_issue": "tarefa no tracker",
+        "digest.deliver": "resumo na fila",
+        "slack.post": "mensagem no Slack",
+        "teams.post": "mensagem no Teams",
+        "context.update": "atualização do contexto da iniciativa"
       }
     },
     "tools": {
@@ -90,10 +98,9 @@
         "optional": "Opcional: pular sem falhar se faltar servidor",
         "tools": "Ferramentas",
         "mode": "Modo",
-        "notInCatalog": "fora do catálogo desta máquina",
+        "notInCatalog": "nenhum provedor ligado oferece este modelo",
         "loadingCatalog": "lendo o catálogo dos provedores...",
-        "catalogEmpty": "nenhum provedor com catálogo nesta máquina",
-        "subscription": "assinatura: o Claude Code resolve o nome"
+        "catalogEmpty": "nenhum provedor ligado. Ligue um em Configuração > Modelos"
       },
       "mode": {
         "approve": "Aprovação: espera o seu clique",
@@ -105,14 +112,14 @@
       "tools": {
         "inherits_one": "herda {{count}} ferramenta do agent",
         "inherits_other": "herda {{count}} ferramentas do agent",
-        "customize": "usar ferramentas próprias",
+        "customize": "escolher ferramentas",
         "inherit": "voltar a herdar",
         "noServers": "nenhum servidor MCP cadastrado",
         "open": "ver ferramentas",
         "loading": "subindo o servidor...",
         "tokens": "~{{tokens}} tok",
         "total": "{{count}} marcadas, ~{{tokens}} tokens por chamada",
-        "inherits_zero": "não herda ferramentas do agent"
+        "inherits_zero": "sem ferramentas MCP"
       },
       "budget": {
         "title": "Orçamento",
@@ -131,7 +138,11 @@
         "creating": "Criando...",
         "copyName": "{{name}} (cópia)"
       },
-      "changes_zero": "{{count}} linhas mudaram"
+      "changes_zero": "{{count}} linhas mudaram",
+      "kind": {
+        "model": "modelo",
+        "action": "ação"
+      }
     },
     "count_zero": "{{count}} agents",
     "skills_zero": "{{count}} skills",
@@ -477,13 +488,19 @@
       "description": "Qual modelo responde no console. O catálogo vem de cada provedor, não de lista no código."
     },
     "providers": {
-      "title": "Provedores",
-      "description": "O que roda neste computador, e o que falta para o resto rodar.",
+      "title": "Provedores ligados",
+      "description": "Os modelos que os agents podem usar neste computador.",
       "available": "disponível",
-      "unavailable": "indisponível",
       "subscription": "assinatura",
       "uses": "usa {{requirements}}",
-      "missing": "falta {{requirements}}"
+      "missing": "defina {{requirements}} no ambiente e reabra o Locum",
+      "empty": "Nenhum provedor ligado ainda. Guarde uma chave em Adicionar provedor, logo abaixo.",
+      "addTitle": "Adicionar provedor",
+      "addDescription": "Guarde a chave de um destes e os modelos dele passam a aparecer acima.",
+      "modelsLoading": "lendo os modelos...",
+      "modelsNone": "o provedor não listou modelos",
+      "modelsError": "não deu para ler os modelos: {{message}}",
+      "modelsMore": "+{{count}}"
     },
     "prices": {
       "rate": "entrada {{input}} e saída {{output}} USD por milhão de tokens",
@@ -708,13 +725,13 @@
       "description": "O teto sai da versão mais recente deste agent, e o gasto de hoje sai do que já rodou.",
       "version": "v{{version}}",
       "unknownVersion": "v?",
-      "perRun": "por run {{amount}}",
+      "perRun": "por execução {{amount}}",
       "perDay": "por dia {{amount}}",
       "noCap": "sem teto",
       "amount": "{{amount}} USD",
       "today_one": "hoje {{spent}} USD em {{count}} execução",
       "today_other": "hoje {{spent}} USD em {{count}} execuções",
-      "tokenCaps": "em tokens, por run {{perRun}} e por dia {{perDay}}",
+      "tokenCaps": "em tokens, por execução {{perRun}} e por dia {{perDay}}",
       "tokensToday_one": "{{count}} token cobrado hoje",
       "tokensToday_other": "{{count}} tokens cobrados hoje",
       "unpriced": "Sem preço para {{models}}: esses passos custam zero no registro, e o teto está medindo em tokens.",
@@ -868,7 +885,7 @@
     "config": "provedores: {{providers}}, substituições: {{fallbacks}}, servidores: {{servers}} com {{fixture}} respondendo ferramentas: {{tools}} na interface, orçamentos: {{budgets}}, {{providerKeys}}, {{registered}}, GitHub: {{github}}, observados: {{watched}}, {{trackers}}, {{slackWindow}}",
     "providerKeys": "chaves de provedor: {{path}}",
     "providerKeysStored": "todo provedor com chave já tem credencial, cadastro conferido sem sair da máquina",
-    "providerKeysRoundTrip": "guardou, ficou disponível na hora, contou o catálogo e esqueceu; {{provider}} conferido sem chave pela tela",
+    "providerKeysRoundTrip": "guardou, ficou disponível na hora, contou o catálogo e esqueceu; {{provider}} sem chave e sem botão de conferir",
     "registeredProviders": "provedores compatíveis: {{service}} pelo serviço e {{window}} pela tela, catálogos distintos com a chave de cada um, passo apontando para os dois, remoção avisando o uso antes",
     "github": "credencial: {{path}}",
     "githubStored": "cofre já tem token de quem desenvolve, cadastro conferido sem sair da máquina",

@@ -504,6 +504,7 @@ export class ProviderService {
     if (!entry.available()) {
       return { modelos: [], erro: `provedor "${name}" sem credencial nesta maquina` };
     }
+    if (entry.fixedModels) return { modelos: [...entry.fixedModels] };
     if (!entry.catalog) {
       return { modelos: [], erro: `provedor "${name}" nao publica catalogo de modelos` };
     }
@@ -518,15 +519,30 @@ export class ProviderService {
       // OpenAI e compativeis devolvem `data[].id`; Anthropic tambem. Ollama, na
       // rota nativa, devolve `models[].name`, e a compativel devolve `data`.
       const ids = (corpo.data ?? []).map((m) => m.id).concat((corpo.models ?? []).map((m) => m.name));
-      return { modelos: ids.filter((v): v is string => typeof v === "string").sort() };
+      const prefixo = entry.catalogPrefix ?? "";
+      return {
+        modelos: ids
+          .filter((v): v is string => typeof v === "string")
+          .map((v) => (prefixo !== "" && v.startsWith(prefixo) ? v.slice(prefixo.length) : v))
+          .sort(),
+      };
     } catch (err) {
       return { modelos: [], erro: err instanceof Error ? err.message : String(err) };
     }
   }
 
-  /** Catalogo de todos os provedores disponiveis, prefixado com o nome deles. */
-  async listAllModels(): Promise<{ provedor: string; modelos: string[]; erro?: string }[]> {
-    const disponiveis = this.listProviders().filter((p) => p.available && !p.subscription);
+  /**
+   * Catalogo de todos os provedores disponiveis, prefixado com o nome deles.
+   *
+   * A assinatura fica de fora a menos que se peça: o assistente conversa pelo
+   * runtime nativo e não sabe falar com o binário, mas um passo de agent sabe.
+   */
+  async listAllModels(
+    opcoes: { assinatura?: boolean } = {},
+  ): Promise<{ provedor: string; modelos: string[]; erro?: string }[]> {
+    const disponiveis = this.listProviders().filter(
+      (p) => p.available && (opcoes.assinatura === true || !p.subscription),
+    );
     return Promise.all(
       disponiveis.map(async (p) => ({ provedor: p.name, ...(await this.listModels(p.name)) })),
     );

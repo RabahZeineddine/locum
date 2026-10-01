@@ -7,7 +7,7 @@ import { duplicarAgent, exportarAgent, importarAgent } from "@/lib/editar-agent"
 import { EditorDeAgent } from "../editor-agent";
 import { LinhaDoOrcamento, Observados, Secao } from "./configuracao";
 import { comContexto, diffJson, type LinhaDoDiff } from "@/lib/diff";
-import { rotuloDoModelo } from "@/lib/rotulos";
+import { rotuloDeEstado, rotuloDoModelo } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
 import { ArrowLeft, X } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -192,7 +192,7 @@ function LinhaDoAgent({
           {agent.skillCount > 0 && <span>{t("agents.skills", { count: agent.skillCount })}</span>}
           <span>{cadencia(t, gatilho)}</span>
           {agent.budget.perRunUsd !== undefined && (
-            <span className="font-mono tabular-nums">
+            <span className="tabular-nums">
               {t("agents.budget", { perRun: agent.budget.perRunUsd.toFixed(2) })}
             </span>
           )}
@@ -229,7 +229,7 @@ function ultima(t: TFunction, run: Resumo["lastRun"]): string {
       : run.estimateUsd > 0
         ? t("agents.subscription_spend", { amount: run.estimateUsd.toFixed(2) })
         : "";
-  return `${t("agents.last_run", { when: quando, status: run.status })}${gasto ? `, ${gasto}` : ""}`;
+  return `${t("agents.last_run", { when: quando, status: rotuloDeEstado(t, run.status) })}${gasto ? `, ${gasto}` : ""}`;
 }
 
 /* ----------------------------------------------------------------- detalhe */
@@ -347,15 +347,6 @@ function DetalheDoAgent({
             >
               {t("agents.io.export")}
             </Button>
-            <Button
-              className="cursor-pointer"
-              data-locum-rodar=""
-              onClick={() => setRodando(true)}
-              size="sm"
-              variant="ghost"
-            >
-              {t("agents.run.open")}
-            </Button>
             <Button className="cursor-pointer" onClick={() => setDuplicando(true)} size="sm" variant="ghost">
               {t("agents.editor.duplicate")}
             </Button>
@@ -364,8 +355,18 @@ function DetalheDoAgent({
               data-locum-editar=""
               onClick={() => setEditando(true)}
               size="sm"
+              variant="secondary"
             >
               {t("agents.editor.edit")}
+            </Button>
+            {/* Rodar é o que se veio fazer aqui na maior parte das vezes, então é o botão cheio. */}
+            <Button
+              className="cursor-pointer"
+              data-locum-rodar=""
+              onClick={() => setRodando(true)}
+              size="sm"
+            >
+              {t("agents.run.open")}
             </Button>
           </>
         )}
@@ -776,10 +777,9 @@ function PassoDoSpec({
       ) : (
         <p className="mt-2 text-muted-foreground text-xs">
           <Trans
-            components={{ code: <code /> }}
             i18nKey="agents.step.action"
             values={{
-              action: passo.action,
+              action: t(`agents.step.actionKind.${passo.action}`, { defaultValue: passo.action }),
               input: passo.input === undefined ? t("agents.step.noInput") : nomeDoPasso(passo.input),
             }}
           />

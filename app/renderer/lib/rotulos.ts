@@ -81,11 +81,19 @@ export function rotuloDoModelo(id: string): string {
   const modelo = barra === -1 ? id : id.slice(barra + 1);
 
   const partes = /^claude-([a-z]+)-(\d+(?:-\d+)?)$/.exec(modelo);
+  // O apelido de família, que o Claude Code resolve para a versão mais nova.
+  const apelido = /^(opus|sonnet|haiku)$/.exec(modelo);
   const nome = partes
-    ? `Claude ${partes[1]![0]!.toUpperCase()}${partes[1]!.slice(1)} ${partes[2]!.replace("-", ".")}`
-    : modelo;
+    ? `Claude ${maiuscula(partes[1]!)} ${partes[2]!.replace("-", ".")}`
+    : apelido
+      ? `Claude ${maiuscula(apelido[1]!)}`
+      : modelo;
   if (provedor === null) return nome;
   return `${nome} · ${rotuloDoProvedor(provedor)}`;
+}
+
+function maiuscula(texto: string): string {
+  return `${texto[0]!.toUpperCase()}${texto.slice(1)}`;
 }
 
 /** O nome do provedor com a grafia da marca, quando conhecida. */

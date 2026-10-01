@@ -1587,8 +1587,10 @@ async function checkConfig(window: BrowserWindow): Promise<string> {
       disponivel: e.dataset.locumDisponivel,
     }))`,
   )) as { nome: string; disponivel: string }[];
-  for (const [i, provedor] of provedores.entries()) {
-    const naTela = disponiveis[i];
+  // Por nome, e nao por posicao: a tela separa os ligados dos que faltam
+  // ligar, entao a ordem dela nao e a do servico.
+  for (const provedor of provedores) {
+    const naTela = disponiveis.find((d) => d.nome === provedor.name);
     const esperado = provedor.available ? "sim" : "nao";
     if (naTela === undefined || naTela.disponivel !== esperado) {
       throw new Error(
@@ -1880,34 +1882,20 @@ async function checkProviderKeys(window: BrowserWindow): Promise<string> {
     }
   }
 
-  // Conferir pela tela, num provedor que nao tem credencial nenhuma: a
-  // resposta e "nao ha chave" e nao sai da maquina. Num provedor com chave
-  // isto viraria uma chamada autenticada a API de alguem, feita por um loop
-  // que roda sem ninguem olhando.
+  // Sem credencial nenhuma, a tela nem oferece conferir: a resposta seria
+  // "nao ha chave", e um botao que so pode dizer isso e ruido. Num provedor
+  // com chave, clicar viraria uma chamada autenticada a API de alguem, feita
+  // por um loop que roda sem ninguem olhando, entao o smoke nao clica.
   const semCredencial = cadastro.find((c) => c.variable !== null && !c.stored && !c.env);
   if (semCredencial === undefined) {
     return t("smoke.providerKeys", { path: t("smoke.providerKeysStored") });
   }
 
-  const clicou = await window.webContents.executeJavaScript(
-    `(() => {
-      const botao = document.querySelector('[data-locum-chave-conferir="${semCredencial.provider}"]');
-      if (botao === null) return false;
-      botao.click();
-      return true;
-    })()`,
+  const ofereceu = await window.webContents.executeJavaScript(
+    `document.querySelector('[data-locum-chave-conferir="${semCredencial.provider}"]') !== null`,
   );
-  if (clicou !== true) {
-    throw new Error(`a tela nao ofereceu botao de conferir ${semCredencial.provider}`);
-  }
-
-  const resposta = await esperarProbe<string>(
-    window,
-    `conferencia de ${semCredencial.provider}`,
-    `document.querySelector("[data-locum-chave-resultado]")?.dataset.locumChaveResultado ?? null`,
-  );
-  if (resposta !== "missing") {
-    throw new Error(`a tela respondeu "${resposta}" para conferir sem chave`);
+  if (ofereceu !== false) {
+    throw new Error(`a tela ofereceu conferir ${semCredencial.provider} sem chave nenhuma`);
   }
 
   return t("smoke.providerKeys", {
@@ -4028,6 +4016,14 @@ async function checkWatched(window: BrowserWindow): Promise<string> {
   // caminho faria a pessoa cadastrar "meus" e receber os do time inteiro.
   const autoria = "mine";
   const antes = (await triggerService.list()).map((gatilho) => gatilho.id);
+
+  // O detalhe monta o formulário depois de ler o agent e os gatilhos, e
+  // preencher antes disso falhava de vez em quando, sem nada errado na tela.
+  await esperarProbe<boolean>(
+    window,
+    "formulario de observar",
+    `document.querySelector("[data-locum-observar-salvar]") === null ? null : true`,
+  );
 
   const preencheu = await window.webContents.executeJavaScript(
     `(() => {

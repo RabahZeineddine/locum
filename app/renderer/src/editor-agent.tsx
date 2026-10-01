@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { call, useRead } from "@/lib/bridge";
 import { comContexto, diffJson, type LinhaDoDiff } from "@/lib/diff";
 import { salvarAgent } from "@/lib/editar-agent";
+import { rotuloDoModelo, rotuloDoProvedor } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
 import { ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -307,7 +308,7 @@ function useCatalogo(): Catalogo | null {
     let vivo = true;
     // Bate na rede de cada provedor, então lê uma vez e compartilha entre os
     // passos, em vez de uma leitura por seletor.
-    call("providers.allModels")
+    call("providers.allModels", { assinatura: true })
       .then((c) => vivo && setCatalogo(c))
       .catch(() => vivo && setCatalogo([]));
     return () => {
@@ -346,37 +347,36 @@ function SeletorDeModelo({
   }
 
   const conhecidos = new Set(catalogo.flatMap((c) => c.modelos.map((m) => `${c.provedor}/${m}`)));
-  // O runtime de assinatura não publica catálogo: quem valida o nome é o
-  // próprio Claude Code. Marcar o modelo dele como "fora do catálogo" seria
-  // alarme falso justamente no caso mais comum, e ensinaria a ignorar o aviso.
-  const assinatura = valor.startsWith("claude-code/");
-  const fora = !assinatura && !conhecidos.has(valor);
+  // Valor fora da lista continua escolhível: pode ser um id datado que o
+  // Claude Code ainda aceita, ou um modelo que a tabela de substituição desta
+  // máquina cobre. O aviso fica só para o provedor que não está ligado aqui,
+  // que é o caso em que o passo de fato não roda.
+  const fora = valor !== "" && !conhecidos.has(valor);
+  const desligado = fora && !catalogo.some((c) => valor.startsWith(`${c.provedor}/`));
+  const comModelo = catalogo.filter((c) => c.modelos.length > 0);
 
   return (
     <div className="flex flex-wrap items-center gap-2">
       <select
-        className="border-border bg-background focus-visible:ring-ring max-w-md cursor-pointer rounded-md border px-2 py-1.5 font-mono text-xs outline-none focus-visible:ring-1"
+        aria-label={t("agents.editor.step.model")}
+        className="border-border bg-background focus-visible:ring-ring max-w-md cursor-pointer rounded-md border px-2 py-1.5 text-sm outline-none focus-visible:ring-1"
         onChange={(e) => trocar(e.target.value)}
+        title={valor}
         value={valor}
       >
-        {(fora || assinatura) && <option value={valor}>{valor}</option>}
-        {catalogo
-          .filter((c) => c.modelos.length > 0)
-          .map((c) => (
-            <optgroup key={c.provedor} label={c.provedor}>
-              {c.modelos.map((m) => (
-                <option key={m} value={`${c.provedor}/${m}`}>
-                  {m}
-                </option>
-              ))}
-            </optgroup>
-          ))}
+        {fora && <option value={valor}>{rotuloDoModelo(valor)}</option>}
+        {comModelo.map((c) => (
+          <optgroup key={c.provedor} label={rotuloDoProvedor(c.provedor)}>
+            {c.modelos.map((m) => (
+              <option key={m} value={`${c.provedor}/${m}`}>
+                {rotuloDoModelo(m)}
+              </option>
+            ))}
+          </optgroup>
+        ))}
       </select>
-      {assinatura && (
-        <span className="text-muted-foreground text-xs">{t("agents.editor.step.subscription")}</span>
-      )}
-      {fora && <span className="text-sev-medium text-xs">{t("agents.editor.step.notInCatalog")}</span>}
-      {!assinatura && catalogo.every((c) => c.modelos.length === 0) && (
+      {desligado && <span className="text-sev-medium text-xs">{t("agents.editor.step.notInCatalog")}</span>}
+      {comModelo.length === 0 && (
         <span className="text-muted-foreground text-xs">{t("agents.editor.step.catalogEmpty")}</span>
       )}
     </div>
@@ -682,11 +682,14 @@ function Cabecalho({
   indice: number;
   tipo: string;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-wrap items-center gap-2">
       <span className="text-muted-foreground tabular-nums text-sm">{indice + 1}</span>
       {children}
-      <span className="border-border text-muted-foreground rounded border px-1.5 text-[11px]">{tipo}</span>
+      <span className="border-border text-muted-foreground rounded border px-1.5 text-[11px]">
+        {t(`agents.editor.kind.${tipo}`, { defaultValue: tipo })}
+      </span>
     </div>
   );
 }
