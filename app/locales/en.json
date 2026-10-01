@@ -5,14 +5,13 @@
     "count_one": "{{count}} agent",
     "count_other": "{{count}} agents",
     "empty": "No agents yet. Locum ships with none: import a JSON file of your own, or one of the examples in the repository's <code>examples/agents/</code>. An assistant connected to Locum's MCP server can also create one.",
-    "enabled": "enabled",
     "disabled": "disabled",
     "detail": {
       "loading": "reading the history...",
       "missing": "the agent {{agentId}} has no saved version",
       "back": "Agents",
-      "versions_one": "{{count}} version",
-      "versions_other": "{{count}} versions"
+      "history_one": "History: {{count}} version, viewing v{{version}}",
+      "history_other": "History: {{count}} versions, viewing v{{version}}"
     },
     "history": {
       "noNote": "no note",
@@ -48,7 +47,6 @@
     "tools_other": "{{count}} tools",
     "skills_one": "{{count}} skill",
     "skills_other": "{{count}} skills",
-    "version": "v{{version}}",
     "cadence": "every {{minutes}} min",
     "cadence_hours": "every {{hours}}h",
     "on_event": "on event",
@@ -223,7 +221,7 @@
     },
     "empty": {
       "title": "Nothing waiting for you",
-      "body": "The watchers keep running. When something needs your decision, it shows up here and in the tray."
+      "body": "Your agents keep working. When something needs your decision, it shows up here and in the tray."
     },
     "shortcuts": {
       "move": "move",
@@ -467,7 +465,9 @@
       "output": "output, USD/M",
       "save": "Save price",
       "remove": "Remove",
-      "refused": "The price was not saved: {{message}}"
+      "refused": "The price was not saved: {{message}}",
+      "summary_one": "Per-model prices, for the budget ({{count}})",
+      "summary_other": "Per-model prices, for the budget ({{count}})"
     },
     "providerKey": {
       "field": "{{provider}} API key",
@@ -508,8 +508,8 @@
       "refused": "the bridge refused: {{message}}"
     },
     "credential": {
-      "stored": "{{ref}} · stored",
-      "missing": "{{ref}} · no value in the vault"
+      "stored": "key stored",
+      "missing": "no key"
     },
     "fallbacks": {
       "title": "Model substitution",
@@ -793,6 +793,10 @@
     },
     "teamsInbox": {
       "description": "Wakes an agent when someone mentions you or messages you in a Teams chat. Every 5 minutes Locum reads, through Graph and with your account, the chats that changed; any reply the agent proposes waits in the queue. Team channels are not covered yet."
+    },
+    "inboxReply": {
+      "hint": "No agent to reply yet? Use the ready one: it reads the message, writes a reply and leaves it in the queue for you to approve before it goes out. You can edit it later in Agents.",
+      "use": "Use the ready reply"
     }
   },
   "severity": {
@@ -995,7 +999,7 @@
       },
       "next": {
         "title": "Runs next",
-        "empty": "No watcher on the clock.",
+        "empty": "No agent scheduled.",
         "due": "now",
         "when": "{{day}} {{time}}"
       },
@@ -1004,6 +1008,25 @@
         "empty": "Nothing finished in the last two days.",
         "when": "{{day}}, {{time}}",
         "view": "View"
+      },
+      "start": {
+        "title": "Start here",
+        "lead": "Three steps until an agent works on its own. Whatever it produces always stops in the queue for you to approve.",
+        "model": {
+          "title": "Pick a model",
+          "hint": "An installed Claude Code works, or an API key.",
+          "go": "Models"
+        },
+        "connection": {
+          "title": "Connect where the work comes from",
+          "hint": "GitHub, Slack, Teams, Jira: what the agent will read.",
+          "go": "Connections"
+        },
+        "trigger": {
+          "title": "Turn on an agent",
+          "hint": "Import or create an agent and say when it wakes up. Slack and Teams have a ready reply.",
+          "go": "Agents"
+        }
       }
     }
   },

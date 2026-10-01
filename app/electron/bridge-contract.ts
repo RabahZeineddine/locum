@@ -86,6 +86,12 @@ interface ServiceApi {
    */
   "agents.importFile": () => Promise<{ agentId: string; version: number; created: boolean } | null>;
   "agents.exportFile": (agentId: string) => Promise<string | null>;
+  /**
+   * Grava o agent de resposta pronto do Slack ou do Teams, como o importar
+   * faria. Agent com o mesmo id que já existe fica como está: pode ter sido
+   * editado, e o clique não é para desfazer isso.
+   */
+  "agents.installReply": (service: "slack" | "teams") => Promise<{ agentId: string; created: boolean }>;
 
   /**
    * Leitura da tela de iniciativas: a lista crua, o detalhe composto (linha
@@ -396,6 +402,7 @@ export const BRIDGE_CHANNELS = [
   "agents.duplicate",
   "agents.importFile",
   "agents.exportFile",
+  "agents.installReply",
   "initiatives.list",
   "initiatives.detail",
   "initiatives.context",

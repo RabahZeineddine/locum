@@ -122,6 +122,14 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
       await writeFile(escolha.filePath, texto);
       return escolha.filePath;
     },
+    "agents.installReply": async (service) => {
+      const { REPLY_SPECS } = await import("../src/examples/agents.js");
+      const spec = REPLY_SPECS[service];
+      if (spec === undefined) throw new Error(`não há resposta pronta para ${String(service)}`);
+      if ((await agentService.get(spec.id)) !== undefined) return { agentId: spec.id, created: false };
+      await agentService.upsert(spec, "resposta pronta", "human");
+      return { agentId: spec.id, created: true };
+    },
     "agents.budgets": () => agentService.budgets(),
 
     "initiatives.list": () => initiativeService.list(),

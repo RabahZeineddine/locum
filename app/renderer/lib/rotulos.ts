@@ -56,3 +56,36 @@ export function rotuloDoMotivo(t: TFunction, motivo: string): string {
     ? t(`runs.stepReason.${motivo}`)
     : motivo;
 }
+
+const PROVEDORES_CONHECIDOS: Record<string, string> = {
+  "claude-code": "Claude Code",
+  anthropic: "Anthropic",
+  openai: "OpenAI",
+};
+
+/**
+ * O modelo como gente lê: `claude-code/claude-sonnet-5` vira
+ * "Claude Sonnet 5 · Claude Code".
+ *
+ * Só os modelos Claude ganham nome por extenso, porque o padrão deles é
+ * conhecido (família e versão separadas por hífen). Modelo de outro provedor
+ * sai como está, já que adivinhar a grafia erraria mais do que acertaria. O
+ * identificador cru continua no editor, que é onde ele é escrito.
+ */
+export function rotuloDoModelo(id: string): string {
+  const barra = id.indexOf("/");
+  const provedor = barra === -1 ? null : id.slice(0, barra);
+  const modelo = barra === -1 ? id : id.slice(barra + 1);
+
+  const partes = /^claude-([a-z]+)-(\d+(?:-\d+)?)$/.exec(modelo);
+  const nome = partes
+    ? `Claude ${partes[1]![0]!.toUpperCase()}${partes[1]!.slice(1)} ${partes[2]!.replace("-", ".")}`
+    : modelo;
+  if (provedor === null) return nome;
+  return `${nome} · ${rotuloDoProvedor(provedor)}`;
+}
+
+/** O nome do provedor com a grafia da marca, quando conhecida. */
+export function rotuloDoProvedor(nome: string): string {
+  return PROVEDORES_CONHECIDOS[nome] ?? nome;
+}

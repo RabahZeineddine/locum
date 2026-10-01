@@ -7,6 +7,7 @@ import { duplicarAgent, exportarAgent, importarAgent } from "@/lib/editar-agent"
 import { EditorDeAgent } from "../editor-agent";
 import { LinhaDoOrcamento, Observados, Secao } from "./configuracao";
 import { comContexto, diffJson, type LinhaDoDiff } from "@/lib/diff";
+import { rotuloDoModelo } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
 import { ArrowLeft, X } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -140,9 +141,9 @@ type Resumo = ReadResult<"agents.overview">[number];
  * A linha responde, sem abrir nada: em que modelo roda, de quanto em quanto
  * tempo acorda, quanto custa por execução, e como terminou a última.
  *
- * A versão anterior mostrava identificador, nome e "habilitado", que não
- * responde nenhuma pergunta que alguém tenha de verdade ao olhar uma lista de
- * agents.
+ * Identificador, versão e "habilitado" ficam de fora: não respondem pergunta
+ * nenhuma de quem olha a lista. Só o agent desligado ganha selo, porque é a
+ * exceção, e o identificador fica no detalhe.
  */
 function LinhaDoAgent({
   agent,
@@ -164,25 +165,22 @@ function LinhaDoAgent({
       >
         <div className="flex items-baseline gap-2.5">
           <span className="font-medium text-[15px] tracking-tight">{agent.name}</span>
-          <span className="text-muted-foreground font-mono text-xs">{agent.id}</span>
-          <span className="text-muted-foreground font-mono text-xs">
-            {t("agents.version", { version: agent.version })}
-          </span>
-          <span className="ml-auto shrink-0">
-            <Badge variant={agent.enabled ? "secondary" : "outline"}>
-              {t(agent.enabled ? "agents.enabled" : "agents.disabled")}
-            </Badge>
-          </span>
+          {agent.enabled ? null : (
+            <span className="ml-auto shrink-0">
+              <Badge variant="outline">{t("agents.disabled")}</Badge>
+            </span>
+          )}
         </div>
 
         {agent.models.length > 0 && (
           <div className="mt-1.5 flex flex-wrap gap-1">
             {agent.models.map((modelo) => (
               <span
-                className="border-border text-muted-foreground rounded border px-1.5 py-0.5 font-mono text-[11px]"
+                className="border-border text-muted-foreground rounded border px-1.5 py-0.5 text-[11px]"
                 key={modelo}
+                title={modelo}
               >
-                {modelo}
+                {rotuloDoModelo(modelo)}
               </span>
             ))}
           </div>
@@ -331,9 +329,7 @@ function DetalheDoAgent({
         </Button>
         <span className="font-medium text-sm">{atual.spec.name}</span>
         <span className="text-muted-foreground text-xs">{agentId}</span>
-        <span className="ml-auto text-muted-foreground text-xs">
-          {t("agents.detail.versions", { count: lista.length })}
-        </span>
+        <span className="ml-auto" />
         {!editando && (
           <>
             <Button
@@ -409,14 +405,11 @@ function DetalheDoAgent({
         />
       ) : (
         <>
-      <Historico
-        atual={atual.version}
-        contra={anterior?.version ?? null}
-        escolher={setEscolhida}
-        lista={lista}
-        marcar={setContra}
-      />
-
+      {/*
+        O que o agent faz vem primeiro, depois quando acorda e quanto gasta. O
+        histórico é pergunta de quem investiga uma mudança, então fica recolhido
+        no fim, e some de vez enquanto só existe uma versão.
+      */}
       <Passos
         maquina={maquina.data?.machineId ?? null}
         spec={atual.spec}
@@ -429,7 +422,23 @@ function DetalheDoAgent({
 
       <OrcamentoDoAgent agentId={agentId} />
 
-      <Comparacao anterior={anterior} atual={atual} />
+      {lista.length < 2 ? null : (
+        <details className="group flex flex-col gap-4" open={escolhida !== null || contra !== null}>
+          <summary className="text-muted-foreground hover:text-foreground w-fit cursor-pointer text-sm">
+            {t("agents.detail.history", { count: lista.length, version: atual.version })}
+          </summary>
+          <div className="flex flex-col gap-4 pt-3">
+            <Historico
+              atual={atual.version}
+              contra={anterior?.version ?? null}
+              escolher={setEscolhida}
+              lista={lista}
+              marcar={setContra}
+            />
+            <Comparacao anterior={anterior} atual={atual} />
+          </div>
+        </details>
+      )}
         </>
       )}
     </div>

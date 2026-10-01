@@ -9,6 +9,7 @@ edite até virar o seu.
 | `pr-review.json` | triagem, auditoria com veredito, contexto de deploy opcional (pede um servidor MCP chamado `argocd`) e a review no pull request, parada na fila |
 | `slack-digest.json` | lê os canais observados do Slack e monta um digest, que chega na inbox como leitura |
 | `slack-reply.json` | escreve a resposta a uma mensagem do Slack e para na fila antes de postar |
+| `teams-reply.json` | o mesmo para o Teams: escreve a resposta à mensagem e para na fila antes de mandar |
 
 ## Importar
 

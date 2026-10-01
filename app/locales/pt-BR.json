@@ -5,15 +5,14 @@
     "count_one": "{{count}} agent",
     "count_other": "{{count}} agents",
     "empty": "Nenhum agent ainda. O Locum não traz agent pronto: importe um arquivo JSON seu, ou um dos exemplos em <code>examples/agents/</code> do repositório. Um assistente ligado ao servidor MCP do Locum também pode criar um.",
-    "enabled": "habilitado",
     "disabled": "desabilitado",
     "detail": {
       "loading": "lendo o histórico...",
       "missing": "o agent {{agentId}} não tem versão gravada",
       "back": "Agents",
-      "versions_one": "{{count}} versão",
-      "versions_other": "{{count}} versões",
-      "versions_zero": "{{count}} versões"
+      "history_one": "Histórico: {{count}} versão, vendo a v{{version}}",
+      "history_other": "Histórico: {{count}} versões, vendo a v{{version}}",
+      "history_zero": "Histórico: {{count}} versões"
     },
     "history": {
       "noNote": "sem nota",
@@ -50,7 +49,6 @@
     "tools_other": "{{count}} ferramentas",
     "skills_one": "{{count}} skill",
     "skills_other": "{{count}} skills",
-    "version": "v{{version}}",
     "cadence": "a cada {{minutes}} min",
     "cadence_hours": "a cada {{hours}}h",
     "on_event": "por evento",
@@ -234,7 +232,7 @@
     },
     "empty": {
       "title": "Nada esperando você",
-      "body": "Os watchers continuam rodando. Quando algo precisar da sua decisão, aparece aqui e na bandeja."
+      "body": "Os agents continuam trabalhando. Quando algo precisar da sua decisão, aparece aqui e na bandeja."
     },
     "shortcuts": {
       "move": "mover",
@@ -489,7 +487,10 @@
       "output": "saída, USD/M",
       "save": "Gravar preço",
       "remove": "Apagar",
-      "refused": "O preço não foi gravado: {{message}}"
+      "refused": "O preço não foi gravado: {{message}}",
+      "summary_zero": "Preços por modelo, para o orçamento (nenhum)",
+      "summary_one": "Preços por modelo, para o orçamento ({{count}})",
+      "summary_other": "Preços por modelo, para o orçamento ({{count}})"
     },
     "providerKey": {
       "field": "chave de API do {{provider}}",
@@ -533,8 +534,8 @@
       "inUse_zero": "em uso em {{count}} lugares: {{where}}"
     },
     "credential": {
-      "stored": "{{ref}} · guardada",
-      "missing": "{{ref}} · sem valor no cofre"
+      "stored": "chave guardada",
+      "missing": "sem chave"
     },
     "fallbacks": {
       "title": "Substituição de modelo",
@@ -824,6 +825,10 @@
     },
     "teamsInbox": {
       "description": "Acorda um agent quando alguém menciona você ou manda mensagem num chat do Teams. O Locum lê pelo Graph, com a sua conta, as conversas que se mexeram a cada 5 minutos; a resposta que o agent propuser para na fila. Canais de equipe ainda não entram."
+    },
+    "inboxReply": {
+      "hint": "Ainda sem agent para responder? Use o pronto: ele lê a mensagem, escreve a resposta e deixa na fila para você aprovar antes de sair. Depois dá para editar em Agents.",
+      "use": "Usar a resposta pronta"
     }
   },
   "severity": {
@@ -1027,7 +1032,7 @@
       },
       "next": {
         "title": "Roda a seguir",
-        "empty": "Nenhum watcher no relógio.",
+        "empty": "Nenhum agent com hora marcada.",
         "due": "agora",
         "when": "{{day}} {{time}}"
       },
@@ -1036,6 +1041,25 @@
         "empty": "Nada terminou nos últimos dois dias.",
         "when": "{{day}}, {{time}}",
         "view": "Ver"
+      },
+      "start": {
+        "title": "Comece por aqui",
+        "lead": "Três passos até um agent trabalhar sozinho. A saída de cada um sempre para na fila para você aprovar.",
+        "model": {
+          "title": "Escolher um modelo",
+          "hint": "Claude Code já instalado serve, ou uma chave de API.",
+          "go": "Modelos"
+        },
+        "connection": {
+          "title": "Conectar de onde vem o trabalho",
+          "hint": "GitHub, Slack, Teams, Jira: o que o agent vai ler.",
+          "go": "Conexões"
+        },
+        "trigger": {
+          "title": "Ligar um agent",
+          "hint": "Importe ou crie um agent e diga quando ele acorda. No Slack e no Teams há uma resposta pronta.",
+          "go": "Agents"
+        }
       }
     }
   },

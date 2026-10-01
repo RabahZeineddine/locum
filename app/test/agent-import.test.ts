@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { AgentSpec } from "../src/config/types.js";
 import { DIGEST_READING_SCHEMA } from "../src/digest/proposal.js";
-import { slackDigestSpec } from "../src/examples/agents.js";
+import { REPLY_SPECS, slackDigestSpec } from "../src/examples/agents.js";
+import { TEAMS_REPLY_SCHEMA } from "../src/teams/action.js";
 import { AgentService } from "../src/services/agent-service.js";
 import { ExecutionService } from "../src/services/execution-service.js";
 import { bancoDeTeste } from "./helpers/db.js";
@@ -39,6 +40,18 @@ test("o exemplo de digest usa o esquema de leitura que o código espera", () => 
   const leitura = slackDigestSpec.steps.find((s) => s.key === "read");
   assert.ok(leitura?.type === "model");
   assert.deepEqual(leitura.outputSchema, DIGEST_READING_SCHEMA);
+});
+
+test("a resposta pronta de cada conversa publica pela ação certa, parada na fila", () => {
+  for (const [servico, pronto] of Object.entries(REPLY_SPECS)) {
+    const saida = pronto.steps.find((s) => s.type === "action");
+    assert.ok(saida?.type === "action", servico);
+    assert.equal(saida.action, `${servico}.post`);
+    assert.equal(saida.mode, "approve");
+  }
+  const escrita = REPLY_SPECS.teams.steps.find((s) => s.key === "write");
+  assert.ok(escrita?.type === "model");
+  assert.deepEqual(escrita.outputSchema, TEAMS_REPLY_SCHEMA);
 });
 
 test("importar cria o agent e importar de novo com mudança vira versão nova", async () => {

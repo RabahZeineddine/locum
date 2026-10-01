@@ -1,0 +1,47 @@
+{
+  "id": "teams-reply",
+  "name": "Resposta no Teams",
+  "defaultTools": [],
+  "skills": [],
+  "budget": {
+    "perRunUsd": 0.1,
+    "perDayUsd": 1
+  },
+  "steps": [
+    {
+      "type": "model",
+      "key": "write",
+      "name": "Escrever a resposta",
+      "needs": [],
+      "optional": false,
+      "model": "claude-code/claude-sonnet-5",
+      "maxSteps": 4,
+      "requiresServers": [],
+      "prompt": "Escreva a resposta para esta mensagem do Teams.\n\nEm `text`, a resposta como ela sairia na conversa: direta, sem saudação\nde e-mail e sem repetir a pergunta. Se faltar informação para\nresponder, escreva o que falta em vez de supor.\n\nDe: {{event.author}}\n\nMensagem:\n{{event.text}}",
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "text"
+        ],
+        "properties": {
+          "text": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "type": "action",
+      "key": "post",
+      "name": "Responder na conversa",
+      "needs": [
+        "write"
+      ],
+      "optional": false,
+      "action": "teams.post",
+      "mode": "approve",
+      "input": "write"
+    }
+  ]
+}

@@ -7,8 +7,8 @@ import { BRIDGE_GLOBAL } from "../../electron/bridge-contract.js";
  * Fica fora de `lib/bridge.ts` pelo mesmo motivo de `lib/aprovar.ts`. Gravar
  * como pessoa pode subir o modo de um passo de ação para automático, e subir o
  * modo e depois executar é publicar sem clique em dois passos. Esta gravação é
- * o clique de quem editou, e só os botões de salvar, duplicar, importar e
- * exportar chamam daqui.
+ * o clique de quem editou, e só os botões de salvar, duplicar, importar,
+ * exportar e o da resposta pronta chamam daqui.
  */
 interface PonteDeEdicao {
   agents: {
@@ -16,6 +16,7 @@ interface PonteDeEdicao {
     duplicate: (fromId: string, newId: string, newName: string) => Promise<{ agentId: string }>;
     importFile: () => Promise<{ agentId: string; version: number; created: boolean } | null>;
     exportFile: (agentId: string) => Promise<string | null>;
+    installReply: (service: "slack" | "teams") => Promise<{ agentId: string; created: boolean }>;
   };
 }
 
@@ -41,4 +42,9 @@ export async function importarAgent(): Promise<{ agentId: string; version: numbe
 /** Salva o spec mais recente em arquivo. Devolve o caminho, ou `null`. */
 export async function exportarAgent(agentId: string): Promise<string | null> {
   return ponte().agents.exportFile(agentId);
+}
+
+/** Grava o agent de resposta pronto do serviço, se ainda não existe. */
+export async function instalarResposta(service: "slack" | "teams"): Promise<string> {
+  return (await ponte().agents.installReply(service)).agentId;
 }

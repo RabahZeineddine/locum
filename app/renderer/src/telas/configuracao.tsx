@@ -1,6 +1,8 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { call, read, useRead, type ReadResult } from "@/lib/bridge";
+import { instalarResposta } from "@/lib/editar-agent";
+import { rotuloDoProvedor } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
 import { EscolhaDoModelo } from "../assistente-modelo";
 import { Vitrine } from "./conexoes";
@@ -658,7 +660,9 @@ function LinhaDoProvedor({
             provedor.available ? "bg-chart-2" : "bg-muted-foreground/40",
           )}
         />
-        <span className="w-36 shrink-0 truncate font-mono text-[13px]">{provedor.name}</span>
+        <span className="w-36 shrink-0 truncate text-[13px] font-medium" title={provedor.name}>
+          {rotuloDoProvedor(provedor.name)}
+        </span>
         <span
           className={cn(
             "shrink-0 text-xs",
@@ -685,7 +689,8 @@ function LinhaDoProvedor({
             })}
           </Badge>
         )}
-        {provedor.requires.length > 0 ? (
+        {/* Com campo de chave logo abaixo, o nome da variável de ambiente só repete o campo. */}
+        {provedor.requires.length > 0 && (chave === undefined || chave.variable === null) ? (
           <span className="text-muted-foreground text-xs">
             {t(provedor.available ? "settings.providers.uses" : "settings.providers.missing", {
               requirements: provedor.requires.join(", "),
@@ -698,9 +703,20 @@ function LinhaDoProvedor({
         <ChaveDoProvedor chave={chave} provedor={provedor} recarregar={recarregar} />
       )}
 
-      {/* A assinatura gasta cota do plano, e não token cobrado: preço ali não mede nada. */}
-      {provedor.subscription ? null : (
-        <PrecosDoProvedor precos={precos} provedor={provedor.name} recarregar={recarregarPrecos} />
+      {/*
+        A assinatura gasta cota do plano, e não token cobrado: preço ali não mede
+        nada. Nos outros, o preço só serve ao orçamento, então fica recolhido e
+        só aparece no provedor que já roda.
+      */}
+      {provedor.subscription || !provedor.available ? null : (
+        <details className="group">
+          <summary className="text-muted-foreground hover:text-foreground w-fit cursor-pointer text-xs">
+            {t("settings.prices.summary", { count: precos.length })}
+          </summary>
+          <div className="pt-2">
+            <PrecosDoProvedor precos={precos} provedor={provedor.name} recarregar={recarregarPrecos} />
+          </div>
+        </details>
       )}
     </div>
   );
@@ -2640,8 +2656,10 @@ const ROTULO_DA_CAIXA: Record<Caixa, string> = {
  */
 function CaixaDeEntrada({ servico }: { servico: "slack" | "teams" }) {
   const kind = servico === "slack" ? "slack-inbox" : "teams-inbox";
+  const pronto = servico === "slack" ? "slack-reply" : "teams-reply";
   const { i18n, t } = useTranslation();
-  const agents = useRead("agents.list");
+  const agentsIniciais = useRead("agents.list");
+  const [agentsRelidos, setAgentsRelidos] = useState<typeof agentsIniciais.data>(undefined);
   const inicial = useRead("triggers.schedule");
   const [recarregado, setRecarregado] = useState<Gatilho[] | null>(null);
   const [agentId, setAgentId] = useState("");
@@ -2652,8 +2670,9 @@ function CaixaDeEntrada({ servico }: { servico: "slack" | "teams" }) {
   const agenda = recarregado ?? inicial.data ?? null;
   const recusa = erro ?? inicial.error?.message ?? null;
   const gatilhos = (agenda ?? []).filter((g) => g.kind === kind);
-  const listaDeAgents = agents.data ?? [];
+  const listaDeAgents = agentsRelidos ?? agentsIniciais.data ?? [];
   const escolhido = agentId !== "" ? agentId : (listaDeAgents[0]?.id ?? "");
+  const temPronto = listaDeAgents.some((agent) => agent.id === pronto);
 
   const agir = (acao: Promise<unknown>): void => {
     setOcupado(true);
@@ -2666,12 +2685,28 @@ function CaixaDeEntrada({ servico }: { servico: "slack" | "teams" }) {
       .finally(() => setOcupado(false));
   };
 
+  const gatilhoPara = (id: string) =>
+    call("triggers.set", id, {
+      kind,
+      mentions: caixa !== "dms",
+      dms: caixa !== "mentions",
+    });
+
   const ligar = (): void => {
+    agir(gatilhoPara(escolhido));
+  };
+
+  /**
+   * Quem acabou de conectar ainda não tem agent que responda, e a lista de
+   * agents vazia trava o Ligar. Este clique grava a resposta pronta e já liga
+   * o gatilho nela; a resposta continua parando na fila.
+   */
+  const usarPronto = (): void => {
     agir(
-      call("triggers.set", escolhido, {
-        kind,
-        mentions: caixa !== "dms",
-        dms: caixa !== "mentions",
+      instalarResposta(servico).then(async (id) => {
+        setAgentId(id);
+        setAgentsRelidos(await read("agents.list"));
+        await gatilhoPara(id);
       }),
     );
   };
@@ -2708,7 +2743,7 @@ function CaixaDeEntrada({ servico }: { servico: "slack" | "teams" }) {
         >
           {listaDeAgents.map((agent) => (
             <option key={agent.id} value={agent.id}>
-              {agent.id}
+              {agent.name}
             </option>
           ))}
         </select>
@@ -2735,6 +2770,20 @@ function CaixaDeEntrada({ servico }: { servico: "slack" | "teams" }) {
           {t("settings.slackInbox.add")}
         </Button>
       </div>
+
+      {temPronto || agentsIniciais.data === undefined ? null : (
+        <div className="border-border flex flex-wrap items-center gap-2 rounded-md border border-dashed p-2">
+          <p className="text-muted-foreground min-w-0 flex-1 text-xs">{t("settings.inboxReply.hint")}</p>
+          <Button
+            {...{ [`data-locum-${servico}-resposta-pronta`]: "" }}
+            disabled={ocupado}
+            onClick={usarPronto}
+            size="sm"
+          >
+            {t("settings.inboxReply.use")}
+          </Button>
+        </div>
+      )}
 
       {recusa === null ? null : <p className="text-destructive text-xs">{recusa}</p>}
     </div>

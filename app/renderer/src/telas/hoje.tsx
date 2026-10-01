@@ -96,6 +96,8 @@ export function Hoje({ navegar }: TelaProps) {
         <p className="text-muted-foreground text-sm">{t("home.today.lead")}</p>
       </header>
 
+      <ComeceAqui agenda={agenda.data} navegar={navegar} />
+
       <section aria-labelledby="hoje-espera" className="flex flex-col gap-3">
         <h2
           className={cn(
@@ -327,4 +329,88 @@ function quandoTerminou(t: TFunction, idioma: string, segundos: number): string 
   const dias = Math.round((meiaNoite(data) - meiaNoite(new Date())) / 86_400_000);
   const dia = new Intl.RelativeTimeFormat(idioma, { numeric: "auto" }).format(dias, "day");
   return t("home.today.done.when", { day: dia, time: hora(idioma, data) });
+}
+
+type Passo = { id: "model" | "connection" | "trigger"; feito: boolean; ir: () => void };
+
+/**
+ * O caminho até o primeiro agent rodar sozinho, enquanto falta alguma parte.
+ *
+ * São três coisas, nesta ordem: um modelo que responda, uma conexão de onde
+ * vem o trabalho e um agent com gatilho ligado. Sem as três a Hoje fica vazia
+ * e não diz por quê, então cada passo leva à tela que o resolve. O bloco some
+ * quando tudo está feito, e não aparece enquanto alguma leitura não voltou,
+ * para não piscar um passo pendente que já estava feito.
+ */
+function ComeceAqui({ agenda, navegar }: { agenda: Agenda[] | undefined; navegar: TelaProps["navegar"] }) {
+  const { t } = useTranslation();
+  const provedores = useRead("providers.list");
+  const conexoes = useRead("connections.list");
+
+  if (agenda === undefined || provedores.data === undefined || conexoes.data === undefined) return null;
+
+  const passos: Passo[] = [
+    {
+      id: "model",
+      feito: provedores.data.some((p) => p.available),
+      ir: () => navegar("configuracao", "modelos"),
+    },
+    {
+      id: "connection",
+      feito: conexoes.data.some((c) => c.state === "connected" && c.id !== "claude-code"),
+      ir: () => navegar("configuracao", "conexoes"),
+    },
+    {
+      id: "trigger",
+      feito: agenda.some((g) => g.enabled),
+      ir: () => navegar("agents"),
+    },
+  ];
+  if (passos.every((p) => p.feito)) return null;
+  const proximo = passos.find((p) => !p.feito)!;
+
+  return (
+    <section aria-labelledby="hoje-comece" className="border-border flex flex-col gap-3 rounded-xl border p-5" data-locum-probe="hoje-comece">
+      <div className="flex flex-col gap-1">
+        <h2 className="font-semibold text-sm" id="hoje-comece">
+          {t("home.today.start.title")}
+        </h2>
+        <p className="text-muted-foreground text-xs">{t("home.today.start.lead")}</p>
+      </div>
+      <ol className="flex flex-col gap-2">
+        {passos.map((passo, indice) => (
+          <li className="flex items-center gap-3" data-feito={passo.feito} key={passo.id}>
+            <span
+              aria-hidden="true"
+              className={cn(
+                "flex size-6 shrink-0 items-center justify-center rounded-full border text-xs",
+                passo.feito ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground",
+              )}
+            >
+              {passo.feito ? <Check className="size-3.5" /> : indice + 1}
+            </span>
+            <div className="flex min-w-0 flex-1 flex-col">
+              <span className={cn("text-sm", passo.feito && "text-muted-foreground line-through")}>
+                {t(`home.today.start.${passo.id}.title`)}
+              </span>
+              {passo.feito ? null : (
+                <span className="text-muted-foreground text-xs">{t(`home.today.start.${passo.id}.hint`)}</span>
+              )}
+            </div>
+            {passo.feito ? null : (
+              <Button
+                className="shrink-0 cursor-pointer"
+                onClick={passo.ir}
+                size="sm"
+                variant={passo === proximo ? "default" : "ghost"}
+              >
+                {t(`home.today.start.${passo.id}.go`)}
+                <ChevronRight className="size-3.5" />
+              </Button>
+            )}
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
 }
