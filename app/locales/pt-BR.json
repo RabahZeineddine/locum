@@ -20,15 +20,20 @@
     },
     "step": {
       "optional": "opcional",
-      "noDependency": "sem dependência",
       "dependsOn": "depende de {{steps}}",
-      "action": "Ação <code>{{action}}</code>, entrada de <code>{{input}}</code>.",
+      "action": "Sai por <code>{{action}}</code>, com o que {{input}} produziu.",
       "noInput": "nenhum passo",
       "requires": "Exige {{servers}}.",
       "resolving": "Pedido <code>{{model}}</code>, resolvendo nesta máquina...",
       "unresolved": "Pedido <code>{{model}}</code>, e nesta máquina não resolve: {{error}}",
       "resolved": "Pedido <code>{{model}}</code>, roda <code>{{used}}</code>",
-      "substitution": " ({{reason}})"
+      "substitution": " ({{reason}})",
+      "runsOn": "Roda em {{model}}",
+      "mode": {
+        "approve": "espera sua aprovação",
+        "draft": "vira rascunho",
+        "auto": "publica sozinho"
+      }
     },
     "tools": {
       "tokens": "{{tokens}} tok",

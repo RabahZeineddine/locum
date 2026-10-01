@@ -747,24 +747,28 @@ function PassoDoSpec({
 }) {
   const { t } = useTranslation();
   const ferramentas = passo.type === "model" ? (passo.tools ?? spec.defaultTools) : [];
+  // A chave do passo é identificador de spec; quem lê o cartão conhece o nome.
+  const nomeDoPasso = (chave: string) => spec.steps.find((p) => p.key === chave)?.name ?? chave;
 
   return (
     <div className="rounded-lg border border-border px-4 py-3" data-locum-passo={passo.key}>
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <span className="text-muted-foreground tabular-nums">{indice + 1}</span>
         <span className="font-medium">{passo.name}</span>
-        <Badge variant="outline">{passo.type}</Badge>
         {passo.optional ? <Badge variant="outline">{t("agents.step.optional")}</Badge> : null}
         {passo.type === "action" ? (
-          <Badge variant={passo.mode === "approve" ? "secondary" : "destructive"}>
-            {passo.mode}
+          <Badge
+            data-locum-modo={passo.mode}
+            variant={passo.mode === "approve" ? "secondary" : "destructive"}
+          >
+            {t(`agents.step.mode.${passo.mode}`)}
           </Badge>
         ) : null}
-        <span className="ml-auto text-muted-foreground text-xs">
-          {passo.needs.length === 0
-            ? t("agents.step.noDependency")
-            : t("agents.step.dependsOn", { steps: passo.needs.join(", ") })}
-        </span>
+        {passo.needs.length === 0 ? null : (
+          <span className="ml-auto text-muted-foreground text-xs">
+            {t("agents.step.dependsOn", { steps: passo.needs.map(nomeDoPasso).join(", ") })}
+          </span>
+        )}
       </div>
 
       {passo.type === "model" ? (
@@ -774,7 +778,10 @@ function PassoDoSpec({
           <Trans
             components={{ code: <code /> }}
             i18nKey="agents.step.action"
-            values={{ action: passo.action, input: passo.input ?? t("agents.step.noInput") }}
+            values={{
+              action: passo.action,
+              input: passo.input === undefined ? t("agents.step.noInput") : nomeDoPasso(passo.input),
+            }}
           />
         </p>
       )}
@@ -825,11 +832,15 @@ function Resolucao({ pedido, previa }: { pedido: string; previa: Previa | undefi
       data-locum-modelo={pedido}
       data-locum-resolvido={used}
     >
-      <Trans
-        components={{ code: <code /> }}
-        i18nKey="agents.step.resolved"
-        values={{ model: pedido, used }}
-      />
+      {used === pedido ? (
+        <span title={pedido}>{t("agents.step.runsOn", { model: rotuloDoModelo(pedido) })}</span>
+      ) : (
+        <Trans
+          components={{ code: <code /> }}
+          i18nKey="agents.step.resolved"
+          values={{ model: pedido, used }}
+        />
+      )}
       {substitutionReason === undefined
         ? ""
         : t("agents.step.substitution", { reason: substitutionReason })}

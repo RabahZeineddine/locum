@@ -19,15 +19,20 @@
     },
     "step": {
       "optional": "optional",
-      "noDependency": "no dependency",
       "dependsOn": "depends on {{steps}}",
-      "action": "Action <code>{{action}}</code>, input from <code>{{input}}</code>.",
+      "action": "Goes out through <code>{{action}}</code>, with what {{input}} produced.",
       "noInput": "no step",
       "requires": "Requires {{servers}}.",
       "resolving": "Requested <code>{{model}}</code>, resolving on this machine...",
       "unresolved": "Requested <code>{{model}}</code>, and it does not resolve here: {{error}}",
       "resolved": "Requested <code>{{model}}</code>, runs <code>{{used}}</code>",
-      "substitution": " ({{reason}})"
+      "substitution": " ({{reason}})",
+      "runsOn": "Runs on {{model}}",
+      "mode": {
+        "approve": "waits for your approval",
+        "draft": "becomes a draft",
+        "auto": "publishes on its own"
+      }
     },
     "tools": {
       "tokens": "{{tokens}} tok",
