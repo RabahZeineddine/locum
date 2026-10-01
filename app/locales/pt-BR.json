@@ -469,7 +469,7 @@
       "title": "Idioma",
       "description": "Em que idioma a janela, a bandeja e as notificações falam. A escolha vale na hora, sem reiniciar.",
       "system": "Seguir o sistema",
-      "active": "Agora em {{language}}, pelo dicionário {{tag}}",
+      "active": "Agora em {{language}}.",
       "refused": "O idioma não trocou: {{message}}"
     },
     "assistantModel": {
@@ -753,8 +753,8 @@
       "conexoes": "Conexões"
     },
     "staleDays": {
-      "title": "Limite de parada",
-      "description": "Quantos dias sem atualização marcam uma iniciativa como parada na tela Início.",
+      "title": "Iniciativa parada",
+      "description": "Depois de quantos dias sem atualização a tela Hoje marca uma iniciativa como parada.",
       "label": "dias",
       "refused": "O valor não foi salvo: {{message}}"
     },

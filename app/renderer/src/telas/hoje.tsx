@@ -229,11 +229,14 @@ function CartaoDeEspera({
   const detalhe = [alvo.titulo ? alvo.principal : undefined, alvo.repo ?? alvo.detalhe, quando]
     .filter((parte): parte is string => Boolean(parte))
     .join(" · ");
+  // Pendência sem pull request já traz o nome do agent no título; repetir em
+  // cima só faz a linha dizer a mesma coisa duas vezes.
+  const rotulo = iniciativa ?? (titulo.includes(pendencia.agentName) ? undefined : pendencia.agentName);
 
   return (
     <li className="border-border bg-card flex items-center gap-5 rounded-xl border px-5 py-4">
       <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <span className="text-muted-foreground truncate text-xs">{iniciativa ?? pendencia.agentName}</span>
+        {rotulo && <span className="text-muted-foreground truncate text-xs">{rotulo}</span>}
         <span className="truncate font-medium text-[15px] tracking-tight">{titulo}</span>
         <span className="text-muted-foreground truncate text-sm">{detalhe}</span>
       </div>

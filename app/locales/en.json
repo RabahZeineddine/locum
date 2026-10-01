@@ -447,7 +447,7 @@
       "title": "Language",
       "description": "Which language the window, the tray and the notifications speak. The choice applies right away, with no restart.",
       "system": "Follow the system",
-      "active": "Now in {{language}}, from the {{tag}} dictionary",
+      "active": "Now in {{language}}.",
       "refused": "The language did not change: {{message}}"
     },
     "assistantModel": {
@@ -721,8 +721,8 @@
       "conexoes": "Connections"
     },
     "staleDays": {
-      "title": "Stale threshold",
-      "description": "How many days without an update mark an initiative as stale on the Home screen.",
+      "title": "Stalled initiative",
+      "description": "After how many days without an update the Today screen marks an initiative as stalled.",
       "label": "days",
       "refused": "The value was not saved: {{message}}"
     },

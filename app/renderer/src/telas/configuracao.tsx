@@ -391,7 +391,7 @@ function EscolhaDoIdioma() {
       </div>
 
       <p className="text-muted-foreground text-xs">
-        {t("settings.language.active", { language: autonimo(language), tag: language })}
+        {t("settings.language.active", { language: autonimo(language) })}
       </p>
 
       {erro === null ? null : (
