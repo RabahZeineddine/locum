@@ -2,123 +2,132 @@
 
 *Locum: quem assume o seu posto enquanto você não está.*
 
-Aplicativo para macOS que roda os seus agents em segundo plano e faz o trabalho
-no seu lugar. Ele revisa, investiga, correlaciona e escreve, e quanto do
-resultado sai sozinho é decisão sua: cada ação tem modo de aprovação, rascunho
-ou automático, destravado por categoria conforme a medição sustenta.
+Aplicativo para macOS que roda agents de IA em segundo plano e faz parte do
+trabalho de engenharia no seu lugar: revisa pull requests, investiga, cruza
+contexto de várias ferramentas e escreve o rascunho. O que o agent produz não
+sai sozinho. Cada ação que escreve em serviço de fora (comentar no GitHub,
+responder no Slack, mexer num card) para numa fila e espera a sua aprovação.
 
-Primeiro caso de uso: revisão dos pull requests do time, com triagem e auditoria
-em modelos diferentes, contexto de deploy cruzado do ArgoCD, e convenções do
-time carregadas como skill conforme os arquivos alterados.
+## Por que existe
 
-## Estado
+Assistente de IA hoje é conversa: você abre, pede, espera, copia. O trabalho
+repetitivo de quem cuida de um time (olhar todo PR que chega, ler o canal,
+lembrar do card parado) continua sendo puxado à mão.
 
-O núcleo headless funciona e foi verificado de ponta a ponta, e o aplicativo
-Electron já sobe, carrega a interface e sai empacotado em `.dmg`. Tudo continua
-alcançável pela linha de comando, com o mesmo executor que a interface usa.
+O Locum inverte isso. Você descreve o trabalho uma vez, como um agent com
+passos, modelos e ferramentas, e diz quando ele roda: um PR novo, uma mensagem
+num canal, um horário. Ele roda sozinho, na sua máquina, e entrega o resultado
+numa fila onde você aprova, ajusta ou descarta.
 
-```bash
-cd app
-npm install
-npm run dev import ../examples/agents/pr-review.json   # o Locum não traz agent pronto
-npm run dev demo     # pipeline completo num PR sintético, sem credencial
-```
+Três princípios guiam o desenho:
 
-Detalhes em [docs/estado-atual.md](docs/estado-atual.md).
+- **Local primeiro.** Banco SQLite, credenciais no keychain do macOS, execução
+  na própria máquina. Não há servidor do Locum no meio.
+- **Nada sai sem você.** Toda escrita em serviço externo passa por uma porta
+  única de aprovação. Cada passo tem modo `approve`, `draft` ou `auto`, e o
+  automático só faz sentido quando a medição mostra que o agent acerta.
+- **Configurável sem código.** Agents, gatilhos, provedores e conexões se montam
+  pela interface ou por um assistente externo (Claude Code) falando com o
+  servidor MCP do próprio Locum.
+
+O primeiro caso de uso é revisão de pull request: triagem e auditoria em modelos
+diferentes, contexto de deploy opcional, convenções do time carregadas como
+skill conforme os arquivos alterados, e a review parada na fila até você mandar.
+
+## O que tem hoje
+
+| área | o que faz |
+|---|---|
+| Hoje | abre o app com o que espera decisão, o que está rodando e o que terminou |
+| Fila | aprovações pendentes, com o diff do que vai ser publicado |
+| Agents | editor de agent em passos, com grafo de dependência, modelo por passo e orçamento |
+| Execuções | histórico, custo, saída de cada passo, e reexecução de um passo só |
+| Iniciativas | unidade de trabalho com contexto próprio, servidores MCP escopados e sessão do Claude Code aberta com esse contexto |
+| Gatilhos | varredura de PR no GitHub, mensagem no Slack, agenda |
+| Conexões | vitrine com Claude Code, GitHub, Slack, Jira e servidores MCP remotos (Linear, Notion, Sentry, Figma e outros) com OAuth de um clique |
+| Provedores | Anthropic, OpenAI, Google e qualquer endpoint compatível com OpenAI (GLM, Ollama, OpenRouter, Groq e afins), com tabela de fallback |
+| Servidor MCP | `Locum --mcp` expõe 32 ferramentas; o Claude Code se conecta num clique e consegue montar agent, gatilho e iniciativa conversando |
+
+Interface em português e inglês.
+
+### Provedores e assinatura
+
+Há dois runtimes atrás da mesma interface. O nativo usa o AI SDK e fala com
+qualquer provedor por chave de API. O segundo executa o binário do Claude Code
+já instalado e autenticado na máquina de quem usa, o que permite aproveitar a
+própria assinatura. O Locum não embute login, não intermedeia credencial e não
+redistribui acesso. Sem o binário, esse runtime não aparece, e a tabela de
+fallback manda os passos afetados para provedores por chave.
 
 ## Instalação
 
-Não há release publicado: o pacote é gerado a partir deste repositório, numa
-máquina com macOS.
+Baixe o `.dmg` do [release mais recente](https://github.com/RabahZeineddine/locum/releases/latest)
+e arraste o `Locum.app` para `/Applications`. Hoje só há pacote para Apple
+Silicon (arm64).
+
+O pacote não é assinado pela Apple, então a primeira abertura é bloqueada pelo
+Gatekeeper. Clique no aplicativo com o botão direito e escolha **Abrir**, uma vez
+só. Depois disso o Locum se atualiza sozinho a cada release, por um mecanismo
+próprio que não depende de certificado. Detalhes em
+[docs/empacotamento.md](docs/empacotamento.md).
+
+Para ligar num repositório de verdade (token, gatilho, primeira varredura e a
+fila), siga [docs/primeira-execucao.md](docs/primeira-execucao.md).
+
+## Desenvolvimento
+
+Precisa de macOS e Node 22 ou mais novo. Tudo roda a partir de `app/`.
 
 ```bash
 cd app
 npm install
-npm run build
-npm run dist         # .dmg e .zip em app/release/
+npm test             # testes unitários e de integração (node:test)
+npm run verify       # typecheck, paridade de i18n, build e smoke do Electron
+npm start            # build e abre o app a partir do código
 ```
 
-Abra o `.dmg` e arraste o `Locum.app` para `/Applications`.
+A linha de comando usa o mesmo executor da interface e é o jeito mais rápido de
+testar o núcleo sem abrir janela:
 
-O pacote não é assinado pela Apple, então a primeira abertura é bloqueada pelo
-Gatekeeper. O contorno é clicar no aplicativo com o botão direito e escolher
-**Abrir**, uma vez só: o sistema registra a decisão e as próximas aberturas são
-normais.
+```bash
+npm run dev import ../examples/agents/pr-review.json
+npm run dev demo     # pipeline completo num PR sintético, sem credencial
+```
 
-Duas consequências de não assinar: o início automático no login não é honrado
-pelo sistema, e a atualização automática fica desligada, porque o macOS recusa
-instalar atualização não assinada.
+Como contribuir, convenções de código e o processo de release estão em
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
-O caminho todo, incluindo o que muda com conta de desenvolvedor Apple, está em
-[docs/empacotamento.md](docs/empacotamento.md).
+## Estrutura
 
-## Provedores e assinatura
-
-O Locum roda com dois runtimes atrás da mesma interface. O nativo usa o AI SDK e
-fala com qualquer provedor por chave de API: Anthropic, OpenAI, Google, GLM,
-Groq, OpenRouter, Ollama e qualquer endpoint compatível com OpenAI.
-
-O segundo runtime executa o binário do Claude Code já instalado e autenticado na
-máquina de quem usa, o que permite aproveitar a própria assinatura em vez de
-gastar chave de API. O Locum não embute login, não intermedeia credencial e não
-redistribui acesso: quem usa autentica a própria ferramenta, na própria máquina.
-Sem o binário instalado, esse runtime simplesmente não é oferecido, e a tabela
-de fallback redireciona os passos afetados para provedores por chave.
+```
+app/
+  electron/     processo principal: janela, ponte com a interface, bandeja, atualização, smoke
+  renderer/     interface em React, Tailwind e shadcn
+  src/          núcleo: banco, executor, runtimes, provedores, MCP, serviços, gatilhos
+  locales/      textos da interface em pt-BR e en
+  test/         testes
+  scripts/      build, checagem de i18n, release
+docs/           decisões (ADR), estado atual, roadmap, guias
+examples/       agents de exemplo para importar
+scripts/ralph/  loop de execução autônoma sobre o backlog
+```
 
 ## Documentação
 
 | documento | conteúdo |
 |---|---|
-| [ADR 0001](docs/adr/0001-arquitetura-v2.md) | as dez decisões de arquitetura e as alternativas descartadas |
-| [decisoes-da-conversa.md](docs/decisoes-da-conversa.md) | o caminho até o desenho, incluindo o que mudou de ideia |
-| [pesquisa.md](docs/pesquisa.md) | o que foi verificado na documentação externa, separado de suposição |
-| [estado-atual.md](docs/estado-atual.md) | o que existe, o que falta, e as armadilhas encontradas |
+| [estado-atual.md](docs/estado-atual.md) | o que existe, o que falta e as armadilhas encontradas; comece por aqui |
+| [roadmap.md](docs/roadmap.md) | marcos e iniciativas |
+| [ADR 0001](docs/adr/0001-arquitetura-v2.md) | as decisões de arquitetura e as alternativas descartadas |
 | [ADR 0002](docs/adr/0002-camada-de-servico-e-servidor-mcp.md) | camada de serviço, servidor MCP próprio, e por que aprovação fica fora dele |
 | [ADR 0003](docs/adr/0003-interface-sobre-ai-elements.md) | interface sobre AI Elements, chat como console, e a regra contra injeção de prompt |
-| [ADR 0004](docs/adr/0004-iniciativas.md) | iniciativa como unidade de trabalho, escopo MCP, contexto por proposta aprovada, e idioma do projeto |
-| [roadmap.md](docs/roadmap.md) | marcos M1 a M5, até o `.dmg`, e as iniciativas I1 a I5 |
-| [empacotamento.md](docs/empacotamento.md) | como gerar o `.dmg`, abrir sem assinatura, e o que muda com conta Apple |
-| [primeira-execucao.md](docs/primeira-execucao.md) | ligar num repositório de verdade: token, gatilho, primeira varredura e a fila |
-| [prd.json](scripts/ralph/prd.json) | backlog como estado: tarefas atômicas com critério de pronto e comando de verificação |
-
-## Idioma
-
-O código usa identificadores em inglês. Comentários e documentação estão em
-português enquanto o projeto é privado, e serão traduzidos antes da abertura do
-repositório, junto com o guia de contribuição. A tarefa está no backlog.
-
-## Loop de execução
-
-O backlog vive em `scripts/ralph/prd.json` e é a fonte da verdade do que falta.
-Para ler no terminal:
-
-```bash
-jq -r '.userStories[] | "\(if .passes then "[x]" else "[ ]" end) \(.id)  \(.title)"' scripts/ralph/prd.json
-```
-
-Para rodar o loop, um marco por vez:
-
-```bash
-./scripts/ralph/ralph.sh M1 12
-```
-
-Ele cria um worktree próprio em `../locum-loop`, usa um banco de rascunho
-separado do real, e aborta se o código não compilar, se a árvore ficar suja, se
-a branch for a principal ou se ela aparecer no remoto. O loop nunca faz push.
+| [ADR 0004](docs/adr/0004-iniciativas.md) | iniciativa como unidade de trabalho, escopo MCP e contexto por proposta aprovada |
+| [mcp-server.md](docs/mcp-server.md) | as ferramentas do servidor MCP e como ligar no Claude Code |
+| [empacotamento.md](docs/empacotamento.md) | `.dmg`, abertura sem assinatura e atualização automática |
+| [primeira-execucao.md](docs/primeira-execucao.md) | primeiro uso num repositório de verdade |
+| [decisoes-da-conversa.md](docs/decisoes-da-conversa.md) | o caminho até o desenho, incluindo o que mudou de ideia |
+| [pesquisa.md](docs/pesquisa.md) | o que foi verificado em documentação externa, separado de suposição |
 
 ## Licença
 
 MIT. Veja [LICENSE](LICENSE).
-
-## Estrutura
-
-```
-app/            núcleo em TypeScript, o produto daqui para a frente
-docs/           decisões, pesquisa, estado e roadmap
-scripts/ralph/  loop de execução: script, prompt da iteração, backlog e progresso
-examples/       agents de exemplo, para importar
-```
-
-O Locum começou como uma versão em Python, que saiu do repositório quando o que
-ela fazia passou para o TypeScript. Quem quiser consultar acha no histórico, no
-commit anterior à remoção.
