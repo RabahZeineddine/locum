@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { resolveClaudeBinary } from "../runtimes/claude-binary.js";
+import { claudeBinary } from "../runtimes/claude-binary.js";
 
 /** Nome com que o Locum aparece nas sessões do Claude Code. */
 export const CLAUDE_CODE_SERVER = "locum";
@@ -70,7 +70,7 @@ export class ClaudeCodeService {
   constructor(deps: Partial<ClaudeCodeServiceDeps> = {}) {
     this.deps = {
       configPath: join(homedir(), ".claude.json"),
-      resolveClaude: () => resolveClaudeBinary(),
+      resolveClaude: () => claudeBinary(),
       run: defaultRun,
       ...deps,
     };

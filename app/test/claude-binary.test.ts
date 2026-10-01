@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { resolveClaudeBinary, type ClaudeBinaryDeps } from "../src/runtimes/claude-binary.js";
+import { claudeBinary, forgetClaudeBinary, resolveClaudeBinary, type ClaudeBinaryDeps } from "../src/runtimes/claude-binary.js";
 
 const HOME = "/Users/teste";
 
@@ -87,4 +87,30 @@ test("lista fixa na ordem do instalador nativo primeiro", async () => {
 
 test("nada achado devolve undefined", async () => {
   assert.equal(await resolveClaudeBinary(deps({})), undefined);
+});
+
+test("o caminho achado é lembrado, e some quando deixa de ser executável", async () => {
+  forgetClaudeBinary();
+  const chamadas: { command: string; args: string[] }[] = [];
+  const executaveis = ["/usr/local/bin/claude"];
+  const base = deps({ zsh: "/usr/local/bin/claude\n", executaveis, chamadas });
+  const vivos = new Set(executaveis);
+  const comVivos = { ...base, executable: (p: string) => vivos.has(p) };
+
+  assert.equal(await claudeBinary(comVivos), "/usr/local/bin/claude");
+  assert.equal(await claudeBinary(comVivos), "/usr/local/bin/claude");
+  assert.equal(chamadas.length, 1, "o shell de login abre uma vez só");
+
+  vivos.delete("/usr/local/bin/claude");
+  assert.equal(await claudeBinary(comVivos), undefined);
+  assert.equal(chamadas.length, 2, "binário que sumiu faz perguntar de novo");
+});
+
+test("não achar não fica lembrado, para quem instala com o Locum aberto", async () => {
+  forgetClaudeBinary();
+  const chamadas: { command: string; args: string[] }[] = [];
+  assert.equal(await claudeBinary(deps({ chamadas })), undefined);
+  assert.equal(await claudeBinary(deps({ chamadas, zsh: "/opt/homebrew/bin/claude", executaveis: ["/opt/homebrew/bin/claude"] })), "/opt/homebrew/bin/claude");
+  assert.equal(chamadas.length, 2);
+  forgetClaudeBinary();
 });

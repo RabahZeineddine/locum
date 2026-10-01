@@ -5628,6 +5628,10 @@ async function main(): Promise<void> {
     return;
   }
 
+  // Achar o `claude` abre um shell de login, que leva segundos. Começar agora
+  // faz a primeira visita à vitrine de conexões encontrar a resposta pronta.
+  void import("../src/runtimes/claude-binary.js").then(({ claudeBinary }) => claudeBinary());
+
   // O nucleo abre o banco no import, entao tudo que fala com ele entra por
   // import dinamico, depois da variavel de ambiente do binding.
   const { setupTray, teardownTray, trayPendingCount } = await import("./tray.js");

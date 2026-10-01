@@ -4,7 +4,7 @@ import { chmodSync, mkdirSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
-import { resolveClaudeBinary } from "../runtimes/claude-binary.js";
+import { claudeBinary } from "../runtimes/claude-binary.js";
 import { LocalFolderContextStore } from "./context-store.js";
 import { LOCUM_SCHEME } from "./deep-link-service.js";
 import { FALLBACK_LANGUAGE, i18nService, type I18nService, type Language } from "./i18n-service.js";
@@ -201,7 +201,7 @@ export class SessionService {
       settings: settingsService,
       t: translate,
       exec: defaultExec,
-      resolveClaude: () => resolveClaudeBinary(),
+      resolveClaude: () => claudeBinary(),
       now: Date.now,
       ...deps,
     };

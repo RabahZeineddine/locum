@@ -78,3 +78,42 @@ export async function resolveClaudeBinary(deps: Partial<ClaudeBinaryDeps> = {}):
   ];
   return fixos.find(aceita);
 }
+
+let lembrado: Promise<string | undefined> | null = null;
+
+/**
+ * O mesmo que `resolveClaudeBinary`, perguntado uma vez por processo.
+ *
+ * O shell de login leva segundos para abrir numa máquina com `.zshrc` cheio, e
+ * a vitrine de conexões pergunta toda vez que abre: sem lembrar, a tela ficava
+ * em "carregando" até o `zsh` responder. O caminho achado vale enquanto
+ * continuar executável; não achar não fica lembrado, porque a pessoa pode
+ * instalar o Claude Code com o Locum aberto.
+ */
+export function claudeBinary(deps: Partial<ClaudeBinaryDeps> = {}): Promise<string | undefined> {
+  const executable = deps.executable ?? defaultExecutable;
+  if (lembrado !== null) {
+    const anterior = lembrado;
+    return anterior.then((caminho) => {
+      if (caminho !== undefined && executable(caminho)) return caminho;
+      if (lembrado === anterior) lembrado = null;
+      return claudeBinary(deps);
+    });
+  }
+  const pergunta = resolveClaudeBinary(deps);
+  lembrado = pergunta;
+  void pergunta.then(
+    (caminho) => {
+      if (caminho === undefined && lembrado === pergunta) lembrado = null;
+    },
+    () => {
+      if (lembrado === pergunta) lembrado = null;
+    },
+  );
+  return pergunta;
+}
+
+/** Esquece o caminho lembrado. Só para teste. */
+export function forgetClaudeBinary(): void {
+  lembrado = null;
+}
