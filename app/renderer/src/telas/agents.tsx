@@ -292,6 +292,7 @@ function DetalheDoAgent({
 }) {
   const { t } = useTranslation();
   const [duplicando, setDuplicando] = useState(false);
+  const [rodando, setRodando] = useState(false);
   const [exportado, setExportado] = useState<string | null>(null);
   const versoes = useRead("agents.versions", agentId);
   const maquina = useRead("machine.profile");
@@ -350,6 +351,15 @@ function DetalheDoAgent({
             >
               {t("agents.io.export")}
             </Button>
+            <Button
+              className="cursor-pointer"
+              data-locum-rodar=""
+              onClick={() => setRodando(true)}
+              size="sm"
+              variant="ghost"
+            >
+              {t("agents.run.open")}
+            </Button>
             <Button className="cursor-pointer" onClick={() => setDuplicando(true)} size="sm" variant="ghost">
               {t("agents.editor.duplicate")}
             </Button>
@@ -367,6 +377,14 @@ function DetalheDoAgent({
 
       {exportado === null ? null : (
         <p className="text-muted-foreground text-xs">{exportado}</p>
+      )}
+
+      {rodando && !editando && (
+        <RodarAgora
+          agentId={agentId}
+          aoCancelar={() => setRodando(false)}
+          aoRodar={(runId) => navegar("execucoes", runId)}
+        />
       )}
 
       {duplicando && (
@@ -433,6 +451,75 @@ function OrcamentoDoAgent({ agentId }: { agentId: string }) {
     <Secao descricao={t("settings.budgets.description")} titulo={t("settings.budgets.title")}>
       <LinhaDoOrcamento orcamento={deste} />
     </Secao>
+  );
+}
+
+/**
+ * Rodar este agent agora, sobre um pull request colado.
+ *
+ * É o caminho de quem acabou de instalar: nada de terminal nem de sessão do
+ * Claude Code, só o link do PR. A execução sai sem esperar e a tela vai para
+ * ela, onde o andamento já aparece; o que o agent quiser publicar continua
+ * parando na fila, que é a regra de qualquer execução.
+ */
+function RodarAgora({
+  agentId,
+  aoCancelar,
+  aoRodar,
+}: {
+  agentId: string;
+  aoCancelar: () => void;
+  aoRodar: (runId: string) => void;
+}) {
+  const { t } = useTranslation();
+  const [alvo, setAlvo] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  async function rodar() {
+    setEnviando(true);
+    setErro(null);
+    try {
+      const { runId } = await call("runs.start", { target: alvo, agentId, wait: false });
+      aoRodar(runId);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : String(e));
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <form
+      className="border-border bg-card flex max-w-xl flex-col gap-3 rounded-lg border px-4 py-3"
+      data-locum-probe="rodar-agora"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (alvo.trim() !== "") void rodar();
+      }}
+    >
+      <div>
+        <p className="text-sm font-medium">{t("agents.run.title")}</p>
+        <p className="text-muted-foreground text-xs">{t("agents.run.hint")}</p>
+      </div>
+      <input
+        aria-label={t("agents.run.title")}
+        autoFocus
+        className="border-border bg-background focus-visible:ring-ring rounded-md border px-2 py-1 font-mono text-xs outline-none focus-visible:ring-1"
+        onChange={(e) => setAlvo(e.target.value)}
+        placeholder={t("agents.run.placeholder")}
+        spellCheck={false}
+        value={alvo}
+      />
+      {erro && <p className="text-sev-critical text-xs">{erro}</p>}
+      <div className="flex gap-2">
+        <Button className="cursor-pointer" disabled={enviando || alvo.trim() === ""} size="sm" type="submit">
+          {enviando ? t("agents.run.starting") : t("agents.run.start")}
+        </Button>
+        <Button className="cursor-pointer" onClick={aoCancelar} size="sm" type="button" variant="ghost">
+          {t("agents.editor.cancel")}
+        </Button>
+      </div>
+    </form>
   );
 }
 

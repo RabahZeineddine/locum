@@ -22,7 +22,7 @@
     "start": "npm run build && electron dist/main.cjs",
     "dist:dir": "electron-builder --dir --publish never",
     "dist": "electron-builder --publish never",
-    "smoke": "npm run build && electron dist/main.cjs --smoke",
+    "smoke": "npm run build && electron dist/main.cjs --smoke && node scripts/mcp-handshake.mjs node_modules/.bin/electron dist/main.cjs",
     "smoke:dist": "node scripts/smoke-dist.mjs",
     "release": "node --import tsx scripts/release.ts",
     "verify": "npm run typecheck && npm run check:i18n && npm run build && npm run smoke"

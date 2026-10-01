@@ -180,11 +180,18 @@ export class ExecutionService {
   }
 }
 
-/** Aceita "owner/repo#123" e os apelidos do evento sintetico. */
+/**
+ * Aceita "owner/repo#123", o link do pull request como o navegador mostra, e
+ * os apelidos do evento sintetico. O link entra porque e o que a pessoa tem na
+ * mao quando abre o Locum para revisar um PR.
+ */
 export function parseTarget(text: string): RunTarget {
   const trimmed = text.trim();
   if (SINTETICO.has(trimmed.toLowerCase())) return { kind: "synthetic" };
   if (SINTETICO_LIMPO.has(trimmed.toLowerCase())) return { kind: "synthetic", variant: "clean" };
+
+  const link = trimmed.match(/^https?:\/\/github\.com\/([^/\s]+)\/([^/\s]+)\/pull\/(\d+)(?:[/?#]\S*)?$/);
+  if (link) return { kind: "github", owner: link[1]!, repo: link[2]!, pull: Number(link[3]) };
 
   const match = trimmed.match(/^([^/\s]+)\/([^#\s]+)#(\d+)$/);
   if (!match) {

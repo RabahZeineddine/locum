@@ -17,19 +17,30 @@ execução e ler achado sem passar pela linha de comando.
 
 ## Como subir
 
-O registro está em `.mcp.json`, na raiz do repositório, e qualquer cliente MCP
-que abra o projeto carrega o servidor sozinho. Para subir à mão:
+O aplicativo serve o MCP ele mesmo: `Locum --mcp` sobe sem janela, abre o cofre
+pelo keychain como a janela abre, e fala stdio. Em Configuração, Conexões, o
+cartão do Claude Code roda `claude mcp add --scope user locum -- <binário> --mcp`
+num clique, e qualquer sessão passa a ver o servidor com as credenciais
+guardadas no app, sem `GITHUB_TOKEN` exportado.
+
+O repositório não tem mais `.mcp.json`. Ele era escopo de projeto, ganhava do
+cadastro de usuário dentro do repo e subia por `node`, que não decifra o cofre
+do Electron: dentro do repo, `run_agent` falhava sem token. Para subir à mão no
+desenvolvimento:
 
 ```bash
 cd app
-npm run mcp
+npm run build
+node scripts/mcp-handshake.mjs node_modules/.bin/electron dist/main.cjs
 ```
 
+O exame acima também roda no fim do `npm run smoke` e do `smoke:dist`, contra o
+binário empacotado.
+
 O transporte é stdio, então **nada pode escrever em stdout**: esse é o canal do
-protocolo, e um `console.log` perdido corrompe a sessão. Diagnóstico sai por
-stderr. É por isso que o `.mcp.json` chama `node` com o caminho do `tsx` dentro
-de `app/node_modules` em vez de `npm run mcp`, que ainda imprimiria o cabeçalho
-do script.
+protocolo, e um `console.log` perdido corrompe a sessão. Com `--mcp`, o
+`electron/mcp-stdout.ts`, primeiro import do processo principal, desvia
+`console.log` para stderr antes de qualquer módulo escrever.
 
 O banco é o mesmo do aplicativo, em modo WAL, então este processo lê enquanto a
 linha de comando escreve. Não existe cópia nem sincronização.

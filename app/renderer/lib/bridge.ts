@@ -84,6 +84,9 @@ export const READ_CHANNELS = [
   // Mesma razão de `credentials.overview`: responde endereço, sim ou não e o
   // que a última conferência descobriu. O token não volta por canal nenhum.
   "github.status",
+  // Se o Claude Code enxerga o Locum: lê o cadastro e procura o `claude`, sem
+  // escrever nada. Ligar é o `claudeCode.connect`, que mora entre as ações.
+  "claudeCode.status",
   // Mesma razão de `github.status`: endereço, sim ou não, e o que a última
   // conferência contou. A credencial do tracker não volta por canal nenhum, e
   // criar tarefa não tem canal em lista nenhuma.
@@ -129,6 +132,9 @@ export type ReadChannel = (typeof READ_CHANNELS)[number];
  */
 export const ACTION_CHANNELS = [
   "runs.rerunStep",
+  // Rodar um agent num pull request digitado na tela. O run anda até o passo
+  // de ação e para na fila de aprovação, como qualquer outro.
+  "runs.start",
   // O token do GitHub indo para o keychain, e o único segredo que a janela
   // manda. Está aqui e não na leitura porque é escrita, e porque exige alguém
   // digitando: um hook que dispara ao montar a tela não tem o que gravar. A
@@ -139,6 +145,9 @@ export const ACTION_CHANNELS = [
   // Conferir sai para a rede e responde quem é a conta, então fica atrás de um
   // clique pelo mesmo motivo de `mcp.test`: abrir a tela não é pedir exame.
   "github.check",
+  // Cadastrar o Locum no Claude Code roda o `claude mcp add`: processo e
+  // escrita no cadastro de outro programa, atrás de um clique.
+  "claudeCode.connect",
   // A chave de provedor indo para o keychain, e o exame que pergunta o
   // catálogo àquele provedor. Escrita e rede, os dois atrás de um clique, pelo
   // mesmo motivo dos canais do GitHub logo acima.

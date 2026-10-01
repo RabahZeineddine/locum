@@ -135,6 +135,14 @@
       "importRefused": "Import failed: {{message}}",
       "exportRefused": "Export failed: {{message}}",
       "exported": "Exported to {{path}}"
+    },
+    "run": {
+      "open": "Run",
+      "title": "Run on a pull request",
+      "hint": "Paste the PR link (or owner/repo#123). The result goes to the queue; nothing is published without your approval.",
+      "start": "Run now",
+      "starting": "starting...",
+      "placeholder": "https://github.com/owner/repo/pull/123"
     }
   },
   "assistant": {
@@ -718,6 +726,18 @@
       "terminal": "Terminal",
       "iterm": "iTerm",
       "refused": "The terminal was not saved"
+    },
+    "claudeCode": {
+      "title": "Claude Code",
+      "description": "Lets any Claude Code session use your agents, runs and queue, with the credentials stored here. One click, no file editing.",
+      "connected": "connected",
+      "stale": "points to another copy",
+      "absent": "not connected",
+      "noCli": "claude not found on this machine",
+      "connect": "Connect",
+      "reconnect": "Reconnect",
+      "connecting": "connecting...",
+      "connectedHint": "Open a new Claude Code session and the Locum tools show up."
     }
   },
   "severity": {

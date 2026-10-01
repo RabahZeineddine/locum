@@ -20,6 +20,7 @@ type ChaveDeProvedor = ReadResult<"providers.credentials">[number];
 type ConferenciaDeProvedor = ReadResult<"providers.checkSecret">;
 type EstadoDoGithub = ReadResult<"github.status">;
 type ConferenciaDoGithub = ReadResult<"github.check">;
+type EstadoDoClaudeCode = ReadResult<"claudeCode.status">;
 type Tracker = ReadResult<"trackers.list">[number];
 type TesteDoTracker = ReadResult<"trackers.test">;
 type Gatilho = ReadResult<"triggers.schedule">[number];
@@ -237,6 +238,9 @@ export function Configuracao({ detalhe, navegar }: TelaProps) {
 
       {secao === "conexoes" ? (
         <>
+          <Secao descricao={t("settings.claudeCode.description")} titulo={t("settings.claudeCode.title")}>
+            <ClaudeCode />
+          </Secao>
           <Secao
             descricao={t("settings.github.description")}
             titulo={t("settings.github.title")}
@@ -1428,6 +1432,95 @@ type Conferencia =
   | { fase: "conferindo" }
   | { fase: "respondeu"; resultado: ConferenciaDoGithub }
   | { fase: "recusado"; erro: string };
+
+/**
+ * O Locum dentro do Claude Code, num clique.
+ *
+ * O botão roda o `claude mcp add` apontando para este aplicativo, que serve o
+ * MCP por `--mcp` com o mesmo cofre da janela: é o que deixa o token guardado
+ * aqui valer numa sessão do terminal sem a pessoa exportar nada. A linha do
+ * comando aparece para quem preferir colar ela mesma.
+ */
+function ClaudeCode() {
+  const { t } = useTranslation();
+  const inicial = useRead("claudeCode.status");
+  const [recarregado, setRecarregado] = useState<EstadoDoClaudeCode | null>(null);
+  const [ligando, setLigando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  const estado = recarregado ?? inicial.data ?? null;
+
+  const ligar = (): void => {
+    setLigando(true);
+    setErro(null);
+    call("claudeCode.connect").then(
+      (novo) => {
+        setRecarregado(novo);
+        setLigando(false);
+      },
+      (e: unknown) => {
+        setErro(e instanceof Error ? e.message : String(e));
+        setLigando(false);
+      },
+    );
+  };
+
+  const situacao =
+    estado === null
+      ? null
+      : estado.current
+        ? "connected"
+        : estado.registered
+          ? "stale"
+          : "absent";
+
+  return (
+    <div
+      className="flex flex-col gap-3 px-4 py-3"
+      data-locum-claude-code={situacao ?? ""}
+      data-locum-probe="claude-code"
+    >
+      <div className="flex flex-wrap items-center gap-3 text-sm">
+        <span className="font-medium">{t("settings.claudeCode.title")}</span>
+        {situacao === null ? null : (
+          <Badge variant={situacao === "connected" ? "secondary" : situacao === "stale" ? "outline" : "destructive"}>
+            {t(`settings.claudeCode.${situacao}`)}
+          </Badge>
+        )}
+        {estado !== null && estado.cli === null ? (
+          <Badge variant="outline">{t("settings.claudeCode.noCli")}</Badge>
+        ) : null}
+        <div className="ml-auto">
+          <Button
+            className="cursor-pointer"
+            data-locum-claude-code-ligar=""
+            disabled={ligando || estado === null || estado.cli === null || estado.current}
+            onClick={ligar}
+            size="sm"
+            variant={estado?.current === true ? "ghost" : "default"}
+          >
+            {t(
+              ligando
+                ? "settings.claudeCode.connecting"
+                : situacao === "stale"
+                  ? "settings.claudeCode.reconnect"
+                  : "settings.claudeCode.connect",
+            )}
+          </Button>
+        </div>
+      </div>
+      {situacao === "connected" ? (
+        <p className="text-muted-foreground text-xs">{t("settings.claudeCode.connectedHint")}</p>
+      ) : null}
+      {erro === null ? null : <p className="text-sev-critical text-xs">{erro}</p>}
+      {estado === null ? null : (
+        <code className="bg-muted text-muted-foreground block overflow-x-auto rounded-md px-2 py-1 font-mono text-[11px] whitespace-nowrap">
+          {estado.command}
+        </code>
+      )}
+    </div>
+  );
+}
 
 /**
  * A credencial do GitHub: guardar, esquecer e perguntar de quem ela é.

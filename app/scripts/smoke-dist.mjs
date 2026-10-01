@@ -12,6 +12,7 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { examinarMcp } from "./mcp-handshake.mjs";
 
 const appDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const releaseDir = join(appDir, "release");
@@ -78,5 +79,16 @@ filho.on("exit", (code, signal) => {
     console.error(`o aplicativo empacotado saiu com ${code}`);
     process.exit(code ?? 1);
   }
-  console.log("fumaça do pacote: ok");
+  // Depois da bateria, o caminho de quem usa o Locum pelo Claude Code: o mesmo
+  // binário servindo MCP, que só dentro do `.app` alcança o cofre.
+  examinarMcp(binario).then(
+    (resumo) => {
+      console.log(resumo);
+      console.log("fumaça do pacote: ok");
+    },
+    (erro) => {
+      console.error(erro.message);
+      process.exit(1);
+    },
+  );
 });

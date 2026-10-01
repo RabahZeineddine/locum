@@ -13,7 +13,9 @@ import { aplicarIdioma, t } from "./i18n.js";
 import { VERSAO } from "./versao.js";
 import { agentService } from "../src/services/agent-service.js";
 import { approvalService } from "../src/services/approval-service.js";
+import { claudeCodeService } from "../src/services/claude-code-service.js";
 import { credentialService } from "../src/services/credential-service.js";
+import { executionService } from "../src/services/execution-service.js";
 import { githubService } from "../src/services/github-service.js";
 import { i18nService } from "../src/services/i18n-service.js";
 import { initiativeService } from "../src/services/initiative-service.js";
@@ -149,6 +151,7 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "runs.findings": (runId) => runService.findings(runId),
     "runs.findingsByRun": (runIds) => runService.findingsByRun(runIds),
     "runs.rerunStep": (runId, stepKey, options) => runService.rerunStep(runId, stepKey, options),
+    "runs.start": (input) => executionService.start(input),
 
     "approvals.listPending": () => approvalService.listPending(),
     "approvals.get": (approvalId) => approvalService.get(approvalId),
@@ -204,6 +207,8 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "github.save": (token) => githubService.setToken(token),
     "github.forget": () => githubService.clearToken(),
     "github.check": () => githubService.check(),
+    "claudeCode.status": () => claudeCodeService.status(),
+    "claudeCode.connect": () => claudeCodeService.connect(),
 
     "trackers.list": () => trackerService.list(),
     "trackers.register": (cadastro) => trackerService.register(cadastro),

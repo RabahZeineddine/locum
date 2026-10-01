@@ -122,7 +122,7 @@ que a interface vai usar.
 | tracker de tarefa, Jira e GitHub Issues | adaptador, cadastro no banco e credencial no keychain; teste de conexão e lista de destinos pela interface, verificado contra um tracker de mentira em 127.0.0.1 |
 | passo de ação que abre tarefa | `tracker.create_issue` monta o item e para na fila; corpo escrito por um passo de modelo antes dele, modo travado em `approve` pelo handler |
 | descoberta de skills e seleção por arquivo alterado | pronto |
-| servidor MCP próprio | 32 ferramentas de leitura, configuração, execução e iniciativa sobre a camada de serviço, registrado em `.mcp.json` |
+| servidor MCP próprio | 32 ferramentas de leitura, configuração, execução e iniciativa sobre a camada de serviço, servido pelo próprio app em `--mcp` e cadastrado no Claude Code por um botão em Conexões |
 | iniciativa como unidade de trabalho (I1) | `InitiativeService` cadastra, liga servidor MCP, workspace, agent e link; `ContextStore` guarda a pasta de contexto em disco e o hash do arquivo; contexto só muda por proposta aprovada na fila, decidida pelo agent de sistema `locum-context`; agent ligado a uma iniciativa não pode passar a exigir servidor de fora dela, checado ao ligar e a cada `upsert` de spec |
 | ferramentas de iniciativa no chat interno | 13 entradas do catálogo (`electron/chat-tools.ts`), de um total de 26, para criar e configurar iniciativa, ligar agent, propor mudança de contexto e cadastrar prompt |
 | prompts por iniciativa | `PromptService` com versionamento; leitura por iniciativa via `list_prompts({ initiativeId })`, sem ligação a agent nesta rodada |
@@ -662,7 +662,7 @@ cadastro de uma vez.
 
 **O cadastro do fixture carrega caminho absoluto.** `src/fixtures/mcp-fixture.ts`
 registra o servidor de brinquedo com `node` mais o caminho inteiro do `tsx` e do
-fixture, pelo mesmo motivo do `.mcp.json`: o cadastro não tem campo para
+fixture: o cadastro não tem campo para
 diretório de trabalho, e quem sobe o processo usa o `cwd` de quem chamou, que é
 `app/` para o smoke e a raiz do repositório para um cliente externo. O registro
 é por nome, então subir o smoke de novo sobrescreve em vez de acumular linha.
@@ -714,11 +714,10 @@ e devolve o `node_modules` ao estado de Node; o processo principal aponta
 `Record<string, unknown>` faz a inferência do `stopWhen` cair para `never`. Use
 `ToolSet` do pacote `ai`.
 
-**Caminho do servidor no `.mcp.json`.** O formato não tem campo para diretório
-de trabalho: o cliente sobe o processo na raiz do repositório, onde não existe
-`node_modules`. Por isso o registro chama `node` com o caminho do `tsx` dentro
-de `app/node_modules`, em vez de `npm run mcp`, que ainda escreveria o cabeçalho
-do script no stdout e corromperia a sessão.
+**O MCP precisa subir pelo Electron, não por `node`.** O cofre usa `safeStorage`,
+cuja chave mora no keychain em nome do aplicativo: um processo `node` lê o banco
+mas não decifra o token, e `run_agent` falhava com "sem token do GitHub". Por
+isso o servidor sobe com `Locum --mcp`, e o `.mcp.json` do repositório saiu.
 
 **O esquema do aplicativo vem de migração, o do desenvolvimento vem de push.**
 O `drizzle-kit push` é ferramenta de desenvolvimento e não existe dentro do

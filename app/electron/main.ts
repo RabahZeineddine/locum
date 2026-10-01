@@ -1,3 +1,6 @@
+// Primeiro import de propósito: com `--mcp`, desvia o log do stdout antes que
+// qualquer outro módulo escreva nele.
+import { modoMcp } from "./mcp-stdout.js";
 import { app, BrowserWindow } from "electron";
 import { captureDeepLinks } from "./deep-link.js";
 import { VERSAO } from "./versao.js";
@@ -5338,6 +5341,43 @@ async function runSecretCommand(): Promise<void> {
 }
 
 /**
+ * O servidor MCP do Locum, servido pelo próprio aplicativo.
+ *
+ * Pelo binário do `.app`, e não por um `node` solto, porque só o processo do
+ * Locum abre o cofre: o token do GitHub e as chaves de provedor que a pessoa
+ * guardou na configuração estão cifrados pelo `safeStorage`, e um processo de
+ * fora enxergaria o texto cifrado sem conseguir lê-lo. É assim que quem baixa
+ * o `.dmg` usa o Locum pelo Claude Code sem exportar variável nenhuma.
+ *
+ * Sem bandeja, janela nem agendador: o aplicativo aberto já faz esse papel, e
+ * um segundo agendador dispararia cada gatilho duas vezes. O processo vive
+ * enquanto o cliente mantiver o stdin aberto.
+ */
+async function serveMcp(): Promise<void> {
+  const { installSecretBackend } = await import("./safe-storage.js");
+  if (!installSecretBackend()) console.error("keychain indisponivel, credenciais vem so do ambiente");
+
+  const { providerService } = await import("../src/services/provider-service.js");
+  await providerService.loadSecrets();
+
+  const { closeMcpPool } = await import("../src/executor/build.js");
+  const { buildMcpServer } = await import("../src/mcp-server/server.js");
+  const { StdioServerTransport } = await import("@modelcontextprotocol/sdk/server/stdio.js");
+
+  const sair = (): void => {
+    void closeMcpPool()
+      .catch(() => undefined)
+      .finally(() => app.exit(0));
+  };
+  process.stdin.on("end", sair);
+  process.stdin.on("close", sair);
+
+  const server = buildMcpServer();
+  await server.connect(new StdioServerTransport());
+  console.error("servidor MCP do locum no ar, pelo aplicativo");
+}
+
+/**
  * Poe o processo principal no idioma de quem esta na maquina.
  *
  * Qual idioma vale sai do mesmo servico que responde a janela, entao a bandeja
@@ -5458,6 +5498,9 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
 
 async function main(): Promise<void> {
   await app.whenReady();
+  // Servidor MCP não tem janela nem ícone no dock: quem o abre é o Claude Code,
+  // a cada sessão, e um ícone pulando a cada sessão nova seria ruído.
+  if (modoMcp) app.dock?.hide();
 
   // Antes de tudo que lê o banco, inclusive do idioma, que mora em `settings`.
   const esquema = await migrarEsquema();
@@ -5472,6 +5515,20 @@ async function main(): Promise<void> {
   if (flagValue("--set-secret") !== undefined || flagValue("--remove-secret") !== undefined) {
     await runSecretCommand();
     app.exit(0);
+    return;
+  }
+
+  // Como este Locum sobe como servidor MCP, para a tela poder cadastrá-lo no
+  // Claude Code. Empacotado, o binário do `.app` basta; rodando por `electron dist/main.cjs`,
+  // o Electron precisa saber qual script abrir.
+  const { claudeCodeService } = await import("../src/services/claude-code-service.js");
+  claudeCodeService.useLauncher({
+    command: process.execPath,
+    args: app.isPackaged ? [] : [join(__dirname, "main.cjs")],
+  });
+
+  if (modoMcp) {
+    await serveMcp();
     return;
   }
 

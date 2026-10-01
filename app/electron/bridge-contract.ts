@@ -1,6 +1,8 @@
 import type { AgentService } from "../src/services/agent-service.js";
 import type { ApprovalService } from "../src/services/approval-service.js";
+import type { ClaudeCodeService } from "../src/services/claude-code-service.js";
 import type { CredentialService } from "../src/services/credential-service.js";
+import type { ExecutionService } from "../src/services/execution-service.js";
 import type { GithubService } from "../src/services/github-service.js";
 import type { Language, LanguageState } from "../src/services/i18n-service.js";
 import type { InitiativeService } from "../src/services/initiative-service.js";
@@ -133,6 +135,8 @@ interface ServiceApi {
   /** Os achados de várias execuções numa ida só, que é o que a inbox precisa. */
   "runs.findingsByRun": RunService["findingsByRun"];
   "runs.rerunStep": RunService["rerunStep"];
+  /** Rodar um agent num pull request escolhido na tela, sem linha de comando. */
+  "runs.start": ExecutionService["start"];
 
   "approvals.listPending": ApprovalService["listPending"];
   "approvals.get": ApprovalService["get"];
@@ -233,6 +237,9 @@ interface ServiceApi {
   "github.save": GithubService["setToken"];
   "github.forget": GithubService["clearToken"];
   "github.check": GithubService["check"];
+  /** Se o Claude Code desta máquina enxerga o Locum, e o clique que o liga. */
+  "claudeCode.status": ClaudeCodeService["status"];
+  "claudeCode.connect": ClaudeCodeService["connect"];
 
   /**
    * O tracker de tarefa: cadastrar, apontar destino e testar.
@@ -391,6 +398,7 @@ export const BRIDGE_CHANNELS = [
   "runs.findings",
   "runs.findingsByRun",
   "runs.rerunStep",
+  "runs.start",
   "approvals.listPending",
   "approvals.get",
   "approvals.update",
@@ -418,6 +426,8 @@ export const BRIDGE_CHANNELS = [
   "github.save",
   "github.forget",
   "github.check",
+  "claudeCode.status",
+  "claudeCode.connect",
   "trackers.list",
   "trackers.register",
   "trackers.remove",
