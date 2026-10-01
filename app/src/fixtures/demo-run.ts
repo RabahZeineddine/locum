@@ -144,7 +144,7 @@ const PASSOS = [
     completionTokens: 0,
     costUsd: 0,
     duracao: 0,
-    error: "servidores indisponiveis: argocd",
+    error: "servidores indisponíveis: argocd",
   },
   {
     idx: 3,

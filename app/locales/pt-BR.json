@@ -218,7 +218,7 @@
     "onlyWithClick": "só com clique"
   },
   "inbox": {
-    "title": "Inbox",
+    "title": "Fila",
     "waiting_zero": "nada esperando você",
     "waiting_one": "{{count}} esperando você",
     "waiting_other": "{{count}} esperando você",
@@ -428,9 +428,9 @@
       "input": "Entrada",
       "output": "Saída",
       "reasoning": {
-        "trigger": "Modelo e substituição",
-        "requested": "Modelo pedido: `{{model}}`",
-        "used": "Modelo usado: `{{model}}`",
+        "trigger": "Como este passo rodou",
+        "requested": "Modelo pedido: {{model}}",
+        "used": "Modelo usado: {{model}}",
         "none": "nenhum",
         "substitution": "Motivo da substituição: {{reason}}",
         "noSubstitution": "Sem substituição nesta máquina.",
@@ -447,8 +447,8 @@
     "findings_one": "{{count}} achado",
     "findings_other": "{{count}} achados",
     "no_target": "evento sintético",
-    "money_billed": "{{amount}}",
-    "money_equivalent": "~{{amount}}",
+    "money_billed": "{{amount}} USD",
+    "money_equivalent": "~{{amount}} USD",
     "money_free": "—",
     "when_now": "agora",
     "when_hours": "{{hours}}h",
@@ -911,7 +911,7 @@
   },
   "review": {
     "title": "Revisar antes de publicar",
-    "back": "Inbox",
+    "back": "Fila",
     "will_post_one": "{{count}} achado vai sair",
     "will_post_other": "{{count}} achados vão sair",
     "none_selected": "nenhum achado marcado, nada seria publicado",

@@ -4,7 +4,6 @@ import { Edge } from "@/components/ai-elements/edge";
 import {
   Node,
   NodeContent,
-  NodeDescription,
   NodeHeader,
   NodeTitle,
 } from "@/components/ai-elements/node";
@@ -17,7 +16,7 @@ import type {
   NodeProps as PropsDoNo,
 } from "@xyflow/react";
 import { MarkerType } from "@xyflow/react";
-import { rotuloDeEstado, rotuloDoMotivo } from "@/lib/rotulos";
+import { rotuloDeEstado, rotuloDoModelo, rotuloDoMotivo } from "@/lib/rotulos";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -134,7 +133,11 @@ function dados(
   return {
     chave,
     detalhe:
-      doRun?.modelUsed ?? (doSpec?.type === "model" ? doSpec.model : (acao?.action ?? chave)),
+      doRun?.modelUsed != null
+        ? rotuloDoModelo(doRun.modelUsed)
+        : doSpec?.type === "model"
+          ? rotuloDoModelo(doSpec.model)
+          : (acao?.action ?? chave),
     modo: acao?.mode ?? null,
     erro: doRun?.error ?? null,
     substituicao: doRun?.error ? null : (doRun?.substitutionReason ?? null),
@@ -177,7 +180,6 @@ function NoDoPasso({ data }: PropsDoNo<NoDoFluxo<DadosDoPasso>>) {
     >
       <NodeHeader>
         <NodeTitle className="truncate text-sm">{data.nome}</NodeTitle>
-        <NodeDescription className="truncate font-mono text-xs">{data.chave}</NodeDescription>
       </NodeHeader>
       <NodeContent className="flex flex-col gap-1 text-xs">
         <span className="flex items-center gap-2">

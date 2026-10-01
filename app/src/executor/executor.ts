@@ -299,7 +299,7 @@ export class Executor {
       }
       await db
         .update(schema.steps)
-        .set({ status: "skipped", error: `servidores indisponiveis: ${missing.join(", ")}`, endedAt: nowSec() })
+        .set({ status: "skipped", error: `servidores indisponíveis: ${missing.join(", ")}`, endedAt: nowSec() })
         .where(eq(schema.steps.id, stepId));
       return { kind: "skipped" };
     }

@@ -15,7 +15,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { call, useRead, type ReadResult } from "@/lib/bridge";
 import { useJanela } from "@/lib/janela";
-import { rotuloDeEstado, rotuloDeSeveridade, rotuloDoMotivo, type Estado } from "@/lib/rotulos";
+import {
+  rotuloDeEstado,
+  rotuloDeSeveridade,
+  rotuloDoModelo,
+  rotuloDoMotivo,
+  type Estado,
+} from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
 import { ArrowLeft, RotateCcw, X } from "lucide-react";
 import { useState } from "react";
@@ -314,8 +320,8 @@ function PassoDaExecucao({
         <span className="text-muted-foreground tabular-nums">{passo.idx + 1}</span>
         <span className="font-medium">{passo.name}</span>
         <Estado status={passo.status} />
-        <span className="text-muted-foreground text-xs">
-          {passo.modelUsed ?? t("runs.step.action")}
+        <span className="text-muted-foreground text-xs" title={passo.modelUsed ?? undefined}>
+          {passo.modelUsed !== null ? rotuloDoModelo(passo.modelUsed) : t("runs.step.action")}
           {passo.substitutionReason !== null ? ` ${t("runs.step.substituted")}` : ""}
         </span>
         <span className="ml-auto flex items-center gap-3 text-muted-foreground text-xs tabular-nums">
@@ -347,9 +353,9 @@ function PassoDaExecucao({
           <ReasoningTrigger>{t("runs.step.reasoning.trigger")}</ReasoningTrigger>
           <ReasoningContent>
             {[
-              t("runs.step.reasoning.requested", { model: passo.modelRequested }),
+              t("runs.step.reasoning.requested", { model: rotuloDoModelo(passo.modelRequested) }),
               t("runs.step.reasoning.used", {
-                model: passo.modelUsed ?? t("runs.step.reasoning.none"),
+                model: passo.modelUsed !== null ? rotuloDoModelo(passo.modelUsed) : t("runs.step.reasoning.none"),
               }),
               passo.substitutionReason !== null
                 ? t("runs.step.reasoning.substitution", { reason: passo.substitutionReason })

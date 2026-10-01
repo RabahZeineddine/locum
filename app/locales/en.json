@@ -207,7 +207,7 @@
     "onlyWithClick": "only with a click"
   },
   "inbox": {
-    "title": "Inbox",
+    "title": "Queue",
     "waiting_zero": "nothing waiting for you",
     "waiting_one": "{{count}} waiting for you",
     "waiting_other": "{{count}} waiting for you",
@@ -409,9 +409,9 @@
       "input": "Input",
       "output": "Output",
       "reasoning": {
-        "trigger": "Model and fallback",
-        "requested": "Requested model: `{{model}}`",
-        "used": "Used model: `{{model}}`",
+        "trigger": "How this step ran",
+        "requested": "Requested model: {{model}}",
+        "used": "Model used: {{model}}",
         "none": "none",
         "substitution": "Reason for the substitution: {{reason}}",
         "noSubstitution": "No substitution on this machine.",
@@ -427,8 +427,8 @@
     "findings_one": "{{count}} finding",
     "findings_other": "{{count}} findings",
     "no_target": "synthetic event",
-    "money_billed": "{{amount}}",
-    "money_equivalent": "~{{amount}}",
+    "money_billed": "{{amount}} USD",
+    "money_equivalent": "~{{amount}} USD",
     "money_free": "—",
     "when_now": "now",
     "when_hours": "{{hours}}h",
@@ -879,7 +879,7 @@
   },
   "review": {
     "title": "Review before publishing",
-    "back": "Inbox",
+    "back": "Queue",
     "will_post_one": "{{count}} finding will be posted",
     "will_post_other": "{{count}} findings will be posted",
     "none_selected": "nothing selected, nothing would be posted",
