@@ -157,7 +157,17 @@ const desde = anterior.status === 0 ? `${anterior.stdout.trim()}..HEAD` : "HEAD"
 const mudancas = execFileSync("git", ["log", "--format=- %s", "--no-merges", desde], { cwd: APP, encoding: "utf8" });
 const notas = anterior.status === 0 ? mudancas : "Primeira versão publicada com atualização automática.\n";
 
-saida("git", ["commit", "--quiet", "-am", `chore: versão ${versao}`]);
+// O empacotamento leva minutos, e mudança feita na árvore nesse meio tempo
+// não entrou no pacote que foi testado. `-am` a levaria junto no commit da
+// versão, e a etiqueta apontaria para código que ninguém empacotou.
+const sujos = saida("git", ["status", "--porcelain"])
+  .split("\n")
+  .filter((linha) => linha !== "" && !/ (app\/)?package(-lock)?\.json$/.test(linha));
+if (sujos.length > 0) {
+  desfazerVersao();
+  falhar(`a árvore mudou durante o release, e nada foi publicado:\n${sujos.join("\n")}`);
+}
+saida("git", ["commit", "--quiet", "-m", `chore: versão ${versao}`, "--", "package.json", "package-lock.json"]);
 saida("git", ["tag", etiqueta]);
 saida("git", ["push", "--quiet", "origin", "main", etiqueta]);
 

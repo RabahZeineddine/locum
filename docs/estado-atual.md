@@ -1082,6 +1082,17 @@ depende, direta ou indiretamente, com prompt, modelo e ferramentas iguais,
 contando `defaultTools`. Mexer no nome, no teto ou em passo fora da cadeia
 mantém o modo.
 
+**Evento que não abria run sumia.** O cursor da fonte anda antes do run abrir,
+e o evento que batia no teto do dia não voltava em varredura nenhuma. Desde a
+0.1.30 o agendador anota por gatilho o evento que falhou e tenta de novo a
+cada batida, por até 24 horas.
+
+**Release levava junto o que mudou durante ele.** O commit da versão era
+`git commit -am`, e mudança feita na árvore enquanto o pacote era montado
+entrou no `chore: versão 0.1.29` sem ter sido empacotada. Desde a 0.1.30 o
+commit leva só `package.json` e `package-lock.json`, e árvore que mudou no
+meio do caminho para o release antes de publicar.
+
 **Link de pull request abria o GitHub dentro do app.** O `target="_blank"`
 criava outra janela do Electron. Contorno, desde a 0.1.25: a janela recusa
 abrir janela nova e navegar para fora, e entrega `http` e `https` ao navegador.
