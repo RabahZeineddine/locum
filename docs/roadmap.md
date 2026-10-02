@@ -140,8 +140,10 @@ verdade: o provedor `codex` aparece quando `codex login status` sai com zero, o
 passo roda com `--ignore-user-config`, `--ephemeral` e `--sandbox read-only` numa
 pasta temporária, os servidores do passo entram por `-c mcp_servers.*` com as
 ferramentas marcadas em `enabled_tools`, e o modelo `codex/default` deixa a
-escolha com o plano. O formato do JSONL e das flags veio do código-fonte do
-Codex, não de uma execução.
+escolha com o plano. Flags, os `-c mcp_servers.*` (stdio com `env`, remoto com
+`http_headers`) e o JSONL de falha foram conferidos contra o `codex-cli` 0.160.0
+sem login; falta só uma execução com conta ChatGPT, que é a que mostra a
+resposta e o uso.
 
 **Credencial de sessão web e extensão de navegador.** Há uma classe de MCP que
 não usa aplicativo aprovado e sim a sessão do navegador, porque o registro de

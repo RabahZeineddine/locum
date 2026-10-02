@@ -105,7 +105,9 @@ type Evento =
 
 /**
  * Lê o JSONL do `codex exec --json`. A resposta é a última mensagem do agent;
- * o uso soma todos os turnos, que num `exec` costuma ser um só.
+ * o uso soma todos os turnos, que num `exec` costuma ser um só. Formato
+ * conferido contra o `codex-cli` 0.160.0 sem login: o 401 chega como uma série
+ * de `error` de reconexão e termina em `turn.failed` com saída 1.
  */
 export function readCodexEvents(stdout: string): {
   text: string;
@@ -114,6 +116,7 @@ export function readCodexEvents(stdout: string): {
   cacheReadTokens?: number;
   toolsUsed: string[];
   error?: string;
+  lastNotice?: string;
 } {
   let text = "";
   let promptTokens = 0;
@@ -121,6 +124,7 @@ export function readCodexEvents(stdout: string): {
   let cacheReadTokens: number | undefined;
   const toolsUsed = new Set<string>();
   let error: string | undefined;
+  let lastNotice: string | undefined;
 
   for (const linha of stdout.split("\n")) {
     if (!linha.trim().startsWith("{")) continue;
@@ -144,11 +148,14 @@ export function readCodexEvents(stdout: string): {
     } else if (evento.type === "turn.failed" && "error" in evento) {
       error = evento.error?.message ?? "turno falhou sem detalhe";
     } else if (evento.type === "error" && "message" in evento) {
-      error = evento.message ?? "erro sem detalhe";
+      // Não é falha: o Codex manda `error` a cada tentativa de reconexão
+      // ("Reconnecting... 2/5") e segue o turno. Fica guardado para explicar
+      // a saída se o processo morrer sem `turn.failed`.
+      lastNotice = evento.message;
     }
   }
 
-  return { text, promptTokens, completionTokens, cacheReadTokens, toolsUsed: [...toolsUsed], error };
+  return { text, promptTokens, completionTokens, cacheReadTokens, toolsUsed: [...toolsUsed], error, lastNotice };
 }
 
 function executar(comando: string, args: string[], entrada: string): Promise<{ stdout: string; stderr: string; code: number | null }> {
@@ -200,7 +207,7 @@ export class CodexRuntime implements Runtime {
       const lido = readCodexEvents(stdout);
 
       if (code !== 0 || lido.error !== undefined) {
-        const detalhe = lido.error ?? (stderr.trim().split("\n").pop() || `saiu com ${code}`);
+        const detalhe = lido.error ?? lido.lastNotice ?? (stderr.trim().split("\n").pop() || `saiu com ${code}`);
         throw new Error(`codex exec falhou: ${detalhe.slice(0, 500)}`);
       }
 

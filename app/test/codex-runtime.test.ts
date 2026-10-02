@@ -90,6 +90,20 @@ test("eventos do codex viram texto, uso e ferramentas", () => {
   assert.equal(falho.error, "quota");
 });
 
+test("reconexão no meio do turno não vira falha", () => {
+  const linhas = [
+    { type: "turn.started" },
+    { type: "error", message: "Reconnecting... 2/5 (stream disconnected)" },
+    { type: "item.completed", item: { id: "1", type: "error", message: "Falling back from WebSockets to HTTPS transport." } },
+    { type: "item.completed", item: { id: "2", type: "agent_message", text: "pronto" } },
+    { type: "turn.completed", usage: { input_tokens: 5, output_tokens: 1 } },
+  ];
+  const lido = readCodexEvents(linhas.map((l) => JSON.stringify(l)).join("\n"));
+  assert.equal(lido.error, undefined);
+  assert.equal(lido.text, "pronto");
+  assert.match(lido.lastNotice ?? "", /Reconnecting/);
+});
+
 /** Um `codex` de mentira que guarda o que recebeu e responde com o schema. */
 function binarioFalso(resposta: object[], saida = 0): { caminho: string; registro: string } {
   const pastaFalsa = mkdtempSync(join(tmpdir(), "codex-falso-"));
@@ -129,6 +143,21 @@ test("CodexRuntime manda o prompt pela entrada e lê a saída estruturada", asyn
   const visto = JSON.parse(readFileSync(registro, "utf8")) as { args: string[]; stdin: string; schema: string };
   assert.equal(visto.stdin, "sistema\n\nrevise");
   assert.deepEqual(JSON.parse(visto.schema), schema);
+});
+
+test("CodexRuntime segue quando a reconexão dá certo", async () => {
+  const { caminho } = binarioFalso([
+    { type: "error", message: "Reconnecting... 1/5" },
+    { type: "item.completed", item: { id: "1", type: "agent_message", text: "ok" } },
+    { type: "turn.completed", usage: { input_tokens: 1, output_tokens: 1 } },
+  ]);
+  const resultado = await new CodexRuntime(new Map(), caminho).run(pedido());
+  assert.equal(resultado.text, "ok");
+});
+
+test("CodexRuntime explica a saída sem turn.failed pelo último aviso", async () => {
+  const { caminho } = binarioFalso([{ type: "error", message: "Reconnecting... 5/5 (401 Unauthorized)" }], 1);
+  await assert.rejects(new CodexRuntime(new Map(), caminho).run(pedido()), /401 Unauthorized/);
 });
 
 test("CodexRuntime falha com a mensagem do turno", async () => {
