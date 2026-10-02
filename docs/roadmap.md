@@ -5,11 +5,10 @@ que torna o produto configurável enquanto não há tela.
 
 ## Pendências pequenas do núcleo
 
-Absorvidas pelos marcos abaixo, listadas aqui para não sumirem.
-
-- cadastro de servidores MCP vindo do banco, hoje uma lista vazia em `src/cli.ts`
-- reconciliador de review humano e coleta de métricas
-- agendador com cursor e escuta de eventos de energia
+Absorvidas pelos marcos abaixo e prontas: o cadastro de servidores MCP vem do
+banco (`mcp-service.ts`), o reconciliador de review humano e as métricas têm
+serviço próprio (`reconcile-service.ts`, `metrics-service.ts`), e o agendador
+escuta suspensão e retomada da máquina, conferido no smoke.
 
 ## M1, camada de serviço
 
