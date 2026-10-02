@@ -74,3 +74,28 @@ test("ação já em approve não gera rebaixamento", async () => {
   const versao = await service.upsert(spec("approve"), undefined, "agent");
   assert.deepEqual(versao.downgrades, []);
 });
+
+test("autorização dada a uma ação não passa para outra ação ou outro destino na mesma chave", async () => {
+  const comPasso = (passo: Record<string, unknown>): AgentSpec =>
+    AgentSpec.parse({
+      id: "revisor",
+      name: "Revisor",
+      steps: [
+        { type: "model", key: "ler", name: "Ler", model: "anthropic/modelo", prompt: "revise" },
+        { type: "action", key: "publicar", name: "Publicar", needs: ["ler"], mode: "auto", ...passo },
+      ],
+    });
+
+  const service = new AgentService(bancoDeTeste());
+  await service.upsert(comPasso({ action: "slack.post", target: "C-TIME" }), undefined, "human");
+
+  for (const troca of [
+    { action: "teams.post", target: "C-TIME" },
+    { action: "slack.post", target: "C-OUTRO" },
+    { action: "slack.post", target: "C-TIME", input: "ler.outra" },
+  ]) {
+    const versao = await service.upsert(comPasso(troca), undefined, "agent");
+    assert.deepEqual(versao.downgrades, [{ step: "publicar", from: "auto", to: "approve" }]);
+    await service.upsert(comPasso({ action: "slack.post", target: "C-TIME" }), undefined, "human");
+  }
+});

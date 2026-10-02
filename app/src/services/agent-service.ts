@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { desc, eq } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
-import { AgentBudgetPatch, AgentSpec, requiredServers, type ActionMode, type AgentBudget } from "../config/types.js";
+import { AgentBudgetPatch, AgentSpec, requiredServers, type ActionMode, type ActionStep, type AgentBudget } from "../config/types.js";
 import { today } from "../executor/budget.js";
 import { splitModelId } from "../providers/registry.js";
 import { SUBSCRIPTION_RUNTIMES } from "../runtimes/types.js";
@@ -508,23 +508,37 @@ function parseVersion(row: AgentVersionRow): AgentVersion {
  * ja estava gravado. Modo que a versao anterior ja tinha para aquele mesmo
  * passo passa: significa que uma pessoa autorizou antes, e reeditar outra parte
  * do spec nao pode derrubar essa autorizacao.
+ *
+ * "Mesmo passo" e mesma chave, mesma acao, mesmo destino e mesma entrada. So a
+ * chave nao basta: quem nao e pessoa trocaria o `github.review_comment`
+ * autorizado por um `slack.post` em outro canal debaixo da mesma chave, e a
+ * autorizacao dada para uma coisa passaria a valer para outra.
  */
 function demoteActions(
   spec: AgentSpec,
   stored: AgentSpec | unknown,
 ): { spec: AgentSpec; downgrades: ActionDowngrade[] } {
-  const previous = new Map<string, ActionMode>();
+  const previous = new Map<string, ActionStep>();
   const parsedStored = stored === undefined ? undefined : AgentSpec.safeParse(stored);
   if (parsedStored?.success) {
     for (const step of parsedStored.data.steps) {
-      if (step.type === "action") previous.set(step.key, step.mode);
+      if (step.type === "action") previous.set(step.key, step);
     }
   }
 
   const downgrades: ActionDowngrade[] = [];
   const steps = spec.steps.map((step) => {
     if (step.type !== "action" || step.mode === "approve") return step;
-    if (previous.get(step.key) === step.mode) return step;
+    const antes = previous.get(step.key);
+    if (
+      antes !== undefined &&
+      antes.mode === step.mode &&
+      antes.action === step.action &&
+      antes.target === step.target &&
+      antes.input === step.input
+    ) {
+      return step;
+    }
 
     downgrades.push({ step: step.key, from: step.mode, to: "approve" });
     return { ...step, mode: "approve" as const };
