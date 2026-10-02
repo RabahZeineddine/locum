@@ -956,6 +956,11 @@ justo para quem instalou pelo `.zshrc`. Contorno: `resolveClaudeBinary` tenta
 `LOCUM_CLAUDE_BIN`, depois `zsh -ilc 'command -v claude'` com 3 s de limite e
 stdin fechado, e só aceita a última linha não vazia se for caminho absoluto
 executável (alias e função caem fora); depois a lista fixa dos instaladores.
+Isso cobria só a sessão no Terminal: o runtime `claude -p`, o `codex` e o `npx`
+dos servidores MCP stdio chamavam o nome solto e falhavam do mesmo jeito. Desde
+a 0.1.21 a subida lê o PATH do `zsh -ilc` uma vez (`runtimes/login-path.ts`),
+junta as pastas que faltam depois das do sistema e esquece a disponibilidade
+dos binários de assinatura conferida com o PATH curto.
 
 **Deep link só chega com o app empacotado.** Em `npm start` o esquema
 `locum://` não está registrado para o binário de desenvolvimento, e o `open`

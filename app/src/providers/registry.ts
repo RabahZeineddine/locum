@@ -98,6 +98,16 @@ export function fixedProviderIds(): string[] {
 let codexChecked: boolean | undefined;
 
 /**
+ * Esquece o que se sabe dos binários de assinatura. Quem chama é a subida do
+ * app, depois de juntar o PATH do shell de login: a resposta dada antes dele
+ * valia para o PATH do Finder, que não enxerga `~/.local/bin` nem o Homebrew.
+ */
+export function forgetSubscriptionBinaries(): void {
+  codexChecked = undefined;
+  claudeBinaryChecked = undefined;
+}
+
+/**
  * Binário presente e login feito. `codex login status` sai com zero só quando
  * há sessão, seja do plano ChatGPT ou de chave.
  */

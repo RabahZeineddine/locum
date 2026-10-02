@@ -5994,6 +5994,19 @@ async function main(): Promise<void> {
   // faz a primeira visita à vitrine de conexões encontrar a resposta pronta.
   void import("../src/runtimes/claude-binary.js").then(({ claudeBinary }) => claudeBinary());
 
+  // Aberto pelo Finder, o processo tem só o PATH do sistema, e `claude -p`,
+  // `codex` e o `npx` dos servidores MCP falham por nome. O PATH do terminal
+  // entra aqui, uma vez, e o que já tinha sido conferido com o PATH curto é
+  // esquecido para valer o novo.
+  void Promise.all([import("../src/runtimes/login-path.js"), import("../src/providers/registry.js")]).then(
+    async ([{ readLoginPath, mergePath }, { forgetSubscriptionBinaries }]) => {
+      const login = await readLoginPath();
+      if (login === undefined) return;
+      process.env.PATH = mergePath(process.env.PATH, login);
+      forgetSubscriptionBinaries();
+    },
+  );
+
   // O nucleo abre o banco no import, entao tudo que fala com ele entra por
   // import dinamico, depois da variavel de ambiente do binding.
   const { setupTray, teardownTray, trayPendingCount } = await import("./tray.js");
