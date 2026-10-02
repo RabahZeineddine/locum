@@ -1,6 +1,7 @@
 import { generateText } from "ai";
 import { buildProviders } from "../src/providers/registry.js";
 import { ClaudeCodeRuntime } from "../src/runtimes/claude-code.js";
+import { CODEX_DEFAULT_MODEL, CodexRuntime } from "../src/runtimes/codex.js";
 import { AgentBuilder, type CatalogoDoCriador, type Gerador } from "../src/services/agent-builder.js";
 import { agentService } from "../src/services/agent-service.js";
 import { mcpService } from "../src/services/mcp-service.js";
@@ -12,8 +13,9 @@ import { CHAVE_DO_MODELO } from "./chat.js";
 import { t } from "./i18n.js";
 
 /**
- * Quem escreve o rascunho, nesta ordem: a assinatura do Claude Code, que não
- * cobra por chamada, e depois o modelo escolhido para o assistente.
+ * Quem escreve o rascunho, nesta ordem: a assinatura do Claude Code, o plano
+ * do Codex, que também não cobram por chamada, e depois o modelo escolhido
+ * para o assistente.
  *
  * Aqui a assinatura serve, ao contrário do assistente: o rascunho é uma
  * resposta só, e esperar por ela inteira é o que a tela já faz.
@@ -25,6 +27,24 @@ async function gerador(): Promise<Gerador | null> {
       modelo: "claude-code/sonnet",
       gerar: async (sistema, pedido) =>
         (await runtime.run({ provider: "claude-code", model: "sonnet", system: sistema, prompt: pedido, tools: {}, maxSteps: 1 })).text,
+    };
+  }
+
+  if (providerService.isAvailable("codex")) {
+    const runtime = new CodexRuntime(new Map());
+    return {
+      modelo: `codex/${CODEX_DEFAULT_MODEL}`,
+      gerar: async (sistema, pedido) =>
+        (
+          await runtime.run({
+            provider: "codex",
+            model: CODEX_DEFAULT_MODEL,
+            system: sistema,
+            prompt: pedido,
+            tools: {},
+            maxSteps: 1,
+          })
+        ).text,
     };
   }
 

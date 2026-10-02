@@ -2,6 +2,7 @@ import { z } from "zod";
 import { AgentSpec, topoSort, type Step } from "../config/types.js";
 import { parseJson } from "../runtimes/native.js";
 import { ID_DE_AGENT, isReserved } from "./agent-service.js";
+import { SUBSCRIPTION_RUNTIMES } from "../runtimes/types.js";
 
 /**
  * Rascunho de agent a partir de uma descrição em texto.
@@ -105,7 +106,7 @@ export function validarRascunho(
       const doProvedor = modelos.get(provedor);
       if (doProvedor === undefined) {
         problemas.push(`${onde}: o provedor de "${passo.model}" não está disponível nesta máquina`);
-      } else if (provedor !== "claude-code" && doProvedor.size > 0 && !doProvedor.has(nome)) {
+      } else if (!SUBSCRIPTION_RUNTIMES.has(provedor) && doProvedor.size > 0 && !doProvedor.has(nome)) {
         problemas.push(`${onde}: "${nome}" não está no catálogo de ${provedor}`);
       }
       for (const ref of passo.tools ?? spec.defaultTools) {

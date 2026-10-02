@@ -4,6 +4,7 @@ import { db as defaultDb, schema } from "../db/index.js";
 import { AgentBudgetPatch, AgentSpec, requiredServers, type ActionMode, type AgentBudget } from "../config/types.js";
 import { today } from "../executor/budget.js";
 import { splitModelId } from "../providers/registry.js";
+import { SUBSCRIPTION_RUNTIMES } from "../runtimes/types.js";
 
 type Db = typeof defaultDb;
 
@@ -169,7 +170,7 @@ export class AgentService {
       for (const step of spec?.steps ?? []) {
         if (step.type !== "model") continue;
         const { provider, model } = splitModelId(step.model);
-        if (provider !== "claude-code" && !tabelados.has(`${provider}/${model}`)) semPreco.add(step.model);
+        if (!SUBSCRIPTION_RUNTIMES.has(provider) && !tabelados.has(`${provider}/${model}`)) semPreco.add(step.model);
       }
       return {
         agentId: agent.id,

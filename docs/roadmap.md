@@ -111,7 +111,8 @@ OAuth de um clique.
 Fatias O1 e O2, fora do caminho crítico de I1 a I3.
 
 **O1.** Descrições das ferramentas existentes do servidor MCP e do catálogo do
-chat traduzidas para inglês, sem mudança de comportamento.
+chat traduzidas para inglês, sem mudança de comportamento. Pronto em 02/10: as descrições de ferramenta e de parâmetro estão em
+inglês; as mensagens de erro seguem em português.
 
 **O2.** `README.md` em inglês, o atual como `README.pt-BR.md`, e
 `CONTRIBUTING.md` com o passo a passo de rodar, verificar e adicionar idioma
@@ -132,7 +133,13 @@ watcher entrar sem tocar no núcleo, a arquitetura está certa.
 entrando depois para correlacionar deploy, trace e pull request recente.
 
 **Adaptador `codex exec`.** Plano ChatGPT como terceira via, para a máquina sem
-assinatura Claude.
+assinatura Claude. Pronto no código em 02/10, falta o teste com o binário de
+verdade: o provedor `codex` aparece quando `codex login status` sai com zero, o
+passo roda com `--ignore-user-config`, `--ephemeral` e `--sandbox read-only` numa
+pasta temporária, os servidores do passo entram por `-c mcp_servers.*` com as
+ferramentas marcadas em `enabled_tools`, e o modelo `codex/default` deixa a
+escolha com o plano. O formato do JSONL e das flags veio do código-fonte do
+Codex, não de uma execução.
 
 **Credencial de sessão web e extensão de navegador.** Há uma classe de MCP que
 não usa aplicativo aprovado e sim a sessão do navegador, porque o registro de

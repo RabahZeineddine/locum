@@ -4,6 +4,7 @@ import { digestDeliverHandler } from "../digest/action.js";
 import { Executor } from "./executor.js";
 import { McpRegistry } from "../mcp/registry.js";
 import { ClaudeCodeRuntime } from "../runtimes/claude-code.js";
+import { CodexRuntime } from "../runtimes/codex.js";
 import { NativeRuntime } from "../runtimes/native.js";
 import type { Runtime } from "../runtimes/types.js";
 import { machineId } from "../services/machine-service.js";
@@ -46,6 +47,7 @@ export async function buildExecutor(): Promise<Executor> {
   const configs = new Map(servers.map((c) => [c.name, c]));
   const runtimes = new Map<string, Runtime>([["native", new NativeRuntime(providerService.entries())]]);
   if (providerService.isAvailable("claude-code")) runtimes.set("claude-code", new ClaudeCodeRuntime(configs));
+  if (providerService.isAvailable("codex")) runtimes.set("codex", new CodexRuntime(configs));
 
   mcpPool.reconfigure(configs);
   return new Executor({ mcp: mcpPool, runtimes, gate: buildGate(), machineId });

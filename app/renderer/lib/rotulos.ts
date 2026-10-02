@@ -59,6 +59,7 @@ export function rotuloDoMotivo(t: TFunction, motivo: string): string {
 
 const PROVEDORES_CONHECIDOS: Record<string, string> = {
   "claude-code": "Claude Code",
+  codex: "Codex",
   anthropic: "Anthropic",
   openai: "OpenAI",
   google: "Google",

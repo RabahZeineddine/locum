@@ -57,13 +57,13 @@ Interface in English and Portuguese.
 
 ### Providers and subscription
 
-There are two runtimes behind the same interface. The native one uses the AI
-SDK and talks to any provider through an API key. The second runs the Claude
-Code binary already installed and signed in on the user's machine, which lets
-you use your own subscription. Locum does not embed a login, does not broker
-credentials and does not resell access. Without the binary, that runtime does
-not show up, and the fallback table sends the affected steps to key-based
-providers.
+There are three runtimes behind the same interface. The native one uses the AI
+SDK and talks to any provider through an API key. The other two run a binary
+already installed and signed in on the user's machine, which lets you use your
+own subscription: Claude Code for a Claude plan, and `codex exec` for a ChatGPT
+plan. Locum does not embed a login, does not broker credentials and does not
+resell access. Without the binary, its runtime does not show up, and the
+fallback table sends the affected steps to key-based providers.
 
 ## Installation
 

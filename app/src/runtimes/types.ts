@@ -42,3 +42,10 @@ export interface Runtime {
   readonly id: string;
   run(req: RuntimeRequest): Promise<RuntimeResult>;
 }
+
+/**
+ * Provedores que são um binário de assinatura, cada um com runtime próprio. O
+ * gasto deles é cota de plano: não entra em tabela de preço nem em catálogo
+ * conferido por id, porque o binário resolve o nome sozinho.
+ */
+export const SUBSCRIPTION_RUNTIMES: ReadonlySet<string> = new Set(["claude-code", "codex"]);

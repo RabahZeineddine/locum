@@ -16,6 +16,7 @@ import type { Runtime } from "../runtimes/types.js";
 import { selectSkills, skillsPreamble, type SkillContext } from "../skills/loader.js";
 import { ApprovalGate, settleStep } from "../approval/gate.js";
 import { BudgetExceeded, assertWithinBudget, recordSpend, type Spend } from "./budget.js";
+import { SUBSCRIPTION_RUNTIMES } from "../runtimes/types.js";
 
 export type EventPayload = {
   repo: string;
@@ -306,7 +307,7 @@ export class Executor {
 
     const resolution = resolveModel(step.model, fallbacks);
     const runtime =
-      this.deps.runtimes.get(resolution.provider === "claude-code" ? "claude-code" : "native");
+      this.deps.runtimes.get(SUBSCRIPTION_RUNTIMES.has(resolution.provider) ? resolution.provider : "native");
     if (!runtime) throw new Error(`runtime indisponivel para "${resolution.provider}"`);
 
     const ctx: SkillContext = { repo: payload.repo, changedFiles: payload.changedFiles };
@@ -328,8 +329,8 @@ export class Executor {
       .where(eq(schema.steps.id, stepId));
 
     try {
-      // O runtime claude-code carrega skills nativamente; o nativo precisa do texto.
-      const inlineSkills = runtime.id === "native";
+      // O runtime claude-code carrega skills nativamente; os outros precisam do texto.
+      const inlineSkills = runtime.id !== "claude-code";
       const system = [skillsPreamble(skills, inlineSkills)].filter((s) => s.length > 0).join("\n\n");
 
       const result = await runtime.run({

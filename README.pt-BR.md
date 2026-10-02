@@ -55,11 +55,12 @@ Interface em português e inglês.
 
 ### Provedores e assinatura
 
-Há dois runtimes atrás da mesma interface. O nativo usa o AI SDK e fala com
-qualquer provedor por chave de API. O segundo executa o binário do Claude Code
-já instalado e autenticado na máquina de quem usa, o que permite aproveitar a
-própria assinatura. O Locum não embute login, não intermedeia credencial e não
-redistribui acesso. Sem o binário, esse runtime não aparece, e a tabela de
+Há três runtimes atrás da mesma interface. O nativo usa o AI SDK e fala com
+qualquer provedor por chave de API. Os outros dois executam um binário já
+instalado e autenticado na máquina de quem usa, o que permite aproveitar a
+própria assinatura: o Claude Code, para o plano Claude, e o `codex exec`, para o
+plano ChatGPT. O Locum não embute login, não intermedeia credencial e não
+redistribui acesso. Sem o binário, o runtime dele não aparece, e a tabela de
 fallback manda os passos afetados para provedores por chave.
 
 ## Instalação

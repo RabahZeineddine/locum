@@ -4,6 +4,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LanguageModel } from "ai";
 import { execFileSync } from "node:child_process";
+import { CODEX_DEFAULT_MODEL } from "../runtimes/codex.js";
 
 /**
  * Identificador de modelo e sempre "provider/model-id".
@@ -94,6 +95,23 @@ export function fixedProviderIds(): string[] {
   return Object.keys(buildProviders());
 }
 
+let codexChecked: boolean | undefined;
+
+/**
+ * Binário presente e login feito. `codex login status` sai com zero só quando
+ * há sessão, seja do plano ChatGPT ou de chave.
+ */
+export function codexAvailable(): boolean {
+  if (codexChecked !== undefined) return codexChecked;
+  try {
+    execFileSync("codex", ["login", "status"], { stdio: "ignore", timeout: 5000 });
+    codexChecked = true;
+  } catch {
+    codexChecked = false;
+  }
+  return codexChecked;
+}
+
 let claudeBinaryChecked: boolean | undefined;
 
 /** Binario presente e sessao valida. Sem isso a via de assinatura nao existe. */
@@ -144,6 +162,8 @@ export function buildProviders(
 
   const fixos: Record<string, ProviderEntry> = {
     "claude-code": { available: claudeCodeAvailable, requires: [], fixedModels: ["opus", "sonnet", "haiku"] },
+    // O plano decide os modelos da conta; `default` deixa a escolha com o Codex.
+    codex: { available: codexAvailable, requires: [], fixedModels: [CODEX_DEFAULT_MODEL] },
 
     anthropic: {
       available: () => Boolean(env("ANTHROPIC_API_KEY")),
