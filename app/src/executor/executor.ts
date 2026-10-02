@@ -427,7 +427,7 @@ export class Executor {
  * tem dezenas de milhares de caracteres, e ele iria parar dentro da fila de
  * aprovação, gravado em cada pendência.
  */
-function alvoDoEvento(payload: EventPayload): Record<string, unknown> {
+export function alvoDoEvento(payload: EventPayload): Record<string, unknown> {
   const campos = [
     "owner",
     "repo",

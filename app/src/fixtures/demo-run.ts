@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { db, schema } from "../db/index.js";
 import { demoPr } from "../examples/demo-event.js";
+import { alvoDoEvento } from "../executor/executor.js";
 import { prReviewSpec } from "../examples/agents.js";
 import { agentService } from "../services/agent-service.js";
 
@@ -249,9 +250,10 @@ export async function ensureDemoRun(): Promise<string> {
     runId: RUN_ID,
     stepId: `${RUN_ID}-post`,
     kind: "github.review_comment",
-    // Exatamente o que sairia se alguem aprovasse. O passo parou antes de
-    // publicar, e continua assim: o fixture nao decide nada.
-    payload: ACHADOS,
+    // Exatamente o que sairia se alguem aprovasse, com o alvo que o executor
+    // junta do evento. Sem ele a fila nao sabe de qual pull request se trata.
+    // O passo parou antes de publicar, e continua assim: o fixture nao decide nada.
+    payload: { ...alvoDoEvento(demoPr), ...ACHADOS },
     status: "pending",
     externalId: null,
     decidedAt: null,
