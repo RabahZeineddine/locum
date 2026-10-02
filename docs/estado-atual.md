@@ -1154,6 +1154,19 @@ sessão do Locum como `--session-id`, e a conversa do Claude Code é achada pelo
 id. As conversas abertas fora do Locum entram na mesma aba quando o `cwd` cai
 na pasta de contexto, num repositório ou num worktree da iniciativa.
 
+**Execuções do agent de contexto na iniciativa.** Cada proposta de contexto
+aprovada vira uma execução do agent do sistema `locum-context`, e a aba
+Execuções do detalhe enchia de "Locum context done" iguais. Desde a 0.1.36 a
+aba usa a mesma linha da tela Execuções, com alvo, custo, achados e link, e
+esconde as do `locum-context` atrás de um botão com a contagem.
+
+**Idioma ignorado no texto da sessão.** O bloco de passagem, o prompt da sessão
+e o modelo do `context.md` liam `getPreference() ?? "en"`, e quem nunca
+escolheu idioma recebia inglês mesmo com o sistema em português. Contorno:
+`i18nService.current()` resolve preferência e idioma do sistema
+(`app.getLocale()`, ligado no `main` depois do `setupI18n`); fora do Electron
+cai no inglês, que é o que os testes esperam.
+
 ## Próximos passos
 
 Iniciativas: I1, I2 e I3 prontos no código. Falta o teste à mão da sessão

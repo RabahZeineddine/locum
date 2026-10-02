@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { call, useRead, type ReadResult } from "@/lib/bridge";
 import type { TelaProps } from "../rotas";
+import { LinhaDeExecucao } from "./execucoes";
 import { AbaSessoes } from "./sessoes-da-iniciativa";
 
 type LinhaDeIniciativa = ReadResult<"initiatives.list">[number];
@@ -214,7 +215,7 @@ function DetalheDaIniciativa({
       {aba === "context" && <AbaContexto slug={slug} />}
       {aba === "agents" && <AbaAgents iniciativa={iniciativa} />}
       {aba === "integrations" && <AbaIntegrations iniciativa={iniciativa} />}
-      {aba === "runs" && <AbaRuns initiativeId={iniciativa.id} />}
+      {aba === "runs" && <AbaRuns initiativeId={iniciativa.id} navegar={navegar} />}
       {aba === "sessions" && <AbaSessoes iniciativa={iniciativa} />}
       {aba === "actions" && <AbaActions initiativeId={iniciativa.id} slug={iniciativa.slug} />}
     </div>
@@ -683,13 +684,25 @@ function AbaIntegrations({ iniciativa }: { iniciativa: IniciativaDetalhada }) {
   );
 }
 
-function AbaRuns({ initiativeId }: { initiativeId: string }) {
+/** O agent do sistema que aplica a proposta de contexto aprovada. */
+const AGENT_DO_CONTEXTO = "locum-context";
+
+/**
+ * As execucoes da iniciativa, com a mesma linha da tela de execucoes. Cada
+ * proposta de contexto aprovada vira uma execucao do agent do sistema, e elas
+ * ficam escondidas atras de um botao: sao muitas, todas iguais, e o que
+ * mudaram ja esta no contexto.
+ */
+function AbaRuns({ initiativeId, navegar }: { initiativeId: string; navegar: TelaProps["navegar"] }) {
   const { t } = useTranslation();
-  const runs = useRead("runs.list", { initiativeId });
+  const runs = useRead("runs.list", { initiativeId, limit: 200 });
+  const [verContexto, setVerContexto] = useState(false);
   const linhas = runs.data ?? [];
+  const doContexto = linhas.filter((run) => run.agentId === AGENT_DO_CONTEXTO).length;
+  const visiveis = verContexto ? linhas : linhas.filter((run) => run.agentId !== AGENT_DO_CONTEXTO);
 
   return (
-    <div data-locum-probe="initiative-runs" data-total={linhas.length}>
+    <div className="space-y-2" data-locum-probe="initiative-runs" data-total={linhas.length} data-visiveis={visiveis.length}>
       {runs.status === "error" ? (
         <p className="text-muted-foreground text-sm">
           {t("initiatives.detail.runs.refused", { message: runs.error.message })}
@@ -699,14 +712,30 @@ function AbaRuns({ initiativeId }: { initiativeId: string }) {
       ) : linhas.length === 0 ? (
         <p className="text-muted-foreground text-sm">{t("initiatives.detail.runs.empty")}</p>
       ) : (
-        <ul className="divide-border border-border superficie divide-y overflow-hidden rounded-lg border">
-          {linhas.map((run) => (
-            <li className="px-4 py-2 text-sm" data-locum-run={run.id} key={run.id}>
-              <span className="font-medium">{run.agentName}</span>{" "}
-              <span className="text-muted-foreground text-xs">{run.status}</span>
-            </li>
-          ))}
-        </ul>
+        <>
+          {visiveis.length === 0 ? (
+            <p className="text-muted-foreground text-sm">{t("initiatives.detail.runs.onlyContext")}</p>
+          ) : (
+            <div className="superficie overflow-hidden rounded-xl">
+              {visiveis.map((run) => (
+                <LinhaDeExecucao key={run.id} navegar={navegar} run={run} />
+              ))}
+            </div>
+          )}
+          {doContexto > 0 && (
+            <Button
+              className="cursor-pointer"
+              data-locum-probe="initiative-runs-context"
+              onClick={() => setVerContexto((v) => !v)}
+              size="sm"
+              variant="ghost"
+            >
+              {verContexto
+                ? t("initiatives.detail.runs.hideContext")
+                : t("initiatives.detail.runs.showContext", { count: doContexto })}
+            </Button>
+          )}
+        </>
       )}
     </div>
   );

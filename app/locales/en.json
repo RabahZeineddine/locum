@@ -384,7 +384,11 @@
       "runs": {
         "loading": "reading runs...",
         "refused": "the bridge refused: {{message}}",
-        "empty": "No run for this initiative yet."
+        "empty": "No run for this initiative yet.",
+        "onlyContext": "Only approved context updates here so far.",
+        "showContext_one": "Show {{count}} approved context update",
+        "showContext_other": "Show {{count}} approved context updates",
+        "hideContext": "Hide context updates"
       },
       "actions": {
         "empty": "Nothing to run from here yet.",

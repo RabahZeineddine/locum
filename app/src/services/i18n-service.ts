@@ -59,6 +59,23 @@ export function matchLanguage(locale: string): Language | undefined {
 export class I18nService {
   constructor(private readonly settings: SettingsService = settingsService) {}
 
+  /**
+   * A etiqueta do sistema para quem gera texto fora da janela (prompt de
+   * sessao, passagem, modelo do contexto). Fora do Electron nao ha etiqueta
+   * confiavel e vale o idioma de reserva; a casca troca pela do `app` no
+   * `ready`.
+   */
+  private systemLocale: () => string = () => FALLBACK_LANGUAGE;
+
+  useSystemLocale(fonte: () => string): void {
+    this.systemLocale = fonte;
+  }
+
+  /** O idioma que vale agora: a preferencia, senao o do sistema, senao o de reserva. */
+  async current(): Promise<Language> {
+    return (await this.resolve(this.systemLocale())).language;
+  }
+
   /** `null` quando ninguém escolheu e vale o idioma do sistema. */
   async getPreference(): Promise<Language | null> {
     const guardado = await this.settings.get(LANGUAGE_KEY);

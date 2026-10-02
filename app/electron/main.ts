@@ -6047,6 +6047,10 @@ async function main(): Promise<void> {
   // Antes de qualquer texto: bandeja, notificacao e o proprio smoke falam pelo
   // dicionario, e pedir chave antes disso estoura de proposito.
   await setupI18n();
+  // Texto gerado fora da janela (sessao, passagem) segue o idioma do sistema
+  // quando ninguem escolheu um, como a janela. Depois da migracao: o servico
+  // abre o banco na importacao.
+  (await import("../src/services/i18n-service.js")).i18nService.useSystemLocale(() => app.getLocale());
 
   if (esquema.criado) console.log(t("schema.created", { count: esquema.disponiveis }));
   else if (esquema.adotado) console.log(t("schema.adopted", { count: esquema.disponiveis }));

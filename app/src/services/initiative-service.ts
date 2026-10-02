@@ -11,7 +11,7 @@ import { buildGate } from "../executor/build.js";
 import { ID_DE_AGENT } from "./agent-service.js";
 import type { ContextUpdateMode } from "../context/proposal.js";
 import { LocalFolderContextStore, type ContextStore } from "./context-store.js";
-import { FALLBACK_LANGUAGE, i18nService, type I18nService, type Language } from "./i18n-service.js";
+import { i18nService, type I18nService, type Language } from "./i18n-service.js";
 import { mcpService, type McpService } from "./mcp-service.js";
 import { settingsService, type SettingsService } from "./settings-service.js";
 import { translate } from "./text-service.js";
@@ -148,8 +148,7 @@ export class InitiativeService {
 
     const jaExiste = (await store.read("context.md")) !== null;
     if (!jaExiste) {
-      const preferencia = await this.i18n.getPreference();
-      const idioma = preferencia ?? FALLBACK_LANGUAGE;
+      const idioma = await this.i18n.current();
       const conteudo = this.t(idioma, "initiatives.contextTemplate.initial", { title: input.title });
       await store.write("context.md", conteudo);
     }

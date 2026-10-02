@@ -7,7 +7,7 @@ import { db as defaultDb, schema } from "../db/index.js";
 import { claudeBinary } from "../runtimes/claude-binary.js";
 import { LocalFolderContextStore } from "./context-store.js";
 import { LOCUM_SCHEME } from "./deep-link-service.js";
-import { FALLBACK_LANGUAGE, i18nService, type I18nService, type Language } from "./i18n-service.js";
+import { i18nService, type I18nService, type Language } from "./i18n-service.js";
 import { initiativeService, type InitiativeDetail, type InitiativeService, type Translate } from "./initiative-service.js";
 import { settingsService, type SettingsService } from "./settings-service.js";
 import { translate } from "./text-service.js";
@@ -291,7 +291,7 @@ export class SessionService {
     const deepLink = `${LOCUM_SCHEME}://session/ended?session=${sessionId}&token=${nonce}`;
     const claude = (await this.deps.resolveClaude()) ?? null;
 
-    const language = (await this.deps.i18n.getPreference()) ?? FALLBACK_LANGUAGE;
+    const language = await this.deps.i18n.current();
     const prompt = renderSessionPrompt(this.deps.t, language, { initiative, folder, handoffFile });
 
     return {
@@ -433,7 +433,7 @@ export class SessionService {
       const conteudo = await store.read(sessao.handoffPath);
       if (conteudo === null || conteudo.trim().length === 0) continue;
 
-      const language = (await this.deps.i18n.getPreference()) ?? FALLBACK_LANGUAGE;
+      const language = await this.deps.i18n.current();
       const bloco = this.deps.t(language, "session.handoff.block", {
         file: sessao.handoffPath,
         content: conteudo.trim(),

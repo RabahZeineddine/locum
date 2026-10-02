@@ -32,7 +32,7 @@ import { useCurrentInitiative } from "../current-initiative";
 import { GrafoDaExecucao } from "../grafo";
 import type { TelaProps } from "../rotas";
 
-type Execucao = ReadResult<"runs.list">[number];
+export type Execucao = ReadResult<"runs.list">[number];
 type Detalhe = NonNullable<ReadResult<"runs.get">>;
 type Passo = Detalhe["steps"][number];
 
@@ -153,7 +153,7 @@ function Lista({ navegar }: { navegar: TelaProps["navegar"] }) {
  * se trata. O alvo vem do evento; o andamento vem da contagem de passos, que é
  * o que responde se ela terminou, parou esperando você, ou quebrou.
  */
-function LinhaDeExecucao({
+export function LinhaDeExecucao({
   navegar,
   run,
 }: {

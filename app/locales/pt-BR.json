@@ -401,7 +401,12 @@
       "runs": {
         "loading": "lendo execucoes...",
         "refused": "a ponte recusou: {{message}}",
-        "empty": "Ainda sem execucao desta iniciativa."
+        "empty": "Ainda sem execucao desta iniciativa.",
+        "onlyContext": "Só atualizações de contexto aprovadas por aqui até agora.",
+        "showContext_one": "Mostrar {{count}} atualização de contexto aprovada",
+        "showContext_zero": "Mostrar {{count}} atualizações de contexto aprovadas",
+        "showContext_other": "Mostrar {{count}} atualizações de contexto aprovadas",
+        "hideContext": "Esconder atualizações de contexto"
       },
       "actions": {
         "empty": "Ainda nada para rodar por aqui.",
