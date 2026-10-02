@@ -7,6 +7,12 @@ type Db = typeof defaultDb;
 
 const REVIEW_KIND = "github.review_comment";
 
+/** Ações cuja pendência é uma mensagem, e o texto dela é o que a pessoa edita. */
+const MESSAGE_KINDS: readonly string[] = ["slack.post", "teams.post"];
+
+/** O mesmo teto que os handlers aplicam ao texto que vem do modelo. */
+const TETO_DE_MENSAGEM = 3000;
+
 export type ApprovalRow = typeof schema.approvals.$inferSelect;
 
 /** Pendencia com o passo e o agent que a criaram, que e o que a inbox mostra. */
@@ -87,6 +93,36 @@ export class ApprovalService {
           ...(veredito.data !== undefined && { verdict: veredito.data }),
         },
       })
+      .where(eq(schema.approvals.id, approvalId));
+
+    const [novo] = await this.query(eq(schema.approvals.id, approvalId));
+    return novo!;
+  }
+
+  /**
+   * Troca o texto de uma resposta de Slack ou Teams antes de ela sair.
+   *
+   * Mesma trava de `updateFindings`: só o texto muda. Canal, thread e
+   * servidor são os que o handler conferiu contra o que o Locum leu, e um
+   * payload inteiro vindo da janela poderia mandar a resposta para outra
+   * conversa enquanto a tela mostra a de sempre.
+   */
+  async updateText(approvalId: string, text: unknown): Promise<ApprovalSummary> {
+    const [atual] = await this.query(eq(schema.approvals.id, approvalId));
+    if (!atual) throw new Error(`aprovação ${approvalId} não encontrada`);
+    if (atual.status !== "pending") {
+      throw new Error(`aprovação ${approvalId} já resolvida: ${atual.status}`);
+    }
+    if (!MESSAGE_KINDS.includes(atual.kind)) {
+      throw new Error(`aprovação ${approvalId} é ${atual.kind}, e só resposta de Slack ou Teams tem texto`);
+    }
+
+    const lido = z.string().trim().min(1, "a mensagem não pode ficar vazia").max(TETO_DE_MENSAGEM).safeParse(text);
+    if (!lido.success) throw new Error(`texto fora do formato: ${z.prettifyError(lido.error)}`);
+
+    await this.db
+      .update(schema.approvals)
+      .set({ payload: { ...(atual.payload as object), text: lido.data } })
       .where(eq(schema.approvals.id, approvalId));
 
     const [novo] = await this.query(eq(schema.approvals.id, approvalId));

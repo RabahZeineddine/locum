@@ -294,9 +294,16 @@
     "review": "Review",
     "group": {
       "reviews": "Pull request review",
-      "other": "Other"
+      "other": "Other",
+      "messages": "Conversation replies"
     },
-    "lead": "What the agents prepared. Nothing leaves without your yes."
+    "lead": "What the agents prepared. Nothing leaves without your yes.",
+    "message": {
+      "slack": "Slack",
+      "teams": "Teams",
+      "chat": "chat",
+      "reply": "Reply: {{text}}"
+    }
   },
   "initiatives": {
     "contextTemplate": {
@@ -969,6 +976,18 @@
         "title": "This proposal could not be published",
         "body": "{{reason}}"
       }
+    },
+    "message": {
+      "replyingTo": "Replying to",
+      "replyingToAuthor": "Replying to {{author}}",
+      "text": "What will be sent",
+      "send": "Approve and send",
+      "empty": "The message cannot be empty",
+      "hint": "Edit freely; nothing goes out before your click",
+      "open": {
+        "slack": "open in Slack",
+        "teams": "open in Teams"
+      }
     }
   },
   "schema": {
@@ -1184,7 +1203,7 @@
         "description": "Channels Locum reads through Slack's official server, with an app created in your workspace, or through another MCP server you already have."
       },
       "teams": {
-        "tagline": "Microsoft Teams mentions and chats",
+        "tagline": "Microsoft Teams mentions, chats and channels",
         "description": "Teams through Microsoft Graph, with an app registered in your organization's Entra. Wakes agents on mentions and chat messages, and a proposed reply goes out under your name after you approve it."
       },
       "sentry": {

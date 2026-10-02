@@ -17,6 +17,7 @@ interface PonteDeDecisao {
   approvals: {
     decide: (id: string, decisao: Decisao) => Promise<DecisionResult>;
     update: (id: string, findings: unknown[], verdict: string) => Promise<unknown>;
+    updateText: (id: string, text: string) => Promise<unknown>;
   };
 }
 
@@ -45,4 +46,9 @@ export async function gravarRevisao(
   verdict: string,
 ): Promise<void> {
   await ponte().approvals.update(approvalId, findings, verdict);
+}
+
+/** Grava o texto revisado de uma resposta de Slack ou Teams, sem publicar. */
+export async function gravarTexto(approvalId: string, texto: string): Promise<void> {
+  await ponte().approvals.updateText(approvalId, texto);
 }

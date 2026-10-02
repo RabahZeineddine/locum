@@ -73,6 +73,7 @@ interface Item {
  */
 function grupoDaPendencia(p: Pendencia): string {
   if (p.kind === "context.update") return `contexto:${(p.payload as { slug?: string } | null)?.slug ?? ""}`;
+  if (ehMensagem(p)) return "mensagens";
   const c = p.payload as Partial<CargaDePr> | null;
   if (c?.pull) return `pr:${c.owner ? `${c.owner}/` : ""}${c.repo ?? ""}`;
   return "outros";
@@ -81,6 +82,7 @@ function grupoDaPendencia(p: Pendencia): string {
 function rotuloDoGrupo(t: TFunction, grupo: string): string {
   if (grupo.startsWith("contexto:")) return grupo.slice("contexto:".length);
   if (grupo.startsWith("pr:")) return `${t("inbox.group.reviews")} · ${grupo.slice("pr:".length)}`;
+  if (grupo === "mensagens") return t("inbox.group.messages");
   return t("inbox.group.other");
 }
 
@@ -121,7 +123,8 @@ function Fila({ navegar }: TelaProps) {
         [...new Set(pendentes.data.map((p) => p.runId))],
       ).catch(() => ({}) as Record<string, Achado[]>);
       const carregados = pendentes.data.map((p) => {
-        const achados = porRun[p.runId] ?? [];
+        // Achado é de review. Uma resposta no mesmo run não publica nenhum deles.
+        const achados = ehMensagem(p) ? [] : (porRun[p.runId] ?? []);
         return { pendencia: p, achados, severidade: pior(achados), grupo: grupoDaPendencia(p) };
       });
       if (!cancelado) setItens(ordenar(carregados));
@@ -602,6 +605,18 @@ export function alvoDaPendencia(p: Pendencia, t: TFunction): Alvo {
     };
   }
 
+  if (ehMensagem(p)) {
+    const m = cargaDaMensagem(p);
+    return {
+      principal: t(`inbox.message.${m.servico}`),
+      detalhe: m.destino ?? t("inbox.message.chat"),
+      titulo: m.assunto || undefined,
+      autor: m.autor ? t("inbox.by", { author: m.autor }) : undefined,
+      resumo: m.texto ? t("inbox.message.reply", { text: m.texto }) : undefined,
+      semSeveridade: true,
+    };
+  }
+
   const c = p.payload as Partial<CargaDePr> | null;
   if (!c?.pull) {
     return { principal: t("inbox.target_unknown", { agent: p.agentName, step: p.stepName }) };
@@ -625,6 +640,49 @@ export function alvoDaPendencia(p: Pendencia, t: TFunction): Alvo {
             deletions: c.deletions ?? 0,
           }),
     rascunho: c.draft,
+  };
+}
+
+/** Resposta de Slack ou Teams: a pendência é o texto que vai sair. */
+export function ehMensagem(p: Pendencia): boolean {
+  return p.kind === "slack.post" || p.kind === "teams.post";
+}
+
+/**
+ * O que a fila e a revisão leem de uma resposta, nos dois formatos.
+ *
+ * Ver `SlackPostProposal` em `src/slack/proposal.ts` e `TeamsPostProposal` em
+ * `src/teams/action.ts`. O Slack só guarda o id do canal; o Teams guarda o
+ * nome do canal de equipe quando a menção veio de um.
+ */
+export function cargaDaMensagem(p: Pendencia): {
+  servico: "slack" | "teams";
+  destino?: string;
+  assunto: string;
+  autor?: string;
+  texto: string;
+  link?: string;
+} {
+  const c = (p.payload ?? {}) as Record<string, unknown>;
+  const texto = typeof c.text === "string" ? c.text : "";
+  const assunto = typeof c.subject === "string" ? c.subject : "";
+  if (p.kind === "slack.post") {
+    return {
+      servico: "slack",
+      destino: typeof c.channel === "string" ? c.channel : undefined,
+      assunto,
+      texto,
+      link: typeof c.permalink === "string" ? c.permalink : undefined,
+    };
+  }
+  const canal = c.channel as { label?: unknown; channelId?: unknown } | undefined;
+  return {
+    servico: "teams",
+    destino: canal ? String(canal.label ?? canal.channelId ?? "") || undefined : undefined,
+    assunto,
+    autor: typeof c.author === "string" ? c.author : undefined,
+    texto,
+    link: typeof c.webUrl === "string" ? c.webUrl : undefined,
   };
 }
 

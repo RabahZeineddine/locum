@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { gravarRevisao, decidir } from "@/lib/aprovar";
+import { gravarRevisao, gravarTexto, decidir } from "@/lib/aprovar";
 import { BridgeError, read, useRead, type ReadResult, type ReadState } from "@/lib/bridge";
 import { comContexto, diffLinhas, type LinhaDoDiff } from "@/lib/diff";
 import {
@@ -17,6 +17,7 @@ import { ArrowLeft, ExternalLink } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TelaProps } from "../rotas";
+import { cargaDaMensagem, ehMensagem } from "./inbox";
 
 type Pendencia = NonNullable<ReadResult<"approvals.get">>;
 
@@ -69,6 +70,7 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
   const pendencia = aprovacao.status === "ready" ? aprovacao.data : undefined;
   const contexto =
     pendencia?.kind === "context.update" ? (pendencia.payload as CargaDeContexto) : null;
+  const mensagem = pendencia !== undefined && ehMensagem(pendencia);
   const [arquivo, setArquivo] = useState<ReadState<ReadResult<"initiatives.context">>>({
     status: "loading",
     data: undefined,
@@ -105,7 +107,7 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
   const primeiroRender = useRef(true);
 
   useEffect(() => {
-    if (!pendencia || contexto || achados !== null) return;
+    if (!pendencia || contexto || mensagem || achados !== null) return;
     const carga = pendencia.payload as { findings?: unknown[]; verdict?: unknown } | null;
     if ((VEREDITOS as readonly unknown[]).includes(carga?.verdict)) {
       setVeredito(carga!.verdict as Veredito);
@@ -134,7 +136,7 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
   // Grava sozinho depois que a digitação para. Botão de salvar num editor de
   // um item só é cerimônia: o risco real é fechar a tela e perder a edição.
   useEffect(() => {
-    if (achados === null || !pendencia || contexto) return;
+    if (achados === null || !pendencia || contexto || mensagem) return;
     if (primeiroRender.current) {
       primeiroRender.current = false;
       return;
@@ -186,6 +188,18 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
         arquivo={arquivo}
         conflito={conflito}
         contexto={contexto}
+        jaResolvida={jaResolvida}
+        navegar={navegar}
+        onResolver={resolver}
+        pendencia={pendencia}
+        resolvendo={resolvendo}
+      />
+    );
+  }
+
+  if (mensagem) {
+    return (
+      <RevisaoDeMensagem
         jaResolvida={jaResolvida}
         navegar={navegar}
         onResolver={resolver}
@@ -473,6 +487,136 @@ function RevisaoDeContexto({
           </Button>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * A revisão de uma resposta de Slack ou Teams: a mensagem a que se responde,
+ * para onde vai, e o texto, que a pessoa pode reescrever antes de aprovar.
+ *
+ * A edição grava sozinha, como a dos achados. Só o texto muda: o destino é o
+ * que o handler conferiu contra o que o Locum leu.
+ */
+function RevisaoDeMensagem({
+  jaResolvida,
+  navegar,
+  onResolver,
+  pendencia,
+  resolvendo,
+}: {
+  jaResolvida: boolean;
+  navegar: TelaProps["navegar"];
+  onResolver: (decisao: "approved" | "rejected") => void;
+  pendencia: Pendencia;
+  resolvendo: boolean;
+}) {
+  const { t } = useTranslation();
+  const carga = cargaDaMensagem(pendencia);
+  const [texto, setTexto] = useState(carga.texto);
+  const [gravando, setGravando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const gravado = useRef(carga.texto);
+
+  useEffect(() => {
+    if (texto === gravado.current || texto.trim() === "") return;
+    const id = setTimeout(() => {
+      setGravando(true);
+      setErro(null);
+      gravarTexto(pendencia.id, texto)
+        .then(() => {
+          gravado.current = texto;
+        })
+        .catch((e: unknown) => setErro(e instanceof Error ? e.message : String(e)))
+        .finally(() => setGravando(false));
+    }, 700);
+    return () => clearTimeout(id);
+  }, [texto, pendencia.id]);
+
+  const vazia = texto.trim() === "";
+  // Aprovar com edição ainda no relógio publicaria o texto antigo.
+  const pendente = texto !== gravado.current;
+
+  return (
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-4" data-locum-probe="revisao-mensagem">
+      <div className="flex items-baseline gap-3">
+        <Voltar navegar={navegar} />
+        <span className="text-[13px] font-medium">{t(`inbox.message.${carga.servico}`)}</span>
+        <span className="text-muted-foreground truncate font-mono text-xs">
+          {carga.destino ?? t("inbox.message.chat")}
+        </span>
+        {carga.link && (
+          <a
+            className="text-muted-foreground hover:text-foreground ml-auto shrink-0 text-xs"
+            href={carga.link}
+            rel="noreferrer"
+            target="_blank"
+          >
+            <ExternalLink className="inline size-3" aria-hidden />{" "}
+            {t(`review.message.open.${carga.servico}`)}
+          </a>
+        )}
+      </div>
+
+      {carga.assunto && (
+        <figure className="superficie border-border rounded-lg border px-4 py-3">
+          <figcaption className="text-muted-foreground mb-1 text-xs">
+            {carga.autor ? t("review.message.replyingToAuthor", { author: carga.autor }) : t("review.message.replyingTo")}
+          </figcaption>
+          <blockquote className="text-sm leading-relaxed whitespace-pre-wrap">{carga.assunto}</blockquote>
+        </figure>
+      )}
+
+      <label className="flex flex-col gap-1.5">
+        <span className="text-muted-foreground text-xs">{t("review.message.text")}</span>
+        <textarea
+          className="focus:border-ring border-border bg-background ia-borda w-full resize-y rounded-lg border px-3 py-2.5 text-sm leading-relaxed outline-none transition-colors duration-200"
+          data-locum-mensagem-texto=""
+          disabled={jaResolvida}
+          maxLength={3000}
+          onChange={(e) => setTexto(e.target.value)}
+          rows={Math.min(14, Math.max(4, Math.ceil(texto.length / 80)))}
+          value={texto}
+        />
+      </label>
+
+      {erro && <p className="text-destructive text-xs">{erro}</p>}
+
+      <div className="flex items-center gap-3">
+        <Button
+          className="cursor-pointer"
+          disabled={resolvendo || jaResolvida || vazia || pendente || gravando}
+          onClick={() => onResolver("approved")}
+        >
+          {t("review.message.send")}
+        </Button>
+        <Button
+          className="text-muted-foreground hover:text-foreground cursor-pointer"
+          disabled={resolvendo || jaResolvida}
+          onClick={() => onResolver("rejected")}
+          variant="ghost"
+        >
+          {t("inbox.discard")}
+        </Button>
+
+        <span className="text-muted-foreground ml-auto text-xs">
+          {vazia
+            ? t("review.message.empty")
+            : gravando || pendente
+              ? t("review.saving")
+              : texto !== carga.texto
+                ? t("review.saved")
+                : t("review.message.hint")}
+        </span>
+
+        <button
+          className="text-muted-foreground hover:text-foreground cursor-pointer text-xs"
+          onClick={() => navegar("execucoes", pendencia.runId)}
+          type="button"
+        >
+          {t("review.see_run")}
+        </button>
+      </div>
     </div>
   );
 }

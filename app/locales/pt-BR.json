@@ -310,9 +310,16 @@
     "review": "Revisar",
     "group": {
       "reviews": "Revisão de pull request",
-      "other": "Outros"
+      "other": "Outros",
+      "messages": "Respostas em conversa"
     },
-    "lead": "O que os agents prepararam e só sai depois do seu sim."
+    "lead": "O que os agents prepararam e só sai depois do seu sim.",
+    "message": {
+      "slack": "Slack",
+      "teams": "Teams",
+      "chat": "chat",
+      "reply": "Resposta: {{text}}"
+    }
   },
   "initiatives": {
     "contextTemplate": {
@@ -1002,6 +1009,18 @@
         "title": "Esta proposta não pôde ser publicada",
         "body": "{{reason}}"
       }
+    },
+    "message": {
+      "replyingTo": "Em resposta a",
+      "replyingToAuthor": "Em resposta a {{author}}",
+      "text": "O que vai sair",
+      "send": "Aprovar e enviar",
+      "empty": "A mensagem não pode ficar vazia",
+      "hint": "Edite à vontade; nada sai antes do seu clique",
+      "open": {
+        "slack": "abrir no Slack",
+        "teams": "abrir no Teams"
+      }
     }
   },
   "schema": {
@@ -1218,7 +1237,7 @@
         "description": "Canais que o Locum lê pelo servidor oficial do Slack, com um app criado no seu workspace, ou por outro servidor MCP que você já tenha."
       },
       "teams": {
-        "tagline": "Menções e chats do Microsoft Teams",
+        "tagline": "Menções, chats e canais do Microsoft Teams",
         "description": "Teams pelo Microsoft Graph, com um app registrado no Entra da sua organização. Acorda agents com menções e mensagens de chat, e a resposta proposta sai com o seu nome depois da sua aprovação."
       },
       "sentry": {

@@ -176,6 +176,7 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "approvals.get": (approvalId) => approvalService.get(approvalId),
     "approvals.update": (approvalId, findings, verdict) =>
       approvalService.updateFindings(approvalId, findings, verdict),
+    "approvals.updateText": (approvalId, text) => approvalService.updateText(approvalId, text),
 
     "approvals.decide": async (approvalId, decision) => {
       if (decision !== "approved" && decision !== "rejected") {

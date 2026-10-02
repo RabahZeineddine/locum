@@ -99,3 +99,21 @@ test("pendência que não é de review não aceita edição de achados", async (
   await assert.rejects(service.updateFindings("pendencia", [achado]), /review/);
   assert.deepEqual((await service.get("pendencia"))!.payload, { channel: "C1", text: "oi" });
 });
+
+const RESPOSTA = { chatId: "19:abc", text: "texto do modelo", subject: "pode olhar?", author: "Ana", webUrl: null };
+
+test("resposta do Teams troca só o texto, e o destino fica o gravado", async () => {
+  const service = await pendencia("teams.post", RESPOSTA);
+  const nova = await service.updateText("pendencia", "  texto revisado  ");
+  assert.deepEqual(nova.payload, { ...RESPOSTA, text: "texto revisado" });
+});
+
+test("texto vazio, longo demais ou em pendência que não é mensagem é recusado", async () => {
+  const service = await pendencia("slack.post", { ...RESPOSTA, channel: "C1", threadTs: "1.0" });
+  await assert.rejects(service.updateText("pendencia", "   "), /vazia/);
+  await assert.rejects(service.updateText("pendencia", "x".repeat(3001)));
+  await assert.rejects(service.updateText("pendencia", { text: "objeto" }));
+
+  const review = await pendencia();
+  await assert.rejects(review.updateText("pendencia", "oi"), /só resposta de Slack ou Teams/);
+});

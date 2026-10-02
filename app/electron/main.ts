@@ -4647,7 +4647,70 @@ async function checkReviewVerdict(window: BrowserWindow): Promise<string> {
   await trocar(outro);
   await trocar(original);
 
-  return `${original} -> ${outro} -> ${original}`;
+  const mensagem = await checkMessageReview(window);
+  return `${original} -> ${outro} -> ${original}; ${mensagem}`;
+}
+
+/**
+ * Resposta do Teams na revisão: a tela mostra a mensagem e o texto, e o texto
+ * editado chega à pendência sem mexer no destino. A pendência é plantada no
+ * run de demonstração e sai no fim, para não mudar a fila das outras
+ * conferências.
+ */
+async function checkMessageReview(window: BrowserWindow): Promise<string> {
+  const { db, schema } = await import("../src/db/index.js");
+  const { eq } = await import("drizzle-orm");
+  const { approvalService } = await import("../src/services/approval-service.js");
+  const { DEMO_RUN_ID } = await import("../src/fixtures/demo-run.js");
+
+  const id = "smoke-teams-reply";
+  const carga = { chatId: "19:smoke", text: "texto do modelo", subject: "pode olhar o deploy?", author: "Ana", webUrl: null };
+  await db.delete(schema.approvals).where(eq(schema.approvals.id, id));
+  await db.insert(schema.approvals).values({
+    id,
+    runId: DEMO_RUN_ID,
+    stepId: `${DEMO_RUN_ID}-post`,
+    kind: "teams.post",
+    payload: carga,
+    status: "pending",
+  });
+
+  try {
+    await irPara(window, "inbox", id);
+    const visto = await esperarProbe<{ texto: string; assunto: boolean }>(
+      window,
+      "revisao-mensagem",
+      `(() => {
+        const probe = document.querySelector("[data-locum-probe=revisao-mensagem]");
+        const campo = document.querySelector("[data-locum-mensagem-texto]");
+        if (probe === null || campo === null) return null;
+        return { texto: campo.value, assunto: probe.textContent.includes(${JSON.stringify(carga.subject)}) };
+      })()`,
+    );
+    if (visto.texto !== carga.text) throw new Error(`a revisão mostrou o texto "${visto.texto}"`);
+    if (!visto.assunto) throw new Error("a revisão não mostrou a mensagem a que se responde");
+
+    await window.webContents.executeJavaScript(
+      `(() => {
+        const campo = document.querySelector("[data-locum-mensagem-texto]");
+        const definir = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set;
+        definir.call(campo, "texto revisado");
+        campo.dispatchEvent(new Event("input", { bubbles: true }));
+      })()`,
+    );
+    const limite = Date.now() + 10_000;
+    while (Date.now() < limite) {
+      const gravada = (await approvalService.get(id))?.payload as typeof carga | undefined;
+      if (gravada?.text === "texto revisado") {
+        if (gravada.chatId !== carga.chatId) throw new Error(`a edição mudou o destino para ${gravada.chatId}`);
+        return "teams.post editado";
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    throw new Error("o texto editado na revisão não chegou à pendência");
+  } finally {
+    await db.delete(schema.approvals).where(eq(schema.approvals.id, id));
+  }
 }
 
 async function checkRuns(window: BrowserWindow, runId: string): Promise<string> {
@@ -5667,6 +5730,40 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
     );
     await new Promise((resolve) => setTimeout(resolve, 1500));
     writeFileSync(join(destino, "agents-editor.png"), (await janela.webContents.capturePage()).toPNG());
+  }
+
+  // Resposta de Slack ou Teams não existe no exemplo; uma do Teams entra só
+  // para a foto, na fila e na revisão, e sai em seguida.
+  {
+    const { db, schema } = await import("../src/db/index.js");
+    const { eq } = await import("drizzle-orm");
+    const { DEMO_RUN_ID } = await import("../src/fixtures/demo-run.js");
+    const id = "captura-teams-reply";
+    await db.insert(schema.approvals).values({
+      id,
+      runId: DEMO_RUN_ID,
+      stepId: `${DEMO_RUN_ID}-post`,
+      kind: "teams.post",
+      payload: {
+        chatId: "19:captura",
+        text: "Olhei o deploy de ontem: a falha veio do timeout do gateway, já subi o ajuste e acompanho até o fim do dia.",
+        subject: "Alguém sabe por que o deploy da API de pedidos falhou ontem à noite?",
+        author: "Ana Souza",
+        webUrl: null,
+        channel: { teamId: "t", channelId: "deploys", threadId: "m", label: null },
+      },
+      status: "pending",
+    });
+    try {
+      await irPara(janela, "inbox");
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      writeFileSync(join(destino, "inbox-mensagem.png"), (await janela.webContents.capturePage()).toPNG());
+      await irPara(janela, "inbox", id);
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      writeFileSync(join(destino, "inbox-mensagem-detalhe.png"), (await janela.webContents.capturePage()).toPNG());
+    } finally {
+      await db.delete(schema.approvals).where(eq(schema.approvals.id, id));
+    }
   }
 
   // O painel do assistente abre por atalho, então a captura usa o mesmo caminho.
