@@ -53,11 +53,54 @@ test("pessoa grava o modo que quiser", async () => {
 test("modo que uma pessoa já autorizou sobrevive a edição do agent em outra parte", async () => {
   const service = new AgentService(bancoDeTeste());
   await service.upsert(spec("auto"), undefined, "human");
-  const versao = await service.upsert(spec("auto", "revise com calma"), undefined, "agent");
+  const original = spec("auto");
+  const versao = await service.upsert(
+    AgentSpec.parse({
+      ...original,
+      name: "Revisor de PR",
+      budget: { perDayUsd: 1 },
+      // Passo novo fora da cadeia da ação não mexe no que ela publica.
+      steps: [...original.steps, { type: "model", key: "resumo", name: "Resumo", model: "anthropic/modelo", prompt: "resuma" }],
+    }),
+    undefined,
+    "agent",
+  );
 
   assert.equal(versao.version, 2);
   assert.deepEqual(versao.downgrades, []);
   assert.equal(await modoGravado(service), "auto");
+});
+
+test("trocar o prompt, o modelo ou as ferramentas acima da ação pede a autorização de novo", async () => {
+  const service = new AgentService(bancoDeTeste());
+  const autorizado = spec("auto");
+  const comLer = (troca: Record<string, unknown>, base = autorizado): AgentSpec =>
+    AgentSpec.parse({ ...base, steps: base.steps.map((s) => (s.key === "ler" ? { ...s, ...troca } : s)) });
+
+  for (const editado of [
+    spec("auto", "revise com calma"),
+    comLer({ model: "anthropic/outro" }),
+    comLer({ tools: [{ server: "srv", tool: "ler" }] }),
+    AgentSpec.parse({ ...autorizado, defaultTools: [{ server: "srv", tool: "ler" }] }),
+  ]) {
+    await service.upsert(autorizado, undefined, "human");
+    const versao = await service.upsert(editado, undefined, "agent");
+    assert.deepEqual(versao.downgrades, [{ step: "publicar", from: "auto", to: "approve" }]);
+  }
+
+  // A cadeia é transitiva: o passo de antes do `ler` também conta.
+  const emDoisPassos = (prompt: string): AgentSpec =>
+    AgentSpec.parse({
+      ...autorizado,
+      steps: [
+        { type: "model", key: "buscar", name: "Buscar", model: "anthropic/modelo", prompt },
+        { ...autorizado.steps[0], needs: ["buscar"] },
+        autorizado.steps[1],
+      ],
+    });
+  await service.upsert(emDoisPassos("busque"), undefined, "human");
+  const versao = await service.upsert(emDoisPassos("busque tudo"), undefined, "agent");
+  assert.deepEqual(versao.downgrades, [{ step: "publicar", from: "auto", to: "approve" }]);
 });
 
 test("agent que sobe além do que a pessoa autorizou é rebaixado para approve", async () => {

@@ -1074,6 +1074,14 @@ escopo de um servidor de `write` para `read`. Por isso cadastrar como `write`
 todo servidor que tem alguma ferramenta de escrita. O rascunho do "Criar com
 IA" fica de fora da trava, porque a pessoa vê as ferramentas antes de gravar.
 
+**Autorização de ação sobrevivia à troca do prompt.** O `auto` que a pessoa
+deu a um passo de ação passava por qualquer edição pelo MCP que mantivesse a
+ação, o destino e a entrada, e aí um prompt novo publicava sem clique. Desde a
+0.1.29 a cadeia acima da ação também precisa ser a mesma: os passos de que ela
+depende, direta ou indiretamente, com prompt, modelo e ferramentas iguais,
+contando `defaultTools`. Mexer no nome, no teto ou em passo fora da cadeia
+mantém o modo.
+
 **Link de pull request abria o GitHub dentro do app.** O `target="_blank"`
 criava outra janela do Electron. Contorno, desde a 0.1.25: a janela recusa
 abrir janela nova e navegar para fora, e entrega `http` e `https` ao navegador.

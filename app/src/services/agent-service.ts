@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { desc, eq } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
-import { AgentBudgetPatch, AgentSpec, requiredServers, type ActionMode, type ActionStep, type AgentBudget, type ToolRef } from "../config/types.js";
+import { AgentBudgetPatch, AgentSpec, requiredServers, resolveTools, type ActionMode, type ActionStep, type AgentBudget, type ToolRef } from "../config/types.js";
 import { today } from "../executor/budget.js";
 import { splitModelId } from "../providers/registry.js";
 import { SUBSCRIPTION_RUNTIMES } from "../runtimes/types.js";
@@ -583,6 +583,11 @@ function parseVersion(row: AgentVersionRow): AgentVersion {
  * chave nao basta: quem nao e pessoa trocaria o `github.review_comment`
  * autorizado por um `slack.post` em outro canal debaixo da mesma chave, e a
  * autorizacao dada para uma coisa passaria a valer para outra.
+ *
+ * E tambem a mesma cadeia acima: os passos de que a acao depende, direta ou
+ * indiretamente, com prompt, modelo e ferramentas iguais. A pessoa autorizou
+ * publicar o que aquele prompt produz; outro prompt e outro texto saindo sem
+ * clique, e a autorizacao precisa ser dada de novo.
  */
 function demoteActions(
   spec: AgentSpec,
@@ -595,6 +600,8 @@ function demoteActions(
       if (step.type === "action") previous.set(step.key, step);
     }
   }
+  const mesmaCadeia = (key: string): boolean =>
+    parsedStored?.success === true && cadeiaAcima(parsedStored.data, key) === cadeiaAcima(spec, key);
 
   const downgrades: ActionDowngrade[] = [];
   const steps = spec.steps.map((step) => {
@@ -605,7 +612,8 @@ function demoteActions(
       antes.mode === step.mode &&
       antes.action === step.action &&
       antes.target === step.target &&
-      antes.input === step.input
+      antes.input === step.input &&
+      mesmaCadeia(step.key)
     ) {
       return step;
     }
@@ -615,6 +623,30 @@ function demoteActions(
   });
 
   return { spec: { ...spec, steps }, downgrades };
+}
+
+/**
+ * Os passos de que `key` depende, direta ou indiretamente, num texto só, para
+ * comparar duas versões. Passo de modelo entra com as ferramentas já
+ * resolvidas, porque trocar `defaultTools` muda o que o passo alcança sem
+ * mexer nele.
+ */
+function cadeiaAcima(spec: AgentSpec, key: string): string {
+  const porChave = new Map(spec.steps.map((step) => [step.key, step]));
+  const vistos = new Set<string>();
+  const fila = [...(porChave.get(key)?.needs ?? [])];
+  while (fila.length > 0) {
+    const atual = fila.pop()!;
+    if (vistos.has(atual)) continue;
+    vistos.add(atual);
+    fila.push(...(porChave.get(atual)?.needs ?? []));
+  }
+  const cadeia = [...vistos].sort().map((chave) => {
+    const step = porChave.get(chave);
+    if (step?.type !== "model") return [chave, step ?? null];
+    return [chave, { ...step, tools: resolveTools(spec, step) }];
+  });
+  return JSON.stringify([porChave.get(key)?.needs ?? [], cadeia]);
 }
 
 /** Toda ferramenta que o spec põe em passo, contando a herdada de `defaultTools`. */
