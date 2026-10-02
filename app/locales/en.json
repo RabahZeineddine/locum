@@ -1131,6 +1131,12 @@
         "waiting_one": "and {{count}} open, waiting for you",
         "waiting_other": "and {{count}} open, waiting for you",
         "title_zero": "No Claude session left halfway"
+      },
+      "auth": {
+        "title_zero": "No server needs sign-in",
+        "title_one": "{{count}} MCP server needs to sign in again",
+        "title_other": "{{count}} MCP servers need to sign in again",
+        "detail": "{{names}}: credentials were refused on the last connection"
       }
     }
   },

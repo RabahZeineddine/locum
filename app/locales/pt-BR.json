@@ -1165,6 +1165,12 @@
         "waiting_other": "e {{count}} abertas esperando você",
         "title_zero": "Nenhuma sessão do Claude pela metade",
         "waiting_zero": "e {{count}} abertas esperando você"
+      },
+      "auth": {
+        "title_zero": "Nenhum servidor precisa autenticar",
+        "title_one": "{{count}} servidor MCP precisa autenticar de novo",
+        "title_other": "{{count}} servidores MCP precisam autenticar de novo",
+        "detail": "{{names}}: a credencial foi recusada na última conexão"
       }
     }
   },

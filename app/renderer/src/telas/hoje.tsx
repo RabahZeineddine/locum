@@ -1,4 +1,4 @@
-import { CalendarClock, Check, CheckCheck, ChevronRight, Inbox as InboxIcon, Sparkles, TerminalSquare } from "lucide-react";
+import { CalendarClock, Check, CheckCheck, ChevronRight, Inbox as InboxIcon, KeyRound, Sparkles, TerminalSquare } from "lucide-react";
 import { useEffect, useMemo } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
@@ -146,6 +146,8 @@ export function Hoje({ navegar }: TelaProps) {
           </button>
         )}
       </section>
+
+      <ServidoresSemCredencial navegar={navegar} />
 
       <SessoesPelaMetade navegar={navegar} />
 
@@ -343,6 +345,44 @@ function SessoesPelaMetade({ navegar }: { navegar: TelaProps["navegar"] }) {
                 .slice(0, 3)
                 .map((s) => s.title)
                 .join(" · ")}
+        </span>
+      </div>
+      <ChevronRight
+        aria-hidden
+        className="text-muted-foreground size-4 shrink-0 transition-transform duration-200 group-hover:translate-x-0.5"
+      />
+    </button>
+  );
+}
+
+/**
+ * Servidor MCP cuja última conexão foi recusada por credencial. Aparece só
+ * quando há algum: é o aviso que chega antes do achado que não veio.
+ */
+function ServidoresSemCredencial({ navegar }: { navegar: TelaProps["navegar"] }) {
+  const { t } = useTranslation();
+  const servidores = useRead("mcp.list");
+  if (servidores.status !== "ready") return null;
+  const recusados = servidores.data.filter((s) => s.enabled && s.health.needsAuth).map((s) => s.config.name);
+  if (recusados.length === 0) return null;
+
+  return (
+    <button
+      className="superficie hover:border-foreground/20 focus-visible:ring-ring group flex cursor-pointer items-center gap-4 rounded-xl px-5 py-4 text-left transition-colors duration-200 focus-visible:ring-2 focus-visible:outline-none"
+      data-locum-probe="hoje-credencial"
+      data-servidores={recusados.join(",")}
+      onClick={() => navegar("configuracao")}
+      type="button"
+    >
+      <span aria-hidden className="bg-destructive/12 text-destructive flex size-9 shrink-0 items-center justify-center rounded-lg">
+        <KeyRound className="size-4" />
+      </span>
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="font-medium text-[15px] tracking-tight">
+          {t("home.today.auth.title", { count: recusados.length })}
+        </span>
+        <span className="text-muted-foreground truncate text-sm">
+          {t("home.today.auth.detail", { names: recusados.slice(0, 3).join(", ") })}
         </span>
       </div>
       <ChevronRight

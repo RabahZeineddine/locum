@@ -1789,6 +1789,23 @@ async function checkConfig(window: BrowserWindow): Promise<string> {
   if (gravada?.lastOkAt === null || gravada?.lastOkAt === undefined) {
     throw new Error(`o cadastro de ${FIXTURE_SERVER} não guardou a conexão`);
   }
+
+  // Credencial recusada vira aviso na Hoje, e some quando o servidor volta.
+  await mcpService.recordConnection(FIXTURE_SERVER, { ok: false, error: "HTTP 401: Unauthorized" });
+  try {
+    await irPara(window, "hoje");
+    const avisados = await esperarProbe<string>(
+      window,
+      "aviso de credencial na Hoje",
+      `(() => document.querySelector("[data-locum-probe=hoje-credencial]")?.dataset.servidores ?? null)()`,
+    );
+    if (!avisados.split(",").includes(FIXTURE_SERVER)) {
+      throw new Error(`a Hoje avisou ${avisados} e não ${FIXTURE_SERVER}`);
+    }
+  } finally {
+    await mcpService.recordConnection(FIXTURE_SERVER, { ok: true });
+  }
+  await irPara(window, "configuracao");
   if (resultado.ferramentas !== doServico.toolCount) {
     throw new Error(
       `a tela contou ${resultado.ferramentas} ferramenta(s) e o servico contou ${doServico.toolCount}`,
