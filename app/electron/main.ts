@@ -6154,6 +6154,20 @@ async function main(): Promise<void> {
   const jaNaFila = await setupNotifications({ openInbox });
   if (jaNaFila > 0) console.log(`notificacao: ${jaNaFila} aviso(s) ja na fila, nenhum exibido`);
 
+  // Run que ficou em `running` quando o app fechou ou caiu não volta sozinho:
+  // a tela recusa reexecutar run em andamento, e o agendador não abre outro
+  // para o mesmo evento. A lista sai antes do relógio, porque depois da
+  // primeira batida um run em `running` pode ser de uma execução viva. Rodar
+  // fica para depois, sem segurar a subida.
+  const { buildExecutor: executorDaRetomada } = await import("../src/executor/build.js");
+  const retomada = await executorDaRetomada();
+  const interrompidos = await retomada.interruptedRuns();
+  if (interrompidos.length > 0) {
+    console.log(`retomada: ${interrompidos.length} run(s) interrompido(s)`);
+    const { refreshTray } = await import("./tray.js");
+    void retomada.resume(interrompidos).then(() => refreshTray());
+  }
+
   const { setupClock, setupPower } = await import("./power.js");
   setupPower();
   setupClock();

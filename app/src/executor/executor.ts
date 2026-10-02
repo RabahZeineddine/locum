@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, ne } from "drizzle-orm";
 import { db, schema } from "../db/index.js";
 import {
   AgentSpec,
@@ -103,18 +103,34 @@ export class Executor {
     return { status, run: await this.execute(runId) };
   }
 
-  /** Runs interrompidos por fechamento do app ou por crash. */
-  async resumeAll(): Promise<string[]> {
-    const pending = await db
+  /**
+   * Runs que ficaram em `queued` ou `running` sem ninguém executando: o app
+   * fechou ou caiu no meio. Só vale ler antes de o agendador começar a bater,
+   * porque depois disso um run em `running` pode ser de uma batida viva.
+   */
+  async interruptedRuns(): Promise<string[]> {
+    const rows = await db
       .select({ id: schema.runs.id })
       .from(schema.runs)
       .where(inArray(schema.runs.status, ["queued", "running"]));
+    return rows.map((r) => r.id);
+  }
 
-    const ids: string[] = [];
-    for (const row of pending) {
-      ids.push(row.id);
-      await this.execute(row.id);
+  /** Retoma os runs dados, um de cada vez. Falha de um não segura os outros. */
+  async resume(ids: string[]): Promise<void> {
+    for (const id of ids) {
+      try {
+        await this.execute(id);
+      } catch (err) {
+        console.error(`retomada do run ${id} falhou`, err);
+      }
     }
+  }
+
+  /** Runs interrompidos por fechamento do app ou por crash. */
+  async resumeAll(): Promise<string[]> {
+    const ids = await this.interruptedRuns();
+    for (const id of ids) await this.execute(id);
     return ids;
   }
 
@@ -174,10 +190,14 @@ export class Executor {
           continue;
         }
         if (existing?.status === "awaiting_approval") {
+          // Reexecutar deixa a pendência antiga do passo como `expired` ao lado
+          // da nova. Ler qualquer uma delas podia pegar a vencida e dar o passo
+          // por publicado sem ninguém ter aprovado.
           const [approval] = await db
             .select({ status: schema.approvals.status })
             .from(schema.approvals)
-            .where(eq(schema.approvals.stepId, existing.id));
+            .where(and(eq(schema.approvals.stepId, existing.id), ne(schema.approvals.status, "expired")))
+            .orderBy(desc(schema.approvals.createdAt));
           // `publishing` é uma decisão que caiu no meio: sem saber se saiu,
           // o passo espera em vez de se dar por publicado.
           if (!approval || approval.status === "pending" || approval.status === "publishing") {
@@ -417,6 +437,27 @@ export class Executor {
       saida !== null && typeof saida === "object"
         ? { ...alvoDoEvento(args.payload), ...(saida as object) }
         : saida;
+
+    // Queda entre gravar a pendência e marcar o passo deixa o passo sem
+    // `awaiting_approval` com a pendência já na fila. Submeter de novo na
+    // retomada abriria uma segunda pendência para o mesmo passo, e aprovar as
+    // duas publicaria duas vezes. A que está aberta vale.
+    const [aberta] = await db
+      .select({ id: schema.approvals.id })
+      .from(schema.approvals)
+      .where(
+        and(
+          eq(schema.approvals.stepId, stepId),
+          inArray(schema.approvals.status, ["pending", "publishing"]),
+        ),
+      );
+    if (aberta !== undefined) {
+      await db
+        .update(schema.steps)
+        .set({ status: "awaiting_approval", startedAt: nowSec() })
+        .where(eq(schema.steps.id, stepId));
+      return { kind: "paused" };
+    }
 
     const state = await this.deps.gate.submit(
       { runId, stepId, kind: step.action, payload, target: step.target ?? null },

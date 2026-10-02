@@ -295,15 +295,16 @@ export class ApprovalGate {
  */
 export async function settleStep(stepId: string, status: string): Promise<{ output: unknown }> {
   const endedAt = Math.floor(Date.now() / 1000);
+  // Só o passo que ainda espera a decisão. O que foi zerado por uma
+  // reexecução já é outra tentativa, e a decisão da pendência antiga não
+  // fala por ela.
+  const esperando = and(eq(schema.steps.id, stepId), eq(schema.steps.status, "awaiting_approval"));
   if (status === "rejected" || status === "conflict") {
     const error = status === "conflict" ? "publish_conflict" : "rejected";
-    await db
-      .update(schema.steps)
-      .set({ status: "skipped", error, output: null, endedAt })
-      .where(eq(schema.steps.id, stepId));
+    await db.update(schema.steps).set({ status: "skipped", error, output: null, endedAt }).where(esperando);
     return { output: null };
   }
   const output = { state: status === "drafted" ? "drafted" : "published" };
-  await db.update(schema.steps).set({ status: "done", output, endedAt }).where(eq(schema.steps.id, stepId));
+  await db.update(schema.steps).set({ status: "done", output, endedAt }).where(esperando);
   return { output };
 }

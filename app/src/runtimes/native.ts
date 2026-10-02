@@ -9,6 +9,9 @@ import type { Runtime, RuntimeRequest, RuntimeResult } from "./types.js";
  * A saida estruturada e pedida no prompt e validada aqui, em vez de usar
  * `generateObject`, porque o passo pode ter ferramentas e precisa do laco.
  */
+/** Quanto um passo pode levar, contando todas as voltas do laço de ferramentas. */
+const NATIVE_TIMEOUT_MS = 15 * 60 * 1000;
+
 export class NativeRuntime implements Runtime {
   readonly id = "native";
 
@@ -40,6 +43,10 @@ export class NativeRuntime implements Runtime {
       messages: cacheableMessages(system, req.prompt, req.stablePrefix),
       tools: req.tools,
       stopWhen: stepCountIs(req.maxSteps),
+      // O mesmo teto do `claude -p`. Sem ele, um provedor que para de
+      // responder deixava o run em `running` para sempre, e run em andamento
+      // não aceita reexecução.
+      abortSignal: AbortSignal.timeout(NATIVE_TIMEOUT_MS),
     });
 
     const toolsUsed = new Set<string>();

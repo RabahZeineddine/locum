@@ -11,6 +11,7 @@ import { McpRegistry } from "../src/mcp/registry.js";
 import type { Runtime } from "../src/runtimes/types.js";
 import { AgentService } from "../src/services/agent-service.js";
 import { ApprovalService } from "../src/services/approval-service.js";
+import { RunService } from "../src/services/run-service.js";
 
 // O executor e a gate falam com o banco do módulo, e não com um banco passado
 // por fora. O `setup.ts` já apontou esse banco para uma pasta temporária; aqui
@@ -210,4 +211,41 @@ test("pendência parada na publicação aparece, e a pessoa diz se saiu ou volta
   assert.deepEqual(await naoSaiu.executor.settleStuck(naoSaiu.approvalId, "retry"), { status: "pending", run: "paused" });
   assert.deepEqual(await naoSaiu.executor.decide(naoSaiu.approvalId, "approved"), { status: "approved", run: "done" });
   assert.equal(naoSaiu.publicados.length, 1);
+});
+
+test("queda entre gravar a pendência e marcar o passo não abre segunda pendência na retomada", async () => {
+  const { runId, executor, publicados } = await montar();
+  const publicar = (await passo(runId, "publicar"))!;
+  await db.update(schema.steps).set({ status: "running" }).where(eq(schema.steps.id, publicar.id));
+  await db.update(schema.runs).set({ status: "running" }).where(eq(schema.runs.id, runId));
+
+  assert.ok((await executor.interruptedRuns()).includes(runId));
+  await executor.resume([runId]);
+
+  const pendencias = await db.select().from(schema.approvals).where(eq(schema.approvals.stepId, publicar.id));
+  assert.equal(pendencias.length, 1);
+  assert.equal((await passo(runId, "publicar"))?.status, "awaiting_approval");
+  assert.equal(await estadoDoRun(runId), "paused");
+  assert.deepEqual(publicados, []);
+});
+
+test("reexecutar o passo de ação não deixa a pendência vencida falar pela nova", async () => {
+  const { runId, approvalId, executor, publicados } = await montar();
+  const runs = new RunService(db, async () => executor);
+
+  assert.equal(await runs.rerunStep(runId, "publicar"), "paused");
+  const [antiga] = await db.select().from(schema.approvals).where(eq(schema.approvals.id, approvalId));
+  assert.equal(antiga?.status, "expired");
+
+  // A retomada lê a pendência do passo: tem que ser a nova, ainda aberta.
+  assert.equal(await executor.execute(runId), "paused");
+  assert.equal((await passo(runId, "publicar"))?.status, "awaiting_approval");
+  assert.deepEqual(publicados, []);
+});
+
+test("reexecução é recusada enquanto a aprovação do passo está saindo", async () => {
+  const { runId, approvalId, executor } = await montar();
+  await db.update(schema.approvals).set({ status: "publishing" }).where(eq(schema.approvals.id, approvalId));
+  const runs = new RunService(db, async () => executor);
+  await assert.rejects(runs.rerunStep(runId, "ler"), /esta publicando/);
 });

@@ -274,6 +274,27 @@ export class RunService {
 
     const affected = dependents(detail.spec, stepKey);
     const targets = detail.steps.filter((s) => affected.has(s.stepKey));
+
+    // A publicação que está saindo agora vai fechar o passo como publicado
+    // quando terminar. Zerar o passo debaixo dela abriria uma pendência nova
+    // para o que já saiu, e aprovar essa publicaria de novo.
+    if (targets.length > 0) {
+      const [saindo] = await this.db
+        .select({ id: schema.approvals.id })
+        .from(schema.approvals)
+        .where(
+          and(
+            inArray(
+              schema.approvals.stepId,
+              targets.map((s) => s.id),
+            ),
+            eq(schema.approvals.status, "publishing"),
+          ),
+        );
+      if (saindo !== undefined) {
+        throw new Error(`run ${runId} esta publicando a aprovacao ${saindo.id}; espere terminar para reexecutar`);
+      }
+    }
     await this.reset(detail, targets);
 
     const runner = await this.makeRunner();
