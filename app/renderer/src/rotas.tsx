@@ -1,5 +1,6 @@
 import { Bot, Inbox as InboxIcon, ListTree, Settings, Sun, Target, TerminalSquare } from "lucide-react";
 import type { ComponentType } from "react";
+import type { Antigos } from "@/lib/router";
 import { Agents } from "./telas/agents";
 import { Configuracao } from "./telas/configuracao";
 import { Execucoes } from "./telas/execucoes";
@@ -33,13 +34,13 @@ export interface TelaProps {
  * vez e nenhum dos dois guarda uma cópia do texto.
  */
 export const ROTAS = [
-  { id: "hoje", rotulo: "nav.today", icone: Sun, Tela: Hoje },
+  { id: "today", rotulo: "nav.today", icone: Sun, Tela: Hoje },
   { id: "inbox", rotulo: "nav.queue", icone: InboxIcon, Tela: Inbox },
   { id: "initiatives", rotulo: "nav.initiatives", icone: Target, Tela: Initiatives },
-  { id: "execucoes", rotulo: "nav.runs", icone: ListTree, Tela: Execucoes },
+  { id: "runs", rotulo: "nav.runs", icone: ListTree, Tela: Execucoes },
   { id: "agents", rotulo: "nav.agents", icone: Bot, Tela: Agents },
-  { id: "sessoes", rotulo: "nav.sessions", icone: TerminalSquare, Tela: Sessoes },
-  { id: "configuracao", rotulo: "nav.settings", icone: Settings, Tela: Configuracao },
+  { id: "sessions", rotulo: "nav.sessions", icone: TerminalSquare, Tela: Sessoes },
+  { id: "settings", rotulo: "nav.settings", icone: Settings, Tela: Configuracao },
 ] as const satisfies readonly {
   id: string;
   rotulo: string;
@@ -54,7 +55,7 @@ export type RotaId = (typeof ROTAS)[number]["id"];
  * a fila responde so o que espera decisao, e a Hoje junta isso ao que vai rodar
  * e ao que ja terminou.
  */
-export const ROTA_PADRAO: RotaId = "hoje";
+export const ROTA_PADRAO: RotaId = "today";
 
 /**
  * Identificadores soltos, para o roteador. Const de modulo de proposito: a
@@ -62,3 +63,18 @@ export const ROTA_PADRAO: RotaId = "hoje";
  * o ouvinte de `hashchange` a toa.
  */
 export const ROTA_IDS: readonly RotaId[] = ROTAS.map((rota) => rota.id);
+
+/**
+ * Os nomes em português que os destinos tiveram até a 0.1.19. A seção da
+ * Configuração vem antes do destino sozinho, porque o primeiro prefixo que
+ * casa é o que vale.
+ */
+export const ROTAS_ANTIGAS: Antigos = [
+  ["configuracao/geral", "settings/general"],
+  ["configuracao/modelos", "settings/models"],
+  ["configuracao/conexoes", "settings/connections"],
+  ["configuracao", "settings"],
+  ["execucoes", "runs"],
+  ["sessoes", "sessions"],
+  ["hoje", "today"],
+];

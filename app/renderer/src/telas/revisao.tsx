@@ -379,7 +379,7 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
 
         <button
           className="text-muted-foreground hover:text-foreground cursor-pointer text-xs"
-          onClick={() => navegar("execucoes", pendencia.runId)}
+          onClick={() => navegar("runs", pendencia.runId)}
           type="button"
         >
           {t("review.see_run")}
@@ -624,7 +624,7 @@ function RevisaoDeMensagem({
 
         <button
           className="text-muted-foreground hover:text-foreground cursor-pointer text-xs"
-          onClick={() => navegar("execucoes", pendencia.runId)}
+          onClick={() => navegar("runs", pendencia.runId)}
           type="button"
         >
           {t("review.see_run")}
@@ -705,7 +705,7 @@ function RevisaoDeDocumento({
 
         <button
           className="text-muted-foreground hover:text-foreground ml-auto cursor-pointer text-xs"
-          onClick={() => navegar("execucoes", pendencia.runId)}
+          onClick={() => navegar("runs", pendencia.runId)}
           type="button"
         >
           {t("review.see_run")}

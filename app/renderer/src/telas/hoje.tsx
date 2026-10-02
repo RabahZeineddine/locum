@@ -109,7 +109,7 @@ export function Hoje({ navegar }: TelaProps) {
             fila.length > 0 ? "text-sev-medium" : "text-muted-foreground",
           )}
           data-estado={pendentes.status}
-          data-locum-probe="hoje"
+          data-locum-probe="today"
           data-pendencias={pendentes.status === "ready" ? fila.length : -1}
           id="hoje-espera"
         >
@@ -293,7 +293,7 @@ function LinhaTerminada({
       <button
         className="text-muted-foreground hover:text-foreground focus-visible:ring-ring shrink-0 cursor-pointer rounded px-1 text-sm transition-colors duration-200 focus-visible:ring-2 focus-visible:outline-none"
         data-locum-run={run.id}
-        onClick={() => navegar("execucoes", run.id)}
+        onClick={() => navegar("runs", run.id)}
         type="button"
       >
         {t("home.today.done.view")}
@@ -328,7 +328,7 @@ function SessoesPelaMetade({ navegar }: { navegar: TelaProps["navegar"] }) {
     <button
       className="superficie hover:border-foreground/20 focus-visible:ring-ring group flex cursor-pointer items-center gap-4 rounded-xl px-5 py-4 text-left transition-colors duration-200 focus-visible:ring-2 focus-visible:outline-none"
       data-locum-probe="hoje-sessoes"
-      onClick={() => navegar("sessoes")}
+      onClick={() => navegar("sessions")}
       type="button"
     >
       <span aria-hidden className="bg-chart-5/12 text-chart-5 flex size-9 shrink-0 items-center justify-center rounded-lg">
@@ -371,7 +371,7 @@ function ServidoresSemCredencial({ navegar }: { navegar: TelaProps["navegar"] })
       className="superficie hover:border-foreground/20 focus-visible:ring-ring group flex cursor-pointer items-center gap-4 rounded-xl px-5 py-4 text-left transition-colors duration-200 focus-visible:ring-2 focus-visible:outline-none"
       data-locum-probe="hoje-credencial"
       data-servidores={recusados.join(",")}
-      onClick={() => navegar("configuracao")}
+      onClick={() => navegar("settings")}
       type="button"
     >
       <span aria-hidden className="bg-destructive/12 text-destructive flex size-9 shrink-0 items-center justify-center rounded-lg">
@@ -461,12 +461,12 @@ function ComeceAqui({ agenda, navegar }: { agenda: Agenda[] | undefined; navegar
     {
       id: "model",
       feito: provedores.data.some((p) => p.available),
-      ir: () => navegar("configuracao", "modelos"),
+      ir: () => navegar("settings", "models"),
     },
     {
       id: "connection",
       feito: conexoes.data.some((c) => c.state === "connected" && c.id !== "claude-code"),
-      ir: () => navegar("configuracao", "conexoes"),
+      ir: () => navegar("settings", "connections"),
     },
     {
       id: "trigger",

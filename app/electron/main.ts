@@ -1120,7 +1120,7 @@ async function irPara(window: BrowserWindow, id: string, detalhe?: string): Prom
  * so a exigencia da story, que sao estes quatro destinos.
  */
 async function checkRoutes(window: BrowserWindow): Promise<string> {
-  const esperados = ["hoje", "inbox", "initiatives", "execucoes", "agents", "sessoes", "configuracao"];
+  const esperados = ["today", "inbox", "initiatives", "runs", "agents", "sessions", "settings"];
 
   const barra = (await window.webContents.executeJavaScript(
     `Array.from(document.querySelectorAll("[data-locum-rota]")).map((b) => ({
@@ -1177,6 +1177,17 @@ async function checkRoutes(window: BrowserWindow): Promise<string> {
     throw new Error(`hash desconhecido levou a janela para ${desconhecido}`);
   }
 
+  // O nome em português de antes da 0.1.20 ainda chega por deep link e janela
+  // restaurada, e precisa levar ao mesmo lugar, seção incluída.
+  await window.webContents.executeJavaScript(`(location.hash = "#/configuracao/conexoes", null)`);
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  const antigo = (await window.webContents.executeJavaScript(
+    `[document.querySelector("[data-locum-probe=rota]")?.dataset.ativo, location.hash].join("|")`,
+  )) as string;
+  if (antigo !== "settings|#/settings/connections") {
+    throw new Error(`hash antigo de Conexões levou a ${antigo}`);
+  }
+
   return t("smoke.routes", { count: barra.length });
 }
 
@@ -1186,12 +1197,12 @@ async function checkRoutes(window: BrowserWindow): Promise<string> {
  * sessão de "pela metade" e "Reabrir" devolve.
  */
 async function checkClaudeSessions(window: BrowserWindow): Promise<string> {
-  await irPara(window, "sessoes");
+  await irPara(window, "sessions");
   const contar = `(() => {
-    const p = document.querySelector("[data-locum-probe=sessoes]");
+    const p = document.querySelector("[data-locum-probe=sessions]");
     return p && p.dataset.estado === "ready" ? Number(p.dataset.sessoes) : null;
   })()`;
-  const total = await esperarProbe<number>(window, "sessoes", contar);
+  const total = await esperarProbe<number>(window, "sessions", contar);
   if (total !== 3) throw new Error(`a tela de sessões mostrou ${total} sessão(ões) e não 3`);
 
   const estadoDe = (id: string) =>
@@ -1622,7 +1633,7 @@ async function checkConfig(window: BrowserWindow): Promise<string> {
   const { providerService } = await import("../src/services/provider-service.js");
   const { FIXTURE_SERVER } = await import("../src/fixtures/mcp-fixture.js");
 
-  await irPara(window, "configuracao", "modelos");
+  await irPara(window, "settings", "models");
   const tela = await esperarProbe<{
     maquina: string;
     provedores: string;
@@ -1630,9 +1641,9 @@ async function checkConfig(window: BrowserWindow): Promise<string> {
     servidores: string;
   }>(
     window,
-    "configuracao",
+    "settings",
     `(() => {
-      const probe = document.querySelector("[data-locum-probe=configuracao]");
+      const probe = document.querySelector("[data-locum-probe=settings]");
       if (probe === null || probe.dataset.estado !== "pronto") return null;
       return {
         maquina: probe.dataset.locumMaquina,
@@ -1726,7 +1737,7 @@ async function checkConfig(window: BrowserWindow): Promise<string> {
       `document.querySelector('[data-locum-orcamento="${orcamento.agentId}"]') === null ? null : true`,
     );
   }
-  await irPara(window, "configuracao", "conexoes");
+  await irPara(window, "settings", "connections");
 
   // Segredo nao tem como chegar na tela, porque nao ha canal que o devolva. O
   // que da para conferir daqui e que o marcador nao guarda nada alem do
@@ -1797,7 +1808,7 @@ async function checkConfig(window: BrowserWindow): Promise<string> {
   const adiante = Date.now() + 60 * 60_000;
   await mcpService.recordConnection(FIXTURE_SERVER, { ok: false, error: "HTTP 401: Unauthorized" }, new Date(adiante));
   try {
-    await irPara(window, "hoje");
+    await irPara(window, "today");
     const avisados = await esperarProbe<string>(
       window,
       "aviso de credencial na Hoje",
@@ -1809,7 +1820,7 @@ async function checkConfig(window: BrowserWindow): Promise<string> {
   } finally {
     await mcpService.recordConnection(FIXTURE_SERVER, { ok: true }, new Date(adiante + 1));
   }
-  await irPara(window, "configuracao");
+  await irPara(window, "settings");
   if (resultado.ferramentas !== doServico.toolCount) {
     throw new Error(
       `a tela contou ${resultado.ferramentas} ferramenta(s) e o servico contou ${doServico.toolCount}`,
@@ -1860,7 +1871,7 @@ async function checkConfig(window: BrowserWindow): Promise<string> {
  * onde a resposta sai de dentro da maquina.
  */
 async function checkProviderKeys(window: BrowserWindow): Promise<string> {
-  await irPara(window, "configuracao", "modelos");
+  await irPara(window, "settings", "models");
   const { createServer } = await import("node:http");
   const { eq } = await import("drizzle-orm");
   const { db, schema } = await import("../src/db/index.js");
@@ -2049,7 +2060,7 @@ async function checkProviderKeys(window: BrowserWindow): Promise<string> {
  * linha é plantada e apagada aqui.
  */
 async function checkRegisteredProviders(window: BrowserWindow): Promise<string> {
-  await irPara(window, "configuracao", "modelos");
+  await irPara(window, "settings", "models");
   const { createServer } = await import("node:http");
   const { and, eq } = await import("drizzle-orm");
   const { db, schema } = await import("../src/db/index.js");
@@ -2304,7 +2315,7 @@ async function checkRegisteredProviders(window: BrowserWindow): Promise<string> 
  * aprovação, e ele é assunto da próxima story.
  */
 async function checkTrackers(window: BrowserWindow): Promise<string> {
-  await irPara(window, "configuracao", "conexoes");
+  await irPara(window, "settings", "connections");
   // O GitHub Issues mora no painel do GitHub, e o Jira no da Atlassian.
   await abrirConexao(window, "github");
   const { createServer } = await import("node:http");
@@ -3956,7 +3967,7 @@ async function checkMcpPoll(): Promise<string> {
  * desenvolve, e sair de um exame tendo apagado o Slack dele seria estrago.
  */
 async function checkSlackWindow(window: BrowserWindow): Promise<string> {
-  await irPara(window, "configuracao", "conexoes");
+  await irPara(window, "settings", "connections");
   await abrirConexao(window, "slack");
   const { slackService } = await import("../src/services/slack-service.js");
   const { FIXTURE_SERVER } = await import("../src/fixtures/mcp-fixture.js");
@@ -4394,7 +4405,7 @@ async function esperarDoServico<T>(
  * olhando.
  */
 async function checkGithub(window: BrowserWindow): Promise<string> {
-  await irPara(window, "configuracao", "conexoes");
+  await irPara(window, "settings", "connections");
   await abrirConexao(window, "github");
   const { secretService } = await import("../src/services/secret-service.js");
   const { settingsService } = await import("../src/services/settings-service.js");
@@ -4838,12 +4849,12 @@ async function checkMessageReview(window: BrowserWindow): Promise<string> {
 async function checkRuns(window: BrowserWindow, runId: string): Promise<string> {
   const { runService } = await import("../src/services/run-service.js");
 
-  await irPara(window, "execucoes");
+  await irPara(window, "runs");
   const lista = await esperarProbe<{ estado: string; runs: string; total: number }>(
     window,
-    "execucoes",
+    "runs",
     `(() => {
-      const probe = document.querySelector("[data-locum-probe=execucoes]");
+      const probe = document.querySelector("[data-locum-probe=runs]");
       if (probe === null || probe.dataset.estado !== "ready") return null;
       return { estado: probe.dataset.estado, runs: probe.dataset.runs, total: Number(probe.dataset.total) };
     })()`,
@@ -4873,7 +4884,7 @@ async function checkRuns(window: BrowserWindow, runId: string): Promise<string> 
     throw new Error(`o chip de iniciativa mostrou "${chip}" e nao "example"`);
   }
 
-  await irPara(window, "execucoes", runId);
+  await irPara(window, "runs", runId);
   const detalhe = await esperarProbe<{ run: string; passos: number; chaves: string; achados: number }>(
     window,
     "execucao",
@@ -5157,12 +5168,12 @@ async function lerTelas(window: BrowserWindow): Promise<TelasVistas> {
     })()`,
   );
 
-  await irPara(window, "execucoes");
+  await irPara(window, "runs");
   const execucoes = await esperarProbe<{ texto: string; total: number }>(
     window,
-    "execucoes",
+    "runs",
     `(() => {
-      const probe = document.querySelector("[data-locum-probe=execucoes]");
+      const probe = document.querySelector("[data-locum-probe=runs]");
       if (probe === null || probe.dataset.estado !== "ready") return null;
       return { texto: (probe.textContent ?? "").trim(), total: Number(probe.dataset.total) };
     })()`,
@@ -5379,7 +5390,7 @@ async function checkLanguagePicker(window: BrowserWindow): Promise<string> {
 
   const dicionarios: Record<string, Dicionario> = { en, "pt-BR": ptBR };
 
-  await irPara(window, "configuracao");
+  await irPara(window, "settings");
 
   const rotulos: string[] = [];
   const daBandeja: string[] = [];
@@ -5807,20 +5818,20 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
   const primeiraIniciativa = (await initiativeService.list())[0]?.slug;
 
   const destinos: [string, string | undefined][] = [
-    ["hoje", undefined],
+    ["today", undefined],
     ["inbox", undefined],
     ["inbox", primeiraPendencia],
-    ["execucoes", undefined],
-    ["execucoes", primeiroRun],
+    ["runs", undefined],
+    ["runs", primeiroRun],
     ["agents", undefined],
     ["agents", primeiroAgent],
     ["initiatives", undefined],
     ["initiatives", primeiraIniciativa],
-    ["sessoes", undefined],
+    ["sessions", undefined],
     // Uma foto por seção, com o nome dela: a Configuração tem três.
-    ["configuracao", "geral"],
-    ["configuracao", "modelos"],
-    ["configuracao", "conexoes"],
+    ["settings", "general"],
+    ["settings", "models"],
+    ["settings", "connections"],
   ];
 
   for (const [id, detalhe] of destinos) {
@@ -5829,7 +5840,7 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
     // registraria o esqueleto em vez do conteúdo.
     await new Promise((resolve) => setTimeout(resolve, 1200));
     const imagem = await janela.webContents.capturePage();
-    const sufixo = detalhe === undefined ? "" : id === "configuracao" ? `-${detalhe}` : "-detalhe";
+    const sufixo = detalhe === undefined ? "" : id === "settings" ? `-${detalhe}` : "-detalhe";
     writeFileSync(join(destino, `${id}${sufixo}.png`), imagem.toPNG());
   }
 

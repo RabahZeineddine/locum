@@ -59,14 +59,14 @@ type Teste = ReadResult<"mcp.test">;
  * O que ficou se divide pelo que a pessoa veio fazer: ajustar o app, dizer
  * quais modelos rodam, ou ligar o Locum a outro serviço.
  */
-export const SECOES = ["geral", "modelos", "conexoes"] as const;
+export const SECOES = ["general", "models", "connections"] as const;
 export type SecaoId = (typeof SECOES)[number];
 
 export function Configuracao({ detalhe, navegar }: TelaProps) {
   const { t } = useTranslation();
   const secao: SecaoId = (SECOES as readonly string[]).includes(detalhe ?? "")
     ? (detalhe as SecaoId)
-    : "geral";
+    : "general";
   const maquina = useRead("machine.profile");
   const machineId = maquina.data?.machineId ?? null;
 
@@ -147,7 +147,7 @@ export function Configuracao({ detalhe, navegar }: TelaProps) {
       data-locum-fallbacks={fallbacks.data?.length ?? -1}
       data-locum-maquina={machineId ?? ""}
       data-locum-secao-ativa={secao}
-      data-locum-probe="configuracao"
+      data-locum-probe="settings"
       data-locum-provedores={listaDeProvedores.map((p) => p.name).join(",")}
       data-locum-servidores={(servidores.data ?? []).map((s) => s.config.name).join(",")}
     >
@@ -159,7 +159,7 @@ export function Configuracao({ detalhe, navegar }: TelaProps) {
             className="cursor-pointer"
             data-locum-secao={id}
             key={id}
-            onClick={() => navegar("configuracao", id)}
+            onClick={() => navegar("settings", id)}
             role="tab"
             size="sm"
             variant={id === secao ? "secondary" : "ghost"}
@@ -175,7 +175,7 @@ export function Configuracao({ detalhe, navegar }: TelaProps) {
         </p>
       )}
 
-      {secao === "geral" ? (
+      {secao === "general" ? (
         <>
           <Secao
             descricao={t("settings.language.description")}
@@ -202,7 +202,7 @@ export function Configuracao({ detalhe, navegar }: TelaProps) {
         </>
       ) : null}
 
-      {secao === "modelos" ? (
+      {secao === "models" ? (
         <>
           <Secao
             descricao={t("settings.providers.description")}
@@ -273,7 +273,7 @@ export function Configuracao({ detalhe, navegar }: TelaProps) {
         </>
       ) : null}
 
-      {secao === "conexoes" ? (
+      {secao === "connections" ? (
         <>
           <Vitrine
             paineis={{

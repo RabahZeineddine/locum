@@ -19,6 +19,29 @@ export interface Local<Id extends string> {
 }
 
 /**
+ * Pares de prefixo antigo e novo do hash, do mais longo para o mais curto.
+ *
+ * Os destinos tinham nome em português e passaram para inglês. Deep link,
+ * notificação e janela restaurada de uma versão anterior ainda chegam com o
+ * nome velho, e cair no padrão perderia o run ou a seção que a pessoa pediu.
+ */
+export type Antigos = readonly (readonly [string, string])[];
+
+/**
+ * Troca o prefixo antigo pelo novo e corrige a barra de endereço, para que o
+ * voltar do histórico não reabra o nome velho.
+ */
+function traduzir(bruto: string, antigos: Antigos): string {
+  for (const [velho, novo] of antigos) {
+    if (bruto !== velho && !bruto.startsWith(`${velho}/`)) continue;
+    const traduzido = novo + bruto.slice(velho.length);
+    globalThis.history?.replaceState(null, "", `#/${traduzido}`);
+    return traduzido;
+  }
+  return bruto;
+}
+
+/**
  * O hash cru vira destino mais detalhe.
  *
  * O primeiro segmento e o destino; o resto vai inteiro para `detalhe`, sem ser
@@ -27,8 +50,8 @@ export interface Local<Id extends string> {
  * resto: hash velho chega de deep link e de janela restaurada, e deixar a
  * janela em branco seria pior do que voltar para a inbox.
  */
-function lerHash<Id extends string>(ids: readonly Id[], padrao: Id): Local<Id> {
-  const bruto = globalThis.location?.hash.replace(/^#\/?/, "") ?? "";
+function lerHash<Id extends string>(ids: readonly Id[], padrao: Id, antigos: Antigos = []): Local<Id> {
+  const bruto = traduzir(globalThis.location?.hash.replace(/^#\/?/, "") ?? "", antigos);
   const corte = bruto.indexOf("/");
   const cabeca = corte === -1 ? bruto : bruto.slice(0, corte);
   const resto = corte === -1 ? "" : bruto.slice(corte + 1);
@@ -48,8 +71,9 @@ function lerHash<Id extends string>(ids: readonly Id[], padrao: Id): Local<Id> {
 export function useRota<Id extends string>(
   ids: readonly Id[],
   padrao: Id,
+  antigos: Antigos = [],
 ): Local<Id> & { navegar: (id: Id, detalhe?: string) => void } {
-  const [local, setLocal] = useState<Local<Id>>(() => lerHash(ids, padrao));
+  const [local, setLocal] = useState<Local<Id>>(() => lerHash(ids, padrao, antigos));
 
   // O catalogo entra por valor, pelo mesmo motivo do `useRead`: quem chama
   // passa a lista literal, que muda de referencia a cada render, e comparar
@@ -57,11 +81,13 @@ export function useRota<Id extends string>(
   const chave = ids.join(",");
   const catalogo = useRef(ids);
   catalogo.current = ids;
+  const traducoes = useRef(antigos);
+  traducoes.current = antigos;
 
   useEffect(() => {
     const ouvir = () =>
       setLocal((antes) => {
-        const agora = lerHash(catalogo.current, padrao);
+        const agora = lerHash(catalogo.current, padrao, traducoes.current);
         // Gravar sempre um objeto novo faria toda tela remontar a cada
         // `hashchange`, inclusive o que so trocou o fragmento e voltou igual.
         return antes.ativa === agora.ativa && antes.detalhe === agora.detalhe ? antes : agora;

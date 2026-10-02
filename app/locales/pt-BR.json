@@ -807,9 +807,9 @@
       }
     },
     "sections": {
-      "geral": "Geral",
-      "modelos": "Modelos",
-      "conexoes": "Conexões"
+      "general": "Geral",
+      "models": "Modelos",
+      "connections": "Conexões"
     },
     "staleDays": {
       "title": "Iniciativa parada",

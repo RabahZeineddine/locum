@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { Assistente } from "./assistente";
 import { CurrentInitiativeProvider } from "./current-initiative";
 import { Paleta } from "./paleta";
-import { ROTA_IDS, ROTA_PADRAO, ROTAS } from "./rotas";
+import { ROTA_IDS, ROTA_PADRAO, ROTAS, ROTAS_ANTIGAS } from "./rotas";
 
 /**
  * Estado da ponte, no rodape da barra lateral.
@@ -92,7 +92,7 @@ function Marca() {
  */
 export function Layout() {
   const { t } = useTranslation();
-  const { ativa, detalhe, navegar } = useRota(ROTA_IDS, ROTA_PADRAO);
+  const { ativa, detalhe, navegar } = useRota(ROTA_IDS, ROTA_PADRAO, ROTAS_ANTIGAS);
   const rota = ROTAS.find((r) => r.id === ativa) ?? ROTAS[0];
   const { Tela } = rota;
 
@@ -162,7 +162,7 @@ export function Layout() {
           <button
             className="px-3 pb-3 text-left text-[11px] text-muted-foreground/70 hover:text-muted-foreground"
             data-locum-probe="versao"
-            onClick={() => navegar("configuracao")}
+            onClick={() => navegar("settings")}
             title={t("nav.versionHint")}
             type="button"
           >

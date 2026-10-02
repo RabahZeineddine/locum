@@ -149,7 +149,7 @@ export function Assistente({ navegar }: Pick<TelaProps, "navegar">) {
                   data-locum-assistente-modelo
                   onClick={() => {
                     setAberto(false);
-                    navegar("configuracao", "modelos");
+                    navegar("settings", "models");
                   }}
                   size="sm"
                 >

@@ -441,7 +441,7 @@ function DetalheDoAgent({
         <RodarAgora
           agentId={agentId}
           aoCancelar={() => setRodando(false)}
-          aoRodar={(runId) => navegar("execucoes", runId)}
+          aoRodar={(runId) => navegar("runs", runId)}
         />
       )}
 

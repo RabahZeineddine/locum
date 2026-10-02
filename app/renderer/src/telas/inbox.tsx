@@ -367,7 +367,7 @@ function FaixaDeFalha({
   return (
     <button
       type="button"
-      onClick={() => navegar("execucoes")}
+      onClick={() => navegar("runs")}
       className="border-border/60 bg-muted/40 hover:bg-muted focus-visible:ring-ring flex min-h-11 cursor-pointer items-center gap-2 rounded-md border px-3 text-left text-sm transition-colors duration-200 focus-visible:ring-2 focus-visible:outline-none"
     >
       <AlertTriangle className="size-4 shrink-0 text-amber-500" aria-hidden />

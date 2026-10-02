@@ -117,9 +117,10 @@ inglês; as mensagens de erro seguem em português.
 `CONTRIBUTING.md` com o passo a passo de rodar, verificar e adicionar idioma
 novo. README e CONTRIBUTING em inglês prontos em 01/10, com as versões em
 português ao lado (`README.pt-BR.md`, `CONTRIBUTING.pt-BR.md`); o rename de
-identificadores segue opcional. Opcional: renomear identificadores em português do código, com
-redirecionamento do hash antigo para os ids de rota que mudarem
-(`execucoes`, `configuracao`, `revisao`).
+identificadores segue opcional. Os ids de rota passaram para inglês em 02/10
+(`today`, `runs`, `sessions`, `settings` com `general`, `models` e
+`connections`), e o hash antigo em português é traduzido pelo roteador. O
+rename dos identificadores internos do código continua opcional.
 
 ## Depois do aplicativo
 

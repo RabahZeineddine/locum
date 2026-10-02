@@ -89,7 +89,7 @@ export function Sessoes(_props: TelaProps) {
     <div
       className="flex max-w-5xl flex-col gap-8 pt-4"
       data-estado={leitura.status}
-      data-locum-probe="sessoes"
+      data-locum-probe="sessions"
       data-sessoes={leitura.status === "ready" ? sessoes.length : -1}
     >
       <header className="flex items-start justify-between gap-6">

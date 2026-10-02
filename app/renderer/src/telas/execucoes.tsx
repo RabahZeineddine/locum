@@ -106,7 +106,7 @@ function Lista({ navegar }: { navegar: TelaProps["navegar"] }) {
       <div
         className="text-muted-foreground -mb-2 text-xs"
         data-estado={runs.status}
-        data-locum-probe="execucoes"
+        data-locum-probe="runs"
         data-runs={linhas.map((r) => r.id).join(",")}
         data-total={linhas.length}
       >
@@ -167,7 +167,7 @@ function LinhaDeExecucao({
     <button
       className="hover:bg-accent/40 focus-visible:ring-ring border-border relative w-full cursor-pointer border-b px-4 py-2.5 text-left transition-colors duration-200 last:border-b-0 focus-visible:ring-2 focus-visible:-outline-offset-2"
       data-locum-run={run.id}
-      onClick={() => navegar("execucoes", run.id)}
+      onClick={() => navegar("runs", run.id)}
       style={{ height: ALTURA_DA_LINHA }}
       type="button"
     >
@@ -247,7 +247,7 @@ function Execucao({ navegar, runId }: { navegar: TelaProps["navegar"]; runId: st
       data-run={detalhe.id}
     >
       <div className="flex items-center gap-3">
-        <Button onClick={() => navegar("execucoes")} size="sm" variant="ghost">
+        <Button onClick={() => navegar("runs")} size="sm" variant="ghost">
           <ArrowLeft className="size-4" />
           {t("runs.title")}
         </Button>

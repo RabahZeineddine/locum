@@ -15,11 +15,11 @@ export const REPO_URL = "https://github.com/RabahZeineddine/locum";
 
 /** Os destinos da janela, na ordem da barra lateral, com o atalho de cada um. */
 const DESTINOS = [
-  { id: "hoje", rotulo: "nav.today" },
+  { id: "today", rotulo: "nav.today" },
   { id: "inbox", rotulo: "nav.queue" },
-  { id: "execucoes", rotulo: "nav.runs" },
+  { id: "runs", rotulo: "nav.runs" },
   { id: "agents", rotulo: "nav.agents" },
-  { id: "configuracao", rotulo: "nav.settings" },
+  { id: "settings", rotulo: "nav.settings" },
 ] as const;
 
 export interface OpcoesDoMenu {
@@ -102,7 +102,7 @@ function modelo(): MenuItemConstructorOptions[] {
         { label: t("menu.app.about"), role: "about" },
         { label: t("menu.app.checkUpdates"), click: () => void procurarAtualizacoes() },
         { type: "separator" },
-        { label: t("menu.app.settings"), accelerator: "CmdOrCtrl+,", click: () => void irPara("configuracao") },
+        { label: t("menu.app.settings"), accelerator: "CmdOrCtrl+,", click: () => void irPara("settings") },
         { type: "separator" },
         { label: t("menu.app.services"), role: "services" },
         { type: "separator" },
