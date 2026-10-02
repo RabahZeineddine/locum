@@ -27,7 +27,7 @@ export function buildMcpServer(): McpServer {
     "locum_health",
     {
       description:
-        "Confere que o servidor esta de pe e enxergando o mesmo banco do aplicativo.",
+        "Checks that the server is up and sees the same database as the app.",
       inputSchema: {},
     },
     async () => ({

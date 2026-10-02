@@ -42,27 +42,27 @@ import { machineService } from "../src/services/machine-service.js";
 export function chatTools(): ToolSet {
   return {
     listar_agents: tool({
-      description: "Lista os agents cadastrados, com nome e se estao habilitados.",
+      description: "Lists the registered agents, with name and whether each is enabled.",
       inputSchema: z.object({}),
       execute: async () => agentService.list(),
     }),
 
     ver_agent: tool({
       description:
-        "Detalhe de um agent: a versao mais recente do spec, com passos, modelos, ferramentas e orcamento.",
+        "Details of one agent: the latest version of its spec, with steps, models, tools and budget.",
       inputSchema: z.object({ agentId: z.string() }),
       execute: async ({ agentId }) => agentService.getLatestVersion(agentId),
     }),
 
     versoes_do_agent: tool({
-      description: "Historico de versoes de um agent, da mais nova para a mais antiga.",
+      description: "Version history of an agent, newest first.",
       inputSchema: z.object({ agentId: z.string() }),
       execute: async ({ agentId }) => agentService.listVersions(agentId),
     }),
 
     listar_execucoes: tool({
       description:
-        "Execucoes recentes, opcionalmente filtradas por estado (queued, running, paused, done, failed) ou por agent.",
+        "Recent runs, optionally filtered by status (queued, running, paused, done, failed) or by agent.",
       inputSchema: z.object({
         status: z.string().optional(),
         agentId: z.string().optional(),
@@ -73,57 +73,57 @@ export function chatTools(): ToolSet {
 
     ver_execucao: tool({
       description:
-        "Detalhe de uma execucao: cada passo com modelo usado, substituicao, ferramentas, tokens, custo e erro.",
+        "Details of one run: each step with the model used, fallback, tools, tokens, cost and error.",
       inputSchema: z.object({ runId: z.string() }),
       execute: async ({ runId }) => runService.get(runId),
     }),
 
     achados_da_execucao: tool({
-      description: "Achados de uma execucao, com arquivo, linha, severidade e problema.",
+      description: "Findings of a run, with file, line, severity and issue.",
       inputSchema: z.object({ runId: z.string() }),
       execute: async ({ runId }) => runService.findings(runId),
     }),
 
     fila_de_aprovacao: tool({
       description:
-        "Pendencias esperando decisao. Somente leitura: decidir e clique de uma pessoa, nao acao sua.",
+        "Pending approvals awaiting a decision. Read only: deciding is a person's click, never your action.",
       inputSchema: z.object({}),
       execute: async () => approvalService.listPending(),
     }),
 
     metricas: tool({
-      description: "Precisao e concordancia por versao de agent, a partir dos desfechos ja reconciliados.",
+      description: "Precision and agreement per agent version, from the outcomes already reconciled.",
       inputSchema: z.object({ agentId: z.string().optional() }),
       execute: async ({ agentId }) => metricsService.report({ agentId }),
     }),
 
     listar_provedores: tool({
-      description: "Provedores de modelo e se estao disponiveis nesta maquina.",
+      description: "Model providers and whether each is available on this machine.",
       inputSchema: z.object({}),
       execute: async () => providerService.listProviders(),
     }),
 
     perfil_da_maquina: tool({
-      description: "Identificador desta maquina e a tabela de substituicao de modelo dela.",
+      description: "This machine's identifier and its model fallback table.",
       inputSchema: z.object({}),
       execute: async () => machineService.profile(),
     }),
 
     listar_servidores_mcp: tool({
-      description: "Servidores MCP cadastrados, com transporte, escopo e se estao habilitados.",
+      description: "Registered MCP servers, with transport, scope and whether each is enabled.",
       inputSchema: z.object({}),
       execute: async () => mcpService.list(),
     }),
 
     ferramentas_do_servidor: tool({
       description:
-        "Ferramentas que um servidor MCP expoe, com descricao e estimativa de tokens do schema de cada uma.",
+        "Tools an MCP server exposes, with the description and estimated schema tokens of each.",
       inputSchema: z.object({ nome: z.string() }),
       execute: async ({ nome }) => mcpService.listTools(nome),
     }),
 
     testar_servidor_mcp: tool({
-      description: "Conecta num servidor MCP cadastrado e informa se ele respondeu.",
+      description: "Connects to a registered MCP server and reports whether it answered.",
       inputSchema: z.object({ nome: z.string() }),
       execute: async ({ nome }) => mcpService.testConnection(nome),
     }),

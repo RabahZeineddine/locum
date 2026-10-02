@@ -28,12 +28,12 @@ export function registerConfigTools(server: McpServer): void {
     "upsert_agent",
     {
       description:
-        "Grava um AgentSpec como versao nova e imutavel. Spec identico ao topo devolve a versao que ja existe. Spec invalido nao grava nada. Passo de acao gravado por aqui nasce em modo de aprovacao: rascunho e automatico sao rebaixados e o rebaixamento vem na resposta.",
+        "Records an AgentSpec as a new immutable version. A spec identical to the latest returns the existing version. An invalid spec records nothing. Action steps recorded here start in approval mode: draft and auto are downgraded, and the response reports the downgrade.",
       inputSchema: {
         spec: z
           .record(z.string(), z.unknown())
-          .describe("AgentSpec completo: id, name, steps e o resto do formato de get_agent"),
-        note: z.string().optional().describe("motivo da alteracao, guardado junto da versao"),
+          .describe("full AgentSpec: id, name, steps and the rest of the get_agent format"),
+        note: z.string().optional().describe("reason for the change, stored with the version"),
       },
     },
     async ({ spec, note }) =>
@@ -61,26 +61,26 @@ export function registerConfigTools(server: McpServer): void {
     "register_mcp_server",
     {
       description:
-        "Cadastra ou atualiza um servidor MCP que o Locum vai consumir como cliente. O nome e a chave que os passos referenciam.",
+        "Registers or updates an MCP server that Locum consumes as a client. The name is the key that steps reference.",
       inputSchema: {
         name: z.string().min(1),
         transport: z.enum(["stdio", "http", "sse"]),
         command: z
           .array(z.string())
           .optional()
-          .describe("executavel e argumentos ja separados, obrigatorio no stdio"),
+          .describe("executable and arguments already split, required for stdio"),
         env: z.record(z.string(), z.string()).optional(),
-        url: z.string().optional().describe("obrigatorio em http e sse"),
+        url: z.string().optional().describe("required for http and sse"),
         headers: z.record(z.string(), z.string()).optional(),
         scope: z
           .enum(["read", "write"])
           .optional()
-          .describe("write nao libera escrita externa sem aprovacao, so classifica"),
+          .describe("write does not allow external writes without approval, it only classifies"),
         idleTimeoutMs: z.number().int().positive().optional(),
         enabled: z
           .boolean()
           .optional()
-          .describe("se o executor pode enxergar o servidor; ausente mantem como esta"),
+          .describe("whether the executor can see the server; when absent, keeps the current value"),
       },
     },
     async ({ enabled, ...config }) =>
@@ -95,7 +95,7 @@ export function registerConfigTools(server: McpServer): void {
     "test_mcp_server",
     {
       description:
-        "Sobe o servidor cadastrado, conta as ferramentas e encerra. Falha de conexao volta como resultado, nao como erro.",
+        "Starts the registered server, counts its tools and shuts it down. A connection failure comes back as a result, not as an error.",
       inputSchema: { name: z.string().min(1) },
     },
     async ({ name }) => respond(() => mcpService.testConnection(name)),
@@ -105,7 +105,7 @@ export function registerConfigTools(server: McpServer): void {
     "list_server_tools",
     {
       description:
-        "Ferramentas que um servidor cadastrado expoe, com descricao e estimativa de tokens do schema, para escolher quais marcar num passo.",
+        "Tools a registered server exposes, with description and estimated schema tokens, to choose which ones a step uses.",
       inputSchema: { name: z.string().min(1) },
     },
     async ({ name }) => respond(() => mcpService.listTools(name)),
@@ -115,20 +115,20 @@ export function registerConfigTools(server: McpServer): void {
     "set_model_fallback",
     {
       description:
-        "Grava uma substituicao de modelo para esta maquina. Cadeia circular e recusada na gravacao.",
+        "Records a model fallback for this machine. A circular chain is refused on write.",
       inputSchema: {
-        fromModel: z.string().describe("no formato provedor/modelo"),
-        toModel: z.string().describe("no formato provedor/modelo"),
+        fromModel: z.string().describe("as provider/model"),
+        toModel: z.string().describe("as provider/model"),
         order: z
           .number()
           .int()
           .min(0)
           .optional()
-          .describe("ordem de tentativa entre as saidas do mesmo modelo"),
+          .describe("attempt order among the fallbacks of the same model"),
         machineId: z
           .string()
           .optional()
-          .describe("ausente usa esta maquina, que e o caso normal"),
+          .describe("when absent, uses this machine, which is the normal case"),
       },
     },
     async ({ fromModel, toModel, order, machineId: target }) =>
@@ -143,7 +143,7 @@ export function registerConfigTools(server: McpServer): void {
     "set_budget",
     {
       description:
-        "Ajusta o teto de gasto de um agent. Como o orcamento mora no spec, isso grava versao nova. Campo ausente fica como esta e null tira o teto. O teto em tokens e o que protege modelo sem preco cadastrado, cujo custo em dolar fica zero.",
+        "Adjusts an agent's spending cap. The budget lives in the spec, so this records a new version. An absent field stays as is and null removes the cap. The token cap is what protects a model without a registered price, whose dollar cost stays at zero.",
       inputSchema: {
         agentId: z.string(),
         perRunUsd: z.number().positive().nullable().optional(),
@@ -168,15 +168,15 @@ export function registerConfigTools(server: McpServer): void {
     "set_trigger",
     {
       description:
-        "Cadastra ou atualiza um gatilho do agent. Nasce desabilitado: habilitar e o passo que deixa o agent acordar sozinho.",
+        "Registers or updates an agent trigger. It starts disabled: enabling it is the step that lets the agent wake up on its own.",
       inputSchema: {
         agentId: z.string(),
         config: z
           .record(z.string(), z.unknown())
           .describe(
-            'por tipo: {"kind":"schedule","everyMinutes":30}, {"kind":"webhook","path":"..."}, {"kind":"poll","source":"github","owner":"...","repoMatch":"...","authorship":"any|mine|others","includeDrafts":false} {"kind":"mcp-poll","server":"...","tool":"..."} , {"kind":"slack-inbox","mentions":true,"dms":true}, só com o Slack conectado pelo servidor oficial, ou {"kind":"teams-inbox","mentions":true,"dms":true,"channels":[{"teamId":"...","channelId":"...","label":"..."}]}, só com o Teams conectado (channels pede os escopos de canal)',
+            'by kind: {"kind":"schedule","everyMinutes":30}, {"kind":"webhook","path":"..."}, {"kind":"poll","source":"github","owner":"...","repoMatch":"...","authorship":"any|mine|others","includeDrafts":false} {"kind":"mcp-poll","server":"...","tool":"..."} , {"kind":"slack-inbox","mentions":true,"dms":true}, only with Slack connected through the official server, or {"kind":"teams-inbox","mentions":true,"dms":true,"channels":[{"teamId":"...","channelId":"...","label":"..."}]}, only with Teams connected (channels needs the channel scopes)',
           ),
-        triggerId: z.string().optional().describe("ausente cadastra, presente atualiza aquele"),
+        triggerId: z.string().optional().describe("when absent, registers a new one; when present, updates that one"),
         enabled: z.boolean().optional(),
       },
     },

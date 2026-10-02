@@ -20,21 +20,21 @@ export function registerRunTools(server: McpServer): void {
     "run_agent",
     {
       description:
-        "Dispara um agent contra um pull request ou contra o evento sintetico. Devolve o identificador do run; o andamento sai por get_run.",
+        "Runs an agent against a pull request or against the synthetic event. Returns the run id; follow progress with get_run.",
       inputSchema: {
         target: z
           .string()
           .describe(
-            '"owner/repo#123" para alvo real, "sintetico" para o evento de fumaca com defeito plantado ou "sintetico-limpo" para o diff correto',
+            '"owner/repo#123" for a real target, "sintetico" for the smoke event with a planted defect, or "sintetico-limpo" for the clean diff',
           ),
         agentId: z
           .string()
           .optional()
-          .describe("ausente usa o agent semente; a versao e sempre a mais recente"),
+          .describe("when absent, uses the seed agent; the version is always the latest"),
         wait: z
           .boolean()
           .optional()
-          .describe("verdadeiro segura a resposta ate o run parar, o que pode levar minutos"),
+          .describe("true holds the response until the run stops, which can take minutes"),
       },
     },
     async ({ target, agentId, wait }) =>
@@ -45,11 +45,11 @@ export function registerRunTools(server: McpServer): void {
     "rerun_step",
     {
       description:
-        "Zera um passo e todos que dependem dele, e roda o run de novo a partir dali. O custo dos passos zerados sai do total.",
+        "Resets a step and every step that depends on it, then runs the run again from there. The cost of the reset steps leaves the total.",
       inputSchema: {
         runId: z.string(),
-        stepKey: z.string().describe("chave do passo no spec, como aparece em get_run"),
-        wait: z.boolean().optional().describe("verdadeiro segura a resposta ate o run parar"),
+        stepKey: z.string().describe("step key in the spec, as shown by get_run"),
+        wait: z.boolean().optional().describe("true holds the response until the run stops"),
       },
     },
     async ({ runId, stepKey, wait }) =>

@@ -23,7 +23,7 @@ export function registerReadTools(server: McpServer): void {
   server.registerTool(
     "list_agents",
     {
-      description: "Lista os agents cadastrados com a versao mais recente de cada um.",
+      description: "Lists the registered agents with the latest version of each.",
       inputSchema: {},
     },
     async () => respond(listAgents),
@@ -32,9 +32,9 @@ export function registerReadTools(server: McpServer): void {
   server.registerTool(
     "get_agent",
     {
-      description: "Devolve um agent, o spec da versao mais recente e o historico de versoes.",
+      description: "Returns an agent, the spec of its latest version and its version history.",
       inputSchema: {
-        agentId: z.string().describe("identificador do agent, como aparece em list_agents"),
+        agentId: z.string().describe("agent id, as shown by list_agents"),
       },
     },
     async ({ agentId }) => respond(() => getAgent(agentId)),
@@ -43,9 +43,9 @@ export function registerReadTools(server: McpServer): void {
   server.registerTool(
     "list_runs",
     {
-      description: "Lista as execucoes mais recentes, opcionalmente filtrando por status ou agent.",
+      description: "Lists the most recent runs, optionally filtered by status or agent.",
       inputSchema: {
-        status: z.string().optional().describe("queued, running, done, paused ou failed"),
+        status: z.string().optional().describe("queued, running, done, paused or failed"),
         agentId: z.string().optional(),
         limit: z.number().int().min(1).max(200).optional(),
       },
@@ -56,7 +56,7 @@ export function registerReadTools(server: McpServer): void {
   server.registerTool(
     "get_run",
     {
-      description: "Devolve uma execucao com os passos e o spec da versao que ela executou.",
+      description: "Returns a run with its steps and the spec of the version it ran.",
       inputSchema: { runId: z.string() },
     },
     async ({ runId }) => respond(() => getRun(runId)),
@@ -66,7 +66,7 @@ export function registerReadTools(server: McpServer): void {
     "list_findings",
     {
       description:
-        "Achados de uma execucao, vindos da tabela ou da saida do passo que os produziu.",
+        "Findings of a run, from the findings table or from the output of the step that produced them.",
       inputSchema: { runId: z.string() },
     },
     async ({ runId }) => respond(() => runService.findings(runId)),
@@ -75,7 +75,7 @@ export function registerReadTools(server: McpServer): void {
   server.registerTool(
     "get_metrics",
     {
-      description: "Metricas por versao de agent e o gasto diario registrado.",
+      description: "Metrics per agent version and the recorded daily spend.",
       inputSchema: {
         agentId: z.string().optional(),
         days: z
@@ -84,7 +84,7 @@ export function registerReadTools(server: McpServer): void {
           .min(1)
           .max(365)
           .optional()
-          .describe("janela de gasto, contada a partir de hoje"),
+          .describe("spend window, counted back from today"),
       },
     },
     async ({ agentId, days }) => respond(() => metricsService.report({ agentId, days })),
@@ -94,7 +94,7 @@ export function registerReadTools(server: McpServer): void {
     "list_mcp_servers",
     {
       description:
-        "Servidores MCP cadastrados, com transporte, escopo e se estao expostos ao executor.",
+        "Registered MCP servers, with transport, scope and whether each is exposed to the executor.",
       inputSchema: {},
     },
     async () => respond(listMcpServers),
@@ -104,12 +104,12 @@ export function registerReadTools(server: McpServer): void {
     "list_providers",
     {
       description:
-        "Provedores de modelo desta maquina, a tabela de substituicao e, se pedido, onde um modelo cairia.",
+        "Model providers on this machine, the fallback table and, when asked, where a model would resolve to.",
       inputSchema: {
         model: z
           .string()
           .optional()
-          .describe("modelo no formato provedor/modelo, para ver a resolucao"),
+          .describe("model as provider/model, to see how it resolves"),
       },
     },
     async ({ model }) => respond(() => listProviders(model)),
@@ -119,7 +119,7 @@ export function registerReadTools(server: McpServer): void {
     "get_machine_profile",
     {
       description:
-        "Retrato desta maquina: identidade, banco, provedores, substituicoes e servidores MCP.",
+        "Snapshot of this machine: identity, database, providers, fallbacks and MCP servers.",
       inputSchema: {},
     },
     async () => respond(() => machineService.profile()),
