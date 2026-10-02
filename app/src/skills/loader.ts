@@ -13,31 +13,73 @@ export type LoadedSkill = {
   hash: string;
 };
 
-function roots(): string[] {
-  const home = homedir();
+const MAX_DEPTH = 6;
+const SKIPPED_DIRS = new Set(["node_modules", ".git"]);
+
+/**
+ * Pastas de plugin que o Claude Code de fato carrega.
+ *
+ * O cache guarda uma pasta por versao, e `marketplaces` guarda o fonte de
+ * plugin que nem foi instalado; varrer `~/.claude/plugins` inteiro mistura os
+ * dois e decide a versao pela ordem do disco. O `installed_plugins.json` diz o
+ * `installPath` de cada plugin instalado. Sem ele, ou ilegivel, volta a varrer
+ * a pasta toda.
+ */
+export function pluginRoots(pluginsDir: string): string[] {
+  const manifest = join(pluginsDir, "installed_plugins.json");
+  if (!existsSync(manifest)) return [pluginsDir];
+  try {
+    const parsed = JSON.parse(readFileSync(manifest, "utf8")) as {
+      plugins?: Record<string, Array<{ installPath?: unknown }>>;
+    };
+    const paths = Object.values(parsed.plugins ?? {})
+      .flat()
+      .map((entry) => entry?.installPath)
+      .filter((p): p is string => typeof p === "string" && existsSync(p));
+    return [...new Set(paths)];
+  } catch {
+    return [pluginsDir];
+  }
+}
+
+function roots(home = homedir(), cwd = process.cwd()): string[] {
+  const plugins = join(home, ".claude", "plugins");
   return [
     join(home, ".claude", "skills"),
-    join(home, ".claude", "plugins"),
-    join(process.cwd(), ".claude", "skills"),
+    ...(existsSync(plugins) ? pluginRoots(plugins) : []),
+    join(cwd, ".claude", "skills"),
   ].filter((p) => existsSync(p));
 }
 
 function findSkillFiles(dir: string, depth = 0): string[] {
-  if (depth > 4) return [];
+  if (depth > MAX_DEPTH) return [];
   const out: string[] = [];
-  for (const entry of readdirSync(dir)) {
+  let entries: string[];
+  try {
+    entries = readdirSync(dir);
+  } catch {
+    return out;
+  }
+  for (const entry of entries) {
     const full = join(dir, entry);
-    if (!statSync(full).isDirectory()) {
+    let isDir: boolean;
+    try {
+      isDir = statSync(full).isDirectory();
+    } catch {
+      // Link quebrado nao derruba a descoberta inteira.
+      continue;
+    }
+    if (!isDir) {
       if (entry === "SKILL.md") out.push(full);
       continue;
     }
-    out.push(...findSkillFiles(full, depth + 1));
+    if (!SKIPPED_DIRS.has(entry)) out.push(...findSkillFiles(full, depth + 1));
   }
   return out;
 }
 
-function parseFrontmatter(raw: string): { name?: string; description?: string; body: string } {
-  const match = raw.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
+export function parseFrontmatter(raw: string): { name?: string; description?: string; body: string } {
+  const match = raw.replace(/\r\n/g, "\n").match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
   if (!match) return { body: raw };
   const [, head, body = ""] = match;
   const field = (key: string) =>
@@ -46,9 +88,9 @@ function parseFrontmatter(raw: string): { name?: string; description?: string; b
 }
 
 /** Acervo do usuario e dos plugins, sem formato novo. */
-export function discoverSkills(): Map<string, LoadedSkill> {
+export function discoverSkills(home?: string, cwd?: string): Map<string, LoadedSkill> {
   const found = new Map<string, LoadedSkill>();
-  for (const root of roots()) {
+  for (const root of roots(home, cwd)) {
     for (const file of findSkillFiles(root)) {
       const raw = readFileSync(file, "utf8");
       const { name, description, body } = parseFrontmatter(raw);
@@ -65,9 +107,16 @@ export function discoverSkills(): Map<string, LoadedSkill> {
   return found;
 }
 
-function globToRegExp(glob: string): RegExp {
-  const escaped = glob.replace(/[.+^${}()|[\]\\]/g, "\\$&");
-  const body = escaped.replace(/\*\*\//g, "(?:.*/)?").replace(/\*\*/g, ".*").replace(/\*/g, "[^/]*");
+/**
+ * `**` atravessa pastas, `*` fica dentro de uma. Trocados num passo so: em
+ * passos separados, o `*` reescrevia o `.*` que o `**` acabara de gerar, e
+ * `**\/*.tsx` deixava de casar arquivo dois niveis abaixo.
+ */
+export function globToRegExp(glob: string): RegExp {
+  const escaped = glob.replace(/[.+^${}()|[\]\\?]/g, "\\$&");
+  const body = escaped.replace(/\*\*\/|\*\*|\*/g, (token) =>
+    token === "**/" ? "(?:.*/)?" : token === "**" ? ".*" : "[^/]*",
+  );
   return new RegExp(`^${body}$`);
 }
 
