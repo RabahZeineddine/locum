@@ -2,7 +2,7 @@ import { db as defaultDb } from "../db/index.js";
 import { mcpOAuthService } from "../services/mcp-oauth-service.js";
 import { SLACK_SERVER } from "../services/slack-app.js";
 import { pollMcpServer, CURSOR_TOKEN, type McpCaller, type McpPollShape } from "./mcp-poll.js";
-import { slackSource } from "./slack.js";
+import { slackSource, slackWatermark } from "./slack.js";
 
 type Db = typeof defaultDb;
 
@@ -296,6 +296,7 @@ function inboxShape(kind: SlackInboxKind, eu: string): McpPollShape {
       return `slack:${mensagem.channel}:${mensagem.ts}`;
     },
     stamp: (item) => normalizeInbox(item, kind).ts,
+    watermark: slackWatermark,
     payload: (item) => {
       const mensagem = normalizeInbox(item, kind);
       return {

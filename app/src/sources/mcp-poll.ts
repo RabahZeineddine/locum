@@ -71,6 +71,15 @@ export interface McpPollShape {
   payload: (item: unknown) => Record<string, unknown>;
   /** Carimbo do item, no mesmo formato em que o cursor volta para a ferramenta. */
   stamp?: (item: unknown) => string | undefined;
+  /**
+   * O instante da chamada no formato do cursor. Ausente é ISO.
+   *
+   * Vira cursor quando a varredura não traz item carimbado, e por isso precisa
+   * falar a língua da ferramenta: o Slack conta o tempo em segundos, e um ISO
+   * ali, além de recusado como `oldest`, ganharia de qualquer `ts` na
+   * comparação de texto e prenderia o cursor para sempre.
+   */
+  watermark?: (ms: number) => string;
 }
 
 export interface McpPollOptions {
@@ -119,13 +128,14 @@ export async function pollMcpServer(
     .select({ value: schema.cursors.value })
     .from(schema.cursors)
     .where(and(eq(schema.cursors.source, source), eq(schema.cursors.key, key)));
-  const cursor = row?.value ?? shape.initialCursor ?? CURSOR_INICIAL;
+  const cursor = traduzirCursorIso(row?.value, shape) ?? shape.initialCursor ?? CURSOR_INICIAL;
 
   // Lido antes da chamada, e não depois: item que nascer enquanto a ferramenta
   // responde precisa cair na próxima varredura. Só serve de marca d'água para
   // a fonte que não carimba item, e a sobreposição que ele causa é inofensiva
   // porque a chave externa mata o repetido.
-  const antesDaChamada = new Date(options.now?.() ?? Date.now()).toISOString();
+  const marca = shape.watermark ?? ((ms: number) => new Date(ms).toISOString());
+  const antesDaChamada = marca(options.now?.() ?? Date.now());
 
   const lerItens = shape.items ?? itemsOf;
   const lerCarimbo = shape.stamp ?? stampOf;
@@ -214,6 +224,20 @@ export function newer(a: string, b: string): string {
   const y = Number(b);
   if (Number.isFinite(x) && Number.isFinite(y)) return y > x ? b : a;
   return b > a ? b : a;
+}
+
+/**
+ * Cursor gravado em ISO por uma fonte que conta o tempo de outro jeito.
+ *
+ * Antes de a forma do feed dizer o formato da marca d'água, canal quieto do
+ * Slack ganhava cursor em ISO e ficava preso nele. Traduzido na leitura, o
+ * cursor desses volta a andar sem migração.
+ */
+function traduzirCursorIso(salvo: string | undefined, shape: McpPollShape): string | undefined {
+  if (salvo === undefined || shape.watermark === undefined) return salvo;
+  if (!/^\d{4}-\d{2}-\d{2}T/.test(salvo)) return salvo;
+  const ms = Date.parse(salvo);
+  return Number.isNaN(ms) ? salvo : shape.watermark(ms);
 }
 
 /** Fonte gravada no evento e no cursor. Um servidor, uma fonte. */

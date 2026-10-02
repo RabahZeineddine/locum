@@ -22,6 +22,16 @@ type Db = typeof defaultDb;
  */
 const CURSOR_INICIAL = "0";
 
+/**
+ * O instante da chamada como `ts` do Slack, em segundos.
+ *
+ * É o cursor de um canal quieto. Arredondado para baixo, que repete no máximo
+ * um segundo de mensagens, e a chave externa mata o repetido.
+ */
+export function slackWatermark(ms: number): string {
+  return String(Math.floor(ms / 1000));
+}
+
 /** Fonte gravada no evento e no cursor. Um servidor de Slack, uma fonte. */
 export function slackSource(server: string): string {
   return `slack:${server}`;
@@ -78,6 +88,7 @@ export function slackShape(server: string, channel: string): McpPollShape {
     // externa precisa: mensagem corrigida continua sendo a mesma mensagem.
     externalId: (item) => `slack:${channel}:${normalize(item, channel).ts}`,
     stamp: (item) => normalize(item, channel).ts,
+    watermark: slackWatermark,
     payload: (item) => {
       const mensagem = normalize(item, channel);
       return {
