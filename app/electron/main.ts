@@ -6005,7 +6005,9 @@ async function main(): Promise<void> {
       process.env.PATH = mergePath(process.env.PATH, login);
       forgetSubscriptionBinaries();
     },
-  );
+  ).catch((err: unknown) => {
+    console.log(`PATH do terminal: nao deu para ler (${err instanceof Error ? err.message : String(err)})`);
+  });
 
   // O nucleo abre o banco no import, entao tudo que fala com ele entra por
   // import dinamico, depois da variavel de ambiente do binding.
