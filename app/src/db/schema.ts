@@ -285,6 +285,14 @@ export const mcpServers = sqliteTable("mcp_servers", {
   scope: text("scope").notNull().default("read"),
   idleTimeoutMs: integer("idle_timeout_ms").notNull().default(300_000),
   enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  /**
+   * Última conexão que respondeu e última que falhou, de teste ou de execução.
+   * Sessão web e token expiram sem aviso; isto é o que deixa a tela dizer
+   * "precisa autenticar" antes de um passo quebrar por isso.
+   */
+  lastOkAt: integer("last_ok_at", { mode: "timestamp_ms" }),
+  lastFailureAt: integer("last_failure_at", { mode: "timestamp_ms" }),
+  lastError: text("last_error"),
 });
 
 /**

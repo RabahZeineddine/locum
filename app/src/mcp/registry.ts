@@ -34,7 +34,21 @@ type Entry = {
  * servidores cadastrados vira o consumo de memoria em repouso do app, que e
  * exatamente o que nao pode acontecer num app que fica na bandeja o dia todo.
  */
+/** Desfecho de uma conexão, para quem guarda a saúde do cadastro. */
+export type McpConnectOutcome = { ok: true } | { ok: false; error: string };
+
 export class McpRegistry {
+  /**
+   * Quem fica sabendo de cada conexão, de qualquer registro. É um só para o
+   * processo inteiro porque o pool do executor, o registro descartável do teste
+   * e o da fonte de Slack falam com o mesmo cadastro.
+   */
+  private static observer: ((name: string, outcome: McpConnectOutcome) => void) | null = null;
+
+  static observe(fn: ((name: string, outcome: McpConnectOutcome) => void) | null): void {
+    McpRegistry.observer = fn;
+  }
+
   private live = new Map<string, Entry>();
   // Duas execuções ao mesmo tempo pedindo o mesmo servidor ainda frio subiriam
   // dois processos, e o que perdesse a vaga no mapa ficaria órfão.
@@ -56,7 +70,20 @@ export class McpRegistry {
     const inFlight = this.connecting.get(name);
     if (inFlight) return inFlight;
 
-    const pending = this.spawn(name).finally(() => this.connecting.delete(name));
+    const pending = this.spawn(name)
+      .then(
+        (entry) => {
+          McpRegistry.observer?.(name, { ok: true });
+          return entry;
+        },
+        (err: unknown) => {
+          if (this.configs.has(name)) {
+            McpRegistry.observer?.(name, { ok: false, error: err instanceof Error ? err.message : String(err) });
+          }
+          throw err;
+        },
+      )
+      .finally(() => this.connecting.delete(name));
     this.connecting.set(name, pending);
     return pending;
   }

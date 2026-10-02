@@ -621,7 +621,12 @@
       "ok_other": "conectou em {{elapsed}}ms e expõe {{count}} ferramentas",
       "failed": "não conectou em {{elapsed}}ms: {{error}}",
       "noReason": "sem motivo",
-      "ok_zero": "conectou em {{elapsed}}ms e expõe {{count}} ferramentas"
+      "ok_zero": "conectou em {{elapsed}}ms e expõe {{count}} ferramentas",
+      "health": {
+        "needsAuth": "precisa autenticar",
+        "failed": "falhou {{when}}",
+        "ok": "respondeu {{when}}"
+      }
     },
     "github": {
       "title": "Credencial do GitHub",

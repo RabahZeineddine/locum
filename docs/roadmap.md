@@ -162,6 +162,11 @@ resolvem, em ordem de valor:
    necessária: gerar o servidor uma vez é trabalho de uma tarde, e renovar a
    credencial é trabalho de toda semana.
 
+O item 1 está pronto desde 01/10: toda conexão, de teste ou de execução, grava
+`last_ok_at` ou `last_failure_at` e `last_error` em `mcp_servers`, e a linha do
+servidor na configuração mostra "respondeu há X", "falhou há X" ou o selo
+"precisa autenticar" quando a falha mais recente é de credencial.
+
 Dois cuidados que essa frente carrega, e não são técnicos. Guardar sessão de
 sistema corporativo num cofre lido por agent autônomo aumenta o que um erro
 alcança, então esses servidores entram com escopo de leitura e a classe de

@@ -390,7 +390,7 @@ function pastaCurta(cwd: string): string {
 }
 
 /** "há 3 horas", "ontem". O Intl sabe dizer em cada idioma. */
-function quando(idioma: string, segundos: number): string {
+export function quando(idioma: string, segundos: number): string {
   const rtf = new Intl.RelativeTimeFormat(idioma, { numeric: "auto" });
   const delta = segundos - Date.now() / 1000;
   const abs = Math.abs(delta);

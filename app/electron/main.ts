@@ -1776,6 +1776,19 @@ async function checkConfig(window: BrowserWindow): Promise<string> {
     );
   }
   if (!doServico.ok) throw new Error(`o servidor de brinquedo nao conectou: ${doServico.error}`);
+
+  // O teste grava a conexão no cadastro, e a linha relê: o selo tem de dizer
+  // que o servidor respondeu.
+  const saude = await esperarProbe<string>(
+    window,
+    `saúde de ${FIXTURE_SERVER}`,
+    `(() => document.querySelector('[data-locum-servidor="${FIXTURE_SERVER}"] [data-locum-saude]')?.dataset.locumSaude ?? null)()`,
+  );
+  if (saude !== "ok") throw new Error(`o selo de ${FIXTURE_SERVER} mostrou "${saude}" depois de conectar`);
+  const gravada = (await mcpService.get(FIXTURE_SERVER))?.health;
+  if (gravada?.lastOkAt === null || gravada?.lastOkAt === undefined) {
+    throw new Error(`o cadastro de ${FIXTURE_SERVER} não guardou a conexão`);
+  }
   if (resultado.ferramentas !== doServico.toolCount) {
     throw new Error(
       `a tela contou ${resultado.ferramentas} ferramenta(s) e o servico contou ${doServico.toolCount}`,

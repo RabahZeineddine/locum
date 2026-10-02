@@ -8,6 +8,7 @@ import { rotuloDoModelo, rotuloDoProvedor } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
 import { EscolhaDoModelo } from "../assistente-modelo";
 import { Vitrine } from "./conexoes";
+import { quando } from "./sessoes";
 import { useIdioma } from "../idioma";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -1421,11 +1422,27 @@ function LinhaDoServidor({
   const [teste, setTeste] = useState<EstadoDoTeste>({ fase: "parado" });
   const [ferramentas, setFerramentas] = useState<Ferramenta[] | null>(null);
   const [listando, setListando] = useState(false);
+  const [saudeRelida, setSaudeRelida] = useState<Servidor["health"] | null>(null);
+  const saude = saudeRelida ?? servidor.health;
+
+  // O teste grava o desfecho no cadastro; a linha relê para o selo acompanhar.
+  const relerSaude = (): void => {
+    read("mcp.list").then(
+      (lista) => {
+        const atual = lista.find((s) => s.config.name === nome);
+        if (atual) setSaudeRelida(atual.health);
+      },
+      () => undefined,
+    );
+  };
 
   const testar = (): void => {
     setTeste({ fase: "testando" });
     call("mcp.test", nome).then(
-      (resultado) => setTeste({ fase: "respondeu", teste: resultado }),
+      (resultado) => {
+        setTeste({ fase: "respondeu", teste: resultado });
+        relerSaude();
+      },
       // `testConnection` devolve a falha como dado, entao chegar aqui quer
       // dizer que a ponte recusou, e nao que o servidor esta fora do ar.
       (erro: unknown) =>
@@ -1465,6 +1482,7 @@ function LinhaDoServidor({
           {t(servidor.enabled ? "settings.servers.enabled" : "settings.servers.disabled")}
         </Badge>
         <Credenciais credencial={credencial} />
+        <SaudeDoServidor saude={saude} />
         <div className="ml-auto flex items-center gap-1">
           <Button
             data-locum-testar={nome}
@@ -1512,6 +1530,39 @@ function LinhaDoServidor({
       )}
     </div>
   );
+}
+
+/**
+ * O que o cadastro sabe da última conexão, de teste ou de execução. Credencial
+ * recusada ganha selo vermelho: é o caso em que o passo quebraria calado.
+ */
+function SaudeDoServidor({ saude }: { saude: Servidor["health"] }) {
+  const { t, i18n } = useTranslation();
+  const falhando =
+    saude.lastFailureAt !== null && (saude.lastOkAt === null || saude.lastFailureAt > saude.lastOkAt);
+
+  if (saude.needsAuth) {
+    return (
+      <Badge data-locum-saude="autenticar" title={saude.lastError ?? undefined} variant="destructive">
+        {t("settings.servers.health.needsAuth")}
+      </Badge>
+    );
+  }
+  if (falhando) {
+    return (
+      <span className="text-destructive text-xs" data-locum-saude="falhou" title={saude.lastError ?? undefined}>
+        {t("settings.servers.health.failed", { when: quando(i18n.language, saude.lastFailureAt! / 1000) })}
+      </span>
+    );
+  }
+  if (saude.lastOkAt !== null) {
+    return (
+      <span className="text-muted-foreground text-xs" data-locum-saude="ok">
+        {t("settings.servers.health.ok", { when: quando(i18n.language, saude.lastOkAt / 1000) })}
+      </span>
+    );
+  }
+  return null;
 }
 
 function ResultadoDoTeste({ estado, nome }: { estado: EstadoDoTeste; nome: string }) {

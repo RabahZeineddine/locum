@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
-import { McpRegistry, type McpToolInfo } from "../mcp/registry.js";
+import { McpRegistry, type McpConnectOutcome, type McpToolInfo } from "../mcp/registry.js";
 import { McpServerConfig, type McpServerInput } from "../config/types.js";
 import { fillCredential, secretService, type SecretService } from "./secret-service.js";
 
@@ -20,12 +20,38 @@ export interface McpConnectionCheck {
   error?: string;
 }
 
+/**
+ * O que se sabe da última vez que o servidor foi procurado. `needsAuth` vale
+ * quando a falha mais recente veio depois do último sucesso e tem cara de
+ * credencial recusada ou vencida.
+ */
+export interface McpServerHealth {
+  lastOkAt: number | null;
+  lastFailureAt: number | null;
+  lastError: string | null;
+  needsAuth: boolean;
+}
+
 /** Cadastro somado ao que so interessa a quem administra, nao a quem conecta. */
 export interface McpServerEntry {
   config: McpServerConfig;
   enabled: boolean;
   credentialRef: string | null;
+  health: McpServerHealth;
 }
+
+/**
+ * Falha de credencial, pelo texto. O SDK do MCP não tipa o erro de HTTP, então
+ * o que sobra é o status e as palavras que servidor e proxy costumam usar.
+ */
+export function isAuthError(message: string): boolean {
+  return /\b(401|403)\b|unauthori[sz]ed|forbidden|invalid[_ ]?(token|grant|credentials?)|token (has )?expired|expired token|session (has )?expired|authenticat|não autorizado|nao autorizado/i.test(
+    message,
+  );
+}
+
+/** Teto do erro guardado: o bastante para a tela, sem guardar página de HTML. */
+const TETO_DO_ERRO = 500;
 
 /**
  * Cadastro de servidores MCP. Linha de comando, servidor MCP proprio e
@@ -142,8 +168,12 @@ export class McpService {
     const started = Date.now();
     try {
       const tools = await this.probe(name, (registry) => registry.describeTools(name));
+      // O observador do registro também grava, mas sem esperar; aqui a tela
+      // relê o cadastro logo depois e precisa ver o desfecho.
+      await this.recordConnection(name, { ok: true });
       return { name, ok: true, elapsedMs: Date.now() - started, toolCount: tools.length };
     } catch (err) {
+      await this.recordConnection(name, { ok: false, error: err instanceof Error ? err.message : String(err) });
       return {
         name,
         ok: false,
@@ -152,6 +182,22 @@ export class McpService {
         error: err instanceof Error ? err.message : String(err),
       };
     }
+  }
+
+  /**
+   * Guarda o desfecho de uma conexão. Chamado pelo observador do registro, para
+   * qualquer conexão do processo; servidor que não está no cadastro é ignorado
+   * pelo `where`.
+   */
+  async recordConnection(name: string, outcome: McpConnectOutcome, at: Date = new Date()): Promise<void> {
+    await this.db
+      .update(schema.mcpServers)
+      .set(
+        outcome.ok
+          ? { lastOkAt: at }
+          : { lastFailureAt: at, lastError: outcome.error.slice(0, TETO_DO_ERRO) },
+      )
+      .where(eq(schema.mcpServers.name, name));
   }
 
   /** Catalogo de ferramentas do servidor, para escolher quais marcar num passo. */
@@ -237,7 +283,26 @@ function toEntry(row: McpServerRow): McpServerEntry {
     }),
     enabled: row.enabled,
     credentialRef: row.credentialRef,
+    health: healthOf(row),
+  };
+}
+
+function healthOf(row: McpServerRow): McpServerHealth {
+  const lastOkAt = row.lastOkAt?.getTime() ?? null;
+  const lastFailureAt = row.lastFailureAt?.getTime() ?? null;
+  const failingNow = lastFailureAt !== null && (lastOkAt === null || lastFailureAt > lastOkAt);
+  return {
+    lastOkAt,
+    lastFailureAt,
+    lastError: row.lastError,
+    needsAuth: failingNow && row.lastError !== null && isAuthError(row.lastError),
   };
 }
 
 export const mcpService = new McpService();
+
+McpRegistry.observe((name, outcome) => {
+  void mcpService.recordConnection(name, outcome).catch((err: unknown) => {
+    console.error(`guardar a saúde de ${name} falhou: ${err instanceof Error ? err.message : String(err)}`);
+  });
+});

@@ -594,7 +594,12 @@
       "ok_one": "connected in {{elapsed}}ms and exposes {{count}} tool",
       "ok_other": "connected in {{elapsed}}ms and exposes {{count}} tools",
       "failed": "did not connect in {{elapsed}}ms: {{error}}",
-      "noReason": "no reason"
+      "noReason": "no reason",
+      "health": {
+        "needsAuth": "needs sign-in",
+        "failed": "failed {{when}}",
+        "ok": "responded {{when}}"
+      }
     },
     "github": {
       "title": "GitHub credential",
