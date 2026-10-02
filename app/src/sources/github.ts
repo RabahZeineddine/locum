@@ -39,7 +39,7 @@ export function octokit(): Octokit {
 }
 
 /** O pedaço do cliente que a ação de review usa. Existe para o teste trocar. */
-export type ReviewClient = { rest: { pulls: Pick<Octokit["rest"]["pulls"], "createReview"> } };
+export type ReviewClient = { rest: { pulls: Pick<Octokit["rest"]["pulls"], "createReview" | "listReviews"> } };
 
 export type PrContext = EventPayload & {
   owner: string;
@@ -322,6 +322,26 @@ export function githubReviewHandler(client: () => ReviewClient = octokit): Actio
         body: `**${SEVERITY_MARK[f.severity]}**: ${f.problem}${f.fix ? `\n\nSugestao: ${f.fix}` : ""}\n\n${LOCUM_MARKER}`,
       }));
 
+  // A marca da ação vai no corpo, e antes de criar a review o handler procura
+  // a marca no pull request. Um passo `auto` que falha depois do POST (o
+  // tempo esgota com a review já criada) e é reexecutado acharia a review
+  // que saiu, em vez de assinar uma segunda igual.
+  const marca = (externalId: string) => `<!-- locum:${externalId} -->`;
+  const jaSaiu = async (p: ReviewPayload, externalId: string): Promise<boolean> => {
+    const procurada = marca(externalId);
+    for (let page = 1; ; page++) {
+      const { data } = await client().rest.pulls.listReviews({
+        owner: p.owner,
+        repo: p.repo,
+        pull_number: p.pull,
+        per_page: 100,
+        page,
+      });
+      if (data.some((review) => review.body?.includes(procurada))) return true;
+      if (data.length < 100) return false;
+    }
+  };
+
   return {
     // Aprovar ou pedir mudança no pull request de outra pessoa é decisão
     // assinada por quem revisa, e por isso nunca sai sem clique, nem com o
@@ -329,24 +349,26 @@ export function githubReviewHandler(client: () => ReviewClient = octokit): Actio
     holdForApproval(payload) {
       return ((payload as ReviewPayload).verdict ?? "COMMENT") !== "COMMENT";
     },
-    async publish(payload) {
+    async publish(payload, externalId) {
       const p = payload as ReviewPayload;
+      if (await jaSaiu(p, externalId)) return;
       await client().rest.pulls.createReview({
         owner: p.owner,
         repo: p.repo,
         pull_number: p.pull,
         event: p.verdict ?? "COMMENT",
-        body: renderBody(p.findings),
+        body: `${renderBody(p.findings)}\n${marca(externalId)}`,
         comments: comments(p.findings),
       });
     },
-    async draft(payload) {
+    async draft(payload, externalId) {
       const p = payload as ReviewPayload;
+      if (await jaSaiu(p, externalId)) return;
       await client().rest.pulls.createReview({
         owner: p.owner,
         repo: p.repo,
         pull_number: p.pull,
-        body: renderBody(p.findings),
+        body: `${renderBody(p.findings)}\n${marca(externalId)}`,
         comments: comments(p.findings),
       });
     },

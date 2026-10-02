@@ -34,6 +34,7 @@ function clienteFalso() {
           enviadas.push(params);
           return {};
         },
+        listReviews: async () => ({ data: enviadas.map((e) => ({ body: e.body })) }),
       },
     },
   } as unknown as ReviewClient;
@@ -84,10 +85,10 @@ test("a ação de review publica com o veredito como evento", async () => {
   const { enviadas, cliente } = clienteFalso();
   const handler = githubReviewHandler(cliente);
 
-  await handler.publish({ ...ALVO, findings: [achado], verdict: "REQUEST_CHANGES" }, "ext");
-  await handler.publish({ ...ALVO, findings: [], verdict: "APPROVE" }, "ext");
+  await handler.publish({ ...ALVO, findings: [achado], verdict: "REQUEST_CHANGES" }, "ext-1");
+  await handler.publish({ ...ALVO, findings: [], verdict: "APPROVE" }, "ext-2");
   // Pendência gravada antes do veredito existir sai como sempre saiu.
-  await handler.publish({ ...ALVO, findings: [achado] }, "ext");
+  await handler.publish({ ...ALVO, findings: [achado] }, "ext-3");
 
   assert.deepEqual(
     enviadas.map((e) => e.event),
@@ -148,4 +149,20 @@ test("a edição troca o veredito e recusa o que não é veredito", async () => 
   // Edição só de achados não mexe no veredito gravado.
   await service.updateFindings(id, []);
   assert.equal(((await service.get(id))!.payload as { verdict: string }).verdict, "COMMENT");
+});
+
+test("publicar de novo a mesma pendência não assina uma segunda review", async () => {
+  const { enviadas, cliente } = clienteFalso();
+  const handler = githubReviewHandler(cliente);
+  const payload = { ...ALVO, findings: [achado], verdict: "COMMENT" };
+
+  await handler.publish(payload, "pendencia-1");
+  await handler.publish(payload, "pendencia-1");
+  await handler.draft!(payload, "pendencia-1");
+  assert.equal(enviadas.length, 1);
+  assert.match(String(enviadas[0]!.body), /<!-- locum:pendencia-1 -->/);
+  assert.match(String(enviadas[0]!.body), /<!-- locum -->/);
+
+  await handler.publish(payload, "pendencia-2");
+  assert.equal(enviadas.length, 2);
 });
