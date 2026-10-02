@@ -4696,10 +4696,47 @@ async function checkDocumentReview(window: BrowserWindow): Promise<string> {
     );
     if (!visto.titulo) throw new Error("a revisão da tarefa não mostrou o título");
     if (visto.corpo !== carga.body) throw new Error(`a revisão da tarefa mostrou o corpo "${visto.corpo}"`);
-    return "tracker.create_issue lido";
   } finally {
     await db.delete(schema.approvals).where(eq(schema.approvals.id, id));
   }
+
+  // Resumo de canais: manchete e corpo, e a contagem no cabeçalho.
+  const idDoResumo = "smoke-digest";
+  const manchete = "manchete do resumo";
+  const corpoDoResumo = "corpo do resumo";
+  const resumo = {
+    headline: manchete,
+    channels: [{ channel: "C1", items: [] }],
+    counts: { needs_reply: 2, info: 5, ignore: 1 },
+    body: corpoDoResumo,
+  };
+  await db.delete(schema.approvals).where(eq(schema.approvals.id, idDoResumo));
+  await db.insert(schema.approvals).values({
+    id: idDoResumo,
+    runId: DEMO_RUN_ID,
+    stepId: `${DEMO_RUN_ID}-post`,
+    kind: "digest.deliver",
+    payload: resumo,
+    status: "pending",
+  });
+  try {
+    await irPara(window, "inbox", idDoResumo);
+    const visto = await esperarProbe<{ manchete: boolean; contagem: boolean; corpo: string }>(
+      window,
+      "revisao-documento",
+      `(() => {
+        const probe = document.querySelector("[data-locum-probe=revisao-documento]");
+        const corpo = document.querySelector("[data-locum-documento-corpo]");
+        if (probe === null || corpo === null || !probe.textContent.includes(${JSON.stringify(manchete)})) return null;
+        return { manchete: true, contagem: /2[^0-9]+5/.test(probe.textContent), corpo: corpo.textContent };
+      })()`,
+    );
+    if (!visto.contagem) throw new Error("a revisão do resumo não mostrou a contagem");
+    if (visto.corpo !== corpoDoResumo) throw new Error(`a revisão do resumo mostrou o corpo "${visto.corpo}"`);
+  } finally {
+    await db.delete(schema.approvals).where(eq(schema.approvals.id, idDoResumo));
+  }
+  return "tracker.create_issue e digest.deliver lidos";
 }
 
 /**
