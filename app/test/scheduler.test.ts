@@ -17,11 +17,12 @@ type Montagem = {
   poll?: PollFn;
   sweep?: SweepFn;
   viewer?: ViewerFn;
+  /** Banco já existente, para dois agendadores baterem no mesmo. */
+  db?: ReturnType<typeof bancoDeTeste>;
 };
 
 /** Um agendador com cadastro em memória e um executor que só anota o que recebeu. */
-function montar({ gatilhos, poll, sweep, viewer }: Montagem) {
-  const db = bancoDeTeste();
+function montar({ gatilhos, poll, sweep, viewer, db = bancoDeTeste() }: Montagem) {
   const iniciados: { eventId: string | null; triggerId: string }[] = [];
   const triggers = {
     enabled: async () => gatilhos.filter((g) => g.enabled),
@@ -109,6 +110,18 @@ test("filtro de autoria acorda só os pull requests da pessoa e conta os descart
   assert.equal(resultado?.events, 2);
   assert.deepEqual(iniciados.map((i) => i.eventId), ["e1"]);
   assert.match(resultado?.detail ?? "", /1 evento\(s\) fora do filtro/);
+});
+
+test("duas batidas juntas no mesmo banco disparam o gatilho uma vez só", async () => {
+  // O app e o `locum tick` do terminal, cada um com o seu agendador.
+  const gatilhos = [gatilho("g1", { kind: "schedule", everyMinutes: 30 } as TriggerConfig)];
+  const app = montar({ gatilhos });
+  const terminal = montar({ gatilhos, db: app.db });
+
+  const [a, b] = await Promise.all([app.scheduler.tick({ at: T0 }), terminal.scheduler.tick({ at: T0 })]);
+
+  assert.deepEqual([a.outcomes[0]?.status, b.outcomes[0]?.status].sort(), ["fired", "waiting"]);
+  assert.equal(app.iniciados.length + terminal.iniciados.length, 1);
 });
 
 test("dois gatilhos sobre a mesma organização acordam com o mesmo pull request", async () => {

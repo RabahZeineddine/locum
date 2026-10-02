@@ -320,22 +320,30 @@ export class Scheduler {
       };
     }
 
-    const last = await this.lastFire(trigger.id);
+    const { raw, last } = await this.readFire(trigger.id);
     if (last !== null && at < last + cadence) {
       return { ...base, status: "waiting", nextDueAt: last + cadence };
+    }
+
+    // A batida toma o gatilho antes de disparar, numa escrita condicional ao
+    // valor que leu. O app serializa as próprias batidas, mas `locum tick` no
+    // terminal bate no mesmo banco: as duas veriam o gatilho vencido e cada
+    // uma abriria os seus runs. Quem perde a escrita espera a próxima janela.
+    //
+    // O cursor anda mesmo quando o disparo falha: o que protege evento de se
+    // perder é o cursor da própria fonte, que não andou. Sem isso, um gatilho
+    // quebrado tomaria todas as batidas seguintes tentando de novo e abafaria
+    // os outros.
+    if (!(await this.claim(trigger.id, raw, at))) {
+      const depois = await this.lastFire(trigger.id);
+      return { ...base, status: "waiting", nextDueAt: depois === null ? at + cadence : depois + cadence };
     }
 
     const nextDueAt = at + cadence;
     try {
       const fired = await this.fire(trigger, wait);
-      // O cursor avanca depois do disparo, mas avanca tambem quando o disparo
-      // falha: o que protege evento de se perder e o cursor da propria fonte,
-      // que nao andou. Sem isso, um gatilho quebrado tomaria todas as batidas
-      // seguintes tentando de novo e abafaria os outros.
-      await this.markFired(trigger.id, at);
       return { ...base, ...fired, status: "fired", nextDueAt };
     } catch (err) {
-      await this.markFired(trigger.id, at);
       return { ...base, status: "failed", detail: message(err), nextDueAt };
     }
   }
@@ -553,24 +561,44 @@ export class Scheduler {
   }
 
   private async lastFire(triggerId: string): Promise<number | null> {
+    return (await this.readFire(triggerId)).last;
+  }
+
+  /** O valor gravado, para a escrita condicional, e o instante que ele diz. */
+  private async readFire(triggerId: string): Promise<{ raw: string | null; last: number | null }> {
     const [row] = await this.db
       .select({ value: schema.cursors.value })
       .from(schema.cursors)
       .where(and(eq(schema.cursors.source, CURSOR_SOURCE), eq(schema.cursors.key, triggerId)));
-    if (!row) return null;
+    if (!row) return { raw: null, last: null };
 
     const parsed = Date.parse(row.value);
-    return Number.isNaN(parsed) ? null : parsed;
+    return { raw: row.value, last: Number.isNaN(parsed) ? null : parsed };
   }
 
-  private async markFired(triggerId: string, at: number): Promise<void> {
-    await this.db
-      .insert(schema.cursors)
-      .values({ source: CURSOR_SOURCE, key: triggerId, value: new Date(at).toISOString() })
-      .onConflictDoUpdate({
-        target: [schema.cursors.source, schema.cursors.key],
-        set: { value: new Date(at).toISOString(), updatedAt: Math.floor(at / 1000) },
-      });
+  /** Grava o disparo só se o cursor ainda é o que esta batida leu. */
+  private async claim(triggerId: string, raw: string | null, at: number): Promise<boolean> {
+    const value = new Date(at).toISOString();
+    if (raw === null) {
+      const inserted = await this.db
+        .insert(schema.cursors)
+        .values({ source: CURSOR_SOURCE, key: triggerId, value })
+        .onConflictDoNothing()
+        .returning({ key: schema.cursors.key });
+      return inserted.length > 0;
+    }
+    const updated = await this.db
+      .update(schema.cursors)
+      .set({ value, updatedAt: Math.floor(at / 1000) })
+      .where(
+        and(
+          eq(schema.cursors.source, CURSOR_SOURCE),
+          eq(schema.cursors.key, triggerId),
+          eq(schema.cursors.value, raw),
+        ),
+      )
+      .returning({ key: schema.cursors.key });
+    return updated.length > 0;
   }
 }
 
