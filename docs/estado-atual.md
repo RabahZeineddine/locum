@@ -566,7 +566,7 @@ altura variasse. O smoke confere as duas coisas separadas, o total que a janela
 leu e quantas linhas existem de fato no DOM, porque uma lista que desenhasse
 zero linha ainda mostraria o total certo no marcador.
 
-**Detalhe de execução mora no hash, depois do destino.** `#/execucoes/<run-id>`.
+**Detalhe de execução mora no hash, depois do destino.** `#/runs/<run-id>` (era `#/execucoes/<run-id>` até a 0.1.19, e o hash velho ainda é traduzido).
 O roteador devolve o primeiro segmento como destino e o resto inteiro como
 detalhe, sem quebrar de novo, e destino desconhecido descarta o resto e cai na
 inbox. As telas recebem o detalhe do layout em vez de chamarem `useRota` por
