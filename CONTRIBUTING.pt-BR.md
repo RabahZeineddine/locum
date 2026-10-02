@@ -55,7 +55,8 @@ Antes de abrir um PR, `npm test` e `npm run verify` precisam sair zero.
 - `app/src/executor/` é a máquina de estado que roda um agent passo a passo, com
   orçamento e retomada.
 - `app/src/approval/` é a porta única de saída para serviço externo.
-- `app/src/runtimes/` tem o runtime nativo (AI SDK) e o do Claude Code.
+- `app/src/runtimes/` tem o runtime nativo (AI SDK) e os de assinatura (Claude
+  Code e Codex).
 - `app/src/mcp-server/` são as ferramentas que o Locum expõe por MCP.
 - `app/electron/bridge-contract.ts` declara cada canal entre interface e
   processo principal; `bridge.ts` liga o canal ao serviço.

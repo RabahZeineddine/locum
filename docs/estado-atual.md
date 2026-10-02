@@ -38,10 +38,8 @@ Não tem nada que falte no código; pode ser descartado com `git stash drop`.
 - I3: nada no código. Falta o teste à mão: abrir uma sessão de verdade pelo
   botão, escrever a passagem e ler de volta; e o deep link de fim de sessão,
   que só chega com o app empacotado (`npm run dist:dir`).
-- Fora do caminho crítico, se sobrar tempo: O1 (descrições das ferramentas em
-  inglês), O2 (README em inglês, `README.pt-BR.md`, `CONTRIBUTING.md` e rename
-  das rotas em português com redirecionamento) e a fatia 9 (I4, presets MCP
-  genéricos).
+- Fora do caminho crítico: O1 e O2 prontos (o rename das rotas em português
+  segue opcional), e o I4 coberto pela vitrine de conexões.
 
 ### Decisões tomadas
 
@@ -105,6 +103,7 @@ que a interface vai usar.
 | runtime nativo sobre o AI SDK | pronto, sem teste com chave real; custo calculado pelos tokens do laço inteiro vezes o preço cadastrado em `model_prices`, e zero com aviso quando o modelo não tem preço |
 | cache de prompt | o executor separa o começo literal do template, antes do primeiro marcador, e o runtime nativo manda sistema e skills, esse trecho estável e o resto nessa ordem, com a marca de cache da Anthropic no fim do estável; OpenAI e Gemini guardam prefixo sozinhos e só precisam da ordem. Triagem e auditoria do `pr-review` trazem as instruções antes dos dados do evento e o diff por último. O passo grava em `cache_read_tokens` o que o provedor informou ter lido de cache, nulo quando ele não informa, pelo runtime nativo e pelo `claude -p` |
 | runtime de assinatura sobre `claude -p` | pronto e verificado |
+| runtime de assinatura sobre `codex exec` | pronto no código, sem teste com o binário de verdade; aparece quando `codex login status` sai com zero, roda isolado (`--ignore-user-config`, `--ephemeral`, `--sandbox read-only`, pasta temporária) e recebe só os servidores e ferramentas do passo por `-c mcp_servers.*`. Flags e formato do JSONL vieram do código-fonte do Codex |
 | executor durável com retomada | pronto e verificado |
 | orçamento por execução e por dia | teto em dólar e teto em tokens, por run e por dia; o gasto vai para `usage_daily` em toda saída do trecho executado, `done`, `paused` ou `failed`, uma vez por trecho, e a retomada não conta execução nova; o teto do dia soma o que o trecho em curso ainda não gravou |
 | fila de aprovação com identificador externo antes da publicação | pronto; a decisão fecha o passo de ação, em `done` aprovado e em `skipped` rejeitado, e o executor retoma o run até o fim; na retomada, passo parado em aguardando com a pendência já fechada é reconciliado pela decisão gravada; a edição pela janela troca só a lista de achados, validada um a um, e dono, repositório e pull request ficam os que o executor gravou |
