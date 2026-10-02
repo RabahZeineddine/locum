@@ -990,6 +990,30 @@ reviews do pull request antes de criar, então o passo `auto` reexecutado não
 assina uma segunda. Slack e Teams não têm essa busca: os dois só saem em
 `approve`, e a falha volta a pendência para a fila.
 
+**Run interrompido ficava parado até alguém clicar.** A retomada existia no
+`locum`, mas o app empacotado não a chamava ao abrir, então o run que estava
+`running` quando o Mac desligou só voltava por reexecução à mão. Contorno,
+desde a 0.1.25: o app lê os runs `queued` e `running` antes de o relógio bater
+e retoma em segundo plano. Na mesma leva, três buracos da retomada: queda entre
+gravar a pendência e marcar o passo abria uma segunda pendência; a conferência
+do passo parado podia ler uma aprovação vencida e dar o passo por publicado; e
+reexecutar o passo enquanto a aprovação dele estava saindo abria corrida com a
+publicação. Os dois primeiros agora leem a pendência viva mais nova do passo, e
+o terceiro é recusado com mensagem. O passo de modelo nativo ganhou teto de 15
+minutos, para uma resposta que nunca chega não prender o run.
+
+**Segundo gatilho na mesma fonte nunca disparava.** A varredura do GitHub e a
+por MCP devolviam só o evento que tinham acabado de gravar, e o cursor é da
+consulta, não do gatilho. Dois gatilhos sobre a mesma organização (revisão e
+resumo, por exemplo) dividiam o cursor, e o segundo a bater achava tudo
+conhecido. O evento gravado numa batida que morreu antes de criar o run também
+ficava para trás. Contorno, desde a 0.1.25: as duas devolvem a janela inteira e
+o agendador deduplica pelo run do próprio gatilho.
+
+**Link de pull request abria o GitHub dentro do app.** O `target="_blank"`
+criava outra janela do Electron. Contorno, desde a 0.1.25: a janela recusa
+abrir janela nova e navegar para fora, e entrega `http` e `https` ao navegador.
+
 **Teto diário furado por runs juntos.** O gasto ia para `usage_daily` só no
 fim do trecho, e o gatilho de poll abre um run por evento ao mesmo tempo.
 Contorno, desde a 0.1.23: cada passo cobrado grava no dia assim que termina.
