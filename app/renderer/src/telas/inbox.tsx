@@ -74,6 +74,8 @@ interface Item {
 function grupoDaPendencia(p: Pendencia): string {
   if (p.kind === "context.update") return `contexto:${(p.payload as { slug?: string } | null)?.slug ?? ""}`;
   if (ehMensagem(p)) return "mensagens";
+  if (p.kind === "tracker.create_issue") return "tarefas";
+  if (p.kind === "digest.deliver") return "resumos";
   const c = p.payload as Partial<CargaDePr> | null;
   if (c?.pull) return `pr:${c.owner ? `${c.owner}/` : ""}${c.repo ?? ""}`;
   return "outros";
@@ -83,6 +85,8 @@ function rotuloDoGrupo(t: TFunction, grupo: string): string {
   if (grupo.startsWith("contexto:")) return grupo.slice("contexto:".length);
   if (grupo.startsWith("pr:")) return `${t("inbox.group.reviews")} · ${grupo.slice("pr:".length)}`;
   if (grupo === "mensagens") return t("inbox.group.messages");
+  if (grupo === "tarefas") return t("inbox.group.issues");
+  if (grupo === "resumos") return t("inbox.group.digests");
   return t("inbox.group.other");
 }
 
@@ -124,7 +128,7 @@ function Fila({ navegar }: TelaProps) {
       ).catch(() => ({}) as Record<string, Achado[]>);
       const carregados = pendentes.data.map((p) => {
         // Achado é de review. Uma resposta no mesmo run não publica nenhum deles.
-        const achados = ehMensagem(p) ? [] : (porRun[p.runId] ?? []);
+        const achados = ehMensagem(p) || ehDocumento(p) ? [] : (porRun[p.runId] ?? []);
         return { pendencia: p, achados, severidade: pior(achados), grupo: grupoDaPendencia(p) };
       });
       if (!cancelado) setItens(ordenar(carregados));
@@ -617,6 +621,18 @@ export function alvoDaPendencia(p: Pendencia, t: TFunction): Alvo {
     };
   }
 
+  if (ehDocumento(p)) {
+    const d = cargaDoDocumento(p, t);
+    return {
+      principal: t(`inbox.document.${d.tipo}`),
+      detalhe: d.detalhe,
+      titulo: d.titulo || undefined,
+      resumo: d.resumo,
+      semSeveridade: true,
+      somenteLeitura: true,
+    };
+  }
+
   const c = p.payload as Partial<CargaDePr> | null;
   if (!c?.pull) {
     return { principal: t("inbox.target_unknown", { agent: p.agentName, step: p.stepName }) };
@@ -683,6 +699,53 @@ export function cargaDaMensagem(p: Pendencia): {
     autor: typeof c.author === "string" ? c.author : undefined,
     texto,
     link: typeof c.webUrl === "string" ? c.webUrl : undefined,
+  };
+}
+
+/** Tarefa para abrir num tracker ou resumo de canais: a pendência é um texto para ler. */
+export function ehDocumento(p: Pendencia): boolean {
+  return p.kind === "tracker.create_issue" || p.kind === "digest.deliver";
+}
+
+/**
+ * O que a fila e a revisão leem de uma tarefa ou de um resumo. Ver
+ * `TrackerIssueProposal` em `src/trackers/proposal.ts` e `DigestProposal` em
+ * `src/digest/proposal.ts`.
+ */
+export function cargaDoDocumento(
+  p: Pendencia,
+  t: TFunction,
+): { tipo: "issue" | "digest"; titulo: string; detalhe?: string; resumo?: string; corpo: string; link?: string } {
+  const c = (p.payload ?? {}) as Record<string, unknown>;
+  const corpo = typeof c.body === "string" ? c.body : "";
+  const primeira = corpo
+    .split("\n")
+    .map((l) => l.replace(/^#+\s*/, "").trim())
+    .find((l) => l.length > 0);
+  if (p.kind === "tracker.create_issue") {
+    const destino = [c.tracker, c.project].filter((x): x is string => typeof x === "string" && x !== "");
+    return {
+      tipo: "issue",
+      titulo: typeof c.title === "string" ? c.title : "",
+      detalhe: destino.length > 0 ? destino.join(" · ") : undefined,
+      resumo: primeira,
+      corpo,
+      link: typeof c.pullRequestUrl === "string" ? c.pullRequestUrl : undefined,
+    };
+  }
+  const contagem = (c.counts ?? {}) as { needs_reply?: unknown; info?: unknown };
+  const canais = Array.isArray(c.channels)
+    ? c.channels.map((x) => String((x as { channel?: unknown }).channel ?? "")).filter((x) => x !== "")
+    : [];
+  return {
+    tipo: "digest",
+    titulo: typeof c.headline === "string" ? c.headline : "",
+    detalhe: t("inbox.document.counts", {
+      reply: Number(contagem.needs_reply ?? 0),
+      info: Number(contagem.info ?? 0),
+    }),
+    resumo: canais.length > 0 ? canais.join(", ") : primeira,
+    corpo,
   };
 }
 

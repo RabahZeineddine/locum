@@ -295,7 +295,9 @@
     "group": {
       "reviews": "Pull request review",
       "other": "Other",
-      "messages": "Conversation replies"
+      "messages": "Conversation replies",
+      "issues": "Issues to open",
+      "digests": "Channel digests"
     },
     "lead": "What the agents prepared. Nothing leaves without your yes.",
     "message": {
@@ -303,6 +305,11 @@
       "teams": "Teams",
       "chat": "chat",
       "reply": "Reply: {{text}}"
+    },
+    "document": {
+      "issue": "Issue",
+      "digest": "Digest",
+      "counts": "{{reply}} need a reply · {{info}} info"
     }
   },
   "initiatives": {
@@ -987,6 +994,12 @@
       "open": {
         "slack": "open in Slack",
         "teams": "open in Teams"
+      }
+    },
+    "document": {
+      "approve": {
+        "issue": "Approve and open issue",
+        "digest": "Mark as read"
       }
     }
   },

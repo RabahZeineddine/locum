@@ -4648,7 +4648,58 @@ async function checkReviewVerdict(window: BrowserWindow): Promise<string> {
   await trocar(original);
 
   const mensagem = await checkMessageReview(window);
-  return `${original} -> ${outro} -> ${original}; ${mensagem}`;
+  const documento = await checkDocumentReview(window);
+  return `${original} -> ${outro} -> ${original}; ${mensagem}; ${documento}`;
+}
+
+/**
+ * Tarefa para abrir num tracker na revisão: a tela mostra título e corpo
+ * inteiros, sem os achados do run em que a pendência foi plantada.
+ */
+async function checkDocumentReview(window: BrowserWindow): Promise<string> {
+  const { db, schema } = await import("../src/db/index.js");
+  const { eq } = await import("drizzle-orm");
+  const { DEMO_RUN_ID } = await import("../src/fixtures/demo-run.js");
+
+  const id = "smoke-tracker-issue";
+  // Texto de fixture, fora do dicionário de propósito: passa por variável.
+  const titulo = "título da tarefa";
+  const corpo = "## Contexto\ncorpo da tarefa";
+  const carga = {
+    tracker: "smoke",
+    project: "PLAT",
+    title: titulo,
+    body: corpo,
+    pullRequestUrl: "https://github.com/exemplo/loja-api/pull/482",
+  };
+  await db.delete(schema.approvals).where(eq(schema.approvals.id, id));
+  await db.insert(schema.approvals).values({
+    id,
+    runId: DEMO_RUN_ID,
+    stepId: `${DEMO_RUN_ID}-post`,
+    kind: "tracker.create_issue",
+    payload: carga,
+    status: "pending",
+  });
+
+  try {
+    await irPara(window, "inbox", id);
+    const visto = await esperarProbe<{ titulo: boolean; corpo: string }>(
+      window,
+      "revisao-documento",
+      `(() => {
+        const probe = document.querySelector("[data-locum-probe=revisao-documento]");
+        const corpo = document.querySelector("[data-locum-documento-corpo]");
+        if (probe === null || corpo === null) return null;
+        return { titulo: probe.textContent.includes(${JSON.stringify(carga.title)}), corpo: corpo.textContent };
+      })()`,
+    );
+    if (!visto.titulo) throw new Error("a revisão da tarefa não mostrou o título");
+    if (visto.corpo !== carga.body) throw new Error(`a revisão da tarefa mostrou o corpo "${visto.corpo}"`);
+    return "tracker.create_issue lido";
+  } finally {
+    await db.delete(schema.approvals).where(eq(schema.approvals.id, id));
+  }
 }
 
 /**
@@ -5761,6 +5812,38 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
       await irPara(janela, "inbox", id);
       await new Promise((resolve) => setTimeout(resolve, 1200));
       writeFileSync(join(destino, "inbox-mensagem-detalhe.png"), (await janela.webContents.capturePage()).toPNG());
+    } finally {
+      await db.delete(schema.approvals).where(eq(schema.approvals.id, id));
+    }
+  }
+
+  // Tarefa para o tracker, idem: só para a foto da revisão.
+  {
+    const { db, schema } = await import("../src/db/index.js");
+    const { eq } = await import("drizzle-orm");
+    const { DEMO_RUN_ID } = await import("../src/fixtures/demo-run.js");
+    const id = "captura-tracker-issue";
+    const titulo = "Retentativa sem limite no cliente do gateway";
+    const corpo =
+      "## Contexto\nO PR #482 adiciona retentativa sem teto no cliente HTTP do gateway.\n\n## O que fazer\n- limitar a três tentativas\n- registrar a última falha";
+    await db.insert(schema.approvals).values({
+      id,
+      runId: DEMO_RUN_ID,
+      stepId: `${DEMO_RUN_ID}-post`,
+      kind: "tracker.create_issue",
+      payload: {
+        tracker: "exemplo",
+        project: "PLAT",
+        title: titulo,
+        body: corpo,
+        pullRequestUrl: "https://github.com/exemplo/loja-api/pull/482",
+      },
+      status: "pending",
+    });
+    try {
+      await irPara(janela, "inbox", id);
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      writeFileSync(join(destino, "inbox-tarefa-detalhe.png"), (await janela.webContents.capturePage()).toPNG());
     } finally {
       await db.delete(schema.approvals).where(eq(schema.approvals.id, id));
     }

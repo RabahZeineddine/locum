@@ -311,7 +311,9 @@
     "group": {
       "reviews": "Revisão de pull request",
       "other": "Outros",
-      "messages": "Respostas em conversa"
+      "messages": "Respostas em conversa",
+      "issues": "Tarefas para abrir",
+      "digests": "Resumos de canais"
     },
     "lead": "O que os agents prepararam e só sai depois do seu sim.",
     "message": {
@@ -319,6 +321,11 @@
       "teams": "Teams",
       "chat": "chat",
       "reply": "Resposta: {{text}}"
+    },
+    "document": {
+      "issue": "Tarefa",
+      "digest": "Resumo",
+      "counts": "{{reply}} pedem resposta · {{info}} informação"
     }
   },
   "initiatives": {
@@ -1020,6 +1027,12 @@
       "open": {
         "slack": "abrir no Slack",
         "teams": "abrir no Teams"
+      }
+    },
+    "document": {
+      "approve": {
+        "issue": "Aprovar e abrir tarefa",
+        "digest": "Dar por lido"
       }
     }
   },

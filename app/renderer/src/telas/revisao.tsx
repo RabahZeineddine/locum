@@ -17,7 +17,7 @@ import { ArrowLeft, ExternalLink } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TelaProps } from "../rotas";
-import { cargaDaMensagem, ehMensagem } from "./inbox";
+import { cargaDaMensagem, cargaDoDocumento, ehDocumento, ehMensagem } from "./inbox";
 
 type Pendencia = NonNullable<ReadResult<"approvals.get">>;
 
@@ -71,6 +71,7 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
   const contexto =
     pendencia?.kind === "context.update" ? (pendencia.payload as CargaDeContexto) : null;
   const mensagem = pendencia !== undefined && ehMensagem(pendencia);
+  const documento = pendencia !== undefined && ehDocumento(pendencia);
   const [arquivo, setArquivo] = useState<ReadState<ReadResult<"initiatives.context">>>({
     status: "loading",
     data: undefined,
@@ -107,7 +108,7 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
   const primeiroRender = useRef(true);
 
   useEffect(() => {
-    if (!pendencia || contexto || mensagem || achados !== null) return;
+    if (!pendencia || contexto || mensagem || documento || achados !== null) return;
     const carga = pendencia.payload as { findings?: unknown[]; verdict?: unknown } | null;
     if ((VEREDITOS as readonly unknown[]).includes(carga?.verdict)) {
       setVeredito(carga!.verdict as Veredito);
@@ -136,7 +137,7 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
   // Grava sozinho depois que a digitação para. Botão de salvar num editor de
   // um item só é cerimônia: o risco real é fechar a tela e perder a edição.
   useEffect(() => {
-    if (achados === null || !pendencia || contexto || mensagem) return;
+    if (achados === null || !pendencia || contexto || mensagem || documento) return;
     if (primeiroRender.current) {
       primeiroRender.current = false;
       return;
@@ -200,6 +201,18 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
   if (mensagem) {
     return (
       <RevisaoDeMensagem
+        jaResolvida={jaResolvida}
+        navegar={navegar}
+        onResolver={resolver}
+        pendencia={pendencia}
+        resolvendo={resolvendo}
+      />
+    );
+  }
+
+  if (documento) {
+    return (
+      <RevisaoDeDocumento
         jaResolvida={jaResolvida}
         navegar={navegar}
         onResolver={resolver}
@@ -611,6 +624,87 @@ function RevisaoDeMensagem({
 
         <button
           className="text-muted-foreground hover:text-foreground cursor-pointer text-xs"
+          onClick={() => navegar("execucoes", pendencia.runId)}
+          type="button"
+        >
+          {t("review.see_run")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A revisão de uma tarefa para abrir num tracker ou de um resumo de canais:
+ * o texto inteiro, como vai sair, para ler antes de aprovar.
+ *
+ * Sem edição aqui: o corpo da tarefa carrega seções e links que o handler
+ * montou, e o resumo é só dado por lido.
+ */
+function RevisaoDeDocumento({
+  jaResolvida,
+  navegar,
+  onResolver,
+  pendencia,
+  resolvendo,
+}: {
+  jaResolvida: boolean;
+  navegar: TelaProps["navegar"];
+  onResolver: (decisao: "approved" | "rejected") => void;
+  pendencia: Pendencia;
+  resolvendo: boolean;
+}) {
+  const { t } = useTranslation();
+  const carga = cargaDoDocumento(pendencia, t);
+
+  return (
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-4" data-locum-probe="revisao-documento">
+      <div className="flex items-baseline gap-3">
+        <Voltar navegar={navegar} />
+        <span className="text-[13px] font-medium">{t(`inbox.document.${carga.tipo}`)}</span>
+        {carga.detalhe && (
+          <span className="text-muted-foreground truncate font-mono text-xs">{carga.detalhe}</span>
+        )}
+        {carga.link && (
+          <a
+            className="text-muted-foreground hover:text-foreground ml-auto shrink-0 text-xs"
+            href={carga.link}
+            rel="noreferrer"
+            target="_blank"
+          >
+            <ExternalLink className="inline size-3" aria-hidden /> {t("common.open_github")}
+          </a>
+        )}
+      </div>
+
+      {carga.titulo && <h1 className="text-lg font-semibold tracking-tight">{carga.titulo}</h1>}
+
+      <div
+        className="superficie border-border max-h-[60vh] overflow-auto rounded-lg border px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap"
+        data-locum-documento-corpo=""
+      >
+        {carga.corpo}
+      </div>
+
+      <div className="flex items-center gap-3">
+        <Button
+          className="cursor-pointer"
+          disabled={resolvendo || jaResolvida}
+          onClick={() => onResolver("approved")}
+        >
+          {t(`review.document.approve.${carga.tipo}`)}
+        </Button>
+        <Button
+          className="text-muted-foreground hover:text-foreground cursor-pointer"
+          disabled={resolvendo || jaResolvida}
+          onClick={() => onResolver("rejected")}
+          variant="ghost"
+        >
+          {t("inbox.discard")}
+        </Button>
+
+        <button
+          className="text-muted-foreground hover:text-foreground ml-auto cursor-pointer text-xs"
           onClick={() => navegar("execucoes", pendencia.runId)}
           type="button"
         >
