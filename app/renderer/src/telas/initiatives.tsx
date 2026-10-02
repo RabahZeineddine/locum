@@ -233,10 +233,11 @@ function TirasDeAba({
     <div className="border-border flex gap-1 border-b" data-locum-probe="initiative-tabs">
       {ABAS.map((candidata) => (
         <button
+          aria-current={candidata === aba ? "page" : undefined}
           className={
             candidata === aba
-              ? "border-foreground text-foreground -mb-px cursor-pointer border-b-2 px-3 py-2 text-sm font-medium"
-              : "text-muted-foreground hover:text-foreground -mb-px cursor-pointer border-b-2 border-transparent px-3 py-2 text-sm"
+              ? "text-foreground relative cursor-pointer px-3 py-2.5 text-sm font-medium"
+              : "text-muted-foreground hover:text-foreground relative cursor-pointer px-3 py-2.5 text-sm transition-colors duration-200"
           }
           data-locum-tab={candidata}
           key={candidata}
@@ -244,6 +245,9 @@ function TirasDeAba({
           type="button"
         >
           {t(`initiatives.detail.tabs.${candidata}`)}
+          {candidata === aba && (
+            <i aria-hidden className="ia-gradiente absolute inset-x-2 -bottom-px h-0.5 rounded-full" />
+          )}
         </button>
       ))}
     </div>

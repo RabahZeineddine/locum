@@ -351,7 +351,7 @@ function PassoDaExecucao({
       ) : null}
 
       {passo.modelRequested !== null ? (
-        <Reasoning defaultOpen={false} duration={segundos}>
+        <Reasoning className="mt-3" defaultOpen={false} duration={segundos}>
           <ReasoningTrigger>{t("runs.step.reasoning.trigger")}</ReasoningTrigger>
           <ReasoningContent>
             {[
