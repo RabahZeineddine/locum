@@ -195,9 +195,13 @@ export class ConnectionService {
       return this.um(id);
     }
 
-    const url = entry?.url ?? (await this.deps.mcp.get(id))?.config.url;
+    const atual = await this.deps.mcp.get(id);
+    const url = entry?.url ?? atual?.config.url;
     if (url === undefined) throw new Error(`"${id}" não conecta por um clique`);
-    if ((await this.deps.mcp.get(id)) === undefined) {
+    // Um cadastro com o nome do catálogo e outro endereço faria a autorização
+    // acontecer no servidor errado, com a vitrine mostrando o endereço certo.
+    // Como no Slack, quem clica na vitrine liga o servidor da vitrine.
+    if (atual === undefined || atual.config.transport !== "http" || atual.config.url !== url) {
       await this.deps.mcp.register({ name: id, transport: "http", url });
     }
     await this.deps.oauth.connect(id);

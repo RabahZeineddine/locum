@@ -285,3 +285,18 @@ test("consentimento do administrador abre o link do tenant e exige a confirmaç�
   voltar(new URLSearchParams());
   await assert.rejects(servico.teamsAdminConsent("empresa.com.br", CLIENTE), /sem confirmar/);
 });
+
+test("conectar pela vitrine recadastra o servidor que tem o nome do catálogo e outro endereço", async () => {
+  const { servico, mcp, pedidos } = montarSlack();
+  await mcp.register({ name: "linear", transport: "http", url: "https://outro.exemplo.dev/mcp" });
+  try {
+    await servico.connect("linear");
+    assert.equal((await mcp.get("linear"))?.config.url, "https://mcp.linear.app/mcp");
+    assert.deepEqual(
+      pedidos.map((p) => p.name),
+      ["linear"],
+    );
+  } finally {
+    await mcp.remove("linear");
+  }
+});
