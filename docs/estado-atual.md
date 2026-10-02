@@ -1028,6 +1028,31 @@ pedido com state de outra tentativa, em vez de falhar com ele.
 local do Mac. No dia da atualização, o gasto já gravado sob a data UTC pode
 contar no dia errado uma vez.
 
+**Evento sem run segurava a janela.** Um `startForEvent` que falhava parava o
+laço, e o resto da janela ficava sem run com o cursor da fonte já andado.
+Desde a 0.1.27 cada evento tenta o seu, e a batida sai `failed` contando
+quantos ficaram sem run. O evento que falhou ainda não volta na próxima
+varredura das fontes por cursor.
+
+**Saída do modelo trocava o destino da ação.** O payload era o evento coberto
+pela saída, e um diff que pedisse `owner` e `repo` de outro projeto mudava onde
+a ação publicava. Desde a 0.1.27 `owner`, `repo`, `pull` e `headSha` do evento
+vencem a saída. Run sem evento, como o de relógio, continua com o destino da
+saída.
+
+**Segredo seguia o nome, e não o destino.** Atualizar um servidor pela
+ferramenta MCP trocando só o comando herdava o `env` antigo, token incluído.
+Desde a 0.1.27 comando ou endereço novo não herda `env` nem `headers`.
+
+**Credencial do MCP aparecia no `ps`.** O `claude -p` recebia a configuração
+dos servidores, já com o token, no valor de `--mcp-config`. Desde a 0.1.27 vai
+num arquivo 0600 numa pasta temporária, apagada no fim. O Codex ainda recebe
+pelos `-c`.
+
+**Teto de gasto afrouxado pelo MCP.** `set_budget` gravava como pessoa, e
+`null` tirava o teto de um agent já ligado a gatilho. Desde a 0.1.27 quem não é
+pessoa só baixa ou cria teto; subir e tirar é na tela.
+
 **Link de pull request abria o GitHub dentro do app.** O `target="_blank"`
 criava outra janela do Electron. Contorno, desde a 0.1.25: a janela recusa
 abrir janela nova e navegar para fora, e entrega `http` e `https` ao navegador.
