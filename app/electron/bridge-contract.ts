@@ -1,3 +1,4 @@
+import type { TeamsChannelOption } from "../src/teams/channels.js";
 import type { AgentService } from "../src/services/agent-service.js";
 import type { RascunhoDeAgent } from "../src/services/agent-builder.js";
 import type { ApprovalService } from "../src/services/approval-service.js";
@@ -287,6 +288,8 @@ interface ServiceApi {
   "connections.connectTeams": ConnectionService["connectTeams"];
   "connections.disconnectTeams": ConnectionService["disconnectTeams"];
   "connections.teamsAdminConsent": ConnectionService["teamsAdminConsent"];
+  "connections.setTeamsChannels": ConnectionService["setTeamsChannels"];
+  "connections.teamsChannels": () => Promise<TeamsChannelOption[]>;
 
   /**
    * O tracker de tarefa: cadastrar, apontar destino e testar.
@@ -495,6 +498,8 @@ export const BRIDGE_CHANNELS = [
   "connections.connectTeams",
   "connections.disconnectTeams",
   "connections.teamsAdminConsent",
+  "connections.setTeamsChannels",
+  "connections.teamsChannels",
   "trackers.list",
   "trackers.register",
   "trackers.remove",

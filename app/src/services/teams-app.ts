@@ -35,16 +35,33 @@ const LOGIN = "https://login.microsoftonline.com";
  * nelas. Nenhum deles pede consentimento de administrador, e mandar continua
  * passando pela fila de aprovação; o escopo só existe para que a resposta
  * aprovada consiga sair.
- *
- * Canal de equipe fica de fora por enquanto. Ler canal pede
- * `ChannelMessage.Read.All`, que só o administrador libera, e pedir um escopo
- * que nada usa ainda seria pedir acesso a mais.
  */
 export const TEAMS_SCOPES = ["User.Read", "Chat.Read", "ChatMessage.Send"];
 
+/**
+ * Os de canal de equipe, pedidos só por quem ligou canais na conexão.
+ *
+ * Ler canal pede `ChannelMessage.Read.All`, que só o administrador libera.
+ * Por isso ficam de fora do pedido padrão: quem não usa canal conecta sem
+ * depender de ninguém, e quem usa sabe, antes de clicar, que vai precisar do
+ * consentimento do administrador. Listar equipes e canais serve à escolha do
+ * que observar, e mandar na thread é a resposta aprovada.
+ */
+export const TEAMS_CHANNEL_SCOPES = [
+  "Team.ReadBasic.All",
+  "Channel.ReadBasic.All",
+  "ChannelMessage.Read.All",
+  "ChannelMessage.Send",
+];
+
+/** Os escopos do Graph desta conexão, com ou sem os de canal. */
+export function teamsScopes(canais: boolean): string[] {
+  return canais ? [...TEAMS_SCOPES, ...TEAMS_CHANNEL_SCOPES] : TEAMS_SCOPES;
+}
+
 /** O que vai no pedido de autorização: os do Graph e o de renovar o token. */
-export function teamsScope(): string {
-  return ["offline_access", ...TEAMS_SCOPES].join(" ");
+export function teamsScope(canais = false): string {
+  return ["offline_access", ...teamsScopes(canais)].join(" ");
 }
 
 /**
@@ -93,15 +110,16 @@ export function validTeamsTenant(valor: string): boolean {
 /**
  * Link de consentimento do administrador.
  *
- * Nenhum escopo de hoje precisa dele, mas há empresa que desliga o
+ * Os escopos de chat não precisam dele, mas há empresa que desliga o
  * consentimento do próprio usuário, e aí só o administrador libera o app. Com
  * este link ele aprova uma vez pelo tenant inteiro, e ninguém mais vê a tela de
- * permissão.
+ * permissão. Com canais ligados ele deixa de ser opcional: ler canal é escopo
+ * que só o administrador concede.
  */
-export function teamsAdminConsentUrl(tenant: string, clientId: string, state: string): string {
+export function teamsAdminConsentUrl(tenant: string, clientId: string, state: string, canais = false): string {
   const url = new URL(`${LOGIN}/${encodeURIComponent(tenant)}/v2.0/adminconsent`);
   url.searchParams.set("client_id", clientId);
-  url.searchParams.set("scope", TEAMS_SCOPES.map((s) => `https://graph.microsoft.com/${s}`).join(" "));
+  url.searchParams.set("scope", teamsScopes(canais).map((s) => `https://graph.microsoft.com/${s}`).join(" "));
   url.searchParams.set("redirect_uri", TEAMS_REDIRECT_URI);
   url.searchParams.set("state", state);
   return url.toString();

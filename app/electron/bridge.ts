@@ -1,3 +1,4 @@
+import { listTeamsChannels } from "../src/teams/channels.js";
 import { app, BrowserWindow, dialog, ipcMain, type WebContents } from "electron";
 import { readFile, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
@@ -239,6 +240,8 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "connections.connectTeams": (tenantId, clientId) => connectionService.connectTeams(tenantId, clientId),
     "connections.disconnectTeams": () => connectionService.disconnectTeams(),
     "connections.teamsAdminConsent": (tenantId, clientId) => connectionService.teamsAdminConsent(tenantId, clientId),
+    "connections.setTeamsChannels": (ligado) => connectionService.setTeamsChannels(ligado),
+    "connections.teamsChannels": () => listTeamsChannels(),
 
     "trackers.list": () => trackerService.list(),
     "trackers.register": (cadastro) => trackerService.register(cadastro),

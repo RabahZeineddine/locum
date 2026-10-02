@@ -32,6 +32,7 @@ type Gatilho = ReadResult<"triggers.schedule">[number];
 type CadastroDoSlack = ReadResult<"slack.get">;
 type AppDoSlack = ReadResult<"connections.slackApp">;
 type AppDoTeams = ReadResult<"connections.teamsApp">;
+type CanalDoTeams = ReadResult<"connections.teamsChannels">[number];
 type Ferramenta = ReadResult<"mcp.tools">[number];
 type Teste = ReadResult<"mcp.test">;
 
@@ -2541,7 +2542,12 @@ function LinhaDoObservado({
           repo: nomeDoPadrao(config.repoMatch),
         })
       : config.kind === "slack-inbox" || config.kind === "teams-inbox"
-        ? t(ROTULO_DA_CAIXA[config.mentions ? (config.dms ? "both" : "mentions") : "dms"])
+        ? t(ROTULO_DA_CAIXA[config.mentions ? (config.dms ? "both" : "mentions") : "dms"]) +
+          (config.kind === "teams-inbox" && config.mentions && config.channels.length > 0
+            ? t("settings.teamsChannels.inLine", {
+                channels: config.channels.map((c) => c.label ?? c.channelId).join(", "),
+              })
+            : "")
         : "";
 
   // "De qualquer pessoa" é o padrão e não vira texto: repetir o que vale para
@@ -2760,7 +2766,7 @@ const ROTULO_DA_CAIXA: Record<Caixa, string> = {
  * escolher além do agent e do que avisar: servidor, ferramenta e conversa são
  * os da conta de quem conectou.
  */
-function CaixaDeEntrada({ servico }: { servico: "slack" | "teams" }) {
+function CaixaDeEntrada({ servico, canais = false }: { servico: "slack" | "teams"; canais?: boolean }) {
   const kind = servico === "slack" ? "slack-inbox" : "teams-inbox";
   const pronto = servico === "slack" ? "slack-reply" : "teams-reply";
   const { i18n, t } = useTranslation();
@@ -2770,6 +2776,8 @@ function CaixaDeEntrada({ servico }: { servico: "slack" | "teams" }) {
   const [recarregado, setRecarregado] = useState<Gatilho[] | null>(null);
   const [agentId, setAgentId] = useState("");
   const [caixa, setCaixa] = useState<Caixa>("both");
+  const [opcoesDeCanal, setOpcoesDeCanal] = useState<CanalDoTeams[] | null>(null);
+  const [canaisEscolhidos, setCanaisEscolhidos] = useState<ReadonlySet<string>>(new Set());
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -2791,12 +2799,35 @@ function CaixaDeEntrada({ servico }: { servico: "slack" | "teams" }) {
       .finally(() => setOcupado(false));
   };
 
+  const chaveDoCanal = (c: CanalDoTeams) => `${c.teamId}|${c.channelId}`;
+  const escolhidos =
+    servico === "teams" && canais && caixa !== "dms"
+      ? (opcoesDeCanal ?? [])
+          .filter((c) => canaisEscolhidos.has(chaveDoCanal(c)))
+          .map((c) => ({ teamId: c.teamId, channelId: c.channelId, label: `${c.teamName} / ${c.channelName}` }))
+      : [];
+
   const gatilhoPara = (id: string) =>
-    call("triggers.set", id, {
-      kind,
-      mentions: caixa !== "dms",
-      dms: caixa !== "mentions",
+    call(
+      "triggers.set",
+      id,
+      kind === "teams-inbox"
+        ? { kind, mentions: caixa !== "dms", dms: caixa !== "mentions", channels: escolhidos }
+        : { kind, mentions: caixa !== "dms", dms: caixa !== "mentions" },
+    );
+
+  const carregarCanais = (): void => {
+    agir(call("connections.teamsChannels").then(setOpcoesDeCanal));
+  };
+
+  const alternarCanal = (chave: string): void => {
+    setCanaisEscolhidos((atual) => {
+      const proximo = new Set(atual);
+      if (proximo.has(chave)) proximo.delete(chave);
+      else proximo.add(chave);
+      return proximo;
     });
+  };
 
   const ligar = (): void => {
     agir(gatilhoPara(escolhido));
@@ -2876,6 +2907,40 @@ function CaixaDeEntrada({ servico }: { servico: "slack" | "teams" }) {
           {t("settings.slackInbox.add")}
         </Button>
       </div>
+
+      {servico === "teams" && canais && caixa !== "dms" ? (
+        <div className="flex flex-col gap-1.5" data-locum-teams-canais="">
+          {opcoesDeCanal === null ? (
+            <div>
+              <Button data-locum-teams-canais-carregar="" disabled={ocupado} onClick={carregarCanais} size="sm" variant="ghost">
+                {t("settings.teamsChannels.load")}
+              </Button>
+            </div>
+          ) : opcoesDeCanal.length === 0 ? (
+            <p className="text-muted-foreground text-xs">{t("settings.teamsChannels.none")}</p>
+          ) : (
+            <>
+              <span className="text-muted-foreground text-xs">{t("settings.teamsChannels.pick")}</span>
+              <ul className="border-border flex max-h-48 flex-col overflow-y-auto rounded-md border p-1">
+                {opcoesDeCanal.map((c) => (
+                  <li key={chaveDoCanal(c)}>
+                    <label className="hover:bg-accent flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-xs">
+                      <input
+                        checked={canaisEscolhidos.has(chaveDoCanal(c))}
+                        disabled={!canaisEscolhidos.has(chaveDoCanal(c)) && canaisEscolhidos.size >= 20}
+                        onChange={() => alternarCanal(chaveDoCanal(c))}
+                        type="checkbox"
+                      />
+                      <span className="text-muted-foreground">{c.teamName}</span>
+                      <span>/ {c.channelName}</span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      ) : null}
 
       {temPronto || agentsIniciais.data === undefined ? null : (
         <div className="border-border flex flex-wrap items-center gap-2 rounded-md border border-dashed p-2">
@@ -2963,7 +3028,11 @@ function TeamsPeloGraph() {
 
       <ol className="text-muted-foreground flex list-decimal flex-col gap-1 pl-5 text-xs">
         <li>{t("settings.teams.stepRegister", { redirect: app?.redirectUri ?? "" })}</li>
-        <li>{t("settings.teams.stepPermissions", { scopes: (app?.scopes ?? []).join(", ") })}</li>
+        <li>
+          {t(app?.channels ? "settings.teams.stepPermissionsChannels" : "settings.teams.stepPermissions", {
+            scopes: (app?.scopes ?? []).join(", "),
+          })}
+        </li>
         <li>{t("settings.teams.stepIds")}</li>
       </ol>
 
@@ -3037,7 +3106,29 @@ function TeamsPeloGraph() {
       </div>
       <p className="text-muted-foreground text-xs">{t("settings.teams.adminHow")}</p>
 
-      {app?.connected ? <CaixaDeEntrada servico="teams" /> : null}
+      <label className="flex cursor-pointer items-start gap-2 text-xs">
+        <input
+          checked={app?.channels ?? false}
+          className="mt-0.5"
+          data-locum-teams-canais-ligar=""
+          disabled={ocupado || app === null}
+          onChange={(evento) =>
+            agir(
+              call("connections.setTeamsChannels", evento.target.checked),
+              app?.connected ? t("settings.teamsChannels.reconnect") : null,
+            )
+          }
+          type="checkbox"
+        />
+        <span className="flex flex-col gap-0.5">
+          <span className="font-medium">{t("settings.teamsChannels.toggle")}</span>
+          <span className="text-muted-foreground">
+            {t("settings.teamsChannels.toggleHint", { scopes: (app?.channelScopes ?? []).join(", ") })}
+          </span>
+        </span>
+      </label>
+
+      {app?.connected ? <CaixaDeEntrada canais={app.channels} servico="teams" /> : null}
 
       {ocupado ? <p className="text-muted-foreground text-xs">{t("settings.teams.waiting")}</p> : null}
       {aviso !== null ? <p className="text-muted-foreground text-xs">{aviso}</p> : null}

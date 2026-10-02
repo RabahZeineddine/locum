@@ -869,7 +869,8 @@
       "admin": "Consentimento do administrador",
       "adminHow": "Se a sua empresa não deixa o usuário autorizar app sozinho, um administrador do tenant clica em \"Consentimento do administrador\" uma vez, e o app fica liberado para todos.",
       "adminDone": "Consentimento do administrador registrado. Agora é só conectar.",
-      "waiting": "Esperando a autorização no navegador."
+      "waiting": "Esperando a autorização no navegador.",
+      "stepPermissionsChannels": "Não precisa adicionar permissão: o Locum pede ao conectar as permissões delegadas do Graph {{scopes}}. Com canais ligados, ChannelMessage.Read.All só vale depois do consentimento do administrador."
     },
     "teamsInbox": {
       "description": "Acorda um agent quando alguém menciona você ou manda mensagem num chat do Teams. O Locum lê pelo Graph, com a sua conta, as conversas que se mexeram a cada 5 minutos; a resposta que o agent propuser para na fila. Canais de equipe ainda não entram."
@@ -878,7 +879,16 @@
       "hint": "Ainda sem agent para responder? Use o pronto: ele lê a mensagem, escreve a resposta e deixa na fila para você aprovar antes de sair. Depois dá para editar em Agents.",
       "use": "Usar a resposta pronta"
     },
-    "lead": "Como o Locum se comporta, com quais modelos pensa e de onde vem o trabalho."
+    "lead": "Como o Locum se comporta, com quais modelos pensa e de onde vem o trabalho.",
+    "teamsChannels": {
+      "toggle": "Incluir canais de equipe",
+      "toggleHint": "Menção em canal escolhido também acorda o agent, e a resposta aprovada entra na thread. Acrescenta {{scopes}} ao pedido, e ler canal exige o consentimento do administrador do tenant.",
+      "reconnect": "Vale no próximo conectar. Conecte de novo para o Entra pedir os escopos de canal.",
+      "load": "Escolher canais",
+      "pick": "Canais onde menção acorda o agent (até 20)",
+      "none": "Nenhum canal nas suas equipes.",
+      "inLine": ", e menções em {{channels}}"
+    }
   },
   "severity": {
     "critical": "crítico",

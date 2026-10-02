@@ -189,7 +189,7 @@ Forma do AgentSpec:
   - model: { "type": "model", "key", "name", "needs", "model": "provedor/modelo", "prompt", "maxSteps", "requiresServers", "tools"?, "outputSchema"? }
   - action: { "type": "action", "key", "name", "needs", "action", "mode": "approve", "input": chave do passo cuja saída a ação publica, "target"? }
 
-No prompt, use {{event.campo}} para o evento que acordou o agent e {{steps.chave}} ou {{steps.chave.campo}} para a saída de um passo anterior. Os campos de evento que existem são os que aparecem nos exemplos: pull request do GitHub (repo, title, description, diff, omittedSummary, ci.summary), mensagem do Slack (author, channel, text, threadTs), mensagem do Teams (author, text) e digest do Slack (channels).
+No prompt, use {{event.campo}} para o evento que acordou o agent e {{steps.chave}} ou {{steps.chave.campo}} para a saída de um passo anterior. Os campos de evento que existem são os que aparecem nos exemplos: pull request do GitHub (repo, title, description, diff, omittedSummary, ci.summary), mensagem do Slack (author, channel, text, threadTs), mensagem do Teams (author, text, e channel quando a menção veio de canal de equipe) e digest do Slack (channels).
 
 Passo de modelo cuja saída alimenta uma ação precisa de outputSchema no formato que a ação espera, igual ao do exemplo que usa a mesma ação. Toda ação usa mode "approve": nada sai sem a pessoa aprovar na fila.
 

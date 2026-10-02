@@ -40,7 +40,18 @@ export type TeamsInboxKind = "mention" | "dm";
 export interface TeamsInboxWatch {
   mentions: boolean;
   dms: boolean;
+  /** Canais de equipe onde a menção também conta. */
+  channels?: readonly TeamsChannelRef[];
 }
+
+export interface TeamsChannelRef {
+  teamId: string;
+  channelId: string;
+  label?: string;
+}
+
+/** Prefixo do `repo` de evento que veio de canal de equipe. */
+export const TEAMS_CHANNEL_PREFIX = "teams-channel/";
 
 export interface TeamsInboxOptions {
   db?: Db;
@@ -53,7 +64,7 @@ export interface TeamsInboxOptions {
 export interface TeamsInboxOutcome {
   eventIds: string[];
   seen: number;
-  errors: { kind: "inbox"; error: string }[];
+  errors: { kind: "inbox" | "channel"; channel?: string; error: string }[];
 }
 
 /**
@@ -79,10 +90,18 @@ export async function pollTeamsInbox(
 
   const graph = graphGet(token, options.fetchFn ?? fetch, options.graphUrl ?? GRAPH_URL);
   const outcome: TeamsInboxOutcome = { eventIds: [], seen: 0, errors: [] };
+  const canais = watch.mentions ? (watch.channels ?? []) : [];
   if (!watch.mentions && !watch.dms) return outcome;
 
+  let eu: string;
   try {
-    const eu = await quemSou(graph);
+    eu = await quemSou(graph);
+  } catch (err) {
+    outcome.errors.push({ kind: "inbox", error: err instanceof Error ? err.message : String(err) });
+    return outcome;
+  }
+
+  try {
     const { eventIds, seen } = await pollMcpServer(
       { server: TEAMS_SERVER, tool: "inbox", args: { since: CURSOR_TOKEN } },
       { db, call: caixa(graph), shape: inboxShape(watch, eu) },
@@ -92,7 +111,122 @@ export async function pollTeamsInbox(
   } catch (err) {
     outcome.errors.push({ kind: "inbox", error: err instanceof Error ? err.message : String(err) });
   }
+
+  // Um cursor por canal, como no Slack: o canal que falha não segura o
+  // cursor dos outros, e o que entrou depois começa do próprio dia.
+  for (const canal of canais) {
+    try {
+      const { eventIds, seen } = await pollMcpServer(
+        { server: TEAMS_SERVER, tool: "channel", args: { since: CURSOR_TOKEN } },
+        { db, call: doCanal(graph, canal), shape: canalShape(canal, eu) },
+      );
+      outcome.eventIds.push(...eventIds);
+      outcome.seen += seen;
+    } catch (err) {
+      outcome.errors.push({
+        kind: "channel",
+        channel: canal.label ?? canal.channelId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
   return outcome;
+}
+
+/**
+ * As mensagens novas de um canal, das threads e das respostas.
+ *
+ * O Graph não filtra mensagem de canal por data fora da consulta delta, que
+ * devolve o canal inteiro na primeira vez. A lista comum vem com as threads
+ * mais recentes primeiro e as respostas junto, e uma página de cinquenta
+ * cobre com folga os cinco minutos entre batidas. Quem fica além disso é o
+ * mais velho, e o cursor anda por cima dele, pelo mesmo motivo de `PAGINAS`.
+ */
+function doCanal(graph: GraphGet, canal: TeamsChannelRef): McpCaller {
+  return async (_server, _tool, args) => {
+    const desde = String(args.since);
+    const resposta = await graph(
+      `/teams/${encodeURIComponent(canal.teamId)}/channels/${encodeURIComponent(canal.channelId)}` +
+        `/messages?$top=${POR_PAGINA}&$expand=replies`,
+    );
+    const threads = Array.isArray(resposta.value) ? resposta.value : [];
+    const mensagens: unknown[] = [];
+    for (const item of threads) {
+      const raiz = (item ?? {}) as Record<string, unknown>;
+      const respostas = Array.isArray(raiz.replies) ? raiz.replies : [];
+      for (const mensagem of [raiz, ...respostas]) {
+        const criada = carimbo((mensagem as { createdDateTime?: unknown } | null)?.createdDateTime);
+        if (criada === null || criada <= desde) continue;
+        const { replies: _fora, ...sem } = mensagem as Record<string, unknown>;
+        mensagens.push({ ...sem, threadId: typeof raiz.id === "string" ? raiz.id : null });
+      }
+    }
+    return { messages: mensagens };
+  };
+}
+
+/** Mensagem de canal que pede atenção: alguém marcou a pessoa. */
+export function channelMessages(payload: unknown, eu: string): unknown[] {
+  const lista = (payload as { messages?: unknown } | null | undefined)?.messages;
+  if (!Array.isArray(lista)) return [];
+  return lista.filter((item) => {
+    const bruto = (item ?? {}) as Record<string, unknown>;
+    const autor = ((bruto.from ?? {}) as { user?: { id?: unknown } | null }).user;
+    return (
+      typeof bruto.id === "string" &&
+      typeof bruto.threadId === "string" &&
+      bruto.messageType === "message" &&
+      (bruto.deletedDateTime === null || bruto.deletedDateTime === undefined) &&
+      typeof autor?.id === "string" &&
+      autor.id !== eu &&
+      carimbo(bruto.createdDateTime) !== null &&
+      kindOf({ ...bruto, chatType: "channel" }, eu, { mentions: true, dms: false }) === "mention"
+    );
+  });
+}
+
+/**
+ * O `repo` de um evento de canal: equipe, canal e a thread onde a resposta
+ * entra. É por ele que a resposta aprovada acha o destino, como a conversa.
+ */
+export function channelRepo(teamId: string, channelId: string, threadId: string): string {
+  return `${TEAMS_CHANNEL_PREFIX}${teamId}/${channelId}/${threadId}`;
+}
+
+function canalShape(canal: TeamsChannelRef, eu: string): McpPollShape {
+  const traduzir = (item: unknown) => {
+    const bruto = (item ?? {}) as Record<string, unknown>;
+    const mensagem = normalizeInbox({ ...bruto, chatId: canal.channelId, chatType: "channel" }, "mention");
+    return { mensagem, threadId: String(bruto.threadId) };
+  };
+  return {
+    source: TEAMS_SOURCE,
+    key: `channel:${canal.teamId}:${canal.channelId}`,
+    initialCursor: inicial(),
+    items: (payload) => channelMessages(payload, eu),
+    externalId: (item) => `teams:channel:${canal.channelId}:${traduzir(item).mensagem.messageId}`,
+    stamp: (item) => traduzir(item).mensagem.createdAt,
+    payload: (item) => {
+      const { mensagem, threadId } = traduzir(item);
+      return {
+        repo: channelRepo(canal.teamId, canal.channelId, threadId),
+        changedFiles: [],
+        server: TEAMS_SERVER,
+        kind: "mention",
+        teamId: canal.teamId,
+        channelId: canal.channelId,
+        channel: canal.label ?? canal.channelId,
+        threadId,
+        chatType: "channel",
+        author: mensagem.author,
+        authorId: mensagem.authorId,
+        text: mensagem.text,
+        messageId: mensagem.messageId,
+        webUrl: mensagem.webUrl,
+        item,
+      };
+    },
+  };
 }
 
 /** Um GET no Graph, com o endereço relativo ou o `@odata.nextLink` inteiro. */

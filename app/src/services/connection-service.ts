@@ -14,14 +14,15 @@ import {
 } from "./slack-app.js";
 import { slackService, type SlackService } from "./slack-service.js";
 import {
+  TEAMS_CHANNEL_SCOPES,
   TEAMS_REDIRECT_URI,
-  TEAMS_SCOPES,
   TEAMS_SERVER,
   entraAuthorizationServer,
   entraMetadata,
   teamsAdminConsentUrl,
   teamsAppCommand,
   teamsScope,
+  teamsScopes,
   validTeamsClientId,
   validTeamsTenant,
 } from "./teams-app.js";
@@ -33,11 +34,21 @@ const CHAVE_CLIENT_ID_SLACK = "slack:clientId";
 const CHAVE_TENANT_TEAMS = "teams:tenantId";
 const CHAVE_CLIENT_ID_TEAMS = "teams:clientId";
 
+/**
+ * Se a conexão do Teams pede os escopos de canal. Vale para o próximo
+ * conectar: o token de agora tem os escopos com que foi pedido.
+ */
+const CHAVE_CANAIS_TEAMS = "teams:channels";
+
 /** O que a tela precisa para guiar o registro do app do Teams. */
 export interface TeamsAppSetup {
   redirectUri: string;
   /** Permissões delegadas do Graph que o app pede, para a tela listar. */
   scopes: string[];
+  /** Os escopos que ligar canais acrescenta, para a tela avisar antes. */
+  channelScopes: string[];
+  /** Se o próximo conectar pede os escopos de canal. */
+  channels: boolean;
   /** O registro pela CLI do Azure, para copiar. */
   command: string;
   tenantId: string | null;
@@ -263,9 +274,12 @@ export class ConnectionService {
 
   /** Comando de registro e o que já foi informado, para a tela do Teams. */
   async teamsApp(): Promise<TeamsAppSetup> {
+    const canais = await this.teamsChannelsOn();
     return {
       redirectUri: TEAMS_REDIRECT_URI,
-      scopes: TEAMS_SCOPES,
+      scopes: teamsScopes(canais),
+      channelScopes: TEAMS_CHANNEL_SCOPES,
+      channels: canais,
       command: teamsAppCommand(),
       tenantId: (await this.deps.settings.get(CHAVE_TENANT_TEAMS)) ?? null,
       clientId: (await this.deps.settings.get(CHAVE_CLIENT_ID_TEAMS)) ?? null,
@@ -284,7 +298,7 @@ export class ConnectionService {
     await this.deps.oauth.connectDirect(TEAMS_SERVER, entraAuthorizationServer(tenant), entraMetadata(tenant), {
       clientId: client,
       redirectUri: TEAMS_REDIRECT_URI,
-      scope: teamsScope(),
+      scope: teamsScope(await this.teamsChannelsOn()),
     });
     return this.um(TEAMS_SERVER);
   }
@@ -295,12 +309,26 @@ export class ConnectionService {
    */
   async teamsAdminConsent(tenantId: string, clientId: string): Promise<void> {
     const { tenant, client } = await this.guardarTeams(tenantId, clientId);
+    const canais = await this.teamsChannelsOn();
     const volta = await this.deps.oauth.openAndWait(TEAMS_REDIRECT_URI, (state) =>
-      teamsAdminConsentUrl(tenant, client, state),
+      teamsAdminConsentUrl(tenant, client, state, canais),
     );
     if (volta.get("admin_consent")?.toLowerCase() !== "true") {
       throw new Error("o Entra voltou sem confirmar o consentimento do administrador");
     }
+  }
+
+  /**
+   * Liga ou desliga os escopos de canal. Não mexe no token: quem já conectou
+   * reconecta para o Entra perguntar de novo, e a tela diz isso.
+   */
+  async setTeamsChannels(ligado: boolean): Promise<TeamsAppSetup> {
+    await this.deps.settings.set(CHAVE_CANAIS_TEAMS, ligado ? "sim" : "nao");
+    return this.teamsApp();
+  }
+
+  private async teamsChannelsOn(): Promise<boolean> {
+    return (await this.deps.settings.get(CHAVE_CANAIS_TEAMS)) === "sim";
   }
 
   /** Esquece o token. Tenant e client id ficam, porque o app continua registrado. */

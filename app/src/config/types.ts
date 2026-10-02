@@ -324,6 +324,21 @@ export const TeamsInboxTrigger = z.object({
   kind: z.literal("teams-inbox"),
   mentions: z.boolean().default(true),
   dms: z.boolean().default(true),
+  /**
+   * Canais de equipe onde menção também acorda o agent. Pede os escopos de
+   * canal na conexão. Fica numa lista curta porque cada canal é uma chamada
+   * ao Graph por batida.
+   */
+  channels: z
+    .array(
+      z.object({
+        teamId: z.string().min(1),
+        channelId: z.string().min(1),
+        label: z.string().optional(),
+      }),
+    )
+    .max(20)
+    .default([]),
   everyMinutes: z.number().int().min(1).default(5),
 });
 
