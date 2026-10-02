@@ -1,5 +1,6 @@
 import { mcpOAuthService } from "../services/mcp-oauth-service.js";
 import { GRAPH_URL, TEAMS_SERVER } from "../services/teams-app.js";
+import { clienteHttp } from "../net/http.js";
 
 /** Um canal que a pessoa pode observar, com o nome da equipe para a tela. */
 export interface TeamsChannelOption {
@@ -28,7 +29,7 @@ export interface ListTeamsChannelsOptions {
 export async function listTeamsChannels(options: ListTeamsChannelsOptions = {}): Promise<TeamsChannelOption[]> {
   const token = await (options.token ?? (() => mcpOAuthService.accessToken(TEAMS_SERVER)))();
   if (token === null) throw new Error("o Teams não está conectado");
-  const fetchFn = options.fetchFn ?? fetch;
+  const fetchFn = options.fetchFn ?? clienteHttp;
   const graphUrl = options.graphUrl ?? GRAPH_URL;
 
   const get = async (caminho: string): Promise<Record<string, unknown>[]> => {

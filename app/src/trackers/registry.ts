@@ -11,6 +11,8 @@
  * para isso custaria mais em tempo de subida do que economiza em código.
  */
 
+import { clienteHttp } from "../net/http.js";
+
 /**
  * Os dois que existiam na versão Python, e o Jira pela conexão Atlassian.
  *
@@ -122,7 +124,7 @@ async function pedir<T>(url: string, pedido: Pedido): Promise<T> {
 
   let resposta: Response;
   try {
-    resposta = await fetch(url, {
+    resposta = await clienteHttp(url, {
       method,
       headers: body === undefined ? headers : { ...headers, "content-type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),

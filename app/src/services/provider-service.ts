@@ -14,6 +14,7 @@ import {
 } from "../providers/registry.js";
 import { secretService, type SecretService } from "./secret-service.js";
 import { settingsService, type SettingsService } from "./settings-service.js";
+import { clienteHttp } from "../net/http.js";
 
 type Db = typeof defaultDb;
 
@@ -511,7 +512,7 @@ export class ProviderService {
 
     const { url, headers } = entry.catalog();
     try {
-      const resposta = await fetch(url, { headers, signal: AbortSignal.timeout(10_000) });
+      const resposta = await clienteHttp(url, { headers, signal: AbortSignal.timeout(10_000) });
       if (!resposta.ok) {
         return { modelos: [], erro: `catalogo respondeu ${resposta.status}` };
       }

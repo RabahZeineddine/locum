@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
+import { clienteHttp } from "../net/http.js";
 
 /**
  * A atualização do Locum, sem o Electron no meio.
@@ -98,7 +99,7 @@ export async function procurarVersaoNova(opcoes: {
   repo?: string;
   api?: string;
 }): Promise<VersaoDisponivel | null> {
-  const buscar = opcoes.buscar ?? fetch;
+  const buscar = opcoes.buscar ?? clienteHttp;
   const base = `${opcoes.api ?? UPDATE_API}/repos/${opcoes.repo ?? UPDATE_REPO}`;
 
   const resposta = await buscar(`${base}/releases/latest`, {
@@ -149,7 +150,7 @@ export async function baixarConferindo(
   url: string,
   destino: string,
   sha512: string,
-  buscar: Buscar = fetch,
+  buscar: Buscar = clienteHttp,
 ): Promise<void> {
   const resposta = await buscar(url, { headers: { "user-agent": "locum-updater" } });
   if (!resposta.ok || resposta.body === null) throw new Error(`download respondeu ${resposta.status}`);

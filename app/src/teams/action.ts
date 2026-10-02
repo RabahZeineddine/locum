@@ -5,6 +5,7 @@ import { db as defaultDb, schema } from "../db/index.js";
 import { mcpOAuthService } from "../services/mcp-oauth-service.js";
 import { GRAPH_URL, TEAMS_SERVER } from "../services/teams-app.js";
 import { TEAMS_CHANNEL_PREFIX, TEAMS_SOURCE } from "../sources/teams-inbox.js";
+import { clienteHttp } from "../net/http.js";
 
 type Db = typeof defaultDb;
 
@@ -105,7 +106,7 @@ export interface TeamsPostHandlerOptions {
 export function teamsPostHandler(options: TeamsPostHandlerOptions = {}): ActionHandler {
   const db = options.db ?? defaultDb;
   const token = options.token ?? (() => mcpOAuthService.accessToken(TEAMS_SERVER));
-  const fetchFn = options.fetchFn ?? fetch;
+  const fetchFn = options.fetchFn ?? clienteHttp;
   const graphUrl = options.graphUrl ?? GRAPH_URL;
 
   return {

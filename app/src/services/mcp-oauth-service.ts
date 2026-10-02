@@ -15,6 +15,7 @@ import type {
 } from "@modelcontextprotocol/sdk/shared/auth.js";
 import { mcpService, type McpService } from "./mcp-service.js";
 import { CREDENTIAL_PLACEHOLDER, secretService, type SecretService } from "./secret-service.js";
+import { clienteHttp } from "../net/http.js";
 
 type FetchLike = typeof fetch;
 
@@ -104,7 +105,7 @@ export class McpOAuthService {
       openBrowser: async () => {
         throw new Error("o processo principal não disse como abrir o navegador");
       },
-      fetchFn: fetch,
+      fetchFn: clienteHttp,
       now: Date.now,
       timeoutMs: DEFAULT_TIMEOUT_MS,
       ...deps,

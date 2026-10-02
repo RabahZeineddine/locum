@@ -1167,6 +1167,18 @@ escolheu idioma recebia inglês mesmo com o sistema em português. Contorno:
 (`app.getLocale()`, ligado no `main` depois do `setupI18n`); fora do Electron
 cai no inglês, que é o que os testes esperam.
 
+**Wi-Fi que cai no meio da chamada.** A conferência de atualização mostrava
+`net::ERR_NETWORK_CHANGED` cru e só tentava de novo seis horas depois, e cada
+`fetch` do processo principal tratava falha do seu jeito (uns com prazo, outros
+sem). Desde a 0.1.37 tudo passa por `src/net/http.ts`: prazo até os cabeçalhos,
+nova tentativa com espera crescente em queda de rede e em 408, 429, 502, 503 e
+504 (respeitando `Retry-After` até 30s), e `ErroDeRede` com tipo `offline`,
+`timeout` ou `rede`. GET e HEAD repetem; POST só no cliente de leitura
+(`clienteHttpDeLeitura`, usado na busca do Slack), porque repetir o envio de uma
+mensagem no Teams mandaria duas. O updater mostra "sem conexão" pelo tipo e,
+depois de uma falha de rede, confere de novo em cinco minutos. Um teste barra
+`fetch` cru fora do cliente.
+
 ## Próximos passos
 
 Iniciativas: I1, I2 e I3 prontos no código. Falta o teste à mão da sessão

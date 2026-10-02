@@ -3,6 +3,7 @@ import { mcpOAuthService } from "../services/mcp-oauth-service.js";
 import { SLACK_SERVER } from "../services/slack-app.js";
 import { pollMcpServer, CURSOR_TOKEN, type McpCaller, type McpPollShape } from "./mcp-poll.js";
 import { slackSource, slackWatermark } from "./slack.js";
+import { clienteHttpDeLeitura } from "../net/http.js";
 
 type Db = typeof defaultDb;
 
@@ -104,7 +105,7 @@ export async function pollSlackInbox(
   const token = await (options.token ?? (() => mcpOAuthService.accessToken(SLACK_SERVER)))();
   if (token === null) throw new Error("o Slack não está conectado pelo servidor oficial");
 
-  const api = slackApi(token, options.fetchFn ?? fetch, options.apiUrl ?? SLACK_API_URL);
+  const api = slackApi(token, options.fetchFn ?? clienteHttpDeLeitura, options.apiUrl ?? SLACK_API_URL);
   const eu = await quemSou(api);
 
   const outcome: SlackInboxOutcome = { eventIds: [], inWindow: [], seen: 0, errors: [] };

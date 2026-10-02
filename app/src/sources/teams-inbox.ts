@@ -2,6 +2,7 @@ import { db as defaultDb } from "../db/index.js";
 import { mcpOAuthService } from "../services/mcp-oauth-service.js";
 import { GRAPH_URL, TEAMS_SERVER } from "../services/teams-app.js";
 import { pollMcpServer, CURSOR_TOKEN, type McpCaller, type McpPollShape } from "./mcp-poll.js";
+import { clienteHttp } from "../net/http.js";
 
 type Db = typeof defaultDb;
 
@@ -90,7 +91,7 @@ export async function pollTeamsInbox(
   const token = await (options.token ?? (() => mcpOAuthService.accessToken(TEAMS_SERVER)))();
   if (token === null) throw new Error("o Teams não está conectado");
 
-  const graph = graphGet(token, options.fetchFn ?? fetch, options.graphUrl ?? GRAPH_URL);
+  const graph = graphGet(token, options.fetchFn ?? clienteHttp, options.graphUrl ?? GRAPH_URL);
   const outcome: TeamsInboxOutcome = { eventIds: [], inWindow: [], seen: 0, errors: [] };
   const canais = watch.mentions ? (watch.channels ?? []) : [];
   if (!watch.mentions && !watch.dms) return outcome;

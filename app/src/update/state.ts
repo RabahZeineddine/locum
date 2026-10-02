@@ -32,5 +32,10 @@ export interface UpdaterState {
   /** A versão baixada e esperando, ou a que está baixando. */
   available: { version: string; notes: string } | null;
   error: string | null;
+  /**
+   * Falha de rede tem tipo: sem conexão é o caso comum (Wi-Fi que caiu) e não
+   * pede nada da pessoa, então a tela diz isso em vez do código do Chromium.
+   */
+  errorKind: "offline" | "timeout" | "rede" | null;
 }
 

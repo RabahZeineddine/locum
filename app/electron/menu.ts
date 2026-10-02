@@ -77,7 +77,9 @@ async function procurarAtualizacoes(): Promise<void> {
       : estado.phase === "ready"
         ? t("menu.updates.ready", { version: estado.available?.version ?? "" })
         : estado.phase === "failed"
-          ? t("menu.updates.failed", { error: estado.error ?? "" })
+          ? estado.errorKind !== null
+            ? t(`menu.updates.network.${estado.errorKind}`)
+            : t("menu.updates.failed", { error: estado.error ?? "" })
           : t("menu.updates.upToDate", { version: estado.current });
 
   const botoes = estado.phase === "ready" ? [t("menu.updates.restart"), t("menu.updates.later")] : ["OK"];

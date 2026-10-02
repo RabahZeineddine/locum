@@ -1,6 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { McpService } from "./mcp-service.js";
 import { secretService, type SecretService } from "./secret-service.js";
+import { clienteHttp } from "../net/http.js";
 
 export const LOCUM_SCHEME = "locum";
 
@@ -268,7 +269,7 @@ export class DeepLinkService {
  * de verdade em lugar nenhum.
  */
 export async function exchangeCode(request: TokenRequest): Promise<TokenResponse> {
-  const response = await fetch(request.tokenUrl, {
+  const response = await clienteHttp(request.tokenUrl, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
     body: new URLSearchParams({

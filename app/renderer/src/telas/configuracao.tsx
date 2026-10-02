@@ -461,10 +461,12 @@ function Atualizacao() {
   const parado = estado.reason !== null;
   const situacao = parado
     ? t(`settings.updates.reason.${estado.reason}`, { detail: estado.detail ?? "" })
-    : t(`settings.updates.phase.${estado.phase}`, {
-        version: estado.available?.version ?? "",
-        error: estado.error ?? "",
-      });
+    : estado.phase === "failed" && estado.errorKind !== null
+      ? t(`settings.updates.network.${estado.errorKind}`)
+      : t(`settings.updates.phase.${estado.phase}`, {
+          version: estado.available?.version ?? "",
+          error: estado.error ?? "",
+        });
 
   return (
     <div

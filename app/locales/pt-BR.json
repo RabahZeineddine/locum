@@ -839,6 +839,11 @@
         "ready": "{{version}} baixada, entra ao fechar",
         "uptodate": "em dia",
         "failed": "a conferência falhou: {{error}}"
+      },
+      "network": {
+        "offline": "sem conexão; o Locum confere de novo em alguns minutos",
+        "timeout": "o GitHub não respondeu a tempo; o Locum confere de novo em alguns minutos",
+        "rede": "a conexão caiu no meio; o Locum confere de novo em alguns minutos"
       }
     },
     "sections": {
@@ -1133,7 +1138,12 @@
       "ready": "O Locum {{version}} foi baixado e entra quando o aplicativo fechar.",
       "failed": "A conferência falhou: {{error}}",
       "restart": "Reiniciar agora",
-      "later": "Depois"
+      "later": "Depois",
+      "network": {
+        "offline": "Sem conexão com a internet. O Locum confere de novo sozinho em alguns minutos.",
+        "timeout": "O GitHub não respondeu a tempo. O Locum confere de novo sozinho em alguns minutos.",
+        "rede": "A conexão caiu no meio da conferência. O Locum confere de novo sozinho em alguns minutos."
+      }
     }
   },
   "about": {

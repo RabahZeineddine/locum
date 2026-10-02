@@ -7,6 +7,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { t } from "./i18n.js";
 import { VERSAO } from "./versao.js";
+import { criarClienteHttp, tipoDaFalha } from "../src/net/http.js";
 import { updateService } from "../src/services/update-service.js";
 import { ligarRelogio, umaDeCadaVez, type Relogio } from "../src/triggers/clock.js";
 import {
@@ -26,12 +27,16 @@ export type { UpdaterState } from "../src/update/state.js";
 const CADENCIA_MS = 6 * 60 * 60_000;
 /** A primeira pergunta espera a subida assentar. */
 const PRIMEIRA_MS = 10_000;
+/** Depois de uma queda de rede, a próxima pergunta não espera as seis horas. */
+const DE_NOVO_SEM_REDE_MS = 5 * 60_000;
 
 let armado = false;
 let relogio: Relogio | null = null;
 let fase: FaseDaAtualizacao = "idle";
 let conferidaEm: number | null = null;
 let erro: string | null = null;
+let tipoDoErro: UpdaterState["errorKind"] = null;
+let deNovo: ReturnType<typeof setTimeout> | null = null;
 let disponivel: { version: string; notes: string } | null = null;
 /** O bundle novo extraído, esperando o processo sair. */
 let preparado: string | null = null;
@@ -40,9 +45,10 @@ let trocaRegistrada = false;
 
 /**
  * Pelo `net` do Electron, que respeita o proxy do sistema, e procurado na hora
- * da chamada para que a espia do smoke enxergue a saída.
+ * da chamada para que a espia do smoke enxergue a saída. O cliente por cima
+ * repete quando a rede troca no meio da conferência.
  */
-const buscar = ((url: string, init?: RequestInit) => net.fetch(url, init)) as typeof fetch;
+const buscar = criarClienteHttp({ base: () => net.fetch as unknown as typeof fetch });
 
 const pastaDeTrabalho = (): string => join(homedir(), "Library", "Caches", "Locum", "update");
 
@@ -65,6 +71,7 @@ export async function planUpdater(): Promise<UpdaterState> {
     lastCheckAt: conferidaEm,
     available: disponivel,
     error: erro,
+    errorKind: tipoDoErro,
   };
 
   if (!enabled) return { ...base, reason: "disabled" };
@@ -98,6 +105,8 @@ export async function setupUpdater(): Promise<UpdaterState> {
 
 /** Desarma o relógio. O que já foi baixado continua esperando a saída. */
 export function teardownUpdater(): void {
+  if (deNovo !== null) clearTimeout(deNovo);
+  deNovo = null;
   relogio?.parar();
   relogio = null;
   armado = false;
@@ -126,6 +135,7 @@ export const conferir = umaDeCadaVez(async (): Promise<void> => {
 
   fase = "checking";
   erro = null;
+  tipoDoErro = null;
   try {
     const nova = await procurarVersaoNova({ atual: VERSAO, arch: process.arch, buscar });
     conferidaEm = Date.now();
@@ -151,7 +161,18 @@ export const conferir = umaDeCadaVez(async (): Promise<void> => {
     fase = "failed";
     disponivel = preparado === null ? null : disponivel;
     erro = err instanceof Error ? err.message : String(err);
+    tipoDoErro = tipoDaFalha(err);
     conferidaEm = Date.now();
+    // Sem rede, esperar seis horas deixaria a versão nova parada à toa. Uma
+    // pergunta só, alguns minutos depois; se a rede seguir fora, o relógio
+    // normal continua de pé.
+    if (tipoDoErro !== null && armado && deNovo === null) {
+      deNovo = setTimeout(() => {
+        deNovo = null;
+        conferir().catch((e: unknown) => console.error("atualização: conferência falhou", e));
+      }, DE_NOVO_SEM_REDE_MS);
+      deNovo.unref?.();
+    }
     throw err;
   }
 });

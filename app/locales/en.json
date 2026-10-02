@@ -806,6 +806,11 @@
         "ready": "{{version}} downloaded, installs on quit",
         "uptodate": "up to date",
         "failed": "the check failed: {{error}}"
+      },
+      "network": {
+        "offline": "offline; Locum checks again in a few minutes",
+        "timeout": "GitHub did not answer in time; Locum checks again in a few minutes",
+        "rede": "the connection dropped; Locum checks again in a few minutes"
       }
     },
     "sections": {
@@ -1099,7 +1104,12 @@
       "ready": "Locum {{version}} was downloaded and installs when the app quits.",
       "failed": "The check failed: {{error}}",
       "restart": "Restart Now",
-      "later": "Later"
+      "later": "Later",
+      "network": {
+        "offline": "No internet connection. Locum checks again on its own in a few minutes.",
+        "timeout": "GitHub did not answer in time. Locum checks again on its own in a few minutes.",
+        "rede": "The connection dropped during the check. Locum checks again on its own in a few minutes."
+      }
     }
   },
   "about": {
