@@ -23,8 +23,8 @@ export interface TriggerEntry {
  * 0002, que so libera gravacao de agent justamente porque nenhuma versao entra
  * em execucao agendada sem alguem habilitar o gatilho.
  *
- * Quem consome isto e o agendador do N.3, que ainda nao existe. Ate la o
- * cadastro fica de pe sem ninguem disparar nada, que e o estado seguro.
+ * Quem consome isto e o agendador em `triggers/scheduler.ts`, que so bate
+ * gatilho habilitado.
  */
 export class TriggerService {
   constructor(private readonly db: Db = defaultDb) {}
