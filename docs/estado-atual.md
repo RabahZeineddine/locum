@@ -976,6 +976,22 @@ só as ferramentas MCP liberadas, o passo não enxerga plugin nem a ferramenta d
 skill, então mandar só nome e descrição deixava a regra de skill sem efeito.
 Contorno: o executor manda o corpo no prompt de sistema para todo runtime.
 
+**Aprovar duas vezes publicava duas vezes.** A gate lia `pending`, publicava
+e só depois fechava, então a tela de revisão e a inbox, ou a janela e o
+`locum approve`, publicavam em dobro no nome de quem aprovou. Contorno, desde
+a 0.1.23: a pendência é tomada numa escrita condicional (`pending` para
+`publishing`) antes do handler. Falha antes de sair volta para `pending`;
+queda no meio deixa `publishing`, que não aparece na inbox e faz a retomada
+pausar. Pendência presa em `publishing` pede conferência na mão. Ainda falta
+idempotência nos handlers de GitHub, Slack e Teams: eles recebem o
+`externalId` e não procuram o que já saiu com ele, então um passo `auto` que
+falha depois do POST e é reexecutado publica de novo.
+
+**Teto diário furado por runs juntos.** O gasto ia para `usage_daily` só no
+fim do trecho, e o gatilho de poll abre um run por evento ao mesmo tempo.
+Contorno, desde a 0.1.23: cada passo cobrado grava no dia assim que termina.
+Runs simultâneos ainda podem passar um passo cada além do teto.
+
 **Deep link só chega com o app empacotado.** Em `npm start` o esquema
 `locum://` não está registrado para o binário de desenvolvimento, e o `open`
 do fim do script não volta. Contorno: "Ler passagem" funciona com a sessão
