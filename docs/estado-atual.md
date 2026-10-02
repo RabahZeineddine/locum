@@ -981,11 +981,14 @@ e só depois fechava, então a tela de revisão e a inbox, ou a janela e o
 `locum approve`, publicavam em dobro no nome de quem aprovou. Contorno, desde
 a 0.1.23: a pendência é tomada numa escrita condicional (`pending` para
 `publishing`) antes do handler. Falha antes de sair volta para `pending`;
-queda no meio deixa `publishing`, que não aparece na inbox e faz a retomada
-pausar. Pendência presa em `publishing` pede conferência na mão. Ainda falta
-idempotência nos handlers de GitHub, Slack e Teams: eles recebem o
-`externalId` e não procuram o que já saiu com ele, então um passo `auto` que
-falha depois do POST e é reexecutado publica de novo.
+queda no meio deixa `publishing` e faz a retomada pausar. Desde a 0.1.24, a
+pendência parada há mais de cinco minutos aparece no topo da inbox (e no
+`locum inbox`) com dois botões: "Saiu" fecha como aprovada e o run segue,
+"Não saiu" devolve para a fila. Quem confere o destino é a pessoa; a tela só
+registra. A review do GitHub também procura a marca `locum:<externalId>` nas
+reviews do pull request antes de criar, então o passo `auto` reexecutado não
+assina uma segunda. Slack e Teams não têm essa busca: os dois só saem em
+`approve`, e a falha volta a pendência para a fila.
 
 **Teto diário furado por runs juntos.** O gasto ia para `usage_daily` só no
 fim do trecho, e o gatilho de poll abre um run por evento ao mesmo tempo.

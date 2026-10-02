@@ -90,6 +90,19 @@ export class Executor {
     return { status, run };
   }
 
+  /**
+   * Resolve a pendência parada na publicação e, se ela saiu, retoma o run.
+   * Devolvida para a fila, o run continua pausado esperando a decisão.
+   */
+  async settleStuck(
+    approvalId: string,
+    outcome: "published" | "retry",
+  ): Promise<{ status: "approved" | "pending"; run: "done" | "paused" | "failed" }> {
+    const { runId, status } = await this.deps.gate.settleStuck(approvalId, outcome);
+    if (status === "pending") return { status, run: "paused" };
+    return { status, run: await this.execute(runId) };
+  }
+
   /** Runs interrompidos por fechamento do app ou por crash. */
   async resumeAll(): Promise<string[]> {
     const pending = await db

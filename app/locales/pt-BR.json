@@ -326,7 +326,11 @@
       "issue": "Tarefa",
       "digest": "Resumo",
       "counts": "{{reply}} pedem resposta · {{info}} informação"
-    }
+    },
+    "stuckTitle": "Parou no meio da publicação",
+    "stuckHint": "O Locum caiu ou perdeu a rede enquanto publicava. Confira no destino se saiu antes de escolher.",
+    "stuckPublished": "Saiu",
+    "stuckRetry": "Não saiu, volta para a fila"
   },
   "initiatives": {
     "contextTemplate": {

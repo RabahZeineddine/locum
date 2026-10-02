@@ -1,6 +1,7 @@
-import { and, desc, eq, type SQL } from "drizzle-orm";
+import { and, desc, eq, lte, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { ReviewFinding, ReviewVerdict } from "../config/types.js";
+import { STUCK_AFTER_SECONDS } from "../approval/gate.js";
 import { db as defaultDb, schema } from "../db/index.js";
 
 type Db = typeof defaultDb;
@@ -37,6 +38,16 @@ export class ApprovalService {
 
   async listPending(): Promise<ApprovalSummary[]> {
     return this.query(eq(schema.approvals.status, "pending"));
+  }
+
+  /**
+   * Pendências que começaram a publicar e não terminaram: o app caiu no meio.
+   * Não voltam para a fila sozinhas, porque a mensagem pode ter saído, e ficam
+   * aqui até alguém conferir e dizer o que aconteceu.
+   */
+  async listStuck(): Promise<ApprovalSummary[]> {
+    const limite = Math.floor(Date.now() / 1000) - STUCK_AFTER_SECONDS;
+    return this.query(and(eq(schema.approvals.status, "publishing"), lte(schema.approvals.decidedAt, limite))!);
   }
 
   async get(approvalId: string): Promise<ApprovalSummary | undefined> {

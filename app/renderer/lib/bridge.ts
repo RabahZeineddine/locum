@@ -69,6 +69,9 @@ export const READ_CHANNELS = [
   "runs.findings",
   "runs.findingsByRun",
   "approvals.listPending",
+  // Paradas na publicação, para a fila mostrar. Resolver vai por
+  // `approvals.settleStuck`, que mora em `lib/aprovar.ts` como `decide`.
+  "approvals.listStuck",
   "approvals.get",
   "mcp.list",
   "providers.list",
@@ -266,7 +269,9 @@ export type ReadResult<C extends AnyChannel> = Awaited<ReturnType<LocumApi[C]>>;
  * `READ_CHANNELS`, o `Extract` deixa de ser `never` e o `npm run build` para
  * antes de a janela enxergar o canal.
  */
-type SemDecisao = [Extract<AnyChannel, "approvals.decide">] extends [never] ? true : never;
+type SemDecisao = [Extract<AnyChannel, "approvals.decide" | "approvals.settleStuck">] extends [never]
+  ? true
+  : never;
 const _semDecisao: SemDecisao = true;
 void _semDecisao;
 

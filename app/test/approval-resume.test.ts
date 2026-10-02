@@ -2,7 +2,7 @@ import { before, test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
-import { ApprovalGate, type ActionHandler } from "../src/approval/gate.js";
+import { ApprovalGate, STUCK_AFTER_SECONDS, type ActionHandler } from "../src/approval/gate.js";
 import { AgentSpec } from "../src/config/types.js";
 import { db, schema } from "../src/db/index.js";
 import { migrateDb } from "../src/db/migrate.js";
@@ -10,6 +10,7 @@ import { Executor } from "../src/executor/executor.js";
 import { McpRegistry } from "../src/mcp/registry.js";
 import type { Runtime } from "../src/runtimes/types.js";
 import { AgentService } from "../src/services/agent-service.js";
+import { ApprovalService } from "../src/services/approval-service.js";
 
 // O executor e a gate falam com o banco do módulo, e não com um banco passado
 // por fora. O `setup.ts` já apontou esse banco para uma pasta temporária; aqui
@@ -179,4 +180,34 @@ test("publicação que falha devolve a pendência para a fila, e queda no meio p
   await db.update(schema.approvals).set({ status: "publishing" }).where(eq(schema.approvals.id, approvalId));
   assert.equal(await executor.execute(runId), "paused");
   await assert.rejects(gate.decide(approvalId, "approved"), /ja resolvida: publishing/);
+});
+
+test("pendência parada na publicação aparece, e a pessoa diz se saiu ou volta para a fila", async () => {
+  const agora = Math.floor(Date.now() / 1000);
+  const parar = (approvalId: string, haSegundos: number) =>
+    db
+      .update(schema.approvals)
+      .set({ status: "publishing", decidedAt: agora - haSegundos })
+      .where(eq(schema.approvals.id, approvalId));
+  const presas = async () => (await new ApprovalService().listStuck()).map((a) => a.id);
+
+  // Publicação em andamento não conta como parada, e não aceita resolução.
+  const saindo = await montar();
+  await parar(saindo.approvalId, 5);
+  assert.equal((await presas()).includes(saindo.approvalId), false);
+  await assert.rejects(saindo.executor.settleStuck(saindo.approvalId, "retry"), /nao esta parada/);
+
+  const saiu = await montar();
+  await parar(saiu.approvalId, STUCK_AFTER_SECONDS + 1);
+  assert.ok((await presas()).includes(saiu.approvalId));
+  assert.deepEqual(await saiu.executor.settleStuck(saiu.approvalId, "published"), { status: "approved", run: "done" });
+  assert.equal((await passo(saiu.runId, "depois"))?.status, "done");
+  assert.deepEqual(saiu.publicados, []);
+  assert.equal((await presas()).includes(saiu.approvalId), false);
+
+  const naoSaiu = await montar();
+  await parar(naoSaiu.approvalId, STUCK_AFTER_SECONDS + 1);
+  assert.deepEqual(await naoSaiu.executor.settleStuck(naoSaiu.approvalId, "retry"), { status: "pending", run: "paused" });
+  assert.deepEqual(await naoSaiu.executor.decide(naoSaiu.approvalId, "approved"), { status: "approved", run: "done" });
+  assert.equal(naoSaiu.publicados.length, 1);
 });

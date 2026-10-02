@@ -164,6 +164,8 @@ interface ServiceApi {
   "runs.start": ExecutionService["start"];
 
   "approvals.listPending": ApprovalService["listPending"];
+  /** Pendências que começaram a publicar e não terminaram. Só leitura. */
+  "approvals.listStuck": ApprovalService["listStuck"];
   "approvals.get": ApprovalService["get"];
   /**
    * O clique de uma pessoa na inbox, e nada alem disso.
@@ -189,6 +191,16 @@ interface ServiceApi {
     approvalId: string,
     decision: "approved" | "rejected",
   ) => Promise<DecisionResult>;
+  /**
+   * A pessoa conferiu a pendência parada na publicação e diz o que aconteceu:
+   * saiu, e o run segue, ou não saiu, e ela volta para a fila. Fica fora dos
+   * catálogos da janela pelo mesmo motivo de `decide`: fechar como publicada
+   * faz o run seguir, e só quem olhou o destino sabe se é verdade.
+   */
+  "approvals.settleStuck": (
+    approvalId: string,
+    outcome: "published" | "retry",
+  ) => Promise<{ approvalId: string; status: "approved" | "pending" }>;
 
   "mcp.list": McpService["list"];
   "mcp.test": McpService["testConnection"];
@@ -460,10 +472,12 @@ export const BRIDGE_CHANNELS = [
   "runs.rerunStep",
   "runs.start",
   "approvals.listPending",
+  "approvals.listStuck",
   "approvals.get",
   "approvals.update",
   "approvals.updateText",
   "approvals.decide",
+  "approvals.settleStuck",
   "mcp.list",
   "mcp.test",
   "mcp.tools",

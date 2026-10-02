@@ -238,8 +238,13 @@ function pct(value: number | null): string {
 
 async function inbox(): Promise<void> {
   const rows = await approvalService.listPending();
+  const paradas = await approvalService.listStuck();
+  for (const r of paradas) {
+    console.log(`${r.id}  ${r.kind}  PAROU NA PUBLICACAO  run ${r.runId}`);
+    console.log(`   confira o destino e rode stuck:published ${r.id} ou stuck:retry ${r.id}`);
+  }
   if (rows.length === 0) {
-    console.log("nada pendente");
+    if (paradas.length === 0) console.log("nada pendente");
     return;
   }
   for (const r of rows) {
@@ -577,6 +582,14 @@ async function main(): Promise<void> {
       console.log(`${arg} ${desfecho}, run ${run}`);
       break;
     }
+    case "stuck:published":
+    case "stuck:retry": {
+      if (!arg) throw new Error(`uso: ${cmd} <approval-id>`);
+      const desfecho = cmd === "stuck:published" ? "published" : "retry";
+      const { status, run } = await (await executor()).settleStuck(arg, desfecho);
+      console.log(status === "approved" ? `${arg} fechada como publicada, run ${run}` : `${arg} de volta na fila`);
+      break;
+    }
     case "resume": {
       const ids = await (await executor()).resumeAll();
       console.log(`${ids.length} run(s) retomado(s)`);
@@ -608,6 +621,8 @@ async function main(): Promise<void> {
           "  poll [regex-de-repo]     varre PRs abertos da org e cria eventos",
           "  digest [--agent id]      junta o Slack desde a ultima entrega e roda o agent de digest (slack-digest)",
           "  inbox                    lista aprovacoes pendentes",
+          "  stuck:published <id>     pendencia parada na publicacao: saiu",
+          "  stuck:retry <id>         pendencia parada na publicacao: volta para a fila",
           "  runs [status]            lista as ultimas execucoes",
           "  reconcile <run-id>       cruza o review humano com os achados e grava os desfechos",
           "  metrics [agent-id]       recalcula e imprime precisao por versao de agent",

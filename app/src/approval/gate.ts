@@ -1,7 +1,13 @@
 import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, lte } from "drizzle-orm";
 import { db, schema } from "../db/index.js";
 import type { ActionMode } from "../config/types.js";
+
+/**
+ * Quanto tempo em `publishing` faz a pendência contar como parada. Publicar
+ * leva segundos; passado isso, quem publicava caiu e a pendência espera alguém.
+ */
+export const STUCK_AFTER_SECONDS = 300;
 
 /**
  * O `db` de fora de transacao, ou o `tx` de uma transacao sincrona em
@@ -198,7 +204,7 @@ export class ApprovalGate {
       // sair uma segunda resposta.
       const tomada = db
         .update(schema.approvals)
-        .set({ status: "publishing" })
+        .set({ status: "publishing", decidedAt: Math.floor(Date.now() / 1000) })
         .where(and(eq(schema.approvals.id, approvalId), eq(schema.approvals.status, "pending")))
         .run();
       if (tomada.changes !== 1) throw new Error(`aprovacao ${approvalId} ja esta sendo resolvida`);
@@ -210,7 +216,7 @@ export class ApprovalGate {
           // decide tentar de novo.
           await db
             .update(schema.approvals)
-            .set({ status: "pending" })
+            .set({ status: "pending", decidedAt: null })
             .where(and(eq(schema.approvals.id, approvalId), eq(schema.approvals.status, "publishing")));
           throw err;
         }
@@ -227,6 +233,47 @@ export class ApprovalGate {
     await this.close(approvalId, status);
     await settleStep(row.stepId, status);
     return { runId: row.runId, status };
+  }
+
+  /**
+   * Resolve à mão a pendência que ficou em `publishing`.
+   *
+   * O app caiu, ou a rede sumiu, no meio da publicação, e não há como saber
+   * daqui se a mensagem saiu. Quem sabe é a pessoa, olhando o pull request ou a
+   * conversa: `published` fecha a pendência como aprovada e o run segue,
+   * `retry` devolve a pendência para a fila para ela decidir de novo.
+   *
+   * Só vale para a que está parada há mais de `STUCK_AFTER_SECONDS`. Uma
+   * publicação em andamento leva segundos, e devolver para a fila a que ainda
+   * está saindo abriria de novo a porta da publicação em dobro.
+   */
+  async settleStuck(
+    approvalId: string,
+    outcome: "published" | "retry",
+  ): Promise<{ runId: string; status: "approved" | "pending" }> {
+    const [row] = await db.select().from(schema.approvals).where(eq(schema.approvals.id, approvalId));
+    if (!row) throw new Error(`aprovacao ${approvalId} nao encontrada`);
+    const limite = Math.floor(Date.now() / 1000) - STUCK_AFTER_SECONDS;
+    const parada = and(
+      eq(schema.approvals.id, approvalId),
+      eq(schema.approvals.status, "publishing"),
+      lte(schema.approvals.decidedAt, limite),
+    );
+    const escrita = db
+      .update(schema.approvals)
+      .set(
+        outcome === "published"
+          ? { status: "approved", decidedAt: Math.floor(Date.now() / 1000) }
+          : { status: "pending", decidedAt: null },
+      )
+      .where(parada)
+      .run();
+    if (escrita.changes !== 1) {
+      throw new Error(`aprovacao ${approvalId} nao esta parada na publicacao`);
+    }
+    if (outcome === "retry") return { runId: row.runId, status: "pending" };
+    await settleStep(row.stepId, "approved");
+    return { runId: row.runId, status: "approved" };
   }
 
   private async close(id: string, status: string): Promise<void> {

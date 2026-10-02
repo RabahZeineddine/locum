@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { decidir } from "@/lib/aprovar";
+import { decidir, resolverParada } from "@/lib/aprovar";
 import { read, useRead, type ReadResult } from "@/lib/bridge";
 import { rotuloDeSeveridade, SEVERIDADES, type Severidade } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
@@ -98,11 +98,14 @@ function rotuloDoGrupo(t: TFunction, grupo: string): string {
  * que vai ser publicado, e a auditoria continua a um link de distância.
  */
 export function Inbox(props: TelaProps) {
+  // Devolver uma pendência parada para a fila muda a lista de pendentes, e a
+  // leitura da tela é feita uma vez ao montar: remontar é o jeito de reler.
+  const [geracao, setGeracao] = useState(0);
   if (props.detalhe) return <Revisao {...props} />;
-  return <Fila {...props} />;
+  return <Fila key={geracao} {...props} aoMudarFila={() => setGeracao((g) => g + 1)} />;
 }
 
-function Fila({ navegar }: TelaProps) {
+function Fila({ navegar, aoMudarFila }: TelaProps & { aoMudarFila: () => void }) {
   const { t } = useTranslation();
   const pendentes = useRead("approvals.listPending");
   const execucoes = useRead("runs.list", { status: "failed", limit: 20 });
@@ -222,6 +225,7 @@ function Fila({ navegar }: TelaProps) {
       <Cabecalho quantidade={itens.length} />
       <PainelDeIniciativas navegar={navegar} />
       {falhas.length > 0 && <FaixaDeFalha quantidade={falhas.length} navegar={navegar} />}
+      <Paradas aoMudarFila={aoMudarFila} />
 
       {itens.length === 0 ? (
         <Vazio />
@@ -374,6 +378,81 @@ function FaixaDeFalha({
       <span className="text-muted-foreground">{t("inbox.failures", { count: quantidade })}</span>
       <ChevronRight className="text-muted-foreground ml-auto size-4" aria-hidden />
     </button>
+  );
+}
+
+/**
+ * Pendências que começaram a publicar e não terminaram.
+ *
+ * Não há como saber daqui se a mensagem saiu, e devolver para a fila sozinho
+ * arriscaria publicar duas vezes no nome de alguém. Quem confere o destino é a
+ * pessoa, e o botão só registra o que ela viu.
+ */
+function Paradas({ aoMudarFila }: { aoMudarFila: () => void }) {
+  const { t } = useTranslation();
+  const paradas = useRead("approvals.listStuck");
+  const [resolvidas, setResolvidas] = useState<Set<string>>(new Set());
+  const [ocupada, setOcupada] = useState<string | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+
+  if (paradas.status !== "ready") return null;
+  const visiveis = paradas.data.filter((p) => !resolvidas.has(p.id));
+  if (visiveis.length === 0) return null;
+
+  const resolver = async (id: string, desfecho: "published" | "retry") => {
+    setOcupada(id);
+    setErro(null);
+    try {
+      await resolverParada(id, desfecho);
+      setResolvidas((atual) => new Set(atual).add(id));
+      if (desfecho === "retry") aoMudarFila();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : String(e));
+    } finally {
+      setOcupada(null);
+    }
+  };
+
+  return (
+    <section className="flex flex-col gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 px-4 py-3">
+      <div className="flex items-center gap-2 text-sm font-medium">
+        <AlertTriangle className="size-4 shrink-0 text-amber-500" aria-hidden />
+        {t("inbox.stuckTitle")}
+      </div>
+      <p className="text-muted-foreground text-sm">{t("inbox.stuckHint")}</p>
+      <ul className="flex flex-col gap-2">
+        {visiveis.map((p) => {
+          const alvo = alvoDaPendencia(p, t);
+          return (
+            <li className="flex flex-wrap items-center gap-2 text-sm" key={p.id}>
+              <span className="min-w-0 flex-1 truncate">
+                {alvo.principal}
+                {alvo.titulo ? `: ${alvo.titulo}` : ""}
+              </span>
+              <Button
+                className="h-7 cursor-pointer px-2.5"
+                disabled={ocupada === p.id}
+                onClick={() => void resolver(p.id, "published")}
+                size="sm"
+                variant="outline"
+              >
+                {t("inbox.stuckPublished")}
+              </Button>
+              <Button
+                className="h-7 cursor-pointer px-2.5"
+                disabled={ocupada === p.id}
+                onClick={() => void resolver(p.id, "retry")}
+                size="sm"
+                variant="ghost"
+              >
+                {t("inbox.stuckRetry")}
+              </Button>
+            </li>
+          );
+        })}
+      </ul>
+      {erro !== null && <p className="text-destructive text-sm">{erro}</p>}
+    </section>
   );
 }
 

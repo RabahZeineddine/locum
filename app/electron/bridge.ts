@@ -173,6 +173,7 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "runs.start": (input) => executionService.start(input),
 
     "approvals.listPending": () => approvalService.listPending(),
+    "approvals.listStuck": () => approvalService.listStuck(),
     "approvals.get": (approvalId) => approvalService.get(approvalId),
     "approvals.update": (approvalId, findings, verdict) =>
       approvalService.updateFindings(approvalId, findings, verdict),
@@ -189,6 +190,14 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
       const { status } = await (await buildExecutor()).decide(approvalId, decision);
       await refreshTray();
       return { approvalId, decision, status };
+    },
+    "approvals.settleStuck": async (approvalId, outcome) => {
+      if (outcome !== "published" && outcome !== "retry") {
+        throw new Error(`desfecho "${String(outcome)}" nao existe`);
+      }
+      const { status } = await (await buildExecutor()).settleStuck(approvalId, outcome);
+      await refreshTray();
+      return { approvalId, status };
     },
 
     // O assistente responde por fluxo, entao `send` volta assim que a conversa

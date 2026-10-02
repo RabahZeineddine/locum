@@ -18,6 +18,7 @@ interface PonteDeDecisao {
     decide: (id: string, decisao: Decisao) => Promise<DecisionResult>;
     update: (id: string, findings: unknown[], verdict: string) => Promise<unknown>;
     updateText: (id: string, text: string) => Promise<unknown>;
+    settleStuck: (id: string, outcome: "published" | "retry") => Promise<{ status: "approved" | "pending" }>;
   };
 }
 
@@ -51,4 +52,15 @@ export async function gravarRevisao(
 /** Grava o texto revisado de uma resposta de Slack ou Teams, sem publicar. */
 export async function gravarTexto(approvalId: string, texto: string): Promise<void> {
   await ponte().approvals.updateText(approvalId, texto);
+}
+
+/**
+ * A pessoa conferiu o destino de uma pendência parada na publicação: `published`
+ * fecha como aprovada e o run segue, `retry` devolve para a fila.
+ */
+export async function resolverParada(
+  approvalId: string,
+  desfecho: "published" | "retry",
+): Promise<{ status: "approved" | "pending" }> {
+  return ponte().approvals.settleStuck(approvalId, desfecho);
 }
