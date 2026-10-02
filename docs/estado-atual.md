@@ -1090,7 +1090,15 @@ mantém o modo.
 **Evento que não abria run sumia.** O cursor da fonte anda antes do run abrir,
 e o evento que batia no teto do dia não voltava em varredura nenhuma. Desde a
 0.1.30 o agendador anota por gatilho o evento que falhou e tenta de novo a
-cada batida, por até 24 horas.
+cada batida, por até 24 horas. Até a 0.1.31 esse prazo contava no relógio da
+máquina, e não no `at` da batida, que é o que a cadência usa.
+
+**Rebaixamento só aparecia na resposta.** Quem gravava pelo MCP recebia a lista
+de passos rebaixados, mas o histórico do agent mostrava só a nota, e a versão
+que pediu `auto` e ficou em aprovação parecia escrita assim de propósito. Desde
+a 0.1.32 a nota da versão termina com "ficou em aprovação" e os passos. Na tela
+do agent, ferramenta de servidor `write` leva o selo "escrita", que explica por
+que o MCP recusa pôr ferramenta nova dele num passo.
 
 **Release levava junto o que mudou durante ele.** O commit da versão era
 `git commit -am`, e mudança feita na árvore enquanto o pacote era montado

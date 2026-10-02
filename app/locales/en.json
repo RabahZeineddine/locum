@@ -44,6 +44,8 @@
     },
     "tools": {
       "tokens": "{{tokens}} tok",
+      "writeScope": "write",
+      "writeScopeHint": "write server: only you add its tools to a step, in the app",
       "count": "count tokens",
       "counting": "counting...",
       "failed": "could not count"

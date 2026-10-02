@@ -1102,6 +1102,13 @@ function Ferramentas({ refs }: { refs: { server: string; tool: string; class: st
   const [pesos, setPesos] = useState<Map<string, number>>(new Map());
   const [estado, setEstado] = useState<"parado" | "contando" | "erro">("parado");
   const servidores = [...new Set(refs.map((r) => r.server))];
+  // Servidor de escrita é o que só uma pessoa liga num passo: o agent que se
+  // edita pelo MCP tem a ferramenta nova recusada. O selo diz de onde vem a
+  // regra para quem estranhar a recusa.
+  const cadastro = useRead("mcp.list");
+  const deEscrita = new Set(
+    (cadastro.data ?? []).filter((s) => s.config.scope === "write").map((s) => s.config.name),
+  );
 
   const contar = () => {
     setEstado("contando");
@@ -1126,10 +1133,13 @@ function Ferramentas({ refs }: { refs: { server: string; tool: string; class: st
         const peso = pesos.get(`${ref.server}/${ref.tool}`);
         return (
           <Badge
+            data-locum-escrita={deEscrita.has(ref.server) ? "sim" : undefined}
             key={`${ref.server}/${ref.tool}`}
+            title={deEscrita.has(ref.server) ? t("agents.tools.writeScopeHint") : undefined}
             variant={ref.class === "external_write" ? "destructive" : "outline"}
           >
             {ref.server}/{ref.tool}
+            {deEscrita.has(ref.server) ? ` · ${t("agents.tools.writeScope")}` : ""}
             {peso === undefined ? "" : ` · ${t("agents.tools.tokens", { tokens: peso })}`}
           </Badge>
         );

@@ -276,7 +276,7 @@ export class AgentService {
           agentId: parsed.id,
           version: (latest?.version ?? 0) + 1,
           spec: parsed as unknown as object,
-          note: note ?? null,
+          note: notaComRebaixamento(note, guarded.downgrades),
         })
         .returning()
         .get();
@@ -571,6 +571,20 @@ export class AgentService {
 
 function parseVersion(row: AgentVersionRow): AgentVersion {
   return { ...row, spec: AgentSpec.parse(row.spec), downgrades: [] };
+}
+
+/**
+ * A nota da versão leva os passos rebaixados.
+ *
+ * Quem pediu a gravação recebe o rebaixamento na resposta, mas quem abre o
+ * histórico depois só vê a nota. Sem isso, a versão que pediu `auto` e ficou em
+ * aprovação parece igual a uma escrita assim de propósito.
+ */
+function notaComRebaixamento(note: string | undefined, downgrades: ActionDowngrade[]): string | null {
+  if (downgrades.length === 0) return note ?? null;
+  const passos = downgrades.map((d) => `${d.step} (${d.from})`).join(", ");
+  const aviso = `ficou em aprovação: ${passos}`;
+  return note === undefined || note === "" ? aviso : `${note} · ${aviso}`;
 }
 
 /**

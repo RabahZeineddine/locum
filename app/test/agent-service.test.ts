@@ -20,6 +20,15 @@ const modoGravado = async (service: AgentService): Promise<ActionMode | undefine
   return passo?.type === "action" ? passo.mode : undefined;
 };
 
+test("o rebaixamento fica na nota da versão, para quem abre o histórico", async () => {
+  const service = new AgentService(bancoDeTeste());
+  const versao = await service.upsert(spec("auto"), "revisa o PR", "agent");
+
+  assert.equal(versao.note, "revisa o PR · ficou em aprovação: publicar (auto)");
+  const sem = await service.upsert({ ...spec("auto"), name: "outro nome" }, undefined, "human");
+  assert.equal(sem.note, null);
+});
+
 test("agent que grava ação em auto tem o passo rebaixado para approve", async () => {
   const service = new AgentService(bancoDeTeste());
   const versao = await service.upsert(spec("auto"), undefined, "agent");

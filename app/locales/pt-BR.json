@@ -45,6 +45,8 @@
     },
     "tools": {
       "tokens": "{{tokens}} tok",
+      "writeScope": "escrita",
+      "writeScopeHint": "servidor de escrita: só você adiciona ferramenta dele a um passo, pelo app",
       "count": "contar tokens",
       "counting": "contando...",
       "failed": "não deu para contar"

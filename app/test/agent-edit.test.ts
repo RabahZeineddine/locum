@@ -110,7 +110,7 @@ test("rascunho do Criar com IA nasce em approve, com a descrição na nota, e n�
   const nova = await service.saveDraft(spec("auto"), "revisa   PR\nde pagamento");
 
   assert.equal(nova.version, 1);
-  assert.equal(nova.note, "criado com IA: revisa PR de pagamento");
+  assert.equal(nova.note, "criado com IA: revisa PR de pagamento · ficou em aprovação: publicar (auto)");
   assert.equal(await modo(service, "revisor"), "approve");
   await assert.rejects(service.saveDraft(spec(), "de novo"), /já existe/);
 });
