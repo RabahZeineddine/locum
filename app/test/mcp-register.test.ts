@@ -4,6 +4,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { mergeRegistration } from "../src/mcp-server/config-tools.js";
+import { HIDDEN_VALUE, redactServerConfig } from "../src/mcp-server/redact.js";
 import { McpService } from "../src/services/mcp-service.js";
 import { SecretService } from "../src/services/secret-service.js";
 import { bancoDeTeste } from "./helpers/db.js";
@@ -69,4 +70,36 @@ test("atualização pela ferramenta herda o que não veio, e transporte novo nã
     transport: "stdio",
     command: ["a"],
   });
+});
+
+test("valor literal de env e headers sai oculto, e o marcador da credencial sai como está", () => {
+  const visto = redactServerConfig({
+    name: "gh",
+    transport: "http",
+    url: "https://mcp.exemplo.dev",
+    headers: { Authorization: "${credential}", "X-Api-Key": "abc123" },
+    env: { TOKEN: "segredo" },
+    scope: "read",
+    idleTimeoutMs: 300_000,
+  });
+  assert.deepEqual(visto.headers, { Authorization: "${credential}", "X-Api-Key": HIDDEN_VALUE });
+  assert.deepEqual(visto.env, { TOKEN: HIDDEN_VALUE });
+  assert.equal(visto.url, "https://mcp.exemplo.dev");
+});
+
+test("atualização que devolve o valor oculto mantém o cadastrado, e chave oculta nova cai fora", () => {
+  const atual = {
+    name: "gh",
+    transport: "stdio" as const,
+    command: ["gh-mcp"],
+    env: { TOKEN: "segredo", REGIAO: "sa" },
+    scope: "read" as const,
+    idleTimeoutMs: 300_000,
+  };
+  const junto = mergeRegistration(atual, {
+    name: "gh",
+    transport: "stdio",
+    env: { TOKEN: HIDDEN_VALUE, REGIAO: "us", NOVA: HIDDEN_VALUE },
+  });
+  assert.deepEqual(junto.env, { TOKEN: "segredo", REGIAO: "us" });
 });

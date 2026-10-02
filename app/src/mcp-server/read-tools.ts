@@ -6,6 +6,7 @@ import { mcpService } from "../services/mcp-service.js";
 import { metricsService } from "../services/metrics-service.js";
 import { providerService } from "../services/provider-service.js";
 import { runService } from "../services/run-service.js";
+import { redactServerConfig } from "./redact.js";
 import { respond } from "./respond.js";
 
 /**
@@ -164,8 +165,13 @@ async function getRun(runId: string) {
 
 async function listMcpServers() {
   const entries = await mcpService.list();
-  // O nome da credencial pode sair; o segredo mora no keychain e nunca passa por aqui.
-  return entries.map(({ config, enabled, credentialRef }) => ({ ...config, enabled, credentialRef }));
+  // O nome da credencial pode sair; o segredo mora no keychain e nunca passa
+  // por aqui, e valor escrito direto no `env` ou nos `headers` sai oculto.
+  return entries.map(({ config, enabled, credentialRef }) => ({
+    ...redactServerConfig(config),
+    enabled,
+    credentialRef,
+  }));
 }
 
 async function listProviders(model?: string) {

@@ -30,7 +30,7 @@ export function registerRunTools(server: McpServer): void {
         agentId: z
           .string()
           .optional()
-          .describe("when absent, uses the seed agent; the version is always the latest"),
+          .describe("may be left out only when exactly one agent is registered; the version is always the latest"),
         wait: z
           .boolean()
           .optional()

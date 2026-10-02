@@ -6,6 +6,7 @@ import { mcpService } from "../services/mcp-service.js";
 import { providerService } from "../services/provider-service.js";
 import { triggerService } from "../services/trigger-service.js";
 import type { AgentSpec, McpServerConfig, McpServerInput, TriggerConfigInput } from "../config/types.js";
+import { redactServerConfig, restoreHidden } from "./redact.js";
 import { respond } from "./respond.js";
 
 /**
@@ -39,6 +40,8 @@ export function mergeRegistration(atual: McpServerConfig | undefined, novo: McpS
   const mesmoTransporte = atual.transport === novo.transport;
   return {
     ...novo,
+    ...(novo.env !== undefined ? { env: restoreHidden(atual.env, novo.env) } : {}),
+    ...(novo.headers !== undefined ? { headers: restoreHidden(atual.headers, novo.headers) } : {}),
     ...herda("scope", atual.scope),
     ...herda("idleTimeoutMs", atual.idleTimeoutMs),
     ...(mesmoTransporte
@@ -117,7 +120,7 @@ export function registerConfigTools(server: McpServer): void {
         const atual = await mcpService.get(config.name);
         const entry = await mcpService.register(mergeRegistration(atual?.config, config as McpServerInput));
         if (enabled !== undefined) await mcpService.setEnabled(entry.config.name, enabled);
-        return { ...entry.config, enabled: enabled ?? entry.enabled };
+        return { ...redactServerConfig(entry.config), enabled: enabled ?? entry.enabled };
       }),
   );
 
