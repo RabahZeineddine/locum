@@ -84,6 +84,9 @@ function parseStaleDays(raw: string | undefined): number {
  * Cadastro de iniciativas: unidade de trabalho com objetivo, pasta de contexto
  * e os servidores MCP e workspaces que ela enxerga.
  */
+/** Quem pede a troca de escopo: a tela é a pessoa, o servidor MCP e o chat não. */
+export type EscopoActor = "human" | "agent";
+
 export class InitiativeService {
   constructor(
     private readonly db: Db = defaultDb,
@@ -183,7 +186,11 @@ export class InitiativeService {
    * a lista sai sempre vazia, mas o calculo ja reage assim que o primeiro
    * agent for ligado.
    */
-  async setServers(slug: string, names: string[]): Promise<{ affectedAgents: { agentId: string; name: string }[] }> {
+  async setServers(
+    slug: string,
+    names: string[],
+    actor: EscopoActor = "human",
+  ): Promise<{ affectedAgents: { agentId: string; name: string }[] }> {
     const linha = await this.mustGet(slug);
     const cadastrados = new Set((await this.mcp.list()).map((entrada) => entrada.config.name));
     // Nome repetido na lista quebraria o índice único no meio da troca, e a
@@ -191,6 +198,19 @@ export class InitiativeService {
     const unicos = [...new Set(names)];
     for (const nome of unicos) {
       if (!cadastrados.has(nome)) throw new Error(`servidor MCP "${nome}" nao cadastrado`);
+    }
+
+    // Servidor a mais numa iniciativa com agent ligado é ferramenta nova para
+    // esse agent. Quem não é pessoa só tira; montar a lista de uma iniciativa
+    // ainda sem agent continua livre, porque não alarga o alcance de ninguém.
+    if (actor !== "human") {
+      const atuais = new Set(await this.serverNames(linha.id));
+      const novos = unicos.filter((nome) => !atuais.has(nome));
+      if (novos.length > 0 && (await this.hasLinkedAgents(linha.id))) {
+        throw new Error(
+          `iniciativa "${slug}" tem agent ligado; incluir ${novos.join(", ")} é decisão de uma pessoa, na tela do Locum`,
+        );
+      }
     }
 
     // Apagar e inserir juntos: se a inserção falhar, a lista antiga fica.
@@ -230,6 +250,24 @@ export class InitiativeService {
     return { affectedAgents: afetados };
   }
 
+  private async serverNames(initiativeId: string): Promise<string[]> {
+    return (
+      await this.db
+        .select({ serverName: schema.initiativeMcpServers.serverName })
+        .from(schema.initiativeMcpServers)
+        .where(eq(schema.initiativeMcpServers.initiativeId, initiativeId))
+    ).map((r) => r.serverName);
+  }
+
+  private async hasLinkedAgents(initiativeId: string): Promise<boolean> {
+    const [agent] = await this.db
+      .select({ id: schema.agents.id })
+      .from(schema.agents)
+      .where(eq(schema.agents.initiativeId, initiativeId))
+      .limit(1);
+    return agent !== undefined;
+  }
+
   /**
    * Liga um agent a esta iniciativa, ou desliga com `slug` nulo.
    *
@@ -238,9 +276,24 @@ export class InitiativeService {
    * deixaria o agent com um passo que falha na primeira execucao, com o
    * motivo `outside_initiative`.
    */
-  async linkAgent(agentId: string, slug: string | null): Promise<void> {
+  async linkAgent(agentId: string, slug: string | null, actor: EscopoActor = "human"): Promise<void> {
     const [agent] = await this.db.select().from(schema.agents).where(eq(schema.agents.id, agentId));
     if (!agent) throw new Error(`agent "${agentId}" nao cadastrado`);
+
+    // Agent fora de iniciativa enxerga todos os servidores. Desligar, ou mudar
+    // para outra iniciativa, alarga o que ele alcança, e isso é da pessoa.
+    // Ligar um agent solto a uma iniciativa só estreita, e continua livre.
+    if (actor !== "human" && agent.initiativeId !== null) {
+      const atual = await this.db
+        .select({ slug: schema.initiatives.slug })
+        .from(schema.initiatives)
+        .where(eq(schema.initiatives.id, agent.initiativeId));
+      if (atual[0]?.slug !== slug) {
+        throw new Error(
+          `agent "${agentId}" já está na iniciativa "${atual[0]?.slug ?? agent.initiativeId}"; tirar ou mudar é decisão de uma pessoa, na tela do Locum`,
+        );
+      }
+    }
 
     if (slug === null) {
       await this.db.update(schema.agents).set({ initiativeId: null }).where(eq(schema.agents.id, agentId));

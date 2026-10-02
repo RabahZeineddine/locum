@@ -191,7 +191,7 @@ export function chatTools(): ToolSet {
       description:
         "Replaces the MCP servers the initiative can see, validated against the registry. Returns the already-linked agents that would lose a tool with the new list.",
       inputSchema: z.object({ slug: z.string(), names: z.array(z.string()) }),
-      execute: async ({ slug, names }) => initiativeService.setServers(slug, names),
+      execute: async ({ slug, names }) => initiativeService.setServers(slug, names, "agent"),
     }),
 
     link_agent_to_initiative: tool({
@@ -199,7 +199,7 @@ export function chatTools(): ToolSet {
         'Links an agent to an initiative, or unlinks it with slug null. Refuses to link when the agent\'s latest version uses a tool or "requiresServers" outside the initiative\'s servers.',
       inputSchema: z.object({ agentId: z.string(), slug: z.string().nullable() }),
       execute: async ({ agentId, slug }) => {
-        await initiativeService.linkAgent(agentId, slug);
+        await initiativeService.linkAgent(agentId, slug, "agent");
         return { agentId, slug };
       },
     }),

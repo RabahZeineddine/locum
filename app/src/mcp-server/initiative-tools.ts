@@ -99,20 +99,20 @@ export function registerInitiativeTools(
     "set_initiative_servers",
     {
       description:
-        "Replaces the MCP servers the initiative can see, validated against the registry. Returns the already-linked agents that would lose a tool with the new list.",
+        "Replaces the MCP servers the initiative can see, validated against the registry. Returns the already-linked agents that would lose a tool with the new list. Adding a server to an initiative that already has linked agents is refused: only a person widens it, in the app.",
       inputSchema: {
         slug: z.string(),
         names: z.array(z.string()),
       },
     },
-    async ({ slug, names }) => respond(() => initiatives.setServers(slug, names)),
+    async ({ slug, names }) => respond(() => initiatives.setServers(slug, names, "agent")),
   );
 
   server.registerTool(
     "link_agent_to_initiative",
     {
       description:
-        'Links an agent to an initiative, or unlinks it with slug null. Refuses to link when the agent\'s latest version uses a tool or "requiresServers" outside the initiative\'s servers.',
+        'Links an unlinked agent to an initiative. Refuses to link when the agent\'s latest version uses a tool or "requiresServers" outside the initiative\'s servers. Unlinking (slug null) or moving an agent that is already linked is refused: only a person does that, in the app.',
       inputSchema: {
         agentId: z.string(),
         slug: z.string().nullable(),
@@ -120,7 +120,7 @@ export function registerInitiativeTools(
     },
     async ({ agentId, slug }) =>
       respond(async () => {
-        await initiatives.linkAgent(agentId, slug);
+        await initiatives.linkAgent(agentId, slug, "agent");
         return { agentId, slug };
       }),
   );
