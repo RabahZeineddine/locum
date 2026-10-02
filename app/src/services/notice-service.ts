@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, type SQL } from "drizzle-orm";
+import { and, desc, eq, gt, sql, type SQL } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
 
 type Db = typeof defaultDb;
@@ -68,6 +68,10 @@ export class NoticeService {
   }
 
   private async failedRuns(filter: NoticeFilter): Promise<Notice[]> {
+    // A hora da falha, e não a da criação: um run longo criado antes de cem
+    // falhas curtas ficaria fora do teto de leitura e nunca viraria aviso, e
+    // o corte por data o descartaria como velho no exato momento em que falhou.
+    const quando = sql<number>`coalesce(${schema.runs.endedAt}, ${schema.runs.createdAt})`;
     const rows = await this.db
       .select({
         runId: schema.runs.id,
@@ -79,8 +83,8 @@ export class NoticeService {
       .from(schema.runs)
       .innerJoin(schema.agentVersions, eq(schema.runs.agentVersionId, schema.agentVersions.id))
       .innerJoin(schema.agents, eq(schema.agentVersions.agentId, schema.agents.id))
-      .where(every(eq(schema.runs.status, "failed"), cutoff(schema.runs.createdAt, filter.since)))
-      .orderBy(desc(schema.runs.createdAt))
+      .where(every(eq(schema.runs.status, "failed"), cutoff(quando, filter.since)))
+      .orderBy(desc(quando))
       .limit(filter.limit ?? 50);
 
     return rows.map((r) => ({
@@ -167,7 +171,7 @@ function countCritical(payload: unknown): number {
 }
 
 /** Corte por data, ou nada quando quem chamou nao pediu corte. */
-function cutoff(column: Parameters<typeof gt>[0], since: number | undefined): SQL | undefined {
+function cutoff(column: Parameters<typeof gt>[0] | SQL, since: number | undefined): SQL | undefined {
   return since === undefined ? undefined : gt(column, since);
 }
 
