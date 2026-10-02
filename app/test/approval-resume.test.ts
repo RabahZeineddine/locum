@@ -147,3 +147,36 @@ test("pendência ainda aberta continua pausando a retomada", async () => {
   assert.equal((await passo(runId, "publicar"))?.status, "awaiting_approval");
   assert.deepEqual(publicados, []);
 });
+
+test("dois cliques de aprovar ao mesmo tempo publicam uma vez só", async () => {
+  const { runId, approvalId, gate, publicados } = await montar();
+
+  const resultados = await Promise.allSettled([
+    gate.decide(approvalId, "approved"),
+    gate.decide(approvalId, "approved"),
+  ]);
+
+  assert.equal(publicados.length, 1);
+  assert.deepEqual(
+    resultados.map((r) => r.status).sort(),
+    ["fulfilled", "rejected"],
+  );
+  assert.equal((await passo(runId, "publicar"))?.status, "done");
+});
+
+test("publicação que falha devolve a pendência para a fila, e queda no meio pausa a retomada", async () => {
+  const { runId, approvalId, gate, executor } = await montar();
+  const [linha] = await db.select().from(schema.approvals).where(eq(schema.approvals.id, approvalId));
+
+  const falha = new ApprovalGate(
+    new Map([["teste.publicar", { publish: async () => Promise.reject(new Error("rede")) }]]),
+  );
+  await assert.rejects(falha.decide(approvalId, "approved"), /rede/);
+  const [depois] = await db.select().from(schema.approvals).where(eq(schema.approvals.id, approvalId));
+  assert.equal(depois?.status, "pending");
+  assert.equal(linha?.status, "pending");
+
+  await db.update(schema.approvals).set({ status: "publishing" }).where(eq(schema.approvals.id, approvalId));
+  assert.equal(await executor.execute(runId), "paused");
+  await assert.rejects(gate.decide(approvalId, "approved"), /ja resolvida: publishing/);
+});

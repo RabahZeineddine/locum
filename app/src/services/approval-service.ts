@@ -1,4 +1,4 @@
-import { desc, eq, type SQL } from "drizzle-orm";
+import { and, desc, eq, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { ReviewFinding, ReviewVerdict } from "../config/types.js";
 import { db as defaultDb, schema } from "../db/index.js";
@@ -84,7 +84,7 @@ export class ApprovalService {
       throw new Error(`veredito fora do formato: ${String(verdict)}`);
     }
 
-    await this.db
+    const escrita = this.db
       .update(schema.approvals)
       .set({
         payload: {
@@ -93,7 +93,11 @@ export class ApprovalService {
           ...(veredito.data !== undefined && { verdict: veredito.data }),
         },
       })
-      .where(eq(schema.approvals.id, approvalId));
+      .where(and(eq(schema.approvals.id, approvalId), eq(schema.approvals.status, "pending")))
+      .run();
+    // A decisão pode ter começado a publicar entre a leitura e aqui; gravar
+    // por cima faria o histórico mostrar um texto diferente do que saiu.
+    if (escrita.changes !== 1) throw new Error(`aprovação ${approvalId} já resolvida`);
 
     const [novo] = await this.query(eq(schema.approvals.id, approvalId));
     return novo!;
@@ -120,10 +124,12 @@ export class ApprovalService {
     const lido = z.string().trim().min(1, "a mensagem não pode ficar vazia").max(TETO_DE_MENSAGEM).safeParse(text);
     if (!lido.success) throw new Error(`texto fora do formato: ${z.prettifyError(lido.error)}`);
 
-    await this.db
+    const escrita = this.db
       .update(schema.approvals)
       .set({ payload: { ...(atual.payload as object), text: lido.data } })
-      .where(eq(schema.approvals.id, approvalId));
+      .where(and(eq(schema.approvals.id, approvalId), eq(schema.approvals.status, "pending")))
+      .run();
+    if (escrita.changes !== 1) throw new Error(`aprovação ${approvalId} já resolvida`);
 
     const [novo] = await this.query(eq(schema.approvals.id, approvalId));
     return novo!;

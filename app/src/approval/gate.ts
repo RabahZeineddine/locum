@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db, schema } from "../db/index.js";
 import type { ActionMode } from "../config/types.js";
 
@@ -138,7 +138,9 @@ export class ApprovalGate {
         stepId: req.stepId,
         kind: req.kind,
         payload: prepared.payload as object,
-        status: prepared.mode === "approve" ? "pending" : prepared.mode === "draft" ? "pending" : "auto",
+        // Rascunho e publicação direta não entram na fila: aprovar um rascunho
+        // que falhou publicaria em público o que o passo pedia só rascunhar.
+        status: prepared.mode === "approve" ? "pending" : prepared.mode === "draft" ? "drafting" : "auto",
         externalId,
       })
       .run();
@@ -154,16 +156,21 @@ export class ApprovalGate {
     const handler = this.handlers.get(req.kind);
     if (!handler) throw new Error(`acao "${req.kind}" sem handler registrado`);
 
-    if (prepared.mode === "draft") {
-      if (!handler.draft) throw new Error(`acao "${req.kind}" nao suporta modo rascunho`);
-      await handler.draft(prepared.payload, externalId);
-      await this.close(id, "drafted");
-      return "drafted";
-    }
+    try {
+      if (prepared.mode === "draft") {
+        if (!handler.draft) throw new Error(`acao "${req.kind}" nao suporta modo rascunho`);
+        await handler.draft(prepared.payload, externalId);
+        await this.close(id, "drafted");
+        return "drafted";
+      }
 
-    await handler.publish(prepared.payload, externalId);
-    await this.close(id, "approved");
-    return "published";
+      await handler.publish(prepared.payload, externalId);
+      await this.close(id, "approved");
+      return "published";
+    } catch (err) {
+      await this.close(id, "failed");
+      throw err;
+    }
   }
 
   /**
@@ -183,13 +190,39 @@ export class ApprovalGate {
     if (decision === "approved") {
       const handler = this.handlers.get(row.kind);
       if (!handler) throw new Error(`acao "${row.kind}" sem handler registrado`);
+      // Tomar a pendência antes de publicar, numa escrita só. Dois cliques
+      // (a tela de revisão e a inbox, ou a janela e a linha de comando) liam
+      // `pending` ao mesmo tempo e publicavam duas vezes no nome de alguém.
+      // Quem cai no meio da publicação deixa a pendência em `publishing`, e
+      // ela não volta para a fila sozinha: melhor uma pessoa conferir do que
+      // sair uma segunda resposta.
+      const tomada = db
+        .update(schema.approvals)
+        .set({ status: "publishing" })
+        .where(and(eq(schema.approvals.id, approvalId), eq(schema.approvals.status, "pending")))
+        .run();
+      if (tomada.changes !== 1) throw new Error(`aprovacao ${approvalId} ja esta sendo resolvida`);
       try {
-        // externalId ja esta gravado: retry depois de crash nao publica duas vezes.
         await handler.publish(row.payload, row.externalId!);
       } catch (err) {
-        if (!(err instanceof PublishConflict)) throw err;
+        if (!(err instanceof PublishConflict)) {
+          // Falha antes de sair qualquer coisa: a pendência volta para quem
+          // decide tentar de novo.
+          await db
+            .update(schema.approvals)
+            .set({ status: "pending" })
+            .where(and(eq(schema.approvals.id, approvalId), eq(schema.approvals.status, "publishing")));
+          throw err;
+        }
         status = "conflict";
       }
+    } else {
+      const fechada = db
+        .update(schema.approvals)
+        .set({ status: "rejected", decidedAt: Math.floor(Date.now() / 1000) })
+        .where(and(eq(schema.approvals.id, approvalId), eq(schema.approvals.status, "pending")))
+        .run();
+      if (fechada.changes !== 1) throw new Error(`aprovacao ${approvalId} ja esta sendo resolvida`);
     }
     await this.close(approvalId, status);
     await settleStep(row.stepId, status);

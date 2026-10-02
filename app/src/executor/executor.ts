@@ -166,7 +166,11 @@ export class Executor {
             .select({ status: schema.approvals.status })
             .from(schema.approvals)
             .where(eq(schema.approvals.stepId, existing.id));
-          if (!approval || approval.status === "pending") return this.pause(runId);
+          // `publishing` é uma decisão que caiu no meio: sem saber se saiu,
+          // o passo espera em vez de se dar por publicado.
+          if (!approval || approval.status === "pending" || approval.status === "publishing") {
+            return this.pause(runId);
+          }
           outputs.set(step.key, (await settleStep(existing.id, approval.status)).output);
           continue;
         }
