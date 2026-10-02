@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { desc, eq } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
-import { AgentBudgetPatch, AgentSpec, requiredServers, type ActionMode, type ActionStep, type AgentBudget } from "../config/types.js";
+import { AgentBudgetPatch, AgentSpec, requiredServers, type ActionMode, type ActionStep, type AgentBudget, type ToolRef } from "../config/types.js";
 import { today } from "../executor/budget.js";
 import { splitModelId } from "../providers/registry.js";
 import { SUBSCRIPTION_RUNTIMES } from "../runtimes/types.js";
@@ -235,7 +235,10 @@ export class AgentService {
   ): Promise<AgentVersion> {
     const parsed = AgentSpec.parse(spec);
     const latest = await this.latestRow(parsed.id);
-    if (actor !== "human") refuseLooserBudget((latest?.spec as AgentSpec | undefined)?.budget, parsed.budget);
+    if (actor !== "human") {
+      refuseLooserBudget((latest?.spec as AgentSpec | undefined)?.budget, parsed.budget);
+      await this.refuseNewWriteServerTools(parsed, latest?.spec);
+    }
     const guarded = actor === "human" ? { spec: parsed, downgrades: [] } : demoteActions(parsed, latest?.spec);
 
     return this.write(guarded, latest, note);
@@ -366,6 +369,10 @@ export class AgentService {
    * de ação nasce em `approve`. Agent que já existe é recusado, porque o
    * rascunho é para criar e não deve virar versão nova de outro por coincidência
    * de nome.
+   *
+   * Não passa pela trava de ferramenta de servidor `write` de `upsert`: o
+   * rascunho saiu do pedido da própria pessoa, que viu as ferramentas antes de
+   * clicar. Agent novo também não tem teto anterior para afrouxar.
    */
   async saveDraft(spec: AgentSpec, descricao: string): Promise<AgentVersion> {
     const parsed = AgentSpec.parse(spec);
@@ -375,7 +382,7 @@ export class AgentService {
     refuseReserved(parsed.id);
     if (await this.get(parsed.id)) throw new Error(`já existe um agent "${parsed.id}"`);
     const pedido = descricao.trim().replace(/\s+/g, " ").slice(0, 200);
-    return this.upsert(parsed, `criado com IA: ${pedido}`, "agent");
+    return this.write(demoteActions(parsed, undefined), undefined, `criado com IA: ${pedido}`);
   }
 
   /**
@@ -499,6 +506,36 @@ export class AgentService {
    * agent. So roda para agent que ja existe e ja esta ligado: agent novo e
    * agent sem iniciativa (`initiativeId` nulo) nao tem iniciativa para checar.
    */
+  /**
+   * Quem não é pessoa não põe em passo ferramenta nova de servidor `write`.
+   *
+   * A classe da ferramenta no passo é declarada por quem grava, e só
+   * `external_write` é barrada em `toolsFor`. Sem esta trava, uma sessão do
+   * servidor MCP declararia como `read` a ferramenta que comenta num PR e ela
+   * rodaria sem passar pela fila. O servidor `write` é o que a pessoa marcou
+   * como capaz de mudar estado; ferramenta dele que já estava no spec gravado
+   * passa, porque alguém a pôs ali antes, e a nova fica para a tela.
+   */
+  private async refuseNewWriteServerTools(spec: AgentSpec, stored: unknown): Promise<void> {
+    const escrita = new Set(
+      (await this.db.select({ name: schema.mcpServers.name, scope: schema.mcpServers.scope }).from(schema.mcpServers))
+        .filter((linha) => linha.scope === "write")
+        .map((linha) => linha.name),
+    );
+    if (escrita.size === 0) return;
+
+    const anterior = AgentSpec.safeParse(stored);
+    const jaEstavam = new Set(anterior.success ? toolRefs(anterior.data).map(chaveDaTool) : []);
+    const novas = toolRefs(spec).filter((ref) => escrita.has(ref.server) && !jaEstavam.has(chaveDaTool(ref)));
+    if (novas.length === 0) return;
+
+    const nomes = [...new Set(novas.map(chaveDaTool))].join(", ");
+    throw new Error(
+      `${nomes} é de servidor com escopo write; ferramenta assim só entra em passo pela tela do Locum, onde a pessoa decide. ` +
+        `Escrita externa vai como passo de ação, pela fila de aprovação.`,
+    );
+  }
+
   private async assertWithinInitiativeScope(spec: AgentSpec): Promise<void> {
     const [agent] = await this.db
       .select({ initiativeId: schema.agents.initiativeId })
@@ -579,6 +616,13 @@ function demoteActions(
 
   return { spec: { ...spec, steps }, downgrades };
 }
+
+/** Toda ferramenta que o spec põe em passo, contando a herdada de `defaultTools`. */
+function toolRefs(spec: AgentSpec): ToolRef[] {
+  return [...spec.defaultTools, ...spec.steps.flatMap((step) => (step.type === "model" ? (step.tools ?? []) : []))];
+}
+
+const chaveDaTool = (ref: ToolRef): string => `${ref.server}.${ref.tool}`;
 
 /**
  * O lado gravado passa pelo zod antes da comparacao porque o JSON so bate se as
