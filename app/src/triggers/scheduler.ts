@@ -530,15 +530,27 @@ export class Scheduler {
     wait: boolean,
   ): Promise<string[]> {
     const runs: string[] = [];
+    const falhas: string[] = [];
+    // Um evento que não abre run não segura os outros. O cursor da fonte já
+    // andou quando chega aqui, e parar no primeiro erro deixaria o resto da
+    // janela sem run e fora da próxima varredura.
     for (const eventId of eventIds) {
       if (await this.alreadyRan(trigger.id, eventId)) continue;
-      const { runId } = await this.executions.startForEvent({
-        eventId,
-        agentId: trigger.agentId,
-        triggerId: trigger.id,
-        wait,
-      });
-      runs.push(runId);
+      try {
+        const { runId } = await this.executions.startForEvent({
+          eventId,
+          agentId: trigger.agentId,
+          triggerId: trigger.id,
+          wait,
+        });
+        runs.push(runId);
+      } catch (err) {
+        falhas.push(message(err));
+      }
+    }
+    if (falhas.length > 0) {
+      const abertos = runs.length === 0 ? "" : `, ${runs.length} run(s) aberto(s)`;
+      throw new Error(`${falhas.length} evento(s) sem run${abertos}: ${falhas[0]}`);
     }
     return runs;
   }

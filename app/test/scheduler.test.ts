@@ -151,6 +151,42 @@ test("dois gatilhos sobre a mesma organização acordam com o mesmo pull request
   );
 });
 
+test("evento que não abre run não impede os outros da mesma janela", async () => {
+  const db = bancoDeTeste();
+  const iniciados: string[] = [];
+  const executions = {
+    startForEvent: async (input: { eventId: string | null }) => {
+      if (input.eventId === "e1") throw new Error("teto do dia estourado");
+      iniciados.push(input.eventId ?? "");
+      return { runId: `run-${iniciados.length}` };
+    },
+  } as unknown as ExecutionService;
+  const gatilhos = [
+    gatilho("g1", { kind: "poll", source: "github", owner: "org", repoMatch: ".", authorship: "any", includeDrafts: false, everyMinutes: 15 } as TriggerConfig),
+  ];
+  const scheduler = new Scheduler(
+    db,
+    { enabled: async () => gatilhos, list: async () => gatilhos } as unknown as TriggerService,
+    executions,
+    {} as McpService,
+    {} as SlackService,
+    async () => {
+      await db.insert(schema.events).values([
+        { id: "e1", source: "github", externalId: "pr-1", payload: {} },
+        { id: "e2", source: "github", externalId: "pr-2", payload: {} },
+      ]);
+      return { eventIds: ["e1", "e2"], created: ["e1", "e2"] };
+    },
+    async () => ({ checked: 0, settled: [], stillOpen: 0, unreadable: 0, failed: [] }) as never,
+    async () => "eu",
+  );
+
+  const batida = await scheduler.tick({ at: T0 });
+  assert.deepEqual(iniciados, ["e2"]);
+  assert.equal(batida.outcomes[0]?.status, "failed");
+  assert.match(batida.outcomes[0]?.detail ?? "", /1 evento\(s\) sem run, 1 run\(s\) aberto\(s\): teto do dia/);
+});
+
 test("autoria sem conta conferida recusa a batida em vez de acordar todo mundo", async () => {
   const { db, scheduler, iniciados } = montar({
     gatilhos: [
