@@ -433,9 +433,15 @@ export class Executor {
     // A saída do passo diz o que publicar; o evento diz onde. Sem juntar os
     // dois, a ação chega ao handler sem destino: a fila mostra "agent · passo"
     // em vez do pull request, e publicar falharia por falta de owner e repo.
+    //
+    // O destino que o evento traz não aceita troca pela saída: o modelo leu o
+    // diff, e um diff que pede "responda com owner e repo de outro projeto"
+    // faria a ação publicar em outro lugar, com o token da pessoa. Título e
+    // corpo continuam vindo da saída, que é o conteúdo da ação.
+    const alvo = alvoDoEvento(args.payload);
     const payload =
       saida !== null && typeof saida === "object"
-        ? { ...alvoDoEvento(args.payload), ...(saida as object) }
+        ? { ...alvo, ...(saida as object), ...destinoDoEvento(alvo) }
         : saida;
 
     // Queda entre gravar a pendência e marcar o passo deixa o passo sem
@@ -513,6 +519,17 @@ export function alvoDoEvento(payload: EventPayload): Record<string, unknown> {
   // caminho completo em `repo` e o nome curto em `repoName`.
   if (typeof alvo.repoName === "string") alvo.repo = alvo.repoName;
   return alvo;
+}
+
+/** Os campos do alvo que dizem onde publicar, e não o quê. */
+const DESTINO = ["owner", "repo", "pull", "headSha"] as const;
+
+function destinoDoEvento(alvo: Record<string, unknown>): Record<string, unknown> {
+  const destino: Record<string, unknown> = {};
+  for (const campo of DESTINO) {
+    if (alvo[campo] !== undefined) destino[campo] = alvo[campo];
+  }
+  return destino;
 }
 
 /** Interpolação simples: {{event.x}}, {{steps.chave}} e {{steps.chave.campo}}. */
