@@ -203,3 +203,19 @@ test("sem preço cadastrado, o teto em tokens interrompe", async () => {
   assert.equal(await executor.execute(runId), "paused");
   assert.equal(falso.doGenerateCalls.length, 1);
 });
+
+test("runs simultâneos do mesmo agent veem o gasto um do outro a cada passo", async () => {
+  // Gatilho que acha vários eventos abre vários runs de uma vez. Cada um passa
+  // no máximo um passo do teto, e não o run inteiro.
+  await precos.set({ provider: "ollama", model: "tarifado", inputUsdPerMtok: 1, outputUsdPerMtok: 1 });
+  const { agentId, versionId } = await gravarAgent([modelo("um"), modelo("dois", ["um"])], { perDayUsd: 1.5 });
+  const falso = modeloFalso(500_000, 500_000);
+  const executor = await executorCom(runtimeNativo(falso, "ollama"));
+
+  const runs = await Promise.all([executor.createRun(versionId, null), executor.createRun(versionId, null)]);
+  assert.deepEqual(await Promise.all(runs.map((id) => executor.execute(id))), ["paused", "paused"]);
+  assert.equal(falso.doGenerateCalls.length, 2);
+  const gasto = await gastoDoDia(agentId);
+  assert.ok(Math.abs(gasto!.costUsd - 2) < 1e-9, `gasto ${gasto!.costUsd}`);
+  assert.equal(gasto!.runs, 2);
+});

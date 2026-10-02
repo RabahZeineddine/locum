@@ -19,14 +19,13 @@ export type Spend = { usd: number; tokens: number };
 /**
  * Checado antes de cada passo de modelo, nao so no comeco do run.
  *
- * `unrecorded` é o que este trecho já gastou e ainda não foi para
- * `usage_daily`, que só recebe o gasto na saída do trecho. Sem somar isso, um
- * run longo passaria do teto do dia sem ver o próprio gasto.
+ * O dia vem de `usage_daily`, que o executor atualiza assim que cada passo
+ * cobrado termina. Runs simultâneos do mesmo agent ainda podem passar juntos pela checagem,
+ * mas cada um passa só um passo além do teto, e não um run inteiro.
  */
 export async function assertWithinBudget(
   agentId: string,
   run: Spend,
-  unrecorded: Spend,
   limits: AgentBudget,
 ): Promise<void> {
   if (limits.perRunUsd !== undefined && run.usd >= limits.perRunUsd) {
@@ -42,21 +41,22 @@ export async function assertWithinBudget(
     .from(schema.usageDaily)
     .where(and(eq(schema.usageDaily.day, today()), eq(schema.usageDaily.agentId, agentId)));
 
-  const usd = (row?.costUsd ?? 0) + unrecorded.usd;
+  const usd = row?.costUsd ?? 0;
   if (limits.perDayUsd !== undefined && usd >= limits.perDayUsd) {
     throw new BudgetExceeded("day", "usd", limits.perDayUsd, usd);
   }
-  const tokens = (row?.tokens ?? 0) + unrecorded.tokens;
+  const tokens = row?.tokens ?? 0;
   if (limits.perDayTokens !== undefined && tokens >= limits.perDayTokens) {
     throw new BudgetExceeded("day", "tokens", limits.perDayTokens, tokens);
   }
 }
 
 /**
- * Soma no dia o que um trecho de execução gastou.
+ * Soma no dia um gasto, e a execução quando `newRun`.
  *
- * Chamado uma vez por trecho, em qualquer saída: um run que pausa na fila e é
- * retomado depois gasta em dois trechos, e só o primeiro conta como execução.
+ * O executor chama a cada passo cobrado, com `newRun` falso, e uma vez na
+ * saída do trecho para contar a execução: um run que pausa na fila e é
+ * retomado depois tem dois trechos, e só o primeiro conta como execução.
  */
 export async function recordSpend(agentId: string, spend: Spend, newRun: boolean): Promise<void> {
   if (!newRun && spend.usd === 0 && spend.tokens === 0) return;

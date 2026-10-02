@@ -150,7 +150,6 @@ export class Executor {
     // O que este trecho gastou. Vai para o dia em qualquer saída, e não só em
     // `done`: o review para na fila antes de terminar, e gravar só no fim
     // deixava o teto diário sem ver gasto nenhum.
-    const segment: Spend = { usd: 0, tokens: 0 };
     const newRun = run.startedAt === null;
 
     try {
@@ -198,7 +197,6 @@ export class Executor {
                 outputs,
                 fallbacks,
                 run: { usd: runCost, tokens: runTokens },
-                segment,
                 initiativeServers,
               })
             : await this.runActionStep({ runId, stepId, step, outputs, payload });
@@ -212,8 +210,10 @@ export class Executor {
         if (outcome.billable) {
           runCost += outcome.costUsd;
           runTokens += outcome.tokens;
-          segment.usd += outcome.costUsd;
-          segment.tokens += outcome.tokens;
+          // O dia recebe o gasto a cada passo, e não só no fim do trecho:
+          // um gatilho que acha vinte PRs abre vinte runs juntos, e cada um
+          // precisa ver o que os outros já gastaram antes do próximo passo.
+          await recordSpend(spec.id, { usd: outcome.costUsd, tokens: outcome.tokens }, false);
         }
         runEstimate += outcome.costUsd;
         outputs.set(step.key, outcome.output);
@@ -240,7 +240,8 @@ export class Executor {
     } finally {
       // Servidor MCP não fecha aqui: o registro vive entre execuções e cada
       // processo sai sozinho depois do tempo ocioso, ou no encerramento do app.
-      await recordSpend(spec.id, segment, newRun);
+      // O gasto já foi para o dia passo a passo; aqui só conta a execução.
+      if (newRun) await recordSpend(spec.id, { usd: 0, tokens: 0 }, true);
     }
   }
 
@@ -266,12 +267,11 @@ export class Executor {
     outputs: Map<string, unknown>;
     fallbacks: FallbackRow[];
     run: Spend;
-    segment: Spend;
     initiativeServers: Set<string> | null;
   }): Promise<StepOutcome | { kind: "skipped" }> {
     const { runId, stepId, step, spec, payload, outputs, fallbacks, initiativeServers } = args;
 
-    await assertWithinBudget(spec.id, args.run, args.segment, spec.budget);
+    await assertWithinBudget(spec.id, args.run, spec.budget);
 
     const toolRefs = resolveTools(spec, step);
 
