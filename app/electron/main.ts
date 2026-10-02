@@ -1627,6 +1627,25 @@ async function checkAgents(window: BrowserWindow): Promise<string> {
     throw new Error(`${botoes} botao(oes) de contar token para ${comFerramenta} passo(s) com ferramenta`);
   }
 
+  // O selo de escrita sai do cadastro, que a tela lê depois do spec. Por isso
+  // espera: contado na hora, o selo que ainda não chegou passaria por ausente.
+  const { mcpService } = await import("../src/services/mcp-service.js");
+  const deEscrita = new Set(
+    (await mcpService.list()).filter((s) => s.config.scope === "write").map((s) => s.config.name),
+  );
+  const selos = passosDeModelo
+    .flatMap((p) => p.tools ?? atual.spec.defaultTools)
+    .filter((ref) => deEscrita.has(ref.server)).length;
+  await esperarProbe<number>(
+    window,
+    "selo de escrita",
+    `(() => {
+      const n = document.querySelectorAll("[data-locum-escrita=sim]").length;
+      return n === ${selos} ? n : null;
+    })()`,
+    5_000,
+  );
+
   return t("smoke.agents", {
     agents: lista.total,
     versions: versoes.length,
