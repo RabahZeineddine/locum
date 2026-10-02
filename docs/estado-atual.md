@@ -966,7 +966,7 @@ dos binários de assinatura conferida com o PATH curto.
 níveis abaixo de `~/.claude/plugins`, e o cache guarda a skill em
 `cache/<marketplace>/<plugin>/<versão>/skills/<nome>`, mais fundo. Entrava o
 fonte de marketplace, que nem está instalado, e ficava de fora o plugin
-instalado. Contorno, desde a 0.1.22: a raiz de plugin vem do `installPath` de
+instalado. Contorno, desde a 0.1.21: a raiz de plugin vem do `installPath` de
 `installed_plugins.json`, com a varredura da pasta inteira só quando o arquivo
 falta. No mesmo lugar, o glob `**/*.tsx` só casava um nível de pasta, porque a
 troca do `*` reescrevia o `.*` gerado pelo `**/`.
