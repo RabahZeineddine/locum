@@ -228,6 +228,46 @@ test("evento que não abriu run volta na batida seguinte, mesmo sem vir na varre
   assert.deepEqual(iniciados, ["e1"]);
 });
 
+test("evento que segue sem run depois de um dia sai da lista de retry", async () => {
+  const db = bancoDeTeste();
+  let tentativas = 0;
+  const executions = {
+    startForEvent: async () => {
+      tentativas += 1;
+      throw new Error("teto do dia estourado");
+    },
+  } as unknown as ExecutionService;
+  const gatilhos = [
+    gatilho("g1", { kind: "poll", source: "github", owner: "org", repoMatch: ".", authorship: "any", includeDrafts: false, everyMinutes: 15 } as TriggerConfig),
+  ];
+  let batidas = 0;
+  const scheduler = new Scheduler(
+    db,
+    { enabled: async () => gatilhos, list: async () => gatilhos } as unknown as TriggerService,
+    executions,
+    {} as McpService,
+    {} as SlackService,
+    async () => {
+      batidas += 1;
+      if (batidas > 1) return { eventIds: [], created: [] };
+      await db.insert(schema.events).values({ id: "e1", source: "github", externalId: "pr-1", payload: {} });
+      return { eventIds: ["e1"], created: ["e1"] };
+    },
+    async () => ({ checked: 0, settled: [], stillOpen: 0, unreadable: 0, failed: [] }) as never,
+    async () => "eu",
+  );
+
+  await scheduler.tick({ at: T0 });
+  await scheduler.tick({ at: T0 + 15 * MINUTO });
+  assert.equal(tentativas, 2);
+  // Passado o prazo, a tentativa que falha não volta para a lista.
+  await scheduler.tick({ at: T0 + 24 * 60 * MINUTO });
+  assert.equal(tentativas, 3);
+  const batida = await scheduler.tick({ at: T0 + 24 * 60 * MINUTO + 15 * MINUTO });
+  assert.equal(tentativas, 3);
+  assert.equal(batida.outcomes[0]?.status, "fired");
+});
+
 test("autoria sem conta conferida recusa a batida em vez de acordar todo mundo", async () => {
   const { db, scheduler, iniciados } = montar({
     gatilhos: [

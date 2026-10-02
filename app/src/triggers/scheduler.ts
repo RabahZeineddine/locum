@@ -353,7 +353,7 @@ export class Scheduler {
 
     const nextDueAt = at + cadence;
     try {
-      const fired = await this.fire(trigger, wait);
+      const fired = await this.fire(trigger, at, wait);
       return { ...base, ...fired, status: "fired", nextDueAt };
     } catch (err) {
       return { ...base, status: "failed", detail: message(err), nextDueAt };
@@ -362,6 +362,7 @@ export class Scheduler {
 
   private async fire(
     trigger: TriggerEntry,
+    at: number,
     wait: boolean,
   ): Promise<{ events: number; runs: string[]; detail?: string }> {
     const config = trigger.config;
@@ -399,7 +400,7 @@ export class Scheduler {
         // de novo a cada batida em que o pull request continua na janela.
         const pendentes = await this.notYetRan(trigger.id, varredura.eventIds);
         const { eventIds, detail } = await this.byAuthorship(config.authorship, pendentes);
-        const runs = await this.runsFor(trigger, eventIds, wait);
+        const runs = await this.runsFor(trigger, eventIds, at, wait);
         const created = varredura.created;
         // A contagem de eventos continua sendo o que a varredura trouxe, e não
         // o que sobrou do filtro: quem lê a batida precisa ver que o pull
@@ -423,7 +424,7 @@ export class Scheduler {
           // A janela inteira, pelo mesmo motivo da varredura genérica logo
           // abaixo: o canal do Slack e a caixa de menções dividem a chave da
           // mensagem, e o primeiro a bater não pode ficar com ela sozinho.
-          const runs = await this.runsFor(trigger, varredura.inWindow, wait);
+          const runs = await this.runsFor(trigger, varredura.inWindow, at, wait);
           return { events: varredura.eventIds.length, runs, detail: slackDetail(varredura) };
         }
 
@@ -438,7 +439,7 @@ export class Scheduler {
         // A janela inteira, e não só o que entrou agora: o cursor é da
         // consulta, e não do gatilho, então dois gatilhos sobre a mesma
         // ferramenta dividem os eventos. `runsFor` deduplica pelo gatilho.
-        const runs = await this.runsFor(trigger, inWindow, wait);
+        const runs = await this.runsFor(trigger, inWindow, at, wait);
         // O que ja era conhecido aparece na diferenca, e nao some: sem isso a
         // unica leitura possivel de uma batida sem evento novo seria a de que a
         // consulta voltou vazia, que e outra coisa.
@@ -452,13 +453,13 @@ export class Scheduler {
 
       case "slack-inbox": {
         const caixa = await this.slackInbox(config, { db: this.db });
-        const runs = await this.runsFor(trigger, caixa.inWindow, wait);
+        const runs = await this.runsFor(trigger, caixa.inWindow, at, wait);
         return { events: caixa.eventIds.length, runs, detail: slackInboxDetail(caixa) };
       }
 
       case "teams-inbox": {
         const caixa = await this.teamsInbox(config, { db: this.db });
-        const runs = await this.runsFor(trigger, caixa.inWindow, wait);
+        const runs = await this.runsFor(trigger, caixa.inWindow, at, wait);
         return { events: caixa.eventIds.length, runs, detail: slackInboxDetail(caixa) };
       }
 
@@ -539,11 +540,15 @@ export class Scheduler {
   private async runsFor(
     trigger: TriggerEntry,
     eventIds: string[],
+    at: number,
     wait: boolean,
   ): Promise<string[]> {
     const runs: string[] = [];
     const falhas: string[] = [];
-    const agora = Date.now();
+    // O prazo do retry conta no relógio da batida, como a cadência. Com
+    // `Date.now()` aqui, quem passa `at` veria a cadência andar e o prazo
+    // parado.
+    const agora = at;
     const antes = new Map((await this.readRetry(trigger.id)).map((p) => [p.eventId, p.since]));
     const pendentes: Pendente[] = [];
     // Um evento que não abre run não segura os outros. O cursor da fonte já
