@@ -229,26 +229,32 @@ export class AgentService {
 
     await this.assertWithinInitiativeScope(parsed);
 
-    await this.db
-      .insert(schema.agents)
-      .values({ id: parsed.id, name: parsed.name })
-      .onConflictDoUpdate({
-        target: schema.agents.id,
-        set: { name: parsed.name },
-      });
+    // Juntos: a versão que falha, por queda ou pelo índice único quando o
+    // servidor MCP grava a mesma versão em paralelo, não pode deixar para trás
+    // um agent sem spec, que `get` daria por existente.
+    const inserted = this.db.transaction((tx) => {
+      tx.insert(schema.agents)
+        .values({ id: parsed.id, name: parsed.name })
+        .onConflictDoUpdate({
+          target: schema.agents.id,
+          set: { name: parsed.name },
+        })
+        .run();
 
-    const [inserted] = await this.db
-      .insert(schema.agentVersions)
-      .values({
-        id: randomUUID(),
-        agentId: parsed.id,
-        version: (latest?.version ?? 0) + 1,
-        spec: parsed as unknown as object,
-        note: note ?? null,
-      })
-      .returning();
+      return tx
+        .insert(schema.agentVersions)
+        .values({
+          id: randomUUID(),
+          agentId: parsed.id,
+          version: (latest?.version ?? 0) + 1,
+          spec: parsed as unknown as object,
+          note: note ?? null,
+        })
+        .returning()
+        .get();
+    });
 
-    return { ...parseVersion(inserted!), downgrades: guarded.downgrades };
+    return { ...parseVersion(inserted), downgrades: guarded.downgrades };
   }
 
   /**
