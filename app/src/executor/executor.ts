@@ -329,9 +329,10 @@ export class Executor {
       .where(eq(schema.steps.id, stepId));
 
     try {
-      // O runtime claude-code carrega skills nativamente; os outros precisam do texto.
-      const inlineSkills = runtime.id !== "claude-code";
-      const system = [skillsPreamble(skills, inlineSkills)].filter((s) => s.length > 0).join("\n\n");
+      // O corpo vai sempre no texto, inclusive para o claude-code: ele roda com
+      // `--setting-sources ""` e so com as ferramentas MCP liberadas, entao nao
+      // enxerga plugin nem consegue abrir a skill pelo nome.
+      const system = [skillsPreamble(skills, true)].filter((s) => s.length > 0).join("\n\n");
 
       const result = await runtime.run({
         provider: resolution.provider,

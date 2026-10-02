@@ -130,9 +130,13 @@ export type SkillContext = { repo: string; changedFiles: string[] };
 export function selectSkills(
   rules: SkillRule[],
   ctx: SkillContext,
-  catalog = discoverSkills(),
+  catalog?: Map<string, LoadedSkill>,
 ): LoadedSkill[] {
   const picked: LoadedSkill[] = [];
+  // Varrer o disco custa um decimo de segundo no processo principal; passo sem
+  // regra de skill, que e a maioria, nao paga isso.
+  if (rules.length === 0) return picked;
+  const found = catalog ?? discoverSkills();
 
   for (const rule of rules) {
     const { always, filesMatch, repoMatch } = rule.when;
@@ -147,7 +151,7 @@ export function selectSkills(
     }
     if (!hit) continue;
 
-    const skill = catalog.get(rule.skill);
+    const skill = found.get(rule.skill);
     if (skill && !picked.some((s) => s.name === skill.name)) picked.push(skill);
   }
 
@@ -155,8 +159,12 @@ export function selectSkills(
 }
 
 /**
- * Divulgacao progressiva. So nome e descricao entram no prompt; o corpo vem
- * sob demanda. Dez candidatas custam ~400 tokens em vez de 20 mil.
+ * O texto das skills para o prompt de sistema.
+ *
+ * Sem `inline`, so nome e descricao, e o corpo fica para quem souber abrir a
+ * skill sozinho: dez candidatas custam ~400 tokens em vez de 20 mil. Nenhum
+ * runtime de hoje sabe, porque o passo roda isolado das configuracoes da
+ * maquina, e o executor sempre pede `inline`.
  */
 export function skillsPreamble(skills: LoadedSkill[], inline: boolean): string {
   if (skills.length === 0) return "";
