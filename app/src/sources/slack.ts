@@ -123,12 +123,64 @@ export function slackShape(server: string, channel: string): McpPollShape {
  * seguraria o cursor do canal inteiro por causa de uma linha que ninguém quer.
  */
 export function slackMessages(payload: unknown): unknown[] {
+  const emTexto = (payload as { messages?: unknown } | null | undefined)?.messages;
+  if (typeof emTexto === "string") return mensagensDoTexto(emTexto);
   const lista = Array.isArray(payload)
     ? payload
     : ((payload as { messages?: unknown; items?: unknown } | null | undefined)?.messages ??
       (payload as { items?: unknown } | null | undefined)?.items);
   if (!Array.isArray(lista)) return [];
   return lista.filter((item) => typeof (item as { ts?: unknown } | null)?.ts === "string");
+}
+
+/** Abertura de cada mensagem no texto do servidor oficial. */
+const CABECALHO = /^=== Message from (.*) \((U[A-Z0-9]+)(?:, [^)]*)?\) at .* ===\s*$/;
+/** Linhas de metadado que o servidor põe depois do texto. */
+const METADADO = /^(Thread|Reactions|Files): /;
+
+/**
+ * As mensagens do `slack_read_channel` do servidor oficial.
+ *
+ * Ele devolve `messages` como texto, e não como lista: um bloco por mensagem,
+ * aberto por `=== Message from Nome <email> (U…) at … ===`, com o carimbo na
+ * linha `Message TS:` e, depois do texto, linhas de thread, reação e arquivo.
+ * Aqui o bloco vira o mesmo item que a API do Slack daria, para `normalize`
+ * não precisar saber de onde veio. O canal sai da linha `Channel:` do topo.
+ *
+ * A leitura de canal só traz mensagem de topo, então não há resposta de thread
+ * para reconhecer: o `thread_ts` fica de fora e a mensagem abre a própria.
+ */
+function mensagensDoTexto(texto: string): unknown[] {
+  const linhas = texto.split("\n");
+  const canal = /^Channel: .*\((C[A-Z0-9]+)\)\s*$/.exec(linhas[0] ?? "")?.[1];
+  const itens: Record<string, unknown>[] = [];
+  let atual: { user: string; user_name: string; ts?: string; corpo: string[] } | null = null;
+  const fechar = (): void => {
+    if (atual?.ts === undefined) return;
+    const corpo = [...atual.corpo];
+    while (corpo.length > 0 && (corpo.at(-1)!.trim() === "" || METADADO.test(corpo.at(-1)!))) corpo.pop();
+    itens.push({
+      ts: atual.ts,
+      user: atual.user,
+      user_name: atual.user_name,
+      text: corpo.join("\n").trim(),
+      ...(canal === undefined ? {} : { channel: canal }),
+    });
+  };
+  for (const linha of linhas) {
+    const cabecalho = CABECALHO.exec(linha);
+    if (cabecalho !== null) {
+      fechar();
+      atual = { user: cabecalho[2]!, user_name: cabecalho[1]!.replace(/\s*<[^>]*>$/, ""), corpo: [] };
+      continue;
+    }
+    if (atual === null) continue;
+    const ts = atual.ts === undefined ? /^Message TS: (\d+\.\d+)\s*$/.exec(linha)?.[1] : undefined;
+    if (ts !== undefined) atual.ts = ts;
+    else if (atual.ts !== undefined) atual.corpo.push(linha);
+  }
+  fechar();
+  return itens;
 }
 
 /**

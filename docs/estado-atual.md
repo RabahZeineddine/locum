@@ -1209,10 +1209,16 @@ O que a pessoa faz no Slack, e o Locum não consegue fazer por ela: criar o app
 para copiar se a tela vier vazia), ligar o MCP em Agents & AI Apps e instalar o
 app como interno. Ligar PKCE no app não tem volta.
 
-Falta ver com o Slack de verdade o formato do que `slack_read_channel` devolve.
-A fonte do Slack procura `messages` com `ts` em cada item; se o servidor oficial
-devolver texto formatado em vez de lista, a varredura não acha mensagem e
-`slackMessages` precisa aprender esse formato.
+Visto com o Slack de verdade: o `slack_read_channel` do servidor oficial
+devolve `messages` como texto, não como lista. Um bloco por mensagem, aberto
+por `=== Message from Nome <email> (U…) at … ===`, com o carimbo em
+`Message TS:` e, depois do texto, linhas `Thread:`, `Reactions:` e `Files:`. A
+linha `Channel:` do topo traz o id do canal. Até a 0.1.32 a varredura não
+achava mensagem nenhuma nesse formato; desde a 0.1.33 `slackMessages` monta de
+cada bloco o item que a API daria. A leitura de canal só traz mensagem de topo,
+e resposta de thread não entra por ela. Os argumentos de envio (`channel_id`,
+`message`, `thread_ts`) batem com o `slack_send_message`, que não publica em
+canal compartilhado com outra organização (Slack Connect).
 
 ### Menções e mensagens diretas
 
