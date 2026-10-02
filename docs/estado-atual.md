@@ -38,8 +38,8 @@ Não tem nada que falte no código; pode ser descartado com `git stash drop`.
 - I3: nada no código. Falta o teste à mão: abrir uma sessão de verdade pelo
   botão, escrever a passagem e ler de volta; e o deep link de fim de sessão,
   que só chega com o app empacotado (`npm run dist:dir`).
-- Fora do caminho crítico: O1 e O2 prontos (o rename das rotas em português
-  segue opcional), e o I4 coberto pela vitrine de conexões.
+- Fora do caminho crítico: O1 e O2 prontos (as rotas já estão em inglês, com
+  o hash antigo redirecionado), e o I4 coberto pela vitrine de conexões.
 
 ### Decisões tomadas
 
