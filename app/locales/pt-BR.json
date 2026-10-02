@@ -836,6 +836,7 @@
       "description": "Qual terminal abre a sessão do Claude de uma iniciativa.",
       "terminal": "Terminal",
       "iterm": "iTerm",
+      "warp": "Warp",
       "refused": "O terminal não foi gravado"
     },
     "claudeCode": {

@@ -142,6 +142,7 @@ interface ServiceApi {
   /** Terminal preferido, na secao geral da configuracao. */
   "sessions.terminal": SessionService["terminal"];
   "sessions.setTerminal": SessionService["setTerminal"];
+  "sessions.installedTerminals": SessionService["installedTerminals"];
   /**
    * As sessões do Claude Code da máquina, lidas de `~/.claude`, para a tela que
    * mostra o que ficou pela metade. Marcar e retomar são cliques.
@@ -462,6 +463,7 @@ export const BRIDGE_CHANNELS = [
   "sessions.readHandoff",
   "sessions.terminal",
   "sessions.setTerminal",
+  "sessions.installedTerminals",
   "claudeSessions.list",
   "claudeSessions.markDone",
   "claudeSessions.reopen",

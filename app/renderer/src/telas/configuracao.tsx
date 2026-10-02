@@ -620,6 +620,7 @@ function EscolhaDaRaiz() {
 function EscolhaDoTerminal() {
   const { t } = useTranslation();
   const lido = useRead("sessions.terminal");
+  const instalados = useRead("sessions.installedTerminals");
   const [escolhido, setEscolhido] = useState<SessionTerminal | null>(null);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -637,7 +638,7 @@ function EscolhaDoTerminal() {
 
   return (
     <div className="flex flex-wrap items-center gap-2 px-4 py-3" data-locum-probe="session-terminal" data-locum-terminal={atual}>
-      {TERMINAIS.map((terminal) => (
+      {TERMINAIS.filter((terminal) => terminal === atual || (instalados.data ?? TERMINAIS).includes(terminal)).map((terminal) => (
         <Button
           data-locum-escolhido={atual === terminal ? "sim" : "nao"}
           key={terminal}
@@ -654,7 +655,7 @@ function EscolhaDoTerminal() {
 }
 
 type SessionTerminal = ReadResult<"sessions.terminal">;
-const TERMINAIS: readonly SessionTerminal[] = ["terminal", "iterm"];
+const TERMINAIS: readonly SessionTerminal[] = ["terminal", "iterm", "warp"];
 
 /* --------------------------------------------------------------- provedores */
 

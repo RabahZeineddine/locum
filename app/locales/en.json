@@ -804,6 +804,7 @@
       "description": "Which terminal opens the Claude session of an initiative.",
       "terminal": "Terminal",
       "iterm": "iTerm",
+      "warp": "Warp",
       "refused": "The terminal was not saved"
     },
     "claudeCode": {

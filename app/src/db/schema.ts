@@ -471,7 +471,7 @@ export const sessions = sqliteTable("sessions", {
     .notNull()
     .references(() => initiatives.id, { onDelete: "cascade" }),
   workspaceId: text("workspace_id").references(() => initiativeWorkspaces.id),
-  /** terminal | iterm */
+  /** terminal | iterm | warp */
   terminal: text("terminal").notNull(),
   nonce: text("nonce").notNull().unique(),
   status: text("status").notNull().default("open"),

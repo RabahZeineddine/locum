@@ -123,13 +123,11 @@ test("deny barra context.md e .locum com caminho absoluto no formato //", async 
     permissions: {
       deny: [
         `Edit(/${pasta}/context.md)`,
-        `Write(/${pasta}/context.md)`,
         `Edit(/${pasta}/.locum/**)`,
-        `Write(/${pasta}/.locum/**)`,
       ],
     },
   });
-  for (const regra of settings.permissions.deny as string[]) assert.match(regra, /^(Edit|Write)\(\/\/[^/]/);
+  for (const regra of settings.permissions.deny as string[]) assert.match(regra, /^Edit\(\/\/[^/]/);
 });
 
 test("script entra no worktree e nada nasce fora da pasta de contexto", async () => {
@@ -150,7 +148,7 @@ test("script entra no worktree e nada nasce fora da pasta de contexto", async ()
     "session.md",
   ]);
   assert.ok(existsSync(join(pastaDe(slug), "handoffs")));
-  assert.equal(chamadas.length, 1);
+  assert.deepEqual(chamadas.map((c) => c.args[0]), ["-Ra", "-a"]);
 });
 
 test("sem worktree a sessao comeca na pasta de contexto, e sem claude achado usa o do PATH", async () => {
@@ -169,15 +167,39 @@ test("cada terminal abre com o open -a certo, e o padrao vem de settings", async
 
   const iterm = servico();
   const abertaIterm = await iterm.service.open(slug, { terminal: "iterm" });
-  assert.deepEqual(iterm.chamadas, [{ command: "open", args: ["-a", "iTerm", abertaIterm.scriptPath] }]);
+  assert.deepEqual(iterm.chamadas, [
+    { command: "open", args: ["-Ra", "iTerm"] },
+    { command: "open", args: ["-a", "iTerm", abertaIterm.scriptPath] },
+  ]);
+
+  const warp = servico();
+  const abertaWarp = await warp.service.open(slug, { terminal: "warp" });
+  assert.deepEqual(warp.chamadas.at(-1), { command: "open", args: ["-a", "Warp", abertaWarp.scriptPath] });
 
   const padrao = servico();
   await padrao.service.setTerminal("terminal");
   const abertaPadrao = await padrao.service.open(slug);
   assert.equal(abertaPadrao.terminal, "terminal");
-  assert.deepEqual(padrao.chamadas, [{ command: "open", args: ["-a", "Terminal", abertaPadrao.scriptPath] }]);
+  assert.deepEqual(padrao.chamadas.at(-1), { command: "open", args: ["-a", "Terminal", abertaPadrao.scriptPath] });
 
   await assert.rejects(padrao.service.setTerminal("xterm" as never));
+});
+
+test("terminal que nao esta instalado recusa com aviso e nao deixa sessao aberta", async () => {
+  const slug = await iniciativa();
+  const abertos: string[][] = [];
+  const exec: Exec = async (_command, args) => {
+    if (args[0] === "-Ra" && args[1] === "iTerm") throw new Error("Unable to find application named 'iTerm'");
+    abertos.push(args);
+  };
+  const service = new SessionService({ exec, resolveClaude: async () => "/bin/echo" });
+  const antes = (await db.select().from(schema.sessions)).length;
+
+  await assert.rejects(service.open(slug, { terminal: "iterm" }), /iTerm nao esta instalado/);
+
+  assert.equal((await db.select().from(schema.sessions)).length, antes);
+  assert.ok(abertos.every((args) => args[0] === "-Ra"));
+  assert.deepEqual(await service.installedTerminals(), ["terminal", "warp"]);
 });
 
 const HOSTIS = [`x"; touch PWNED; "`, "$(touch PWNED)", "`touch PWNED`", "it's"];

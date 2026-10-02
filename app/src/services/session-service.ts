@@ -14,7 +14,7 @@ import { translate } from "./text-service.js";
 
 type Db = typeof defaultDb;
 
-export const TERMINALS = ["terminal", "iterm"] as const;
+export const TERMINALS = ["terminal", "iterm", "warp"] as const;
 export type SessionTerminal = (typeof TERMINALS)[number];
 
 const TERMINAL_KEY = "session.terminal";
@@ -24,6 +24,7 @@ const DEFAULT_TERMINAL: SessionTerminal = "terminal";
 const TERMINAL_APP: Record<SessionTerminal, string> = {
   terminal: "Terminal",
   iterm: "iTerm",
+  warp: "Warp",
 };
 
 /** Pasta dos artefatos derivados, que o Locum regera e ninguem edita. */
@@ -85,15 +86,14 @@ export function shellQuote(value: string): string {
  *
  * Numa regra, `/caminho` e relativo ao arquivo de settings e `~/` ao home; so
  * `//caminho` e a raiz do disco. Por isso o `//` na frente do caminho que ja
- * vem absoluto.
+ * vem absoluto. So `Edit`: ele cobre toda ferramenta que mexe em arquivo, e o
+ * Claude Code avisa na abertura que regra `Write(...)` nao casa com nada.
  */
 export function denyRules(folder: string): string[] {
   const absoluto = `/${folder}`;
   return [
     `Edit(${absoluto}/context.md)`,
-    `Write(${absoluto}/context.md)`,
     `Edit(${absoluto}/${DERIVED_DIR}/**)`,
-    `Write(${absoluto}/${DERIVED_DIR}/**)`,
   ];
 }
 
@@ -169,6 +169,34 @@ function renderScript(input: {
   ].join("\n");
 }
 
+/** `open -Ra` so procura o aplicativo, sem abrir nada, e falha quando ele nao existe. */
+async function terminalInstalled(exec: Exec, terminal: SessionTerminal): Promise<boolean> {
+  return exec("open", ["-Ra", TERMINAL_APP[terminal]]).then(
+    () => true,
+    () => false,
+  );
+}
+
+export async function installedTerminals(exec: Exec): Promise<SessionTerminal[]> {
+  const instalados = await Promise.all(TERMINALS.map((terminal) => terminalInstalled(exec, terminal)));
+  return TERMINALS.filter((_, i) => instalados[i]);
+}
+
+/**
+ * Abre o script no terminal pedido. Sem conferir antes, o `open -a` de um
+ * aplicativo que nao existe devolve um erro cru do macOS no lugar do aviso.
+ */
+export async function openInTerminal(exec: Exec, terminal: SessionTerminal, script: string): Promise<void> {
+  await requireTerminal(exec, terminal);
+  await exec("open", ["-a", TERMINAL_APP[terminal], script]);
+}
+
+async function requireTerminal(exec: Exec, terminal: SessionTerminal): Promise<void> {
+  if (!(await terminalInstalled(exec, terminal))) {
+    throw new Error(`${TERMINAL_APP[terminal]} nao esta instalado; escolha outro terminal em Configuracoes`);
+  }
+}
+
 function defaultExec(command: string, args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
     execFile(command, args, (erro) => (erro ? reject(erro) : resolve()));
@@ -210,6 +238,10 @@ export class SessionService {
   async terminal(): Promise<SessionTerminal> {
     const gravado = await this.deps.settings.get(TERMINAL_KEY);
     return (TERMINALS as readonly string[]).includes(gravado ?? "") ? (gravado as SessionTerminal) : DEFAULT_TERMINAL;
+  }
+
+  installedTerminals(): Promise<SessionTerminal[]> {
+    return installedTerminals(this.deps.exec);
   }
 
   async setTerminal(value: SessionTerminal): Promise<SessionTerminal> {
@@ -266,6 +298,8 @@ export class SessionService {
     const plano = await this.plan(slug, options);
     const terminal = options.terminal ?? (await this.terminal());
     const initiative = (await this.deps.initiatives.get(slug))!;
+    // Antes de gravar a sessao: terminal ausente nao deixa sessao aberta para tras.
+    await requireTerminal(this.deps.exec, terminal);
 
     const store = new LocalFolderContextStore(plano.folder);
     await store.write(SESSION_PROMPT, plano.prompt);

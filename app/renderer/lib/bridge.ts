@@ -60,6 +60,7 @@ export const READ_CHANNELS = [
   "initiatives.root",
   // O terminal preferido, so leitura. Gravar vai por `sessions.setTerminal`.
   "sessions.terminal",
+  "sessions.installedTerminals",
   // As sessões do Claude Code da máquina. Só lê `~/.claude`, nunca escreve.
   "claudeSessions.list",
   // Prompts salvos, para a aba de acoes da iniciativa copiar.

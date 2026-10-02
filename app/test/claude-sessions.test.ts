@@ -74,8 +74,9 @@ test("retomar abre o terminal na pasta da sessão e recusa sessão aberta", asyn
   const { servico, chamadas } = montar();
   const { cwd } = await servico.resume(SESSOES_DE_EXEMPLO.interrompida);
   assert.equal(cwd, "/projetos/exemplo");
-  assert.equal(chamadas.length, 1);
-  const [comando, args] = chamadas[0] as [string, string[]];
+  assert.deepEqual(chamadas[0], ["open", ["-Ra", "Terminal"]]);
+  assert.equal(chamadas.length, 2);
+  const [comando, args] = chamadas[1] as [string, string[]];
   assert.equal(comando, "open");
   assert.deepEqual(args.slice(0, 2), ["-a", "Terminal"]);
   const script = readFileSync(args[2] as string, "utf8");

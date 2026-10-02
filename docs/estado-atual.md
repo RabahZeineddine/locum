@@ -63,7 +63,7 @@ Não tem nada que falte no código; pode ser descartado com `git stash drop`.
 - Em aberto: quando docs, ADRs e mensagens de commit passam para inglês.
 - Sessão no terminal (fatia 7): o Locum gera `.locum/session.md`,
   `.locum/session-settings.json` e `.locum/open-session.command` na pasta de
-  contexto e roda `open -a Terminal|iTerm` no script. O `claude` é achado por
+  contexto e roda `open -a Terminal|iTerm|Warp` no script. O `claude` é achado por
   `LOCUM_CLAUDE_BIN`, depois `zsh -ilc 'command -v claude'`, depois a lista
   fixa dos instaladores; sem achar, o script usa o `claude` do PATH do
   terminal e a tela avisa. O `deny` barra `context.md` e `.locum/**` com
@@ -144,7 +144,7 @@ que a interface vai usar.
 | deep link `locum://` | esquema registrado no sistema, retorno de OAuth com PKCE roteado do `open-url` até o cofre |
 | ponte entre janela e serviços | preload em sandbox, 96 canais tipados pelos próprios métodos dos serviços (`BRIDGE_CHANNELS`; o catálogo do renderer, `READ_CHANNELS` mais `ACTION_CHANNELS`, cobre 82 deles, e deixa `approvals.decide` e alguns canais de agent fora por decisão do ADR 0003), decisão de aprovação só encaminhada, e guarda de compilação contra canal que abra tarefa ou publique no Slack |
 | tela de iniciativas (I2) | lista e detalhe (contexto, agents, execuções, ações) por rota com sub-rota de hash; painel de iniciativas no Início; revisão de pendência `context.update` com diff e aviso de conflito; `staleDays` (dias parados até "sem sinal") configurável na tela de configuração, de 1 a 90, padrão 7 |
-| sessão da iniciativa no terminal (I3) | `SessionService` gera em `.locum/` da pasta de contexto o prompt (`session.prompt.*` no idioma da preferência), o `deny` de `Edit` e `Write` em `context.md` e `.locum/**` e o script `open-session.command`, que o `open -a` roda no Terminal ou no iTerm (escolha na configuração); o `claude` sai de `resolveClaudeBinary`; "Ler passagem" vira proposta `append` na fila; `locum://session/ended` fecha a sessão com nonce de uso único; botões na aba Ações e comando na paleta, sem entrada no chat nem no MCP |
+| sessão da iniciativa no terminal (I3) | `SessionService` gera em `.locum/` da pasta de contexto o prompt (`session.prompt.*` no idioma da preferência), o `deny` de `Edit` em `context.md` e `.locum/**` e o script `open-session.command`, que o `open -a` roda no Terminal, no iTerm ou no Warp (escolha na configuração, que só mostra os instalados); o `claude` sai de `resolveClaudeBinary`; "Ler passagem" vira proposta `append` na fila; `locum://session/ended` fecha a sessão com nonce de uso único; botões na aba Ações e comando na paleta, sem entrada no chat nem no MCP |
 | interface | esqueleto do renderer em Vite com React e Tailwind, construído para `dist/renderer` e carregado pela janela, já lendo pela ponte |
 | componentes da interface | shadcn e AI Elements vendorizados em `app/renderer/components`, tema escuro por padrão, sem dependência de rede |
 | cliente da ponte no renderer | `app/renderer/lib/bridge.ts` com catálogo de leitura escrito à mão e hook `useRead`, a janela lendo agents, execuções e fila |
@@ -1131,6 +1131,18 @@ dependência; teste e smoke passam espião, e o smoke confere os botões por
 existir sem clicar. Os testes de injeção usam `touch PWNED` como sentinela,
 nunca `rm`, e rodam o script só até a linha do `claude` (com `/bin/echo`), sem
 a do `open`.
+
+**Regra `Write(...)` não casa com nada.** Visto na primeira sessão de verdade:
+o Claude Code avisa na abertura que regra de `deny` com `Write(caminho)` não é
+conferida na permissão de arquivo, e que `Edit(caminho)` já cobre toda
+ferramenta que edita. Desde a 0.1.34 o `deny` leva só `Edit`.
+
+**Terminal que não está instalado.** O `open -a iTerm` sem o iTerm na máquina
+devolvia o erro cru do macOS, e a sessão ficava registrada como aberta.
+Contorno: `open -Ra <App>` antes, que só procura o aplicativo; sem ele, a
+abertura recusa com aviso antes de gravar a sessão. O mesmo vale para retomar
+sessão do Claude. A configuração mostra só os terminais instalados, mais o
+escolhido. O Warp abre `.command` direto, como o Terminal.
 
 ## Próximos passos
 

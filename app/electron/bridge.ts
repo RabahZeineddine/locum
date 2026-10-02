@@ -159,6 +159,7 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "sessions.readHandoff": (slug) => sessionService.readHandoff(slug),
     "sessions.terminal": () => sessionService.terminal(),
     "sessions.setTerminal": (value) => sessionService.setTerminal(value),
+    "sessions.installedTerminals": () => sessionService.installedTerminals(),
     "claudeSessions.list": () => claudeSessionsService.list(),
     "claudeSessions.markDone": (id, lastActivityAt) => claudeSessionsService.markDone(id, lastActivityAt),
     "claudeSessions.reopen": (id) => claudeSessionsService.reopen(id),

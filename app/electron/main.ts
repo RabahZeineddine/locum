@@ -1415,7 +1415,10 @@ async function checkSessionWiring(): Promise<void> {
   for (const arquivo of ["session.md", "session-settings.json", "open-session.command"]) {
     if (!existsSync(join(pasta, ".locum", arquivo))) throw new Error(`a sessao nao gravou .locum/${arquivo}`);
   }
-  const esperado = JSON.stringify([{ command: "open", args: ["-a", "Terminal", aberta.scriptPath] }]);
+  const esperado = JSON.stringify([
+    { command: "open", args: ["-Ra", "Terminal"] },
+    { command: "open", args: ["-a", "Terminal", aberta.scriptPath] },
+  ]);
   if (JSON.stringify(chamadas) !== esperado) {
     throw new Error(`a sessao chamou ${JSON.stringify(chamadas)} e o esperado era ${esperado}`);
   }

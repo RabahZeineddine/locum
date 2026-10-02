@@ -4,7 +4,7 @@ import { open, readdir, readFile, stat } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { claudeBinary } from "../runtimes/claude-binary.js";
-import { sessionService, shellQuote, type SessionService } from "./session-service.js";
+import { openInTerminal, sessionService, shellQuote, type SessionService } from "./session-service.js";
 import { settingsService, type SettingsService } from "./settings-service.js";
 
 /**
@@ -80,8 +80,6 @@ const TRECHO = 280;
 const GIT_TTL_MS = 60_000;
 /** Só as sessões de gente. `sdk-cli` é o Claude chamado por programa, o próprio Locum incluso. */
 const ENTRADAS_HUMANAS = new Set(["cli", "claude-vscode", "claude-desktop"]);
-
-const TERMINAL_APP = { terminal: "Terminal", iterm: "iTerm" } as const;
 
 interface Registro {
   pid: number;
@@ -451,7 +449,7 @@ export class ClaudeSessionsService {
       ["#!/bin/sh", `cd ${shellQuote(sessao.cwd)} || exit 1`, `exec ${shellQuote(claude)} --resume ${shellQuote(id)}`, ""].join("\n"),
     );
     chmodSync(script, 0o755);
-    await this.deps.exec("open", ["-a", TERMINAL_APP[terminal], script]);
+    await openInTerminal(this.deps.exec, terminal, script);
     return { terminal, cwd: sessao.cwd };
   }
 }
