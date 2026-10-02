@@ -5,7 +5,7 @@ import { machineId } from "../services/machine-service.js";
 import { mcpService } from "../services/mcp-service.js";
 import { providerService } from "../services/provider-service.js";
 import { triggerService } from "../services/trigger-service.js";
-import type { AgentSpec, McpServerInput, TriggerConfigInput } from "../config/types.js";
+import type { AgentSpec, McpServerConfig, McpServerInput, TriggerConfigInput } from "../config/types.js";
 import { respond } from "./respond.js";
 
 /**
@@ -23,6 +23,35 @@ import { respond } from "./respond.js";
  * Aprovacao e publicacao continuam fora, sem excecao, conforme o ADR 0002.
  * Gravar e reversivel e auditavel; publicar no nome de outra pessoa nao e.
  */
+/**
+ * O cadastro que a ferramenta grava: o que veio, completado pelo que ja estava.
+ *
+ * O servico grava o objeto inteiro, porque a tela manda sempre o formulario
+ * completo e um campo vazio la quer dizer apagar. Um assistente manda so o que
+ * quer mudar, e sem esta mistura trocar o `scope` apagava o `Authorization`
+ * que o OAuth tinha posto. Com transporte novo, comando e endereco do antigo
+ * nao fazem sentido e nao sao herdados.
+ */
+export function mergeRegistration(atual: McpServerConfig | undefined, novo: McpServerInput): McpServerInput {
+  if (atual === undefined) return novo;
+  const herda = <K extends keyof McpServerInput>(campo: K, deAtual: McpServerInput[K]) =>
+    novo[campo] === undefined && deAtual !== undefined ? { [campo]: deAtual } : {};
+  const mesmoTransporte = atual.transport === novo.transport;
+  return {
+    ...novo,
+    ...herda("scope", atual.scope),
+    ...herda("idleTimeoutMs", atual.idleTimeoutMs),
+    ...(mesmoTransporte
+      ? {
+          ...herda("command", atual.command),
+          ...herda("env", atual.env),
+          ...herda("url", atual.url),
+          ...herda("headers", atual.headers),
+        }
+      : {}),
+  };
+}
+
 export function registerConfigTools(server: McpServer): void {
   server.registerTool(
     "upsert_agent",
@@ -61,7 +90,7 @@ export function registerConfigTools(server: McpServer): void {
     "register_mcp_server",
     {
       description:
-        "Registers or updates an MCP server that Locum consumes as a client. The name is the key that steps reference.",
+        "Registers or updates an MCP server that Locum consumes as a client. The name is the key that steps reference. On update, fields left out keep their current value; changing transport, url or command unlinks the stored credential.",
       inputSchema: {
         name: z.string().min(1),
         transport: z.enum(["stdio", "http", "sse"]),
@@ -85,7 +114,8 @@ export function registerConfigTools(server: McpServer): void {
     },
     async ({ enabled, ...config }) =>
       respond(async () => {
-        const entry = await mcpService.register(config as McpServerInput);
+        const atual = await mcpService.get(config.name);
+        const entry = await mcpService.register(mergeRegistration(atual?.config, config as McpServerInput));
         if (enabled !== undefined) await mcpService.setEnabled(entry.config.name, enabled);
         return { ...entry.config, enabled: enabled ?? entry.enabled };
       }),

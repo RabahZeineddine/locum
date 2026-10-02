@@ -92,10 +92,24 @@ export class McpService {
     return atuais.map((row) => this.connectable(row));
   }
 
-  /** Cadastra ou atualiza pelo nome, que e a chave que o passo referencia. */
+  /**
+   * Cadastra ou atualiza pelo nome, que e a chave que o passo referencia.
+   *
+   * A credencial vinculada foi entregue para um destino. Se a atualizacao muda
+   * o destino (transporte, endereco ou comando), o vinculo cai, e quem mudou
+   * conecta de novo: senao bastaria regravar o nome com outra URL e o mesmo
+   * marcador para o token sair para um servidor que ninguem autorizou.
+   */
   async register(config: McpServerInput): Promise<McpServerEntry> {
     const parsed = McpServerConfig.parse(config);
+    const anterior = await this.row(parsed.name);
+    const mudouDestino =
+      anterior !== undefined &&
+      (anterior.transport !== parsed.transport ||
+        (anterior.url ?? null) !== (parsed.url ?? null) ||
+        JSON.stringify(anterior.command ?? null) !== JSON.stringify(parsed.command ?? null));
     const values = {
+      ...(mudouDestino && anterior.credentialRef !== null ? { credentialRef: null } : {}),
       name: parsed.name,
       transport: parsed.transport,
       command: parsed.command ?? null,
