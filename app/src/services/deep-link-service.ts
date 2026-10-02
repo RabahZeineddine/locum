@@ -16,7 +16,7 @@ const SESSION_TOKEN = /^[A-Za-z0-9_-]{16,128}$/;
 
 export type DeepLinkRoute =
   | { kind: "oauth-callback"; server: string; code: string; state: string }
-  | { kind: "oauth-error"; server: string; error: string }
+  | { kind: "oauth-error"; server: string; error: string; state: string }
   | { kind: "session-ended"; session: string; token: string }
   | { kind: "unknown"; reason: string };
 
@@ -103,7 +103,9 @@ export function parseDeepLink(raw: string): DeepLinkRoute {
   if (!NAME.test(server)) return { kind: "unknown", reason: "callback sem servidor valido" };
 
   const error = url.searchParams.get("error");
-  if (error !== null) return { kind: "oauth-error", server, error: error.slice(0, 120) };
+  if (error !== null) {
+    return { kind: "oauth-error", server, error: error.slice(0, 120), state: url.searchParams.get("state") ?? "" };
+  }
 
   const code = url.searchParams.get("code") ?? "";
   const state = url.searchParams.get("state") ?? "";
@@ -166,6 +168,19 @@ export class DeepLinkService {
     return { url: url.toString(), state };
   }
 
+  /**
+   * Desiste da autorizacao pelo retorno de erro do provedor, so se o `state`
+   * for o da autorizacao em andamento. O retorno de erro chega pelo mesmo
+   * `locum://` que qualquer programa da maquina abre, e sem conferir o
+   * `state` um link qualquer derrubaria a autorizacao de quem esta no meio.
+   */
+  cancelFromCallback(server: string, state: string): boolean {
+    const ref = this.stateRef(server);
+    const pending = this.readPending(ref);
+    if (pending === undefined || !sameSecret(pending.state, state)) return false;
+    return this.secrets.remove(ref);
+  }
+
   /** Desiste de uma autorizacao comecada. Devolve se havia o que desistir. */
   cancelAuthorization(server: string): boolean {
     return this.secrets.remove(this.stateRef(server));
@@ -177,7 +192,9 @@ export class DeepLinkService {
    *
    * O `state` e consumido antes da troca. Codigo de autorizacao vale uma vez
    * so, e deixar o pendente no cofre depois de usado abriria a porta para um
-   * segundo `locum://` reaproveitar o mesmo `state`.
+   * segundo `locum://` reaproveitar o mesmo `state`. Um retorno com `state`
+   * errado nao consome nada: senao qualquer link derrubaria a autorizacao em
+   * andamento antes do retorno de verdade chegar.
    */
   async completeOAuth(
     route: Extract<DeepLinkRoute, { kind: "oauth-callback" }>,
@@ -189,14 +206,14 @@ export class DeepLinkService {
       throw new Error(`nenhuma autorizacao pendente para "${route.server}"`);
     }
 
-    this.secrets.remove(ref);
-
     if (this.now() - pending.createdAt > STATE_TTL_MS) {
+      this.secrets.remove(ref);
       throw new Error(`a autorizacao de "${route.server}" venceu, comece de novo`);
     }
     if (!sameSecret(pending.state, route.state)) {
       throw new Error(`o state do retorno de "${route.server}" nao confere`);
     }
+    this.secrets.remove(ref);
 
     const token = await exchange({
       tokenUrl: pending.tokenUrl,

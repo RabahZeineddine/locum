@@ -198,8 +198,10 @@ async function handleDeepLink(url: string): Promise<void> {
     return;
   }
   if (route.kind === "oauth-error") {
-    deepLinkService.cancelAuthorization(route.server);
-    console.log(`deep link: autorizacao de ${route.server} recusada, ${route.error}`);
+    const cancelada = deepLinkService.cancelFromCallback(route.server, route.state);
+    console.log(
+      `deep link: autorizacao de ${route.server} recusada, ${route.error}${cancelada ? "" : ", state nao confere e nada mudou"}`,
+    );
     return;
   }
   if (route.kind === "session-ended") {
