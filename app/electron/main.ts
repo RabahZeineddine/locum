@@ -119,7 +119,32 @@ function createWindow(options: { show?: boolean } = {}): BrowserWindow {
   window.on("closed", () => {
     mainWindow = null;
   });
+  guardNavigation(window);
   return window;
+}
+
+/**
+ * A janela só mostra a página construída, e link para fora abre no navegador.
+ *
+ * Sem isto, o `target="_blank"` de um pull request abria uma segunda janela do
+ * Electron com o GitHub dentro, e um link comum trocava a página do Locum pela
+ * de fora, que herdaria a janela confiada pelo preload. Só `http` e `https`
+ * vão para o navegador: outro esquema vindo de texto de terceiro, como o corpo
+ * de um achado, poderia abrir aplicativo local.
+ */
+function guardNavigation(window: BrowserWindow): void {
+  const paraFora = (url: string): void => {
+    if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
+  };
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    paraFora(url);
+    return { action: "deny" };
+  });
+  window.webContents.on("will-navigate", (event, url) => {
+    if (url.startsWith("file://")) return;
+    event.preventDefault();
+    paraFora(url);
+  });
 }
 
 /**
