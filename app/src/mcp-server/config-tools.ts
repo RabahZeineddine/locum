@@ -192,7 +192,7 @@ export function registerConfigTools(server: McpServer): void {
     "set_budget",
     {
       description:
-        "Adjusts an agent's spending cap. The budget lives in the spec, so this records a new version. An absent field stays as is and null removes the cap. The token cap is what protects a model without a registered price, whose dollar cost stays at zero.",
+        "Adjusts an agent's spending cap. The budget lives in the spec, so this records a new version. An absent field stays as is. From here a cap can only go down or be added; raising or removing one is refused and must be done by a person in the app. The token cap is what protects a model without a registered price, whose dollar cost stays at zero.",
       inputSchema: {
         agentId: z.string(),
         perRunUsd: z.number().positive().nullable().optional(),

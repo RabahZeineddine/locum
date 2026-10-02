@@ -99,3 +99,21 @@ test("autorização dada a uma ação não passa para outra ação ou outro dest
     await service.upsert(comPasso({ action: "slack.post", target: "C-TIME" }), undefined, "human");
   }
 });
+
+test("pelo servidor MCP o teto de gasto só baixa", async () => {
+  const service = new AgentService(bancoDeTeste());
+  await service.upsert({ ...spec("approve"), budget: { perDayUsd: 5 } }, undefined, "human");
+
+  await assert.rejects(service.setBudget("revisor", { perDayUsd: null }), /só pode subir ou sair pela tela/);
+  await assert.rejects(service.setBudget("revisor", { perDayUsd: 50 }), /perDayUsd/);
+  await assert.rejects(
+    service.upsert({ ...spec("approve"), budget: {} }, undefined, "agent"),
+    /só pode subir ou sair pela tela/,
+  );
+
+  const menor = await service.setBudget("revisor", { perDayUsd: 2, perRunUsd: 1 });
+  assert.deepEqual(menor.spec.budget, { perDayUsd: 2, perRunUsd: 1 });
+  // A pessoa, pela tela, afrouxa à vontade.
+  const solto = await service.upsert({ ...spec("approve"), budget: {} }, undefined, "human");
+  assert.deepEqual(solto.spec.budget, {});
+});

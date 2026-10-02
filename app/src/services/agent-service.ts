@@ -34,6 +34,30 @@ export interface AgentOverview extends AgentRow {
 /** Quem esta gravando. Agent nao sobe modo de passo de acao; pessoa sobe. */
 export type Actor = "human" | "agent";
 
+const TETOS = ["perRunUsd", "perDayUsd", "perRunTokens", "perDayTokens"] as const;
+
+/**
+ * Quem não é pessoa só aperta o teto de gasto, nunca afrouxa.
+ *
+ * O teto é o que segura um agent ligado a gatilho que entrou em laço, e quem
+ * fala pelo servidor MCP pode ser uma sessão que leu texto de terceiro. Tirar
+ * ou subir o teto fica para a tela, onde quem decide é a pessoa.
+ */
+function refuseLooserBudget(antes: AgentSpec["budget"] | undefined, depois: AgentSpec["budget"]): void {
+  if (antes === undefined) return;
+  for (const teto of TETOS) {
+    const atual = antes[teto];
+    if (atual === undefined) continue;
+    const novo = depois[teto];
+    if (novo === undefined || novo > atual) {
+      throw new Error(
+        `o teto ${teto} só pode subir ou sair pela tela do Locum, onde a pessoa decide. ` +
+          `Daqui ele só baixa (atual: ${atual}).`,
+      );
+    }
+  }
+}
+
 /** Identificador de agent: vira nome em URL, em log e em arquivo exportado. */
 export const ID_DE_AGENT = /^[a-z0-9][a-z0-9-]{1,62}$/;
 
@@ -211,6 +235,7 @@ export class AgentService {
   ): Promise<AgentVersion> {
     const parsed = AgentSpec.parse(spec);
     const latest = await this.latestRow(parsed.id);
+    if (actor !== "human") refuseLooserBudget((latest?.spec as AgentSpec | undefined)?.budget, parsed.budget);
     const guarded = actor === "human" ? { spec: parsed, downgrades: [] } : demoteActions(parsed, latest?.spec);
 
     return this.write(guarded, latest, note);
@@ -268,6 +293,7 @@ export class AgentService {
     agentId: string,
     patch: AgentBudgetPatch,
     note?: string,
+    actor: Actor = "agent",
   ): Promise<AgentVersion> {
     const parsed = AgentBudgetPatch.parse(patch);
     const latest = await this.getLatestVersion(agentId);
@@ -281,6 +307,7 @@ export class AgentService {
       else budget[key] = value;
     }
 
+    if (actor !== "human") refuseLooserBudget(latest.spec.budget, budget);
     // Mexer no orcamento nao mexe em passo de acao, entao nao ha o que rebaixar.
     return this.upsert({ ...latest.spec, budget }, note ?? "orcamento ajustado", "human");
   }
