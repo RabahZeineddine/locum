@@ -1008,7 +1008,25 @@ consulta, não do gatilho. Dois gatilhos sobre a mesma organização (revisão e
 resumo, por exemplo) dividiam o cursor, e o segundo a bater achava tudo
 conhecido. O evento gravado numa batida que morreu antes de criar o run também
 ficava para trás. Contorno, desde a 0.1.25: as duas devolvem a janela inteira e
-o agendador deduplica pelo run do próprio gatilho.
+o agendador deduplica pelo run do próprio gatilho. Na 0.1.26 o mesmo vale para
+canal do Slack e caixas do Slack e do Teams. Ainda aberto: o cursor da fonte é
+gravado antes de o agendador criar os runs, então queda exatamente entre as
+duas coisas deixa o evento gravado e fora da próxima janela.
+
+**Duas batidas no mesmo banco disparavam em dobro.** O app serializa as
+próprias batidas, mas `locum tick` no terminal bate no mesmo SQLite. Contorno,
+desde a 0.1.26: a batida toma o gatilho numa escrita condicional ao cursor que
+leu, antes de disparar. Efeito colateral: queda no meio do disparo de um
+gatilho de relógio pula aquela janela, em vez de repetir.
+
+**Refresh de OAuth em paralelo derrubava a conexão.** Vários runs pedindo o
+token vencido mandavam o mesmo refresh token. Contorno, desde a 0.1.26: uma
+troca por servidor de cada vez. O retorno no loopback também passou a ignorar
+pedido com state de outra tentativa, em vez de falhar com ele.
+
+**Teto diário virava às 21h.** O dia do gasto era UTC. Desde a 0.1.26 é o dia
+local do Mac. No dia da atualização, o gasto já gravado sob a data UTC pode
+contar no dia errado uma vez.
 
 **Link de pull request abria o GitHub dentro do app.** O `target="_blank"`
 criava outra janela do Electron. Contorno, desde a 0.1.25: a janela recusa
