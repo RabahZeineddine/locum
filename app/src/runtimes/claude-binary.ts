@@ -70,13 +70,17 @@ export async function resolveClaudeBinary(deps: Partial<ClaudeBinaryDeps> = {}):
     // Sem zsh, tempo esgotado ou `claude` fora do PATH: segue para a lista fixa.
   }
 
-  const fixos = [
+  return claudeFixedPaths(home).find(aceita);
+}
+
+/** Onde os instaladores conhecidos põem o binário, para quem não o tem no PATH. */
+export function claudeFixedPaths(home: string = homedir()): string[] {
+  return [
     join(home, ".local", "bin", "claude"),
     join(home, ".claude", "local", "claude"),
     "/opt/homebrew/bin/claude",
     "/usr/local/bin/claude",
   ];
-  return fixos.find(aceita);
 }
 
 let lembrado: Promise<string | undefined> | null = null;

@@ -4,6 +4,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LanguageModel } from "ai";
 import { execFileSync } from "node:child_process";
+import { claudeFixedPaths } from "../runtimes/claude-binary.js";
 import { CODEX_DEFAULT_MODEL } from "../runtimes/codex.js";
 
 /**
@@ -127,12 +128,17 @@ let claudeBinaryChecked: boolean | undefined;
 /** Binario presente e sessao valida. Sem isso a via de assinatura nao existe. */
 export function claudeCodeAvailable(): boolean {
   if (claudeBinaryChecked !== undefined) return claudeBinaryChecked;
-  try {
-    execFileSync("claude", ["--version"], { stdio: "ignore", timeout: 5000 });
-    claudeBinaryChecked = true;
-  } catch {
-    claudeBinaryChecked = false;
-  }
+  // Pelo nome primeiro, e depois nos lugares fixos: instalado em
+  // `~/.claude/local`, o binário só existe como alias do `.zshrc` e o nome
+  // sozinho não acha, embora o runtime o encontre pelo caminho absoluto.
+  claudeBinaryChecked = ["claude", ...claudeFixedPaths()].some((comando) => {
+    try {
+      execFileSync(comando, ["--version"], { stdio: "ignore", timeout: 5000 });
+      return true;
+    } catch {
+      return false;
+    }
+  });
   return claudeBinaryChecked;
 }
 

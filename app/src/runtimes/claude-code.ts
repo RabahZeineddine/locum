@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { McpServerConfig } from "../config/types.js";
+import { claudeBinary } from "./claude-binary.js";
 import type { Runtime, RuntimeRequest, RuntimeResult } from "./types.js";
 
 const run = promisify(execFile);
@@ -51,12 +52,19 @@ function mcpConfigJson(servers: string[], mcpConfigs: Map<string, McpServerConfi
 export class ClaudeCodeRuntime implements Runtime {
   readonly id = "claude-code";
 
-  constructor(private mcpConfigs: Map<string, McpServerConfig>) {}
+  constructor(
+    private mcpConfigs: Map<string, McpServerConfig>,
+    private binario: () => Promise<string | undefined> = () => claudeBinary(),
+  ) {}
 
   async run(req: RuntimeRequest): Promise<RuntimeResult> {
     const args = claudeArgs(req, this.mcpConfigs);
 
-    const { stdout } = await run("claude", args, {
+    // O mesmo caminho absoluto que a sessão interativa usa. Instalado em
+    // `~/.claude/local`, o `claude` existe só como alias do `.zshrc`, fora do
+    // PATH que o processo herda, e chamar pelo nome falhava com ENOENT.
+    const comando = (await this.binario()) ?? "claude";
+    const { stdout } = await run(comando, args, {
       maxBuffer: 64 * 1024 * 1024,
       timeout: 15 * 60 * 1000,
     });
