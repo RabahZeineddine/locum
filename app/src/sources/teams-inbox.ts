@@ -63,6 +63,8 @@ export interface TeamsInboxOptions {
 
 export interface TeamsInboxOutcome {
   eventIds: string[];
+  /** Evento de cada item da janela, novo ou já conhecido. Ver `McpPollOutcome.inWindow`. */
+  inWindow: string[];
   seen: number;
   errors: { kind: "inbox" | "channel"; channel?: string; error: string }[];
 }
@@ -89,7 +91,7 @@ export async function pollTeamsInbox(
   if (token === null) throw new Error("o Teams não está conectado");
 
   const graph = graphGet(token, options.fetchFn ?? fetch, options.graphUrl ?? GRAPH_URL);
-  const outcome: TeamsInboxOutcome = { eventIds: [], seen: 0, errors: [] };
+  const outcome: TeamsInboxOutcome = { eventIds: [], inWindow: [], seen: 0, errors: [] };
   const canais = watch.mentions ? (watch.channels ?? []) : [];
   if (!watch.mentions && !watch.dms) return outcome;
 
@@ -102,11 +104,12 @@ export async function pollTeamsInbox(
   }
 
   try {
-    const { eventIds, seen } = await pollMcpServer(
+    const { eventIds, inWindow, seen } = await pollMcpServer(
       { server: TEAMS_SERVER, tool: "inbox", args: { since: CURSOR_TOKEN } },
       { db, call: caixa(graph), shape: inboxShape(watch, eu) },
     );
     outcome.eventIds.push(...eventIds);
+    for (const id of inWindow) if (!outcome.inWindow.includes(id)) outcome.inWindow.push(id);
     outcome.seen += seen;
   } catch (err) {
     outcome.errors.push({ kind: "inbox", error: err instanceof Error ? err.message : String(err) });
@@ -116,11 +119,12 @@ export async function pollTeamsInbox(
   // cursor dos outros, e o que entrou depois começa do próprio dia.
   for (const canal of canais) {
     try {
-      const { eventIds, seen } = await pollMcpServer(
+      const { eventIds, inWindow, seen } = await pollMcpServer(
         { server: TEAMS_SERVER, tool: "channel", args: { since: CURSOR_TOKEN } },
         { db, call: doCanal(graph, canal), shape: canalShape(canal, eu) },
       );
       outcome.eventIds.push(...eventIds);
+    for (const id of inWindow) if (!outcome.inWindow.includes(id)) outcome.inWindow.push(id);
       outcome.seen += seen;
     } catch (err) {
       outcome.errors.push({

@@ -86,10 +86,13 @@ test("a batida seguinte manda o cursor em segundos e não repete o que já viu",
   const mensagem = { message_ts: `${agora}.000100`, channel_id: "D1", author_user_id: "UOUTRA", content: "oi" };
   const { fetchFn, chamadas } = slackFalso({ "to:<@UEU>": [mensagem] });
 
-  await pollSlackInbox({ mentions: false, dms: true }, { db, token, fetchFn });
+  const primeira = await pollSlackInbox({ mentions: false, dms: true }, { db, token, fetchFn });
   const segunda = await pollSlackInbox({ mentions: false, dms: true }, { db, token, fetchFn });
 
   assert.equal(segunda.eventIds.length, 0);
+  // Não é novo para a tabela, mas continua na janela para o gatilho que ainda
+  // não o rodou.
+  assert.deepEqual(segunda.inWindow, primeira.eventIds);
   assert.equal(segunda.seen, 1);
   const buscas = chamadas.filter((c) => c.method === "assistant.search.context");
   assert.equal(buscas.at(-1)!.corpo.get("after"), String(agora));
@@ -125,6 +128,7 @@ test("a busca segue as páginas, e menção em DM não vira dois eventos", async
   const resultado = await pollSlackInbox({ mentions: true, dms: true }, { db, token, fetchFn });
 
   assert.equal(resultado.eventIds.length, 5);
+  assert.equal(resultado.inWindow.length, 5);
   assert.equal(resultado.seen, 10);
 });
 

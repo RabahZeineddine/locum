@@ -180,6 +180,8 @@ export interface SlackChannelOutcome {
 
 export interface SlackPollOutcome {
   eventIds: string[];
+  /** Evento de cada item da janela, novo ou já conhecido. Ver `McpPollOutcome.inWindow`. */
+  inWindow: string[];
   seen: number;
   byChannel: SlackChannelOutcome[];
 }
@@ -219,14 +221,16 @@ export async function pollSlack(
   const server = watch.server;
 
   const byChannel: SlackChannelOutcome[] = [];
+  const janela: string[] = [];
   await withCaller(options, server, async (call) => {
     for (const channel of watch.channels) {
       try {
-        const { eventIds, seen } = await pollMcpServer(
+        const { eventIds, inWindow, seen } = await pollMcpServer(
           { server, tool: watch.tool, args: slackArgs(watch, channel) },
           { db, call, shape: slackShape(server, channel) },
         );
         byChannel.push({ channel, eventIds, seen });
+        janela.push(...inWindow);
       } catch (err) {
         byChannel.push({
           channel,
@@ -240,6 +244,7 @@ export async function pollSlack(
 
   return {
     eventIds: byChannel.flatMap((c) => c.eventIds),
+    inWindow: janela,
     seen: byChannel.reduce((total, c) => total + c.seen, 0),
     byChannel,
   };

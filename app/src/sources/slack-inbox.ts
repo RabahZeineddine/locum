@@ -74,6 +74,8 @@ export interface SlackInboxOptions {
 
 export interface SlackInboxOutcome {
   eventIds: string[];
+  /** Evento de cada item da janela, novo ou já conhecido. Ver `McpPollOutcome.inWindow`. */
+  inWindow: string[];
   seen: number;
   /** Erro de cada pergunta que falhou. Uma que falha não segura a outra. */
   errors: { kind: SlackInboxKind; error: string }[];
@@ -105,12 +107,12 @@ export async function pollSlackInbox(
   const api = slackApi(token, options.fetchFn ?? fetch, options.apiUrl ?? SLACK_API_URL);
   const eu = await quemSou(api);
 
-  const outcome: SlackInboxOutcome = { eventIds: [], seen: 0, errors: [] };
+  const outcome: SlackInboxOutcome = { eventIds: [], inWindow: [], seen: 0, errors: [] };
   for (const pergunta of PERGUNTAS) {
     if (pergunta.kind === "mention" && !watch.mentions) continue;
     if (pergunta.kind === "dm" && !watch.dms) continue;
     try {
-      const { eventIds, seen } = await pollMcpServer(
+      const { eventIds, inWindow, seen } = await pollMcpServer(
         {
           server: SLACK_SERVER,
           tool: "assistant.search.context",
@@ -126,6 +128,8 @@ export async function pollSlackInbox(
         { db, call: api, shape: inboxShape(pergunta.kind, eu) },
       );
       outcome.eventIds.push(...eventIds);
+      // Menção em mensagem direta cai nas duas perguntas, com a mesma chave.
+      for (const id of inWindow) if (!outcome.inWindow.includes(id)) outcome.inWindow.push(id);
       outcome.seen += seen;
     } catch (err) {
       outcome.errors.push({ kind: pergunta.kind, error: err instanceof Error ? err.message : String(err) });

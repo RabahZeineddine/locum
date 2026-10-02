@@ -400,7 +400,10 @@ export class Scheduler {
             { ...watch, tool: config.tool },
             { db: this.db, mcp: this.mcp },
           );
-          const runs = await this.runsFor(trigger, varredura.eventIds, wait);
+          // A janela inteira, pelo mesmo motivo da varredura genérica logo
+          // abaixo: o canal do Slack e a caixa de menções dividem a chave da
+          // mensagem, e o primeiro a bater não pode ficar com ela sozinho.
+          const runs = await this.runsFor(trigger, varredura.inWindow, wait);
           return { events: varredura.eventIds.length, runs, detail: slackDetail(varredura) };
         }
 
@@ -429,13 +432,13 @@ export class Scheduler {
 
       case "slack-inbox": {
         const caixa = await this.slackInbox(config, { db: this.db });
-        const runs = await this.runsFor(trigger, caixa.eventIds, wait);
+        const runs = await this.runsFor(trigger, caixa.inWindow, wait);
         return { events: caixa.eventIds.length, runs, detail: slackInboxDetail(caixa) };
       }
 
       case "teams-inbox": {
         const caixa = await this.teamsInbox(config, { db: this.db });
-        const runs = await this.runsFor(trigger, caixa.eventIds, wait);
+        const runs = await this.runsFor(trigger, caixa.inWindow, wait);
         return { events: caixa.eventIds.length, runs, detail: slackInboxDetail(caixa) };
       }
 
