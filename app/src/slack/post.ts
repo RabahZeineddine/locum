@@ -38,7 +38,16 @@ export async function postSlackReply(
   // ferramenta como resposta bem sucedida, e quem não olhasse esse campo daria
   // a mensagem por publicada e fecharia a pendência de uma resposta que não
   // saiu.
-  unwrap(await callTool(proposal.server, watch.postTool, args, options));
+  const resposta = unwrap(await callTool(proposal.server, watch.postTool, args, options));
+
+  // Servidor que só repassa a API do Slack devolve a recusa como corpo normal,
+  // `{"ok": false, "error": "not_in_channel"}`, sem `isError`. Lido como
+  // sucesso, fecharia a pendência de uma resposta que o Slack não aceitou.
+  const corpo = resposta as { ok?: unknown; error?: unknown } | null;
+  if (corpo !== null && typeof corpo === "object" && corpo.ok === false) {
+    const motivo = typeof corpo.error === "string" ? corpo.error : "sem motivo";
+    throw new Error(`o Slack recusou a resposta: ${motivo}`);
+  }
 }
 
 async function callTool(
