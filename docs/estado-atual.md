@@ -1053,6 +1053,27 @@ pelos `-c`.
 `null` tirava o teto de um agent já ligado a gatilho. Desde a 0.1.27 quem não é
 pessoa só baixa ou cria teto; subir e tirar é na tela.
 
+**Servidor MCP cadastrado pelo MCP rodava na hora.** O comando de um servidor
+stdio roda com os poderes do app, e `register_mcp_server` gravava já ligado.
+Desde a 0.1.28 servidor novo, ou com outro comando ou endereço, nasce
+desligado, `enabled: true` é recusado, e `test_mcp_server` e
+`list_server_tools` não sobem servidor desligado. A pessoa liga na tela de
+Configuração, que mostra o comando no botão, ou com `locum mcp:enable`.
+
+**Escopo da iniciativa alargado pelo MCP.** Agent fora de iniciativa enxerga
+todos os servidores, então desligar o agent da iniciativa, ou trocar de
+iniciativa, dá a ele ferramenta nova. Desde a 0.1.28 o servidor MCP e o chat do
+app só ligam agent solto e só tiram servidor de iniciativa com agent ligado;
+incluir servidor nela, desligar e trocar é na tela.
+
+**Classe da ferramenta declarada por quem grava.** Só `external_write` era
+barrada em passo, e pelo MCP dava para pôr como `read` a ferramenta que comenta
+num PR. Desde a 0.1.28 quem não é pessoa não inclui em passo ferramenta de
+servidor com escopo `write` que a versão anterior não usava, e não baixa o
+escopo de um servidor de `write` para `read`. Por isso cadastrar como `write`
+todo servidor que tem alguma ferramenta de escrita. O rascunho do "Criar com
+IA" fica de fora da trava, porque a pessoa vê as ferramentas antes de gravar.
+
 **Link de pull request abria o GitHub dentro do app.** O `target="_blank"`
 criava outra janela do Electron. Contorno, desde a 0.1.25: a janela recusa
 abrir janela nova e navegar para fora, e entrega `http` e `https` ao navegador.
