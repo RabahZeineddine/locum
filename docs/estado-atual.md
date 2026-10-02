@@ -2,14 +2,14 @@
 
 Projeto renomeado de Agent Watchers para Locum em 19 de setembro de 2026.
 
-Atualizado em 27 de setembro de 2026.
+Atualizado em 2 de outubro de 2026.
 
 ## Iniciativas: onde parou em 27/09/2026
 
 Plano completo em `docs/plano-iniciativas.md`, decisões em
 `docs/adr/0004-iniciativas.md`, motivação em `docs/briefing-iniciativas.md`.
-Cada fatia fechou com `npm run verify` e `npm test` verdes em `app/`. Nada foi
-enviado ao remoto: a `main` local está à frente de `origin/main`.
+Cada fatia fechou com `npm run verify` e `npm test` verdes em `app/`, e todas
+já estão em `origin/main`.
 
 ### Fatias que entraram
 
@@ -961,6 +961,20 @@ dos servidores MCP stdio chamavam o nome solto e falhavam do mesmo jeito. Desde
 a 0.1.21 a subida lê o PATH do `zsh -ilc` uma vez (`runtimes/login-path.ts`),
 junta as pastas que faltam depois das do sistema e esquece a disponibilidade
 dos binários de assinatura conferida com o PATH curto.
+
+**Skill de plugin instalado não era achada.** A descoberta parava quatro
+níveis abaixo de `~/.claude/plugins`, e o cache guarda a skill em
+`cache/<marketplace>/<plugin>/<versão>/skills/<nome>`, mais fundo. Entrava o
+fonte de marketplace, que nem está instalado, e ficava de fora o plugin
+instalado. Contorno, desde a 0.1.22: a raiz de plugin vem do `installPath` de
+`installed_plugins.json`, com a varredura da pasta inteira só quando o arquivo
+falta. No mesmo lugar, o glob `**/*.tsx` só casava um nível de pasta, porque a
+troca do `*` reescrevia o `.*` gerado pelo `**/`.
+
+**`claude -p` isolado não abre skill pelo nome.** Com `--setting-sources ""` e
+só as ferramentas MCP liberadas, o passo não enxerga plugin nem a ferramenta de
+skill, então mandar só nome e descrição deixava a regra de skill sem efeito.
+Contorno: o executor manda o corpo no prompt de sistema para todo runtime.
 
 **Deep link só chega com o app empacotado.** Em `npm start` o esquema
 `locum://` não está registrado para o binário de desenvolvimento, e o `open`
