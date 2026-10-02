@@ -211,22 +211,22 @@ function Fila({ navegar }: TelaProps) {
   if (itens === null) return <Esqueleto />;
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-3">
-      <PainelDeIniciativas navegar={navegar} />
+    <div className="flex w-full max-w-4xl flex-col gap-5 pt-4">
       <Cabecalho quantidade={itens.length} />
+      <PainelDeIniciativas navegar={navegar} />
       {falhas.length > 0 && <FaixaDeFalha quantidade={falhas.length} navegar={navegar} />}
 
       {itens.length === 0 ? (
         <Vazio />
       ) : (
         <ul
-          className="divide-border border-border bg-card divide-y overflow-hidden rounded-lg border"
+          className="divide-border superficie divide-y overflow-hidden rounded-xl"
           ref={listaRef}
         >
           {itens.map((item, i) => (
             <Fragment key={item.pendencia.id}>
               {(i === 0 || itens[i - 1]!.grupo !== item.grupo) && (
-                <li className="bg-muted/40 text-muted-foreground px-5 py-1.5 font-mono text-xs">
+                <li className="bg-background/40 text-muted-foreground px-5 py-2 font-medium text-[11px] uppercase tracking-[0.08em]">
                   {rotuloDoGrupo(t, item.grupo)}
                 </li>
               )}
@@ -295,13 +295,13 @@ function PainelDeIniciativas({ navegar }: { navegar: TelaProps["navegar"] }) {
   if (iniciativas.status !== "ready" || iniciativas.data.length === 0) return null;
 
   return (
-    <div className="border-border bg-card flex flex-wrap gap-2 rounded-lg border p-2">
+    <div className="flex flex-wrap gap-2">
       {iniciativas.data.map((f) => (
         <button
           key={f.slug}
           type="button"
           onClick={() => navegar("initiatives", f.slug)}
-          className="border-border/60 hover:bg-accent/40 focus-visible:ring-ring flex min-h-8 cursor-pointer items-center gap-2 rounded-md border px-2.5 py-1 text-left text-xs transition-colors duration-200 focus-visible:ring-2 focus-visible:outline-none"
+          className="superficie hover:border-foreground/20 focus-visible:ring-ring flex min-h-8 cursor-pointer items-center gap-2 rounded-full px-3 py-1 text-left text-xs transition-colors duration-200 focus-visible:ring-2 focus-visible:outline-none"
         >
           <span className="font-medium">{f.title}</span>
           <span className="text-muted-foreground">{t(`initiatives.status.${f.status}`)}</span>
@@ -323,8 +323,11 @@ function Cabecalho({ quantidade }: { quantidade: number }) {
   const { t } = useTranslation();
 
   return (
-    <div className="flex items-baseline justify-between">
-      <h1 className="text-lg font-semibold tracking-tight">{t("inbox.title")}</h1>
+    <div className="flex items-end justify-between gap-6">
+      <div className="flex flex-col gap-1.5">
+        <h1 className="font-semibold text-[32px] leading-tight tracking-[-0.02em]">{t("inbox.title")}</h1>
+        <p className="text-muted-foreground text-[15px]">{t("inbox.lead")}</p>
+      </div>
       {/*
         O marcador existe para o smoke, que confere o texto contra o dicionario
         nos dois idiomas: atributo com a contagem provaria que o estado chegou,
@@ -418,7 +421,7 @@ function Linha({
 
       <div className="py-3 pr-4 pl-5">
         <div className="flex items-baseline gap-2.5">
-          <span className="shrink-0 font-mono text-[13px] font-medium">{alvo.principal}</span>
+          <span className="shrink-0 font-medium text-[15px] tracking-tight">{alvo.principal}</span>
           {alvo.detalhe && (
             <span className="text-muted-foreground truncate font-mono text-xs">{alvo.detalhe}</span>
           )}
@@ -432,7 +435,7 @@ function Linha({
           )}
           <span
             className={cn(
-              "text-muted-foreground ml-auto shrink-0 font-mono text-xs tabular-nums",
+              "text-muted-foreground ml-auto shrink-0 text-xs tabular-nums",
               velho && "text-sev-medium",
             )}
           >
@@ -661,7 +664,7 @@ function Vazio() {
   const { t } = useTranslation();
 
   return (
-    <div className="border-border/60 flex flex-col items-center gap-2 rounded-md border border-dashed px-6 py-14 text-center">
+    <div className="border-border flex flex-col items-center gap-2 rounded-xl border border-dashed px-6 py-14 text-center">
       <InboxIcon className="text-muted-foreground/60 size-6" aria-hidden />
       <p className="text-sm font-medium">{t("inbox.empty.title")}</p>
       <p className="text-muted-foreground max-w-sm text-sm">{t("inbox.empty.body")}</p>
@@ -693,7 +696,7 @@ function Atalhos() {
 
 function Esqueleto() {
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-1.5">
+    <div className="flex w-full max-w-4xl flex-col gap-1.5 pt-4">
       {[0, 1, 2].map((i) => (
         <div key={i} className="border-border/60 bg-card h-24 animate-pulse rounded-md border" />
       ))}

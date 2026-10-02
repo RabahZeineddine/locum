@@ -71,7 +71,7 @@ export function GrafoDaExecucao({ detalhe }: { detalhe: Detalhe }) {
 
   return (
     <div
-      className="bg-card border-border h-96 w-full overflow-hidden rounded-lg border"
+      className="superficie border-border h-96 w-full overflow-hidden rounded-lg border"
       data-arestas={arestas.map((a) => a.id).join(",")}
       data-locum-probe="grafo"
       data-nos={nos.map((n) => n.id).join(",")}

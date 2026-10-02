@@ -186,7 +186,7 @@ function PassoDeModeloEditavel({
   const { t } = useTranslation();
 
   return (
-    <div className="border-border bg-card rounded-lg border px-4 py-3" data-locum-passo-editavel={passo.key}>
+    <div className="border-border superficie rounded-lg border px-4 py-3" data-locum-passo-editavel={passo.key}>
       <Cabecalho indice={indice} tipo={passo.type}>
         <input
           aria-label={passo.key}
@@ -259,7 +259,7 @@ function PassoDeAcaoEditavel({
   const aceitos = modos?.modes ?? (["approve"] as const);
 
   return (
-    <div className="border-border bg-card rounded-lg border px-4 py-3" data-locum-passo-editavel={passo.key}>
+    <div className="border-border superficie rounded-lg border px-4 py-3" data-locum-passo-editavel={passo.key}>
       <Cabecalho indice={indice} tipo={passo.type}>
         <input
           aria-label={passo.key}
@@ -623,7 +623,7 @@ function RevisaoAntesDeSalvar({
         </span>
       </div>
 
-      <div className="border-border bg-card max-h-96 overflow-auto rounded-lg border py-2 font-mono text-xs">
+      <div className="border-border superficie max-h-96 overflow-auto rounded-lg border py-2 font-mono text-xs">
         {linhas.map((linha, i) => (
           <LinhaDeDiff key={i} linha={linha} />
         ))}

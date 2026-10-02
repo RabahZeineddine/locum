@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge";
+import { CabecalhoDaTela } from "@/components/cabecalho-da-tela";
 import { Button } from "@/components/ui/button";
 import { call, read, useRead, type ReadResult } from "@/lib/bridge";
 import { instalarResposta } from "@/lib/editar-agent";
@@ -138,7 +139,7 @@ export function Configuracao({ detalhe, navegar }: TelaProps) {
 
   return (
     <div
-      className="flex flex-col gap-8"
+      className="flex max-w-5xl flex-col gap-8"
       data-estado={estado}
       data-locum-cofre={credenciais.data?.available === true ? "legivel" : "fechado"}
       data-locum-fallbacks={fallbacks.data?.length ?? -1}
@@ -148,7 +149,8 @@ export function Configuracao({ detalhe, navegar }: TelaProps) {
       data-locum-provedores={listaDeProvedores.map((p) => p.name).join(",")}
       data-locum-servidores={(servidores.data ?? []).map((s) => s.config.name).join(",")}
     >
-      <div className="flex gap-1" data-locum-probe="secoes" role="tablist">
+      <CabecalhoDaTela descricao={t("settings.lead")} titulo={t("nav.settings")} />
+      <div className="flex gap-1 -mt-3" data-locum-probe="secoes" role="tablist">
         {SECOES.map((id) => (
           <Button
             aria-selected={id === secao}
@@ -336,7 +338,7 @@ export function Secao({
     <section className="flex flex-col gap-1">
       <h2 className="font-medium text-[15px] tracking-tight">{titulo}</h2>
       <p className="text-muted-foreground max-w-[68ch] text-xs">{descricao}</p>
-      <div className="divide-border border-border bg-card mt-2 divide-y overflow-hidden rounded-lg border">
+      <div className="divide-border border-border superficie mt-2 divide-y overflow-hidden rounded-lg border">
         {children}
       </div>
     </section>

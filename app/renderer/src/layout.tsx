@@ -63,6 +63,30 @@ function Ponte({
 }
 
 /**
+ * A marca: uma órbita em gradiente com um brilho no centro. É o único
+ * desenho da janela que não carrega informação, e por isso é pequeno.
+ */
+function Marca() {
+  return (
+    <svg aria-hidden className="size-6 shrink-0" fill="none" viewBox="0 0 24 24">
+      <defs>
+        <linearGradient id="locum-marca" x1="2" x2="22" y1="3" y2="21">
+          <stop offset="0" stopColor="var(--ia-1)" />
+          <stop offset="0.55" stopColor="var(--ia-2)" />
+          <stop offset="1" stopColor="var(--ia-3)" />
+        </linearGradient>
+      </defs>
+      <rect fill="url(#locum-marca)" height="22" rx="7" width="22" x="1" y="1" />
+      <path
+        d="M12 6.5c.5 2.6 1.9 4 4.5 4.5-2.6.5-4 1.9-4.5 4.5-.5-2.6-1.9-4-4.5-4.5 2.6-.5 4-1.9 4.5-4.5Z"
+        fill="oklch(0.16 0.02 275)"
+        opacity="0.85"
+      />
+    </svg>
+  );
+}
+
+/**
  * A casca da janela: barra lateral com os quatro destinos, cabecalho com o
  * titulo do destino ativo, e a tela dele no corpo.
  */
@@ -87,32 +111,38 @@ export function Layout() {
     <CurrentInitiativeProvider ativa={ativa} detalhe={detalhe}>
     <div className="flex h-screen text-foreground">
       <nav className="regiao-de-arrasto bg-sidebar border-sidebar-border flex w-56 shrink-0 flex-col border-r">
-        <div
-          className="text-sidebar-foreground px-4 pt-8 pb-5 font-semibold text-[13px] tracking-[0.01em]"
-          data-locum-probe="marca"
-        >
-          Locum
+        <div className="flex items-center gap-2.5 px-4 pt-9 pb-6">
+          <Marca />
+          <span
+            className="text-sidebar-accent-foreground font-semibold text-[15px] tracking-[-0.01em]"
+            data-locum-probe="marca"
+          >
+            Locum
+          </span>
         </div>
 
-        <ul className="flex-1 space-y-1 px-2">
+        <ul className="flex-1 space-y-0.5 px-2.5">
           {ROTAS.map(({ id, rotulo, icone: Icone }) => (
             <li key={id}>
               <button
                 aria-current={id === ativa ? "page" : undefined}
                 className={cn(
-                  "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors",
+                  "group relative flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors duration-200",
                   id === ativa
-                    ? "bg-accent text-accent-foreground"
-                    : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground",
+                    ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-[inset_0_1px_0_0_oklch(1_0_0/5%)]"
+                    : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
                 )}
                 data-locum-rota={id}
                 onClick={() => navegar(id)}
                 type="button"
               >
-                <Icone className="size-4" />
+                {id === ativa && (
+                  <i aria-hidden className="ia-gradiente absolute top-1/2 left-0 h-4 w-[3px] -translate-y-1/2 rounded-full" />
+                )}
+                <Icone className={cn("size-4 transition-colors", id === ativa && "text-primary")} />
                 <span className="flex-1">{t(rotulo)}</span>
                 {id === "inbox" && naFila > 0 ? (
-                  <span className="rounded-full bg-primary px-1.5 text-primary-foreground text-xs">
+                  <span className="ia-gradiente text-primary-foreground min-w-5 rounded-full px-1.5 text-center font-semibold text-[11px] leading-5 tabular-nums">
                     {naFila}
                   </span>
                 ) : null}
@@ -141,7 +171,7 @@ export function Layout() {
         )}
       </nav>
 
-      <div className="bg-background flex min-w-0 flex-1 flex-col">
+      <div className="bg-background ia-aurora flex min-w-0 flex-1 flex-col">
         {/*
           A faixa de arrasto é um elemento próprio, acima do que rola, e não uma
           classe no `main`. No Electron a área de arrasto engole os eventos do
@@ -150,7 +180,7 @@ export function Layout() {
         */}
         <div aria-hidden className="regiao-de-arrasto h-9 shrink-0" data-locum-probe="arrasto" />
         <main
-          className="min-h-0 flex-1 overflow-auto px-8 pb-10"
+          className="min-h-0 flex-1 overflow-auto px-10 pb-12"
           data-ativo={ativa}
           data-detalhe={detalhe ?? ""}
           data-locum-probe="rota"

@@ -72,61 +72,58 @@
  */
 .dark {
   /*
-   * Livro de plantão, não painel.
+   * Tinta de meia-noite com aurora.
    *
-   * Um locum é quem cobre o seu turno, e a tela é o registro do que aconteceu
-   * enquanto você não estava. A base é ardósia levemente azulada, e não preto:
-   * preto com um azul de realce é a cara mais comum de interface gerada, e
-   * some a profundidade que separa a folha do fundo.
+   * A base é um anil quase preto, e não cinza: é o fundo que deixa a luz do
+   * gradiente aparecer sem gritar. O gradiente azul para violeta é a marca do
+   * que o modelo faz, e mora só onde há IA agindo: a ação principal, o item
+   * ativo, o que está trabalhando. Fora dele, a tela é tinta sobre papel.
    *
-   * A cor de estado não decora, ela informa. Fora dela, a tela é tinta sobre
-   * papel.
+   * As superfícies se separam por luminância e por um fio de luz no topo, como
+   * vidro sobre o fundo, e não por borda forte.
    */
-  --background: oklch(0.243 0.008 258);
-  --foreground: oklch(0.928 0.004 258);
-  --card: oklch(0.283 0.009 258);
-  --card-foreground: oklch(0.928 0.004 258);
-  --popover: oklch(0.305 0.01 258);
-  --popover-foreground: oklch(0.94 0.004 258);
-  --primary: oklch(0.68 0.105 250);
-  --primary-foreground: oklch(0.17 0.01 258);
-  --secondary: oklch(0.33 0.01 258);
-  --secondary-foreground: oklch(0.928 0.004 258);
-  --muted: oklch(0.32 0.009 258);
-  --muted-foreground: oklch(0.688 0.018 258);
-  --accent: oklch(0.35 0.012 258);
-  --accent-foreground: oklch(0.95 0.004 258);
-  --destructive: oklch(0.63 0.19 24);
-  --border: oklch(0.362 0.012 258);
-  --input: oklch(0.4 0.014 258);
-  --ring: oklch(0.68 0.105 250);
-  --chart-1: oklch(0.68 0.105 250);
-  --chart-2: oklch(0.72 0.11 170);
-  --chart-3: oklch(0.78 0.12 85);
-  --chart-4: oklch(0.7 0.14 40);
-  --chart-5: oklch(0.66 0.13 300);
-  /*
-   * Cor de verdade, e não material do sistema.
-   *
-   * A barra lateral era transparente à espera da vibrancy. Quando ela não
-   * aparece, e ela não aparece em captura nem em tela sem suporte, sobra um
-   * buraco onde o texto some. Duas superfícies deliberadas leem certo sempre,
-   * e o efeito que não dá para conferir não vale a fragilidade.
-   */
-  --sidebar: oklch(0.208 0.008 258);
-  --sidebar-foreground: oklch(0.86 0.006 258);
-  --sidebar-primary: oklch(0.68 0.105 250);
-  --sidebar-primary-foreground: oklch(0.17 0.01 258);
-  --sidebar-accent: oklch(1 0 0 / 7%);
-  --sidebar-accent-foreground: oklch(0.96 0.004 258);
-  --sidebar-border: oklch(1 0 0 / 8%);
-  --sidebar-ring: oklch(0.68 0.105 250);
+  --background: oklch(0.195 0.014 275);
+  --foreground: oklch(0.94 0.006 275);
+  --card: oklch(0.228 0.016 275);
+  --card-foreground: oklch(0.94 0.006 275);
+  --popover: oklch(0.25 0.018 275);
+  --popover-foreground: oklch(0.95 0.006 275);
+  --primary: oklch(0.72 0.14 278);
+  --primary-foreground: oklch(0.16 0.02 275);
+  --secondary: oklch(0.28 0.018 275);
+  --secondary-foreground: oklch(0.94 0.006 275);
+  --muted: oklch(0.27 0.016 275);
+  --muted-foreground: oklch(0.7 0.022 275);
+  --accent: oklch(0.29 0.02 275);
+  --accent-foreground: oklch(0.96 0.006 275);
+  --destructive: oklch(0.65 0.19 22);
+  --border: oklch(1 0 0 / 9%);
+  --input: oklch(1 0 0 / 13%);
+  --ring: oklch(0.72 0.14 278);
+  --chart-1: oklch(0.72 0.14 278);
+  --chart-2: oklch(0.76 0.12 170);
+  --chart-3: oklch(0.8 0.12 85);
+  --chart-4: oklch(0.72 0.15 40);
+  --chart-5: oklch(0.72 0.15 310);
+  --sidebar: oklch(0.168 0.014 275);
+  --sidebar-foreground: oklch(0.86 0.01 275);
+  --sidebar-primary: oklch(0.72 0.14 278);
+  --sidebar-primary-foreground: oklch(0.16 0.02 275);
+  --sidebar-accent: oklch(1 0 0 / 6%);
+  --sidebar-accent-foreground: oklch(0.97 0.006 275);
+  --sidebar-border: oklch(1 0 0 / 7%);
+  --sidebar-ring: oklch(0.72 0.14 278);
+
+  /* O gradiente da IA: azul, anil, violeta. */
+  --ia-1: oklch(0.74 0.13 250);
+  --ia-2: oklch(0.7 0.16 285);
+  --ia-3: oklch(0.72 0.17 320);
 
   /* Severidade: régua na borda do registro, nunca só bolinha. */
-  --sev-critical: oklch(0.64 0.2 22);
-  --sev-high: oklch(0.72 0.16 55);
-  --sev-medium: oklch(0.79 0.13 92);
-  --sev-low: oklch(0.6 0.02 258);
+  --sev-critical: oklch(0.66 0.2 22);
+  --sev-high: oklch(0.74 0.16 55);
+  --sev-medium: oklch(0.81 0.13 92);
+  --sev-low: oklch(0.62 0.02 275);
 }
 
 @theme inline {
@@ -136,6 +133,9 @@
   --color-sev-high: var(--sev-high);
   --color-sev-medium: var(--sev-medium);
   --color-sev-low: var(--sev-low);
+  --color-ia-1: var(--ia-1);
+  --color-ia-2: var(--ia-2);
+  --color-ia-3: var(--ia-3);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -211,5 +211,57 @@
   .regiao-de-arrasto textarea,
   .regiao-de-arrasto select {
     -webkit-app-region: no-drag;
+  }
+}
+
+/*
+ * A linguagem da IA, em quatro peças pequenas. Cada uma marca onde o modelo
+ * está presente; usar em decoração tira o sentido de todas.
+ */
+@layer components {
+  /* Preenchimento da ação principal e do item que a IA está tocando. */
+  .ia-gradiente {
+    background-image: linear-gradient(120deg, var(--ia-1), var(--ia-2) 55%, var(--ia-3));
+  }
+
+  /* Texto em gradiente, para a marca e para números que importam. */
+  .ia-texto {
+    background-image: linear-gradient(100deg, var(--ia-1), var(--ia-2) 50%, var(--ia-3));
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+  }
+
+  /*
+   * Superfície de vidro: um fio de luz no topo e sombra funda embaixo. É o
+   * que separa o cartão do fundo sem borda pesada.
+   */
+  .superficie {
+    background-color: var(--card);
+    border: 1px solid var(--border);
+    box-shadow:
+      inset 0 1px 0 0 oklch(1 0 0 / 5%),
+      0 1px 2px 0 oklch(0 0 0 / 30%),
+      0 8px 24px -12px oklch(0 0 0 / 45%);
+  }
+
+  /*
+   * A luz atrás do conteúdo: duas manchas desfocadas no alto da área
+   * principal. Fixa, para a rolagem não arrastar a aurora junto.
+   */
+  .ia-aurora {
+    background-image:
+      radial-gradient(60rem 26rem at 18% -8rem, oklch(0.7 0.16 285 / 13%), transparent 70%),
+      radial-gradient(40rem 22rem at 92% -6rem, oklch(0.74 0.13 250 / 10%), transparent 70%);
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+  }
+
+  /* Borda em gradiente para destacar o cartão em que a IA espera você. */
+  .ia-borda {
+    border: 1px solid transparent;
+    background:
+      linear-gradient(var(--card), var(--card)) padding-box,
+      linear-gradient(120deg, oklch(0.74 0.13 250 / 55%), oklch(0.7 0.16 285 / 35%) 50%, oklch(0.72 0.17 320 / 55%)) border-box;
   }
 }

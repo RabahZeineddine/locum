@@ -12,6 +12,7 @@ import {
   TaskTrigger,
 } from "@/components/ai-elements/task";
 import { Badge } from "@/components/ui/badge";
+import { CabecalhoDaTela } from "@/components/cabecalho-da-tela";
 import { Button } from "@/components/ui/button";
 import { call, useRead, type ReadResult } from "@/lib/bridge";
 import { useJanela } from "@/lib/janela";
@@ -77,7 +78,8 @@ function Lista({ navegar }: { navegar: TelaProps["navegar"] }) {
   const janela = useJanela(linhas.length, ALTURA_DA_LINHA);
 
   return (
-    <div className="flex h-full flex-col items-stretch">
+    <div className="flex h-full flex-col items-stretch gap-5">
+      <CabecalhoDaTela descricao={t("runs.lead")} titulo={t("runs.title")} />
       {iniciativaAtual !== undefined ? (
         <div className="mb-3 flex items-center gap-1.5">
           <button
@@ -102,7 +104,7 @@ function Lista({ navegar }: { navegar: TelaProps["navegar"] }) {
       ) : null}
 
       <div
-        className="mb-3 text-muted-foreground text-xs"
+        className="text-muted-foreground -mb-2 text-xs"
         data-estado={runs.status}
         data-locum-probe="execucoes"
         data-runs={linhas.map((r) => r.id).join(",")}
@@ -126,7 +128,7 @@ function Lista({ navegar }: { navegar: TelaProps["navegar"] }) {
         </p>
       ) : (
         <div
-          className="border-border bg-card max-h-full min-h-0 overflow-auto rounded-lg border"
+          className="superficie max-h-full min-h-0 overflow-auto rounded-xl"
           ref={janela.ref}
         >
           {/*

@@ -1,6 +1,7 @@
 import type { TFunction } from "i18next";
 import { CodeBlock, CodeBlockCopyButton } from "@/components/ai-elements/code-block";
 import { Badge } from "@/components/ui/badge";
+import { CabecalhoDaTela } from "@/components/cabecalho-da-tela";
 import { Button } from "@/components/ui/button";
 import { call, useRead, type ReadResult } from "@/lib/bridge";
 import { duplicarAgent, exportarAgent, importarAgent } from "@/lib/editar-agent";
@@ -73,7 +74,16 @@ function Lista({ navegar }: { navegar: TelaProps["navegar"] }) {
   };
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-4">
+      <CabecalhoDaTela
+        acoes={
+          <Button className="cursor-pointer" data-locum-importar="" onClick={importar} variant="secondary">
+            {t("agents.io.import")}
+          </Button>
+        }
+        descricao={t("agents.lead")}
+        titulo={t("nav.agents")}
+      />
       {iniciativaAtual !== undefined ? (
         <div className="flex items-center gap-1.5">
           <button
@@ -111,9 +121,6 @@ function Lista({ navegar }: { navegar: TelaProps["navegar"] }) {
               ? t("agents.loading")
               : t("agents.count", { count: linhas.length })}
         </div>
-        <Button className="ml-auto cursor-pointer" data-locum-importar="" onClick={importar} size="sm" variant="secondary">
-          {t("agents.io.import")}
-        </Button>
       </div>
 
       {erroDeImportar === null ? null : (
@@ -125,7 +132,7 @@ function Lista({ navegar }: { navegar: TelaProps["navegar"] }) {
           <Trans components={{ code: <code /> }} i18nKey="agents.empty" />
         </p>
       ) : (
-        <ul className="divide-border border-border bg-card divide-y overflow-hidden rounded-lg border">
+        <ul className="divide-border superficie divide-y overflow-hidden rounded-xl">
           {linhas.map((agent) => (
             <LinhaDoAgent agent={agent} key={agent.id} navegar={navegar} />
           ))}
@@ -500,7 +507,7 @@ function RodarAgora({
 
   return (
     <form
-      className="border-border bg-card flex max-w-xl flex-col gap-3 rounded-lg border px-4 py-3"
+      className="border-border superficie flex max-w-xl flex-col gap-3 rounded-lg border px-4 py-3"
       data-locum-probe="rodar-agora"
       onSubmit={(e) => {
         e.preventDefault();
@@ -568,7 +575,7 @@ function Duplicar({
   }
 
   return (
-    <div className="border-border bg-card flex max-w-xl flex-col gap-3 rounded-lg border px-4 py-3">
+    <div className="border-border superficie flex max-w-xl flex-col gap-3 rounded-lg border px-4 py-3">
       <div>
         <p className="text-sm font-medium">{t("agents.editor.dup.title", { name: nome })}</p>
         <p className="text-muted-foreground text-xs">{t("agents.editor.dup.hint")}</p>

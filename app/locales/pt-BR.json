@@ -164,7 +164,8 @@
       "start": "Rodar agora",
       "starting": "iniciando...",
       "placeholder": "https://github.com/owner/repo/pull/123"
-    }
+    },
+    "lead": "Quem trabalha por você, o que cada um faz e quando acorda."
   },
   "assistant": {
     "title": "Assistente",
@@ -291,7 +292,8 @@
     "group": {
       "reviews": "Revisão de pull request",
       "other": "Outros"
-    }
+    },
+    "lead": "O que os agents prepararam e só sai depois do seu sim."
   },
   "initiatives": {
     "contextTemplate": {
@@ -473,7 +475,8 @@
       "outside_initiative": "o passo aponta para um servidor fora do escopo desta iniciativa",
       "rejected": "rejeitado",
       "publish_conflict": "o alvo mudou antes disso poder ser publicado"
-    }
+    },
+    "lead": "Cada vez que um agent rodou: passo a passo, o que achou e quanto custou."
   },
   "settings": {
     "refused": "a ponte recusou {{channel}}: {{message}}",
@@ -855,7 +858,8 @@
     "inboxReply": {
       "hint": "Ainda sem agent para responder? Use o pronto: ele lê a mensagem, escreve a resposta e deixa na fila para você aprovar antes de sair. Depois dá para editar em Agents.",
       "use": "Usar a resposta pronta"
-    }
+    },
+    "lead": "Como o Locum se comporta, com quais modelos pensa e de onde vem o trabalho."
   },
   "severity": {
     "critical": "crítico",
@@ -1087,6 +1091,14 @@
           "hint": "Importe ou crie um agent e diga quando ele acorda. No Slack e no Teams há uma resposta pronta.",
           "go": "Agents"
         }
+      },
+      "sessions": {
+        "title_one": "{{count}} sessão do Claude ficou pela metade",
+        "title_other": "{{count}} sessões do Claude ficaram pela metade",
+        "waiting_one": "e {{count}} aberta esperando você",
+        "waiting_other": "e {{count}} abertas esperando você",
+        "title_zero": "Nenhuma sessão do Claude pela metade",
+        "waiting_zero": "e {{count}} abertas esperando você"
       }
     }
   },

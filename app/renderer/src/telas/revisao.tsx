@@ -251,7 +251,7 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
         </select>
       </label>
 
-      <ul className="divide-border border-border bg-card divide-y overflow-hidden rounded-lg border">
+      <ul className="divide-border border-border superficie divide-y overflow-hidden rounded-lg border">
         {achados.map((achado, i) => (
           <li className={cn("relative", !achado.incluido && "opacity-45")} key={i}>
             <span

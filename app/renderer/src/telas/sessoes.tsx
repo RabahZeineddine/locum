@@ -87,15 +87,15 @@ export function Sessoes(_props: TelaProps) {
 
   return (
     <div
-      className="flex max-w-5xl flex-col gap-8 pt-2"
+      className="flex max-w-5xl flex-col gap-8 pt-4"
       data-estado={leitura.status}
       data-locum-probe="sessoes"
       data-sessoes={leitura.status === "ready" ? sessoes.length : -1}
     >
       <header className="flex items-start justify-between gap-6">
         <div className="flex flex-col gap-1.5">
-          <h1 className="font-semibold text-2xl tracking-tight">{t("claudeSessions.title")}</h1>
-          <p className="text-muted-foreground max-w-2xl text-sm">{t("claudeSessions.lead")}</p>
+          <h1 className="font-semibold text-[32px] leading-tight tracking-[-0.02em]">{t("claudeSessions.title")}</h1>
+          <p className="text-muted-foreground max-w-2xl text-[15px]">{t("claudeSessions.lead")}</p>
         </div>
         <Button
           aria-label={t("claudeSessions.refresh")}
@@ -193,7 +193,7 @@ function Placar({ abertas, pendentes, terminadas }: { abertas: Sessao[]; pendent
     { estado: "done", valor: terminadas.length, rotulo: t("claudeSessions.tally.done") },
   ];
   return (
-    <dl className="border-border bg-card grid grid-cols-2 overflow-hidden rounded-xl border sm:grid-cols-4">
+    <dl className="border-border superficie grid grid-cols-2 overflow-hidden rounded-xl border sm:grid-cols-4">
       {itens.map((item, i) => (
         <div
           className={cn("relative flex flex-col gap-1 px-5 py-4", i > 0 && "sm:border-border sm:border-l")}
@@ -283,7 +283,7 @@ function Cartao({ acoes, idioma, sessao }: { acoes: Acoes; idioma: string; sessa
   return (
     <li
       className={cn(
-        "border-border bg-card group relative flex gap-5 overflow-hidden rounded-xl border py-4 pr-5 pl-6",
+        "border-border superficie group relative flex gap-5 overflow-hidden rounded-xl border py-4 pr-5 pl-6",
         sessao.state === "done" && "opacity-70",
       )}
       data-locum-sessao={sessao.id}

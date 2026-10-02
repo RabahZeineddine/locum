@@ -1,4 +1,4 @@
-import { Check, ChevronRight } from "lucide-react";
+import { CalendarClock, Check, CheckCheck, ChevronRight, Inbox as InboxIcon, Sparkles, TerminalSquare } from "lucide-react";
 import { useEffect, useMemo } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
@@ -90,10 +90,14 @@ export function Hoje({ navegar }: TelaProps) {
 
   return (
     <div className="flex max-w-5xl flex-col gap-8 pt-2">
-      <header className="flex flex-col gap-1.5">
-        <span className="text-muted-foreground text-sm">{dataDeHoje(idioma)}</span>
-        <h1 className="font-semibold text-2xl tracking-tight">{t("home.today.title")}</h1>
-        <p className="text-muted-foreground text-sm">{t("home.today.lead")}</p>
+      <header className="flex flex-col gap-2 pt-4">
+        <span className="text-muted-foreground font-medium text-xs uppercase tracking-[0.08em]">
+          {dataDeHoje(idioma)}
+        </span>
+        <h1 className="font-semibold text-[32px] leading-tight tracking-[-0.02em]">
+          <span className="ia-texto">{t("home.today.title")}</span>
+        </h1>
+        <p className="text-muted-foreground text-[15px]">{t("home.today.lead")}</p>
       </header>
 
       <ComeceAqui agenda={agenda.data} navegar={navegar} />
@@ -117,9 +121,7 @@ export function Hoje({ navegar }: TelaProps) {
             {t("home.today.refused", { message: pendentes.error.message })}
           </p>
         ) : pendentes.status === "ready" && fila.length === 0 ? (
-          <div className="border-border/60 text-muted-foreground rounded-xl border border-dashed p-5 text-sm">
-            {t("home.today.waiting.empty")}
-          </div>
+          <Vazio icone={InboxIcon} texto={t("home.today.waiting.empty")} />
         ) : (
           <ul className="flex flex-col gap-3">
             {fila.slice(0, LIMITE).map((p) => (
@@ -145,6 +147,8 @@ export function Hoje({ navegar }: TelaProps) {
         )}
       </section>
 
+      <SessoesPelaMetade navegar={navegar} />
+
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <section aria-labelledby="hoje-proximas" className="flex flex-col gap-3">
           <h2
@@ -154,11 +158,12 @@ export function Hoje({ navegar }: TelaProps) {
             {t("home.today.next.title")}
           </h2>
           {proximas.length === 0 ? (
-            <p className="text-muted-foreground text-sm">
-              {agenda.status === "loading" ? t("home.today.loading") : t("home.today.next.empty")}
-            </p>
+            <Vazio
+              icone={CalendarClock}
+              texto={agenda.status === "loading" ? t("home.today.loading") : t("home.today.next.empty")}
+            />
           ) : (
-            <ul className="divide-border border-border bg-card divide-y overflow-hidden rounded-xl border">
+            <ul className="divide-border border-border superficie divide-y overflow-hidden rounded-xl border">
               {proximas.map((g) => (
                 <li className="flex items-center gap-3.5 px-4 py-3" key={g.triggerId}>
                   <span className="text-primary w-20 shrink-0 font-mono text-xs tabular-nums">
@@ -186,11 +191,12 @@ export function Hoje({ navegar }: TelaProps) {
             {t("home.today.done.title")}
           </h2>
           {recentes.length === 0 ? (
-            <p className="text-muted-foreground text-sm">
-              {terminadas.status === "loading" ? t("home.today.loading") : t("home.today.done.empty")}
-            </p>
+            <Vazio
+              icone={CheckCheck}
+              texto={terminadas.status === "loading" ? t("home.today.loading") : t("home.today.done.empty")}
+            />
           ) : (
-            <ul className="divide-border border-border bg-card divide-y overflow-hidden rounded-xl border">
+            <ul className="divide-border border-border superficie divide-y overflow-hidden rounded-xl border">
               {recentes.map((r) => (
                 <LinhaTerminada
                   iniciativa={tituloDaIniciativa(r.initiativeId) ?? iniciativaDoAgent.get(r.agentId)}
@@ -234,7 +240,13 @@ function CartaoDeEspera({
   const rotulo = iniciativa ?? (titulo.includes(pendencia.agentName) ? undefined : pendencia.agentName);
 
   return (
-    <li className="border-border bg-card flex items-center gap-5 rounded-xl border px-5 py-4">
+    <li className="ia-borda group flex items-center gap-4 rounded-xl px-5 py-4 shadow-[0_8px_30px_-16px_var(--ia-2)]">
+      <span
+        aria-hidden
+        className="bg-primary/12 text-primary flex size-9 shrink-0 items-center justify-center rounded-lg"
+      >
+        <Sparkles className="size-4" />
+      </span>
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         {rotulo && <span className="text-muted-foreground truncate text-xs">{rotulo}</span>}
         <span className="truncate font-medium text-[15px] tracking-tight">{titulo}</span>
@@ -285,6 +297,59 @@ function LinhaTerminada({
         {t("home.today.done.view")}
       </button>
     </li>
+  );
+}
+
+/** Estado vazio de bloco: ícone apagado e uma frase, sem caixa pesada. */
+function Vazio({ icone: Icone, texto }: { icone: typeof Check; texto: string }) {
+  return (
+    <div className="border-border text-muted-foreground flex items-center gap-3 rounded-xl border border-dashed px-4 py-4 text-sm">
+      <Icone aria-hidden className="text-muted-foreground/60 size-4 shrink-0" />
+      {texto}
+    </div>
+  );
+}
+
+/**
+ * Lembrete das conversas do Claude Code esquecidas pela metade. Só aparece
+ * quando há alguma: a Hoje não fala de sessão quando está tudo fechado.
+ */
+function SessoesPelaMetade({ navegar }: { navegar: TelaProps["navegar"] }) {
+  const { t } = useTranslation();
+  const sessoes = useRead("claudeSessions.list");
+  if (sessoes.status !== "ready") return null;
+  const pendentes = sessoes.data.filter((s) => s.state === "interrupted" || s.state === "unfinished");
+  const esperando = sessoes.data.filter((s) => s.state === "waiting").length;
+  if (pendentes.length === 0 && esperando === 0) return null;
+
+  return (
+    <button
+      className="superficie hover:border-foreground/20 focus-visible:ring-ring group flex cursor-pointer items-center gap-4 rounded-xl px-5 py-4 text-left transition-colors duration-200 focus-visible:ring-2 focus-visible:outline-none"
+      data-locum-probe="hoje-sessoes"
+      onClick={() => navegar("sessoes")}
+      type="button"
+    >
+      <span aria-hidden className="bg-chart-5/12 text-chart-5 flex size-9 shrink-0 items-center justify-center rounded-lg">
+        <TerminalSquare className="size-4" />
+      </span>
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="font-medium text-[15px] tracking-tight">
+          {t("home.today.sessions.title", { count: pendentes.length })}
+        </span>
+        <span className="text-muted-foreground truncate text-sm">
+          {esperando > 0
+            ? t("home.today.sessions.waiting", { count: esperando })
+            : pendentes
+                .slice(0, 3)
+                .map((s) => s.title)
+                .join(" · ")}
+        </span>
+      </div>
+      <ChevronRight
+        aria-hidden
+        className="text-muted-foreground size-4 shrink-0 transition-transform duration-200 group-hover:translate-x-0.5"
+      />
+    </button>
   );
 }
 
@@ -372,44 +437,71 @@ function ComeceAqui({ agenda, navegar }: { agenda: Agenda[] | undefined; navegar
   if (passos.every((p) => p.feito)) return null;
   const proximo = passos.find((p) => !p.feito)!;
 
+  const feitos = passos.filter((p) => p.feito).length;
+
   return (
-    <section aria-labelledby="hoje-comece" className="border-border flex flex-col gap-3 rounded-xl border p-5" data-locum-probe="hoje-comece">
-      <div className="flex flex-col gap-1">
-        <h2 className="font-semibold text-sm" id="hoje-comece">
-          {t("home.today.start.title")}
-        </h2>
-        <p className="text-muted-foreground text-xs">{t("home.today.start.lead")}</p>
+    <section
+      aria-labelledby="hoje-comece"
+      className="superficie relative flex flex-col gap-5 overflow-hidden rounded-2xl p-6"
+      data-locum-probe="hoje-comece"
+    >
+      <div className="flex items-end justify-between gap-6">
+        <div className="flex flex-col gap-1">
+          <h2 className="flex items-center gap-2 font-semibold text-[15px] tracking-tight" id="hoje-comece">
+            <Sparkles aria-hidden className="text-primary size-4" />
+            {t("home.today.start.title")}
+          </h2>
+          <p className="text-muted-foreground text-sm">{t("home.today.start.lead")}</p>
+        </div>
+        <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
+          {feitos}/{passos.length}
+        </span>
       </div>
-      <ol className="flex flex-col gap-2">
+      <div aria-hidden className="bg-muted h-1 overflow-hidden rounded-full">
+        <div
+          className="ia-gradiente h-full rounded-full transition-[width] duration-500"
+          style={{ width: `${(feitos / passos.length) * 100}%` }}
+        />
+      </div>
+      <ol className="grid grid-cols-1 items-start gap-3 md:grid-cols-3">
         {passos.map((passo, indice) => (
-          <li className="flex items-center gap-3" data-feito={passo.feito} key={passo.id}>
-            <span
-              aria-hidden="true"
-              className={cn(
-                "flex size-6 shrink-0 items-center justify-center rounded-full border text-xs",
-                passo.feito ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground",
-              )}
-            >
-              {passo.feito ? <Check className="size-3.5" /> : indice + 1}
-            </span>
-            <div className="flex min-w-0 flex-1 flex-col">
-              <span className={cn("text-sm", passo.feito && "text-muted-foreground line-through")}>
+          <li
+            className={cn(
+              "flex flex-col gap-3 rounded-xl border p-4 transition-colors",
+              passo === proximo ? "ia-borda" : "border-border bg-background/40",
+            )}
+            data-feito={passo.feito}
+            key={passo.id}
+          >
+            <div className="flex items-center gap-2.5">
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-medium",
+                  passo.feito ? "ia-gradiente text-primary-foreground" : "border-border text-muted-foreground border",
+                )}
+              >
+                {passo.feito ? <Check className="size-3.5" /> : indice + 1}
+              </span>
+              <span className={cn("text-sm font-medium", passo.feito && "text-muted-foreground")}>
                 {t(`home.today.start.${passo.id}.title`)}
               </span>
-              {passo.feito ? null : (
-                <span className="text-muted-foreground text-xs">{t(`home.today.start.${passo.id}.hint`)}</span>
-              )}
             </div>
             {passo.feito ? null : (
-              <Button
-                className="shrink-0 cursor-pointer"
-                onClick={passo.ir}
-                size="sm"
-                variant={passo === proximo ? "default" : "ghost"}
-              >
-                {t(`home.today.start.${passo.id}.go`)}
-                <ChevronRight className="size-3.5" />
-              </Button>
+              <>
+                <span className="text-muted-foreground flex-1 text-xs leading-relaxed">
+                  {t(`home.today.start.${passo.id}.hint`)}
+                </span>
+                <Button
+                  className="cursor-pointer self-start"
+                  onClick={passo.ir}
+                  size="sm"
+                  variant={passo === proximo ? "default" : "secondary"}
+                >
+                  {t(`home.today.start.${passo.id}.go`)}
+                  <ChevronRight className="size-3.5" />
+                </Button>
+              </>
             )}
           </li>
         ))}

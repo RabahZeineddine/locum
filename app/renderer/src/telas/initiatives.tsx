@@ -50,12 +50,12 @@ function Lista({ navegar }: { navegar: TelaProps["navegar"] }) {
   const [criando, setCriando] = useState(false);
 
   return (
-    <div className="flex max-w-5xl flex-col gap-6 pt-2">
+    <div className="flex max-w-5xl flex-col gap-6 pt-4">
       <header className="flex items-end gap-6">
         <div className="flex flex-1 flex-col gap-1.5">
-          <h1 className="font-semibold text-2xl tracking-tight">{t("initiatives.list.title")}</h1>
+          <h1 className="font-semibold text-[32px] leading-tight tracking-[-0.02em]">{t("initiatives.list.title")}</h1>
           <p
-            className="text-muted-foreground text-sm"
+            className="text-muted-foreground text-[15px]"
             data-estado={iniciativas.status}
             data-locum-probe="initiatives"
             data-total={linhas.length}
@@ -117,7 +117,7 @@ function CartaoDaLista({
   return (
     <li>
       <button
-        className="border-border bg-card hover:border-foreground/25 focus-visible:ring-ring flex h-full w-full cursor-pointer flex-col gap-4 rounded-xl border p-5 text-left transition-colors duration-200 focus-visible:ring-2"
+        className="border-border superficie hover:border-foreground/25 focus-visible:ring-ring flex h-full w-full cursor-pointer flex-col gap-4 rounded-xl border p-5 text-left transition-colors duration-200 focus-visible:ring-2"
         data-locum-initiative={iniciativa.slug}
         onClick={() => navegar("initiatives", iniciativa.slug)}
         type="button"
@@ -297,7 +297,7 @@ function AbaEntregas({ navegar, slug }: { navegar: TelaProps["navegar"]; slug: s
           ))}
         </div>
       ) : null}
-      <article className="entrega border-border bg-card rounded-xl border p-6 text-sm leading-relaxed">
+      <article className="entrega border-border superficie rounded-xl border p-6 text-sm leading-relaxed">
         <Streamdown>{aberta.content}</Streamdown>
       </article>
     </div>
@@ -323,7 +323,7 @@ function AbaContexto({ slug }: { slug: string }) {
       {content === null ? (
         <p className="text-muted-foreground text-sm">{t("initiatives.detail.context.empty")}</p>
       ) : (
-        <div className="border-border bg-card rounded-xl border p-6 text-sm leading-relaxed">
+        <div className="border-border superficie rounded-xl border p-6 text-sm leading-relaxed">
           <Streamdown>{content}</Streamdown>
         </div>
       )}
@@ -369,7 +369,7 @@ function FormularioDeIniciativa({
 
   return (
     <div
-      className="border-border bg-card flex flex-col gap-2 rounded-lg border p-4"
+      className="border-border superficie flex flex-col gap-2 rounded-lg border p-4"
       data-locum-probe="initiative-form"
     >
       <label className="text-xs" htmlFor="initiative-slug">
@@ -460,7 +460,7 @@ function AbaAgents({ iniciativa }: { iniciativa: IniciativaDetalhada }) {
       {agentes.length === 0 ? (
         <p className="text-muted-foreground text-sm">{t("initiatives.detail.agents.empty")}</p>
       ) : (
-        <ul className="divide-border border-border bg-card divide-y overflow-hidden rounded-lg border">
+        <ul className="divide-border border-border superficie divide-y overflow-hidden rounded-lg border">
           {agentes.map((agent) => (
             <li className="px-4 py-2 text-sm" data-locum-agent={agent.id} key={agent.id}>
               {agent.name}
@@ -600,7 +600,7 @@ function AbaIntegrations({ iniciativa }: { iniciativa: IniciativaDetalhada }) {
       <div>
         <p className="text-muted-foreground mb-1.5 text-xs">{t("initiatives.form.workspaces")}</p>
         {iniciativa.workspaces.length > 0 && (
-          <ul className="divide-border border-border bg-card mb-2 divide-y overflow-hidden rounded-lg border">
+          <ul className="divide-border border-border superficie mb-2 divide-y overflow-hidden rounded-lg border">
             {iniciativa.workspaces.map((workspace) => (
               <li className="px-4 py-2 font-mono text-xs" key={workspace.id}>
                 {workspace.repoPath}
@@ -630,7 +630,7 @@ function AbaIntegrations({ iniciativa }: { iniciativa: IniciativaDetalhada }) {
       <div>
         <p className="text-muted-foreground mb-1.5 text-xs">{t("initiatives.form.links")}</p>
         {iniciativa.links.length > 0 && (
-          <ul className="divide-border border-border bg-card mb-2 divide-y overflow-hidden rounded-lg border">
+          <ul className="divide-border border-border superficie mb-2 divide-y overflow-hidden rounded-lg border">
             {iniciativa.links.map((link) => (
               <li className="flex items-center gap-2 px-4 py-2 text-xs" key={link.id}>
                 <a className="truncate underline" href={link.url} rel="noreferrer" target="_blank">
@@ -693,7 +693,7 @@ function AbaRuns({ initiativeId }: { initiativeId: string }) {
       ) : linhas.length === 0 ? (
         <p className="text-muted-foreground text-sm">{t("initiatives.detail.runs.empty")}</p>
       ) : (
-        <ul className="divide-border border-border bg-card divide-y overflow-hidden rounded-lg border">
+        <ul className="divide-border border-border superficie divide-y overflow-hidden rounded-lg border">
           {linhas.map((run) => (
             <li className="px-4 py-2 text-sm" data-locum-run={run.id} key={run.id}>
               <span className="font-medium">{run.agentName}</span>{" "}
@@ -793,7 +793,7 @@ function ListaDePrompts({ initiativeId }: { initiativeId: string }) {
       {linhas.length === 0 ? (
         <p className="text-muted-foreground text-sm">{t("initiatives.detail.actions.empty")}</p>
       ) : (
-        <ul className="divide-border border-border bg-card divide-y overflow-hidden rounded-lg border">
+        <ul className="divide-border border-border superficie divide-y overflow-hidden rounded-lg border">
           {linhas.map((prompt) => (
             <LinhaDePrompt key={prompt.id} prompt={prompt} />
           ))}

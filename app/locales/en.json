@@ -157,7 +157,8 @@
       "start": "Run now",
       "starting": "starting...",
       "placeholder": "https://github.com/owner/repo/pull/123"
-    }
+    },
+    "lead": "Who works for you, what each one does and when it wakes up."
   },
   "assistant": {
     "title": "Assistant",
@@ -275,7 +276,8 @@
     "group": {
       "reviews": "Pull request review",
       "other": "Other"
-    }
+    },
+    "lead": "What the agents prepared. Nothing leaves without your yes."
   },
   "initiatives": {
     "contextTemplate": {
@@ -451,7 +453,8 @@
       "outside_initiative": "step targets a server outside this initiative's scope",
       "rejected": "rejected",
       "publish_conflict": "the target changed before this could be published"
-    }
+    },
+    "lead": "Every time an agent ran: step by step, what it found and what it cost."
   },
   "settings": {
     "refused": "the bridge refused {{channel}}: {{message}}",
@@ -823,7 +826,8 @@
     "inboxReply": {
       "hint": "No agent to reply yet? Use the ready one: it reads the message, writes a reply and leaves it in the queue for you to approve before it goes out. You can edit it later in Agents.",
       "use": "Use the ready reply"
-    }
+    },
+    "lead": "How Locum behaves, which models it thinks with and where the work comes from."
   },
   "severity": {
     "critical": "critical",
@@ -1054,6 +1058,13 @@
           "hint": "Import or create an agent and say when it wakes up. Slack and Teams have a ready reply.",
           "go": "Agents"
         }
+      },
+      "sessions": {
+        "title_one": "{{count}} Claude session left halfway",
+        "title_other": "{{count}} Claude sessions left halfway",
+        "waiting_one": "and {{count}} open, waiting for you",
+        "waiting_other": "and {{count}} open, waiting for you",
+        "title_zero": "No Claude session left halfway"
       }
     }
   },

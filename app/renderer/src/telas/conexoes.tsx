@@ -250,7 +250,7 @@ function Cartao({
   const { t } = useTranslation();
   return (
     <article
-      className="border-border bg-card hover:border-foreground/25 group flex min-h-[132px] flex-col gap-3 rounded-lg border p-4 transition-colors"
+      className="border-border superficie hover:border-foreground/25 group flex min-h-[132px] flex-col gap-3 rounded-lg border p-4 transition-colors"
       data-locum-conexao={conexao.id}
       data-locum-conexao-estado={conexao.state}
     >
@@ -408,7 +408,7 @@ function Detalhe({
       ) : null}
 
       {painel === undefined ? null : (
-        <div className="divide-border border-border bg-card divide-y overflow-hidden rounded-lg border">{painel}</div>
+        <div className="divide-border border-border superficie divide-y overflow-hidden rounded-lg border">{painel}</div>
       )}
 
       {erro === null ? null : <p className="text-sev-critical text-xs">{erro}</p>}
