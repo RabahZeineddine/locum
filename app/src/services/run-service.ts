@@ -265,6 +265,12 @@ export class RunService {
     if (isReserved(detail.agentId)) {
       throw new Error(`"${detail.agentId}" e um agent do sistema e nao aceita escrita`);
     }
+    // Run que ainda esta na fila ou rodando ja tem um executor cuidando dele.
+    // Zerar passos debaixo desse executor e subir um segundo pagaria o modelo
+    // duas vezes, e uma acao em `auto` sairia duas vezes.
+    if (detail.status === "queued" || detail.status === "running") {
+      throw new Error(`run ${runId} ainda esta em andamento; espere terminar para reexecutar`);
+    }
 
     const affected = dependents(detail.spec, stepKey);
     const targets = detail.steps.filter((s) => affected.has(s.stepKey));
