@@ -49,6 +49,11 @@ test("feed opaco sem carimbo usa o instante da chamada em ISO, e item repetido n
   assert.equal(pedidos[1]?.since, `desde ${new Date(agora).toISOString()}`);
   assert.equal(segunda.seen, 2);
   assert.equal(segunda.eventIds.length, 1);
+  // O item repetido não vira evento, mas continua na janela: o gatilho que
+  // ainda não o rodou precisa recebê-lo.
+  assert.equal(segunda.inWindow.length, 2);
+  assert.equal(segunda.inWindow[0], primeira.eventIds[1]);
+  assert.equal(segunda.inWindow[1], segunda.eventIds[0]);
 });
 
 test("resposta com isError vira falha e não move o cursor", async () => {

@@ -201,6 +201,28 @@ export async function pollOpenPullRequests(
   repoFilter: RegExp,
   deps: PollOptions = {},
 ): Promise<string[]> {
+  return (await scanOpenPullRequests(owner, repoFilter, deps)).created;
+}
+
+/** O que uma varredura do GitHub viu. */
+export interface PullRequestScan {
+  /**
+   * Todo evento da janela, novo ou já conhecido. É a lista que o agendador
+   * entrega a cada gatilho, porque "novo para a tabela" não é "novo para o
+   * gatilho": dois gatilhos sobre a mesma organização dividem o cursor, e o
+   * primeiro a varrer gravaria o evento que o segundo nunca receberia. O mesmo
+   * vale para o evento gravado numa batida que morreu antes de criar o run.
+   */
+  eventIds: string[];
+  /** Só os que esta varredura gravou. */
+  created: string[];
+}
+
+export async function scanOpenPullRequests(
+  owner: string,
+  repoFilter: RegExp,
+  deps: PollOptions = {},
+): Promise<PullRequestScan> {
   const gh = deps.client ?? octokit();
   const db = deps.db ?? defaultDb;
   const includeDrafts = deps.includeDrafts ?? false;
@@ -232,6 +254,7 @@ export async function pollOpenPullRequests(
   const items = await gh.paginate(gh.rest.search.issuesAndPullRequests, { q: query, per_page: 100 });
 
   const created: string[] = [];
+  const eventIds: string[] = [];
   let newest = since;
 
   for (const item of items) {
@@ -249,7 +272,10 @@ export async function pollOpenPullRequests(
       .select({ id: schema.events.id })
       .from(schema.events)
       .where(and(eq(schema.events.source, source), eq(schema.events.externalId, externalId)));
-    if (known) continue;
+    if (known) {
+      eventIds.push(known.id);
+      continue;
+    }
 
     const ctx = await contextFromPr(gh, owner, repo, pr, deps.diffMaxChars);
     const id = randomUUID();
@@ -259,7 +285,10 @@ export async function pollOpenPullRequests(
       .onConflictDoNothing()
       .returning({ id: schema.events.id });
 
-    if (inserted.length > 0) created.push(id);
+    if (inserted.length > 0) {
+      created.push(id);
+      eventIds.push(id);
+    }
   }
 
   // Cursor avanca so depois de gravar, senao um crash no meio perde eventos.
@@ -271,7 +300,7 @@ export async function pollOpenPullRequests(
       set: { value: newest, updatedAt: Math.floor(Date.now() / 1000) },
     });
 
-  return created;
+  return { eventIds, created };
 }
 
 /**

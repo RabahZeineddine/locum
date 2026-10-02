@@ -14,6 +14,7 @@ import { triggerService, type TriggerEntry, type TriggerService } from "../servi
 // quem carrega este agendador nem sempre quer isso junto. O valor entra por
 // import dinamico la embaixo.
 import type { SweepOptions, SweepReport } from "../services/reconcile-service.js";
+import type { PullRequestScan } from "../sources/github.js";
 
 type Db = typeof defaultDb;
 
@@ -63,7 +64,11 @@ export interface TickOptions {
 }
 
 /** A varredura do GitHub entra como dependencia para poder ser trocada em teste. */
-export type PollFn = (owner: string, repoFilter: RegExp, options?: { includeDrafts?: boolean }) => Promise<string[]>;
+export type PollFn = (
+  owner: string,
+  repoFilter: RegExp,
+  options?: { includeDrafts?: boolean },
+) => Promise<PullRequestScan>;
 
 /** A conferencia de pull request fechado, trocavel pelo mesmo motivo. */
 export type SweepFn = (options?: SweepOptions) => Promise<SweepReport>;
@@ -130,8 +135,8 @@ export interface TriggerSchedule {
  * gatilho de varredura.
  */
 const varrerNoGithub: PollFn = async (owner, repoFilter, options) => {
-  const { pollOpenPullRequests } = await import("../sources/github.js");
-  return pollOpenPullRequests(owner, repoFilter, options);
+  const { scanOpenPullRequests } = await import("../sources/github.js");
+  return scanOpenPullRequests(owner, repoFilter, options);
 };
 
 /** Pelo mesmo motivo do `varrerNoGithub`: o octokit so entra quando bate. */
@@ -366,11 +371,16 @@ export class Scheduler {
           throw new Error("gatilho sem dono e sem GITHUB_OWNER, a varredura precisa da org");
         }
 
-        const created = await this.poll(owner, new RegExp(config.repoMatch), {
+        const varredura = await this.poll(owner, new RegExp(config.repoMatch), {
           includeDrafts: config.includeDrafts,
         });
-        const { eventIds, detail } = await this.byAuthorship(config.authorship, created);
+        // A varredura devolve a janela inteira, e o que este gatilho já rodou
+        // sai antes do filtro de autoria, senão o mesmo descarte seria contado
+        // de novo a cada batida em que o pull request continua na janela.
+        const pendentes = await this.notYetRan(trigger.id, varredura.eventIds);
+        const { eventIds, detail } = await this.byAuthorship(config.authorship, pendentes);
         const runs = await this.runsFor(trigger, eventIds, wait);
+        const created = varredura.created;
         // A contagem de eventos continua sendo o que a varredura trouxe, e não
         // o que sobrou do filtro: quem lê a batida precisa ver que o pull
         // request chegou e foi descartado aqui, senão a única leitura possível
@@ -398,11 +408,14 @@ export class Scheduler {
         // GitHub: cursor, normalizacao e deduplicacao sao a mesma decisao para
         // as tres formas de fonte do ADR 0001, e so o agendador sabe quando
         // bater.
-        const { eventIds, seen } = await pollMcpServer(
+        const { eventIds, inWindow, seen } = await pollMcpServer(
           { server: config.server, tool: config.tool, args: config.args },
           { db: this.db, mcp: this.mcp },
         );
-        const runs = await this.runsFor(trigger, eventIds, wait);
+        // A janela inteira, e não só o que entrou agora: o cursor é da
+        // consulta, e não do gatilho, então dois gatilhos sobre a mesma
+        // ferramenta dividem os eventos. `runsFor` deduplica pelo gatilho.
+        const runs = await this.runsFor(trigger, inWindow, wait);
         // O que ja era conhecido aparece na diferenca, e nao some: sem isso a
         // unica leitura possivel de uma batida sem evento novo seria a de que a
         // consulta voltou vazia, que e outra coisa.
@@ -517,6 +530,14 @@ export class Scheduler {
       runs.push(runId);
     }
     return runs;
+  }
+
+  private async notYetRan(triggerId: string, eventIds: string[]): Promise<string[]> {
+    const pendentes: string[] = [];
+    for (const eventId of eventIds) {
+      if (!(await this.alreadyRan(triggerId, eventId))) pendentes.push(eventId);
+    }
+    return pendentes;
   }
 
   private async alreadyRan(triggerId: string, eventId: string): Promise<boolean> {

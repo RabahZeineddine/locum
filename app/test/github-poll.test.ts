@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { pollOpenPullRequests, type PollClient } from "../src/sources/github.js";
+import { pollOpenPullRequests, scanOpenPullRequests, type PollClient } from "../src/sources/github.js";
 import { bancoDeTeste } from "./helpers/db.js";
 
 type Pr = { number: number; repo: string; sha: string; updatedAt: string; draft?: boolean };
@@ -99,6 +99,23 @@ test("a segunda batida sobre os mesmos pull requests não busca diff nenhum", as
   assert.deepEqual(segunda, []);
   assert.equal(chamadas.listFiles, 2, "nenhum diff buscado na segunda batida");
   assert.equal(chamadas.checks, 2, "nem os checks, que também são do mesmo commit");
+});
+
+test("a varredura devolve a janela inteira, e não só o que acabou de gravar", async () => {
+  const db = bancoDeTeste();
+  const { client } = githubFalso([
+    { number: 1, repo: "api", sha: "a1", updatedAt: "2026-09-22T10:15:30Z" },
+  ]);
+  const deps = { client, db, now: agora, diffMaxChars: 100_000 };
+
+  const primeira = await scanOpenPullRequests("o", /.*/, deps);
+  assert.equal(primeira.created.length, 1);
+
+  // Segundo gatilho sobre a mesma organização, ou a batida que voltou depois
+  // de morrer antes de criar o run: o evento já existe e ainda é deles.
+  const segunda = await scanOpenPullRequests("o", /.*/, deps);
+  assert.deepEqual(segunda.created, []);
+  assert.deepEqual(segunda.eventIds, primeira.created);
 });
 
 test("o cursor vai na consulta com hora completa, e não só com o dia", async () => {

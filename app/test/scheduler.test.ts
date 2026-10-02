@@ -40,7 +40,7 @@ function montar({ gatilhos, poll, sweep, viewer }: Montagem) {
     executions,
     {} as McpService,
     {} as SlackService,
-    poll ?? (async () => []),
+    poll ?? (async () => ({ eventIds: [], created: [] })),
     sweep ?? semConferencia,
     viewer ?? (async () => "eu"),
   );
@@ -99,7 +99,7 @@ test("filtro de autoria acorda só os pull requests da pessoa e conta os descart
         { id: "e1", source: "github", externalId: "pr-1", payload: { author: "eu" } },
         { id: "e2", source: "github", externalId: "pr-2", payload: { author: "outra" } },
       ]);
-      return ["e1", "e2"];
+      return { eventIds: ["e1", "e2"], created: ["e1", "e2"] };
     },
   });
 
@@ -111,6 +111,33 @@ test("filtro de autoria acorda só os pull requests da pessoa e conta os descart
   assert.match(resultado?.detail ?? "", /1 evento\(s\) fora do filtro/);
 });
 
+test("dois gatilhos sobre a mesma organização acordam com o mesmo pull request", async () => {
+  let batidas = 0;
+  const { db, scheduler, iniciados } = montar({
+    gatilhos: [
+      gatilho("revisao", { kind: "poll", source: "github", owner: "org", repoMatch: ".", authorship: "any", includeDrafts: false, everyMinutes: 15 } as TriggerConfig),
+      gatilho("resumo", { kind: "poll", source: "github", owner: "org", repoMatch: ".", authorship: "any", includeDrafts: false, everyMinutes: 15 } as TriggerConfig),
+    ],
+    // Como a varredura de verdade: quem bate primeiro grava o evento, e quem
+    // bate depois já o encontra conhecido.
+    poll: async () => {
+      batidas += 1;
+      if (batidas === 1) {
+        await db.insert(schema.events).values({ id: "e1", source: "github", externalId: "pr-1", payload: {} });
+        return { eventIds: ["e1"], created: ["e1"] };
+      }
+      return { eventIds: ["e1"], created: [] };
+    },
+  });
+
+  const batida = await scheduler.tick({ at: T0 });
+  assert.deepEqual(batida.outcomes.map((o) => o.status), ["fired", "fired"]);
+  assert.deepEqual(
+    iniciados.map((i) => [i.triggerId, i.eventId]),
+    [["revisao", "e1"], ["resumo", "e1"]],
+  );
+});
+
 test("autoria sem conta conferida recusa a batida em vez de acordar todo mundo", async () => {
   const { db, scheduler, iniciados } = montar({
     gatilhos: [
@@ -118,7 +145,7 @@ test("autoria sem conta conferida recusa a batida em vez de acordar todo mundo",
     ],
     poll: async () => {
       await db.insert(schema.events).values({ id: "e1", source: "github", externalId: "pr-1", payload: { author: "eu" } });
-      return ["e1"];
+      return { eventIds: ["e1"], created: ["e1"] };
     },
     viewer: async () => null,
   });

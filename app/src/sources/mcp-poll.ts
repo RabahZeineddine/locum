@@ -95,6 +95,13 @@ export interface McpPollOptions {
 export interface McpPollOutcome {
   /** Eventos que esta varredura gravou. Item já conhecido não entra. */
   eventIds: string[];
+  /**
+   * Evento de cada item que a consulta trouxe, novo ou já conhecido. Quem
+   * acorda agent por evento deve usar esta lista e deduplicar pelo próprio
+   * gatilho: o evento gravado numa batida que morreu antes de criar o run, ou
+   * por outro gatilho sobre a mesma consulta, ainda não foi processado.
+   */
+  inWindow: string[];
   /** Itens que a consulta trouxe, incluindo os que já eram conhecidos. */
   seen: number;
   /** Cursor depois desta varredura. */
@@ -142,24 +149,35 @@ export async function pollMcpServer(
   const items = lerItens(unwrap(await call(input.server, input.tool, render(input.args, cursor))));
 
   const eventIds: string[] = [];
+  const inWindow: string[] = [];
   let carimbado = false;
   let newest = cursor;
 
   for (const item of items) {
     const at = lerCarimbo(item);
     const id = randomUUID();
+    const externalId = shape.externalId(item);
     const inserted = await db
       .insert(schema.events)
       .values({
         id,
         source,
-        externalId: shape.externalId(item),
+        externalId,
         payload: { ...shape.payload(item), at: at ?? null },
       })
       .onConflictDoNothing()
       .returning({ id: schema.events.id });
 
-    if (inserted.length > 0) eventIds.push(id);
+    if (inserted.length > 0) {
+      eventIds.push(id);
+      inWindow.push(id);
+    } else {
+      const [known] = await db
+        .select({ id: schema.events.id })
+        .from(schema.events)
+        .where(and(eq(schema.events.source, source), eq(schema.events.externalId, externalId)));
+      if (known && !inWindow.includes(known.id)) inWindow.push(known.id);
+    }
     if (at !== undefined) {
       carimbado = true;
       newest = newer(newest, at);
@@ -180,7 +198,7 @@ export async function pollMcpServer(
       set: { value: next, updatedAt: Math.floor(Date.now() / 1000) },
     });
 
-  return { eventIds, seen: items.length, cursor: next };
+  return { eventIds, inWindow, seen: items.length, cursor: next };
 }
 
 /**

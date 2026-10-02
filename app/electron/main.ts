@@ -304,7 +304,7 @@ async function checkPower(): Promise<string> {
 
 
 /** A conferência não varre: gatilho de varredura não chega a este agendador. */
-const proibirVarredura = async (): Promise<string[]> => {
+const proibirVarredura = async (): Promise<{ eventIds: string[]; created: string[] }> => {
   throw new Error("o smoke da conferencia nao pode varrer o GitHub");
 };
 /**
@@ -2956,9 +2956,10 @@ async function checkAuthorship(): Promise<string> {
     }
   })(db);
 
-  const varrer = async (owner: string): Promise<string[]> => {
+  const varrer = async (owner: string) => {
     if (owner !== dono) throw new Error(`a varredura visitou ${owner}, que nao e o dono plantado`);
-    return [meu.eventId, alheio.eventId];
+    const ids = [meu.eventId, alheio.eventId];
+    return { eventIds: ids, created: ids };
   };
   const naoConferir = async () => ({
     checked: 0,
@@ -3794,7 +3795,11 @@ async function checkMcpPoll(): Promise<string> {
     Date.parse("2026-01-01T00:00:00.000Z") + (itens - 1) * 60_000,
   ).toISOString();
 
+  /** Os runs que o executor de mentira gravou, para sair sem deixar rastro. */
+  const runsGravados: string[] = [];
+
   const limpar = async (): Promise<void> => {
+    if (runsGravados.length > 0) await db.delete(schema.runs).where(inArray(schema.runs.id, runsGravados));
     await db
       .delete(schema.events)
       .where(and(eq(schema.events.source, source), inArray(schema.events.externalId, externos)));
@@ -3815,13 +3820,32 @@ async function checkMcpPoll(): Promise<string> {
     { enabled: true },
   );
 
+  // O run entra no banco, como o executor de verdade faria antes de rodar: é
+  // pelo run do gatilho que o agendador sabe que o evento já foi atendido. Só
+  // a execução fica de fora.
+  const [versao] = await db
+    .select({ id: schema.agentVersions.id })
+    .from(schema.agentVersions)
+    .where(eq(schema.agentVersions.agentId, agent.id))
+    .limit(1);
+  if (versao === undefined) throw new Error(`o agent ${agent.id} nao tem versao gravada`);
+
   const pedidos: string[] = [];
   const semExecutor = new (class extends ExecutionService {
     async startForEvent(
       input: Parameters<InstanceType<typeof ExecutionService>["startForEvent"]>[0],
     ) {
       if (input.eventId !== null) pedidos.push(input.eventId);
-      return { runId: `smoke-run-${randomUUID()}`, status: "queued" as const };
+      const runId = `smoke-run-${randomUUID()}`;
+      await db.insert(schema.runs).values({
+        id: runId,
+        agentVersionId: versao.id,
+        triggerId: input.triggerId ?? null,
+        eventId: input.eventId,
+        status: "done",
+      });
+      runsGravados.push(runId);
+      return { runId, status: "queued" as const };
     }
   })(db);
 
