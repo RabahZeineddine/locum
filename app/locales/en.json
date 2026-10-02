@@ -158,7 +158,11 @@
       "starting": "starting...",
       "placeholder": "https://github.com/owner/repo/pull/123"
     },
-    "lead": "Who works for you, what each one does and when it wakes up."
+    "lead": "Who works for you, what each one does and when it wakes up.",
+    "new": {
+      "button": "New agent",
+      "from": "Start from which agent"
+    }
   },
   "assistant": {
     "title": "Assistant",
@@ -167,7 +171,7 @@
     "send": "Send",
     "placeholder": "Ask something",
     "placeholderUnavailable": "choose the model in Settings",
-    "disclaimer": "It does not approve and does not publish. The decision is still your click in the inbox.",
+    "disclaimer": "It does not approve and does not publish. The decision is still your click in the Queue.",
     "summarized": "The start of the conversation was summarized. From earlier exchanges the model keeps only the text, without tool results, and the oldest may have been dropped.",
     "empty": {
       "title": "Locum console",
@@ -175,7 +179,8 @@
     },
     "unavailable": {
       "title": "No model chosen",
-      "body": "assistant unavailable"
+      "body": "assistant unavailable",
+      "go": "Choose a model"
     },
     "model": {
       "none": "no model chosen",

@@ -10,7 +10,7 @@ import { LinhaDoOrcamento, Observados, Secao } from "./configuracao";
 import { comContexto, diffJson, type LinhaDoDiff } from "@/lib/diff";
 import { rotuloDeEstado, rotuloDoModelo } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, X } from "lucide-react";
+import { ArrowLeft, Plus, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { useCurrentInitiative } from "../current-initiative";
@@ -45,6 +45,7 @@ function Lista({ navegar }: { navegar: TelaProps["navegar"] }) {
   const agents = useRead("agents.overview");
   const todasAsLinhas = agents.data ?? [];
   const [erroDeImportar, setErroDeImportar] = useState<string | null>(null);
+  const [criando, setCriando] = useState(false);
 
   // O chip so aparece quando ha iniciativa atual; filtrar por ela e um clique
   // a mais, nunca o padrao, porque quem entra em agents sem escolher iniciativa
@@ -77,9 +78,17 @@ function Lista({ navegar }: { navegar: TelaProps["navegar"] }) {
     <div className="flex flex-col gap-4">
       <CabecalhoDaTela
         acoes={
-          <Button className="cursor-pointer" data-locum-importar="" onClick={importar} variant="secondary">
-            {t("agents.io.import")}
-          </Button>
+          <>
+            <Button className="cursor-pointer" data-locum-importar="" onClick={importar} variant="secondary">
+              {t("agents.io.import")}
+            </Button>
+            {todasAsLinhas.length === 0 ? null : (
+              <Button className="cursor-pointer" data-locum-agent-novo="" onClick={() => setCriando((v) => !v)}>
+                <Plus aria-hidden className="size-4" />
+                {t("agents.new.button")}
+              </Button>
+            )}
+          </>
         }
         descricao={t("agents.lead")}
         titulo={t("nav.agents")}
@@ -122,6 +131,17 @@ function Lista({ navegar }: { navegar: TelaProps["navegar"] }) {
               : t("agents.count", { count: linhas.length })}
         </div>
       </div>
+
+      {criando && todasAsLinhas.length > 0 && (
+        <NovoAgent
+          aoCancelar={() => setCriando(false)}
+          aoCriar={(novo) => {
+            editarAoAbrir = novo;
+            navegar("agents", novo);
+          }}
+          bases={todasAsLinhas.map((a) => ({ id: a.id, nome: a.name }))}
+        />
+      )}
 
       {erroDeImportar === null ? null : (
         <p className="text-destructive text-xs">{t("agents.io.importRefused", { message: erroDeImportar })}</p>
@@ -541,6 +561,47 @@ function RodarAgora({
 }
 
 /**
+ * Agent novo pela lista: escolhe de qual partir e segue como a duplicação.
+ *
+ * Não existe agent em branco porque um agent sem passo nenhum não roda, e o
+ * editor não cria passo do zero. Partir de um que funciona é o caminho que dá
+ * certo na primeira vez.
+ */
+function NovoAgent({
+  aoCancelar,
+  aoCriar,
+  bases,
+}: {
+  aoCancelar: () => void;
+  aoCriar: (id: string) => void;
+  bases: { id: string; nome: string }[];
+}) {
+  const { t } = useTranslation();
+  const [base, setBase] = useState(bases[0]!.id);
+  const escolhida = bases.find((b) => b.id === base) ?? bases[0]!;
+
+  return (
+    <div className="flex max-w-xl flex-col gap-2" data-locum-probe="agent-novo">
+      <label className="flex flex-col gap-1 text-xs">
+        <span className="text-muted-foreground">{t("agents.new.from")}</span>
+        <select
+          className="border-border bg-background focus-visible:ring-ring rounded-md border px-2 py-1.5 text-sm outline-none focus-visible:ring-1"
+          onChange={(e) => setBase(e.target.value)}
+          value={base}
+        >
+          {bases.map((b) => (
+            <option key={b.id} value={b.id}>
+              {b.nome}
+            </option>
+          ))}
+        </select>
+      </label>
+      <Duplicar aoCancelar={aoCancelar} aoCriar={aoCriar} de={escolhida.id} key={escolhida.id} nome={escolhida.nome} />
+    </div>
+  );
+}
+
+/**
  * Agent novo a partir deste.
  *
  * O jeito real de criar agent: partir de um que funciona e mudar o que for
@@ -575,7 +636,7 @@ function Duplicar({
   }
 
   return (
-    <div className="border-border superficie flex max-w-xl flex-col gap-3 rounded-lg border px-4 py-3">
+    <div className="superficie flex max-w-xl flex-col gap-3 rounded-xl px-4 py-3">
       <div>
         <p className="text-sm font-medium">{t("agents.editor.dup.title", { name: nome })}</p>
         <p className="text-muted-foreground text-xs">{t("agents.editor.dup.hint")}</p>

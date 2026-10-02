@@ -190,7 +190,7 @@ export function Layout() {
       </div>
 
       <Paleta navegar={navegar} />
-      <Assistente />
+      <Assistente navegar={navegar} />
 
       {/*
         Marcador do smoke. Ele confere que este elemento esta com display none,

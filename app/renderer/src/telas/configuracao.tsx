@@ -3313,13 +3313,12 @@ export function LinhaDoOrcamento({ orcamento }: { orcamento: Orcamento }) {
 
   return (
     <div
-      className="flex flex-wrap items-center gap-3 border-border border-b px-4 py-3 text-sm last:border-b-0"
+      className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-border border-b px-4 py-3 text-sm last:border-b-0"
       data-locum-gasto-hoje={orcamento.spentTodayUsd}
       data-locum-orcamento={orcamento.agentId}
       data-locum-por-dia={orcamento.perDayUsd ?? ""}
       data-locum-por-run={orcamento.perRunUsd ?? ""}
     >
-      <span className="w-40 shrink-0 truncate font-medium">{orcamento.agentId}</span>
       <span className="text-muted-foreground text-xs">
         {orcamento.version === null
           ? t("settings.budgets.unknownVersion")

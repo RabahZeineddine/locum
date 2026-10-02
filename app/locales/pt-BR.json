@@ -165,7 +165,11 @@
       "starting": "iniciando...",
       "placeholder": "https://github.com/owner/repo/pull/123"
     },
-    "lead": "Quem trabalha por você, o que cada um faz e quando acorda."
+    "lead": "Quem trabalha por você, o que cada um faz e quando acorda.",
+    "new": {
+      "button": "Novo agent",
+      "from": "A partir de qual agent"
+    }
   },
   "assistant": {
     "title": "Assistente",
@@ -174,7 +178,7 @@
     "send": "Enviar",
     "placeholder": "Pergunte alguma coisa",
     "placeholderUnavailable": "escolha o modelo em Configuração",
-    "disclaimer": "Ele não aprova nem publica. A decisão continua sendo o seu clique na inbox.",
+    "disclaimer": "Ele não aprova nem publica. A decisão continua sendo o seu clique na Fila.",
     "summarized": "O começo da conversa foi resumido. Das trocas antigas o modelo guarda só o texto, sem o resultado das ferramentas, e as mais antigas podem ter saído.",
     "empty": {
       "title": "Console do Locum",
@@ -182,7 +186,8 @@
     },
     "unavailable": {
       "title": "Sem modelo escolhido",
-      "body": "assistente indisponível"
+      "body": "assistente indisponível",
+      "go": "Escolher modelo"
     },
     "model": {
       "none": "nenhum modelo escolhido",

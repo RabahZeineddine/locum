@@ -1427,6 +1427,23 @@ async function checkAgents(window: BrowserWindow): Promise<string> {
     throw new Error(`a lista desenhou ${desenhadas} linha(s) para ${doServico.length} agent(s)`);
   }
 
+  // Agent novo pela lista parte de um existente: o botão abre a escolha da
+  // base já com o primeiro agent e o formulário da duplicação embaixo.
+  const novo = (await window.webContents.executeJavaScript(
+    `(async () => {
+      document.querySelector("[data-locum-agent-novo]")?.click();
+      for (let i = 0; i < 50; i++) {
+        const painel = document.querySelector("[data-locum-probe=agent-novo]");
+        if (painel !== null) return painel.querySelectorAll("option").length;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      return -1;
+    })()`,
+  )) as number;
+  if (novo !== doServico.length) {
+    throw new Error(`o agent novo ofereceu ${novo} base(s) para ${doServico.length} agent(s)`);
+  }
+
   // O alvo e quem tem historico: comparar versao exige duas, e um agent de uma
   // versao so provaria a tela de lista mais uma vez.
   let alvo: string | undefined;

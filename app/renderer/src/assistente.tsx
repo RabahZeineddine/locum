@@ -9,7 +9,8 @@ import { call, useRead } from "@/lib/bridge";
 import { assinarEventosDoChat, type ChatEvent } from "@/lib/chat";
 import { cn } from "@/lib/utils";
 import { useCurrentInitiative } from "./current-initiative";
-import { CornerDownLeft, MessageSquare, Square, Wrench, X } from "lucide-react";
+import type { TelaProps } from "./rotas";
+import { ArrowUp, Settings2, Sparkles, Square, Wrench, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -30,7 +31,7 @@ interface Fala {
  * que sao conteudo de terceiro; o catalogo dele vive em `electron/chat-tools.ts`
  * e e escrito a mao pelo motivo da emenda 5 do ADR 0003.
  */
-export function Assistente() {
+export function Assistente({ navegar }: Pick<TelaProps, "navegar">) {
   const { t } = useTranslation();
   const [aberto, setAberto] = useState(false);
   const [falas, setFalas] = useState<Fala[]>([]);
@@ -102,8 +103,10 @@ export function Assistente() {
       data-locum-probe="assistente-painel"
     >
       <header className="border-border flex items-center gap-2 border-b px-4 py-3">
-        <MessageSquare className="text-muted-foreground size-4" aria-hidden />
-        <span className="flex-1 text-sm font-medium">{t("assistant.title")}</span>
+        <span className="ia-gradiente flex size-6 items-center justify-center rounded-md">
+          <Sparkles className="text-primary-foreground size-3.5" aria-hidden />
+        </span>
+        <span className="flex-1 text-sm font-semibold tracking-[-0.01em]">{t("assistant.title")}</span>
         {status.status === "ready" && status.data.modelo && (
           <span className="text-muted-foreground font-mono text-[11px]">{status.data.modelo}</span>
         )}
@@ -126,15 +129,35 @@ export function Assistente() {
           )}
         >
           {falas.length === 0 && (
-            <ConversationEmptyState
-              description={
-                indisponivel
-                  ? (status.data.motivo ?? t("assistant.unavailable.body"))
-                  : t("assistant.empty.body")
-              }
-              icon={<MessageSquare className="size-5" />}
-              title={t(indisponivel ? "assistant.unavailable.title" : "assistant.empty.title")}
-            />
+            <ConversationEmptyState>
+              <span className="ia-gradiente flex size-12 items-center justify-center rounded-2xl shadow-[0_0_40px_-6px_var(--ia-2)]">
+                <Sparkles className="text-primary-foreground size-5" aria-hidden />
+              </span>
+              <div className="mt-2 space-y-1.5">
+                <h3 className="font-semibold text-base tracking-[-0.01em]">
+                  {t(indisponivel ? "assistant.unavailable.title" : "assistant.empty.title")}
+                </h3>
+                <p className="text-muted-foreground mx-auto max-w-72 text-sm">
+                  {indisponivel
+                    ? (status.data.motivo ?? t("assistant.unavailable.body"))
+                    : t("assistant.empty.body")}
+                </p>
+              </div>
+              {indisponivel && (
+                <Button
+                  className="mt-3 cursor-pointer"
+                  data-locum-assistente-modelo
+                  onClick={() => {
+                    setAberto(false);
+                    navegar("configuracao", "modelos");
+                  }}
+                  size="sm"
+                >
+                  <Settings2 className="size-3.5" aria-hidden />
+                  {t("assistant.unavailable.go")}
+                </Button>
+              )}
+            </ConversationEmptyState>
           )}
 
           {/* As falas continuam todas na tela; o aviso é sobre o que o modelo ainda enxerga. */}
@@ -168,7 +191,7 @@ export function Assistente() {
       <div className="border-border border-t p-3">
         <div
           className={cn(
-            "border-border focus-within:border-ring bg-card flex items-end gap-2 rounded-lg border px-3 py-2 transition-colors duration-200",
+            "border-border focus-within:border-primary/50 focus-within:shadow-[0_0_0_3px_color-mix(in_oklch,var(--primary)_15%,transparent)] bg-card flex items-end gap-2 rounded-xl border px-3 py-2.5 transition-shadow duration-200",
             indisponivel && "opacity-60",
           )}
         >
@@ -201,13 +224,13 @@ export function Assistente() {
             </Button>
           ) : (
             <Button
-              className="size-7 cursor-pointer"
+              className="size-7 cursor-pointer rounded-lg"
               disabled={indisponivel || rascunho.trim().length === 0}
               onClick={() => void enviar()}
               size="icon"
-              variant="ghost"
+              variant={rascunho.trim().length === 0 ? "ghost" : "default"}
             >
-              <CornerDownLeft className="size-3.5" aria-hidden />
+              <ArrowUp className="size-3.5" aria-hidden />
               <span className="sr-only">{t("assistant.send")}</span>
             </Button>
           )}
@@ -223,11 +246,11 @@ function BotaoFlutuante({ aoAbrir }: { aoAbrir: () => void }) {
 
   return (
     <button
-      className="border-border bg-card/90 hover:bg-accent focus-visible:ring-ring fixed right-5 bottom-5 z-40 flex h-10 cursor-pointer items-center gap-2 rounded-full border px-3.5 text-sm shadow-lg backdrop-blur transition-colors duration-200 focus-visible:ring-2 focus-visible:outline-none"
+      className="ia-borda bg-card/90 hover:bg-accent focus-visible:ring-ring fixed right-5 bottom-5 z-40 flex h-10 cursor-pointer items-center gap-2 rounded-full px-3.5 text-sm shadow-lg backdrop-blur transition-colors duration-200 focus-visible:ring-2 focus-visible:outline-none"
       onClick={aoAbrir}
       type="button"
     >
-      <MessageSquare className="size-4" aria-hidden />
+      <Sparkles className="text-primary size-4" aria-hidden />
       {t("assistant.title")}
       <kbd className="bg-muted rounded px-1 py-0.5 font-mono text-[10px]">
         {t("assistant.shortcut")}
