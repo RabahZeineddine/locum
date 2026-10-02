@@ -293,6 +293,39 @@ test("ler passagem vira proposta append e marca a sessao como lida", async () =>
   assert.equal(await service.readHandoff(slug), null, "passagem lida nao volta");
 });
 
+test("aba de sessoes lista as da iniciativa, encerra a largada e le a passagem de uma so", async () => {
+  const slug = await iniciativa();
+  const { service } = servico();
+
+  const velha = await service.open(slug);
+  const nova = await service.open(slug);
+  assert.match(readFileSync(nova.scriptPath, "utf8"), new RegExp(`--session-id '${nova.sessionId}'`));
+
+  const [linhaVelha] = await db.select().from(schema.sessions).where(eq(schema.sessions.id, velha.sessionId));
+  writeFileSync(join(pastaDe(slug), linhaVelha!.handoffPath!), "Feito: velha.\n");
+
+  const lista = await service.list(slug);
+  assert.deepEqual(
+    lista.map((s) => [s.id, s.status, s.hasHandoff]),
+    [
+      [nova.sessionId, "open", false],
+      [velha.sessionId, "open", true],
+    ],
+  );
+
+  assert.equal(await service.close(velha.sessionId), true);
+  assert.equal(await service.close(velha.sessionId), false, "so fecha sessao aberta");
+
+  assert.equal(await service.readHandoff(slug, nova.sessionId), null, "a nova ainda nao tem passagem");
+  const lida = await service.readHandoff(slug, velha.sessionId);
+  assert.equal(lida?.file, linhaVelha!.handoffPath);
+  const depois = await service.list(slug);
+  assert.deepEqual(
+    depois.map((s) => s.status),
+    ["open", "read"],
+  );
+});
+
 test("editar workspaces depois de abrir sessao nao trava na chave estrangeira", async () => {
   const worktree = pastaVazia("locum-wt-");
   const slug = await iniciativa({ worktree });

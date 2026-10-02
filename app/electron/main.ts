@@ -1393,6 +1393,22 @@ async function checkInitiatives(window: BrowserWindow): Promise<string> {
   );
   await checkSessionWiring();
 
+  // A sessao que o espiao acabou de abrir tem de aparecer na aba de sessoes,
+  // aberta, e com tantas linhas quanto o servico lista.
+  const { sessionService } = await import("../src/services/session-service.js");
+  const esperadas = (await sessionService.list("example")).length;
+  await irPara(window, "initiatives", "example/sessions");
+  await esperarProbe<{ linhas: number }>(
+    window,
+    "initiative-sessions",
+    `(() => {
+      const probe = document.querySelector("[data-locum-probe=initiative-sessions]");
+      const linhas = probe?.querySelectorAll("[data-locum-sessao-estado]").length ?? 0;
+      const abertas = probe?.querySelectorAll("[data-locum-sessao-estado=open]").length ?? 0;
+      return linhas === ${esperadas} && abertas > 0 ? { linhas } : null;
+    })()`,
+  );
+
   return t("smoke.initiatives", { initiatives: lista.total });
 }
 

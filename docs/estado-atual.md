@@ -1144,6 +1144,16 @@ abertura recusa com aviso antes de gravar a sessão. O mesmo vale para retomar
 sessão do Claude. A configuração mostra só os terminais instalados, mais o
 escolhido. O Warp abre `.command` direto, como o Terminal.
 
+**Sessão aberta que fica para trás.** Quando o Claude sai sem o script chegar ao
+`open` do deep link (janela fechada, processo morto), a sessão fica `open` no
+banco para sempre. Desde a 0.1.35 a aba Sessões do detalhe lista as sessões da
+iniciativa com estado e passagem, lê a passagem de uma sessão escolhida
+(`readHandoff(slug, sessionId)`) e encerra à mão a que ficou aberta
+(`sessions.close`), só com o processo do Claude morto. O script passa o id da
+sessão do Locum como `--session-id`, e a conversa do Claude Code é achada pelo
+id. As conversas abertas fora do Locum entram na mesma aba quando o `cwd` cai
+na pasta de contexto, num repositório ou num worktree da iniciativa.
+
 ## Próximos passos
 
 Iniciativas: I1, I2 e I3 prontos no código. Falta o teste à mão da sessão

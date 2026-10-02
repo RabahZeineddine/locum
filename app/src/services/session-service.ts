@@ -47,6 +47,17 @@ export interface SessionServiceDeps {
   now: () => number;
 }
 
+export interface InitiativeSession {
+  id: string;
+  terminal: string;
+  /** `read` e a sessao cuja passagem ja virou proposta. */
+  status: "open" | "ended" | "read";
+  startedAt: number;
+  endedAt: number | null;
+  handoffPath: string | null;
+  hasHandoff: boolean;
+}
+
 export interface SessionPlan {
   sessionId: string;
   /** Pasta de contexto da iniciativa, ja resolvida por `realpath`. */
@@ -147,6 +158,7 @@ function renderScript(input: {
   claude: string | null;
   folder: string;
   deepLink: string;
+  sessionId: string;
 }): string {
   const promptPath = join(input.folder, SESSION_PROMPT);
   const settingsPath = join(input.folder, SESSION_SETTINGS);
@@ -163,6 +175,10 @@ function renderScript(input: {
       shellQuote(settingsPath),
       "--append-system-prompt",
       `"$(cat ${shellQuote(promptPath)})"`,
+      // O mesmo id no Locum e no Claude Code: a aba de sessoes da iniciativa
+      // acha a conversa sem adivinhar pela pasta.
+      "--session-id",
+      shellQuote(input.sessionId),
     ].join(" "),
     `open ${shellQuote(input.deepLink)}`,
     "",
@@ -286,7 +302,7 @@ export class SessionService {
       handoffFile,
       prompt,
       settings: { permissions: { deny: denyRules(folder) } },
-      script: renderScript({ cwd, claude, folder, deepLink }),
+      script: renderScript({ cwd, claude, folder, deepLink, sessionId }),
       claude,
       deepLink,
       nonce,
@@ -344,19 +360,71 @@ export class SessionService {
   }
 
   /**
+   * As sessoes que o Locum abriu para a iniciativa, da mais nova para a mais
+   * velha, com a passagem conferida no disco: o arquivo so existe se o Claude
+   * chegou a escrever.
+   */
+  async list(slug: string): Promise<InitiativeSession[]> {
+    const initiative = await this.deps.initiatives.get(slug);
+    if (!initiative) throw new Error(`iniciativa "${slug}" nao cadastrada`);
+
+    const linhas = await this.deps.db
+      .select()
+      .from(schema.sessions)
+      .where(eq(schema.sessions.initiativeId, initiative.id))
+      .orderBy(desc(schema.sessions.startedAt), desc(sql`rowid`));
+
+    const store = new LocalFolderContextStore(initiative.contextPath);
+    return Promise.all(
+      linhas.map(async (linha) => {
+        const conteudo = linha.handoffPath ? await store.read(linha.handoffPath).catch(() => null) : null;
+        return {
+          id: linha.id,
+          terminal: linha.terminal,
+          status: linha.status as InitiativeSession["status"],
+          startedAt: linha.startedAt,
+          endedAt: linha.endedAt,
+          handoffPath: linha.handoffPath,
+          hasHandoff: conteudo !== null && conteudo.trim().length > 0,
+        };
+      }),
+    );
+  }
+
+  /**
+   * Encerra a mao a sessao que ficou aberta: o Claude saiu sem o script chegar
+   * ao `open` do deep link, e nada mais a fecharia. A passagem, se houver,
+   * continua para ler.
+   */
+  async close(sessionId: string): Promise<boolean> {
+    const fechadas = await this.deps.db
+      .update(schema.sessions)
+      .set({ status: "ended", endedAt: Math.floor(this.deps.now() / 1000) })
+      .where(and(eq(schema.sessions.id, sessionId), eq(schema.sessions.status, "open")))
+      .returning({ id: schema.sessions.id });
+    return fechadas.length > 0;
+  }
+
+  /**
    * A passagem mais nova ainda nao lida vira proposta `append` no
    * `context.md`. Serve sessao aberta tambem: o deep link de fim so funciona
    * com o app empacotado, e este botao e o caminho que sempre funciona.
    * Devolve `null` quando nenhuma sessao desta iniciativa deixou passagem.
    */
-  async readHandoff(slug: string): Promise<{ approvalId: string; file: string } | null> {
+  async readHandoff(slug: string, sessionId?: string): Promise<{ approvalId: string; file: string } | null> {
     const initiative = await this.deps.initiatives.get(slug);
     if (!initiative) throw new Error(`iniciativa "${slug}" nao cadastrada`);
 
     const candidatas = await this.deps.db
       .select()
       .from(schema.sessions)
-      .where(and(eq(schema.sessions.initiativeId, initiative.id), inArray(schema.sessions.status, ["open", "ended"])))
+      .where(
+        and(
+          eq(schema.sessions.initiativeId, initiative.id),
+          inArray(schema.sessions.status, ["open", "ended"]),
+          sessionId === undefined ? undefined : eq(schema.sessions.id, sessionId),
+        ),
+      )
       .orderBy(desc(schema.sessions.startedAt), desc(sql`rowid`));
 
     const store = new LocalFolderContextStore(initiative.contextPath);

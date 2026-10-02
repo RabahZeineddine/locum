@@ -156,7 +156,9 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "initiatives.removeLink": (slug, linkId) => initiativeService.removeLink(slug, linkId),
 
     "sessions.open": (slug, options) => sessionService.open(slug, options),
-    "sessions.readHandoff": (slug) => sessionService.readHandoff(slug),
+    "sessions.readHandoff": (slug, sessionId) => sessionService.readHandoff(slug, sessionId),
+    "sessions.list": (slug) => sessionService.list(slug),
+    "sessions.close": (id) => sessionService.close(id),
     "sessions.terminal": () => sessionService.terminal(),
     "sessions.setTerminal": (value) => sessionService.setTerminal(value),
     "sessions.installedTerminals": () => sessionService.installedTerminals(),

@@ -365,6 +365,7 @@
         "agents": "Agents",
         "integrations": "Integrations",
         "runs": "Runs",
+        "sessions": "Sessions",
         "actions": "Actions"
       },
       "deliveries": {
@@ -394,6 +395,27 @@
         "proposed": "Handoff {{file}} sent to the review queue.",
         "noHandoff": "No unread handoff yet.",
         "refused": "The action failed: {{message}}"
+      },
+      "sessions": {
+        "loading": "Reading the sessions…",
+        "refused": "Could not read the sessions: {{message}}",
+        "locum": "Opened by Locum",
+        "locumEmpty": "No session opened from here yet. Open one in Actions.",
+        "others": "Other Claude conversations in this initiative",
+        "othersHint": "Claude Code conversations that ran in the context folder or in a workspace of this initiative, opened outside Locum.",
+        "status": {
+          "open": "open",
+          "ended": "ended",
+          "read": "handoff read"
+        },
+        "claude": "Claude: {{state}}",
+        "noHandoff": "no handoff",
+        "readHandoff": "Read handoff",
+        "close": "End",
+        "closeHint": "Marks as ended a session whose terminal closed without telling Locum. The handoff, if any, stays to read.",
+        "resume": "Resume",
+        "proposed": "Handoff {{file}} sent to the review queue.",
+        "closed": "Session marked as ended."
       }
     },
     "status": {

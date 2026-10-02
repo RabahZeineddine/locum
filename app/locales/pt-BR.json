@@ -382,6 +382,7 @@
         "agents": "Agents",
         "integrations": "Integrações",
         "runs": "Execuções",
+        "sessions": "Sessões",
         "actions": "Ações"
       },
       "deliveries": {
@@ -411,6 +412,27 @@
         "proposed": "Passagem {{file}} enviada para a fila de revisão.",
         "noHandoff": "Nenhuma passagem nova ainda.",
         "refused": "A ação falhou: {{message}}"
+      },
+      "sessions": {
+        "loading": "Lendo as sessões…",
+        "refused": "Não consegui ler as sessões: {{message}}",
+        "locum": "Abertas pelo Locum",
+        "locumEmpty": "Nenhuma sessão aberta daqui ainda. Abra uma em Ações.",
+        "others": "Outras conversas do Claude nesta iniciativa",
+        "othersHint": "Conversas do Claude Code que rodaram na pasta de contexto ou num workspace desta iniciativa, abertas fora do Locum.",
+        "status": {
+          "open": "aberta",
+          "ended": "encerrada",
+          "read": "passagem lida"
+        },
+        "claude": "Claude: {{state}}",
+        "noHandoff": "sem passagem",
+        "readHandoff": "Ler passagem",
+        "close": "Encerrar",
+        "closeHint": "Marca como encerrada a sessão cujo terminal fechou sem avisar o Locum. A passagem, se houver, continua para ler.",
+        "resume": "Retomar",
+        "proposed": "Passagem {{file}} enviada para a fila de revisão.",
+        "closed": "Sessão marcada como encerrada."
       }
     },
     "status": {

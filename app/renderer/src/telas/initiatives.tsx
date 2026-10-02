@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { call, useRead, type ReadResult } from "@/lib/bridge";
 import type { TelaProps } from "../rotas";
+import { AbaSessoes } from "./sessoes-da-iniciativa";
 
 type LinhaDeIniciativa = ReadResult<"initiatives.list">[number];
 type IniciativaDetalhada = NonNullable<ReadResult<"initiatives.detail">>;
@@ -15,7 +16,7 @@ const classeDoCampo = "border-border bg-background w-full rounded border px-2 py
 
 /** As cinco abas do detalhe. So `context` le e escreve de verdade nesta fatia:
  * as outras quatro so mostram o que o detalhe composto ja trouxe. */
-const ABAS = ["deliveries", "context", "agents", "integrations", "runs", "actions"] as const;
+const ABAS = ["deliveries", "context", "agents", "integrations", "runs", "sessions", "actions"] as const;
 type Aba = (typeof ABAS)[number];
 
 function ehAba(valor: string): valor is Aba {
@@ -214,6 +215,7 @@ function DetalheDaIniciativa({
       {aba === "agents" && <AbaAgents iniciativa={iniciativa} />}
       {aba === "integrations" && <AbaIntegrations iniciativa={iniciativa} />}
       {aba === "runs" && <AbaRuns initiativeId={iniciativa.id} />}
+      {aba === "sessions" && <AbaSessoes iniciativa={iniciativa} />}
       {aba === "actions" && <AbaActions initiativeId={iniciativa.id} slug={iniciativa.slug} />}
     </div>
   );

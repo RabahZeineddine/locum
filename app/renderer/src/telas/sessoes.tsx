@@ -175,7 +175,7 @@ export function Sessoes(_props: TelaProps) {
   );
 }
 
-interface Acoes {
+export interface Acoes {
   retomar: (s: Sessao) => Promise<void>;
   terminar: (s: Sessao) => Promise<void>;
   reabrir: (s: Sessao) => Promise<void>;
@@ -265,7 +265,7 @@ function Ponto({ estado, vivo = false }: { estado: Estado; vivo?: boolean }) {
  * Uma conversa: onde rodava, a última coisa pedida, a última coisa
  * respondida, e o que fazer com ela. A régua à esquerda é o estado.
  */
-function Cartao({ acoes, idioma, sessao }: { acoes: Acoes; idioma: string; sessao: Sessao }) {
+export function Cartao({ acoes, idioma, sessao }: { acoes: Acoes; idioma: string; sessao: Sessao }) {
   const { t } = useTranslation();
   const [ocupado, setOcupado] = useState(false);
   const estilo = ESTILO[sessao.state];

@@ -139,6 +139,8 @@ interface ServiceApi {
    */
   "sessions.open": SessionService["open"];
   "sessions.readHandoff": SessionService["readHandoff"];
+  "sessions.list": SessionService["list"];
+  "sessions.close": SessionService["close"];
   /** Terminal preferido, na secao geral da configuracao. */
   "sessions.terminal": SessionService["terminal"];
   "sessions.setTerminal": SessionService["setTerminal"];
@@ -461,6 +463,8 @@ export const BRIDGE_CHANNELS = [
   "initiatives.removeLink",
   "sessions.open",
   "sessions.readHandoff",
+  "sessions.list",
+  "sessions.close",
   "sessions.terminal",
   "sessions.setTerminal",
   "sessions.installedTerminals",

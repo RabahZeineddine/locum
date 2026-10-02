@@ -61,6 +61,7 @@ export const READ_CHANNELS = [
   // O terminal preferido, so leitura. Gravar vai por `sessions.setTerminal`.
   "sessions.terminal",
   "sessions.installedTerminals",
+  "sessions.list",
   // As sessões do Claude Code da máquina. Só lê `~/.claude`, nunca escreve.
   "claudeSessions.list",
   // Prompts salvos, para a aba de acoes da iniciativa copiar.
@@ -245,6 +246,7 @@ export const ACTION_CHANNELS = [
   // clique de quem usa, e o terminal preferido e preferencia gravada.
   "sessions.open",
   "sessions.readHandoff",
+  "sessions.close",
   "sessions.setTerminal",
   // Marcar sessão do Claude Code como terminada, desfazer a marca e retomar
   // no terminal: preferência gravada e processo subindo, atrás de um clique.
