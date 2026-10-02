@@ -201,7 +201,7 @@ export function registerConfigTools(server: McpServer): void {
     "set_trigger",
     {
       description:
-        "Registers or updates an agent trigger. It starts disabled: enabling it is the step that lets the agent wake up on its own.",
+        "Registers or updates an agent trigger. It starts disabled, and only a person enables it, in the app or the command line. Changing the config of an enabled trigger disables it again.",
       inputSchema: {
         agentId: z.string(),
         config: z
@@ -210,7 +210,7 @@ export function registerConfigTools(server: McpServer): void {
             'by kind: {"kind":"schedule","everyMinutes":30}, {"kind":"webhook","path":"..."}, {"kind":"poll","source":"github","owner":"...","repoMatch":"...","authorship":"any|mine|others","includeDrafts":false} {"kind":"mcp-poll","server":"...","tool":"..."} , {"kind":"slack-inbox","mentions":true,"dms":true}, only with Slack connected through the official server, or {"kind":"teams-inbox","mentions":true,"dms":true,"channels":[{"teamId":"...","channelId":"...","label":"..."}]}, only with Teams connected (channels needs the channel scopes)',
           ),
         triggerId: z.string().optional().describe("when absent, registers a new one; when present, updates that one"),
-        enabled: z.boolean().optional(),
+        enabled: z.boolean().optional().describe("only false is accepted here"),
       },
     },
     async ({ agentId, config, triggerId, enabled }) =>
@@ -218,6 +218,7 @@ export function registerConfigTools(server: McpServer): void {
         triggerService.set(agentId, config as unknown as TriggerConfigInput, {
           id: triggerId,
           enabled,
+          fromTool: true,
         }),
       ),
   );

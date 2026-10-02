@@ -61,8 +61,13 @@ export class TriggerService {
   async set(
     agentId: string,
     config: TriggerConfigInput,
-    options: { id?: string; enabled?: boolean } = {},
+    options: { id?: string; enabled?: boolean; fromTool?: boolean } = {},
   ): Promise<TriggerEntry> {
+    // Ligar é o passo que deixa o agent acordar e gastar sozinho, e só uma
+    // pessoa dá esse passo, pela interface ou pela linha de comando.
+    if (options.fromTool && options.enabled === true) {
+      throw new Error("gatilho so e ligado por uma pessoa, pela interface ou pela linha de comando");
+    }
     if (isReserved(agentId)) throw new Error(`"${agentId}" e um agent do sistema e nao aceita escrita`);
     const parsed = TriggerConfig.parse(config);
     const agent = await this.db
@@ -81,7 +86,12 @@ export class TriggerService {
         .set({
           kind: parsed.kind,
           config: parsed as unknown as object,
-          enabled: options.enabled ?? existing.enabled,
+          // Pela ferramenta, trocar o que um gatilho ligado escuta desliga o
+          // gatilho: a pessoa ligou para aquela configuração, não para esta.
+          enabled:
+            options.fromTool && JSON.stringify(existing.config) !== JSON.stringify(parsed)
+              ? false
+              : (options.enabled ?? existing.enabled),
         })
         .where(eq(schema.triggers.id, existing.id))
         .returning();
