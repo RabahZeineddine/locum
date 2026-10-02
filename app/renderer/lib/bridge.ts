@@ -101,6 +101,8 @@ export const READ_CHANNELS = [
   // nenhum, porque quem tem a do Slack é o servidor MCP.
   "slack.get",
   "chat.status",
+  // Se há quem escreva rascunho de agent, e qual modelo. Não chama modelo.
+  "agents.aiStatus",
   "metrics.report",
   "machine.profile",
   "triggers.list",
@@ -240,6 +242,10 @@ export const ACTION_CHANNELS = [
   "claudeSessions.markDone",
   "claudeSessions.reopen",
   "claudeSessions.resume",
+  // Rascunho de agent pela descrição: chama modelo e custa, então é clique. O
+  // rascunho volta para a tela, e salvar é outro clique.
+  "agents.aiDraft",
+  "agents.aiSave",
 ] as const satisfies readonly BridgeChannel[];
 
 export type ActionChannel = (typeof ACTION_CHANNELS)[number];

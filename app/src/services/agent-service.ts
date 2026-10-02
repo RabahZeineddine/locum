@@ -324,6 +324,27 @@ export class AgentService {
   }
 
   /**
+   * Grava o rascunho que o "Criar com IA" montou, depois do clique de quem
+   * pediu.
+   *
+   * Grava como agent, e não como pessoa, mesmo vindo de um clique: o conteúdo
+   * foi escrito por um modelo, e é o rebaixamento de modo que garante que passo
+   * de ação nasce em `approve`. Agent que já existe é recusado, porque o
+   * rascunho é para criar e não deve virar versão nova de outro por coincidência
+   * de nome.
+   */
+  async saveDraft(spec: AgentSpec, descricao: string): Promise<AgentVersion> {
+    const parsed = AgentSpec.parse(spec);
+    if (!ID_DE_AGENT.test(parsed.id)) {
+      throw new Error("identificador em minúsculas, números e hífen, de 2 a 63 caracteres");
+    }
+    refuseReserved(parsed.id);
+    if (await this.get(parsed.id)) throw new Error(`já existe um agent "${parsed.id}"`);
+    const pedido = descricao.trim().replace(/\s+/g, " ").slice(0, 200);
+    return this.upsert(parsed, `criado com IA: ${pedido}`, "agent");
+  }
+
+  /**
    * Grava um agent a partir do texto de um arquivo, como uma pessoa faria.
    *
    * É a porta de entrada de agent no Locum, que não traz nenhum de fábrica:

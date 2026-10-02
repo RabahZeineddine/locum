@@ -162,6 +162,20 @@
     "new": {
       "button": "New agent",
       "from": "Start from which agent"
+    },
+    "ai": {
+      "language": "Write the name, step names and prompts in English.",
+      "button": "Create with AI",
+      "title": "Describe the agent, AI drafts it",
+      "hint": "Written by {{model}}, using only what exists on this machine. Nothing is saved before you look.",
+      "describe": "What the agent does",
+      "placeholder": "E.g.: on every new PR in the repository, summarize the change and post it to the team Slack channel.",
+      "drafting": "Drafting…",
+      "draft": "Draft agent",
+      "again": "Draft again",
+      "save": "Save and edit",
+      "saving": "Saving…",
+      "review": "Written by {{model}}. Every action starts asking for approval, and the agent only runs after you set its trigger."
     }
   },
   "assistant": {

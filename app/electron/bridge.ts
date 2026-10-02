@@ -1,6 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, type WebContents } from "electron";
 import { readFile, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
+import { agentBuilder, criadorDisponivel } from "./agent-builder.js";
 import { chatSession } from "./chat.js";
 import {
   BRIDGE_CHANNELS,
@@ -131,6 +132,9 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
       await agentService.upsert(spec, "resposta pronta", "human");
       return { agentId: spec.id, created: true };
     },
+    "agents.aiStatus": () => criadorDisponivel(),
+    "agents.aiDraft": (descricao) => agentBuilder.criar(descricao),
+    "agents.aiSave": (spec, descricao) => agentService.saveDraft(spec, descricao),
     "agents.budgets": () => agentService.budgets(),
 
     "initiatives.list": () => initiativeService.list(),

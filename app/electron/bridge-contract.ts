@@ -1,4 +1,5 @@
 import type { AgentService } from "../src/services/agent-service.js";
+import type { RascunhoDeAgent } from "../src/services/agent-builder.js";
 import type { ApprovalService } from "../src/services/approval-service.js";
 import type { ClaudeCodeService } from "../src/services/claude-code-service.js";
 import type { ConnectionService } from "../src/services/connection-service.js";
@@ -93,6 +94,13 @@ interface ServiceApi {
    * editado, e o clique não é para desfazer isso.
    */
   "agents.installReply": (service: "slack" | "teams") => Promise<{ agentId: string; created: boolean }>;
+  /**
+   * "Criar com IA": se há modelo para escrever, o rascunho montado a partir
+   * da descrição (sem gravar nada) e a gravação dele depois do clique.
+   */
+  "agents.aiStatus": () => Promise<{ disponivel: boolean; modelo: string | null }>;
+  "agents.aiDraft": (descricao: string) => Promise<RascunhoDeAgent>;
+  "agents.aiSave": AgentService["saveDraft"];
 
   /**
    * Leitura da tela de iniciativas: a lista crua, o detalhe composto (linha
@@ -412,6 +420,9 @@ export const BRIDGE_CHANNELS = [
   "agents.importFile",
   "agents.exportFile",
   "agents.installReply",
+  "agents.aiStatus",
+  "agents.aiDraft",
+  "agents.aiSave",
   "initiatives.list",
   "initiatives.detail",
   "initiatives.context",

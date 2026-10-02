@@ -1444,6 +1444,31 @@ async function checkAgents(window: BrowserWindow): Promise<string> {
     throw new Error(`o agent novo ofereceu ${novo} base(s) para ${doServico.length} agent(s)`);
   }
 
+  // Criar com IA só aparece quando há quem escreva o rascunho. O smoke abre o
+  // painel e não pede rascunho: isso chamaria modelo.
+  const { criadorDisponivel } = await import("./agent-builder.js");
+  const criador = await criadorDisponivel();
+  const painelDaIa = (await window.webContents.executeJavaScript(
+    `(async () => {
+      for (let i = 0; i < 50; i++) {
+        const botao = document.querySelector("[data-locum-agent-ia]");
+        if (botao !== null) {
+          botao.click();
+          for (let j = 0; j < 50; j++) {
+            if (document.querySelector("[data-locum-probe=agent-ia] textarea") !== null) return "aberto";
+            await new Promise((r) => setTimeout(r, 50));
+          }
+          return "sem painel";
+        }
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      return "sem botao";
+    })()`,
+  )) as string;
+  if (painelDaIa !== (criador.disponivel ? "aberto" : "sem botao")) {
+    throw new Error(`criar com IA: ${painelDaIa} com criador ${criador.disponivel ? "disponível" : "indisponível"}`);
+  }
+
   // O alvo e quem tem historico: comparar versao exige duas, e um agent de uma
   // versao so provaria a tela de lista mais uma vez.
   let alvo: string | undefined;

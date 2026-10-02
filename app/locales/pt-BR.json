@@ -169,6 +169,20 @@
     "new": {
       "button": "Novo agent",
       "from": "A partir de qual agent"
+    },
+    "ai": {
+      "language": "Escreva name, nomes de passo e prompts em português.",
+      "button": "Criar com IA",
+      "title": "Descreva o agent, a IA monta o rascunho",
+      "hint": "Quem escreve é {{model}}, usando só o que existe nesta máquina. Nada é salvo antes de você olhar.",
+      "describe": "O que o agent faz",
+      "placeholder": "Ex.: a cada PR novo no repositório, resume a mudança e posta no canal do time no Slack.",
+      "drafting": "Montando o rascunho…",
+      "draft": "Montar rascunho",
+      "again": "Montar de novo",
+      "save": "Salvar e editar",
+      "saving": "Salvando…",
+      "review": "Escrito por {{model}}. Toda ação nasce pedindo aprovação, e o agent só roda depois que você definir o gatilho."
     }
   },
   "assistant": {

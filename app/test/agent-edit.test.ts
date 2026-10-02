@@ -103,3 +103,14 @@ test("a fila diz os modos de cada ação, perguntando ao handler", async () => {
   assert.equal(porAcao.get("github.review_comment")!.holdsByContent, true);
   assert.equal(porAcao.get("github.review_comment")!.modes.length, 3);
 });
+
+test("rascunho do Criar com IA nasce em approve, com a descrição na nota, e não pisa em agent existente", async () => {
+  const service = new AgentService(bancoDeTeste());
+
+  const nova = await service.saveDraft(spec("auto"), "revisa   PR\nde pagamento");
+
+  assert.equal(nova.version, 1);
+  assert.equal(nova.note, "criado com IA: revisa PR de pagamento");
+  assert.equal(await modo(service, "revisor"), "approve");
+  await assert.rejects(service.saveDraft(spec(), "de novo"), /já existe/);
+});

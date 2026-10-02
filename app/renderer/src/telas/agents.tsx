@@ -10,7 +10,7 @@ import { LinhaDoOrcamento, Observados, Secao } from "./configuracao";
 import { comContexto, diffJson, type LinhaDoDiff } from "@/lib/diff";
 import { rotuloDeEstado, rotuloDoModelo } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, Plus, X } from "lucide-react";
+import { ArrowLeft, Plus, Sparkles, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { useCurrentInitiative } from "../current-initiative";
@@ -46,6 +46,8 @@ function Lista({ navegar }: { navegar: TelaProps["navegar"] }) {
   const todasAsLinhas = agents.data ?? [];
   const [erroDeImportar, setErroDeImportar] = useState<string | null>(null);
   const [criando, setCriando] = useState(false);
+  const criador = useRead("agents.aiStatus");
+  const [criandoComIa, setCriandoComIa] = useState(false);
 
   // O chip so aparece quando ha iniciativa atual; filtrar por ela e um clique
   // a mais, nunca o padrao, porque quem entra em agents sem escolher iniciativa
@@ -82,8 +84,29 @@ function Lista({ navegar }: { navegar: TelaProps["navegar"] }) {
             <Button className="cursor-pointer" data-locum-importar="" onClick={importar} variant="secondary">
               {t("agents.io.import")}
             </Button>
+            {criador.data?.disponivel === true ? (
+              <Button
+                className="ia-gradiente cursor-pointer border-0 text-white hover:opacity-90"
+                data-locum-agent-ia=""
+                onClick={() => {
+                  setCriando(false);
+                  setCriandoComIa((v) => !v);
+                }}
+              >
+                <Sparkles aria-hidden className="size-4" />
+                {t("agents.ai.button")}
+              </Button>
+            ) : null}
             {todasAsLinhas.length === 0 ? null : (
-              <Button className="cursor-pointer" data-locum-agent-novo="" onClick={() => setCriando((v) => !v)}>
+              <Button
+                className="cursor-pointer"
+                data-locum-agent-novo=""
+                onClick={() => {
+                  setCriandoComIa(false);
+                  setCriando((v) => !v);
+                }}
+                variant={criador.data?.disponivel === true ? "secondary" : "default"}
+              >
                 <Plus aria-hidden className="size-4" />
                 {t("agents.new.button")}
               </Button>
@@ -131,6 +154,17 @@ function Lista({ navegar }: { navegar: TelaProps["navegar"] }) {
               : t("agents.count", { count: linhas.length })}
         </div>
       </div>
+
+      {criandoComIa && criador.data?.disponivel === true && (
+        <CriarComIa
+          aoCancelar={() => setCriandoComIa(false)}
+          aoCriar={(novo) => {
+            editarAoAbrir = novo;
+            navegar("agents", novo);
+          }}
+          modelo={criador.data.modelo}
+        />
+      )}
 
       {criando && todasAsLinhas.length > 0 && (
         <NovoAgent
@@ -597,6 +631,145 @@ function NovoAgent({
         </select>
       </label>
       <Duplicar aoCancelar={aoCancelar} aoCriar={aoCriar} de={escolhida.id} key={escolhida.id} nome={escolhida.nome} />
+    </div>
+  );
+}
+
+/**
+ * Agent novo a partir de uma descrição.
+ *
+ * O modelo escreve o rascunho e a tela mostra o que saiu antes de gravar. O
+ * rascunho nasce sem gatilho e com toda ação em aprovação: salvo, ele abre em
+ * edição e só roda quando a pessoa disser quando.
+ */
+function CriarComIa({
+  aoCancelar,
+  aoCriar,
+  modelo,
+}: {
+  aoCancelar: () => void;
+  aoCriar: (id: string) => void;
+  modelo: string | null;
+}) {
+  const { t } = useTranslation();
+  const [descricao, setDescricao] = useState("");
+  const [estado, setEstado] = useState<"editando" | "montando" | "salvando">("editando");
+  const [erro, setErro] = useState<string | null>(null);
+  const [rascunho, setRascunho] = useState<ReadResult<"agents.aiDraft"> | null>(null);
+  const curta = descricao.trim().length < 10;
+
+  async function montar() {
+    setEstado("montando");
+    setErro(null);
+    try {
+      setRascunho(await call("agents.aiDraft", descricao));
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : String(e));
+    }
+    setEstado("editando");
+  }
+
+  async function salvar() {
+    if (rascunho === null) return;
+    setEstado("salvando");
+    setErro(null);
+    try {
+      await call("agents.aiSave", rascunho.spec, descricao);
+      aoCriar(rascunho.spec.id);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : String(e));
+      setEstado("editando");
+    }
+  }
+
+  return (
+    <div className="superficie ia-aurora flex max-w-2xl flex-col gap-3 rounded-xl px-4 py-4" data-locum-probe="agent-ia">
+      <div className="flex items-start gap-3">
+        <span className="ia-gradiente flex size-8 shrink-0 items-center justify-center rounded-lg text-white">
+          <Sparkles aria-hidden className="size-4" />
+        </span>
+        <div>
+          <p className="text-sm font-medium">{t("agents.ai.title")}</p>
+          <p className="text-muted-foreground text-xs">
+            {t("agents.ai.hint", { model: modelo === null ? "" : rotuloDoModelo(modelo) })}
+          </p>
+        </div>
+      </div>
+
+      <label className="flex flex-col gap-1 text-xs">
+        <span className="text-muted-foreground">{t("agents.ai.describe")}</span>
+        <textarea
+          className="border-border bg-background focus-visible:border-primary/50 min-h-24 resize-y rounded-lg border px-3 py-2 text-sm leading-relaxed outline-none focus-visible:shadow-[0_0_0_3px_color-mix(in_oklab,var(--primary)_15%,transparent)]"
+          disabled={estado !== "editando"}
+          onChange={(e) => setDescricao(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !curta) void montar();
+          }}
+          placeholder={t("agents.ai.placeholder")}
+          value={descricao}
+        />
+      </label>
+
+      {estado === "montando" ? (
+        <p className="ia-texto animate-pulse text-xs font-medium">{t("agents.ai.drafting")}</p>
+      ) : null}
+      {erro === null ? null : <p className="text-sev-critical text-xs">{erro}</p>}
+
+      {rascunho === null || estado === "montando" ? null : (
+        <div className="border-border bg-background/60 flex flex-col gap-2 rounded-lg border px-3 py-3" data-locum-agent-rascunho="">
+          <div className="flex flex-wrap items-baseline gap-x-2">
+            <p className="text-sm font-medium">{rascunho.spec.name}</p>
+            <code className="text-muted-foreground text-xs">{rascunho.spec.id}</code>
+          </div>
+          <ol className="flex flex-col gap-1.5">
+            {rascunho.spec.steps.map((passo, i) => (
+              <li className="flex items-center gap-2 text-xs" key={passo.key}>
+                <span className="bg-accent text-muted-foreground flex size-5 shrink-0 items-center justify-center rounded-full text-[10px]">
+                  {i + 1}
+                </span>
+                <span className="font-medium">{passo.name}</span>
+                <Badge className="font-mono text-[10px]" variant="secondary">
+                  {passo.type === "model" ? rotuloDoModelo(passo.model) : passo.action}
+                </Badge>
+              </li>
+            ))}
+          </ol>
+          <p className="text-muted-foreground text-xs">
+            {t("agents.ai.review", { model: rotuloDoModelo(rascunho.modelo) })}
+          </p>
+        </div>
+      )}
+
+      <div className="flex flex-wrap gap-2">
+        {rascunho === null || estado === "montando" ? (
+          <Button
+            className="cursor-pointer"
+            disabled={curta || estado !== "editando"}
+            onClick={() => void montar()}
+            size="sm"
+          >
+            {t("agents.ai.draft")}
+          </Button>
+        ) : (
+          <>
+            <Button className="cursor-pointer" disabled={estado !== "editando"} onClick={() => void salvar()} size="sm">
+              {estado === "salvando" ? t("agents.ai.saving") : t("agents.ai.save")}
+            </Button>
+            <Button
+              className="cursor-pointer"
+              disabled={estado !== "editando" || curta}
+              onClick={() => void montar()}
+              size="sm"
+              variant="secondary"
+            >
+              {t("agents.ai.again")}
+            </Button>
+          </>
+        )}
+        <Button className="cursor-pointer" onClick={aoCancelar} size="sm" variant="ghost">
+          {t("agents.editor.cancel")}
+        </Button>
+      </div>
     </div>
   );
 }
