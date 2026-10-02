@@ -38,21 +38,37 @@ export function mergeRegistration(atual: McpServerConfig | undefined, novo: McpS
   const herda = <K extends keyof McpServerInput>(campo: K, deAtual: McpServerInput[K]) =>
     novo[campo] === undefined && deAtual !== undefined ? { [campo]: deAtual } : {};
   const mesmoTransporte = atual.transport === novo.transport;
+  // Segredo do cadastro é do destino, e não do nome. Trocar o comando ou o
+  // endereço e herdar `env` ou `headers` entregaria o token digitado para o
+  // programa novo, que pode ser qualquer um.
+  const mesmoComando = mesmoTransporte && (novo.command === undefined || mesmaLista(novo.command, atual.command));
+  const mesmoEndereco = mesmoTransporte && (novo.url === undefined || novo.url === atual.url);
+  const segredos = mesmoComando && mesmoEndereco;
   return {
     ...novo,
-    ...(novo.env !== undefined ? { env: restoreHidden(atual.env, novo.env) } : {}),
-    ...(novo.headers !== undefined ? { headers: restoreHidden(atual.headers, novo.headers) } : {}),
+    ...(novo.env !== undefined ? { env: segredos ? restoreHidden(atual.env, novo.env) : semOcultos(novo.env) } : {}),
+    ...(novo.headers !== undefined
+      ? { headers: segredos ? restoreHidden(atual.headers, novo.headers) : semOcultos(novo.headers) }
+      : {}),
     ...herda("scope", atual.scope),
     ...herda("idleTimeoutMs", atual.idleTimeoutMs),
     ...(mesmoTransporte
       ? {
           ...herda("command", atual.command),
-          ...herda("env", atual.env),
           ...herda("url", atual.url),
-          ...herda("headers", atual.headers),
+          ...(segredos ? { ...herda("env", atual.env), ...herda("headers", atual.headers) } : {}),
         }
       : {}),
   };
+}
+
+function mesmaLista(a: string[], b: string[] | undefined): boolean {
+  return b !== undefined && a.length === b.length && a.every((v, i) => v === b[i]);
+}
+
+/** O marcador de valor oculto, sem o cadastro antigo para devolvê-lo, cai fora. */
+function semOcultos(valores: Record<string, string>): Record<string, string> {
+  return restoreHidden(undefined, valores) ?? {};
 }
 
 export function registerConfigTools(server: McpServer): void {

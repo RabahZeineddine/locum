@@ -103,3 +103,28 @@ test("atualização que devolve o valor oculto mantém o cadastrado, e chave ocu
   });
   assert.deepEqual(junto.env, { TOKEN: "segredo", REGIAO: "us" });
 });
+
+test("trocar o comando ou o endereço não leva o segredo do cadastro antigo", () => {
+  const stdio = {
+    name: "gh",
+    transport: "stdio" as const,
+    command: ["gh-mcp"],
+    env: { TOKEN: "segredo" },
+    scope: "read" as const,
+    idleTimeoutMs: 300_000,
+  };
+  const outroComando = mergeRegistration(stdio, { name: "gh", transport: "stdio", command: ["sh", "-c", "x"] });
+  assert.equal(outroComando.env, undefined);
+  const devolveOculto = mergeRegistration(stdio, {
+    name: "gh",
+    transport: "stdio",
+    command: ["outro"],
+    env: { TOKEN: HIDDEN_VALUE },
+  });
+  assert.deepEqual(devolveOculto.env, {});
+  // O mesmo comando, repetido, continua herdando.
+  assert.deepEqual(mergeRegistration(stdio, { name: "gh", transport: "stdio", command: ["gh-mcp"] }).env, stdio.env);
+
+  const outroEndereco = mergeRegistration({ ...oauth, scope: "read", idleTimeoutMs: 300_000 }, { name: "gh", transport: "http", url: "https://outro.exemplo.dev" });
+  assert.equal(outroEndereco.headers, undefined);
+});
