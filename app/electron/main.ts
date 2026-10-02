@@ -1791,7 +1791,11 @@ async function checkConfig(window: BrowserWindow): Promise<string> {
   }
 
   // Credencial recusada vira aviso na Hoje, e some quando o servidor volta.
-  await mcpService.recordConnection(FIXTURE_SERVER, { ok: false, error: "HTTP 401: Unauthorized" });
+  // A falha vai carimbada à frente do relógio: a tela ainda pode estar listando
+  // as ferramentas do servidor, e essa conexão grava um OK que, com o carimbo de
+  // agora, chegaria depois da falha e apagaria o aviso antes da Hoje ler.
+  const adiante = Date.now() + 60 * 60_000;
+  await mcpService.recordConnection(FIXTURE_SERVER, { ok: false, error: "HTTP 401: Unauthorized" }, new Date(adiante));
   try {
     await irPara(window, "hoje");
     const avisados = await esperarProbe<string>(
@@ -1803,7 +1807,7 @@ async function checkConfig(window: BrowserWindow): Promise<string> {
       throw new Error(`a Hoje avisou ${avisados} e não ${FIXTURE_SERVER}`);
     }
   } finally {
-    await mcpService.recordConnection(FIXTURE_SERVER, { ok: true });
+    await mcpService.recordConnection(FIXTURE_SERVER, { ok: true }, new Date(adiante + 1));
   }
   await irPara(window, "configuracao");
   if (resultado.ferramentas !== doServico.toolCount) {
