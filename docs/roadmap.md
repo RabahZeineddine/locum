@@ -99,7 +99,9 @@ iniciativa por `--append-system-prompt` e `--settings` negando escrita em
 
 **I4, presets MCP genéricos.** GitHub, Jira, Confluence e Notion como preset
 público, sem endereço, projeto ou token de empresa, ligados à iniciativa pela
-tab de integrações.
+tab de integrações. Coberto pela vitrine de conexões, que traz GitHub,
+Atlassian (Jira e Confluence), Notion, Linear e outros com endereço público e
+OAuth de um clique.
 
 **I5, uso real.** Ajustes a partir do uso do dia a dia: se status `paused` ou
 `done` da iniciativa deve bloquear gatilho de agent, e o que mais o uso pedir.
@@ -113,7 +115,9 @@ chat traduzidas para inglês, sem mudança de comportamento.
 
 **O2.** `README.md` em inglês, o atual como `README.pt-BR.md`, e
 `CONTRIBUTING.md` com o passo a passo de rodar, verificar e adicionar idioma
-novo. Opcional: renomear identificadores em português do código, com
+novo. README e CONTRIBUTING em inglês prontos em 01/10, com as versões em
+português ao lado (`README.pt-BR.md`, `CONTRIBUTING.pt-BR.md`); o rename de
+identificadores segue opcional. Opcional: renomear identificadores em português do código, com
 redirecionamento do hash antigo para os ids de rota que mudarem
 (`execucoes`, `configuracao`, `revisao`).
 

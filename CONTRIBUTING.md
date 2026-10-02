@@ -1,127 +1,130 @@
-# Contribuindo com o Locum
+# Contributing to Locum
 
-Obrigado por ajudar. Este guia cobre o que precisa para rodar o projeto, como o
-código está organizado, as regras que o projeto não abre mão e como uma mudança
-chega até o aplicativo instalado.
+**English** · [Português](CONTRIBUTING.pt-BR.md)
 
-## Antes de começar
+Thanks for helping. This guide covers what you need to run the project, how the
+code is organized, the rules the project does not bend on, and how a change
+reaches the installed app.
 
-Leia [docs/estado-atual.md](docs/estado-atual.md). Ele diz o que existe, o que
-falta e, principalmente, as armadilhas que já custaram tempo. O
-[roadmap](docs/roadmap.md) diz para onde o projeto vai, e os ADRs em
-[docs/adr/](docs/adr/) explicam por que as coisas são como são. Mudança que
-contraria um ADR é bem-vinda, mas começa por uma conversa, não por um PR.
+## Before you start
 
-## Ambiente
+Read [docs/estado-atual.md](docs/estado-atual.md). It says what exists, what is
+missing and, above all, the pitfalls that have already cost time. The
+[roadmap](docs/roadmap.md) says where the project is going, and the ADRs in
+[docs/adr/](docs/adr/) explain why things are the way they are. A change that
+goes against an ADR is welcome, but it starts with a conversation, not a PR.
+The project documents are in Portuguese.
 
-- macOS (o app usa keychain, bandeja e empacotamento do macOS)
-- Node 22 ou mais novo, com npm
-- opcional: o binário do Claude Code, para o runtime por assinatura e para
-  testar o servidor MCP
+## Environment
+
+- macOS (the app uses the macOS keychain, tray and packaging)
+- Node 22 or newer, with npm
+- optional: the Claude Code binary, for the subscription runtime and to test the
+  MCP server
 
 ```bash
 cd app
 npm install
-cp .env.example .env   # só para a linha de comando; a interface guarda tudo no keychain
+cp .env.example .env   # only for the command line; the interface keeps everything in the keychain
 ```
 
-O banco fica em `~/Library/Application Support/locum`. Para não misturar com o
-seu uso real, aponte `LOCUM_HOME` para outra pasta enquanto desenvolve.
+The database lives in `~/Library/Application Support/locum`. To keep it apart
+from your real use, point `LOCUM_HOME` to another folder while you develop.
 
-## Comandos do dia a dia
+## Everyday commands
 
-Todos rodam dentro de `app/`.
+All of them run inside `app/`.
 
-| comando | o que faz |
+| command | what it does |
 |---|---|
-| `npm start` | build e abre o app a partir do código |
-| `npm test` | testes em `test/**/*.test.ts`, com `node:test` |
-| `npm run typecheck` | TypeScript do processo principal e da interface |
-| `npm run check:i18n` | confere se `locales/pt-BR.json` e `locales/en.json` têm as mesmas chaves |
-| `npm run smoke` | sobe o Electron em modo de smoke, percorre as telas e faz o handshake MCP |
-| `npm run verify` | typecheck, i18n, build e smoke de uma vez |
-| `npm run dev <comando>` | linha de comando do núcleo (`import`, `demo`, `review`, `poll`, `inbox`, ...) |
-| `npm run dist:dir` | empacota sem gerar `.dmg`, para testar o app empacotado |
+| `npm start` | build and open the app from source |
+| `npm test` | tests in `test/**/*.test.ts`, with `node:test` |
+| `npm run typecheck` | TypeScript for the main process and the interface |
+| `npm run check:i18n` | checks that `locales/pt-BR.json` and `locales/en.json` have the same keys |
+| `npm run smoke` | starts Electron in smoke mode, walks through the screens and does the MCP handshake |
+| `npm run verify` | typecheck, i18n, build and smoke in one go |
+| `npm run dev <command>` | the core's command line (`import`, `demo`, `review`, `poll`, `inbox`, ...) |
+| `npm run dist:dir` | packages without building a `.dmg`, to test the packaged app |
 
-Antes de abrir um PR, `npm test` e `npm run verify` precisam sair zero.
+Before opening a PR, `npm test` and `npm run verify` must exit with zero.
 
-## Onde fica cada coisa
+## Where things live
 
-- `app/src/services/` é a camada de serviço. Interface, linha de comando e
-  servidor MCP chamam os mesmos serviços; regra de negócio mora aqui e em mais
-  nenhum lugar.
-- `app/src/executor/` é a máquina de estado que roda um agent passo a passo, com
-  orçamento e retomada.
-- `app/src/approval/` é a porta única de saída para serviço externo.
-- `app/src/runtimes/` tem o runtime nativo (AI SDK) e o do Claude Code.
-- `app/src/mcp-server/` são as ferramentas que o Locum expõe por MCP.
-- `app/electron/bridge-contract.ts` declara cada canal entre interface e
-  processo principal; `bridge.ts` liga o canal ao serviço.
-- `app/renderer/src/telas/` são as telas.
+- `app/src/services/` is the service layer. The interface, the command line and
+  the MCP server call the same services; business rules live here and nowhere
+  else.
+- `app/src/executor/` is the state machine that runs an agent step by step, with
+  budget and resume.
+- `app/src/approval/` is the single exit to outside services.
+- `app/src/runtimes/` holds the native runtime (AI SDK) and the Claude Code one.
+- `app/src/mcp-server/` holds the tools Locum exposes over MCP.
+- `app/electron/bridge-contract.ts` declares each channel between the interface
+  and the main process; `bridge.ts` wires the channel to the service.
+- `app/renderer/src/telas/` holds the screens.
 
-## Regras que não abrem exceção
+## Rules without exceptions
 
-**Escrita externa passa pela aprovação.** Nenhum código novo publica, comenta,
-envia ou altera nada fora da máquina sem passar por `approval/`. Ferramenta MCP
-do próprio Locum não aprova nem publica; isso é decisão do ADR 0002.
+**External writes go through approval.** No new code publishes, comments, sends
+or changes anything outside the machine without going through `approval/`.
+Locum's own MCP tools neither approve nor publish; that is the decision in
+ADR 0002.
 
-**Credencial mora no keychain.** Token, chave de API e segredo de OAuth vão pelo
-`SecretService`. Nunca em banco, log, arquivo de configuração ou mensagem de
-erro.
+**Credentials live in the keychain.** Tokens, API keys and OAuth secrets go
+through `SecretService`. Never in the database, a log, a config file or an error
+message.
 
-**Conteúdo de fora é dado, não instrução.** Texto de PR, mensagem de Slack ou
-resposta de servidor MCP entra no prompt marcado como dado. Veja o ADR 0003.
+**Outside content is data, not instructions.** PR text, a Slack message or an
+MCP server response enters the prompt marked as data. See ADR 0003.
 
-**Todo texto da interface vem do i18n.** Nada de string literal na tela. Chave
-nova entra nos dois arquivos de `locales/`, e o `check:i18n` cobra.
+**Every interface string comes from i18n.** No string literals on screen. A new
+key goes into both files in `locales/`, and `check:i18n` enforces it.
 
-**Tela nova ou mudada entra no smoke.** O smoke em `electron/main.ts` procura
-marcadores `data-locum-*` nas telas. Se a sua mudança move um elemento que ele
-procura, ajuste o smoke junto.
+**New or changed screens go into the smoke test.** The smoke test in
+`electron/main.ts` looks for `data-locum-*` markers on the screens. If your
+change moves an element it looks for, adjust the smoke test with it.
 
-**Sem dado de empresa no repositório.** Exemplo, fixture e teste usam nomes
-genéricos. Nada de nome de cliente, repositório interno, URL corporativa ou
-token de verdade.
+**No company data in the repository.** Examples, fixtures and tests use generic
+names. No customer names, internal repositories, corporate URLs or real tokens.
 
-## Estilo
+## Style
 
-- Identificadores em inglês. Comentários, documentação e mensagens de commit em
-  português.
-- Comentário explica o porquê, não repete o que o código diz.
-- Siga o jeito do arquivo que você está mexendo antes de qualquer preferência
-  pessoal.
-- Teste novo segue o padrão dos que existem: banco e cofre de rascunho em pasta
-  temporária, serviço externo falso subindo em `127.0.0.1`.
+- Identifiers in English. Comments, documentation and commit messages in
+  Portuguese, for now.
+- A comment explains why, it does not repeat what the code says.
+- Follow the style of the file you are touching before any personal
+  preference.
+- A new test follows the pattern of the existing ones: scratch database and
+  vault in a temporary folder, fake outside service listening on `127.0.0.1`.
 
-## Commits e PRs
+## Commits and PRs
 
-- Um ramo por assunto, saindo do `main`.
-- Mensagem no formato `tipo: o que mudou`, com `feat`, `fix`, `chore`, `docs`,
-  `refactor` ou `test`. Exemplo: `feat: vitrine de conexões com OAuth de um
-  clique`.
-- PR pequeno e com um assunto só. A descrição diz o que muda, por que, e como
-  você verificou.
-- Se a mudança altera o que existe ou o que falta, atualize
-  `docs/estado-atual.md` no mesmo PR.
+- One branch per topic, off `main`.
+- Message in the form `type: what changed`, with `feat`, `fix`, `chore`,
+  `docs`, `refactor` or `test`. Example: `feat: vitrine de conexões com OAuth de
+  um clique`.
+- Small PRs with a single topic. The description says what changes, why, and
+  how you checked it.
+- If the change alters what exists or what is missing, update
+  `docs/estado-atual.md` in the same PR.
 
 ## Release
 
-Release é feita pelo mantenedor, a partir do `main`:
+Releases are made by the maintainer, from `main`:
 
 ```bash
 cd app
-npm run release              # patch: 0.1.4 vira 0.1.5
+npm run release              # patch: 0.1.4 becomes 0.1.5
 npm run release -- minor
-npm run release -- --dry-run # tudo menos commit, push e publicação
+npm run release -- --dry-run # everything except commit, push and publishing
 ```
 
-O script exige árvore limpa e `main` igual ao `origin/main`, recusa se houver um
-Locum aberto a partir de `app/release/`, roda a bateria inteira, empacota e
-publica o release no GitHub com o `locum-update.json`. Os apps instalados pegam a
-versão nova sozinhos.
+The script requires a clean tree and `main` equal to `origin/main`, refuses to
+run if a Locum started from `app/release/` is open, runs the full battery,
+packages, and publishes the GitHub release with `locum-update.json`. Installed
+apps pick up the new version on their own.
 
-## Dúvida ou ideia
+## Questions or ideas
 
-Abra uma issue descrevendo o problema antes de escrever muito código. Para
-mudança de desenho, uma issue curta com o que você quer mudar e por quê poupa
-retrabalho dos dois lados.
+Open an issue describing the problem before writing a lot of code. For a design
+change, a short issue with what you want to change and why saves rework on both
+sides.

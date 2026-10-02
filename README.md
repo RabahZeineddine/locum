@@ -1,133 +1,141 @@
 # Locum
 
-*Locum: quem assume o seu posto enquanto você não está.*
+**English** · [Português](README.pt-BR.md)
 
-Aplicativo para macOS que roda agents de IA em segundo plano e faz parte do
-trabalho de engenharia no seu lugar: revisa pull requests, investiga, cruza
-contexto de várias ferramentas e escreve o rascunho. O que o agent produz não
-sai sozinho. Cada ação que escreve em serviço de fora (comentar no GitHub,
-responder no Slack, mexer num card) para numa fila e espera a sua aprovação.
+*Locum: the one who covers your post while you are away.*
 
-## Por que existe
+A macOS app that runs AI agents in the background and takes over part of the
+engineering work for you: it reviews pull requests, investigates, pulls context
+from several tools and writes the draft. Nothing an agent produces goes out on
+its own. Every action that writes to an outside service (commenting on GitHub,
+replying in Slack, touching a card) stops in a queue and waits for your
+approval.
 
-Assistente de IA hoje é conversa: você abre, pede, espera, copia. O trabalho
-repetitivo de quem cuida de um time (olhar todo PR que chega, ler o canal,
-lembrar do card parado) continua sendo puxado à mão.
+## Why it exists
 
-O Locum inverte isso. Você descreve o trabalho uma vez, como um agent com
-passos, modelos e ferramentas, e diz quando ele roda: um PR novo, uma mensagem
-num canal, um horário. Ele roda sozinho, na sua máquina, e entrega o resultado
-numa fila onde você aprova, ajusta ou descarta.
+AI assistants today are conversations: you open one, ask, wait, copy. The
+repetitive work of looking after a team (reading every incoming PR, following
+the channel, remembering the stalled card) is still pulled by hand.
 
-Três princípios guiam o desenho:
+Locum flips that. You describe the work once, as an agent with steps, models
+and tools, and say when it runs: a new PR, a message in a channel, a schedule.
+It runs by itself, on your machine, and delivers the result to a queue where
+you approve, adjust or discard it.
 
-- **Local primeiro.** Banco SQLite, credenciais no keychain do macOS, execução
-  na própria máquina. Não há servidor do Locum no meio.
-- **Nada sai sem você.** Toda escrita em serviço externo passa por uma porta
-  única de aprovação. Cada passo tem modo `approve`, `draft` ou `auto`, e o
-  automático só faz sentido quando a medição mostra que o agent acerta.
-- **Configurável sem código.** Agents, gatilhos, provedores e conexões se montam
-  pela interface ou por um assistente externo (Claude Code) falando com o
-  servidor MCP do próprio Locum.
+Three principles drive the design:
 
-O primeiro caso de uso é revisão de pull request: triagem e auditoria em modelos
-diferentes, contexto de deploy opcional, convenções do time carregadas como
-skill conforme os arquivos alterados, e a review parada na fila até você mandar.
+- **Local first.** SQLite database, credentials in the macOS keychain,
+  execution on your own machine. There is no Locum server in the middle.
+- **Nothing leaves without you.** Every write to an outside service goes
+  through a single approval gate. Each step has an `approve`, `draft` or `auto`
+  mode, and automatic only makes sense once measurement shows the agent gets it
+  right.
+- **Configurable without code.** Agents, triggers, providers and connections
+  are set up in the interface or by an external assistant (Claude Code) talking
+  to Locum's own MCP server.
 
-## O que tem hoje
+The first use case is pull request review: triage and audit on different
+models, optional deploy context, team conventions loaded as skills based on the
+files changed, and the review held in the queue until you send it.
 
-| área | o que faz |
+## What it does today
+
+| area | what it does |
 |---|---|
-| Hoje | abre o app com o que espera decisão, o que está rodando e o que terminou |
-| Fila | aprovações pendentes, com o diff do que vai ser publicado |
-| Agents | editor de agent em passos, com grafo de dependência, modelo por passo e orçamento |
-| Execuções | histórico, custo, saída de cada passo, e reexecução de um passo só |
-| Iniciativas | unidade de trabalho com contexto próprio, servidores MCP escopados e sessão do Claude Code aberta com esse contexto |
-| Gatilhos | varredura de PR no GitHub, mensagem no Slack, agenda |
-| Conexões | vitrine com Claude Code, GitHub, Slack pelo servidor oficial (com um app criado no seu workspace) e servidores MCP remotos (Atlassian, Linear, Notion, Sentry, Figma e outros) com OAuth de um clique; a conexão Atlassian também serve de destino para as tarefas no Jira |
-| Provedores | Anthropic, OpenAI, Google e qualquer endpoint compatível com OpenAI (GLM, Ollama, OpenRouter, Groq e afins), com tabela de fallback |
-| Servidor MCP | `Locum --mcp` expõe 32 ferramentas; o Claude Code se conecta num clique e consegue montar agent, gatilho e iniciativa conversando |
+| Today | opens the app on what needs a decision, what is running and what finished |
+| Queue | pending approvals, with the diff or the text that will be published, editable before it goes out |
+| Agents | step-based agent editor with a dependency graph, a model per step and a budget; an agent can also be drafted from a plain description |
+| Runs | history, cost, output of each step, and rerunning a single step |
+| Initiatives | a unit of work with its own context, scoped MCP servers and a Claude Code session opened with that context |
+| Sessions | the machine's Claude Code sessions, including the ones left halfway and the ones waiting for an answer |
+| Triggers | GitHub PR polling, mentions in Slack and Microsoft Teams, schedules |
+| Connections | a catalog with Claude Code, GitHub, Slack through the official server (with an app created in your workspace), Microsoft Teams, and remote MCP servers (Atlassian, Linear, Notion, Sentry, Figma and others) with one-click OAuth; the Atlassian connection also works as the destination for Jira issues |
+| Providers | Anthropic, OpenAI, Google and any OpenAI-compatible endpoint (GLM, Ollama, OpenRouter, Groq and the like), with a fallback table |
+| MCP server | `Locum --mcp` exposes Locum's tools; Claude Code connects in one click and can build agents, triggers and initiatives by conversation |
 
-Interface em português e inglês.
+Interface in English and Portuguese.
 
-### Provedores e assinatura
+### Providers and subscription
 
-Há dois runtimes atrás da mesma interface. O nativo usa o AI SDK e fala com
-qualquer provedor por chave de API. O segundo executa o binário do Claude Code
-já instalado e autenticado na máquina de quem usa, o que permite aproveitar a
-própria assinatura. O Locum não embute login, não intermedeia credencial e não
-redistribui acesso. Sem o binário, esse runtime não aparece, e a tabela de
-fallback manda os passos afetados para provedores por chave.
+There are two runtimes behind the same interface. The native one uses the AI
+SDK and talks to any provider through an API key. The second runs the Claude
+Code binary already installed and signed in on the user's machine, which lets
+you use your own subscription. Locum does not embed a login, does not broker
+credentials and does not resell access. Without the binary, that runtime does
+not show up, and the fallback table sends the affected steps to key-based
+providers.
 
-## Instalação
+## Installation
 
-Baixe o `.dmg` do [release mais recente](https://github.com/RabahZeineddine/locum/releases/latest)
-e arraste o `Locum.app` para `/Applications`. Hoje só há pacote para Apple
-Silicon (arm64).
+Download the `.dmg` from the [latest release](https://github.com/RabahZeineddine/locum/releases/latest)
+and drag `Locum.app` into `/Applications`. Only Apple Silicon (arm64) builds
+exist for now.
 
-O pacote não é assinado pela Apple, então a primeira abertura é bloqueada pelo
-Gatekeeper. Clique no aplicativo com o botão direito e escolha **Abrir**, uma vez
-só. Depois disso o Locum se atualiza sozinho a cada release, por um mecanismo
-próprio que não depende de certificado. Detalhes em
-[docs/empacotamento.md](docs/empacotamento.md).
+The package is not signed by Apple, so Gatekeeper blocks the first launch.
+Right-click the app and choose **Open**, once. After that Locum updates itself
+on every release, through its own mechanism that does not depend on a
+certificate. Details in [docs/empacotamento.md](docs/empacotamento.md)
+(Portuguese).
 
-Para ligar num repositório de verdade (token, gatilho, primeira varredura e a
-fila), siga [docs/primeira-execucao.md](docs/primeira-execucao.md).
+To hook it up to a real repository (token, trigger, first poll and the queue),
+follow [docs/primeira-execucao.md](docs/primeira-execucao.md) (Portuguese).
 
-## Desenvolvimento
+## Development
 
-Precisa de macOS e Node 22 ou mais novo. Tudo roda a partir de `app/`.
+Requires macOS and Node 22 or newer. Everything runs from `app/`.
 
 ```bash
 cd app
 npm install
-npm test             # testes unitários e de integração (node:test)
-npm run verify       # typecheck, paridade de i18n, build e smoke do Electron
-npm start            # build e abre o app a partir do código
+npm test             # unit and integration tests (node:test)
+npm run verify       # typecheck, i18n parity, build and Electron smoke test
+npm start            # build and open the app from source
 ```
 
-A linha de comando usa o mesmo executor da interface e é o jeito mais rápido de
-testar o núcleo sem abrir janela:
+The command line uses the same executor as the interface and is the fastest way
+to exercise the core without opening a window:
 
 ```bash
 npm run dev import ../examples/agents/pr-review.json
-npm run dev demo     # pipeline completo num PR sintético, sem credencial
+npm run dev demo     # full pipeline on a synthetic PR, no credentials needed
 ```
 
-Como contribuir, convenções de código e o processo de release estão em
+How to contribute, code conventions and the release process are in
 [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Estrutura
+## Layout
 
 ```
 app/
-  electron/     processo principal: janela, ponte com a interface, bandeja, atualização, smoke
-  renderer/     interface em React, Tailwind e shadcn
-  src/          núcleo: banco, executor, runtimes, provedores, MCP, serviços, gatilhos
-  locales/      textos da interface em pt-BR e en
-  test/         testes
-  scripts/      build, checagem de i18n, release
-docs/           decisões (ADR), estado atual, roadmap, guias
-examples/       agents de exemplo para importar
-scripts/ralph/  loop de execução autônoma sobre o backlog
+  electron/     main process: window, bridge to the interface, tray, updates, smoke test
+  renderer/     React, Tailwind and shadcn interface
+  src/          core: database, executor, runtimes, providers, MCP, services, triggers
+  locales/      interface strings in pt-BR and en
+  test/         tests
+  scripts/      build, i18n check, release
+docs/           decisions (ADR), current state, roadmap, guides
+examples/       example agents to import
+scripts/ralph/  autonomous execution loop over the backlog
 ```
 
-## Documentação
+## Documentation
 
-| documento | conteúdo |
+The documents are in Portuguese.
+
+| document | content |
 |---|---|
-| [estado-atual.md](docs/estado-atual.md) | o que existe, o que falta e as armadilhas encontradas; comece por aqui |
-| [roadmap.md](docs/roadmap.md) | marcos e iniciativas |
-| [ADR 0001](docs/adr/0001-arquitetura-v2.md) | as decisões de arquitetura e as alternativas descartadas |
-| [ADR 0002](docs/adr/0002-camada-de-servico-e-servidor-mcp.md) | camada de serviço, servidor MCP próprio, e por que aprovação fica fora dele |
-| [ADR 0003](docs/adr/0003-interface-sobre-ai-elements.md) | interface sobre AI Elements, chat como console, e a regra contra injeção de prompt |
-| [ADR 0004](docs/adr/0004-iniciativas.md) | iniciativa como unidade de trabalho, escopo MCP e contexto por proposta aprovada |
-| [mcp-server.md](docs/mcp-server.md) | as ferramentas do servidor MCP e como ligar no Claude Code |
-| [empacotamento.md](docs/empacotamento.md) | `.dmg`, abertura sem assinatura e atualização automática |
-| [primeira-execucao.md](docs/primeira-execucao.md) | primeiro uso num repositório de verdade |
-| [decisoes-da-conversa.md](docs/decisoes-da-conversa.md) | o caminho até o desenho, incluindo o que mudou de ideia |
-| [pesquisa.md](docs/pesquisa.md) | o que foi verificado em documentação externa, separado de suposição |
+| [estado-atual.md](docs/estado-atual.md) | what exists, what is missing and the pitfalls found; start here |
+| [roadmap.md](docs/roadmap.md) | milestones and initiatives |
+| [ADR 0001](docs/adr/0001-arquitetura-v2.md) | the architecture decisions and the alternatives ruled out |
+| [ADR 0002](docs/adr/0002-camada-de-servico-e-servidor-mcp.md) | service layer, Locum's own MCP server, and why approval stays out of it |
+| [ADR 0003](docs/adr/0003-interface-sobre-ai-elements.md) | interface on AI Elements, chat as a console, and the rule against prompt injection |
+| [ADR 0004](docs/adr/0004-iniciativas.md) | initiatives as a unit of work, MCP scope and context changed only by approved proposals |
+| [mcp-server.md](docs/mcp-server.md) | the MCP server tools and how to connect Claude Code |
+| [empacotamento.md](docs/empacotamento.md) | `.dmg`, opening without a signature and automatic updates |
+| [primeira-execucao.md](docs/primeira-execucao.md) | first use on a real repository |
+| [decisoes-da-conversa.md](docs/decisoes-da-conversa.md) | the path to the design, including what changed along the way |
+| [pesquisa.md](docs/pesquisa.md) | what was checked against external documentation, kept apart from assumptions |
 
-## Licença
+## License
 
-MIT. Veja [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
