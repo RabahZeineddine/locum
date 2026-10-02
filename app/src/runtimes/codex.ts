@@ -26,6 +26,41 @@ function toml(valor: unknown): string {
 }
 
 /**
+ * Variável que muda o próprio Codex, e não só o servidor. Essas seguem no `-c`
+ * do servidor, porque pô-las no ambiente do processo trocaria o PATH ou a
+ * pasta de configuração do Codex inteiro.
+ */
+const DO_PROCESSO = /^(PATH|HOME|SHELL|TMPDIR|NODE_OPTIONS|CODEX_.*|DYLD_.*|LD_.*)$/;
+
+/**
+ * Argumentos e ambiente da chamada, separados para o teste conferir.
+ *
+ * Valor de `env` e de cabeçalho vai pelo ambiente do processo, e o `-c` leva
+ * só o nome da variável (`env_vars`, `env_http_headers`): argumento aparece no
+ * `ps` de qualquer conta da máquina, e é ali que o token do servidor ficava.
+ * As mesmas variáveis saem do ambiente do shell do Codex, para o modelo não
+ * lê-las com um `env`.
+ */
+export function codexCall(
+  req: RuntimeRequest,
+  mcpConfigs: Map<string, McpServerConfig>,
+  arquivos: { schema?: string; pasta: string },
+): { args: string[]; env: Record<string, string> } {
+  const env: Record<string, string> = {};
+  const args = codexArgsCom(req, mcpConfigs, arquivos, env);
+  return { args, env };
+}
+
+/** Só os argumentos, para quem não precisa do ambiente. */
+export function codexArgs(
+  req: RuntimeRequest,
+  mcpConfigs: Map<string, McpServerConfig>,
+  arquivos: { schema?: string; pasta: string },
+): string[] {
+  return codexCall(req, mcpConfigs, arquivos).args;
+}
+
+/**
  * Argumentos da chamada, separados para o teste conferir o isolamento.
  *
  * `--ignore-user-config` deixa de fora o `config.toml` pessoal, e com ele os
@@ -34,10 +69,11 @@ function toml(valor: unknown): string {
  * em outro arquivo. `--ephemeral` não grava sessão e `--sandbox read-only`
  * impede o agent de mexer em arquivo; escrever fora continua sendo da fila.
  */
-export function codexArgs(
+function codexArgsCom(
   req: RuntimeRequest,
   mcpConfigs: Map<string, McpServerConfig>,
   arquivos: { schema?: string; pasta: string },
+  env: Record<string, string>,
 ): string[] {
   const args = [
     "exec",
@@ -72,14 +108,38 @@ export function codexArgs(
     if (cfg.transport === "stdio") {
       args.push("-c", `${base}.command=${toml(cfg.command![0])}`);
       args.push("-c", `${base}.args=${toml(cfg.command!.slice(1))}`);
-      if (cfg.env !== undefined && Object.keys(cfg.env).length > 0) args.push("-c", `${base}.env=${toml(cfg.env)}`);
+      const doProcesso: Record<string, string> = {};
+      const porNome: string[] = [];
+      for (const [chave, valor] of Object.entries(cfg.env ?? {})) {
+        if (DO_PROCESSO.test(chave)) {
+          doProcesso[chave] = valor;
+          continue;
+        }
+        // O `env_vars` repassa a variável com o mesmo nome, então dois
+        // servidores não podem querer valores diferentes para ela.
+        if (env[chave] !== undefined && env[chave] !== valor) {
+          throw new Error(`dois servidores do passo pedem ${chave} com valores diferentes; o Codex não separa os dois`);
+        }
+        env[chave] = valor;
+        porNome.push(chave);
+      }
+      if (Object.keys(doProcesso).length > 0) args.push("-c", `${base}.env=${toml(doProcesso)}`);
+      if (porNome.length > 0) args.push("-c", `${base}.env_vars=${toml(porNome)}`);
     } else {
       args.push("-c", `${base}.url=${toml(cfg.url)}`);
-      if (cfg.headers !== undefined && Object.keys(cfg.headers).length > 0) {
-        args.push("-c", `${base}.http_headers=${toml(cfg.headers)}`);
+      const cabecalhos: Record<string, string> = {};
+      for (const [cabecalho, valor] of Object.entries(cfg.headers ?? {})) {
+        const variavel = `LOCUM_MCP_HEADER_${Object.keys(env).length}`;
+        env[variavel] = valor;
+        cabecalhos[cabecalho] = variavel;
       }
+      if (Object.keys(cabecalhos).length > 0) args.push("-c", `${base}.env_http_headers=${toml(cabecalhos)}`);
     }
     args.push("-c", `${base}.enabled_tools=${toml(porServidor.get(nome) ?? [])}`);
+  }
+
+  if (Object.keys(env).length > 0) {
+    args.push("-c", `shell_environment_policy.exclude=${toml(Object.keys(env))}`);
   }
 
   // O prompt vai pela entrada padrão: argumento de linha de comando tem teto e
@@ -158,9 +218,14 @@ export function readCodexEvents(stdout: string): {
   return { text, promptTokens, completionTokens, cacheReadTokens, toolsUsed: [...toolsUsed], error, lastNotice };
 }
 
-function executar(comando: string, args: string[], entrada: string): Promise<{ stdout: string; stderr: string; code: number | null }> {
+function executar(
+  comando: string,
+  args: string[],
+  entrada: string,
+  env: Record<string, string>,
+): Promise<{ stdout: string; stderr: string; code: number | null }> {
   return new Promise((resolve, reject) => {
-    const filho = spawn(comando, args, { stdio: ["pipe", "pipe", "pipe"] });
+    const filho = spawn(comando, args, { stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, ...env } });
     let stdout = "";
     let stderr = "";
     const prazo = setTimeout(() => filho.kill("SIGTERM"), TIMEOUT_MS);
@@ -202,8 +267,8 @@ export class CodexRuntime implements Runtime {
         schema = join(pasta, "schema.json");
         await writeFile(schema, JSON.stringify(req.outputSchema));
       }
-      const args = codexArgs(req, this.mcpConfigs, { schema, pasta });
-      const { stdout, stderr, code } = await executar(this.binario, args, codexPrompt(req));
+      const { args, env } = codexCall(req, this.mcpConfigs, { schema, pasta });
+      const { stdout, stderr, code } = await executar(this.binario, args, codexPrompt(req), env);
       const lido = readCodexEvents(stdout);
 
       if (code !== 0 || lido.error !== undefined) {

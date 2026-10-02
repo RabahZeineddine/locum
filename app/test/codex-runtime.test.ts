@@ -4,7 +4,7 @@ import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { McpServerConfig } from "../src/config/types.js";
-import { CODEX_DEFAULT_MODEL, CodexRuntime, codexArgs, readCodexEvents } from "../src/runtimes/codex.js";
+import { CODEX_DEFAULT_MODEL, CodexRuntime, codexArgs, codexCall, readCodexEvents } from "../src/runtimes/codex.js";
 import type { RuntimeRequest } from "../src/runtimes/types.js";
 
 const pedido = (extra: Partial<RuntimeRequest> = {}): RuntimeRequest => ({
@@ -50,10 +50,44 @@ test("codex recebe só os servidores do passo, com as ferramentas marcadas", () 
   assert.deepEqual(overrides, [
     'mcp_servers.locum-fixture.command="npx"',
     'mcp_servers.locum-fixture.args=["tsx","fixture.ts"]',
-    'mcp_servers.locum-fixture.env={"TOKEN"="x"}',
+    'mcp_servers.locum-fixture.env_vars=["TOKEN"]',
     'mcp_servers.locum-fixture.enabled_tools=["ler"]',
+    'shell_environment_policy.exclude=["TOKEN"]',
   ]);
   assert.ok(!overrides.some((o) => o.includes("remoto")));
+});
+
+test("segredo de servidor vai pelo ambiente do codex, e não pelo argumento que o ps mostra", () => {
+  const configs = new Map<string, McpServerConfig>([
+    [
+      "local",
+      { name: "local", transport: "stdio", command: ["srv"], env: { GH_TOKEN: "segredo-1", PATH: "/opt/bin" } } as unknown as McpServerConfig,
+    ],
+    [
+      "remoto",
+      { name: "remoto", transport: "http", url: "https://exemplo.com/mcp", headers: { Authorization: "Bearer segredo-2" } } as unknown as McpServerConfig,
+    ],
+  ]);
+  const { args, env } = codexCall(pedido({ mcpServers: ["local", "remoto"] }), configs, pasta);
+
+  assert.ok(!args.some((a) => a.includes("segredo")), "nenhum valor de segredo nos argumentos");
+  assert.equal(env.GH_TOKEN, "segredo-1");
+  assert.ok(args.includes('mcp_servers.local.env={"PATH"="/opt/bin"}'), "PATH do servidor não troca o do Codex");
+  assert.equal(env.PATH, undefined);
+  const cabecalho = args.find((a) => a.startsWith("mcp_servers.remoto.env_http_headers="));
+  const variavel = /"Authorization"="([A-Z_0-9]+)"/.exec(cabecalho ?? "")?.[1];
+  assert.equal(env[variavel ?? ""], "Bearer segredo-2");
+  assert.ok(args.includes(`shell_environment_policy.exclude=["GH_TOKEN","${variavel}"]`));
+});
+
+test("dois servidores com a mesma variável em valores diferentes são recusados", () => {
+  const configs = new Map<string, McpServerConfig>(
+    ["a", "b"].map((nome) => [
+      nome,
+      { name: nome, transport: "stdio", command: ["srv"], env: { TOKEN: nome } } as unknown as McpServerConfig,
+    ]),
+  );
+  assert.throws(() => codexCall(pedido({ mcpServers: ["a", "b"] }), configs, pasta), /TOKEN/);
 });
 
 test("servidor remoto entra pelo endereço", () => {

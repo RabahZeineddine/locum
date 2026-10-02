@@ -1046,8 +1046,13 @@ Desde a 0.1.27 comando ou endereço novo não herda `env` nem `headers`.
 
 **Credencial do MCP aparecia no `ps`.** O `claude -p` recebia a configuração
 dos servidores, já com o token, no valor de `--mcp-config`. Desde a 0.1.27 vai
-num arquivo 0600 numa pasta temporária, apagada no fim. O Codex ainda recebe
-pelos `-c`.
+num arquivo 0600 numa pasta temporária, apagada no fim. No Codex, desde a
+0.1.31, o valor vai no ambiente do processo e o `-c` leva só o nome
+(`env_vars` e `env_http_headers`). Essas variáveis saem do shell do modelo por
+`shell_environment_policy.exclude`. PATH, HOME, CODEX_* e afins seguem no `-c`
+do servidor, para não trocar o ambiente do Codex inteiro. Dois servidores do
+mesmo passo com a mesma variável em valores diferentes são recusados. Formato
+conferido na documentação do Codex, ainda sem rodar o `codex` de verdade.
 
 **Teto de gasto afrouxado pelo MCP.** `set_budget` gravava como pessoa, e
 `null` tirava o teto de um agent já ligado a gatilho. Desde a 0.1.27 quem não é
