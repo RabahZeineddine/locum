@@ -40,3 +40,30 @@ test("run terminado é reexecutado do passo pedido", async () => {
   assert.equal(await service.rerunStep("r1", "ler"), "done");
   assert.deepEqual(execucoes, ["r1"]);
 });
+
+test("reexecutar desconta do run os tokens e o custo do passo zerado", async () => {
+  const db = bancoDeTeste();
+  const versao = await new AgentService(db).upsert(
+    AgentSpec.parse({
+      id: "revisor",
+      name: "Revisor",
+      steps: [
+        { type: "model", key: "ler", name: "Ler", model: "anthropic/modelo", prompt: "revise" },
+        { type: "model", key: "resumir", name: "Resumir", model: "anthropic/modelo", prompt: "resuma", needs: ["ler"] },
+      ],
+    }),
+    undefined,
+    "human",
+  );
+  await db.insert(schema.runs).values({ id: "r1", agentVersionId: versao.id, status: "done", tokens: 300, costUsd: 3 });
+  await db.insert(schema.steps).values([
+    { id: "s1", runId: "r1", idx: 0, stepKey: "ler", name: "Ler", status: "done", promptTokens: 100, completionTokens: 50, costUsd: 1.5, billable: true },
+    { id: "s2", runId: "r1", idx: 1, stepKey: "resumir", name: "Resumir", status: "done", promptTokens: 100, completionTokens: 50, costUsd: 1.5, billable: true },
+  ]);
+  const runner = { execute: async () => "done" as const } as unknown as StepRunner;
+  await new RunService(db, async () => runner).rerunStep("r1", "resumir");
+
+  const [run] = await db.select().from(schema.runs);
+  assert.equal(run?.tokens, 150);
+  assert.equal(run?.costUsd, 1.5);
+});

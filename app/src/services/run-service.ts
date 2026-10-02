@@ -317,12 +317,19 @@ export class RunService {
 
     const billable = targets.filter((s) => s.billable).reduce((acc, s) => acc + s.costUsd, 0);
     const total = targets.reduce((acc, s) => acc + s.costUsd, 0);
+    // O teto em tokens parte de `runs.tokens`: sem descontar os passos
+    // zerados, a reexecução contaria os mesmos tokens duas vezes e pausaria
+    // por orçamento sem ter gasto.
+    const billableTokens = targets
+      .filter((s) => s.billable)
+      .reduce((acc, s) => acc + s.promptTokens + s.completionTokens, 0);
 
     await this.db
       .update(schema.runs)
       .set({
         status: "queued",
         costUsd: Math.max(0, run.costUsd - billable),
+        tokens: Math.max(0, run.tokens - billableTokens),
         estimateUsd: Math.max(0, run.estimateUsd - total),
         endedAt: null,
         error: null,
