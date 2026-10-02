@@ -34,6 +34,16 @@ type Entry = {
  * servidores cadastrados vira o consumo de memoria em repouso do app, que e
  * exatamente o que nao pode acontecer num app que fica na bandeja o dia todo.
  */
+/**
+ * Falha de credencial, pelo texto. O SDK do MCP não tipa o erro de HTTP, então
+ * o que sobra é o status e as palavras que servidor e proxy costumam usar.
+ */
+export function isAuthError(message: string): boolean {
+  return /\b(401|403)\b|unauthori[sz]ed|forbidden|invalid[_ ]?(token|grant|credentials?)|token (has )?expired|expired token|session (has )?expired|authenticat|não autorizado|nao autorizado/i.test(
+    message,
+  );
+}
+
 /** Desfecho de uma conexão, para quem guarda a saúde do cadastro. */
 export type McpConnectOutcome = { ok: true } | { ok: false; error: string };
 
@@ -77,8 +87,16 @@ export class McpRegistry {
           return entry;
         },
         (err: unknown) => {
-          if (this.configs.has(name)) {
-            McpRegistry.observer?.(name, { ok: false, error: err instanceof Error ? err.message : String(err) });
+          if (!this.configs.has(name)) throw err;
+          const message = err instanceof Error ? err.message : String(err);
+          McpRegistry.observer?.(name, { ok: false, error: message });
+          // Quem lê é a pessoa, no passo que falhou: o erro do SDK sozinho não
+          // diz que o conserto é reconectar.
+          if (isAuthError(message)) {
+            throw new Error(
+              `servidor MCP "${name}" recusou a credencial; reconecte em Configuração (${message.slice(0, 200)})`,
+              { cause: err },
+            );
           }
           throw err;
         },

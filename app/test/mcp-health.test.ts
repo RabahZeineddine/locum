@@ -74,3 +74,24 @@ test("conexão que falha em qualquer registro chega ao observador", async () => 
   }
   assert.deepEqual(vistos, [[nome, false]]);
 });
+
+test("servidor que responde 401 falha dizendo que a credencial foi recusada", async () => {
+  const { createServer } = await import("node:http");
+  const servidor = createServer((_req, res) => {
+    res.writeHead(401, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: "invalid_token" }));
+  });
+  await new Promise<void>((pronto) => servidor.listen(0, "127.0.0.1", pronto));
+  const endereco = servidor.address();
+  const porta = typeof endereco === "object" && endereco !== null ? endereco.port : 0;
+  const nome = nomeNovo();
+  const registro = McpRegistry.fromList([
+    McpServerConfig.parse({ name: nome, transport: "http", url: `http://127.0.0.1:${porta}/mcp` }),
+  ]);
+  try {
+    await assert.rejects(registro.describeTools(nome), /recusou a credencial/);
+  } finally {
+    await registro.closeAll();
+    servidor.close();
+  }
+});

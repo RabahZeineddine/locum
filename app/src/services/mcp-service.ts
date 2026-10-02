@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
-import { McpRegistry, type McpConnectOutcome, type McpToolInfo } from "../mcp/registry.js";
+import { isAuthError, McpRegistry, type McpConnectOutcome, type McpToolInfo } from "../mcp/registry.js";
 import { McpServerConfig, type McpServerInput } from "../config/types.js";
 import { fillCredential, secretService, type SecretService } from "./secret-service.js";
 
 export type { McpToolInfo };
+export { isAuthError };
 
 type Db = typeof defaultDb;
 
@@ -38,16 +39,6 @@ export interface McpServerEntry {
   enabled: boolean;
   credentialRef: string | null;
   health: McpServerHealth;
-}
-
-/**
- * Falha de credencial, pelo texto. O SDK do MCP não tipa o erro de HTTP, então
- * o que sobra é o status e as palavras que servidor e proxy costumam usar.
- */
-export function isAuthError(message: string): boolean {
-  return /\b(401|403)\b|unauthori[sz]ed|forbidden|invalid[_ ]?(token|grant|credentials?)|token (has )?expired|expired token|session (has )?expired|authenticat|não autorizado|nao autorizado/i.test(
-    message,
-  );
 }
 
 /** Teto do erro guardado: o bastante para a tela, sem guardar página de HTML. */
