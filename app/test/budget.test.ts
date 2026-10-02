@@ -219,3 +219,16 @@ test("runs simultâneos do mesmo agent veem o gasto um do outro a cada passo", a
   assert.ok(Math.abs(gasto!.costUsd - 2) < 1e-9, `gasto ${gasto!.costUsd}`);
   assert.equal(gasto!.runs, 2);
 });
+
+test("o dia do teto é o do fuso de quem usa, e não o de UTC", () => {
+  const antes = process.env.TZ;
+  process.env.TZ = "America/Sao_Paulo";
+  try {
+    // 22h de 1º de outubro em São Paulo já é dia 2 em UTC.
+    assert.equal(today(new Date("2026-10-02T01:00:00Z")), "2026-10-01");
+    assert.equal(today(new Date("2026-10-02T03:00:00Z")), "2026-10-02");
+  } finally {
+    if (antes === undefined) delete process.env.TZ;
+    else process.env.TZ = antes;
+  }
+});

@@ -9,8 +9,15 @@ export class BudgetExceeded extends Error {
   }
 }
 
-export function today(): string {
-  return new Date().toISOString().slice(0, 10);
+/**
+ * O dia de quem usa, no fuso do Mac, e não em UTC.
+ *
+ * Em UTC, o teto diário de quem está em São Paulo virava às 21h: o agent que
+ * estourou às 20h ganhava um dia inteiro de gasto antes da meia-noite.
+ */
+export function today(now: Date = new Date()): string {
+  const dois = (n: number) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${dois(now.getMonth() + 1)}-${dois(now.getDate())}`;
 }
 
 /** Gasto em dinheiro e em tokens dos passos cobrados. */
