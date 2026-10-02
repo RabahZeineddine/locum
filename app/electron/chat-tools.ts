@@ -10,6 +10,7 @@ import { promptService } from "../src/services/prompt-service.js";
 import { providerService } from "../src/services/provider-service.js";
 import { runService } from "../src/services/run-service.js";
 import { machineService } from "../src/services/machine-service.js";
+import { redactServerConfig } from "../src/mcp-server/redact.js";
 
 /**
  * Catalogo do assistente, escrito a mao, uma entrada por vez.
@@ -112,7 +113,8 @@ export function chatTools(): ToolSet {
     listar_servidores_mcp: tool({
       description: "Registered MCP servers, with transport, scope and whether each is enabled.",
       inputSchema: z.object({}),
-      execute: async () => mcpService.list(),
+      execute: async () =>
+        (await mcpService.list()).map((entrada) => ({ ...entrada, config: redactServerConfig(entrada.config) })),
     }),
 
     ferramentas_do_servidor: tool({
@@ -173,8 +175,8 @@ export function chatTools(): ToolSet {
         title: z.string(),
         objective: z.string(),
         doneCriteria: z.string(),
-        dueAt: z.number().int().optional(),
-        goalRef: z.string().optional(),
+        dueAt: z.number().int().nullable().optional(),
+        goalRef: z.string().nullable().optional(),
       }),
       execute: async (input) => initiativeService.upsert(input),
     }),

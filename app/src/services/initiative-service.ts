@@ -129,8 +129,10 @@ export class InitiativeService {
           title: input.title,
           objective: input.objective,
           doneCriteria: input.doneCriteria,
-          dueAt: input.dueAt ?? null,
-          goalRef: input.goalRef ?? null,
+          // Ausente mantém o que está lá; só `null` limpa. A tela não manda
+          // prazo, e editar o título por ela apagaria o que a ferramenta gravou.
+          dueAt: input.dueAt === undefined ? existente.dueAt : input.dueAt,
+          goalRef: input.goalRef === undefined ? existente.goalRef : input.goalRef,
           updatedAt: sql`(unixepoch())`,
         })
         .where(eq(schema.initiatives.id, existente.id));
@@ -184,18 +186,22 @@ export class InitiativeService {
   async setServers(slug: string, names: string[]): Promise<{ affectedAgents: { agentId: string; name: string }[] }> {
     const linha = await this.mustGet(slug);
     const cadastrados = new Set((await this.mcp.list()).map((entrada) => entrada.config.name));
-    for (const nome of names) {
+    // Nome repetido na lista quebraria o índice único no meio da troca, e a
+    // iniciativa ficaria sem servidor nenhum.
+    const unicos = [...new Set(names)];
+    for (const nome of unicos) {
       if (!cadastrados.has(nome)) throw new Error(`servidor MCP "${nome}" nao cadastrado`);
     }
 
-    await this.db
-      .delete(schema.initiativeMcpServers)
-      .where(eq(schema.initiativeMcpServers.initiativeId, linha.id));
-    if (names.length > 0) {
-      await this.db
-        .insert(schema.initiativeMcpServers)
-        .values(names.map((serverName) => ({ initiativeId: linha.id, serverName })));
-    }
+    // Apagar e inserir juntos: se a inserção falhar, a lista antiga fica.
+    this.db.transaction((tx) => {
+      tx.delete(schema.initiativeMcpServers).where(eq(schema.initiativeMcpServers.initiativeId, linha.id)).run();
+      if (unicos.length > 0) {
+        tx.insert(schema.initiativeMcpServers)
+          .values(unicos.map((serverName) => ({ initiativeId: linha.id, serverName })))
+          .run();
+      }
+    });
 
     const ligados = await this.db.select().from(schema.agents).where(eq(schema.agents.initiativeId, linha.id));
     const afetados: { agentId: string; name: string }[] = [];
@@ -280,14 +286,14 @@ export class InitiativeService {
       label: workspace.label?.trim() || null,
     }));
 
-    await this.db
-      .delete(schema.initiativeWorkspaces)
-      .where(eq(schema.initiativeWorkspaces.initiativeId, linha.id));
-    if (normalizados.length > 0) {
-      await this.db
-        .insert(schema.initiativeWorkspaces)
-        .values(normalizados.map((workspace) => ({ id: randomUUID(), initiativeId: linha.id, ...workspace })));
-    }
+    this.db.transaction((tx) => {
+      tx.delete(schema.initiativeWorkspaces).where(eq(schema.initiativeWorkspaces.initiativeId, linha.id)).run();
+      if (normalizados.length > 0) {
+        tx.insert(schema.initiativeWorkspaces)
+          .values(normalizados.map((workspace) => ({ id: randomUUID(), initiativeId: linha.id, ...workspace })))
+          .run();
+      }
+    });
   }
 
   async addLink(slug: string, link: InitiativeLinkInput): Promise<void> {
