@@ -1,4 +1,7 @@
 import { execFile } from "node:child_process";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import type { McpServerConfig } from "../config/types.js";
 import { claudeBinary } from "./claude-binary.js";
@@ -6,8 +9,14 @@ import type { Runtime, RuntimeRequest, RuntimeResult } from "./types.js";
 
 const run = promisify(execFile);
 
-/** Argumentos da chamada, separados para o teste conferir o isolamento. */
-export function claudeArgs(req: RuntimeRequest, mcpConfigs: Map<string, McpServerConfig>): string[] {
+/**
+ * Argumentos da chamada, separados para o teste conferir o isolamento.
+ *
+ * Os servidores vão por arquivo, e não pelo valor da flag: o cadastro chega
+ * aqui com a credencial já preenchida, e argumento de processo aparece no `ps`
+ * de qualquer usuário da máquina.
+ */
+export function claudeArgs(req: RuntimeRequest, mcpConfigPath?: string): string[] {
   const servers = req.mcpServers ?? [];
   const allowed = Object.keys(req.tools).map((key) => {
     const [server, ...rest] = key.split("__");
@@ -18,14 +27,17 @@ export function claudeArgs(req: RuntimeRequest, mcpConfigs: Map<string, McpServe
 
   if (req.system) args.push("--append-system-prompt", req.system);
   if (req.outputSchema) args.push("--json-schema", JSON.stringify(req.outputSchema));
-  if (servers.length > 0) args.push("--mcp-config", mcpConfigJson(servers, mcpConfigs));
+  if (servers.length > 0) {
+    if (mcpConfigPath === undefined) throw new Error("passo com servidor MCP precisa do arquivo de configuração");
+    args.push("--mcp-config", mcpConfigPath);
+  }
   if (allowed.length > 0) args.push("--allowedTools", allowed.join(","));
   args.push("--permission-prompts", "none");
   args.push("--strict-mcp-config", "--no-session-persistence", "--setting-sources", "");
   return args;
 }
 
-function mcpConfigJson(servers: string[], mcpConfigs: Map<string, McpServerConfig>): string {
+export function mcpConfigJson(servers: string[], mcpConfigs: Map<string, McpServerConfig>): string {
   const out: Record<string, unknown> = {};
   for (const name of servers) {
     const cfg = mcpConfigs.get(name);
@@ -58,7 +70,21 @@ export class ClaudeCodeRuntime implements Runtime {
   ) {}
 
   async run(req: RuntimeRequest): Promise<RuntimeResult> {
-    const args = claudeArgs(req, this.mcpConfigs);
+    const servers = req.mcpServers ?? [];
+    const pasta = servers.length > 0 ? await mkdtemp(join(tmpdir(), "locum-mcp-")) : undefined;
+    try {
+      let caminho: string | undefined;
+      if (pasta !== undefined) {
+        caminho = join(pasta, "mcp.json");
+        await writeFile(caminho, mcpConfigJson(servers, this.mcpConfigs), { mode: 0o600 });
+      }
+      return await this.chamar(claudeArgs(req, caminho));
+    } finally {
+      if (pasta !== undefined) await rm(pasta, { recursive: true, force: true });
+    }
+  }
+
+  private async chamar(args: string[]): Promise<RuntimeResult> {
 
     // O mesmo caminho absoluto que a sessão interativa usa. Instalado em
     // `~/.claude/local`, o `claude` existe só como alias do `.zshrc`, fora do
