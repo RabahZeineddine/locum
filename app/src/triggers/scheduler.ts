@@ -22,6 +22,18 @@ type Db = typeof defaultDb;
 const CURSOR_SOURCE = "scheduler";
 
 /**
+ * Eventos que não abriram run, um registro por gatilho, para a próxima batida
+ * tentar de novo. O cursor da fonte já andou por eles, e sem esta lista o
+ * evento que bateu no teto do dia nunca mais voltaria.
+ */
+const RETRY_SOURCE = "scheduler-retry";
+
+/** Depois disto o evento sai da lista: falha que dura um dia não é passageira. */
+const RETRY_TTL_MS = 24 * 60 * 60 * 1000;
+
+type Pendente = { eventId: string; since: number };
+
+/**
  * De onde veio a batida. `wake` e o que o M3 vai mandar quando o Mac acordar,
  * e esta aqui desde ja para que o registro de uma batida longa depois de sono
  * nao pareca atraso do agendador.
@@ -531,10 +543,14 @@ export class Scheduler {
   ): Promise<string[]> {
     const runs: string[] = [];
     const falhas: string[] = [];
+    const agora = Date.now();
+    const antes = new Map((await this.readRetry(trigger.id)).map((p) => [p.eventId, p.since]));
+    const pendentes: Pendente[] = [];
     // Um evento que não abre run não segura os outros. O cursor da fonte já
     // andou quando chega aqui, e parar no primeiro erro deixaria o resto da
-    // janela sem run e fora da próxima varredura.
-    for (const eventId of eventIds) {
+    // janela sem run e fora da próxima varredura. O que falhou fica anotado
+    // e volta na batida seguinte, junto com a janela nova.
+    for (const eventId of new Set([...antes.keys(), ...eventIds])) {
       if (await this.alreadyRan(trigger.id, eventId)) continue;
       try {
         const { runId } = await this.executions.startForEvent({
@@ -546,8 +562,11 @@ export class Scheduler {
         runs.push(runId);
       } catch (err) {
         falhas.push(message(err));
+        const since = antes.get(eventId) ?? agora;
+        if (agora - since < RETRY_TTL_MS) pendentes.push({ eventId, since });
       }
     }
+    if (antes.size > 0 || pendentes.length > 0) await this.writeRetry(trigger.id, pendentes);
     if (falhas.length > 0) {
       const abertos = runs.length === 0 ? "" : `, ${runs.length} run(s) aberto(s)`;
       throw new Error(`${falhas.length} evento(s) sem run${abertos}: ${falhas[0]}`);
@@ -574,6 +593,39 @@ export class Scheduler {
 
   private async lastFire(triggerId: string): Promise<number | null> {
     return (await this.readFire(triggerId)).last;
+  }
+
+  private async readRetry(triggerId: string): Promise<Pendente[]> {
+    const [row] = await this.db
+      .select({ value: schema.cursors.value })
+      .from(schema.cursors)
+      .where(and(eq(schema.cursors.source, RETRY_SOURCE), eq(schema.cursors.key, triggerId)));
+    if (!row) return [];
+    try {
+      const lista = JSON.parse(row.value) as unknown;
+      return Array.isArray(lista)
+        ? lista.filter((p): p is Pendente => typeof p?.eventId === "string" && typeof p?.since === "number")
+        : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private async writeRetry(triggerId: string, pendentes: Pendente[]): Promise<void> {
+    if (pendentes.length === 0) {
+      await this.db
+        .delete(schema.cursors)
+        .where(and(eq(schema.cursors.source, RETRY_SOURCE), eq(schema.cursors.key, triggerId)));
+      return;
+    }
+    const value = JSON.stringify(pendentes);
+    await this.db
+      .insert(schema.cursors)
+      .values({ source: RETRY_SOURCE, key: triggerId, value })
+      .onConflictDoUpdate({
+        target: [schema.cursors.source, schema.cursors.key],
+        set: { value, updatedAt: Math.floor(Date.now() / 1000) },
+      });
   }
 
   /** O valor gravado, para a escrita condicional, e o instante que ele diz. */

@@ -187,6 +187,47 @@ test("evento que não abre run não impede os outros da mesma janela", async () 
   assert.match(batida.outcomes[0]?.detail ?? "", /1 evento\(s\) sem run, 1 run\(s\) aberto\(s\): teto do dia/);
 });
 
+test("evento que não abriu run volta na batida seguinte, mesmo sem vir na varredura", async () => {
+  const db = bancoDeTeste();
+  const iniciados: string[] = [];
+  let teto = true;
+  const executions = {
+    startForEvent: async (input: { eventId: string | null }) => {
+      if (teto) throw new Error("teto do dia estourado");
+      iniciados.push(input.eventId ?? "");
+      return { runId: `run-${iniciados.length}` };
+    },
+  } as unknown as ExecutionService;
+  const gatilhos = [
+    gatilho("g1", { kind: "poll", source: "github", owner: "org", repoMatch: ".", authorship: "any", includeDrafts: false, everyMinutes: 15 } as TriggerConfig),
+  ];
+  let batidas = 0;
+  const scheduler = new Scheduler(
+    db,
+    { enabled: async () => gatilhos, list: async () => gatilhos } as unknown as TriggerService,
+    executions,
+    {} as McpService,
+    {} as SlackService,
+    // O cursor da fonte anda: só a primeira varredura traz o evento.
+    async () => {
+      batidas += 1;
+      if (batidas > 1) return { eventIds: [], created: [] };
+      await db.insert(schema.events).values({ id: "e1", source: "github", externalId: "pr-1", payload: {} });
+      return { eventIds: ["e1"], created: ["e1"] };
+    },
+    async () => ({ checked: 0, settled: [], stillOpen: 0, unreadable: 0, failed: [] }) as never,
+    async () => "eu",
+  );
+
+  assert.equal((await scheduler.tick({ at: T0 })).outcomes[0]?.status, "failed");
+  teto = false;
+  await scheduler.tick({ at: T0 + 15 * MINUTO });
+  assert.deepEqual(iniciados, ["e1"]);
+  // Já rodou: a lista esvazia e a terceira batida não repete.
+  await scheduler.tick({ at: T0 + 30 * MINUTO });
+  assert.deepEqual(iniciados, ["e1"]);
+});
+
 test("autoria sem conta conferida recusa a batida em vez de acordar todo mundo", async () => {
   const { db, scheduler, iniciados } = montar({
     gatilhos: [
