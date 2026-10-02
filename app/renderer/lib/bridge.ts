@@ -179,6 +179,7 @@ export const ACTION_CHANNELS = [
   "providers.checkSecret",
   "mcp.test",
   "mcp.tools",
+  "mcp.setEnabled",
   // O tracker de tarefa: cadastrar, apontar destino, guardar a credencial e
   // testar. Escrita e rede, as duas atrás de um clique, pelo mesmo motivo dos
   // canais do GitHub. Abrir tarefa não está aqui e não está em lugar nenhum:

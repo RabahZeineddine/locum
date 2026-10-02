@@ -1424,6 +1424,23 @@ function LinhaDoServidor({
   const [listando, setListando] = useState(false);
   const [saudeRelida, setSaudeRelida] = useState<Servidor["health"] | null>(null);
   const saude = saudeRelida ?? servidor.health;
+  const [ligado, setLigado] = useState(servidor.enabled);
+  const [ligando, setLigando] = useState(false);
+
+  // Servidor cadastrado por um assistente nasce desligado, e é aqui que a
+  // pessoa vê o comando ou o endereço antes de deixar o executor usá-lo.
+  const alternar = (): void => {
+    setLigando(true);
+    call("mcp.setEnabled", nome, !ligado).then(
+      () => {
+        setLigado(!ligado);
+        setLigando(false);
+      },
+      () => setLigando(false),
+    );
+  };
+  const destino =
+    servidor.config.transport === "stdio" ? (servidor.config.command ?? []).join(" ") : (servidor.config.url ?? "");
 
   // O teste grava o desfecho no cadastro; a linha relê para o selo acompanhar.
   const relerSaude = (): void => {
@@ -1468,22 +1485,34 @@ function LinhaDoServidor({
     <div
       className="flex flex-col gap-2 border-border border-b px-4 py-3 last:border-b-0"
       data-locum-escopo={servidor.config.scope}
-      data-locum-habilitado={servidor.enabled ? "sim" : "nao"}
+      data-locum-habilitado={ligado ? "sim" : "nao"}
       data-locum-servidor={nome}
       data-locum-transporte={servidor.config.transport}
     >
       <div className="flex flex-wrap items-center gap-3 text-sm">
-        <span className="w-40 shrink-0 truncate font-medium">{nome}</span>
+        <span className="w-40 shrink-0 truncate font-medium" title={destino}>
+          {nome}
+        </span>
         <Badge variant="outline">{servidor.config.transport}</Badge>
         <Badge variant={servidor.config.scope === "write" ? "destructive" : "outline"}>
           {servidor.config.scope}
         </Badge>
-        <Badge variant={servidor.enabled ? "secondary" : "outline"}>
-          {t(servidor.enabled ? "settings.servers.enabled" : "settings.servers.disabled")}
+        <Badge variant={ligado ? "secondary" : "outline"}>
+          {t(ligado ? "settings.servers.enabled" : "settings.servers.disabled")}
         </Badge>
         <Credenciais credencial={credencial} />
         <SaudeDoServidor saude={saude} />
         <div className="ml-auto flex items-center gap-1">
+          <Button
+            data-locum-ligar-servidor={nome}
+            disabled={ligando}
+            onClick={alternar}
+            size="sm"
+            title={destino}
+            variant="ghost"
+          >
+            {t(ligado ? "settings.servers.turnOff" : "settings.servers.turnOn")}
+          </Button>
           <Button
             data-locum-testar={nome}
             disabled={teste.fase === "testando"}

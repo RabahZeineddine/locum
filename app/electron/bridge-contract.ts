@@ -205,6 +205,8 @@ interface ServiceApi {
   "mcp.list": McpService["list"];
   "mcp.test": McpService["testConnection"];
   "mcp.tools": McpService["listTools"];
+  /** Ligar é da pessoa: o que entra pelo servidor MCP nasce desligado. */
+  "mcp.setEnabled": McpService["setEnabled"];
 
   "providers.list": ProviderService["listProviders"];
   "providers.fallbacks": ProviderService["getFallbacks"];
@@ -481,6 +483,7 @@ export const BRIDGE_CHANNELS = [
   "mcp.list",
   "mcp.test",
   "mcp.tools",
+  "mcp.setEnabled",
   "providers.list",
   "providers.fallbacks",
   "providers.preview",

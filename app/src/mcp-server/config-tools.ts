@@ -71,6 +71,24 @@ function semOcultos(valores: Record<string, string>): Record<string, string> {
   return restoreHidden(undefined, valores) ?? {};
 }
 
+/** Mesmo critério do serviço para desfazer a credencial: outro destino. */
+function mudouDestino(antes: McpServerConfig, depois: McpServerConfig): boolean {
+  return (
+    antes.transport !== depois.transport ||
+    (antes.url ?? null) !== (depois.url ?? null) ||
+    JSON.stringify(antes.command ?? null) !== JSON.stringify(depois.command ?? null)
+  );
+}
+
+/** Testar e listar sobem o processo do servidor, então só depois da pessoa ligar. */
+async function exigirLigado(name: string): Promise<void> {
+  const entrada = await mcpService.get(name);
+  if (entrada === undefined) throw new Error(`servidor MCP "${name}" nao cadastrado`);
+  if (!entrada.enabled) {
+    throw new Error(`servidor MCP "${name}" está desligado; uma pessoa habilita na tela do Locum antes do teste`);
+  }
+}
+
 export function registerConfigTools(server: McpServer): void {
   server.registerTool(
     "upsert_agent",
@@ -109,7 +127,7 @@ export function registerConfigTools(server: McpServer): void {
     "register_mcp_server",
     {
       description:
-        "Registers or updates an MCP server that Locum consumes as a client. The name is the key that steps reference. On update, fields left out keep their current value; changing transport, url or command unlinks the stored credential.",
+        "Registers or updates an MCP server that Locum consumes as a client. The name is the key that steps reference. On update, fields left out keep their current value; changing transport, url or command unlinks the stored credential. A new server, or one whose command or url changed, is saved disabled: only a person enables it, in the app or with `locum mcp:enable`. From here a server can be disabled, never enabled.",
       inputSchema: {
         name: z.string().min(1),
         transport: z.enum(["stdio", "http", "sse"]),
@@ -128,15 +146,31 @@ export function registerConfigTools(server: McpServer): void {
         enabled: z
           .boolean()
           .optional()
-          .describe("whether the executor can see the server; when absent, keeps the current value"),
+          .describe("false disables the server; true is refused, only a person enables it"),
       },
     },
     async ({ enabled, ...config }) =>
       respond(async () => {
+        // O comando de um servidor stdio roda com os poderes do app, fora da
+        // caixa de permissões de quem chama esta ferramenta. Então quem fala
+        // por aqui cadastra, mas não liga: servidor novo, ou com outro
+        // destino, nasce desligado até a pessoa ver o comando na tela.
+        if (enabled === true) {
+          throw new Error("servidor MCP só é habilitado por uma pessoa, na tela do Locum ou com `locum mcp:enable`");
+        }
         const atual = await mcpService.get(config.name);
-        const entry = await mcpService.register(mergeRegistration(atual?.config, config as McpServerInput));
-        if (enabled !== undefined) await mcpService.setEnabled(entry.config.name, enabled);
-        return { ...redactServerConfig(entry.config), enabled: enabled ?? entry.enabled };
+        const junto = mergeRegistration(atual?.config, config as McpServerInput);
+        const entry = await mcpService.register(junto);
+        const desligar = enabled === false || atual === undefined || mudouDestino(atual.config, entry.config);
+        if (desligar) await mcpService.setEnabled(entry.config.name, false);
+        const ligado = desligar ? false : entry.enabled;
+        return {
+          ...redactServerConfig(entry.config),
+          enabled: ligado,
+          ...(ligado
+            ? {}
+            : { aviso: "servidor gravado desligado; uma pessoa habilita na tela do Locum ou com `locum mcp:enable`" }),
+        };
       }),
   );
 
@@ -144,20 +178,28 @@ export function registerConfigTools(server: McpServer): void {
     "test_mcp_server",
     {
       description:
-        "Starts the registered server, counts its tools and shuts it down. A connection failure comes back as a result, not as an error.",
+        "Starts the registered server, counts its tools and shuts it down. A connection failure comes back as a result, not as an error. A disabled server is refused, because testing runs its command.",
       inputSchema: { name: z.string().min(1) },
     },
-    async ({ name }) => respond(() => mcpService.testConnection(name)),
+    async ({ name }) =>
+      respond(async () => {
+        await exigirLigado(name);
+        return mcpService.testConnection(name);
+      }),
   );
 
   server.registerTool(
     "list_server_tools",
     {
       description:
-        "Tools a registered server exposes, with description and estimated schema tokens, to choose which ones a step uses.",
+        "Tools a registered server exposes, with description and estimated schema tokens, to choose which ones a step uses. A disabled server is refused, because listing runs its command.",
       inputSchema: { name: z.string().min(1) },
     },
-    async ({ name }) => respond(() => mcpService.listTools(name)),
+    async ({ name }) =>
+      respond(async () => {
+        await exigirLigado(name);
+        return mcpService.listTools(name);
+      }),
   );
 
   server.registerTool(

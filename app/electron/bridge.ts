@@ -213,6 +213,7 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "mcp.list": () => mcpService.list(),
     "mcp.test": (name) => mcpService.testConnection(name),
     "mcp.tools": (name) => mcpService.listTools(name),
+    "mcp.setEnabled": (name, enabled) => mcpService.setEnabled(name, enabled),
 
     "providers.list": async () => providerService.listProviders(),
     "providers.fallbacks": (machine) => providerService.getFallbacks(machine),

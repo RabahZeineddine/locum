@@ -614,6 +614,8 @@
       "empty": "Nenhum servidor cadastrado.",
       "enabled": "habilitado",
       "disabled": "desabilitado",
+      "turnOn": "Habilitar",
+      "turnOff": "Desabilitar",
       "test": "Testar conexão",
       "testing": "testando...",
       "list": "listar ferramentas",

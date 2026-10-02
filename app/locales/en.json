@@ -588,6 +588,8 @@
       "empty": "No server registered.",
       "enabled": "enabled",
       "disabled": "disabled",
+      "turnOn": "Enable",
+      "turnOff": "Disable",
       "test": "Test connection",
       "testing": "testing...",
       "list": "list tools",
