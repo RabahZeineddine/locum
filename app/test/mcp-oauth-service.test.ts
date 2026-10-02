@@ -171,6 +171,19 @@ test("token perto de vencer é renovado antes de conectar, sem abrir o navegador
   }
 });
 
+test("runs juntos pedindo token vencido fazem uma troca só", async () => {
+  const { visto, fechar, oauth, name, avancar } = await montar();
+  try {
+    await oauth.connect(name);
+    avancar(500_000);
+    const tokens = await Promise.all(Array.from({ length: 5 }, () => oauth.accessToken(name)));
+    assert.equal(visto.renovacoes, 1);
+    assert.deepEqual(new Set(tokens), new Set(["token-2"]));
+  } finally {
+    fechar();
+  }
+});
+
 test("recusa no navegador vira erro e não grava nada", async () => {
   const { fechar, secrets, oauth, name } = await montar({ recusar: true });
   try {
@@ -282,10 +295,27 @@ test("abrir e esperar devolve o que voltou no loopback, conferindo o state", asy
     });
     assert.equal(volta.get("admin_consent"), "True");
 
-    await assert.rejects(
-      oauth.openAndWait(redirectUri, () => `${redirectUri}?admin_consent=True&state=outro`),
-      /state do retorno não confere/,
-    );
+  } finally {
+    fechar();
+  }
+});
+
+test("retorno com state de outra tentativa é ignorado, e a espera fica com o certo", async () => {
+  const { fechar, mcp, secrets } = await montar();
+  try {
+    const redirectUri = `http://localhost:${await portaLivre()}/callback`;
+    // Uma aba velha recarregada chega antes, com recusa e state que não é deste login.
+    const oauth = new McpOAuthService({
+      mcp,
+      secrets,
+      timeoutMs: 5_000,
+      openBrowser: async (url) => {
+        await fetch(`${redirectUri}?error=access_denied&state=velho`);
+        await fetch(url);
+      },
+    });
+    const volta = await oauth.openAndWait(redirectUri, (state) => `${redirectUri}?admin_consent=True&state=${state}`);
+    assert.equal(volta.get("admin_consent"), "True");
   } finally {
     fechar();
   }

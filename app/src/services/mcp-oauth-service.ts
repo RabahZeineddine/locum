@@ -307,8 +307,25 @@ export class McpOAuthService {
     }
   }
 
-  /** Troca o token quando ele está para vencer. Sem refresh token, não faz nada. */
+  /**
+   * Troca o token quando ele está para vencer. Sem refresh token, não faz nada.
+   *
+   * Uma troca por servidor de cada vez. Vinte runs abertos pela mesma batida
+   * chegam aqui juntos, e cada um mandaria o mesmo refresh token: onde o
+   * serviço gira o refresh token, só o primeiro passa, e onde ele detecta
+   * reuso, a autorização inteira cai e a pessoa precisa reconectar.
+   */
   async refreshIfNeeded(name: string): Promise<void> {
+    const emCurso = this.renovando.get(name);
+    if (emCurso !== undefined) return emCurso;
+    const troca = this.renovar(name).finally(() => this.renovando.delete(name));
+    this.renovando.set(name, troca);
+    return troca;
+  }
+
+  private readonly renovando = new Map<string, Promise<void>>();
+
+  private async renovar(name: string): Promise<void> {
     const grant = this.readGrant(name);
     if (grant?.refreshToken === undefined || grant.expiresAt === null) return;
     if (grant.expiresAt - this.deps.now() > REFRESH_MARGIN_MS) return;
@@ -391,10 +408,12 @@ export class McpOAuthService {
     code: (state: string) => Promise<string>;
     close: () => void;
   }> {
-    let entregar: ((query: URLSearchParams) => void) | null = null;
-    const chegou = new Promise<URLSearchParams>((resolve) => {
-      entregar = resolve;
-    });
+    // Todo retorno fica guardado, e a espera fica com o primeiro cujo state
+    // confere. Pegar o primeiro que chegasse deixaria uma aba velha de outra
+    // tentativa, ou qualquer página local que acertasse a porta, derrubar o
+    // login antes de o retorno de verdade chegar.
+    const recebidos: URLSearchParams[] = [];
+    let avisar: (() => void) | null = null;
 
     const alvo = fixo === undefined ? undefined : new URL(fixo);
     if (alvo !== undefined && (alvo.protocol !== "http:" || !LOOPBACK.has(alvo.hostname) || alvo.port === "")) {
@@ -410,7 +429,8 @@ export class McpOAuthService {
       }
       const falhou = url.searchParams.has("error");
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" }).end(paginaDeRetorno(falhou));
-      entregar?.(url.searchParams);
+      recebidos.push(url.searchParams);
+      avisar?.();
     };
 
     const esperar = async (state: string): Promise<URLSearchParams> => {
@@ -422,10 +442,17 @@ export class McpOAuthService {
         );
       });
       try {
+        const chegou = new Promise<URLSearchParams>((resolve) => {
+          const procurar = () => {
+            const query = recebidos.find((q) => mesmoValor(q.get("state") ?? "", state));
+            if (query !== undefined) resolve(query);
+          };
+          avisar = procurar;
+          procurar();
+        });
         const query = await Promise.race([chegou, venceu]);
         const erro = query.get("error");
         if (erro !== null) throw new Error(`o serviço recusou a autorização: ${erro}`);
-        if (!mesmoValor(query.get("state") ?? "", state)) throw new Error("o state do retorno não confere");
         return query;
       } finally {
         clearTimeout(teto);
