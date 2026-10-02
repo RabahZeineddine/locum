@@ -129,7 +129,9 @@ para o caso de o registro de aplicativo não sair. É o teste do desenho: se est
 watcher entrar sem tocar no núcleo, a arquitetura está certa.
 
 **Incidente.** Alarme do New Relic como gatilho determinístico, com o agent
-entrando depois para correlacionar deploy, trace e pull request recente.
+entrando depois para correlacionar deploy, trace e pull request recente. Adiado
+em 02/10: quando voltar, entra como configuração (servidor MCP próprio da
+pessoa e gatilho `mcp-poll`), sem nome de ferramenta interna no repositório.
 
 **Adaptador `codex exec`.** Plano ChatGPT como terceira via, para a máquina sem
 assinatura Claude. Pronto no código em 02/10, falta o teste com o binário de
