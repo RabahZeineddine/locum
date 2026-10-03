@@ -54,6 +54,13 @@ export const ModelStep = StepBase.extend({
   requiresServers: z.array(z.string()).default([]),
   outputSchema: z.record(z.string(), z.unknown()).optional(),
   maxSteps: z.number().int().positive().default(12),
+  /**
+   * Agent da biblioteca que executa este passo. Presente, modelo, instruções,
+   * temperatura e ferramentas vêm dele, e `prompt` passa a ser só a tarefa
+   * deste passo. `model` e `tools` do passo ficam ignorados enquanto houver
+   * referência; ausente, o passo é o agent embutido de sempre.
+   */
+  profile: z.string().min(1).optional(),
 });
 
 export const ActionStep = StepBase.extend({
@@ -131,6 +138,42 @@ export const AgentBudgetPatch = z.object({
   perDayTokens: z.number().int().positive().nullable().optional(),
 });
 export type AgentBudgetPatch = z.infer<typeof AgentBudgetPatch>;
+
+/** Id de agent da biblioteca e de toolset: o mesmo formato do id de fluxo. */
+const IdDaBiblioteca = z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/, "use letras minúsculas, números e hífen");
+
+/**
+ * Agent da biblioteca: uma especialidade reutilizável. Não tem gatilho nem
+ * passo; quem decide quando ele roda e com que tarefa é o fluxo que o usa.
+ */
+export const AgentProfile = z.object({
+  id: IdDaBiblioteca,
+  name: z.string().trim().min(1),
+  /** Uma frase, para a paleta do canvas e a lista. */
+  description: z.string().default(""),
+  /** O que ele sabe do mundo: time, sistemas, glossário. Vai no system. */
+  context: z.string().default(""),
+  /** Como ele trabalha. Vai no system, depois do contexto. */
+  instructions: z.string().default(""),
+  model: z.string().min(1),
+  /** Ausente deixa o padrão do provedor. Runtime de assinatura ignora. */
+  temperature: z.number().min(0).max(2).optional(),
+  toolsets: z.array(IdDaBiblioteca).default([]),
+  /** Ferramentas avulsas, além das dos toolsets. */
+  tools: z.array(ToolRef).default([]),
+  maxSteps: z.number().int().positive().default(12),
+});
+export type AgentProfile = z.infer<typeof AgentProfile>;
+export type AgentProfileInput = z.input<typeof AgentProfile>;
+
+export const Toolset = z.object({
+  id: IdDaBiblioteca,
+  name: z.string().trim().min(1),
+  description: z.string().default(""),
+  tools: z.array(ToolRef).default([]),
+});
+export type Toolset = z.infer<typeof Toolset>;
+export type ToolsetInput = z.input<typeof Toolset>;
 
 export const AgentSpec = z.object({
   id: z.string(),

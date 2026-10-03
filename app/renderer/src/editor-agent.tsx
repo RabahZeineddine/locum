@@ -453,7 +453,7 @@ export function SeletorDeFerramentas({
   );
 }
 
-function FerramentasDoServidor({
+export function FerramentasDoServidor({
   marcadas,
   servidor,
   trocar,

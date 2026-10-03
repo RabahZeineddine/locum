@@ -455,13 +455,14 @@
     "queue": "Fila",
     "initiatives": "Iniciativas",
     "runs": "Execuções",
-    "agents": "Agents",
+    "agents": "Fluxo em lista",
     "settings": "Configuração",
     "version": "versão {{version}}",
     "versionHint": "Atualização, em Configuração",
     "sessions": "Sessões",
     "automations": "Automações",
-    "apps": "Apps"
+    "apps": "Apps",
+    "library": "Agents"
   },
   "notification": {
     "runFailed": {
@@ -1447,7 +1448,10 @@
       "triggers": "Gatilhos",
       "steps": "Passos",
       "hint": "Clique para acrescentar. Passo novo entra depois do nó selecionado.",
-      "needsApp": "conecte em Apps"
+      "needsApp": "conecte em Apps",
+      "agents": "Agents",
+      "newAgent": "Criar agent na biblioteca",
+      "agentsEmpty": "Nenhum agent ainda."
     },
     "canvas": {
       "approval": "só com clique",
@@ -1580,6 +1584,16 @@
       },
       "other": {
         "title": "Ação {{action}}"
+      },
+      "agent": {
+        "title": "Agent",
+        "task": "Tarefa deste passo",
+        "taskHint": "O que o agent faz aqui. Quem ele é, o modelo e as ferramentas vêm da biblioteca.",
+        "choose": "Agent",
+        "open": "Abrir na biblioteca",
+        "none": "Nenhum agent na biblioteca.",
+        "toLibrary": "Transformar em agent da biblioteca",
+        "toLibraryHint": "Leva modelo e ferramentas para um agent novo, que outras automações podem usar. O texto deste passo vira a tarefa."
       }
     },
     "problems": {
@@ -1593,7 +1607,8 @@
       "actionWithoutAi": "Esta ação precisa de um passo de IA antes, que escreva o texto.",
       "slackReplyNeedsSlack": "Responder no Slack precisa de um gatilho do Slack: é dele que vem a thread.",
       "teamsReplyNeedsTeams": "Responder no Teams precisa de um gatilho do Teams.",
-      "noTracker": "Escolha em qual tracker abrir a tarefa."
+      "noTracker": "Escolha em qual tracker abrir a tarefa.",
+      "agentMissing": "O agent deste passo não existe mais na biblioteca."
     }
   },
   "apps": {
@@ -1608,5 +1623,72 @@
     "testOk_other": "Respondeu: {{count}} ferramentas em {{ms}} ms",
     "testOk_zero": "Respondeu, sem ferramentas, em {{ms}} ms",
     "testFail": "Não respondeu: {{error}}"
+  },
+  "library": {
+    "title": "Agents",
+    "lead": "Especialidades reutilizáveis. Cada agent sabe um assunto e tem as ferramentas dele; a automação diz quando ele trabalha e em quê.",
+    "newAgent": "Novo agent",
+    "loading": "Carregando...",
+    "notFound": "Agent não encontrado.",
+    "back": "Agents",
+    "empty": "Nenhum agent na biblioteca ainda. Crie um por assunto: chamados, parcerias, revisão de PR.",
+    "tabs": {
+      "agents": "Agents",
+      "toolsets": "Toolsets"
+    },
+    "toolsetsCount_one": "{{count}} toolset",
+    "toolsetsCount_other": "{{count}} toolsets",
+    "toolsetsCount_zero": "sem toolset",
+    "usedBy_one": "em {{count}} automação",
+    "usedBy_other": "em {{count}} automações",
+    "usedBy_zero": "sem uso",
+    "toolsCount_one": "{{count}} ferramenta",
+    "toolsCount_other": "{{count}} ferramentas",
+    "toolsCount_zero": "nenhuma ferramenta",
+    "version": "versão {{version}}",
+    "editor": {
+      "name": "Nome",
+      "namePlaceholder": "Chamados",
+      "description": "Descrição curta",
+      "descriptionPlaceholder": "Classifica e resume chamados do suporte",
+      "context": "Contexto",
+      "contextHint": "O que ele sabe: time, sistemas, glossário, quem procurar. Vale para toda tarefa que ele receber.",
+      "instructions": "Instruções",
+      "instructionsHint": "Como ele trabalha: tom, formato, o que nunca fazer. A tarefa de cada passo vem da automação.",
+      "model": "Modelo",
+      "temperature": "Temperatura",
+      "temperatureHint": "Mais baixa, mais previsível. O Claude Code e o Codex usam a deles e ignoram este valor.",
+      "temperatureDefault": "padrão",
+      "toolsets": "Toolsets",
+      "toolsetsHint": "Conjuntos de ferramentas que vários agents compartilham. Monte na aba Toolsets.",
+      "toolsetsNone": "Nenhum toolset criado ainda.",
+      "extraTools": "Ferramentas avulsas",
+      "extraToolsHint": "Só de leitura. O que escreve fora (mensagem, tarefa) é nó de ação na automação, que passa pela sua aprovação.",
+      "maxSteps": "Máximo de passos com ferramenta",
+      "note": "O que mudou (opcional)",
+      "create": "Criar agent",
+      "save": "Salvar versão",
+      "saved": "Versão {{version}} gravada.",
+      "created": "criado na biblioteca",
+      "edited": "editado na biblioteca",
+      "unsaved": "não salvo",
+      "remove": "Remover",
+      "inUse": "Em uso em: {{list}}. Tire das automações antes de remover."
+    },
+    "toolsets": {
+      "lead": "Um toolset junta ferramentas de um ou mais apps. O agent que inclui o toolset ganha todas elas.",
+      "new": "Novo toolset",
+      "empty": "Nenhum toolset ainda. Exemplo: \"Jira leitura\" com busca e leitura de issue.",
+      "name": "Nome",
+      "description": "Descrição",
+      "tools": "Ferramentas",
+      "toolsHint": "Só de leitura. Abra um servidor para escolher; o número ao lado é o custo em tokens por chamada do modelo.",
+      "create": "Criar toolset",
+      "save": "Salvar",
+      "cancel": "Cancelar",
+      "usedBy_one": "em {{count}} agent",
+      "usedBy_other": "em {{count}} agents",
+      "usedBy_zero": "sem uso"
+    }
   }
 }

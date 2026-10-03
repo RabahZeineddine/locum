@@ -1,11 +1,13 @@
 import { Button } from "@/components/ui/button";
 import {
   anteriores,
+  componenteDoPasso,
   ehGatilho,
   FORMATOS,
   formatoDe,
   trocarPasso,
   variaveis,
+  type AgentDaBiblioteca,
   type Formato,
   type PassoDeAcao,
   type PassoDeIA,
@@ -20,6 +22,7 @@ import { useTranslation } from "react-i18next";
 import type { TriggerConfig } from "../../../src/config/types";
 import { parseCron, proximaOcorrencia } from "../../../src/triggers/cron";
 import { SeletorDeFerramentas, SeletorDeModelo, useCatalogo } from "../editor-agent";
+import type { RotaId } from "../rotas";
 import { appDoGatilho, appDoPasso, Selo, tituloDoGatilho, tituloDoPasso } from "./visual";
 
 type Tracker = ReadResult<"trackers.list">[number];
@@ -43,11 +46,17 @@ export function PainelDoNo({
   rascunho,
   setRascunho,
   trackers,
+  agents,
   problemas,
   remover,
   fechar,
+  navegar,
+  relerBiblioteca,
 }: {
   chave: string;
+  agents: readonly AgentDaBiblioteca[];
+  navegar: (id: RotaId, detalhe?: string) => void;
+  relerBiblioteca: () => Promise<void>;
   rascunho: Rascunho;
   setRascunho: (f: (r: Rascunho) => Rascunho) => void;
   trackers: readonly Tracker[];
@@ -64,7 +73,7 @@ export function PainelDoNo({
     gatilho !== undefined
       ? { app: appDoGatilho(gatilho.config.kind), id: gatilho.config.kind, titulo: tituloDoGatilho(t, gatilho.config) }
       : (() => {
-          const id = passo!.type === "model" ? "ai" : passo!.action;
+          const id = componenteDoPasso(passo!);
           return { app: appDoPasso(id), id, titulo: tituloDoPasso(t, id) };
         })();
 
@@ -112,8 +121,16 @@ export function PainelDoNo({
             }
           />
         </>
+      ) : passo!.type === "model" && passo!.profile !== undefined ? (
+        <ConfigDoAgent agents={agents} chave={chave} navegar={navegar} passo={passo as PassoDeIA} rascunho={rascunho} setRascunho={setRascunho} />
       ) : passo!.type === "model" ? (
-        <ConfigDaIA chave={chave} passo={passo as PassoDeIA} rascunho={rascunho} setRascunho={setRascunho} />
+        <ConfigDaIA
+          chave={chave}
+          passo={passo as PassoDeIA}
+          rascunho={rascunho}
+          relerBiblioteca={relerBiblioteca}
+          setRascunho={setRascunho}
+        />
       ) : (
         <ConfigDaAcao passo={passo as PassoDeAcao} rascunho={rascunho} setRascunho={setRascunho} trackers={trackers} />
       )}
@@ -379,22 +396,26 @@ function CanaisDoTeams({ canais, trocar }: { canais: readonly CanalDoTeams[]; tr
 
 /* ------------------------------------------------------------------- passo */
 
-function ConfigDaIA({
+/** Instrução com as variáveis clicáveis e o formato da saída: igual no agent e na IA avulsa. */
+function TarefaEFormato({
   chave,
   passo,
   rascunho,
-  setRascunho,
+  trocar,
+  rotulo,
+  dica,
 }: {
   chave: string;
   passo: PassoDeIA;
   rascunho: Rascunho;
-  setRascunho: (f: (r: Rascunho) => Rascunho) => void;
+  trocar: (novo: PassoDeIA) => void;
+  rotulo: string;
+  dica?: string;
 }) {
   const { t } = useTranslation();
-  const catalogo = useCatalogo();
   const caixa = useRef<HTMLTextAreaElement>(null);
-  const trocar = (novo: PassoDeIA): void => setRascunho((r) => ({ ...r, spec: trocarPasso(r.spec, passo.key, novo) }));
   const formato = formatoDe(passo);
+  const disponiveis = variaveis(rascunho, chave);
 
   const inserir = (variavel: string): void => {
     const el = caixa.current;
@@ -410,13 +431,7 @@ function ConfigDaIA({
 
   return (
     <>
-      <Campo rotulo={t("automations.panel.name")}>
-        <input className={CAMPO} onChange={(e) => trocar({ ...passo, name: e.target.value })} value={passo.name} />
-      </Campo>
-      <Campo rotulo={t("automations.steps.ai.model")}>
-        <SeletorDeModelo catalogo={catalogo} trocar={(model) => trocar({ ...passo, model })} valor={passo.model} />
-      </Campo>
-      <Campo rotulo={t("automations.steps.ai.prompt")}>
+      <Campo rotulo={rotulo}>
         <textarea
           className={cn(CAMPO, "min-h-40 resize-y font-mono text-xs leading-relaxed")}
           data-locum-prompt=""
@@ -424,11 +439,12 @@ function ConfigDaIA({
           ref={caixa}
           value={passo.prompt}
         />
-        {variaveis(rascunho, chave).length > 0 ? (
+        {dica === undefined ? null : <p className="text-muted-foreground text-[11px]">{dica}</p>}
+        {disponiveis.length > 0 ? (
           <div className="flex flex-col gap-1">
             <span className="text-muted-foreground text-[11px]">{t("automations.steps.ai.variables")}</span>
             <div className="flex flex-wrap gap-1">
-              {variaveis(rascunho, chave).map((v) => (
+              {disponiveis.map((v) => (
                 <button
                   className="bg-muted hover:bg-muted/70 cursor-pointer rounded px-1.5 py-0.5 font-mono text-[11px]"
                   key={v}
@@ -465,6 +481,138 @@ function ConfigDaIA({
           ) : null}
         </select>
       </Campo>
+    </>
+  );
+}
+
+/** Passo com agent da biblioteca: quem trabalha vem de lá, a tarefa é daqui. */
+function ConfigDoAgent({
+  chave,
+  passo,
+  rascunho,
+  setRascunho,
+  agents,
+  navegar,
+}: {
+  chave: string;
+  passo: PassoDeIA;
+  rascunho: Rascunho;
+  setRascunho: (f: (r: Rascunho) => Rascunho) => void;
+  agents: readonly AgentDaBiblioteca[];
+  navegar: (id: RotaId, detalhe?: string) => void;
+}) {
+  const { t } = useTranslation();
+  const trocar = (novo: PassoDeIA): void => setRascunho((r) => ({ ...r, spec: trocarPasso(r.spec, passo.key, novo) }));
+  const atual = agents.find((a) => a.id === passo.profile);
+
+  return (
+    <>
+      <Campo rotulo={t("automations.steps.agent.choose")}>
+        {agents.length === 0 ? (
+          <p className="text-muted-foreground text-xs">{t("automations.steps.agent.none")}</p>
+        ) : (
+          <select
+            className={CAMPO}
+            data-locum-passo-agent=""
+            onChange={(e) => {
+              const escolhido = agents.find((a) => a.id === e.target.value);
+              if (escolhido === undefined) return;
+              // O nome acompanha a troca só quando ainda era o do agent antigo:
+              // nome escrito à mão pela pessoa fica.
+              const nome = passo.name === (atual?.name ?? "") ? escolhido.name : passo.name;
+              trocar({ ...passo, profile: escolhido.id, model: escolhido.model, name: nome });
+            }}
+            value={passo.profile}
+          >
+            {atual === undefined ? <option value={passo.profile}>{passo.profile}</option> : null}
+            {agents.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+        )}
+        {atual === undefined ? null : (
+          <button
+            className="text-primary w-fit cursor-pointer text-xs hover:underline"
+            onClick={() => navegar("library", atual.id)}
+            type="button"
+          >
+            {t("automations.steps.agent.open")}
+          </button>
+        )}
+      </Campo>
+      <Campo rotulo={t("automations.panel.name")}>
+        <input className={CAMPO} onChange={(e) => trocar({ ...passo, name: e.target.value })} value={passo.name} />
+      </Campo>
+      <TarefaEFormato
+        chave={chave}
+        dica={t("automations.steps.agent.taskHint")}
+        passo={passo}
+        rascunho={rascunho}
+        rotulo={t("automations.steps.agent.task")}
+        trocar={trocar}
+      />
+    </>
+  );
+}
+
+function ConfigDaIA({
+  chave,
+  passo,
+  rascunho,
+  setRascunho,
+  relerBiblioteca,
+}: {
+  chave: string;
+  passo: PassoDeIA;
+  rascunho: Rascunho;
+  setRascunho: (f: (r: Rascunho) => Rascunho) => void;
+  relerBiblioteca: () => Promise<void>;
+}) {
+  const { t } = useTranslation();
+  const catalogo = useCatalogo();
+  const [levando, setLevando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const trocar = (novo: PassoDeIA): void => setRascunho((r) => ({ ...r, spec: trocarPasso(r.spec, passo.key, novo) }));
+
+  // O agent nasce com o que é de quem trabalha (modelo, ferramentas, limite de
+  // passos); a instrução fica no passo como tarefa, porque cita o evento e os
+  // passos anteriores deste fluxo e não faria sentido em outro.
+  const levarParaBiblioteca = async (): Promise<void> => {
+    setLevando(true);
+    setErro(null);
+    try {
+      const id = await call("library.suggestId", passo.name, "profile");
+      await call("library.saveProfile", {
+        spec: {
+          id,
+          name: passo.name,
+          model: passo.model,
+          tools: passo.tools ?? rascunho.spec.defaultTools,
+          maxSteps: passo.maxSteps,
+        },
+        create: true,
+      });
+      await relerBiblioteca();
+      const { tools: _tools, ...resto } = passo;
+      trocar({ ...resto, profile: id });
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLevando(false);
+    }
+  };
+
+  return (
+    <>
+      <Campo rotulo={t("automations.panel.name")}>
+        <input className={CAMPO} onChange={(e) => trocar({ ...passo, name: e.target.value })} value={passo.name} />
+      </Campo>
+      <Campo rotulo={t("automations.steps.ai.model")}>
+        <SeletorDeModelo catalogo={catalogo} trocar={(model) => trocar({ ...passo, model })} valor={passo.model} />
+      </Campo>
+      <TarefaEFormato chave={chave} passo={passo} rascunho={rascunho} rotulo={t("automations.steps.ai.prompt")} trocar={trocar} />
       <Campo rotulo={t("automations.steps.ai.tools")}>
         <SeletorDeFerramentas
           defaultTools={rascunho.spec.defaultTools}
@@ -475,6 +623,20 @@ function ConfigDaIA({
           valor={passo.tools}
         />
       </Campo>
+      <div className="border-border flex flex-col gap-1.5 border-t pt-3">
+        <Button
+          className="cursor-pointer self-start"
+          data-locum-levar-para-biblioteca=""
+          disabled={levando || passo.name.trim() === ""}
+          onClick={() => void levarParaBiblioteca()}
+          size="sm"
+          variant="outline"
+        >
+          {t("automations.steps.agent.toLibrary")}
+        </Button>
+        <p className="text-muted-foreground text-[11px]">{t("automations.steps.agent.toLibraryHint")}</p>
+        {erro === null ? null : <p className="text-sev-critical text-xs">{erro}</p>}
+      </div>
     </>
   );
 }

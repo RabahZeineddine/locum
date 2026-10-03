@@ -1217,6 +1217,24 @@ alteração pendente, "Executar agora" pede para salvar antes. A lógica pura do
 canvas está em `renderer/lib/automacao.ts`, com teste. Agents continua no
 endereço antigo, fora da barra, e o canvas tem "Ver como lista" para ele.
 
+**Automações, revisão 2: Apps só conecta, biblioteca de agents e toolsets.**
+Plano em `docs/plano-automacoes.md`, seção "Revisão 2". Apps perdeu menções,
+DMs e canais: isso agora é do gatilho, no canvas (o gatilho do Teams ganhou a
+escolha de canais de equipe). O leitor de Slack por outro servidor MCP ficou
+num "Avançado", e os canais do cadastro antigo só aparecem para remover. A
+barra ganhou Agents de volta, agora como biblioteca: cada agent tem nome,
+descrição, contexto, instruções, modelo, temperatura, toolsets e ferramentas
+avulsas, com versão (tabelas `agent_profiles` e `agent_profile_versions`,
+migração 0008). Toolset é conjunto nomeado de `ToolRef`, sem versão (tabela
+`toolsets`). Escrita externa é recusada nos dois ao gravar. O passo `model`
+ganhou `profile`: presente, o executor resolve o agent no começo do passo e
+usa modelo, ferramentas, limite de passos e temperatura dele, monta o system
+com contexto e instruções, e grava `{ id, version }` do agent no `input` do
+passo. O canvas lista os agents da biblioteca na paleta, o painel do passo
+escolhe o agent e escreve só a tarefa, e o passo de IA avulso tem
+"Transformar em agent da biblioteca". O fluxo em lista continua em
+`#/agents/<id>`, fora da barra.
+
 ## Próximos passos
 
 Iniciativas: I1, I2 e I3 prontos no código. Falta o teste à mão da sessão

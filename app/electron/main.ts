@@ -1147,7 +1147,7 @@ async function irPara(window: BrowserWindow, id: string, detalhe?: string): Prom
  * so a exigencia da story, que sao estes quatro destinos.
  */
 async function checkRoutes(window: BrowserWindow): Promise<string> {
-  const esperados = ["today", "inbox", "initiatives", "automations", "runs", "apps", "sessions", "settings"];
+  const esperados = ["today", "inbox", "initiatives", "automations", "library", "runs", "apps", "sessions", "settings"];
 
   const barra = (await window.webContents.executeJavaScript(
     `Array.from(document.querySelectorAll("[data-locum-rota]")).map((b) => ({
@@ -5909,6 +5909,9 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
     ["apps", undefined],
     ["automations", undefined],
     ["automations", primeiroAgent],
+    ["library", undefined],
+    ["library", "toolsets"],
+    ["library", "novo"],
   ];
 
   for (const [id, detalhe] of destinos) {
@@ -5917,7 +5920,7 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
     // registraria o esqueleto em vez do conteúdo.
     await new Promise((resolve) => setTimeout(resolve, 1200));
     const imagem = await janela.webContents.capturePage();
-    const sufixo = detalhe === undefined ? "" : id === "settings" ? `-${detalhe}` : "-detalhe";
+    const sufixo = detalhe === undefined ? "" : id === "settings" || id === "library" ? `-${detalhe}` : "-detalhe";
     writeFileSync(join(destino, `${id}${sufixo}.png`), imagem.toPNG());
   }
 

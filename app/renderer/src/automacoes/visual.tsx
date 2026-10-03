@@ -2,6 +2,7 @@ import { cn } from "@/lib/utils";
 import type { TFunction } from "i18next";
 import {
   AtSign,
+  Bot,
   CalendarClock,
   ClipboardList,
   GitPullRequest,
@@ -36,6 +37,7 @@ const ICONES: Record<string, LucideIcon> = {
   webhook: Webhook,
   "mcp-poll": Plug,
   ai: Sparkles,
+  agent: Bot,
   "slack.post": Send,
   "teams.post": Send,
   "tracker.create_issue": ClipboardList,
@@ -116,7 +118,7 @@ export function tituloDoGatilho(t: TFunction, config: TriggerConfig): string {
 
 /** Título do componente de passo, com a ação crua para o que a paleta não conhece. */
 export function tituloDoPasso(t: TFunction, id: string): string {
-  return ["ai", "slack.post", "teams.post", "tracker.create_issue"].includes(id)
+  return ["ai", "agent", "slack.post", "teams.post", "tracker.create_issue"].includes(id)
     ? t(`automations.steps.${id}.title`)
     : t("automations.steps.other.title", { action: id });
 }

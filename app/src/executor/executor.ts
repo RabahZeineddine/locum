@@ -13,6 +13,7 @@ import { McpRegistry } from "../mcp/registry.js";
 import { resolveModel, type FallbackRow } from "../providers/registry.js";
 import { providerService } from "../services/provider-service.js";
 import type { Runtime } from "../runtimes/types.js";
+import { libraryService, type LibraryService } from "../services/library-service.js";
 import { selectSkills, skillsPreamble, type SkillContext } from "../skills/loader.js";
 import { ApprovalGate, settleStep } from "../approval/gate.js";
 import { BudgetExceeded, assertWithinBudget, recordSpend, type Spend } from "./budget.js";
@@ -29,6 +30,8 @@ type Deps = {
   runtimes: Map<string, Runtime>;
   gate: ApprovalGate;
   machineId: string;
+  /** Biblioteca de agents. Ausente usa a do banco do processo. */
+  profiles?: Pick<LibraryService, "resolveProfile">;
 };
 
 const nowSec = () => Math.floor(Date.now() / 1000);
@@ -306,7 +309,13 @@ export class Executor {
 
     await assertWithinBudget(spec.id, args.run, spec.budget);
 
-    const toolRefs = resolveTools(spec, step);
+    // Passo com agent da biblioteca: modelo, ferramentas e system vêm dele, e
+    // o prompt do passo é só a tarefa. Resolvido a cada execução, para a
+    // versão nova do agent valer no próximo run de todo fluxo que o usa.
+    const perfil = step.profile === undefined ? null : await (this.deps.profiles ?? libraryService).resolveProfile(step.profile);
+    const toolRefs = perfil === null ? resolveTools(spec, step) : perfil.tools;
+    const modelo = perfil === null ? step.model : perfil.version.spec.model;
+    const maxSteps = perfil === null ? step.maxSteps : perfil.version.spec.maxSteps;
 
     // Antes do `missing()`: servidor fora da iniciativa conta como ausente,
     // mesmo que esteja instalado nesta maquina. Agent sem iniciativa
@@ -342,7 +351,7 @@ export class Executor {
       return { kind: "skipped" };
     }
 
-    const resolution = resolveModel(step.model, fallbacks);
+    const resolution = resolveModel(modelo, fallbacks);
     const runtime =
       this.deps.runtimes.get(SUBSCRIPTION_RUNTIMES.has(resolution.provider) ? resolution.provider : "native");
     if (!runtime) throw new Error(`runtime indisponivel para "${resolution.provider}"`);
@@ -361,7 +370,10 @@ export class Executor {
         modelUsed: resolution.used,
         substitutionReason: resolution.substitutionReason,
         skillsUsed: skills.map((s) => ({ name: s.name, origin: s.origin, hash: s.hash })),
-        input: { needs: step.needs.map((k) => outputs.get(k)) },
+        input: {
+          needs: step.needs.map((k) => outputs.get(k)),
+          ...(perfil === null ? {} : { profile: { id: perfil.version.profileId, version: perfil.version.version } }),
+        },
       })
       .where(eq(schema.steps.id, stepId));
 
@@ -369,7 +381,7 @@ export class Executor {
       // O corpo vai sempre no texto, inclusive para o claude-code: ele roda com
       // `--setting-sources ""` e so com as ferramentas MCP liberadas, entao nao
       // enxerga plugin nem consegue abrir a skill pelo nome.
-      const system = [skillsPreamble(skills, true)].filter((s) => s.length > 0).join("\n\n");
+      const system = [perfil?.system ?? "", skillsPreamble(skills, true)].filter((s) => s.length > 0).join("\n\n");
 
       const result = await runtime.run({
         provider: resolution.provider,
@@ -379,8 +391,9 @@ export class Executor {
         stablePrefix: stablePrefix(step.prompt),
         tools,
         mcpServers: [...new Set(toolRefs.map((t) => t.server))],
-        maxSteps: step.maxSteps,
+        maxSteps,
         outputSchema: step.outputSchema,
+        ...(perfil?.version.spec.temperature === undefined ? {} : { temperature: perfil.version.spec.temperature }),
       });
 
       const output = step.outputSchema ? result.structured : result.text;

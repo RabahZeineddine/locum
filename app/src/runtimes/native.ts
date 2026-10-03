@@ -43,6 +43,7 @@ export class NativeRuntime implements Runtime {
       messages: cacheableMessages(system, req.prompt, req.stablePrefix),
       tools: req.tools,
       stopWhen: stepCountIs(req.maxSteps),
+      ...(req.temperature === undefined ? {} : { temperature: req.temperature }),
       // O mesmo teto do `claude -p`. Sem ele, um provedor que para de
       // responder deixava o run em `running` para sempre, e run em andamento
       // não aceita reexecução.

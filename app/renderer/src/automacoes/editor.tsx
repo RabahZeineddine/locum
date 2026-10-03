@@ -13,16 +13,18 @@ import {
   ligar,
   mover,
   PASSOS,
+  passoDoAgent,
   PREFIXO_DE_GATILHO,
   posicoes,
   problemas,
   removerPasso,
+  type AgentDaBiblioteca,
   type AppDoComponente,
   type GatilhoNoCanvas,
   type Problema,
   type Rascunho,
 } from "@/lib/automacao";
-import { call, useRead, type ReadResult } from "@/lib/bridge";
+import { call, read, useRead, type ReadResult } from "@/lib/bridge";
 import { cn } from "@/lib/utils";
 import {
   applyNodeChanges,
@@ -106,12 +108,18 @@ function EditorCarregado({
 
   const conexoes = useRead("connections.list");
   const trackers = useRead("trackers.list");
+  const biblioteca = useRead("library.profiles");
+  // Relida depois de o painel transformar um passo em agent da biblioteca:
+  // sem isso o agent recém-criado contaria como inexistente e travaria o Salvar.
+  const [bibliotecaRelida, setBibliotecaRelida] = useState<ReadResult<"library.profiles"> | null>(null);
+  const agentsDaBiblioteca = bibliotecaRelida ?? biblioteca.data ?? [];
   const conectado = (id: string): boolean => (conexoes.data ?? []).some((c) => c.id === id && c.state === "connected");
   const listaDeTrackers = (trackers.data ?? []).filter((tr) => tr.enabled);
   const ctx = {
     slackConectado: conectado("slack"),
     teamsConectado: conectado("teams"),
     trackers: listaDeTrackers.map((tr) => tr.id),
+    ...(bibliotecaRelida === null && biblioteca.data === undefined ? {} : { agents: agentsDaBiblioteca.map((a) => a.id) }),
   };
   const appsLigados: Record<AppDoComponente, boolean> = {
     locum: true,
@@ -212,6 +220,17 @@ function EditorCarregado({
     if (componente === undefined) return;
     setRascunho((r) => {
       const passo = componente.novo(r.spec);
+      const depois = selecionado !== null && !ehGatilho(selecionado) ? selecionado : (r.spec.steps.at(-1)?.key ?? null);
+      const lugar = posicoes(r).get(depois ?? "");
+      const spec = adicionarPasso(r, passo, depois, lugar === undefined ? undefined : { x: lugar.x + 330, y: lugar.y });
+      setSelecionado(passo.key);
+      return { ...r, spec };
+    });
+  };
+
+  const acrescentarAgent = (agent: AgentDaBiblioteca): void => {
+    setRascunho((r) => {
+      const passo = passoDoAgent(r.spec, agent);
       const depois = selecionado !== null && !ehGatilho(selecionado) ? selecionado : (r.spec.steps.at(-1)?.key ?? null);
       const lugar = posicoes(r).get(depois ?? "");
       const spec = adicionarPasso(r, passo, depois, lugar === undefined ? undefined : { x: lugar.x + 330, y: lugar.y });
@@ -325,9 +344,17 @@ function EditorCarregado({
       ) : null}
 
       <div className="flex min-h-0 flex-1 gap-3">
-        <Paleta appsLigados={appsLigados} aoGatilho={acrescentarGatilho} aoPasso={acrescentarPasso} />
+        <Paleta
+          agents={agentsDaBiblioteca}
+          aoAgent={acrescentarAgent}
+          aoGatilho={acrescentarGatilho}
+          aoPasso={acrescentarPasso}
+          appsLigados={appsLigados}
+          criarAgent={() => navegar("library", "novo")}
+        />
         <div className="border-border min-w-0 flex-1 overflow-hidden rounded-lg border" data-locum-probe="automacao-canvas">
           <CanvasDaAutomacao
+            agents={agentsDaBiblioteca}
             problemasPorNo={problemasPorNo}
             rascunho={rascunho}
             selecionado={selecionado}
@@ -337,7 +364,10 @@ function EditorCarregado({
         </div>
         {selecionado === null ? null : (
           <PainelDoNo
+            agents={agentsDaBiblioteca}
             chave={selecionado}
+            navegar={navegar}
+            relerBiblioteca={() => read("library.profiles").then(setBibliotecaRelida, () => undefined)}
             fechar={() => setSelecionado(null)}
             problemas={problemasPorNo.get(selecionado) ?? []}
             rascunho={rascunho}
@@ -355,12 +385,18 @@ function EditorCarregado({
 
 function Paleta({
   appsLigados,
+  agents,
   aoGatilho,
   aoPasso,
+  aoAgent,
+  criarAgent,
 }: {
   appsLigados: Record<AppDoComponente, boolean>;
+  agents: readonly AgentDaBiblioteca[];
   aoGatilho: (id: string) => void;
   aoPasso: (id: string) => void;
+  aoAgent: (agent: AgentDaBiblioteca) => void;
+  criarAgent: () => void;
 }) {
   const { t } = useTranslation();
   const Item = ({ app, id, titulo, onClick }: { app: AppDoComponente; id: string; titulo: string; onClick: () => void }) => (
@@ -397,6 +433,20 @@ function Paleta({
       </section>
       <section>
         <h3 className="text-muted-foreground px-2 pb-1 text-[11px] font-medium uppercase tracking-wide">
+          {t("automations.palette.agents")}
+        </h3>
+        <ul>
+          {agents.map((a) => (
+            <Item app="locum" id="agent" key={a.id} onClick={() => aoAgent(a)} titulo={a.name} />
+          ))}
+        </ul>
+        {agents.length === 0 ? <p className="text-muted-foreground px-2 text-[11px]">{t("automations.palette.agentsEmpty")}</p> : null}
+        <button className="text-primary cursor-pointer px-2 pt-1 text-[11px] hover:underline" onClick={criarAgent} type="button">
+          {t("automations.palette.newAgent")}
+        </button>
+      </section>
+      <section>
+        <h3 className="text-muted-foreground px-2 pb-1 text-[11px] font-medium uppercase tracking-wide">
           {t("automations.palette.steps")}
         </h3>
         <ul>
@@ -427,6 +477,7 @@ type DadosDoNo = {
 type NoDoCanvas = Node<DadosDoNo, "componente">;
 
 function CanvasDaAutomacao({
+  agents,
   rascunho,
   setRascunho,
   selecionado,
@@ -438,6 +489,7 @@ function CanvasDaAutomacao({
   selecionado: string | null;
   setSelecionado: (chave: string | null) => void;
   problemasPorNo: Map<string, Problema[]>;
+  agents: readonly AgentDaBiblioteca[];
 }) {
   const { t } = useTranslation();
   const [erro, setErro] = useState<string | null>(null);
@@ -479,7 +531,12 @@ function CanvasDaAutomacao({
           componente,
           tipo: tituloDoPasso(t, componente),
           titulo: p.name,
-          subtitulo: p.type === "model" ? p.model.split("/").at(-1) ?? p.model : (p.target ?? ""),
+          subtitulo:
+            p.type !== "model"
+              ? (p.target ?? "")
+              : p.profile !== undefined
+                ? (agents.find((a) => a.id === p.profile)?.name ?? p.profile)
+                : (p.model.split("/").at(-1) ?? p.model),
           gatilho: false,
           aprovacao: p.type === "action" && p.mode === "approve",
           problema: nivel(p.key),
@@ -488,7 +545,7 @@ function CanvasDaAutomacao({
       };
     });
     return [...gatilhos, ...passos];
-  }, [rascunho, selecionado, problemasPorNo, t]);
+  }, [rascunho, selecionado, problemasPorNo, agents, t]);
 
   const [nos, setNos] = useState<NoDoCanvas[]>(base);
   useEffect(() => setNos(base), [base]);

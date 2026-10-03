@@ -352,7 +352,34 @@ export const PASSOS: readonly ComponenteDePasso[] = [
 
 /** O componente da paleta que corresponde a um passo já gravado. */
 export function componenteDoPasso(passo: Step): string {
-  return passo.type === "model" ? "ai" : passo.action;
+  if (passo.type === "model") return passo.profile === undefined ? "ai" : "agent";
+  return passo.action;
+}
+
+/** O agent da biblioteca como a paleta conhece: id, nome e modelo. */
+export interface AgentDaBiblioteca {
+  id: string;
+  name: string;
+  model: string;
+}
+
+/**
+ * Passo que entrega a tarefa a um agent da biblioteca. `model` vai junto só
+ * porque o esquema do passo exige; quem vale na execução é o do agent.
+ */
+export function passoDoAgent(spec: AgentSpec, agent: AgentDaBiblioteca): PassoDeIA {
+  return {
+    type: "model",
+    key: novaChave(spec, agent.id),
+    name: agent.name,
+    needs: [],
+    optional: false,
+    model: agent.model,
+    prompt: "",
+    requiresServers: [],
+    maxSteps: 12,
+    profile: agent.id,
+  };
 }
 
 /* -------------------------------------------------------------- variáveis */
@@ -414,6 +441,8 @@ export interface Contexto {
   slackConectado: boolean;
   teamsConectado: boolean;
   trackers: readonly string[];
+  /** Ids da biblioteca. Ausente enquanto a lista não chegou: não acusa nada. */
+  agents?: readonly string[];
 }
 
 /**
@@ -450,6 +479,9 @@ export function problemas(r: Rascunho, ctx: Contexto): Problema[] {
   for (const p of r.spec.steps) {
     if (p.type === "model") {
       if (p.prompt.trim() === "") lista.push({ chave: "automations.problems.noPrompt", no: p.key, bloqueia: false });
+      if (p.profile !== undefined && ctx.agents !== undefined && !ctx.agents.includes(p.profile)) {
+        lista.push({ chave: "automations.problems.agentMissing", no: p.key, bloqueia: true });
+      }
       continue;
     }
     const fonte = porChave.get(p.input ?? p.needs[0] ?? "");

@@ -3,6 +3,7 @@ import type { AgentService } from "../src/services/agent-service.js";
 import type { RascunhoDeAgent } from "../src/services/agent-builder.js";
 import type { ApprovalService } from "../src/services/approval-service.js";
 import type { AutomationService } from "../src/services/automation-service.js";
+import type { LibraryService } from "../src/services/library-service.js";
 import type { ClaudeCodeService } from "../src/services/claude-code-service.js";
 import type { ConnectionService } from "../src/services/connection-service.js";
 import type { CredentialService } from "../src/services/credential-service.js";
@@ -388,6 +389,15 @@ interface ServiceApi {
   "automations.setEnabled": AutomationService["setEnabled"];
   "automations.runNow": AutomationService["runNow"];
   "automations.suggestId": AutomationService["suggestId"];
+  "library.profiles": LibraryService["listProfiles"];
+  "library.profile": LibraryService["getProfile"];
+  "library.profileVersions": LibraryService["listProfileVersions"];
+  "library.toolsets": LibraryService["listToolsets"];
+  "library.saveProfile": LibraryService["saveProfile"];
+  "library.removeProfile": LibraryService["removeProfile"];
+  "library.saveToolset": LibraryService["saveToolset"];
+  "library.removeToolset": LibraryService["removeToolset"];
+  "library.suggestId": LibraryService["suggestId"];
 
   /** A versão instalada, para o rodapé da barra lateral. */
   "app.version": () => Promise<string>;
@@ -564,6 +574,15 @@ export const BRIDGE_CHANNELS = [
   "automations.setEnabled",
   "automations.runNow",
   "automations.suggestId",
+  "library.profiles",
+  "library.profile",
+  "library.profileVersions",
+  "library.toolsets",
+  "library.saveProfile",
+  "library.removeProfile",
+  "library.saveToolset",
+  "library.removeToolset",
+  "library.suggestId",
   "app.version",
   "startup.get",
   "startup.set",

@@ -4,6 +4,7 @@ import type { Antigos } from "@/lib/router";
 import { Agents } from "./telas/agents";
 import { Apps } from "./telas/apps";
 import { Automacoes } from "./telas/automacoes";
+import { Biblioteca } from "./telas/biblioteca";
 import { Configuracao } from "./telas/configuracao";
 import { Execucoes } from "./telas/execucoes";
 import { Hoje } from "./telas/hoje";
@@ -40,12 +41,12 @@ export const ROTAS = [
   { id: "inbox", rotulo: "nav.queue", icone: InboxIcon, Tela: Inbox },
   { id: "initiatives", rotulo: "nav.initiatives", icone: Target, Tela: Initiatives },
   { id: "automations", rotulo: "nav.automations", icone: Workflow, Tela: Automacoes },
+  { id: "library", rotulo: "nav.library", icone: Bot, Tela: Biblioteca },
   { id: "runs", rotulo: "nav.runs", icone: ListTree, Tela: Execucoes },
   { id: "apps", rotulo: "nav.apps", icone: Blocks, Tela: Apps },
-  // Fora da barra: a automação é a porta de entrada, e o agent é o que ela
-  // roda. O destino continua existindo para o "Ver como lista" da automação,
-  // para link antigo e para a paleta.
-  { id: "agents", rotulo: "nav.agents", icone: Bot, Tela: Agents, naBarra: false },
+  // Fora da barra: é o fluxo da automação visto como lista, com histórico de
+  // versões e orçamento. Abre pelo "Ver como lista" do canvas e por link antigo.
+  { id: "agents", rotulo: "nav.agents", icone: ListTree, Tela: Agents, naBarra: false },
   { id: "sessions", rotulo: "nav.sessions", icone: TerminalSquare, Tela: Sessoes },
   { id: "settings", rotulo: "nav.settings", icone: Settings, Tela: Configuracao },
 ] as const satisfies readonly {

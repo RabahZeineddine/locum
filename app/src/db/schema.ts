@@ -46,6 +46,47 @@ export const agentVersions = sqliteTable(
   (t) => [uniqueIndex("agent_versions_unq").on(t.agentId, t.version)],
 );
 
+/**
+ * Agent da biblioteca: especialidade reutilizável que um passo de fluxo
+ * referencia. Separado de `agents`, que é o fluxo, porque o mesmo agent da
+ * biblioteca serve a várias automações e muda de versão sem que elas mudem.
+ */
+export const agentProfiles = sqliteTable("agent_profiles", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  createdAt: integer("created_at").notNull().default(now),
+});
+
+/** Versão imutável do agent da biblioteca, como `agent_versions` para o fluxo. */
+export const agentProfileVersions = sqliteTable(
+  "agent_profile_versions",
+  {
+    id: text("id").primaryKey(),
+    profileId: text("profile_id").notNull().references(() => agentProfiles.id),
+    version: integer("version").notNull(),
+    /** AgentProfile serializado. Validado por zod na leitura. */
+    spec: text("spec", { mode: "json" }).notNull(),
+    note: text("note"),
+    createdAt: integer("created_at").notNull().default(now),
+  },
+  (t) => [uniqueIndex("agent_profile_versions_unq").on(t.profileId, t.version)],
+);
+
+/**
+ * Conjunto nomeado de ferramentas. Sem versão: quem precisa saber o que um
+ * run usou lê `toolsUsed` no passo, e um toolset editado vale para a próxima
+ * execução de todo agent que o usa, que é o que se espera de um conjunto
+ * compartilhado.
+ */
+export const toolsets = sqliteTable("toolsets", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  /** ToolRef[] serializado. */
+  tools: text("tools", { mode: "json" }).notNull(),
+  updatedAt: integer("updated_at").notNull().default(now),
+});
+
 export const triggers = sqliteTable("triggers", {
   id: text("id").primaryKey(),
   agentId: text("agent_id").notNull().references(() => agents.id),

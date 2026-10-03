@@ -114,6 +114,10 @@ export const READ_CHANNELS = [
   // A automação aberta no canvas: spec da última versão e gatilhos. Leitura
   // pura; gravar e ligar ficam entre as ações.
   "automations.get",
+  "library.profiles",
+  "library.profile",
+  "library.profileVersions",
+  "library.toolsets",
   // Cadastro e agenda, sem bater em gatilho nenhum: ler quando foi a última
   // varredura não dispara a próxima.
   "triggers.schedule",
@@ -231,6 +235,11 @@ export const ACTION_CHANNELS = [
   "automations.setEnabled",
   "automations.runNow",
   "automations.suggestId",
+  "library.saveProfile",
+  "library.removeProfile",
+  "library.saveToolset",
+  "library.removeToolset",
+  "library.suggestId",
   // Escolher idioma é um clique de quem está usando, e a escrita em `settings`
   // vale para a próxima subida também. Não é leitura de tela.
   "i18n.setPreference",

@@ -16,6 +16,7 @@ import { VERSAO } from "./versao.js";
 import { agentService } from "../src/services/agent-service.js";
 import { approvalService } from "../src/services/approval-service.js";
 import { automationService } from "../src/services/automation-service.js";
+import { libraryService } from "../src/services/library-service.js";
 import { claudeCodeService } from "../src/services/claude-code-service.js";
 import { connectionService } from "../src/services/connection-service.js";
 import { credentialService } from "../src/services/credential-service.js";
@@ -181,6 +182,15 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "automations.setEnabled": (agentId, enabled) => automationService.setEnabled(agentId, enabled),
     "automations.runNow": (agentId) => automationService.runNow(agentId),
     "automations.suggestId": (nome) => automationService.suggestId(nome),
+    "library.profiles": () => libraryService.listProfiles(),
+    "library.profile": (id) => libraryService.getProfile(id),
+    "library.profileVersions": (id) => libraryService.listProfileVersions(id),
+    "library.toolsets": () => libraryService.listToolsets(),
+    "library.saveProfile": (input) => libraryService.saveProfile(input),
+    "library.removeProfile": (id) => libraryService.removeProfile(id),
+    "library.saveToolset": (input) => libraryService.saveToolset(input),
+    "library.removeToolset": (id) => libraryService.removeToolset(id),
+    "library.suggestId": (nome, tipo) => libraryService.suggestId(nome, tipo),
 
     "approvals.listPending": () => approvalService.listPending(),
     "approvals.listStuck": () => approvalService.listStuck(),

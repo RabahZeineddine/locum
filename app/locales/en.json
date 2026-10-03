@@ -437,13 +437,14 @@
     "queue": "Queue",
     "initiatives": "Initiatives",
     "runs": "Runs",
-    "agents": "Agents",
+    "agents": "Flow as list",
     "settings": "Settings",
     "version": "version {{version}}",
     "versionHint": "Updates, in Settings",
     "sessions": "Sessions",
     "automations": "Automations",
-    "apps": "Apps"
+    "apps": "Apps",
+    "library": "Agents"
   },
   "notification": {
     "runFailed": {
@@ -1406,7 +1407,10 @@
       "triggers": "Triggers",
       "steps": "Steps",
       "hint": "Click to add. A new step goes after the selected node.",
-      "needsApp": "connect in Apps"
+      "needsApp": "connect in Apps",
+      "agents": "Agents",
+      "newAgent": "Create agent in the library",
+      "agentsEmpty": "No agent yet."
     },
     "canvas": {
       "approval": "click to send",
@@ -1538,6 +1542,16 @@
       },
       "other": {
         "title": "Action {{action}}"
+      },
+      "agent": {
+        "title": "Agent",
+        "task": "Task for this step",
+        "taskHint": "What the agent does here. Who it is, the model and the tools come from the library.",
+        "choose": "Agent",
+        "open": "Open in library",
+        "none": "No agent in the library.",
+        "toLibrary": "Turn into a library agent",
+        "toLibraryHint": "Moves model and tools into a new agent that other automations can use. This step's text becomes the task."
       }
     },
     "problems": {
@@ -1551,7 +1565,8 @@
       "actionWithoutAi": "This action needs an AI step before it to write the text.",
       "slackReplyNeedsSlack": "Replying in Slack needs a Slack trigger: that is where the thread comes from.",
       "teamsReplyNeedsTeams": "Replying in Teams needs a Teams trigger.",
-      "noTracker": "Choose which tracker opens the task."
+      "noTracker": "Choose which tracker opens the task.",
+      "agentMissing": "This step's agent no longer exists in the library."
     }
   },
   "apps": {
@@ -1565,5 +1580,68 @@
     "testOk_one": "Responded: {{count}} tool in {{ms}} ms",
     "testOk_other": "Responded: {{count}} tools in {{ms}} ms",
     "testFail": "Did not respond: {{error}}"
+  },
+  "library": {
+    "title": "Agents",
+    "lead": "Reusable specialties. Each agent knows one subject and has its own tools; the automation says when it works and on what.",
+    "newAgent": "New agent",
+    "loading": "Loading...",
+    "notFound": "Agent not found.",
+    "back": "Agents",
+    "empty": "No agent in the library yet. Create one per subject: tickets, partnerships, PR review.",
+    "tabs": {
+      "agents": "Agents",
+      "toolsets": "Toolsets"
+    },
+    "toolsetsCount_one": "{{count}} toolset",
+    "toolsetsCount_other": "{{count}} toolsets",
+    "usedBy_one": "in {{count}} automation",
+    "usedBy_other": "in {{count}} automations",
+    "toolsCount_one": "{{count}} tool",
+    "toolsCount_other": "{{count}} tools",
+    "version": "version {{version}}",
+    "editor": {
+      "name": "Name",
+      "namePlaceholder": "Tickets",
+      "description": "Short description",
+      "descriptionPlaceholder": "Sorts and summarizes support tickets",
+      "context": "Context",
+      "contextHint": "What it knows: team, systems, glossary, who to ask. Applies to every task it gets.",
+      "instructions": "Instructions",
+      "instructionsHint": "How it works: tone, format, what never to do. Each step's task comes from the automation.",
+      "model": "Model",
+      "temperature": "Temperature",
+      "temperatureHint": "Lower is more predictable. Claude Code and Codex use their own and ignore this value.",
+      "temperatureDefault": "default",
+      "toolsets": "Toolsets",
+      "toolsetsHint": "Tool sets shared by several agents. Build them in the Toolsets tab.",
+      "toolsetsNone": "No toolset yet.",
+      "extraTools": "Extra tools",
+      "extraToolsHint": "Read only. Anything that writes outside (message, ticket) is an action node in the automation, which waits for your approval.",
+      "maxSteps": "Maximum tool steps",
+      "note": "What changed (optional)",
+      "create": "Create agent",
+      "save": "Save version",
+      "saved": "Version {{version}} saved.",
+      "created": "created in the library",
+      "edited": "edited in the library",
+      "unsaved": "unsaved",
+      "remove": "Remove",
+      "inUse": "Used in: {{list}}. Take it out of those automations before removing."
+    },
+    "toolsets": {
+      "lead": "A toolset groups tools from one or more apps. An agent that includes the toolset gets all of them.",
+      "new": "New toolset",
+      "empty": "No toolset yet. Example: \"Jira read\" with issue search and read.",
+      "name": "Name",
+      "description": "Description",
+      "tools": "Tools",
+      "toolsHint": "Read only. Open a server to choose; the number beside each is its token cost per model call.",
+      "create": "Create toolset",
+      "save": "Save",
+      "cancel": "Cancel",
+      "usedBy_one": "in {{count}} agent",
+      "usedBy_other": "in {{count}} agents"
+    }
   }
 }

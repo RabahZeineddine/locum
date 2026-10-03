@@ -16,6 +16,8 @@ export type RuntimeRequest = {
   /** Nomes de servidor usados, para o adaptador de CLI montar --mcp-config. */
   mcpServers?: string[];
   maxSteps: number;
+  /** Ausente deixa o padrão do provedor. Runtime de assinatura ignora. */
+  temperature?: number;
   /** JSON Schema. Presente, a saida e validada. */
   outputSchema?: Record<string, unknown>;
 };
