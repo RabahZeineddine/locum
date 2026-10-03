@@ -1179,6 +1179,15 @@ mensagem no Teams mandaria duas. O updater mostra "sem conexão" pelo tipo e,
 depois de uma falha de rede, confere de novo em cinco minutos. Um teste barra
 `fetch` cru fora do cliente.
 
+**Ícone novo e descrição do app do Slack.** O ícone deixou de ser uma órbita
+abstrata e passou a dizer o que "locum" quer dizer: atrás, em tracejado, a
+pessoa ausente; na frente, sólido, o Locum ocupando o lugar dela; um selo
+vermelho para o que espera aprovação. O mesmo desenho está em
+`build/icon.svg` (de onde sai o `.icns`), na marca da barra lateral, com as
+cores do tema, e na bandeja, reduzido a template de 16 e 32 pixels. A
+descrição do manifesto do app do Slack fala do que ele faz para a pessoa, sem
+jargão de agente.
+
 ## Próximos passos
 
 Iniciativas: I1, I2 e I3 prontos no código. Falta o teste à mão da sessão

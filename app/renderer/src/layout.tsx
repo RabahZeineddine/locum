@@ -63,25 +63,32 @@ function Ponte({
 }
 
 /**
- * A marca: uma órbita em gradiente com um brilho no centro. É o único
- * desenho da janela que não carrega informação, e por isso é pequeno.
+ * A marca: o mesmo desenho do ícone do app. Atrás, em tracejado, a pessoa
+ * ausente; na frente, sólido, o Locum ocupando o lugar dela; o selo vermelho
+ * é o que espera aprovação. As coordenadas são as do ícone de 1024, reduzidas
+ * pelo viewBox, e as cores vêm do tema.
  */
 function Marca() {
   return (
-    <svg aria-hidden className="size-6 shrink-0" fill="none" viewBox="0 0 24 24">
+    <svg aria-hidden className="size-6 shrink-0" viewBox="0 0 1024 1024">
       <defs>
-        <linearGradient id="locum-marca" x1="2" x2="22" y1="3" y2="21">
-          <stop offset="0" stopColor="var(--ia-1)" />
-          <stop offset="0.55" stopColor="var(--ia-2)" />
-          <stop offset="1" stopColor="var(--ia-3)" />
-        </linearGradient>
+        <clipPath id="locum-marca">
+          <rect height="1024" rx="230" width="1024" />
+        </clipPath>
       </defs>
-      <rect fill="url(#locum-marca)" height="22" rx="7" width="22" x="1" y="1" />
-      <path
-        d="M12 6.5c.5 2.6 1.9 4 4.5 4.5-2.6.5-4 1.9-4.5 4.5-.5-2.6-1.9-4-4.5-4.5 2.6-.5 4-1.9 4.5-4.5Z"
-        fill="oklch(0.16 0.02 275)"
-        opacity="0.85"
-      />
+      <g clipPath="url(#locum-marca)">
+        <rect fill="var(--secondary)" height="1024" width="1024" />
+        <g fill="none" stroke="var(--muted-foreground)" strokeWidth="44">
+          <circle cx="640" cy="285" r="125" strokeDasharray="78 53" transform="rotate(-80 640 285)" />
+          <path d="M 370 1040 L 370 730 A 270 270 0 0 1 910 730 L 910 1040" strokeDasharray="78 60" />
+        </g>
+        <circle cx="405" cy="465" r="181" fill="var(--secondary)" />
+        <path d="M 69 1040 L 69 940 A 336 336 0 0 1 741 940 L 741 1040 Z" fill="var(--secondary)" />
+        <circle cx="405" cy="465" r="135" fill="var(--foreground)" />
+        <path d="M 115 1040 L 115 940 A 290 290 0 0 1 695 940 L 695 1040 Z" fill="var(--foreground)" />
+        <circle cx="760" cy="190" r="108" fill="var(--secondary)" />
+        <circle cx="760" cy="190" r="80" fill="var(--destructive)" />
+      </g>
     </svg>
   );
 }

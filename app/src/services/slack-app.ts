@@ -68,7 +68,7 @@ export function slackManifest(): Record<string, unknown> {
   return {
     display_information: {
       name: "Locum",
-      description: "Agents locais que leem canais e propõem respostas para aprovação.",
+      description: "Assistente pessoal que acompanha canais e menções e prepara respostas para você revisar.",
     },
     features: {
       bot_user: { display_name: "Locum", always_online: false },

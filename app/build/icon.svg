@@ -1,11 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
   <title>Locum</title>
   <!--
-    A régua de severidade do registro, a mesma da lista de achados: barra de cor
-    na borda esquerda e linhas de log à direita. As cores saem dos tokens do
-    tema escuro em renderer/src/index.css, convertidas de oklch para hex porque
-    o sips não lê oklch. Sem letra, sem gradiente, sem brilho: o que precisa
-    sobreviver é a leitura a 16 pixels.
+    O substituto, que é o que "locum" quer dizer: quem segura o lugar de outra
+    pessoa enquanto ela está fora. Atrás, em tracejado, a pessoa ausente; na
+    frente, sólido, o Locum ocupando o lugar; na cabeça de quem saiu, o selo
+    vermelho do que espera aprovação. O desenho mora num quadro de 1024 dentro
+    da folha arredondada do macOS, com a mesma margem do ícone anterior. As
+    cores são as do tema escuro em renderer/src/index.css, em hex porque o sips
+    não lê oklch. Traço grosso e poucos segmentos: o tracejado precisa
+    sobreviver a 36 pixels, que é como o Slack mostra.
   -->
   <defs>
     <clipPath id="folha">
@@ -14,11 +17,17 @@
   </defs>
   <g clip-path="url(#folha)">
     <rect x="100" y="100" width="824" height="824" fill="#1e2024"/>
-    <rect x="100" y="100" width="86" height="824" fill="#ed4952"/>
-  </g>
-  <g fill="#949ba6">
-    <rect x="290" y="350" width="440" height="44" rx="22"/>
-    <rect x="290" y="490" width="340" height="44" rx="22"/>
-    <rect x="290" y="630" width="250" height="44" rx="22"/>
+    <svg x="100" y="100" width="824" height="824" viewBox="0 0 1024 1024">
+      <g fill="none" stroke="#949ba6" stroke-width="30" stroke-linecap="butt">
+        <circle cx="640" cy="285" r="125" stroke-dasharray="52 35.3" transform="rotate(-80 640 285)"/>
+        <path d="M 370 1040 L 370 730 A 270 270 0 0 1 910 730 L 910 1040" stroke-dasharray="52 40"/>
+      </g>
+      <circle cx="405" cy="465" r="171" fill="#1e2024"/>
+      <path d="M 79 1040 L 79 940 A 326 326 0 0 1 731 940 L 731 1040 Z" fill="#1e2024"/>
+      <circle cx="405" cy="465" r="135" fill="#e6e8eb"/>
+      <path d="M 115 1040 L 115 940 A 290 290 0 0 1 695 940 L 695 1040 Z" fill="#e6e8eb"/>
+      <circle cx="760" cy="190" r="98" fill="#1e2024"/>
+      <circle cx="760" cy="190" r="70" fill="#ed4952"/>
+    </svg>
   </g>
 </svg>
