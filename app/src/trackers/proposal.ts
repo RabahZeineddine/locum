@@ -19,8 +19,31 @@ export const IssueContent = z.object({
   testing: z.string().trim().min(1),
   /** Etiquetas sugeridas. O tracker que não conhecer uma delas é quem recusa. */
   labels: z.array(z.string().trim().min(1)).optional(),
+  /**
+   * Título, só para tarefa que nasce de conversa. A que nasce de pull request
+   * ganha o título do padrão do time, e o que o modelo escrever aqui é ignorado.
+   */
+  title: z.string().trim().min(1).max(200).optional(),
 });
 export type IssueContent = z.infer<typeof IssueContent>;
+
+/**
+ * O esquema de saída do passo que escreve tarefa a partir de uma conversa do
+ * Slack ou do Teams. Pede o título, que a conversa não traz pronto como o pull
+ * request traz.
+ */
+export const CONVERSATION_ISSUE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["title", "objective", "changes", "testing"],
+  properties: {
+    title: { type: "string" },
+    objective: { type: "string" },
+    changes: { type: "string" },
+    testing: { type: "string" },
+    labels: { type: "array", items: { type: "string" } },
+  },
+} as const;
 
 /**
  * O esquema de saída do passo de modelo, no formato que o runtime entende.
@@ -49,6 +72,11 @@ export const TrackerIssueProposal = z.object({
   title: z.string().min(1),
   body: z.string().min(1),
   labels: z.array(z.string()).optional(),
+  /**
+   * O endereço de onde a tarefa nasceu: o pull request, ou a mensagem da
+   * conversa. O nome ficou do tempo em que só pull request abria tarefa; é por
+   * ele que a segunda execução sobre a mesma origem acha a tarefa já aberta.
+   */
   pullRequestUrl: z.url(),
 });
 export type TrackerIssueProposal = z.infer<typeof TrackerIssueProposal>;
@@ -121,7 +149,11 @@ export function buildIssueProposal(
 
   const pr = PullRequest.safeParse(payload);
   if (!pr.success) {
-    throw new Error(`o evento nao identifica o pull request: ${pr.error.issues[0]?.message ?? ""}`);
+    const conversa = conversaDe(payload);
+    if (conversa === null) {
+      throw new Error(`o evento nao identifica o pull request: ${pr.error.issues[0]?.message ?? ""}`);
+    }
+    return propostaDeConversa(payload, conversa, tracker, project);
   }
 
   const conteudo = IssueContent.safeParse(payload);
@@ -139,5 +171,83 @@ export function buildIssueProposal(
     body: corpo(conteudo.data, pr.data),
     ...(conteudo.data.labels === undefined ? {} : { labels: conteudo.data.labels }),
     pullRequestUrl: pr.data.url,
+  });
+}
+
+/** A conversa de onde a tarefa nasce, com o endereço que vai para o corpo. */
+interface Conversa {
+  servico: "Slack" | "Teams";
+  link: string;
+}
+
+/**
+ * Lê a conversa do evento. O Slack grava `repo` como `slack/<canal>` e o
+ * Teams como `teams/...`; sem `permalink`, o endereço do Slack é montado do
+ * canal e do carimbo, no formato que o próprio Slack usa e redireciona. O
+ * Teams grava `teams/<chat>` em conversa e `teams-channel/...` em canal.
+ */
+export function conversaDe(payload: unknown): Conversa | null {
+  const bruto = (payload ?? {}) as Record<string, unknown>;
+  const repo = typeof bruto.repo === "string" ? bruto.repo : "";
+  const permalink = typeof bruto.permalink === "string" && /^https?:\/\//.test(bruto.permalink) ? bruto.permalink : null;
+  const url =
+    typeof bruto.webUrl === "string" && /^https?:\/\//.test(bruto.webUrl)
+      ? bruto.webUrl
+      : typeof bruto.url === "string" && /^https?:\/\//.test(bruto.url)
+        ? bruto.url
+        : null;
+
+  if (repo.startsWith("slack/")) {
+    const canal = repo.slice("slack/".length);
+    const carimbo = typeof bruto.threadTs === "string" ? bruto.threadTs : typeof bruto.ts === "string" ? bruto.ts : null;
+    const link = permalink ?? (carimbo === null ? null : `https://slack.com/archives/${canal}/p${carimbo.replace(".", "")}`);
+    return link === null ? null : { servico: "Slack", link };
+  }
+  if (repo.startsWith("teams/") || repo.startsWith("teams-channel/")) {
+    const link = permalink ?? url;
+    return link === null ? null : { servico: "Teams", link };
+  }
+  return null;
+}
+
+function propostaDeConversa(
+  payload: object,
+  conversa: Conversa,
+  tracker: string,
+  project: string,
+): TrackerIssueProposal {
+  const conteudo = IssueContent.safeParse(payload);
+  if (!conteudo.success || conteudo.data.title === undefined) {
+    const onde = conteudo.success ? { path: ["title"], message: "obrigatorio em tarefa de conversa" } : conteudo.error.issues[0];
+    throw new Error(
+      `o passo de modelo nao escreveu a tarefa: ${onde?.path.join(".") ?? ""} ${onde?.message ?? ""}`.trim(),
+    );
+  }
+  const c = conteudo.data;
+  const body = [
+    "## Objetivo",
+    "",
+    c.objective.trim(),
+    "",
+    "## Contexto",
+    "",
+    c.changes.trim(),
+    "",
+    "## Como saber que terminou",
+    "",
+    c.testing.trim(),
+    "",
+    "## Links",
+    "",
+    `- Conversa no ${conversa.servico}: ${conversa.link}`,
+  ].join("\n");
+
+  return TrackerIssueProposal.parse({
+    tracker,
+    project,
+    title: c.title!.trim(),
+    body,
+    ...(c.labels === undefined ? {} : { labels: c.labels }),
+    pullRequestUrl: conversa.link,
   });
 }

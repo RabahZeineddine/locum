@@ -5,6 +5,7 @@ import { executionService, type ExecutionService } from "../services/execution-s
 import { matchesAuthorship } from "../services/github-service.js";
 import { mcpService, type McpService } from "../services/mcp-service.js";
 import { pollMcpServer } from "../sources/mcp-poll.js";
+import { proximaOcorrencia } from "./cron.js";
 import { pollSlack, slackWatchFor, type SlackPollOutcome } from "../sources/slack.js";
 import { pollSlackInbox, type SlackInboxOutcome } from "../sources/slack-inbox.js";
 import { pollTeamsInbox } from "../sources/teams-inbox.js";
@@ -275,6 +276,7 @@ export class Scheduler {
     for (const trigger of await this.triggers.list()) {
       const cadence = cadenceMs(trigger.config);
       const last = await this.lastFire(trigger.id);
+      const relogio = temRelogio(trigger.config);
       schedules.push({
         triggerId: trigger.id,
         agentId: trigger.agentId,
@@ -287,8 +289,7 @@ export class Scheduler {
         // que acontecer. Nao e o mesmo que "daqui a uma cadencia": esperar um
         // ciclo inteiro depois de habilitar faria a primeira varredura demorar
         // sem que ninguem tivesse pedido isso.
-        nextDueAt:
-          !trigger.enabled || cadence === null ? null : last === null ? at : last + cadence,
+        nextDueAt: !trigger.enabled || !relogio ? null : vencimento(trigger.config, last, at),
       });
     }
 
@@ -322,19 +323,31 @@ export class Scheduler {
       runs: [] as string[],
     };
 
-    const cadence = cadenceMs(trigger.config);
-    if (cadence === null) {
+    if (!temRelogio(trigger.config)) {
       return {
         ...base,
         status: "skipped",
-        detail: "gatilho de webhook nao depende do relogio, quem dispara e a chamada",
+        detail:
+          trigger.config.kind === "manual"
+            ? "gatilho manual nao depende do relogio, quem dispara e o botao"
+            : "gatilho de webhook nao depende do relogio, quem dispara e a chamada",
         nextDueAt: null,
       };
     }
 
     const { raw, last } = await this.readFire(trigger.id);
-    if (last !== null && at < last + cadence) {
-      return { ...base, status: "waiting", nextDueAt: last + cadence };
+
+    // Cron que nunca bateu não dispara na hora em que é ligado: ligar às 10h
+    // um "todo dia às 9h" e ver o agent rodar às 10h seria o contrário do que
+    // a expressão diz. A primeira batida só marca a partir de quando contar.
+    if (trigger.config.kind === "cron" && last === null) {
+      await this.claim(trigger.id, raw, at);
+      return { ...base, status: "waiting", nextDueAt: vencimento(trigger.config, at, at) };
+    }
+
+    const devido = vencimento(trigger.config, last, at);
+    if (devido === null || at < devido) {
+      return { ...base, status: "waiting", nextDueAt: devido };
     }
 
     // A batida toma o gatilho antes de disparar, numa escrita condicional ao
@@ -348,10 +361,10 @@ export class Scheduler {
     // os outros.
     if (!(await this.claim(trigger.id, raw, at))) {
       const depois = await this.lastFire(trigger.id);
-      return { ...base, status: "waiting", nextDueAt: depois === null ? at + cadence : depois + cadence };
+      return { ...base, status: "waiting", nextDueAt: vencimento(trigger.config, depois ?? at, at) };
     }
 
-    const nextDueAt = at + cadence;
+    const nextDueAt = vencimento(trigger.config, at, at);
     try {
       const fired = await this.fire(trigger, at, wait);
       return { ...base, ...fired, status: "fired", nextDueAt };
@@ -368,6 +381,7 @@ export class Scheduler {
     const config = trigger.config;
 
     switch (config.kind) {
+      case "cron":
       case "schedule": {
         // Gatilho de relogio nao tem evento: o agent que roda por cadencia
         // busca o proprio contexto pelas ferramentas do passo.
@@ -449,6 +463,22 @@ export class Scheduler {
           runs,
           detail: repetidos === 0 ? undefined : `${repetidos} item(ns) ja conhecido(s)`,
         };
+      }
+
+      case "slack-channel": {
+        // A conexão diz por qual servidor e com que nomes de argumento se lê;
+        // o gatilho diz quais canais. Sem conexão não há o que ler, e o erro
+        // sobe para o detalhe do gatilho, onde a tela mostra o que fazer.
+        const origem = await this.slack.get();
+        if (origem.server === null) {
+          throw new Error("o Slack nao esta conectado, ligue em Apps antes de observar canal");
+        }
+        const varredura = await pollSlack(
+          { ...origem, channels: config.channels },
+          { db: this.db, mcp: this.mcp },
+        );
+        const runs = await this.runsFor(trigger, varredura.inWindow, at, wait);
+        return { events: varredura.eventIds.length, runs, detail: slackDetail(varredura) };
       }
 
       case "slack-inbox": {
@@ -702,7 +732,27 @@ function slackInboxDetail(caixa: Pick<SlackInboxOutcome, "eventIds" | "seen"> & 
 
 /** Cadencia em milissegundos. Nulo e gatilho que nao anda pelo relogio. */
 function cadenceMs(config: TriggerConfig): number | null {
-  return config.kind === "webhook" ? null : config.everyMinutes * 60_000;
+  if (config.kind === "webhook" || config.kind === "manual" || config.kind === "cron") return null;
+  return config.everyMinutes * 60_000;
+}
+
+/** O gatilho anda pelo relógio do agendador. Webhook e manual esperam alguém. */
+function temRelogio(config: TriggerConfig): boolean {
+  return config.kind !== "webhook" && config.kind !== "manual";
+}
+
+/**
+ * Quando o gatilho vence, dado o último disparo.
+ *
+ * Por cadência, quem nunca disparou está vencido agora. Por cron, é a primeira
+ * ocorrência depois do último disparo, e quem nunca disparou conta a partir de
+ * `at`: várias ocorrências perdidas com o Mac dormindo viram uma batida só.
+ */
+function vencimento(config: TriggerConfig, last: number | null, at: number): number | null {
+  if (config.kind === "cron") return proximaOcorrencia(config.expression, last ?? at);
+  const cadence = cadenceMs(config);
+  if (cadence === null) return null;
+  return last === null ? at : last + cadence;
 }
 
 function message(err: unknown): string {

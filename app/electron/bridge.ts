@@ -15,6 +15,7 @@ import { aplicarIdioma, t } from "./i18n.js";
 import { VERSAO } from "./versao.js";
 import { agentService } from "../src/services/agent-service.js";
 import { approvalService } from "../src/services/approval-service.js";
+import { automationService } from "../src/services/automation-service.js";
 import { claudeCodeService } from "../src/services/claude-code-service.js";
 import { connectionService } from "../src/services/connection-service.js";
 import { credentialService } from "../src/services/credential-service.js";
@@ -174,6 +175,12 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "runs.findingsByRun": (runIds) => runService.findingsByRun(runIds),
     "runs.rerunStep": (runId, stepKey, options) => runService.rerunStep(runId, stepKey, options),
     "runs.start": (input) => executionService.start(input),
+
+    "automations.get": (agentId) => automationService.get(agentId),
+    "automations.save": (input) => automationService.save(input),
+    "automations.setEnabled": (agentId, enabled) => automationService.setEnabled(agentId, enabled),
+    "automations.runNow": (agentId) => automationService.runNow(agentId),
+    "automations.suggestId": (nome) => automationService.suggestId(nome),
 
     "approvals.listPending": () => approvalService.listPending(),
     "approvals.listStuck": () => approvalService.listStuck(),

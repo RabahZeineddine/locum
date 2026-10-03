@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { cronValida } from "../triggers/cron.js";
 
 /**
  * Classe da ferramenta. `external_write` e o unico valor que forca aprovacao,
@@ -139,6 +140,12 @@ export const AgentSpec = z.object({
   skills: z.array(SkillRule).default([]),
   steps: z.array(Step).min(1),
   budget: AgentBudget.default({}),
+  /**
+   * Onde cada nó fica no canvas da automação, pela chave do passo ou do
+   * gatilho. Só desenho: o executor não lê. Mora no spec para o desenho ter a
+   * mesma versão que os passos, e um run antigo abrir com o canvas da época.
+   */
+  layout: z.record(z.string(), z.object({ x: z.number(), y: z.number() })).optional(),
 });
 export type AgentSpec = z.infer<typeof AgentSpec>;
 
@@ -342,6 +349,44 @@ export const TeamsInboxTrigger = z.object({
   everyMinutes: z.number().int().min(1).default(5),
 });
 
+/**
+ * Sem relógio e sem fonte: a automação roda quando alguém aperta "Executar
+ * agora". Existe como gatilho, e não como ausência de gatilho, para o canvas
+ * ter um nó de início e a lista dizer "manual" em vez de ficar em branco.
+ */
+export const ManualTrigger = z.object({
+  kind: z.literal("manual"),
+});
+
+/**
+ * Relógio por expressão cron de cinco campos, no horário local da máquina.
+ *
+ * Tipo próprio, e não um campo a mais em `schedule`: a cadência de `schedule`
+ * é "a cada N minutos desde o último disparo", e a do cron é "nestes horários".
+ * Um gatilho com os dois campos teria duas respostas para a mesma pergunta.
+ */
+export const CronTrigger = z.object({
+  kind: z.literal("cron"),
+  expression: z
+    .string()
+    .trim()
+    .min(1)
+    .refine((valor) => cronValida(valor), { message: "expressão cron inválida" }),
+});
+
+/**
+ * Mensagem nova em canais do Slack, pela conexão oficial.
+ *
+ * Os canais moram no gatilho, e não no cadastro global do Slack: é a
+ * automação que diz o que observa, e duas automações podem olhar canais
+ * diferentes. Os nomes de ferramenta e argumento continuam vindo da conexão.
+ */
+export const SlackChannelTrigger = z.object({
+  kind: z.literal("slack-channel"),
+  channels: z.array(z.string().trim().min(1)).min(1).max(20),
+  everyMinutes: z.number().int().min(1).default(5),
+});
+
 export const TriggerConfig = z.discriminatedUnion("kind", [
   ScheduleTrigger,
   WebhookTrigger,
@@ -349,6 +394,9 @@ export const TriggerConfig = z.discriminatedUnion("kind", [
   McpPollTrigger,
   SlackInboxTrigger,
   TeamsInboxTrigger,
+  ManualTrigger,
+  CronTrigger,
+  SlackChannelTrigger,
 ]);
 export type TriggerConfig = z.infer<typeof TriggerConfig>;
 /** O que se passa para cadastrar, antes dos defaults do zod. */

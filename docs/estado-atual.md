@@ -1188,6 +1188,18 @@ cores do tema, e na bandeja, reduzido a template de 16 e 32 pixels. A
 descrição do manifesto do app do Slack fala do que ele faz para a pessoa, sem
 jargão de agente.
 
+**Automações, fatia 1: o motor.** Plano em `docs/plano-automacoes.md`. Três
+gatilhos novos: `manual` (só o botão "Executar agora", fora da batida),
+`cron` (cinco campos no horário local, parser em `src/triggers/cron.ts`; ligado
+agora, só marca e espera a próxima ocorrência, e várias perdidas com o Mac
+dormindo viram uma batida) e `slack-channel` (os canais moram no gatilho e a
+conexão diz por onde ler). Tarefa no tracker passa a nascer também de conversa
+do Slack ou do Teams: o modelo escreve o título, e o link da mensagem entra no
+lugar do pull request, inclusive para achar a tarefa já aberta. O `AgentSpec`
+ganhou `layout`, só desenho. `AutomationService` grava spec e gatilhos juntos
+(valida os gatilhos antes de gravar a versão), liga e desliga todos os gatilhos
+de uma vez e roda "Executar agora" sem evento.
+
 ## Próximos passos
 
 Iniciativas: I1, I2 e I3 prontos no código. Falta o teste à mão da sessão

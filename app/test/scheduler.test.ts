@@ -316,3 +316,57 @@ test("agenda mostra gatilho desabilitado sem prometer batida, e o que nunca disp
   );
   assert.equal(await scheduler.nextDueAt(T0), T0);
 });
+
+test("cron ligado agora não dispara na hora: marca e espera a próxima ocorrência", async () => {
+  const inicio = new Date(2026, 9, 3, 10, 0).getTime();
+  const { scheduler, iniciados } = montar({
+    gatilhos: [gatilho("c1", { kind: "cron", expression: "0 9 * * *" } as TriggerConfig)],
+  });
+
+  const primeira = await scheduler.tick({ at: inicio });
+  assert.equal(primeira.outcomes[0]?.status, "waiting");
+  assert.equal(primeira.outcomes[0]?.nextDueAt, new Date(2026, 9, 4, 9, 0).getTime());
+  assert.equal(iniciados.length, 0);
+
+  // Acordou às 11h do dia seguinte, depois de perder as 9h: uma batida só.
+  const depois = await scheduler.tick({ at: new Date(2026, 9, 4, 11, 0).getTime(), reason: "wake" });
+  assert.equal(depois.outcomes[0]?.status, "fired");
+  assert.equal(depois.outcomes[0]?.nextDueAt, new Date(2026, 9, 5, 9, 0).getTime());
+  assert.equal(iniciados.length, 1);
+});
+
+test("gatilho manual não entra na batida nem promete horário na agenda", async () => {
+  const { scheduler, iniciados } = montar({
+    gatilhos: [gatilho("m1", { kind: "manual" } as TriggerConfig)],
+  });
+
+  const batida = await scheduler.tick({ at: T0 });
+  assert.equal(batida.outcomes[0]?.status, "skipped");
+  assert.match(batida.outcomes[0]?.detail ?? "", /botao/);
+  assert.equal(batida.nextDueAt, null);
+  assert.equal(iniciados.length, 0);
+
+  const [agenda] = await scheduler.schedule(T0);
+  assert.equal(agenda?.nextDueAt, null);
+});
+
+test("canal do Slack sem conexão falha com o caminho para ligar", async () => {
+  const gatilhos = [gatilho("s1", { kind: "slack-channel", channels: ["C1"], everyMinutes: 5 } as TriggerConfig)];
+  const triggers = {
+    enabled: async () => gatilhos,
+    list: async () => gatilhos,
+  } as unknown as TriggerService;
+  const scheduler = new Scheduler(
+    bancoDeTeste(),
+    triggers,
+    {} as ExecutionService,
+    {} as McpService,
+    { get: async () => ({ server: null }) } as unknown as SlackService,
+    async () => ({ eventIds: [], created: [] }),
+    (async () => ({ checked: 0, settled: [], stillOpen: 0, unreadable: 0, failed: [] })) as never,
+  );
+
+  const batida = await scheduler.tick({ at: T0 });
+  assert.equal(batida.outcomes[0]?.status, "failed");
+  assert.match(batida.outcomes[0]?.detail ?? "", /Apps/);
+});

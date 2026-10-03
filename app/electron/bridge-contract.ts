@@ -2,6 +2,7 @@ import type { TeamsChannelOption } from "../src/teams/channels.js";
 import type { AgentService } from "../src/services/agent-service.js";
 import type { RascunhoDeAgent } from "../src/services/agent-builder.js";
 import type { ApprovalService } from "../src/services/approval-service.js";
+import type { AutomationService } from "../src/services/automation-service.js";
 import type { ClaudeCodeService } from "../src/services/claude-code-service.js";
 import type { ConnectionService } from "../src/services/connection-service.js";
 import type { CredentialService } from "../src/services/credential-service.js";
@@ -376,6 +377,18 @@ interface ServiceApi {
    */
   "triggers.schedule": Scheduler["schedule"];
 
+  /**
+   * A automação: agent e gatilhos editados juntos pelo canvas. Gravar não
+   * liga nada; ligar é o `setEnabled`, que é clique de pessoa. "Executar
+   * agora" dispara um run sem evento, e o passo de ação continua parando na
+   * fila de aprovação.
+   */
+  "automations.get": AutomationService["get"];
+  "automations.save": AutomationService["save"];
+  "automations.setEnabled": AutomationService["setEnabled"];
+  "automations.runNow": AutomationService["runNow"];
+  "automations.suggestId": AutomationService["suggestId"];
+
   /** A versão instalada, para o rodapé da barra lateral. */
   "app.version": () => Promise<string>;
 
@@ -546,6 +559,11 @@ export const BRIDGE_CHANNELS = [
   "triggers.remove",
   "triggers.setEnabled",
   "triggers.schedule",
+  "automations.get",
+  "automations.save",
+  "automations.setEnabled",
+  "automations.runNow",
+  "automations.suggestId",
   "app.version",
   "startup.get",
   "startup.set",

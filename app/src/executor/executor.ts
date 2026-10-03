@@ -509,6 +509,13 @@ export function alvoDoEvento(payload: EventPayload): Record<string, unknown> {
     "deletions",
     "fileCount",
     "draft",
+    // Conversa do Slack e do Teams: a tarefa aberta a partir dela leva o
+    // endereço da mensagem, e a resposta precisa do carimbo da thread.
+    "permalink",
+    "webUrl",
+    "channel",
+    "threadTs",
+    "ts",
   ] as const;
   const alvo: Record<string, unknown> = {};
   for (const campo of campos) {
