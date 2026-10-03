@@ -94,7 +94,7 @@ export function registerConfigTools(server: McpServer): void {
     "upsert_agent",
     {
       description:
-        "Records an AgentSpec as a new immutable version. A spec identical to the latest returns the existing version. An invalid spec records nothing. Action steps recorded here start in approval mode: draft and auto are downgraded, and the response reports the downgrade. A step tool from a server with write scope that the latest version did not already use is refused: only a person adds it, in the app.",
+        "Records an AgentSpec (an automation: steps plus triggers set with set_trigger) as a new immutable version. Steps are model, action and logic, with decisions and paths through `when`; read describe_steps for the catalog. A spec identical to the latest returns the existing version. An invalid spec records nothing. Action steps recorded here start in approval mode: draft and auto are downgraded, and the response reports the downgrade. A step tool from a server with write scope that the latest version did not already use is refused: only a person adds it, in the app.",
       inputSchema: {
         spec: z
           .record(z.string(), z.unknown())

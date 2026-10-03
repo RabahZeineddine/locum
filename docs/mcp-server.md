@@ -47,7 +47,7 @@ linha de comando escreve. Não existe cópia nem sincronização.
 
 ## O que o servidor expõe
 
-São 19 ferramentas, todas casca fina sobre a camada de serviço em
+São 38 ferramentas, todas casca fina sobre a camada de serviço em
 `app/src/services/`. A regra mora no serviço, não aqui, e por isso um
 assistente externo não consegue contornar nenhuma delas: versão de agent
 continua imutável, ciclo na tabela de substituição continua recusado na
@@ -94,6 +94,23 @@ interface aplicam. Um schema duplicado aqui viraria a porta larga.
 | `set_model_fallback` | Grava uma substituição de modelo para a máquina. Cadeia circular é recusada na gravação. |
 | `set_budget` | Ajusta o teto de gasto por execução e por dia. Como o orçamento mora no spec, isso grava versão nova. |
 | `set_trigger` | Cadastra ou atualiza um gatilho do agent. Nasce desabilitado: habilitar é o passo que deixa o agent acordar sozinho. |
+
+### Biblioteca e catálogo
+
+Para montar automação conversando: o catálogo diz o que um fluxo pode ter, e a
+biblioteca guarda agents e toolsets que os passos reutilizam. A gravação passa
+pelo mesmo `libraryService` da tela. Ferramenta nova de servidor `write` é
+recusada, direto no agent ou pelo toolset, como no `upsert_agent`. Remover
+agent ou toolset fica para a tela.
+
+| ferramenta | o que faz |
+|---|---|
+| `describe_steps` | Catálogo dos passos: modelo, ação e lógica, as operações de lógica (if, switch, conversões de JSON, formatadores de Slack e Teams), as comparações, as ações com os modos que cada uma aceita, e a sintaxe dos marcadores. |
+| `list_library_agents` | Agents da biblioteca, com os fluxos que usam cada um. |
+| `get_library_agent` | Um agent da biblioteca, com o spec do topo e o histórico de versões. |
+| `upsert_library_agent` | Grava versão nova de um agent da biblioteca: contexto, instruções, modelo, temperatura, toolsets e ferramentas. |
+| `list_toolsets` | Toolsets, com os agents que incluem cada um. |
+| `upsert_toolset` | Grava um toolset. Sem versão: vale na próxima execução de todo agent que o inclui. |
 
 ### Execução
 

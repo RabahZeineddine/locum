@@ -80,7 +80,7 @@ export async function examinarMcp(binario, argumentos = []) {
 
     if (inicio?.serverInfo?.name !== "locum") throw new Error(`aperto de mão sem o nome locum: ${JSON.stringify(inicio)}`);
     const nomes = tools.map((ferramenta) => ferramenta.name);
-    for (const esperado of ["run_agent", "list_agents", "get_run"]) {
+    for (const esperado of ["run_agent", "list_agents", "get_run", "describe_steps", "upsert_library_agent"]) {
       if (!nomes.includes(esperado)) throw new Error(`ferramenta ${esperado} ausente; vieram ${nomes.join(", ")}`);
     }
     const corpo = JSON.parse(saude.content[0].text);

@@ -124,7 +124,7 @@ que a interface vai usar.
 | Jira pela conexão Atlassian | tipo `jira-atlassian`, que fala com o servidor MCP oficial usando a autorização da vitrine, sem e-mail nem token; o Jira mora no painel da Atlassian e o GitHub Issues no do GitHub, e o cartão Jira separado saiu |
 | passo de ação que abre tarefa | `tracker.create_issue` monta o item e para na fila; corpo escrito por um passo de modelo antes dele, modo travado em `approve` pelo handler |
 | descoberta de skills e seleção por arquivo alterado | pronto |
-| servidor MCP próprio | 32 ferramentas de leitura, configuração, execução e iniciativa sobre a camada de serviço, servido pelo próprio app em `--mcp` e cadastrado no Claude Code por um botão em Conexões |
+| servidor MCP próprio | 38 ferramentas de leitura, configuração, biblioteca, execução e iniciativa sobre a camada de serviço, servido pelo próprio app em `--mcp` e cadastrado no Claude Code por um botão em Conexões |
 | vitrine de conexões | catálogo de serviços com logo, estado, busca e categoria em Conexões; servidor MCP remoto com OAuth e registro automático de cliente (Linear, Notion, Atlassian, Sentry, Cloudflare, Vercel, Supabase, Stripe, Figma) liga num clique pelo navegador, com PKCE, retorno em loopback, token no keychain e renovação antes de cada uso; servidor próprio entra pelo endereço; verificado contra um servidor de autorização de mentira em 127.0.0.1, ainda não contra os serviços de verdade |
 | iniciativa como unidade de trabalho (I1) | `InitiativeService` cadastra, liga servidor MCP, workspace, agent e link; `ContextStore` guarda a pasta de contexto em disco e o hash do arquivo; contexto só muda por proposta aprovada na fila, decidida pelo agent de sistema `locum-context`; agent ligado a uma iniciativa não pode passar a exigir servidor de fora dela, checado ao ligar e a cada `upsert` de spec |
 | ferramentas de iniciativa no chat interno | 13 entradas do catálogo (`electron/chat-tools.ts`), de um total de 26, para criar e configurar iniciativa, ligar agent, propor mudança de contexto e cadastrar prompt |
@@ -1273,6 +1273,13 @@ canvas reenquadra quando um nó entra, depois de medido.
 três tem rascunho de verdade), e o automático só vale quando uma pessoa grava a
 versão: versão escrita por agent volta para `approve`. O digest continua só
 com aprovação.
+
+**MCP do Locum: biblioteca e catálogo.** Seis ferramentas novas em
+`src/mcp-server/library-tools.ts`: `describe_steps` (o catálogo de passos, lógica,
+comparações, ações com modos e marcadores), `list_library_agents`,
+`get_library_agent`, `upsert_library_agent`, `list_toolsets` e `upsert_toolset`.
+Com elas o Claude Code monta automação inteira conversando. Ferramenta nova de
+servidor `write` é recusada também por aqui, direto ou pelo toolset.
 
 ## Próximos passos
 

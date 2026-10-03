@@ -71,7 +71,7 @@ export const ModelStep = StepBase.extend({
 
 export const ActionStep = StepBase.extend({
   type: z.literal("action"),
-  /** github.review_comment | slack.post | teams.post | tracker.create_issue */
+  /** github.review_comment | slack.post | teams.post | tracker.create_issue | mcp.call | http.request */
   action: z.string(),
   mode: ActionMode.default("approve"),
   input: z.string().optional(),
