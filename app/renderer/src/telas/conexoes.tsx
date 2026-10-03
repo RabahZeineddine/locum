@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { MessageSquare, Plug, Plus, Search, Users, X } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { GATILHOS, PASSOS } from "@/lib/automacao";
 import { MARCAS } from "../marcas";
 
 type Conexao = ReadResult<"connections.list">[number];
@@ -407,12 +408,92 @@ function Detalhe({
         </p>
       ) : null}
 
+      {conexao.state === "connected" && testavel(conexao) ? <TesteDaConexao servidor={conexao.id} /> : null}
+
+      <Oferece app={conexao.id} />
+
       {painel === undefined ? null : (
         <div className="divide-border border-border superficie divide-y overflow-hidden rounded-lg border">{painel}</div>
       )}
 
       {erro === null ? null : <p className="text-sev-critical text-xs">{erro}</p>}
     </div>
+  );
+}
+
+/**
+ * Conexão que fala MCP e por isso dá para testar daqui: as de OAuth, o Slack,
+ * o Teams e as próprias. GitHub e Claude Code têm a conferência no painel.
+ */
+function testavel(c: Conexao): boolean {
+  return c.kind === "oauth" || c.custom || c.id === "slack" || c.id === "teams";
+}
+
+/**
+ * "Testar conexão": sobe o servidor, pede a lista de ferramentas e diz o que
+ * voltou. É a pergunta "isso está funcionando?" respondida sem montar uma
+ * automação para descobrir.
+ */
+function TesteDaConexao({ servidor }: { servidor: string }) {
+  const { t } = useTranslation();
+  const [estado, setEstado] = useState<
+    { fase: "parado" } | { fase: "testando" } | { fase: "pronto"; resultado: ReadResult<"mcp.test"> }
+  >({ fase: "parado" });
+
+  const testar = (): void => {
+    setEstado({ fase: "testando" });
+    call("mcp.test", servidor).then(
+      (resultado) => setEstado({ fase: "pronto", resultado }),
+      (e: unknown) =>
+        setEstado({
+          fase: "pronto",
+          resultado: { name: servidor, ok: false, elapsedMs: 0, toolCount: 0, error: e instanceof Error ? e.message : String(e) },
+        }),
+    );
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-3" data-locum-app-teste={servidor}>
+      <Button className="cursor-pointer" disabled={estado.fase === "testando"} onClick={testar} size="sm" variant="outline">
+        {t(estado.fase === "testando" ? "apps.testing" : "apps.test")}
+      </Button>
+      {estado.fase === "pronto" ? (
+        estado.resultado.ok ? (
+          <span className="text-emerald-400 text-xs" data-locum-app-teste-ok="">
+            {t("apps.testOk", { count: estado.resultado.toolCount, ms: estado.resultado.elapsedMs })}
+          </span>
+        ) : (
+          <span className="text-sev-critical text-xs">{t("apps.testFail", { error: estado.resultado.error ?? "" })}</span>
+        )
+      ) : null}
+    </div>
+  );
+}
+
+/** O que o app oferece na montagem de automação, para ligar o app à ideia de uso. */
+function Oferece({ app }: { app: string }) {
+  const { t } = useTranslation();
+  const gatilhos = GATILHOS.filter((g) => g.app === app);
+  const passos = PASSOS.filter((p) => p.app === app);
+  if (gatilhos.length === 0 && passos.length === 0) return null;
+  return (
+    <section className="flex flex-col gap-2" data-locum-app-oferece={app}>
+      <h3 className="text-muted-foreground text-xs font-medium uppercase tracking-wide">{t("apps.offers")}</h3>
+      <ul className="flex flex-col gap-1.5">
+        {gatilhos.map((g) => (
+          <li className="flex items-center gap-2 text-sm" key={g.id}>
+            <Badge variant="outline">{t("apps.offersTrigger")}</Badge>
+            {t(`automations.triggers.${g.id}.title`)}
+          </li>
+        ))}
+        {passos.map((p) => (
+          <li className="flex items-center gap-2 text-sm" key={p.id}>
+            <Badge variant="outline">{t("apps.offersStep")}</Badge>
+            {t(`automations.steps.${p.id}.title`)}
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

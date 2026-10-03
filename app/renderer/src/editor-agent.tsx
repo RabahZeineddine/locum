@@ -302,7 +302,7 @@ function PassoDeAcaoEditavel({
 /* ------------------------------------------------------------------ modelo */
 
 /** O catálogo de todos os provedores, lido uma vez por edição. */
-function useCatalogo(): Catalogo | null {
+export function useCatalogo(): Catalogo | null {
   const [catalogo, setCatalogo] = useState<Catalogo | null>(null);
   useEffect(() => {
     let vivo = true;
@@ -326,7 +326,7 @@ function useCatalogo(): Catalogo | null {
  * aparece mesmo fora do catálogo, marcado, porque a tabela de substituição
  * desta máquina pode estar cobrindo ele.
  */
-function SeletorDeModelo({
+export function SeletorDeModelo({
   catalogo,
   trocar,
   valor,
@@ -393,7 +393,7 @@ function SeletorDeModelo({
  * abre quando pedida, e a contagem de token aparece ao lado de cada uma e no
  * total. Sem ferramentas próprias, o passo herda as do agent.
  */
-function SeletorDeFerramentas({
+export function SeletorDeFerramentas({
   defaultTools,
   trocar,
   valor,

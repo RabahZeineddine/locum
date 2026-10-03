@@ -59,7 +59,7 @@ type Teste = ReadResult<"mcp.test">;
  * O que ficou se divide pelo que a pessoa veio fazer: ajustar o app, dizer
  * quais modelos rodam, ou ligar o Locum a outro serviço.
  */
-export const SECOES = ["general", "models", "connections"] as const;
+export const SECOES = ["general", "models"] as const;
 export type SecaoId = (typeof SECOES)[number];
 
 export function Configuracao({ detalhe, navegar }: TelaProps) {
@@ -273,8 +273,29 @@ export function Configuracao({ detalhe, navegar }: TelaProps) {
         </>
       ) : null}
 
-      {secao === "connections" ? (
-        <>
+    </div>
+  );
+}
+
+/**
+ * Os apps: a vitrine de conexões e os servidores MCP cadastrados.
+ *
+ * Mora aqui, e não na tela de Apps, porque o painel de cada app é o
+ * formulário que esta tela já tinha (GitHub, Slack, Teams, trackers). A tela
+ * de Apps só a monta.
+ */
+export function ConexoesDoLocum() {
+  const { t } = useTranslation();
+  const servidores = useRead("mcp.list");
+  const credenciais = useRead("credentials.overview");
+  const porCadastro = new Map<string, Credencial>();
+  for (const credencial of credenciais.data?.refs ?? []) {
+    for (const uso of credencial.users) porCadastro.set(`${uso.kind}:${uso.name}`, credencial);
+  }
+
+  return (
+    <div className="flex flex-col gap-8">
+
           <Vitrine
             paineis={{
               "claude-code": <ClaudeCode />,
@@ -311,9 +332,7 @@ export function Configuracao({ detalhe, navegar }: TelaProps) {
               ))
             )}
           </Secao>
-        </>
-      ) : null}
-    </div>
+            </div>
   );
 }
 

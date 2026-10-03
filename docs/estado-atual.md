@@ -1200,6 +1200,23 @@ ganhou `layout`, só desenho. `AutomationService` grava spec e gatilhos juntos
 (valida os gatilhos antes de gravar a versão), liga e desliga todos os gatilhos
 de uma vez e roda "Executar agora" sem evento.
 
+**Automações, fatias 2 e 3: Apps e o canvas.** A barra lateral troca Agents por
+Automações e ganha Apps. Apps é a vitrine de conexões que morava em
+Configuração (o endereço antigo redireciona), e cada app conectado mostra
+"Testar conexão" e a lista do que oferece como gatilho e como passo.
+Configuração fica só com Geral e Modelos. Automações lista cada automação com o
+que a acorda, ligar e "Executar agora"; "Nova automação" parte de um modelo
+(responder no Slack, Slack para Jira, menções, resumo diário, em branco), grava
+com o gatilho desligado e abre o canvas. O canvas (React Flow) tem paleta à
+esquerda, nós com o selo do app e painel do nó à direita: cron com atalhos e a
+próxima ocorrência, canais do Slack, modelo, instrução com as variáveis do
+evento e dos passos anteriores, formato da saída, tracker de destino. Ligar dois
+nós vira `needs`, arrastar grava `layout`, e acrescentar uma ação ajusta o
+formato da IA anterior. O rascunho só grava no Salvar, como versão nova; com
+alteração pendente, "Executar agora" pede para salvar antes. A lógica pura do
+canvas está em `renderer/lib/automacao.ts`, com teste. Agents continua no
+endereço antigo, fora da barra, e o canvas tem "Ver como lista" para ele.
+
 ## Próximos passos
 
 Iniciativas: I1, I2 e I3 prontos no código. Falta o teste à mão da sessão

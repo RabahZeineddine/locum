@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { Assistente } from "./assistente";
 import { CurrentInitiativeProvider } from "./current-initiative";
 import { Paleta } from "./paleta";
-import { ROTA_IDS, ROTA_PADRAO, ROTAS, ROTAS_ANTIGAS } from "./rotas";
+import { ROTA_IDS, ROTA_PADRAO, ROTAS, ROTAS_ANTIGAS, ROTAS_DA_BARRA } from "./rotas";
 
 /**
  * Estado da ponte, no rodape da barra lateral.
@@ -129,7 +129,7 @@ export function Layout() {
         </div>
 
         <ul className="flex-1 space-y-0.5 px-2.5">
-          {ROTAS.map(({ id, rotulo, icone: Icone }) => (
+          {ROTAS_DA_BARRA.map(({ id, rotulo, icone: Icone }) => (
             <li key={id}>
               <button
                 aria-current={id === ativa ? "page" : undefined}

@@ -441,7 +441,9 @@
     "settings": "Settings",
     "version": "version {{version}}",
     "versionHint": "Updates, in Settings",
-    "sessions": "Sessions"
+    "sessions": "Sessions",
+    "automations": "Automations",
+    "apps": "Apps"
   },
   "notification": {
     "runFailed": {
@@ -1337,5 +1339,240 @@
     "resume": "Resume",
     "markDone": "Mark done",
     "reopen": "Reopen"
+  },
+  "automations": {
+    "title": "Automations",
+    "lead": "What runs on its own: a trigger starts it, the AI prepares, and anything sent in your name waits for your click in the queue.",
+    "list": {
+      "empty": "No automations yet. Start from a template.",
+      "new": "New automation",
+      "open": "Open",
+      "runNow": "Run now",
+      "starting": "starting...",
+      "started": "Run started. Follow it in Runs.",
+      "on": "On",
+      "off": "Off",
+      "toggle": "Turn the automation on or off",
+      "steps_one": "{{count}} step",
+      "steps_other": "{{count}} steps",
+      "never": "never ran",
+      "lastRun": "last: {{status}}",
+      "noTrigger": "no trigger"
+    },
+    "new": {
+      "title": "New automation",
+      "name": "Name",
+      "namePlaceholder": "E.g. Support channel triage",
+      "template": "Start from",
+      "create": "Create and open",
+      "creating": "creating...",
+      "cancel": "Cancel",
+      "tracker": "Where to open the task",
+      "trackerNone": "No tracker registered. You can pick one later, on the task node."
+    },
+    "templates": {
+      "slackReply": {
+        "title": "Slack: reply in channel",
+        "description": "New message in a channel, the AI writes the reply, you approve and it goes to the thread."
+      },
+      "slackJira": {
+        "title": "Slack: open a task and reply",
+        "description": "A channel message becomes a Jira task, and the thread gets a note. Both with your click."
+      },
+      "mentions": {
+        "title": "Slack: mentions and DMs",
+        "description": "When someone mentions or DMs you, a reply is ready in the queue."
+      },
+      "daily": {
+        "title": "Scheduled summary",
+        "description": "Weekdays at 9am, the AI lists what needs attention."
+      },
+      "blank": {
+        "title": "Blank",
+        "description": "One AI step run by the button. Build the rest on the canvas."
+      }
+    },
+    "editor": {
+      "back": "Automations",
+      "loading": "loading...",
+      "notFound": "This automation no longer exists.",
+      "version": "version {{version}}",
+      "unsaved": "unsaved changes",
+      "save": "Save",
+      "saving": "saving...",
+      "saved": "Version {{version}} saved.",
+      "note": "What changed? (goes to the history)",
+      "noteDefault": "edited on the canvas",
+      "discard": "Discard",
+      "runNow": "Run now",
+      "runUnsaved": "Save before running: the run uses the saved version.",
+      "enable": "Turn on",
+      "disable": "Turn off",
+      "enabledHint": "On: triggers wake it up on their own. Off: it only runs from the button.",
+      "asList": "View as list",
+      "problems_one": "{{count}} thing to check",
+      "problems_other": "{{count}} things to check",
+      "blocked": "Fix the marked points to save."
+    },
+    "palette": {
+      "title": "Components",
+      "triggers": "Triggers",
+      "steps": "Steps",
+      "hint": "Click to add. A new step goes after the selected node.",
+      "needsApp": "connect in Apps"
+    },
+    "canvas": {
+      "approval": "click to send",
+      "errors": {
+        "cycle": "That link would make the flow loop back on itself.",
+        "intoTrigger": "A trigger only starts the flow; nothing flows into it."
+      },
+      "empty": "Add a trigger and a step from the palette.",
+      "label": "Automation canvas"
+    },
+    "panel": {
+      "close": "Close panel",
+      "remove": "Remove from flow",
+      "name": "Name",
+      "enabled": "This trigger is on",
+      "everyMinutes": "Check every (minutes)",
+      "input": "Text comes from",
+      "approval": "Waits in the queue until you approve. Nothing goes out without your click.",
+      "app": {
+        "slack": "Slack",
+        "teams": "Teams",
+        "github": "GitHub",
+        "atlassian": "Jira",
+        "locum": "Locum"
+      },
+      "inputNone": "The AI step right before"
+    },
+    "triggers": {
+      "manual": {
+        "title": "Run now",
+        "summary": "from the button",
+        "help": "Runs when you press Run now. Good for testing the flow."
+      },
+      "cron": {
+        "title": "Schedule",
+        "summary": "cron {{expression}}",
+        "expression": "Cron expression (minute hour day month weekday)",
+        "next": "Next: {{when}}",
+        "invalid": "Invalid expression: {{message}}",
+        "presets": {
+          "weekdays9": "Weekdays at 9am",
+          "daily8": "Every day at 8am",
+          "hourly": "Every hour",
+          "monday9": "Monday at 9am"
+        },
+        "never": "Never runs in the next 5 years"
+      },
+      "schedule": {
+        "title": "Interval",
+        "summary": "every {{minutes}} min"
+      },
+      "slack-channel": {
+        "title": "Message in a Slack channel",
+        "summary_one": "{{count}} channel",
+        "summary_other": "{{count}} channels",
+        "channels": "Watched channels",
+        "hint": "The channel ID starts with C. In Slack, open the channel, click its name at the top, and the ID is at the bottom of the window.",
+        "placeholder": "C0123ABCD",
+        "add": "Add",
+        "remove": "Remove {{channel}}"
+      },
+      "slack-inbox": {
+        "title": "Slack mention or DM",
+        "summary": "mentions and DMs",
+        "mentions": "Mentions of you",
+        "dms": "Direct messages"
+      },
+      "teams-inbox": {
+        "title": "Teams mention or DM",
+        "summary": "mentions and chats",
+        "mentions": "Mentions of you",
+        "dms": "Direct chats"
+      },
+      "poll": {
+        "title": "GitHub pull request",
+        "summary": "{{owner}} · {{repo}}",
+        "owner": "Organization or account",
+        "repoMatch": "Repositories (regex)",
+        "authorship": "Whose",
+        "any": "Everyone's",
+        "mine": "Only mine",
+        "others": "Only the team's"
+      },
+      "webhook": {
+        "title": "Webhook",
+        "summary": "local call"
+      },
+      "mcp-poll": {
+        "title": "MCP server query",
+        "summary": "{{server}} · {{tool}}"
+      }
+    },
+    "steps": {
+      "ai": {
+        "title": "AI",
+        "description": "Reads, analyzes and writes. The result goes to the next step.",
+        "model": "Model",
+        "prompt": "Instruction",
+        "variables": "Click to insert into the text:",
+        "tools": "Tools",
+        "format": "Output format",
+        "formats": {
+          "livre": "Free text",
+          "respostaSlack": "Slack reply (text and thread)",
+          "respostaTeams": "Teams reply (text)",
+          "tarefa": "Task from a conversation",
+          "tarefaDePullRequest": "Task from a pull request",
+          "outro": "Custom (edit as list)"
+        }
+      },
+      "slack.post": {
+        "title": "Reply in Slack",
+        "description": "Replies in the thread of the message that started the flow."
+      },
+      "teams.post": {
+        "title": "Reply in Teams",
+        "description": "Replies in the chat that started the flow."
+      },
+      "tracker.create_issue": {
+        "title": "Open task",
+        "description": "Opens the task in Jira or GitHub with the AI's text.",
+        "tracker": "Tracker",
+        "none": "Register a tracker in Apps, under Jira or GitHub.",
+        "choose": "Choose the tracker"
+      },
+      "other": {
+        "title": "Action {{action}}"
+      }
+    },
+    "problems": {
+      "noName": "The automation needs a name.",
+      "noSteps": "Add at least one step.",
+      "noTrigger": "Without a trigger it only runs from the button.",
+      "noChannels": "Say which Slack channel to watch.",
+      "slackOff": "Slack is not connected. Turn it on in Apps.",
+      "teamsOff": "Teams is not connected. Turn it on in Apps.",
+      "noPrompt": "The AI step has no instruction.",
+      "actionWithoutAi": "This action needs an AI step before it to write the text.",
+      "slackReplyNeedsSlack": "Replying in Slack needs a Slack trigger: that is where the thread comes from.",
+      "teamsReplyNeedsTeams": "Replying in Teams needs a Teams trigger.",
+      "noTracker": "Choose which tracker opens the task."
+    }
+  },
+  "apps": {
+    "title": "Apps",
+    "lead": "The services Locum uses. Connect once here; channel, filter and destination live in each automation.",
+    "offers": "What it offers in automations",
+    "offersTrigger": "trigger",
+    "offersStep": "step",
+    "test": "Test connection",
+    "testing": "testing...",
+    "testOk_one": "Responded: {{count}} tool in {{ms}} ms",
+    "testOk_other": "Responded: {{count}} tools in {{ms}} ms",
+    "testFail": "Did not respond: {{error}}"
   }
 }

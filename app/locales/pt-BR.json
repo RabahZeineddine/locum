@@ -459,7 +459,9 @@
     "settings": "Configuração",
     "version": "versão {{version}}",
     "versionHint": "Atualização, em Configuração",
-    "sessions": "Sessões"
+    "sessions": "Sessões",
+    "automations": "Automações",
+    "apps": "Apps"
   },
   "notification": {
     "runFailed": {
@@ -1376,5 +1378,244 @@
     "markDone": "Terminei",
     "reopen": "Reabrir",
     "uncommitted_zero": "{{count}} arquivos sem commit"
+  },
+  "automations": {
+    "title": "Automações",
+    "lead": "O que roda sozinho: um gatilho começa, a IA prepara, e o que sai em seu nome espera seu clique na fila.",
+    "list": {
+      "empty": "Nenhuma automação ainda. Comece por um modelo.",
+      "new": "Nova automação",
+      "open": "Abrir",
+      "runNow": "Executar agora",
+      "starting": "iniciando...",
+      "started": "Execução iniciada. Acompanhe em Execuções.",
+      "on": "Ligada",
+      "off": "Desligada",
+      "toggle": "Ligar ou desligar a automação",
+      "steps_one": "{{count}} passo",
+      "steps_other": "{{count}} passos",
+      "steps_zero": "{{count}} passos",
+      "never": "nunca rodou",
+      "lastRun": "última: {{status}}",
+      "noTrigger": "sem gatilho"
+    },
+    "new": {
+      "title": "Nova automação",
+      "name": "Nome",
+      "namePlaceholder": "Ex.: Triagem do canal de suporte",
+      "template": "Comece por",
+      "create": "Criar e abrir",
+      "creating": "criando...",
+      "cancel": "Cancelar",
+      "tracker": "Onde abrir a tarefa",
+      "trackerNone": "Nenhum tracker cadastrado. Dá para escolher depois, no nó da tarefa."
+    },
+    "templates": {
+      "slackReply": {
+        "title": "Slack: responder no canal",
+        "description": "Mensagem nova num canal, a IA escreve a resposta, você aprova e ela sai na thread."
+      },
+      "slackJira": {
+        "title": "Slack: abrir tarefa e avisar",
+        "description": "Mensagem num canal vira tarefa no Jira, e a thread recebe o aviso. Os dois com seu clique."
+      },
+      "mentions": {
+        "title": "Slack: menções e DMs",
+        "description": "Quando alguém te menciona ou manda DM, a resposta fica pronta na fila."
+      },
+      "daily": {
+        "title": "Resumo em horário fixo",
+        "description": "Dias úteis às 9h, a IA levanta o que merece atenção."
+      },
+      "blank": {
+        "title": "Em branco",
+        "description": "Um passo de IA rodando pelo botão. Monte o resto no canvas."
+      }
+    },
+    "editor": {
+      "back": "Automações",
+      "loading": "carregando...",
+      "notFound": "Essa automação não existe mais.",
+      "version": "versão {{version}}",
+      "unsaved": "alterações não salvas",
+      "save": "Salvar",
+      "saving": "salvando...",
+      "saved": "Versão {{version}} gravada.",
+      "note": "O que mudou? (vai para o histórico)",
+      "noteDefault": "editado no canvas",
+      "discard": "Descartar",
+      "runNow": "Executar agora",
+      "runUnsaved": "Salve antes de executar: a execução usa a versão gravada.",
+      "enable": "Ligar",
+      "disable": "Desligar",
+      "enabledHint": "Ligada: os gatilhos acordam sozinhos. Desligada: só roda pelo botão.",
+      "asList": "Ver como lista",
+      "problems_one": "{{count}} ponto para revisar",
+      "problems_other": "{{count}} pontos para revisar",
+      "problems_zero": "{{count}} pontos para revisar",
+      "blocked": "Corrija os pontos marcados para salvar."
+    },
+    "palette": {
+      "title": "Componentes",
+      "triggers": "Gatilhos",
+      "steps": "Passos",
+      "hint": "Clique para acrescentar. Passo novo entra depois do nó selecionado.",
+      "needsApp": "conecte em Apps"
+    },
+    "canvas": {
+      "approval": "só com clique",
+      "errors": {
+        "cycle": "Essa ligação faria o fluxo voltar em si mesmo.",
+        "intoTrigger": "Gatilho só começa o fluxo; nada chega nele."
+      },
+      "empty": "Acrescente um gatilho e um passo pela paleta.",
+      "label": "Canvas da automação"
+    },
+    "panel": {
+      "close": "Fechar painel",
+      "remove": "Remover do fluxo",
+      "name": "Nome",
+      "enabled": "Este gatilho está ligado",
+      "everyMinutes": "Conferir a cada (minutos)",
+      "input": "O texto vem de",
+      "approval": "Para na fila até você aprovar. Nada sai sem seu clique.",
+      "app": {
+        "slack": "Slack",
+        "teams": "Teams",
+        "github": "GitHub",
+        "atlassian": "Jira",
+        "locum": "Locum"
+      },
+      "inputNone": "O passo de IA logo antes"
+    },
+    "triggers": {
+      "manual": {
+        "title": "Executar agora",
+        "summary": "pelo botão",
+        "help": "Roda quando você aperta Executar agora. Bom para testar o fluxo."
+      },
+      "cron": {
+        "title": "Horário fixo",
+        "summary": "cron {{expression}}",
+        "expression": "Expressão cron (minuto hora dia mês dia-da-semana)",
+        "next": "Próxima: {{when}}",
+        "invalid": "Expressão inválida: {{message}}",
+        "presets": {
+          "weekdays9": "Dias úteis às 9h",
+          "daily8": "Todo dia às 8h",
+          "hourly": "A cada hora",
+          "monday9": "Segunda às 9h"
+        },
+        "never": "Nunca roda nos próximos 5 anos"
+      },
+      "schedule": {
+        "title": "Intervalo",
+        "summary": "a cada {{minutes}} min"
+      },
+      "slack-channel": {
+        "title": "Mensagem em canal do Slack",
+        "summary_one": "{{count}} canal",
+        "summary_other": "{{count}} canais",
+        "summary_zero": "nenhum canal",
+        "channels": "Canais observados",
+        "hint": "O ID do canal começa com C. No Slack, abra o canal, clique no nome dele no topo, e o ID aparece no fim da janela.",
+        "placeholder": "C0123ABCD",
+        "add": "Adicionar",
+        "remove": "Tirar {{channel}}"
+      },
+      "slack-inbox": {
+        "title": "Menção ou DM no Slack",
+        "summary": "menções e DMs",
+        "mentions": "Menções a você",
+        "dms": "Mensagens diretas"
+      },
+      "teams-inbox": {
+        "title": "Menção ou DM no Teams",
+        "summary": "menções e conversas",
+        "mentions": "Menções a você",
+        "dms": "Conversas diretas"
+      },
+      "poll": {
+        "title": "Pull request no GitHub",
+        "summary": "{{owner}} · {{repo}}",
+        "owner": "Organização ou conta",
+        "repoMatch": "Repositórios (expressão)",
+        "authorship": "De quem",
+        "any": "Todos",
+        "mine": "Só os meus",
+        "others": "Só os do time"
+      },
+      "webhook": {
+        "title": "Webhook",
+        "summary": "chamada local"
+      },
+      "mcp-poll": {
+        "title": "Consulta a servidor MCP",
+        "summary": "{{server}} · {{tool}}"
+      }
+    },
+    "steps": {
+      "ai": {
+        "title": "IA",
+        "description": "Lê, analisa e escreve. O resultado vai para o próximo passo.",
+        "model": "Modelo",
+        "prompt": "Instrução",
+        "variables": "Clique para inserir no texto:",
+        "tools": "Ferramentas",
+        "format": "Formato da saída",
+        "formats": {
+          "livre": "Texto livre",
+          "respostaSlack": "Resposta de Slack (texto e thread)",
+          "respostaTeams": "Resposta de Teams (texto)",
+          "tarefa": "Tarefa a partir de conversa",
+          "tarefaDePullRequest": "Tarefa a partir de pull request",
+          "outro": "Personalizado (editar como lista)"
+        }
+      },
+      "slack.post": {
+        "title": "Responder no Slack",
+        "description": "Responde na thread da mensagem que começou o fluxo."
+      },
+      "teams.post": {
+        "title": "Responder no Teams",
+        "description": "Responde na conversa que começou o fluxo."
+      },
+      "tracker.create_issue": {
+        "title": "Abrir tarefa",
+        "description": "Abre a tarefa no Jira ou no GitHub com o texto da IA.",
+        "tracker": "Tracker",
+        "none": "Cadastre um tracker em Apps, no Jira ou no GitHub.",
+        "choose": "Escolha o tracker"
+      },
+      "other": {
+        "title": "Ação {{action}}"
+      }
+    },
+    "problems": {
+      "noName": "A automação precisa de nome.",
+      "noSteps": "Acrescente pelo menos um passo.",
+      "noTrigger": "Sem gatilho, ela só roda pelo botão.",
+      "noChannels": "Diga qual canal do Slack observar.",
+      "slackOff": "O Slack não está conectado. Ligue em Apps.",
+      "teamsOff": "O Teams não está conectado. Ligue em Apps.",
+      "noPrompt": "O passo de IA está sem instrução.",
+      "actionWithoutAi": "Esta ação precisa de um passo de IA antes, que escreva o texto.",
+      "slackReplyNeedsSlack": "Responder no Slack precisa de um gatilho do Slack: é dele que vem a thread.",
+      "teamsReplyNeedsTeams": "Responder no Teams precisa de um gatilho do Teams.",
+      "noTracker": "Escolha em qual tracker abrir a tarefa."
+    }
+  },
+  "apps": {
+    "title": "Apps",
+    "lead": "Os serviços que o Locum usa. Conecte uma vez aqui; canal, filtro e destino ficam em cada automação.",
+    "offers": "O que oferece nas automações",
+    "offersTrigger": "gatilho",
+    "offersStep": "passo",
+    "test": "Testar conexão",
+    "testing": "testando...",
+    "testOk_one": "Respondeu: {{count}} ferramenta em {{ms}} ms",
+    "testOk_other": "Respondeu: {{count}} ferramentas em {{ms}} ms",
+    "testOk_zero": "Respondeu, sem ferramentas, em {{ms}} ms",
+    "testFail": "Não respondeu: {{error}}"
   }
 }

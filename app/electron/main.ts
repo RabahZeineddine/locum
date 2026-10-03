@@ -1147,7 +1147,7 @@ async function irPara(window: BrowserWindow, id: string, detalhe?: string): Prom
  * so a exigencia da story, que sao estes quatro destinos.
  */
 async function checkRoutes(window: BrowserWindow): Promise<string> {
-  const esperados = ["today", "inbox", "initiatives", "runs", "agents", "sessions", "settings"];
+  const esperados = ["today", "inbox", "initiatives", "automations", "runs", "apps", "sessions", "settings"];
 
   const barra = (await window.webContents.executeJavaScript(
     `Array.from(document.querySelectorAll("[data-locum-rota]")).map((b) => ({
@@ -1205,13 +1205,13 @@ async function checkRoutes(window: BrowserWindow): Promise<string> {
   }
 
   // O nome em português de antes da 0.1.20 ainda chega por deep link e janela
-  // restaurada, e precisa levar ao mesmo lugar, seção incluída.
+  // restaurada, e precisa levar ao mesmo lugar: Conexões, que hoje é Apps.
   await window.webContents.executeJavaScript(`(location.hash = "#/configuracao/conexoes", null)`);
   await new Promise((resolve) => setTimeout(resolve, 200));
   const antigo = (await window.webContents.executeJavaScript(
     `[document.querySelector("[data-locum-probe=rota]")?.dataset.ativo, location.hash].join("|")`,
   )) as string;
-  if (antigo !== "settings|#/settings/connections") {
+  if (antigo !== "apps|#/apps") {
     throw new Error(`hash antigo de Conexões levou a ${antigo}`);
   }
 
@@ -1802,7 +1802,7 @@ async function checkConfig(window: BrowserWindow): Promise<string> {
       `document.querySelector('[data-locum-orcamento="${orcamento.agentId}"]') === null ? null : true`,
     );
   }
-  await irPara(window, "settings", "connections");
+  await irPara(window, "apps");
 
   // Segredo nao tem como chegar na tela, porque nao ha canal que o devolva. O
   // que da para conferir daqui e que o marcador nao guarda nada alem do
@@ -2380,7 +2380,7 @@ async function checkRegisteredProviders(window: BrowserWindow): Promise<string> 
  * aprovação, e ele é assunto da próxima story.
  */
 async function checkTrackers(window: BrowserWindow): Promise<string> {
-  await irPara(window, "settings", "connections");
+  await irPara(window, "apps");
   // O GitHub Issues mora no painel do GitHub, e o Jira no da Atlassian.
   await abrirConexao(window, "github");
   const { createServer } = await import("node:http");
@@ -4056,7 +4056,7 @@ async function checkMcpPoll(): Promise<string> {
  * desenvolve, e sair de um exame tendo apagado o Slack dele seria estrago.
  */
 async function checkSlackWindow(window: BrowserWindow): Promise<string> {
-  await irPara(window, "settings", "connections");
+  await irPara(window, "apps");
   await abrirConexao(window, "slack");
   const { slackService } = await import("../src/services/slack-service.js");
   const { FIXTURE_SERVER } = await import("../src/fixtures/mcp-fixture.js");
@@ -4494,7 +4494,7 @@ async function esperarDoServico<T>(
  * olhando.
  */
 async function checkGithub(window: BrowserWindow): Promise<string> {
-  await irPara(window, "settings", "connections");
+  await irPara(window, "apps");
   await abrirConexao(window, "github");
   const { secretService } = await import("../src/services/secret-service.js");
   const { settingsService } = await import("../src/services/settings-service.js");
@@ -5917,10 +5917,12 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
     ["initiatives", undefined],
     ["initiatives", primeiraIniciativa],
     ["sessions", undefined],
-    // Uma foto por seção, com o nome dela: a Configuração tem três.
+    // Uma foto por seção, com o nome dela: a Configuração tem duas.
     ["settings", "general"],
     ["settings", "models"],
-    ["settings", "connections"],
+    ["apps", undefined],
+    ["automations", undefined],
+    ["automations", primeiroAgent],
   ];
 
   for (const [id, detalhe] of destinos) {

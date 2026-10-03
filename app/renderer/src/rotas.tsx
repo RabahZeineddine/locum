@@ -1,7 +1,9 @@
-import { Bot, Inbox as InboxIcon, ListTree, Settings, Sun, Target, TerminalSquare } from "lucide-react";
+import { Blocks, Bot, Inbox as InboxIcon, ListTree, Settings, Sun, Target, TerminalSquare, Workflow } from "lucide-react";
 import type { ComponentType } from "react";
 import type { Antigos } from "@/lib/router";
 import { Agents } from "./telas/agents";
+import { Apps } from "./telas/apps";
+import { Automacoes } from "./telas/automacoes";
 import { Configuracao } from "./telas/configuracao";
 import { Execucoes } from "./telas/execucoes";
 import { Hoje } from "./telas/hoje";
@@ -37,8 +39,13 @@ export const ROTAS = [
   { id: "today", rotulo: "nav.today", icone: Sun, Tela: Hoje },
   { id: "inbox", rotulo: "nav.queue", icone: InboxIcon, Tela: Inbox },
   { id: "initiatives", rotulo: "nav.initiatives", icone: Target, Tela: Initiatives },
+  { id: "automations", rotulo: "nav.automations", icone: Workflow, Tela: Automacoes },
   { id: "runs", rotulo: "nav.runs", icone: ListTree, Tela: Execucoes },
-  { id: "agents", rotulo: "nav.agents", icone: Bot, Tela: Agents },
+  { id: "apps", rotulo: "nav.apps", icone: Blocks, Tela: Apps },
+  // Fora da barra: a automação é a porta de entrada, e o agent é o que ela
+  // roda. O destino continua existindo para o "Ver como lista" da automação,
+  // para link antigo e para a paleta.
+  { id: "agents", rotulo: "nav.agents", icone: Bot, Tela: Agents, naBarra: false },
   { id: "sessions", rotulo: "nav.sessions", icone: TerminalSquare, Tela: Sessoes },
   { id: "settings", rotulo: "nav.settings", icone: Settings, Tela: Configuracao },
 ] as const satisfies readonly {
@@ -46,7 +53,11 @@ export const ROTAS = [
   rotulo: string;
   icone: ComponentType<{ className?: string }>;
   Tela: ComponentType<TelaProps>;
+  naBarra?: boolean;
 }[];
+
+/** Os destinos que aparecem na barra lateral, na ordem dela. */
+export const ROTAS_DA_BARRA = ROTAS.filter((rota) => !("naBarra" in rota) || rota.naBarra !== false);
 
 export type RotaId = (typeof ROTAS)[number]["id"];
 
@@ -72,7 +83,9 @@ export const ROTA_IDS: readonly RotaId[] = ROTAS.map((rota) => rota.id);
 export const ROTAS_ANTIGAS: Antigos = [
   ["configuracao/geral", "settings/general"],
   ["configuracao/modelos", "settings/models"],
-  ["configuracao/conexoes", "settings/connections"],
+  // Conexões saíram da Configuração e viraram Apps na 0.1.39.
+  ["configuracao/conexoes", "apps"],
+  ["settings/connections", "apps"],
   ["configuracao", "settings"],
   ["execucoes", "runs"],
   ["sessoes", "sessions"],
