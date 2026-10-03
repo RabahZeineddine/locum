@@ -27,7 +27,7 @@ test("resposta a conversa lida vira pendência com a mensagem a que responde", a
 
   const proposta = await handler.propose!({ repo: "teams/19:dm", text: "  olho já  " }, null);
 
-  assert.deepEqual(handler.modes, ["approve"]);
+  assert.deepEqual(handler.modes, ["approve", "auto"]);
   assert.deepEqual(proposta, {
     chatId: "19:dm",
     text: "olho já",

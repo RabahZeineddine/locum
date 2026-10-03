@@ -71,9 +71,9 @@ export type ActionHandler = {
  *
  * `approve` e o padrao. `auto` existe, mas nasce desligado e escopado, e a UI
  * so deve oferece-lo quando as metricas sustentarem. Ha acao que nao aceita os
- * tres, e quem diz isso e o handler, em `modes`: abrir tarefa em nome de uma
- * pessoa nunca e automatico, e uma regra dessas nao pode depender de o modo
- * certo estar escrito na spec.
+ * tres, e quem diz isso e o handler, em `modes`: entregar digest nunca e
+ * automatico, e uma regra dessas nao pode depender de o modo certo estar
+ * escrito na spec.
  */
 export class ApprovalGate {
   constructor(private handlers: Map<string, ActionHandler>) {}

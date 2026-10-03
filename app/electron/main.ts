@@ -2888,12 +2888,11 @@ async function checkTrackerIssue(): Promise<string> {
       }
     }
 
-    // A trava da story: o handler recusa nascer em rascunho ou em automatico, e
-    // a recusa acontece antes de qualquer gravacao, entao nem pendencia orfa
-    // fica para tras.
+    // O handler recusa nascer em rascunho, que nao existe no tracker, e a recusa
+    // acontece antes de qualquer gravacao, entao nem pendencia orfa fica.
     const gate = buildGate();
     const carga = { ...demoPr, objective: objetivo, changes: mudou, testing: testar };
-    for (const modo of ["draft", "auto"] as const) {
+    for (const modo of ["draft"] as const) {
       const recusou = await gate
         .submit(
           { runId, stepId: acao.id, kind: "tracker.create_issue", payload: carga, target: idDoTracker },
@@ -3758,10 +3757,9 @@ async function checkSlackPost(): Promise<string> {
     const gate = buildGate();
     const carga = { repo: `slack/${canal}`, text: resposta, threadTs: abertura };
 
-    // As travas do handler: mensagem em canal aparece assinada por uma pessoa,
-    // entao ela nao sai sozinha, e rascunho de mensagem de thread nao existe no
-    // Slack. A recusa acontece antes de gravar, entao nem pendencia orfa fica.
-    for (const modo of ["draft", "auto"] as const) {
+    // Rascunho de mensagem de thread nao existe no Slack, entao o handler recusa
+    // esse modo antes de gravar, e nem pendencia orfa fica.
+    for (const modo of ["draft"] as const) {
       const recusou = await gate
         .submit({ runId, stepId: acao.id, kind: "slack.post", payload: carga, target: server }, modo)
         .then(

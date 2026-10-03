@@ -33,8 +33,8 @@ const saidaDoPasso = {
   labels: ["front"],
 };
 
-test("tarefa só nasce em approve", () => {
-  assert.deepEqual(trackerIssueHandler(servico().fake).modes, ["approve"]);
+test("tarefa aceita approve e auto, sem rascunho", () => {
+  assert.deepEqual(trackerIssueHandler(servico().fake).modes, ["approve", "auto"]);
 });
 
 test("proposta recusa passo sem tracker e tracker sem projeto", async () => {

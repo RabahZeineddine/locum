@@ -958,7 +958,7 @@
     "secrets": "segredo cifrado no disco, referência no banco, valor só na conexão",
     "notifications": "aviso montado sem exibir, três críticos num run só, clique apontando para o run",
     "reconcile": "batida do agendador cruzando review humano com achados, {{settled}} execução(ões) com desfecho, pull request aberto volta na próxima e fechado não é reprocessado",
-    "trackerIssue": "passo de tarefa propondo o item a partir do texto do passo de modelo, run parado na fila do tracker {{tracker}} em {{project}}, e a gate recusando rascunho, automático e corpo ausente",
+    "trackerIssue": "passo de tarefa propondo o item a partir do texto do passo de modelo, run parado na fila do tracker {{tracker}} em {{project}}, e a gate recusando rascunho e corpo ausente",
     "deepLink": "esquema locum {{scheme}}, retorno de OAuth roteado, token no cofre e referência no cadastro",
     "schemeRegistered": "registrado",
     "schemeRefused": "não aceito fora de app empacotado",
@@ -990,7 +990,7 @@
     "mcpPoll": "consulta ao {{fixture}} pela ferramenta {{tool}} virou {{events}} evento(s) normalizado(s), a segunda varredura não reprocessou nenhum, e o cursor não andou com a chamada falhando",
     "slack": "canal observado virou {{events}} mensagem(ns) normalizada(s) com autor, canal, texto e thread, um cursor por canal, e a segunda varredura não reprocessou nenhuma",
     "digest": "conversa de {{channels}} canal(is) agrupada por assunto em {{messages}} mensagem(ns), {{dropped}} de ruído descartada(s) antes do modelo, a entrega seguinte sem repetir nada, e o digest parado na inbox como leitura, com a gate recusando rascunho, automático e digest vazio",
-    "slackPost": "resposta escrita virou pendência no canal {{channel}}, thread {{thread}}, com o texto do modelo palavra por palavra, canal e thread vindos do evento, carimbo inventado recusado, e a gate recusando rascunho e automático",
+    "slackPost": "resposta escrita virou pendência no canal {{channel}}, thread {{thread}}, com o texto do modelo palavra por palavra, canal e thread vindos do evento, carimbo inventado recusado, e a gate recusando rascunho",
     "slackWindow": "Slack: {{server}} guardado pela tela e o canal {{channel}} do cadastro antigo visível, sem canal de ponte que publique",
     "claudeSessions": "{{count}} sessões do Claude classificadas, Terminei e Reabrir de ida e volta"
   },

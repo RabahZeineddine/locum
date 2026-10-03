@@ -925,7 +925,7 @@
     "secrets": "secret encrypted on disk, reference in the database, value only in the connection",
     "notifications": "notice built without showing, three criticals in a single run, click pointing to the run",
     "reconcile": "scheduler beat crossing human review with findings, {{settled}} run(s) settled, open pull request comes back next beat and a closed one is not reprocessed",
-    "trackerIssue": "issue step proposing the item from the model step text, run parked in the queue for tracker {{tracker}} in {{project}}, and the gate refusing draft, auto and a missing body",
+    "trackerIssue": "issue step proposing the item from the model step text, run parked in the queue for tracker {{tracker}} in {{project}}, and the gate refusing draft and a missing body",
     "deepLink": "locum scheme {{scheme}}, OAuth callback routed, token in the vault and reference in the registry",
     "schemeRegistered": "registered",
     "schemeRefused": "not accepted outside a packaged app",
@@ -957,7 +957,7 @@
     "mcpPoll": "querying {{fixture}} through the {{tool}} tool produced {{events}} normalized event(s), the second sweep reprocessed none, and the cursor did not move when the call failed",
     "slack": "a watched channel produced {{events}} normalized message(s) with author, channel, text and thread, one cursor per channel, and the second sweep reprocessed none",
     "digest": "conversation from {{channels}} channel(s) grouped by subject into {{messages}} message(s), {{dropped}} noise message(s) dropped before the model, the next delivery repeating none, and the digest parked in the inbox as reading, with the gate refusing draft, auto and an empty digest",
-    "slackPost": "written reply became a pending item in channel {{channel}}, thread {{thread}}, with the model's text word for word, channel and thread taken from the event, made-up timestamp refused, and the gate refusing draft and auto",
+    "slackPost": "written reply became a pending item in channel {{channel}}, thread {{thread}}, with the model's text word for word, channel and thread taken from the event, made-up timestamp refused, and the gate refusing draft",
     "slackWindow": "Slack: {{server}} saved through the window and the old-setup channel {{channel}} visible, no bridge channel that posts",
     "claudeSessions": "{{count}} Claude sessions classified, Mark done and Reopen round trip"
   },

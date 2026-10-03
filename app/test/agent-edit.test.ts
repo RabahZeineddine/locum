@@ -97,8 +97,10 @@ test("a fila diz os modos de cada ação, perguntando ao handler", async () => {
   const { buildGate } = await import("../src/executor/build.js");
   const porAcao = new Map(buildGate().describe().map((a) => [a.kind, a]));
 
-  // Criar tarefa só aceita aprovação: é card em nome de uma pessoa.
-  assert.deepEqual([...porAcao.get("tracker.create_issue")!.modes], ["approve"]);
+  // Criar tarefa não tem rascunho: o tracker não tem onde guardar um.
+  assert.deepEqual([...porAcao.get("tracker.create_issue")!.modes], ["approve", "auto"]);
+  // O digest continua só com aprovação.
+  assert.deepEqual([...porAcao.get("digest.deliver")!.modes], ["approve"]);
   // A review aceita os três, mas segura na fila conforme o veredito.
   assert.equal(porAcao.get("github.review_comment")!.holdsByContent, true);
   assert.equal(porAcao.get("github.review_comment")!.modes.length, 3);

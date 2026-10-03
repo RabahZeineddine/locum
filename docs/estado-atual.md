@@ -1267,6 +1267,13 @@ junção depois de dois caminhos roda. No canvas, a paleta ganhou a seção
 caso), e puxar a seta de uma saída grava o `when` no passo de destino. O
 canvas reenquadra quando um nó entra, depois de medido.
 
+**Automações: Slack, Teams e tarefa aceitam automático.** `slack.post`,
+`teams.post` e `tracker.create_issue` passam a declarar `modes: ["approve",
+"auto"]`. Continuam nascendo em `approve`, continuam sem `draft` (nenhum dos
+três tem rascunho de verdade), e o automático só vale quando uma pessoa grava a
+versão: versão escrita por agent volta para `approve`. O digest continua só
+com aprovação.
+
 ## Próximos passos
 
 Iniciativas: I1, I2 e I3 prontos no código. Falta o teste à mão da sessão

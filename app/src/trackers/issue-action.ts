@@ -5,10 +5,10 @@ import { buildIssueProposal, TrackerIssueProposal } from "./proposal.js";
 /**
  * O handler da ação `tracker.create_issue`.
  *
- * Ele nasce e permanece em `approve`, e `modes` não é configuração: abrir card
- * é o tipo de coisa que aparece assinada por uma pessoa para o time dela, e um
- * agent que decidisse sozinho abriria tarefa em nome de quem nunca leu o texto.
- * Sem `draft` pela mesma razão: rascunho de tarefa não existe nos dois
+ * Nasce em `approve`: abrir card é o tipo de coisa que aparece assinada por
+ * uma pessoa para o time dela. O automático é para o fluxo que a pessoa montou
+ * e quer rodando sozinho, e só uma pessoa liga: versão escrita por agent volta
+ * para `approve` ao ser gravada. Sem `draft` porque rascunho de tarefa não existe nos dois
  * trackers, e emular um criando e fechando deixaria o card no histórico.
  *
  * A montagem do item acontece em `propose`, antes de a pendência ser gravada,
@@ -18,7 +18,7 @@ import { buildIssueProposal, TrackerIssueProposal } from "./proposal.js";
  */
 export function trackerIssueHandler(service: TrackerService = trackerService): ActionHandler {
   return {
-    modes: ["approve"],
+    modes: ["approve", "auto"],
 
     async propose(payload, target) {
       if (target === null || target.trim().length === 0) {

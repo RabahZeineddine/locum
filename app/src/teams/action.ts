@@ -93,10 +93,9 @@ export interface TeamsPostHandlerOptions {
 /**
  * O handler da ação `teams.post`.
  *
- * Nasce e permanece em `approve` pelo mesmo motivo do `slack.post`: a mensagem
- * sai com o nome da pessoa, e quem lê não tem como saber que foi um agent que
- * escreveu. A trava é de código, então trocar o modo na spec faz o passo
- * falhar em vez de publicar. Sem `draft` porque o Graph não tem rascunho de
+ * Nasce em `approve` pelo mesmo motivo do `slack.post`: a mensagem sai com o
+ * nome da pessoa, e quem lê não tem como saber que foi um agent que escreveu.
+ * O automático, como lá, só uma pessoa liga. Sem `draft` porque o Graph não tem rascunho de
  * mensagem de chat.
  *
  * A conversa vem do evento e é conferida contra o que o Locum leu: um
@@ -110,7 +109,7 @@ export function teamsPostHandler(options: TeamsPostHandlerOptions = {}): ActionH
   const graphUrl = options.graphUrl ?? GRAPH_URL;
 
   return {
-    modes: ["approve"],
+    modes: ["approve", "auto"],
 
     async propose(payload) {
       if (payload === null || typeof payload !== "object") {

@@ -14,11 +14,10 @@ export interface SlackPostHandlerOptions {
 /**
  * O handler da ação `slack.post`.
  *
- * Ele nasce e permanece em `approve`, como o de tarefa e pelo mesmo motivo:
- * mensagem em canal aparece assinada por uma pessoa, e quem lê não tem como
- * saber que quem escreveu foi um agent. O modo automático fica fora enquanto
- * não houver medição que o sustente, e `modes` não é configuração: a trava é
- * de código, então trocar o modo na spec faz o passo falhar em vez de publicar.
+ * Nasce em `approve`: mensagem em canal aparece assinada por uma pessoa, e
+ * quem lê não tem como saber que quem escreveu foi um agent. O automático
+ * existe para o fluxo que a pessoa montou e quer rodando sozinho, e só uma
+ * pessoa liga: versão escrita por agent volta para `approve` ao ser gravada.
  * Sem `draft` porque rascunho de mensagem de thread não existe no Slack, e
  * emular um publicando e apagando deixaria a notificação na tela de todo mundo.
  *
@@ -33,7 +32,7 @@ export function slackPostHandler(options: SlackPostHandlerOptions = {}): ActionH
   const lookup = options.lookup ?? findThread;
 
   return {
-    modes: ["approve"],
+    modes: ["approve", "auto"],
 
     async propose(payload, target) {
       // `target` existe para o agent que aponta para um servidor específico. Sem
