@@ -725,7 +725,6 @@
     "slack": {
       "title": "Slack observado",
       "description": "Quais canais o Locum lê, e por qual servidor MCP. Não há token do Slack aqui: quem fala com o Slack é o servidor MCP que você já autorizou.",
-      "empty": "Nenhum canal observado. Enquanto não houver um, a varredura do Slack não tem o que ler.",
       "server": "servidor MCP que responde pelo Slack",
       "serverNone": "nenhum servidor escolhido",
       "tool": "ferramenta que lista mensagem de canal",
@@ -743,12 +742,11 @@
       "threadArg": "nome do argumento da thread",
       "threadArgHint": "thread_ts",
       "save": "Guardar origem",
-      "channel": "canal a observar",
-      "channelHint": "C01AB2CD3EF",
-      "add": "Observar canal",
       "remove": "Remover",
-      "howTo": "O canal entra pelo identificador que o Slack usa, e cada um anda com o próprio cursor: um canal cadastrado hoje não reprocessa o que os outros já leram. Os nomes de argumento variam de um servidor de Slack para outro, e vêm preenchidos com os mais comuns. Ler não responde nada: resposta em thread é passo de ação, e ele para na fila e espera o seu clique.",
-      "refused": "a ponte recusou: {{message}}"
+      "refused": "a ponte recusou: {{message}}",
+      "advanced": "Avançado: ler o Slack por outro servidor MCP",
+      "advancedHint": "Só para quem não usa o app oficial acima. Diz por qual servidor e com que nomes de argumento o Locum lê canal e responde em thread. Quais canais observar fica no gatilho, em Automações.",
+      "legacyChannels": "Canais do cadastro antigo. Para observar canal agora, use o gatilho \"Mensagem em canal do Slack\" em Automações."
     },
     "trackers": {
       "title": "Trackers de tarefa",
@@ -904,13 +902,9 @@
       "waiting": "Esperando a autorização no navegador."
     },
     "slackInbox": {
-      "title": "Menções e mensagens diretas",
-      "description": "Acorda um agent quando alguém menciona você ou manda mensagem direta. O Locum consulta a busca do Slack com a sua conta a cada 5 minutos; a resposta que o agent propuser para na fila.",
       "both": "Menções e mensagens diretas",
       "mentions": "Só menções",
-      "dms": "Só mensagens diretas",
-      "what": "O que avisar",
-      "add": "Ligar"
+      "dms": "Só mensagens diretas"
     },
     "teams": {
       "title": "Teams pelo Microsoft Graph",
@@ -937,18 +931,11 @@
     "teamsInbox": {
       "description": "Acorda um agent quando alguém menciona você ou manda mensagem num chat do Teams. O Locum lê pelo Graph, com a sua conta, as conversas que se mexeram a cada 5 minutos; a resposta que o agent propuser para na fila. Canais de equipe ainda não entram."
     },
-    "inboxReply": {
-      "hint": "Ainda sem agent para responder? Use o pronto: ele lê a mensagem, escreve a resposta e deixa na fila para você aprovar antes de sair. Depois dá para editar em Agents.",
-      "use": "Usar a resposta pronta"
-    },
     "lead": "Como o Locum se comporta, com quais modelos pensa e de onde vem o trabalho.",
     "teamsChannels": {
       "toggle": "Incluir canais de equipe",
       "toggleHint": "Menção em canal escolhido também acorda o agent, e a resposta aprovada entra na thread. Acrescenta {{scopes}} ao pedido, e ler canal exige o consentimento do administrador do tenant.",
       "reconnect": "Vale no próximo conectar. Conecte de novo para o Entra pedir os escopos de canal.",
-      "load": "Escolher canais",
-      "pick": "Canais onde menção acorda o agent (até 20)",
-      "none": "Nenhum canal nas suas equipes.",
       "inLine": ", e menções em {{channels}}"
     }
   },
@@ -1000,7 +987,7 @@
     "slack": "canal observado virou {{events}} mensagem(ns) normalizada(s) com autor, canal, texto e thread, um cursor por canal, e a segunda varredura não reprocessou nenhuma",
     "digest": "conversa de {{channels}} canal(is) agrupada por assunto em {{messages}} mensagem(ns), {{dropped}} de ruído descartada(s) antes do modelo, a entrega seguinte sem repetir nada, e o digest parado na inbox como leitura, com a gate recusando rascunho, automático e digest vazio",
     "slackPost": "resposta escrita virou pendência no canal {{channel}}, thread {{thread}}, com o texto do modelo palavra por palavra, canal e thread vindos do evento, carimbo inventado recusado, e a gate recusando rascunho e automático",
-    "slackWindow": "Slack: {{server}} guardado pela tela e o canal {{channel}} observado, sem canal de ponte que publique",
+    "slackWindow": "Slack: {{server}} guardado pela tela e o canal {{channel}} do cadastro antigo visível, sem canal de ponte que publique",
     "claudeSessions": "{{count}} sessões do Claude classificadas, Terminei e Reabrir de ida e volta"
   },
   "status": {
@@ -1533,7 +1520,11 @@
         "title": "Menção ou DM no Teams",
         "summary": "menções e conversas",
         "mentions": "Menções a você",
-        "dms": "Conversas diretas"
+        "dms": "Conversas diretas",
+        "channels": "Canais de equipe (menção acorda)",
+        "list": "Listar canais",
+        "loading": "Lendo canais...",
+        "channelsHint": "Precisa ligar os canais na conexão do Teams, em Apps. Cada canal é uma chamada ao Graph por batida."
       },
       "poll": {
         "title": "Pull request no GitHub",

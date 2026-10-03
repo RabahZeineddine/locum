@@ -2278,29 +2278,29 @@ function LinhaDoTracker({
       <div className="flex flex-wrap items-center gap-2">
         {pelaConexao ? null : (
           <>
-            <input
-              aria-label={t("settings.trackers.field", { tracker: tracker.id })}
-              autoComplete="off"
-              className="border-border bg-background focus-visible:ring-ring min-w-56 flex-1 rounded-md border px-3 py-1.5 font-mono text-xs outline-none focus-visible:ring-1"
-              data-locum-tracker-credencial={tracker.id}
-              disabled={!tracker.vault}
-              onChange={(evento) => setValor(evento.target.value)}
-              placeholder={t(
-                tracker.vault ? "settings.trackers.placeholder" : "settings.trackers.noVault",
-              )}
-              spellCheck={false}
-              type="password"
-              value={valor}
-            />
-            <Button
-              data-locum-tracker-guardar={tracker.id}
-              disabled={salvando || !tracker.vault || valor.trim().length === 0}
-              onClick={guardar}
-              size="sm"
-              variant="secondary"
-            >
-              {t(salvando ? "settings.trackers.saving" : "settings.trackers.save")}
-            </Button>
+              <input
+                aria-label={t("settings.trackers.field", { tracker: tracker.id })}
+                autoComplete="off"
+                className="border-border bg-background focus-visible:ring-ring min-w-56 flex-1 rounded-md border px-3 py-1.5 font-mono text-xs outline-none focus-visible:ring-1"
+                data-locum-tracker-credencial={tracker.id}
+                disabled={!tracker.vault}
+                onChange={(evento) => setValor(evento.target.value)}
+                placeholder={t(
+                  tracker.vault ? "settings.trackers.placeholder" : "settings.trackers.noVault",
+                )}
+                spellCheck={false}
+                type="password"
+                value={valor}
+              />
+              <Button
+                data-locum-tracker-guardar={tracker.id}
+                disabled={salvando || !tracker.vault || valor.trim().length === 0}
+                onClick={guardar}
+                size="sm"
+                variant="secondary"
+              >
+                {t(salvando ? "settings.trackers.saving" : "settings.trackers.save")}
+              </Button>
           </>
         )}
         <Button
@@ -2840,8 +2840,6 @@ function SlackOficial() {
         ) : null}
       </div>
 
-      {app?.connected ? <CaixaDeEntrada servico="slack" /> : null}
-
       {ocupado ? <p className="text-muted-foreground text-xs">{t("settings.slackOfficial.waiting")}</p> : null}
       {recusa !== null ? (
         <p className="text-destructive text-xs" data-locum-slack-oficial-erro="">
@@ -2853,215 +2851,11 @@ function SlackOficial() {
 }
 
 type Caixa = "both" | "mentions" | "dms";
-const CAIXAS: Caixa[] = ["both", "mentions", "dms"];
 const ROTULO_DA_CAIXA: Record<Caixa, string> = {
   both: "settings.slackInbox.both",
   mentions: "settings.slackInbox.mentions",
   dms: "settings.slackInbox.dms",
 };
-
-/**
- * O gatilho de menção e mensagem direta, que só existe com a conexão do
- * serviço: a oficial do Slack ou a do Teams.
- *
- * Fica dentro do bloco da conexão, e não em Gatilhos, porque não tem o que
- * escolher além do agent e do que avisar: servidor, ferramenta e conversa são
- * os da conta de quem conectou.
- */
-function CaixaDeEntrada({ servico, canais = false }: { servico: "slack" | "teams"; canais?: boolean }) {
-  const kind = servico === "slack" ? "slack-inbox" : "teams-inbox";
-  const pronto = servico === "slack" ? "slack-reply" : "teams-reply";
-  const { i18n, t } = useTranslation();
-  const agentsIniciais = useRead("agents.list");
-  const [agentsRelidos, setAgentsRelidos] = useState<typeof agentsIniciais.data>(undefined);
-  const inicial = useRead("triggers.schedule");
-  const [recarregado, setRecarregado] = useState<Gatilho[] | null>(null);
-  const [agentId, setAgentId] = useState("");
-  const [caixa, setCaixa] = useState<Caixa>("both");
-  const [opcoesDeCanal, setOpcoesDeCanal] = useState<CanalDoTeams[] | null>(null);
-  const [canaisEscolhidos, setCanaisEscolhidos] = useState<ReadonlySet<string>>(new Set());
-  const [ocupado, setOcupado] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
-
-  const agenda = recarregado ?? inicial.data ?? null;
-  const recusa = erro ?? inicial.error?.message ?? null;
-  const gatilhos = (agenda ?? []).filter((g) => g.kind === kind);
-  const listaDeAgents = agentsRelidos ?? agentsIniciais.data ?? [];
-  const escolhido = agentId !== "" ? agentId : (listaDeAgents[0]?.id ?? "");
-  const temPronto = listaDeAgents.some((agent) => agent.id === pronto);
-
-  const agir = (acao: Promise<unknown>): void => {
-    setOcupado(true);
-    acao
-      .then(
-        () => setErro(null),
-        (falha: unknown) => setErro(falha instanceof Error ? falha.message : String(falha)),
-      )
-      .then(() => read("triggers.schedule").then(setRecarregado, () => undefined))
-      .finally(() => setOcupado(false));
-  };
-
-  const chaveDoCanal = (c: CanalDoTeams) => `${c.teamId}|${c.channelId}`;
-  const escolhidos =
-    servico === "teams" && canais && caixa !== "dms"
-      ? (opcoesDeCanal ?? [])
-          .filter((c) => canaisEscolhidos.has(chaveDoCanal(c)))
-          .map((c) => ({ teamId: c.teamId, channelId: c.channelId, label: `${c.teamName} / ${c.channelName}` }))
-      : [];
-
-  const gatilhoPara = (id: string) =>
-    call(
-      "triggers.set",
-      id,
-      kind === "teams-inbox"
-        ? { kind, mentions: caixa !== "dms", dms: caixa !== "mentions", channels: escolhidos }
-        : { kind, mentions: caixa !== "dms", dms: caixa !== "mentions" },
-    );
-
-  const carregarCanais = (): void => {
-    agir(call("connections.teamsChannels").then(setOpcoesDeCanal));
-  };
-
-  const alternarCanal = (chave: string): void => {
-    setCanaisEscolhidos((atual) => {
-      const proximo = new Set(atual);
-      if (proximo.has(chave)) proximo.delete(chave);
-      else proximo.add(chave);
-      return proximo;
-    });
-  };
-
-  const ligar = (): void => {
-    agir(gatilhoPara(escolhido));
-  };
-
-  /**
-   * Quem acabou de conectar ainda não tem agent que responda, e a lista de
-   * agents vazia trava o Ligar. Este clique grava a resposta pronta e já liga
-   * o gatilho nela; a resposta continua parando na fila.
-   */
-  const usarPronto = (): void => {
-    agir(
-      instalarResposta(servico).then(async (id) => {
-        setAgentId(id);
-        setAgentsRelidos(await read("agents.list"));
-        await gatilhoPara(id);
-      }),
-    );
-  };
-
-  return (
-    <div className="flex flex-col gap-2" data-locum-probe={`${servico}-caixa`}>
-      <span className="text-sm font-medium">{t("settings.slackInbox.title")}</span>
-      <p className="text-muted-foreground text-xs">
-        {t(servico === "slack" ? "settings.slackInbox.description" : "settings.teamsInbox.description")}
-      </p>
-
-      {gatilhos.length === 0 ? null : (
-        <ul className="flex flex-col gap-2">
-          {gatilhos.map((gatilho) => (
-            <LinhaDoObservado
-              aoLigar={(ligado) => agir(call("triggers.setEnabled", gatilho.triggerId, ligado))}
-              aoRemover={() => agir(call("triggers.remove", gatilho.triggerId))}
-              gatilho={gatilho}
-              idioma={i18n.language}
-              key={gatilho.triggerId}
-              ocupado={ocupado}
-            />
-          ))}
-        </ul>
-      )}
-
-      <div className="flex flex-wrap items-center gap-2">
-        <select
-          aria-label={t("settings.watched.agent")}
-          className="border-border bg-background cursor-pointer rounded-md border px-2 py-1.5 text-xs"
-          {...{ [`data-locum-${servico}-caixa-agent`]: "" }}
-          onChange={(evento) => setAgentId(evento.target.value)}
-          value={escolhido}
-        >
-          {listaDeAgents.map((agent) => (
-            <option key={agent.id} value={agent.id}>
-              {agent.name}
-            </option>
-          ))}
-        </select>
-        <select
-          aria-label={t("settings.slackInbox.what")}
-          className="border-border bg-background cursor-pointer rounded-md border px-2 py-1.5 text-xs"
-          {...{ [`data-locum-${servico}-caixa-tipo`]: "" }}
-          onChange={(evento) => setCaixa(evento.target.value as Caixa)}
-          value={caixa}
-        >
-          {CAIXAS.map((valor) => (
-            <option key={valor} value={valor}>
-              {t(ROTULO_DA_CAIXA[valor])}
-            </option>
-          ))}
-        </select>
-        <Button
-          {...{ [`data-locum-${servico}-caixa-ligar`]: "" }}
-          disabled={ocupado || escolhido === ""}
-          onClick={ligar}
-          size="sm"
-          variant="secondary"
-        >
-          {t("settings.slackInbox.add")}
-        </Button>
-      </div>
-
-      {servico === "teams" && canais && caixa !== "dms" ? (
-        <div className="flex flex-col gap-1.5" data-locum-teams-canais="">
-          {opcoesDeCanal === null ? (
-            <div>
-              <Button data-locum-teams-canais-carregar="" disabled={ocupado} onClick={carregarCanais} size="sm" variant="ghost">
-                {t("settings.teamsChannels.load")}
-              </Button>
-            </div>
-          ) : opcoesDeCanal.length === 0 ? (
-            <p className="text-muted-foreground text-xs">{t("settings.teamsChannels.none")}</p>
-          ) : (
-            <>
-              <span className="text-muted-foreground text-xs">{t("settings.teamsChannels.pick")}</span>
-              <ul className="border-border flex max-h-48 flex-col overflow-y-auto rounded-md border p-1">
-                {opcoesDeCanal.map((c) => (
-                  <li key={chaveDoCanal(c)}>
-                    <label className="hover:bg-accent flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-xs">
-                      <input
-                        checked={canaisEscolhidos.has(chaveDoCanal(c))}
-                        disabled={!canaisEscolhidos.has(chaveDoCanal(c)) && canaisEscolhidos.size >= 20}
-                        onChange={() => alternarCanal(chaveDoCanal(c))}
-                        type="checkbox"
-                      />
-                      <span className="text-muted-foreground">{c.teamName}</span>
-                      <span>/ {c.channelName}</span>
-                    </label>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-        </div>
-      ) : null}
-
-      {temPronto || agentsIniciais.data === undefined ? null : (
-        <div className="border-border flex flex-wrap items-center gap-2 rounded-md border border-dashed p-2">
-          <p className="text-muted-foreground min-w-0 flex-1 text-xs">{t("settings.inboxReply.hint")}</p>
-          <Button
-            {...{ [`data-locum-${servico}-resposta-pronta`]: "" }}
-            disabled={ocupado}
-            onClick={usarPronto}
-            size="sm"
-          >
-            {t("settings.inboxReply.use")}
-          </Button>
-        </div>
-      )}
-
-      {recusa === null ? null : <p className="text-destructive text-xs">{recusa}</p>}
-    </div>
-  );
-}
 
 /* -------------------------------------------------------------------- teams */
 
@@ -3230,8 +3024,6 @@ function TeamsPeloGraph() {
         </span>
       </label>
 
-      {app?.connected ? <CaixaDeEntrada canais={app.channels} servico="teams" /> : null}
-
       {ocupado ? <p className="text-muted-foreground text-xs">{t("settings.teams.waiting")}</p> : null}
       {aviso !== null ? <p className="text-muted-foreground text-xs">{aviso}</p> : null}
       {recusa !== null ? (
@@ -3248,7 +3040,6 @@ function Slack() {
   const servidores = useRead("mcp.list");
   const inicial = useRead("slack.get");
   const [recarregado, setRecarregado] = useState<CadastroDoSlack | null>(null);
-  const [canal, setCanal] = useState("");
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -3316,180 +3107,159 @@ function Slack() {
     );
   };
 
-  const observar = (): void => {
-    agir(call("slack.addChannel", canal.trim()).then(() => setCanal("")));
-  };
-
   const canais = cadastro?.channels ?? [];
 
   return (
-    <div
-      className="flex flex-col gap-3 px-4 py-3"
+    <details
+      className="px-4 py-3"
       data-locum-probe="slack"
       data-locum-slack-canais={canais.join(",")}
       data-locum-slack-ferramenta-atual={cadastro?.tool ?? ""}
       data-locum-slack-resposta-atual={cadastro?.postTool ?? ""}
       data-locum-slack-servidor={cadastro?.server ?? ""}
     >
-      <div className="flex flex-wrap items-center gap-2">
-        <select
-          aria-label={t("settings.slack.server")}
-          className="border-border bg-background cursor-pointer rounded-md border px-2 py-1.5 text-xs"
-          data-locum-slack-escolha=""
-          onChange={(evento) => setServidor(evento.target.value)}
-          value={valorDoServidor}
-        >
-          <option value="">{t("settings.slack.serverNone")}</option>
-          {(servidores.data ?? []).map((s) => (
-            <option key={s.config.name} value={s.config.name}>
-              {s.config.name}
-            </option>
-          ))}
-        </select>
+      <summary className="text-muted-foreground hover:text-foreground cursor-pointer text-xs">
+        {t("settings.slack.advanced")}
+      </summary>
+      <div className="mt-3 flex flex-col gap-3">
+        <p className="text-muted-foreground max-w-[68ch] text-xs">{t("settings.slack.advancedHint")}</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            aria-label={t("settings.slack.server")}
+            className="border-border bg-background cursor-pointer rounded-md border px-2 py-1.5 text-xs"
+            data-locum-slack-escolha=""
+            onChange={(evento) => setServidor(evento.target.value)}
+            value={valorDoServidor}
+          >
+            <option value="">{t("settings.slack.serverNone")}</option>
+            {(servidores.data ?? []).map((s) => (
+              <option key={s.config.name} value={s.config.name}>
+                {s.config.name}
+              </option>
+            ))}
+          </select>
 
-        <input
-          aria-label={t("settings.slack.tool")}
-          autoComplete="off"
-          className="border-border bg-background focus-visible:ring-ring w-52 rounded-md border px-3 py-1.5 font-mono text-xs outline-none focus-visible:ring-1"
-          data-locum-slack-ferramenta=""
-          onChange={(evento) => setFerramenta(evento.target.value)}
-          placeholder={t("settings.slack.toolHint")}
-          spellCheck={false}
-          value={valorDaFerramenta}
-        />
+          <input
+            aria-label={t("settings.slack.tool")}
+            autoComplete="off"
+            className="border-border bg-background focus-visible:ring-ring w-52 rounded-md border px-3 py-1.5 font-mono text-xs outline-none focus-visible:ring-1"
+            data-locum-slack-ferramenta=""
+            onChange={(evento) => setFerramenta(evento.target.value)}
+            placeholder={t("settings.slack.toolHint")}
+            spellCheck={false}
+            value={valorDaFerramenta}
+          />
 
-        <input
-          aria-label={t("settings.slack.channelArg")}
-          autoComplete="off"
-          className="border-border bg-background focus-visible:ring-ring w-32 rounded-md border px-3 py-1.5 font-mono text-xs outline-none focus-visible:ring-1"
-          data-locum-slack-arg-canal=""
-          onChange={(evento) => setArgCanal(evento.target.value)}
-          placeholder={t("settings.slack.channelArgHint")}
-          spellCheck={false}
-          value={valorDoArgCanal}
-        />
+          <input
+            aria-label={t("settings.slack.channelArg")}
+            autoComplete="off"
+            className="border-border bg-background focus-visible:ring-ring w-32 rounded-md border px-3 py-1.5 font-mono text-xs outline-none focus-visible:ring-1"
+            data-locum-slack-arg-canal=""
+            onChange={(evento) => setArgCanal(evento.target.value)}
+            placeholder={t("settings.slack.channelArgHint")}
+            spellCheck={false}
+            value={valorDoArgCanal}
+          />
 
-        <input
-          aria-label={t("settings.slack.sinceArg")}
-          autoComplete="off"
-          className="border-border bg-background focus-visible:ring-ring w-32 rounded-md border px-3 py-1.5 font-mono text-xs outline-none focus-visible:ring-1"
-          data-locum-slack-arg-janela=""
-          onChange={(evento) => setArgJanela(evento.target.value)}
-          placeholder={t("settings.slack.sinceArgHint")}
-          spellCheck={false}
-          value={valorDoArgJanela}
-        />
+          <input
+            aria-label={t("settings.slack.sinceArg")}
+            autoComplete="off"
+            className="border-border bg-background focus-visible:ring-ring w-32 rounded-md border px-3 py-1.5 font-mono text-xs outline-none focus-visible:ring-1"
+            data-locum-slack-arg-janela=""
+            onChange={(evento) => setArgJanela(evento.target.value)}
+            placeholder={t("settings.slack.sinceArgHint")}
+            spellCheck={false}
+            value={valorDoArgJanela}
+          />
 
-        <input
-          aria-label={t("settings.slack.postTool")}
-          autoComplete="off"
-          className="border-border bg-background focus-visible:ring-ring w-52 rounded-md border px-3 py-1.5 font-mono text-xs outline-none focus-visible:ring-1"
-          data-locum-slack-ferramenta-resposta=""
-          onChange={(evento) => setFerramentaDaResposta(evento.target.value)}
-          placeholder={t("settings.slack.postToolHint")}
-          spellCheck={false}
-          value={valorDaResposta}
-        />
+          <input
+            aria-label={t("settings.slack.postTool")}
+            autoComplete="off"
+            className="border-border bg-background focus-visible:ring-ring w-52 rounded-md border px-3 py-1.5 font-mono text-xs outline-none focus-visible:ring-1"
+            data-locum-slack-ferramenta-resposta=""
+            onChange={(evento) => setFerramentaDaResposta(evento.target.value)}
+            placeholder={t("settings.slack.postToolHint")}
+            spellCheck={false}
+            value={valorDaResposta}
+          />
 
-        <input
-          aria-label={t("settings.slack.postChannelArg")}
-          autoComplete="off"
-          className="border-border bg-background focus-visible:ring-ring w-32 rounded-md border px-3 py-1.5 font-mono text-xs outline-none focus-visible:ring-1"
-          data-locum-slack-arg-canal-resposta=""
-          onChange={(evento) => setArgCanalDaResposta(evento.target.value)}
-          placeholder={t("settings.slack.postChannelArgHint")}
-          spellCheck={false}
-          value={valorDoArgCanalDaResposta}
-        />
+          <input
+            aria-label={t("settings.slack.postChannelArg")}
+            autoComplete="off"
+            className="border-border bg-background focus-visible:ring-ring w-32 rounded-md border px-3 py-1.5 font-mono text-xs outline-none focus-visible:ring-1"
+            data-locum-slack-arg-canal-resposta=""
+            onChange={(evento) => setArgCanalDaResposta(evento.target.value)}
+            placeholder={t("settings.slack.postChannelArgHint")}
+            spellCheck={false}
+            value={valorDoArgCanalDaResposta}
+          />
 
-        <input
-          aria-label={t("settings.slack.textArg")}
-          autoComplete="off"
-          className="border-border bg-background focus-visible:ring-ring w-32 rounded-md border px-3 py-1.5 font-mono text-xs outline-none focus-visible:ring-1"
-          data-locum-slack-arg-texto=""
-          onChange={(evento) => setArgTexto(evento.target.value)}
-          placeholder={t("settings.slack.textArgHint")}
-          spellCheck={false}
-          value={valorDoArgTexto}
-        />
+          <input
+            aria-label={t("settings.slack.textArg")}
+            autoComplete="off"
+            className="border-border bg-background focus-visible:ring-ring w-32 rounded-md border px-3 py-1.5 font-mono text-xs outline-none focus-visible:ring-1"
+            data-locum-slack-arg-texto=""
+            onChange={(evento) => setArgTexto(evento.target.value)}
+            placeholder={t("settings.slack.textArgHint")}
+            spellCheck={false}
+            value={valorDoArgTexto}
+          />
 
-        <input
-          aria-label={t("settings.slack.threadArg")}
-          autoComplete="off"
-          className="border-border bg-background focus-visible:ring-ring w-32 rounded-md border px-3 py-1.5 font-mono text-xs outline-none focus-visible:ring-1"
-          data-locum-slack-arg-thread=""
-          onChange={(evento) => setArgThread(evento.target.value)}
-          placeholder={t("settings.slack.threadArgHint")}
-          spellCheck={false}
-          value={valorDoArgThread}
-        />
+          <input
+            aria-label={t("settings.slack.threadArg")}
+            autoComplete="off"
+            className="border-border bg-background focus-visible:ring-ring w-32 rounded-md border px-3 py-1.5 font-mono text-xs outline-none focus-visible:ring-1"
+            data-locum-slack-arg-thread=""
+            onChange={(evento) => setArgThread(evento.target.value)}
+            placeholder={t("settings.slack.threadArgHint")}
+            spellCheck={false}
+            value={valorDoArgThread}
+          />
 
-        <Button
-          data-locum-slack-salvar=""
-          disabled={ocupado || !podeSalvar}
-          onClick={salvar}
-          size="sm"
-          variant="secondary"
-        >
-          {t("settings.slack.save")}
-        </Button>
-      </div>
+          <Button
+            data-locum-slack-salvar=""
+            disabled={ocupado || !podeSalvar}
+            onClick={salvar}
+            size="sm"
+            variant="secondary"
+          >
+            {t("settings.slack.save")}
+          </Button>
+        </div>
 
-      {canais.length === 0 ? (
-        <p className="text-muted-foreground text-sm">{t("settings.slack.empty")}</p>
-      ) : (
-        <ul className="flex flex-wrap gap-2">
-          {canais.map((observado) => (
-            <li
-              className="border-border flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm"
-              data-locum-slack-canal={observado}
-              key={observado}
-            >
-              <span className="font-mono text-xs">{observado}</span>
-              <Button
-                data-locum-slack-remover={observado}
-                disabled={ocupado}
-                onClick={() => agir(call("slack.removeChannel", observado))}
-                size="sm"
-                variant="ghost"
+        {canais.length === 0 ? null : (
+          <>
+          <p className="text-muted-foreground max-w-[68ch] text-xs">{t("settings.slack.legacyChannels")}</p>
+          <ul className="flex flex-wrap gap-2">
+            {canais.map((observado) => (
+              <li
+                className="border-border flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm"
+                data-locum-slack-canal={observado}
+                key={observado}
               >
-                {t("settings.slack.remove")}
-              </Button>
-            </li>
-          ))}
-        </ul>
-      )}
+                <span className="font-mono text-xs">{observado}</span>
+                <Button
+                  data-locum-slack-remover={observado}
+                  disabled={ocupado}
+                  onClick={() => agir(call("slack.removeChannel", observado))}
+                  size="sm"
+                  variant="ghost"
+                >
+                  {t("settings.slack.remove")}
+                </Button>
+              </li>
+            ))}
+          </ul>
+          </>
+        )}
 
-      <div className="flex flex-wrap items-center gap-2">
-        <input
-          aria-label={t("settings.slack.channel")}
-          autoComplete="off"
-          className="border-border bg-background focus-visible:ring-ring w-44 rounded-md border px-3 py-1.5 font-mono text-xs outline-none focus-visible:ring-1"
-          data-locum-slack-novo-canal=""
-          onChange={(evento) => setCanal(evento.target.value)}
-          placeholder={t("settings.slack.channelHint")}
-          spellCheck={false}
-          value={canal}
-        />
-        <Button
-          data-locum-slack-adicionar=""
-          disabled={ocupado || canal.trim() === "" || cadastro?.server === null}
-          onClick={observar}
-          size="sm"
-          variant="secondary"
-        >
-          {t("settings.slack.add")}
-        </Button>
+        {recusa === null ? null : (
+          <p className="text-destructive text-xs" data-locum-slack-erro={recusa}>
+            {t("settings.slack.refused", { message: recusa })}
+          </p>
+        )}
       </div>
-
-      <p className="text-muted-foreground max-w-[68ch] text-xs">{t("settings.slack.howTo")}</p>
-
-      {recusa === null ? null : (
-        <p className="text-destructive text-xs" data-locum-slack-erro={recusa}>
-          {t("settings.slack.refused", { message: recusa })}
-        </p>
-      )}
-    </div>
+    </details>
   );
 }
 

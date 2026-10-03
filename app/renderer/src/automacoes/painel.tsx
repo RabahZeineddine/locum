@@ -12,7 +12,7 @@ import {
   type Problema,
   type Rascunho,
 } from "@/lib/automacao";
-import type { ReadResult } from "@/lib/bridge";
+import { call, type ReadResult } from "@/lib/bridge";
 import { cn } from "@/lib/utils";
 import { Trash2, X } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
@@ -158,6 +158,9 @@ function ConfigDoGatilho({ config, trocar }: { config: TriggerConfig; trocar: (c
             rotulo={t(`automations.triggers.${config.kind}.dms`)}
             trocar={(dms) => trocar({ ...config, dms })}
           />
+          {config.kind === "teams-inbox" ? (
+            <CanaisDoTeams canais={config.channels} trocar={(channels) => trocar({ ...config, channels })} />
+          ) : null}
           <Minutos rotulo={t("automations.panel.everyMinutes")} valor={config.everyMinutes} trocar={(everyMinutes) => trocar({ ...config, everyMinutes })} />
         </>
       );
@@ -289,6 +292,87 @@ function CanaisDoSlack({ canais, trocar }: { canais: readonly string[]; trocar: 
         </Button>
       </div>
       <p className="text-muted-foreground text-[11px]">{t("automations.triggers.slack-channel.hint")}</p>
+    </Campo>
+  );
+}
+
+type CanalDoTeams = Extract<TriggerConfig, { kind: "teams-inbox" }>["channels"][number];
+
+/**
+ * Canais de equipe do Teams. A lista vem do Graph e só chega por clique: é
+ * rede, e pede os escopos de canal que a conexão pode não ter.
+ */
+function CanaisDoTeams({ canais, trocar }: { canais: readonly CanalDoTeams[]; trocar: (c: CanalDoTeams[]) => void }) {
+  const { t } = useTranslation();
+  const [opcoes, setOpcoes] = useState<ReadResult<"connections.teamsChannels"> | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [lendo, setLendo] = useState(false);
+  const marcado = (teamId: string, channelId: string): boolean =>
+    canais.some((c) => c.teamId === teamId && c.channelId === channelId);
+
+  const listar = (): void => {
+    setLendo(true);
+    setErro(null);
+    call("connections.teamsChannels").then(
+      (lista) => {
+        setOpcoes(lista);
+        setLendo(false);
+      },
+      (e: unknown) => {
+        setErro(e instanceof Error ? e.message : String(e));
+        setLendo(false);
+      },
+    );
+  };
+
+  return (
+    <Campo rotulo={t("automations.triggers.teams-inbox.channels")}>
+      {canais.length === 0 ? null : (
+        <div className="flex flex-wrap gap-1.5">
+          {canais.map((c) => (
+            <span className="bg-muted flex items-center gap-1 rounded-full py-0.5 pr-1 pl-2.5 text-xs" key={`${c.teamId}/${c.channelId}`}>
+              {c.label ?? c.channelId}
+              <button
+                aria-label={t("automations.triggers.slack-channel.remove", { channel: c.label ?? c.channelId })}
+                className="hover:text-foreground text-muted-foreground cursor-pointer rounded-full p-0.5"
+                onClick={() => trocar(canais.filter((x) => !(x.teamId === c.teamId && x.channelId === c.channelId)))}
+                type="button"
+              >
+                <X className="size-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      {opcoes === null ? (
+        <Button className="cursor-pointer self-start" disabled={lendo} onClick={listar} size="sm" variant="outline">
+          {t(lendo ? "automations.triggers.teams-inbox.loading" : "automations.triggers.teams-inbox.list")}
+        </Button>
+      ) : (
+        <ul className="flex max-h-48 flex-col gap-1 overflow-y-auto text-xs">
+          {opcoes.map((o) => (
+            <li key={`${o.teamId}/${o.channelId}`}>
+              <label className="flex cursor-pointer items-center gap-2">
+                <input
+                  checked={marcado(o.teamId, o.channelId)}
+                  className="accent-primary cursor-pointer"
+                  onChange={(e) =>
+                    trocar(
+                      e.target.checked
+                        ? [...canais, { teamId: o.teamId, channelId: o.channelId, label: `${o.teamName} / ${o.channelName}` }]
+                        : canais.filter((x) => !(x.teamId === o.teamId && x.channelId === o.channelId)),
+                    )
+                  }
+                  type="checkbox"
+                />
+                {o.teamName} / {o.channelName}
+              </label>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="text-muted-foreground text-[11px]">{t("automations.triggers.teams-inbox.channelsHint")}</p>
+      {erro === null ? null : <p className="text-sev-critical text-xs">{erro}</p>}
     </Campo>
   );
 }

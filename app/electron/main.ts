@@ -4152,28 +4152,14 @@ async function checkSlackWindow(window: BrowserWindow): Promise<string> {
       })()`,
     );
 
-    const cadastrou = await window.webContents.executeJavaScript(
-      `(() => {
-        const setter = Object.getOwnPropertyDescriptor(
-          window.HTMLInputElement.prototype,
-          "value",
-        ).set;
-        const campo = document.querySelector("[data-locum-slack-novo-canal]");
-        if (campo === null) return false;
-        setter.call(campo, ${JSON.stringify(canal)});
-        campo.dispatchEvent(new Event("input", { bubbles: true }));
-        const botao = document.querySelector("[data-locum-slack-adicionar]");
-        if (botao === null || botao.disabled) return false;
-        botao.click();
-        return true;
-      })()`,
-    );
-    if (cadastrou !== true) throw new Error("a tela nao ofereceu o campo de canal");
-
-    await esperarDoServico("canal observado pela tela", async () => {
-      const atual = await slackService.get();
-      return atual.channels.includes(canal) ? atual : undefined;
-    });
+    // Canal observado agora mora no gatilho, em Automações. O cadastro antigo
+    // continua lido pela varredura de `mcp-poll`, e a tela só mostra e remove:
+    // por isso o canal entra pelo serviço e a conferência é de que aparece.
+    await slackService.addChannel(canal);
+    // O painel leu o cadastro ao abrir; trocar de tela e voltar faz ele ler de novo.
+    await irPara(window, "today");
+    await irPara(window, "apps");
+    await abrirConexao(window, "slack");
 
     // A recusa da ponte vira mensagem daqui antes de virar espera estourada.
     const recusa = (await window.webContents.executeJavaScript(

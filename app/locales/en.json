@@ -696,7 +696,6 @@
     "slack": {
       "title": "Watched Slack",
       "description": "Which channels Locum reads, and through which MCP server. There is no Slack token here: the one talking to Slack is the MCP server you already authorized.",
-      "empty": "No channel watched. Until there is one, the Slack sweep has nothing to read.",
       "server": "MCP server that answers for Slack",
       "serverNone": "no server chosen",
       "tool": "tool that lists channel messages",
@@ -714,12 +713,11 @@
       "threadArg": "name of the thread argument",
       "threadArgHint": "thread_ts",
       "save": "Save source",
-      "channel": "channel to watch",
-      "channelHint": "C01AB2CD3EF",
-      "add": "Watch channel",
       "remove": "Remove",
-      "howTo": "A channel goes in by the identifier Slack uses, and each one carries its own cursor: a channel registered today does not reprocess what the others already read. Argument names vary from one Slack server to another, and come filled in with the most common ones. Reading answers nothing: a threaded reply is an action step, and it stops in the queue waiting for your click.",
-      "refused": "the bridge refused: {{message}}"
+      "refused": "the bridge refused: {{message}}",
+      "advanced": "Advanced: read Slack through another MCP server",
+      "advancedHint": "Only if you do not use the official app above. Tells which server, and which argument names, Locum uses to read a channel and reply in a thread. Which channels to watch lives in the trigger, under Automations.",
+      "legacyChannels": "Channels from the old setup. To watch a channel now, use the \"Message in a Slack channel\" trigger under Automations."
     },
     "trackers": {
       "title": "Task trackers",
@@ -871,13 +869,9 @@
       "waiting": "Waiting for authorization in the browser."
     },
     "slackInbox": {
-      "title": "Mentions and direct messages",
-      "description": "Wakes an agent when someone mentions you or sends you a direct message. Locum queries Slack search with your account every 5 minutes; any reply the agent proposes waits in the queue.",
       "both": "Mentions and direct messages",
       "mentions": "Mentions only",
-      "dms": "Direct messages only",
-      "what": "What to watch",
-      "add": "Turn on"
+      "dms": "Direct messages only"
     },
     "teams": {
       "title": "Teams through Microsoft Graph",
@@ -904,18 +898,11 @@
     "teamsInbox": {
       "description": "Wakes an agent when someone mentions you or messages you in a Teams chat. Every 5 minutes Locum reads, through Graph and with your account, the chats that changed; any reply the agent proposes waits in the queue. Team channels are not covered yet."
     },
-    "inboxReply": {
-      "hint": "No agent to reply yet? Use the ready one: it reads the message, writes a reply and leaves it in the queue for you to approve before it goes out. You can edit it later in Agents.",
-      "use": "Use the ready reply"
-    },
     "lead": "How Locum behaves, which models it thinks with and where the work comes from.",
     "teamsChannels": {
       "toggle": "Include team channels",
       "toggleHint": "A mention in a chosen channel also wakes the agent, and the approved reply goes into the thread. Adds {{scopes}} to the request, and reading channels needs the tenant admin's consent.",
       "reconnect": "Takes effect on the next connect. Connect again so Entra asks for the channel scopes.",
-      "load": "Choose channels",
-      "pick": "Channels where a mention wakes the agent (up to 20)",
-      "none": "No channels in your teams.",
       "inLine": ", and mentions in {{channels}}"
     }
   },
@@ -967,7 +954,7 @@
     "slack": "a watched channel produced {{events}} normalized message(s) with author, channel, text and thread, one cursor per channel, and the second sweep reprocessed none",
     "digest": "conversation from {{channels}} channel(s) grouped by subject into {{messages}} message(s), {{dropped}} noise message(s) dropped before the model, the next delivery repeating none, and the digest parked in the inbox as reading, with the gate refusing draft, auto and an empty digest",
     "slackPost": "written reply became a pending item in channel {{channel}}, thread {{thread}}, with the model's text word for word, channel and thread taken from the event, made-up timestamp refused, and the gate refusing draft and auto",
-    "slackWindow": "Slack: {{server}} saved through the window and channel {{channel}} watched, with no bridge channel that publishes",
+    "slackWindow": "Slack: {{server}} saved through the window and the old-setup channel {{channel}} visible, no bridge channel that posts",
     "claudeSessions": "{{count}} Claude sessions classified, Mark done and Reopen round trip"
   },
   "status": {
@@ -1491,7 +1478,11 @@
         "title": "Teams mention or DM",
         "summary": "mentions and chats",
         "mentions": "Mentions of you",
-        "dms": "Direct chats"
+        "dms": "Direct chats",
+        "channels": "Team channels (mention wakes it)",
+        "list": "List channels",
+        "loading": "Reading channels...",
+        "channelsHint": "Turn on channels in the Teams connection, under Apps. Each channel is one Graph call per beat."
       },
       "poll": {
         "title": "GitHub pull request",
