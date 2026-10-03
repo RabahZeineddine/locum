@@ -141,7 +141,8 @@
       "kind": {
         "model": "model",
         "action": "action"
-      }
+      },
+      "logicInCanvas": "\"{{name}}\" is a logic step. Edit it in the automation canvas."
     },
     "io": {
       "import": "Import",
@@ -1413,7 +1414,8 @@
       "needsApp": "connect in Apps",
       "agents": "Agents",
       "newAgent": "Create agent in the library",
-      "agentsEmpty": "No agent yet."
+      "agentsEmpty": "No agent yet.",
+      "logic": "Logic"
     },
     "canvas": {
       "approval": "click to send",
@@ -1422,7 +1424,10 @@
         "intoTrigger": "A trigger only starts the flow; nothing flows into it."
       },
       "empty": "Add a trigger and a step from the palette.",
-      "label": "Automation canvas"
+      "label": "Automation canvas",
+      "branchTrue": "yes",
+      "branchFalse": "no",
+      "branchDefault": "other"
     },
     "panel": {
       "close": "Close panel",
@@ -1587,6 +1592,62 @@
         "headersHint": "Header values are saved in the automation. Do not paste a production token here.",
         "body": "Body",
         "bodyHint": "Text starting with { or [ goes as JSON."
+      },
+      "logic": {
+        "title": "Title",
+        "look": "What to look at",
+        "input": "Input",
+        "compare": "Condition",
+        "against": "Value",
+        "ifHint": "Drag the arrow from the \"yes\" or \"no\" output to the next step. Whatever sits on the path not taken is skipped.",
+        "cases": "Cases",
+        "casePlaceholder": "Value that becomes a path",
+        "addCase": "Add",
+        "removeCase": "Remove {{value}}",
+        "switchHint": "Each case becomes an output; anything else goes to \"other\". Matching is by exact text.",
+        "compares": {
+          "equals": "equals",
+          "not_equals": "differs from",
+          "contains": "contains",
+          "not_contains": "does not contain",
+          "greater": "is greater than",
+          "less": "is less than",
+          "exists": "has a value",
+          "empty": "is empty",
+          "matches": "matches the expression"
+        },
+        "if": {
+          "title": "If",
+          "description": "Chooses between two paths by comparing a value."
+        },
+        "switch": {
+          "title": "Choose path",
+          "description": "One path per value: bug goes one way, question another."
+        },
+        "json.parse": {
+          "title": "Text to JSON",
+          "description": "Reads text as JSON so the next steps can use its fields. Strips the ```json fence models tend to add."
+        },
+        "json.stringify": {
+          "title": "JSON to text",
+          "description": "Writes an object as JSON text."
+        },
+        "text": {
+          "title": "Build text",
+          "description": "Joins text and variables into one text."
+        },
+        "slack.mrkdwn": {
+          "title": "Format for Slack",
+          "description": "Converts plain markdown (bold, link, list, heading) into Slack's format. Outputs text, ready for Reply in Slack."
+        },
+        "slack.blocks": {
+          "title": "Slack blocks",
+          "description": "Builds Block Kit with a title and text. Use it in App action with the variable steps.<key>.blocks."
+        },
+        "teams.card": {
+          "title": "Teams card",
+          "description": "Builds an Adaptive Card with a title and text. Use it in App action with the variable steps.<key>.card."
+        }
       }
     },
     "problems": {
@@ -1603,7 +1664,9 @@
       "noTracker": "Choose which tracker opens the task.",
       "agentMissing": "This step's agent no longer exists in the library.",
       "noTool": "Choose the app and the tool for this action.",
-      "noUrl": "Fill in the API address, starting with http:// or https://."
+      "noUrl": "Fill in the API address, starting with http:// or https://.",
+      "noValue": "Say what this step looks at, with a variable.",
+      "noCases": "Add at least one case to the switch."
     }
   },
   "apps": {

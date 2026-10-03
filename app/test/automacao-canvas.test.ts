@@ -9,6 +9,8 @@ import {
   ligar,
   MODELOS,
   PASSOS,
+  LOGICA,
+  caminhosDe,
   posicoes,
   problemas,
   rascunhoDoModelo,
@@ -137,4 +139,23 @@ test("ação em app e chamada de API: sem destino bloqueia, e não pedem IA ante
   assert.ok(!pronto.includes("automations.problems.noTool"));
   assert.ok(!pronto.includes("automations.problems.noUrl"));
   assert.ok(AgentSpec.safeParse({ ...r.spec, steps: passos }).success);
+});
+
+test("seta de uma decisão grava o caminho, e desligar tira o caminho junto", () => {
+  let r: Rascunho = rascunhoDoModelo("blank", "b", "B", null);
+  const se = LOGICA.find((l) => l.id === "if")!.novo(r.spec);
+  r = { ...r, spec: adicionarPasso(r, se, null) };
+  const texto = LOGICA.find((l) => l.id === "text")!.novo(r.spec);
+  r = { ...r, spec: adicionarPasso(r, texto, se.key) };
+  assert.deepEqual(caminhosDe(r.spec.steps.find((p) => p.key === se.key)), ["true", "false"]);
+  assert.deepEqual(r.spec.steps.find((p) => p.key === texto.key)?.when, { step: se.key, branch: "true" });
+
+  const trocado = ligar(r.spec, se.key, texto.key, "false");
+  assert.ok("spec" in trocado);
+  assert.deepEqual(trocado.spec.steps.find((p) => p.key === texto.key)?.when, { step: se.key, branch: "false" });
+  assert.equal(arestas({ ...r, spec: trocado.spec }).find((a) => a.target === texto.key && !a.fixa)?.sourceHandle, "false");
+
+  const solto = desligar(trocado.spec, se.key, texto.key);
+  assert.equal(solto.steps.find((p) => p.key === texto.key)?.when, undefined);
+  assert.ok(AgentSpec.safeParse(trocado.spec).success);
 });

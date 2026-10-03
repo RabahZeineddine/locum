@@ -14,6 +14,7 @@ import { resolveModel, type FallbackRow } from "../providers/registry.js";
 import { providerService } from "../services/provider-service.js";
 import type { Runtime } from "../runtimes/types.js";
 import { libraryService, type LibraryService } from "../services/library-service.js";
+import { runLogic } from "./logic.js";
 import { selectSkills, skillsPreamble, type SkillContext } from "../skills/loader.js";
 import { ApprovalGate, settleStep } from "../approval/gate.js";
 import { BudgetExceeded, assertWithinBudget, recordSpend, type Spend } from "./budget.js";
@@ -176,6 +177,10 @@ export class Executor {
       : null;
 
     const outputs = new Map<string, unknown>();
+    // Passos pulados por estarem num caminho que a decisão não escolheu. Quem
+    // depende só deles também pula; quem junta dois caminhos roda com o que
+    // chegou.
+    const foraDoCaminho = new Set<string>();
     let runCost = run.costUsd;
     let runTokens = run.tokens;
     let runEstimate = run.estimateUsd;
@@ -190,6 +195,7 @@ export class Executor {
 
         if (existing?.status === "done" || existing?.status === "skipped") {
           outputs.set(step.key, existing.output);
+          if (existing.status === "skipped" && existing.error === PULADO_PELO_CAMINHO) foraDoCaminho.add(step.key);
           continue;
         }
         if (existing?.status === "awaiting_approval") {
@@ -220,6 +226,26 @@ export class Executor {
             name: step.name,
             status: "pending",
           });
+        }
+
+        if (foraDoCaminhoEscolhido(step, outputs, foraDoCaminho)) {
+          await db
+            .update(schema.steps)
+            .set({ status: "skipped", error: PULADO_PELO_CAMINHO, output: null, endedAt: nowSec() })
+            .where(eq(schema.steps.id, stepId));
+          outputs.set(step.key, null);
+          foraDoCaminho.add(step.key);
+          continue;
+        }
+
+        if (step.type === "logic") {
+          const saida = runLogic(step, payload, outputs);
+          await db
+            .update(schema.steps)
+            .set({ status: "done", startedAt: nowSec(), endedAt: nowSec(), output: saida as object })
+            .where(eq(schema.steps.id, stepId));
+          outputs.set(step.key, saida);
+          continue;
         }
 
         const outcome =
@@ -583,6 +609,26 @@ export function renderPrompt(
     if (root === "event") return texto(descer(payload, rest));
     return "";
   });
+}
+
+/** Motivo gravado no passo que ficou de fora do caminho escolhido. */
+export const PULADO_PELO_CAMINHO = "branch_not_taken";
+
+/**
+ * O passo está num caminho que não foi escolhido: a decisão do `when` foi
+ * outra, ou tudo de que ele depende ficou de fora. Basta uma dependência ter
+ * rodado para ele rodar, que é o que faz a junção depois de um if funcionar.
+ */
+export function foraDoCaminhoEscolhido(
+  step: Step,
+  outputs: Map<string, unknown>,
+  foraDoCaminho: ReadonlySet<string>,
+): boolean {
+  if (step.needs.length > 0 && step.needs.every((k) => foraDoCaminho.has(k))) return true;
+  if (step.when === undefined) return false;
+  if (foraDoCaminho.has(step.when.step)) return true;
+  const decisao = outputs.get(step.when.step) as { branch?: unknown } | null | undefined;
+  return decisao?.branch !== step.when.branch;
 }
 
 /**

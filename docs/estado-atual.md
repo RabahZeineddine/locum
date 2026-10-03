@@ -1253,6 +1253,20 @@ travadas (responder no Slack e no Teams, abrir tarefa) dizem que sempre param
 na fila. Na fila, as duas aparecem no grupo "Chamadas a apps e APIs" e a
 revisão mostra a chamada exata que vai sair.
 
+**Automações, fatia 7: lógica.** Passo novo `type: "logic"`, que roda sem
+modelo e sem a gate (`src/executor/logic.ts`). Decisões: `if` compara um valor
+(igual, diferente, contém, maior, menor, existe, vazio, expressão regular) e
+devolve `branch` "true" ou "false"; `switch` escolhe o caso pelo texto exato ou
+"default". Conversões: texto para JSON (tira a cerca ```json do modelo), JSON
+para texto, texto puro. Formatadores: markdown para mrkdwn do Slack, blocos do
+Slack (cabeçalho e seções) e cartão do Teams (Adaptive Card 1.4). Qualquer
+passo pode ter `when {step, branch}`: o executor pula com `branch_not_taken` o
+passo fora do caminho escolhido e tudo que só depende de passos pulados; a
+junção depois de dois caminhos roda. No canvas, a paleta ganhou a seção
+"Lógica", o nó de decisão tem uma saída por caminho (sim e não, ou um por
+caso), e puxar a seta de uma saída grava o `when` no passo de destino. O
+canvas reenquadra quando um nó entra, depois de medido.
+
 ## Próximos passos
 
 Iniciativas: I1, I2 e I3 prontos no código. Falta o teste à mão da sessão

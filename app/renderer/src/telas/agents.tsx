@@ -729,7 +729,7 @@ function CriarComIa({
                 </span>
                 <span className="font-medium">{passo.name}</span>
                 <Badge className="font-mono text-[10px]" variant="secondary">
-                  {passo.type === "model" ? rotuloDoModelo(passo.model) : passo.action}
+                  {passo.type === "model" ? rotuloDoModelo(passo.model) : passo.type === "logic" ? passo.op : passo.action}
                 </Badge>
               </li>
             ))}
@@ -1015,6 +1015,8 @@ function PassoDoSpec({
 
       {passo.type === "model" ? (
         <Resolucao pedido={passo.model} previa={previa} />
+      ) : passo.type === "logic" ? (
+        <p className="mt-2 text-muted-foreground font-mono text-xs">{passo.op}</p>
       ) : (
         <p className="mt-2 text-muted-foreground text-xs">
           <Trans

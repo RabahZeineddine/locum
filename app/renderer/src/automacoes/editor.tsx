@@ -14,6 +14,8 @@ import {
   mover,
   PASSOS,
   passoDoAgent,
+  caminhosDe,
+  LOGICA,
   PREFIXO_DE_GATILHO,
   posicoes,
   problemas,
@@ -36,9 +38,11 @@ import {
   type Node,
   type NodeChange,
   type NodeProps,
+  useNodesInitialized,
+  useReactFlow,
 } from "@xyflow/react";
 import { AlertTriangle, ArrowLeft, List, Loader2, Play, Power } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { RotaId } from "../rotas";
 import { PainelDoNo } from "./painel";
@@ -228,6 +232,19 @@ function EditorCarregado({
     });
   };
 
+  const acrescentarLogica = (op: string): void => {
+    const componente = LOGICA.find((l) => l.id === op);
+    if (componente === undefined) return;
+    setRascunho((r) => {
+      const passo = componente.novo(r.spec);
+      const depois = selecionado !== null && !ehGatilho(selecionado) ? selecionado : (r.spec.steps.at(-1)?.key ?? null);
+      const lugar = posicoes(r).get(depois ?? "");
+      const spec = adicionarPasso(r, passo, depois, lugar === undefined ? undefined : { x: lugar.x + 330, y: lugar.y });
+      setSelecionado(passo.key);
+      return { ...r, spec };
+    });
+  };
+
   const acrescentarAgent = (agent: AgentDaBiblioteca): void => {
     setRascunho((r) => {
       const passo = passoDoAgent(r.spec, agent);
@@ -348,6 +365,7 @@ function EditorCarregado({
           agents={agentsDaBiblioteca}
           aoAgent={acrescentarAgent}
           aoGatilho={acrescentarGatilho}
+          aoLogica={acrescentarLogica}
           aoPasso={acrescentarPasso}
           appsLigados={appsLigados}
           criarAgent={() => navegar("library", "novo")}
@@ -389,6 +407,7 @@ function Paleta({
   aoGatilho,
   aoPasso,
   aoAgent,
+  aoLogica,
   criarAgent,
 }: {
   appsLigados: Record<AppDoComponente, boolean>;
@@ -396,6 +415,7 @@ function Paleta({
   aoGatilho: (id: string) => void;
   aoPasso: (id: string) => void;
   aoAgent: (agent: AgentDaBiblioteca) => void;
+  aoLogica: (op: string) => void;
   criarAgent: () => void;
 }) {
   const { t } = useTranslation();
@@ -455,6 +475,22 @@ function Paleta({
           ))}
         </ul>
       </section>
+      <section>
+        <h3 className="text-muted-foreground px-2 pb-1 text-[11px] font-medium uppercase tracking-wide">
+          {t("automations.palette.logic")}
+        </h3>
+        <ul>
+          {LOGICA.map((l) => (
+            <Item
+              app={appDoPasso(`logic.${l.id}`)}
+              id={`logic.${l.id}`}
+              key={l.id}
+              onClick={() => aoLogica(l.id)}
+              titulo={tituloDoPasso(t, `logic.${l.id}`)}
+            />
+          ))}
+        </ul>
+      </section>
     </aside>
   );
 }
@@ -472,6 +508,8 @@ type DadosDoNo = {
   aprovacao: boolean;
   problema: "bloqueia" | "aviso" | null;
   desligado: boolean;
+  /** Saídas de uma decisão, uma alça por caminho. Vazio: uma saída só. */
+  caminhos: { id: string; rotulo: string }[];
 };
 
 type NoDoCanvas = Node<DadosDoNo, "componente">;
@@ -516,6 +554,7 @@ function CanvasDaAutomacao({
         aprovacao: false,
         problema: nivel(g.chave),
         desligado: !g.enabled,
+        caminhos: [],
       },
     }));
     const passos: NoDoCanvas[] = rascunho.spec.steps.map((p) => {
@@ -532,8 +571,10 @@ function CanvasDaAutomacao({
           tipo: tituloDoPasso(t, componente),
           titulo: p.name,
           subtitulo:
-            p.type !== "model"
-              ? resumoDaAcao(p)
+            p.type === "logic"
+              ? resumoDaLogica(p)
+              : p.type !== "model"
+                ? resumoDaAcao(p)
               : p.profile !== undefined
                 ? (agents.find((a) => a.id === p.profile)?.name ?? p.profile)
                 : (p.model.split("/").at(-1) ?? p.model),
@@ -541,6 +582,7 @@ function CanvasDaAutomacao({
           aprovacao: p.type === "action" && p.mode === "approve",
           problema: nivel(p.key),
           desligado: false,
+          caminhos: caminhosDe(p).map((c) => ({ id: c, rotulo: rotuloDoCaminho(t, c) })),
         },
       };
     });
@@ -556,16 +598,19 @@ function CanvasDaAutomacao({
         id: a.id,
         source: a.source,
         target: a.target,
+        ...(a.sourceHandle === undefined
+          ? {}
+          : { sourceHandle: a.sourceHandle, label: rotuloDoCaminho(t, a.sourceHandle), labelStyle: { fontSize: 11 } }),
         deletable: !a.fixa,
         type: "smoothstep",
         markerEnd: { type: MarkerType.ArrowClosed },
         style: a.fixa ? { strokeDasharray: "5 5", opacity: 0.6 } : undefined,
       })),
-    [rascunho],
+    [rascunho, t],
   );
 
   const conectar = (c: Connection): void => {
-    const resultado = ligar(rascunho.spec, c.source, c.target);
+    const resultado = ligar(rascunho.spec, c.source, c.target, c.sourceHandle);
     if ("erro" in resultado) {
       setErro(t(resultado.erro));
       return;
@@ -578,7 +623,8 @@ function CanvasDaAutomacao({
     <div className="relative size-full" aria-label={t("automations.canvas.label")}>
       <Canvas
         edges={ligacoes}
-        fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
+        fitViewOptions={{ padding: 0.2, minZoom: 0.25, maxZoom: 1 }}
+        minZoom={0.25}
         nodeTypes={TIPOS}
         nodes={nos}
         onConnect={conectar}
@@ -615,6 +661,7 @@ function CanvasDaAutomacao({
         proOptions={{ hideAttribution: true }}
       >
         <Controls showInteractive={false} />
+        <Enquadrar quantos={nos.length} />
       </Canvas>
       {erro === null ? null : (
         <p className="bg-card text-sev-critical absolute top-2 left-2 rounded-md border px-2 py-1 text-xs">{erro}</p>
@@ -626,6 +673,13 @@ function CanvasDaAutomacao({
       ) : null}
     </div>
   );
+}
+
+/** A linha de baixo do nó de lógica: o que ele olha. */
+function resumoDaLogica(p: Extract<Rascunho["spec"]["steps"][number], { type: "logic" }>): string {
+  if (p.op === "if") return `${p.value} ${p.compare} ${p.against}`.trim();
+  if (p.op === "switch") return p.cases.join(" · ");
+  return p.value;
 }
 
 /** A linha de baixo do nó de ação: para onde ela vai. */
@@ -665,10 +719,51 @@ function NoDoComponente({ data, selected }: NodeProps<NoDoCanvas>) {
           </span>
         ) : null}
       </div>
-      <Handle position={Position.Right} type="source" />
+      {data.caminhos.length === 0 ? (
+        <Handle position={Position.Right} type="source" />
+      ) : (
+        <div className="mt-2 flex flex-col items-end gap-1.5">
+          {data.caminhos.map((c) => (
+            <div className="relative flex items-center pr-1 text-[11px]" key={c.id}>
+              <span className="text-muted-foreground">{c.rotulo}</span>
+              <Handle className="!-right-3.5" id={c.id} position={Position.Right} type="source" />
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
+/** "true" e "false" do if viram sim e não; caso do switch aparece como foi escrito. */
+function rotuloDoCaminho(t: (k: string) => string, caminho: string): string {
+  if (caminho === "true") return t("automations.canvas.branchTrue");
+  if (caminho === "false") return t("automations.canvas.branchFalse");
+  if (caminho === "default") return t("automations.canvas.branchDefault");
+  return caminho;
+}
+
 // Const de módulo: o React Flow remonta todo nó quando o mapa muda de identidade.
 const TIPOS = { componente: NoDoComponente };
+
+/**
+ * Nó acrescentado pela paleta nasce à direita do selecionado, quase sempre
+ * fora do quadro: enquadrar de novo quando a contagem muda mostra onde ele foi.
+ * Espera o nó novo ser medido, senão o enquadramento o ignora.
+ */
+function Enquadrar({ quantos }: { quantos: number }) {
+  const { fitView } = useReactFlow();
+  const medidos = useNodesInitialized();
+  const pendente = useRef(false);
+  const anterior = useRef(quantos);
+  if (anterior.current !== quantos) {
+    anterior.current = quantos;
+    pendente.current = true;
+  }
+  useEffect(() => {
+    if (!medidos || !pendente.current) return;
+    pendente.current = false;
+    void fitView({ padding: 0.2, minZoom: 0.25, maxZoom: 1, duration: 250 });
+  }, [medidos, quantos, fitView]);
+  return null;
+}

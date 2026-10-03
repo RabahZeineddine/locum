@@ -144,7 +144,8 @@
       "kind": {
         "model": "modelo",
         "action": "ação"
-      }
+      },
+      "logicInCanvas": "\"{{name}}\" é um passo de lógica. Edite no canvas da automação."
     },
     "count_zero": "{{count}} agents",
     "skills_zero": "{{count}} skills",
@@ -1454,7 +1455,8 @@
       "needsApp": "conecte em Apps",
       "agents": "Agents",
       "newAgent": "Criar agent na biblioteca",
-      "agentsEmpty": "Nenhum agent ainda."
+      "agentsEmpty": "Nenhum agent ainda.",
+      "logic": "Lógica"
     },
     "canvas": {
       "approval": "só com clique",
@@ -1463,7 +1465,10 @@
         "intoTrigger": "Gatilho só começa o fluxo; nada chega nele."
       },
       "empty": "Acrescente um gatilho e um passo pela paleta.",
-      "label": "Canvas da automação"
+      "label": "Canvas da automação",
+      "branchTrue": "sim",
+      "branchFalse": "não",
+      "branchDefault": "outro"
     },
     "panel": {
       "close": "Fechar painel",
@@ -1629,6 +1634,62 @@
         "headersHint": "Valor de cabeçalho fica gravado na automação. Não cole token de produção aqui.",
         "body": "Corpo",
         "bodyHint": "Texto que começa com { ou [ vai como JSON."
+      },
+      "logic": {
+        "title": "Título",
+        "look": "O que olhar",
+        "input": "Entrada",
+        "compare": "Condição",
+        "against": "Valor",
+        "ifHint": "Puxe a seta da saída \"sim\" ou \"não\" até o próximo passo. O que fica no caminho não escolhido é pulado.",
+        "cases": "Casos",
+        "casePlaceholder": "Valor que vira caminho",
+        "addCase": "Adicionar",
+        "removeCase": "Tirar {{value}}",
+        "switchHint": "Cada caso vira uma saída; o que não casa vai para \"outro\". A comparação é pelo texto exato.",
+        "compares": {
+          "equals": "é igual a",
+          "not_equals": "é diferente de",
+          "contains": "contém",
+          "not_contains": "não contém",
+          "greater": "é maior que",
+          "less": "é menor que",
+          "exists": "tem valor",
+          "empty": "está vazio",
+          "matches": "casa com a expressão"
+        },
+        "if": {
+          "title": "Se",
+          "description": "Decide entre dois caminhos comparando um valor."
+        },
+        "switch": {
+          "title": "Escolher caminho",
+          "description": "Um caminho por valor: bug vai para um lado, dúvida para outro."
+        },
+        "json.parse": {
+          "title": "Texto para JSON",
+          "description": "Lê um texto como JSON, para os próximos passos usarem os campos. Tira a cerca ```json que modelo costuma pôr."
+        },
+        "json.stringify": {
+          "title": "JSON para texto",
+          "description": "Escreve um objeto como texto JSON."
+        },
+        "text": {
+          "title": "Montar texto",
+          "description": "Junta texto e variáveis num texto só."
+        },
+        "slack.mrkdwn": {
+          "title": "Formatar para o Slack",
+          "description": "Converte markdown comum (negrito, link, lista, título) para o formato do Slack. Sai com text, pronto para Responder no Slack."
+        },
+        "slack.blocks": {
+          "title": "Blocos do Slack",
+          "description": "Monta Block Kit com título e texto. Use em Ação em app com a variável steps.<chave>.blocks."
+        },
+        "teams.card": {
+          "title": "Cartão do Teams",
+          "description": "Monta um Adaptive Card com título e texto. Use em Ação em app com a variável steps.<chave>.card."
+        }
       }
     },
     "problems": {
@@ -1645,7 +1706,9 @@
       "noTracker": "Escolha em qual tracker abrir a tarefa.",
       "agentMissing": "O agent deste passo não existe mais na biblioteca.",
       "noTool": "Escolha o app e a ferramenta desta ação.",
-      "noUrl": "Informe o endereço da API, começando com http:// ou https://."
+      "noUrl": "Informe o endereço da API, começando com http:// ou https://.",
+      "noValue": "Diga o que este passo olha, com uma variável.",
+      "noCases": "Acrescente pelo menos um caso ao switch."
     }
   },
   "apps": {

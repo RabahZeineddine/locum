@@ -11,7 +11,7 @@
  * e por isso ela é desenhada até cada passo sem dependência e não pode ser
  * apagada. A seta entre passos é o `needs`, e essa a pessoa liga e desliga.
  */
-import { topoSort, type AgentSpec, type Step, type TriggerConfig } from "../../src/config/types";
+import { topoSort, type AgentSpec, type LogicStep, type Step, type TriggerConfig } from "../../src/config/types";
 import { SLACK_REPLY_SCHEMA } from "../../src/slack/proposal";
 import { CONVERSATION_ISSUE_SCHEMA, ISSUE_CONTENT_SCHEMA } from "../../src/trackers/proposal";
 import { ALTURA_DO_NO, LARGURA_DO_NO, montarGrafo } from "./grafo";
@@ -44,6 +44,8 @@ export interface ArestaDoCanvas {
   target: string;
   /** Gatilho para passo: desenhada, não gravada, e não se apaga. */
   fixa: boolean;
+  /** Saída de uma decisão: o caminho que leva até `target`. */
+  sourceHandle?: string;
 }
 
 const VAO_X = 88;
@@ -100,9 +102,21 @@ export function arestas(r: Rascunho): ArestaDoCanvas[] {
     ...r.spec.steps.flatMap((p) =>
       p.needs
         .filter((n) => chaves.has(n))
-        .map((n) => ({ id: `${n}->${p.key}`, source: n, target: p.key, fixa: false })),
+        .map((n) =>
+          p.when?.step === n
+            ? { id: `${n}:${p.when.branch}->${p.key}`, source: n, target: p.key, fixa: false, sourceHandle: p.when.branch }
+            : { id: `${n}->${p.key}`, source: n, target: p.key, fixa: false },
+        ),
     ),
   ];
+}
+
+/** Os caminhos que saem de um passo: dois no if, um por caso mais o resto no switch. */
+export function caminhosDe(passo: Step | undefined): string[] {
+  if (passo?.type !== "logic") return [];
+  if (passo.op === "if") return ["true", "false"];
+  if (passo.op === "switch") return [...passo.cases, "default"];
+  return [];
 }
 
 /* ---------------------------------------------------------------- edição */
@@ -113,15 +127,26 @@ export function arestas(r: Rascunho): ArestaDoCanvas[] {
  * Devolve o erro em vez de lançar, para o canvas mostrar ao lado da seta. Seta
  * que sai de gatilho não muda nada, porque gatilho já começa o fluxo inteiro.
  */
-export function ligar(spec: AgentSpec, origem: string, destino: string): { spec: AgentSpec } | { erro: string } {
+export function ligar(
+  spec: AgentSpec,
+  origem: string,
+  destino: string,
+  saida?: string | null,
+): { spec: AgentSpec } | { erro: string } {
   if (ehGatilho(destino)) return { erro: "automations.canvas.errors.intoTrigger" };
   if (ehGatilho(origem)) return { spec };
   if (origem === destino) return { erro: "automations.canvas.errors.cycle" };
   const alvo = spec.steps.find((p) => p.key === destino);
-  if (alvo === undefined || !spec.steps.some((p) => p.key === origem)) return { spec };
-  if (alvo.needs.includes(origem)) return { spec };
+  const fonte = spec.steps.find((p) => p.key === origem);
+  if (alvo === undefined || fonte === undefined) return { spec };
+  // Seta que sai de uma decisão diz o caminho. Um passo só segue uma decisão:
+  // ligar de outra troca a anterior.
+  const caminhos = caminhosDe(fonte);
+  const when = caminhos.length === 0 ? alvo.when : { step: origem, branch: saida && caminhos.includes(saida) ? saida : caminhos[0]! };
+  if (alvo.needs.includes(origem) && when === alvo.when) return { spec };
 
-  const novo = trocarPasso(spec, destino, { ...alvo, needs: [...alvo.needs, origem] });
+  const needs = alvo.needs.includes(origem) ? alvo.needs : [...alvo.needs, origem];
+  const novo = trocarPasso(spec, destino, { ...alvo, needs, ...(when === undefined ? {} : { when }) });
   try {
     topoSort(novo.steps);
   } catch {
@@ -134,8 +159,14 @@ export function desligar(spec: AgentSpec, origem: string, destino: string): Agen
   const alvo = spec.steps.find((p) => p.key === destino);
   if (alvo === undefined) return spec;
   const needs = alvo.needs.filter((n) => n !== origem);
-  const passo = alvo.type === "action" && alvo.input === origem ? semEntrada({ ...alvo, needs }) : { ...alvo, needs };
+  const base = alvo.when?.step === origem ? semCaminho({ ...alvo, needs }) : { ...alvo, needs };
+  const passo = base.type === "action" && base.input === origem ? semEntrada(base) : base;
   return trocarPasso(spec, destino, passo);
+}
+
+function semCaminho(passo: Step): Step {
+  const { when: _when, ...resto } = passo;
+  return resto as Step;
 }
 
 function semEntrada(passo: PassoDeAcao): PassoDeAcao {
@@ -169,12 +200,16 @@ export function adicionarPasso(
   onde?: Posicao,
 ): AgentSpec {
   const anterior = depoisDe === null || ehGatilho(depoisDe) ? null : r.spec.steps.find((p) => p.key === depoisDe);
-  const novo: Step =
+  const ligado: Step =
     anterior === undefined || anterior === null
       ? { ...passo, needs: [] }
       : passo.type === "action"
         ? { ...passo, needs: [anterior.key], input: anterior.key }
         : { ...passo, needs: [anterior.key] };
+  // Depois de uma decisão, o passo novo entra no primeiro caminho dela; a
+  // pessoa troca puxando a seta da outra saída.
+  const caminhos = caminhosDe(anterior ?? undefined);
+  const novo: Step = caminhos.length === 0 ? ligado : { ...ligado, when: { step: anterior!.key, branch: caminhos[0]! } };
 
   let steps = [...r.spec.steps, novo];
   if (anterior && anterior.type === "model" && novo.type === "action" && anterior.outputSchema === undefined) {
@@ -200,6 +235,11 @@ export function removerPasso(spec: AgentSpec, chave: string): AgentSpec {
     .map((p) => {
       if (!p.needs.includes(chave)) return p;
       const needs = [...new Set([...p.needs.filter((n) => n !== chave), ...removido.needs])];
+      // O caminho de quem foi removido passa adiante, como as dependências.
+      if (p.when?.step === chave) {
+        const { when: _w, ...resto } = p;
+        p = (removido.when === undefined ? resto : { ...resto, when: removido.when }) as Step;
+      }
       if (p.type === "action" && p.input === chave) {
         const herdado = removido.needs[0];
         return herdado === undefined ? semEntrada({ ...p, needs }) : { ...p, needs, input: herdado };
@@ -378,12 +418,44 @@ export const PASSOS: readonly ComponenteDePasso[] = [
   },
 ];
 
+/** Passos de lógica que a paleta oferece, com a configuração que nascem. */
+export const LOGICA: readonly { id: LogicStep["op"]; novo: (spec: AgentSpec) => Step }[] = (
+  [
+    ["if", "decidir", "Se", { compare: "contains", against: "" }],
+    ["switch", "escolher", "Escolher caminho", { cases: ["bug", "dúvida"] }],
+    ["json.parse", "ler-json", "Texto para JSON", {}],
+    ["json.stringify", "escrever-json", "JSON para texto", {}],
+    ["text", "montar-texto", "Montar texto", {}],
+    ["slack.mrkdwn", "formatar-slack", "Formatar para o Slack", {}],
+    ["slack.blocks", "blocos-slack", "Blocos do Slack", {}],
+    ["teams.card", "cartao-teams", "Cartão do Teams", {}],
+  ] as const
+).map(([op, base, nome, extra]) => ({
+  id: op,
+  novo: (spec: AgentSpec): Step =>
+    ({
+      type: "logic",
+      key: novaChave(spec, base),
+      name: nome,
+      needs: [],
+      optional: false,
+      op,
+      value: "",
+      compare: "equals",
+      against: "",
+      cases: [],
+      title: "",
+      ...extra,
+    }) as Step,
+}));
+
 /** Ações que não leem a saída de uma IA: o que mandam está todo em `params`. */
 export const ACOES_POR_PARAMETRO: ReadonlySet<string> = new Set(["mcp.call", "http.request"]);
 
 /** O componente da paleta que corresponde a um passo já gravado. */
 export function componenteDoPasso(passo: Step): string {
   if (passo.type === "model") return passo.profile === undefined ? "ai" : "agent";
+  if (passo.type === "logic") return `logic.${passo.op}`;
   return passo.action;
 }
 
@@ -515,6 +587,15 @@ export function problemas(r: Rascunho, ctx: Contexto): Problema[] {
       }
       continue;
     }
+    if (p.type === "logic") {
+      if (p.value.trim() === "" && p.compare !== "exists" && p.compare !== "empty") {
+        lista.push({ chave: "automations.problems.noValue", no: p.key, bloqueia: true });
+      }
+      if (p.op === "switch" && p.cases.length === 0) {
+        lista.push({ chave: "automations.problems.noCases", no: p.key, bloqueia: true });
+      }
+      continue;
+    }
     if (p.action === "mcp.call") {
       const prm = (p.params ?? {}) as { server?: unknown; tool?: unknown };
       if (typeof prm.server !== "string" || prm.server === "" || typeof prm.tool !== "string" || prm.tool === "") {
@@ -528,7 +609,7 @@ export function problemas(r: Rascunho, ctx: Contexto): Problema[] {
       }
     }
     const fonte = porChave.get(p.input ?? p.needs[0] ?? "");
-    if (!ACOES_POR_PARAMETRO.has(p.action) && (fonte === undefined || fonte.type !== "model")) {
+    if (!ACOES_POR_PARAMETRO.has(p.action) && (fonte === undefined || fonte.type === "action")) {
       lista.push({ chave: "automations.problems.actionWithoutAi", no: p.key, bloqueia: false });
     }
     if (p.action === "slack.post" && !conversaDoSlack) {

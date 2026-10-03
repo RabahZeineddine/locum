@@ -41,6 +41,12 @@ const StepBase = z.object({
    */
   needs: z.array(z.string()).default([]),
   optional: z.boolean().default(false),
+  /**
+   * Caminho de uma decisão. O passo só roda quando o passo `step` (um `if` ou
+   * `switch`, que precisa estar em `needs`) escolheu `branch`; fora dele fica
+   * pulado, e o que depende só dele também.
+   */
+  when: z.object({ step: z.string(), branch: z.string() }).optional(),
 });
 
 export const ModelStep = StepBase.extend({
@@ -113,10 +119,54 @@ export type ReviewFinding = z.infer<typeof ReviewFinding>;
 export const ReviewVerdict = z.enum(["APPROVE", "COMMENT", "REQUEST_CHANGES"]);
 export type ReviewVerdict = z.infer<typeof ReviewVerdict>;
 
-export const Step = z.discriminatedUnion("type", [ModelStep, ActionStep]);
+/**
+ * Passo determinístico: decide caminho ou transforma dado, sem modelo e sem
+ * nada sair da máquina. Roda na hora e não custa nada.
+ */
+export const LogicOp = z.enum([
+  "if",
+  "switch",
+  "json.parse",
+  "json.stringify",
+  "text",
+  "slack.mrkdwn",
+  "slack.blocks",
+  "teams.card",
+]);
+export type LogicOp = z.infer<typeof LogicOp>;
+
+export const LogicCompare = z.enum([
+  "equals",
+  "not_equals",
+  "contains",
+  "not_contains",
+  "greater",
+  "less",
+  "exists",
+  "empty",
+  "matches",
+]);
+export type LogicCompare = z.infer<typeof LogicCompare>;
+
+export const LogicStep = StepBase.extend({
+  type: z.literal("logic"),
+  op: LogicOp,
+  /** A entrada, com marcadores. Marcador sozinho vale o valor cru. */
+  value: z.string().default(""),
+  /** `if`: como comparar `value` com `against`. */
+  compare: LogicCompare.default("equals"),
+  against: z.string().default(""),
+  /** `switch`: os valores que viram caminho. O resto vai para `default`. */
+  cases: z.array(z.string()).default([]),
+  /** `slack.blocks` e `teams.card`: o título acima do texto. */
+  title: z.string().default(""),
+});
+
+export const Step = z.discriminatedUnion("type", [ModelStep, ActionStep, LogicStep]);
 export type Step = z.infer<typeof Step>;
 export type ModelStep = z.infer<typeof ModelStep>;
 export type ActionStep = z.infer<typeof ActionStep>;
+export type LogicStep = z.infer<typeof LogicStep>;
 
 /**
  * Teto de gasto do agent. Teto ausente e sem teto, nao teto zero, e por isso

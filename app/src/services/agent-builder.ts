@@ -119,6 +119,7 @@ export function validarRascunho(
       }
       continue;
     }
+    if (passo.type === "logic") continue;
 
     if (!(ACOES_DO_CRIADOR as readonly string[]).includes(passo.action)) {
       problemas.push(`${onde}: a ação "${passo.action}" não existe; use uma de ${ACOES_DO_CRIADOR.join(", ")}`);

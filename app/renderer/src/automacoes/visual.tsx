@@ -2,18 +2,24 @@ import { cn } from "@/lib/utils";
 import type { TFunction } from "i18next";
 import {
   AtSign,
+  Braces,
   Bot,
   CalendarClock,
   ClipboardList,
   GitPullRequest,
   Globe,
   Hash,
+  LayoutTemplate,
+  MessageSquareText,
   type LucideIcon,
   Play,
   Plug,
   Send,
+  Split,
+  Signpost,
   Sparkles,
   Timer,
+  Type,
   Users,
   Webhook,
   Zap,
@@ -44,6 +50,14 @@ const ICONES: Record<string, LucideIcon> = {
   "tracker.create_issue": ClipboardList,
   "mcp.call": Plug,
   "http.request": Globe,
+  "logic.if": Split,
+  "logic.switch": Signpost,
+  "logic.json.parse": Braces,
+  "logic.json.stringify": Braces,
+  "logic.text": Type,
+  "logic.slack.mrkdwn": MessageSquareText,
+  "logic.slack.blocks": LayoutTemplate,
+  "logic.teams.card": LayoutTemplate,
 };
 
 export function iconeDe(id: string): LucideIcon {
@@ -59,8 +73,8 @@ export function appDoGatilho(kind: TriggerConfig["kind"]): AppDoComponente {
 }
 
 export function appDoPasso(id: string): AppDoComponente {
-  if (id === "slack.post") return "slack";
-  if (id === "teams.post") return "teams";
+  if (id === "slack.post" || id.startsWith("logic.slack.")) return "slack";
+  if (id === "teams.post" || id === "logic.teams.card") return "teams";
   if (id === "tracker.create_issue") return "atlassian";
   if (id.startsWith("github.")) return "github";
   return "locum";
@@ -121,6 +135,7 @@ export function tituloDoGatilho(t: TFunction, config: TriggerConfig): string {
 
 /** Título do componente de passo, com a ação crua para o que a paleta não conhece. */
 export function tituloDoPasso(t: TFunction, id: string): string {
+  if (id.startsWith("logic.")) return t(`automations.steps.logic.${id.slice("logic.".length)}.title`);
   return ["ai", "agent", "slack.post", "teams.post", "tracker.create_issue", "mcp.call", "http.request"].includes(id)
     ? t(`automations.steps.${id}.title`)
     : t("automations.steps.other.title", { action: id });

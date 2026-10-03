@@ -5945,6 +5945,11 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
     );
     await new Promise((resolve) => setTimeout(resolve, 800));
     writeFileSync(join(destino, "automations-acao.png"), (await janela.webContents.capturePage()).toPNG());
+    await janela.webContents.executeJavaScript(
+      `(document.querySelector('[data-locum-paleta="logic.if"]')?.click(), null)`,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    writeFileSync(join(destino, "automations-logica.png"), (await janela.webContents.capturePage()).toPNG());
   }
 
   // O editor abre por clique, então a captura clica.

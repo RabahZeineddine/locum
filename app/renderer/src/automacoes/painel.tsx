@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 import { Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import type { TriggerConfig } from "../../../src/config/types";
+import { LogicCompare, type LogicStep, type TriggerConfig } from "../../../src/config/types";
 import { parseCron, proximaOcorrencia } from "../../../src/triggers/cron";
 import { SeletorDeFerramentas, SeletorDeModelo, useCatalogo } from "../editor-agent";
 import type { RotaId } from "../rotas";
@@ -132,6 +132,8 @@ export function PainelDoNo({
           relerBiblioteca={relerBiblioteca}
           setRascunho={setRascunho}
         />
+      ) : passo!.type === "logic" ? (
+        <ConfigDaLogica passo={passo as LogicStep} rascunho={rascunho} setRascunho={setRascunho} />
       ) : (
         <ConfigDaAcao passo={passo as PassoDeAcao} rascunho={rascunho} setRascunho={setRascunho} trackers={trackers} />
       )}
@@ -747,6 +749,133 @@ function ModoDaAcao({ passo, trocar }: { passo: PassoDeAcao; trocar: (novo: Pass
         {t(passo.mode === "auto" ? "automations.panel.autoHint" : oferecidos.length > 1 ? "automations.panel.approval" : "automations.panel.approvalOnly")}
       </p>
     </Campo>
+  );
+}
+
+/* ------------------------------------------------------------------ lógica */
+
+/**
+ * Decisão e transformação. O valor de entrada é sempre um texto com
+ * marcadores; marcador sozinho chega como o valor cru (objeto, lista, número).
+ */
+function ConfigDaLogica({
+  passo,
+  rascunho,
+  setRascunho,
+}: {
+  passo: LogicStep;
+  rascunho: Rascunho;
+  setRascunho: (f: (r: Rascunho) => Rascunho) => void;
+}) {
+  const { t } = useTranslation();
+  const trocar = (novo: LogicStep): void => setRascunho((r) => ({ ...r, spec: trocarPasso(r.spec, passo.key, novo) }));
+  const { focar, inserir } = useInsercao();
+  const [novoCaso, setNovoCaso] = useState("");
+  const comTitulo = passo.op === "slack.blocks" || passo.op === "teams.card";
+  const semContra = passo.compare === "exists" || passo.compare === "empty";
+
+  return (
+    <>
+      <p className="text-muted-foreground text-xs">{t(`automations.steps.logic.${passo.op}.description`)}</p>
+      <Campo rotulo={t("automations.panel.name")}>
+        <input className={CAMPO} onChange={(e) => trocar({ ...passo, name: e.target.value })} value={passo.name} />
+      </Campo>
+      <Variaveis inserir={inserir} lista={variaveis(rascunho, passo.key)} />
+      {comTitulo ? (
+        <Campo rotulo={t("automations.steps.logic.title")}>
+          <input
+            className={CAMPO}
+            onChange={(e) => trocar({ ...passo, title: e.target.value })}
+            onFocus={focar((title) => trocar({ ...passo, title }))}
+            value={passo.title}
+          />
+        </Campo>
+      ) : null}
+      <Campo rotulo={t(`automations.steps.logic.${passo.op === "if" || passo.op === "switch" ? "look" : "input"}`)}>
+        <textarea
+          className={cn(CAMPO, "min-h-16 font-mono text-xs")}
+          data-locum-logica-valor=""
+          onChange={(e) => trocar({ ...passo, value: e.target.value })}
+          onFocus={focar((value) => trocar({ ...passo, value }))}
+          value={passo.value}
+        />
+      </Campo>
+      {passo.op === "if" ? (
+        <>
+          <Campo rotulo={t("automations.steps.logic.compare")}>
+            <select
+              className={CAMPO}
+              onChange={(e) => trocar({ ...passo, compare: e.target.value as LogicStep["compare"] })}
+              value={passo.compare}
+            >
+              {LogicCompare.options.map((c) => (
+                <option key={c} value={c}>
+                  {t(`automations.steps.logic.compares.${c}`)}
+                </option>
+              ))}
+            </select>
+          </Campo>
+          {semContra ? null : (
+            <Campo rotulo={t("automations.steps.logic.against")}>
+              <input
+                className={cn(CAMPO, "font-mono text-xs")}
+                onChange={(e) => trocar({ ...passo, against: e.target.value })}
+                onFocus={focar((against) => trocar({ ...passo, against }))}
+                value={passo.against}
+              />
+            </Campo>
+          )}
+          <p className="text-muted-foreground text-[11px]">{t("automations.steps.logic.ifHint")}</p>
+        </>
+      ) : null}
+      {passo.op === "switch" ? (
+        <Campo rotulo={t("automations.steps.logic.cases")}>
+          <div className="flex flex-wrap gap-1.5">
+            {passo.cases.map((c) => (
+              <span className="bg-muted flex items-center gap-1 rounded-full py-0.5 pr-1 pl-2.5 text-xs" key={c}>
+                {c}
+                <button
+                  aria-label={t("automations.steps.logic.removeCase", { value: c })}
+                  className="hover:text-foreground text-muted-foreground cursor-pointer rounded-full p-0.5"
+                  onClick={() => trocar({ ...passo, cases: passo.cases.filter((x) => x !== c) })}
+                  type="button"
+                >
+                  <X className="size-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+          <div className="flex gap-1.5">
+            <input
+              className={CAMPO}
+              onChange={(e) => setNovoCaso(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key !== "Enter") return;
+                const v = novoCaso.trim();
+                if (v === "" || v === "default" || passo.cases.includes(v)) return;
+                trocar({ ...passo, cases: [...passo.cases, v] });
+                setNovoCaso("");
+              }}
+              placeholder={t("automations.steps.logic.casePlaceholder")}
+              value={novoCaso}
+            />
+            <Button
+              className="cursor-pointer"
+              disabled={novoCaso.trim() === "" || novoCaso.trim() === "default" || passo.cases.includes(novoCaso.trim())}
+              onClick={() => {
+                trocar({ ...passo, cases: [...passo.cases, novoCaso.trim()] });
+                setNovoCaso("");
+              }}
+              size="sm"
+              variant="outline"
+            >
+              {t("automations.steps.logic.addCase")}
+            </Button>
+          </div>
+          <p className="text-muted-foreground text-[11px]">{t("automations.steps.logic.switchHint")}</p>
+        </Campo>
+      ) : null}
+    </>
   );
 }
 

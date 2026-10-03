@@ -148,6 +148,10 @@ export function EditorDeAgent({
                 passo={passo}
                 trocar={(novo) => trocarPasso(passo.key, novo)}
               />
+            ) : passo.type === "logic" ? (
+              <p className="border-border text-muted-foreground rounded-lg border px-4 py-3 text-xs">
+                {t("agents.editor.logicInCanvas", { name: passo.name })}
+              </p>
             ) : (
               <PassoDeAcaoEditavel
                 indice={i}
