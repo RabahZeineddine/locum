@@ -14,6 +14,8 @@ export interface McpToolInfo {
    * ferramentas entre si na hora de escolher quais marcar.
    */
   estimatedTokens: number;
+  /** JSON Schema dos argumentos, para a tela montar o formulário da ação. */
+  inputSchema?: Record<string, unknown>;
 }
 
 type Entry = {
@@ -240,6 +242,7 @@ export class McpRegistry {
         name: toolName,
         description: tool.description ?? "",
         estimatedTokens: estimateTokens(toolName, tool.description, tool.inputSchema),
+        inputSchema: esquemaCru(tool.inputSchema),
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }
@@ -298,6 +301,12 @@ function fingerprint(cfg: McpServerConfig): string {
  * um contador de verdade exigiria saber o modelo antes de listar, e a diferenca
  * nao muda a decisao de marcar ou nao marcar a ferramenta.
  */
+/** O JSON Schema original da ferramenta, tirado do embrulho do AI SDK. */
+function esquemaCru(inputSchema: unknown): Record<string, unknown> | undefined {
+  const raw = (inputSchema as { jsonSchema?: unknown } | undefined)?.jsonSchema ?? inputSchema;
+  return raw !== null && typeof raw === "object" ? (raw as Record<string, unknown>) : undefined;
+}
+
 function estimateTokens(name: string, description: string | undefined, inputSchema: unknown): number {
   // O cliente MCP embrulha o schema em `jsonSchema()`, que guarda o original
   // em `.jsonSchema`. Ferramenta declarada de outro jeito cai no proprio valor.

@@ -113,3 +113,28 @@ test("variáveis do prompt vêm do gatilho e dos passos anteriores", () => {
   assert.ok(doEscrever.includes("steps.abrir-tarefa"));
   assert.ok(!variaveis(r, "analisar").some((v) => v.startsWith("steps.")));
 });
+
+test("ação em app e chamada de API: sem destino bloqueia, e não pedem IA antes", () => {
+  const vazio: Rascunho = rascunhoDoModelo("blank", "b", "B", null);
+  let r = vazio;
+  for (const id of ["mcp.call", "http.request"]) {
+    const passo = PASSOS.find((p) => p.id === id)!.novo(r.spec);
+    r = { ...r, spec: adicionarPasso(r, passo, null) };
+  }
+  const chaves = problemas(r, ctx).map((p) => `${p.chave}:${p.bloqueia}`);
+  assert.ok(chaves.includes("automations.problems.noTool:true"));
+  assert.ok(chaves.includes("automations.problems.noUrl:true"));
+  assert.ok(!chaves.some((c) => c.startsWith("automations.problems.actionWithoutAi")));
+
+  const passos = r.spec.steps.map((p) =>
+    p.type !== "action"
+      ? p
+      : p.action === "mcp.call"
+        ? { ...p, params: { server: "slack", tool: "react", args: {} } }
+        : { ...p, params: { method: "POST", url: "https://{{event.host}}/x" } },
+  );
+  const pronto = problemas({ ...r, spec: { ...r.spec, steps: passos } }, ctx).map((p) => p.chave);
+  assert.ok(!pronto.includes("automations.problems.noTool"));
+  assert.ok(!pronto.includes("automations.problems.noUrl"));
+  assert.ok(AgentSpec.safeParse({ ...r.spec, steps: passos }).success);
+});

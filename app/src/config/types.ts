@@ -78,6 +78,14 @@ export const ActionStep = StepBase.extend({
    * tarefa no quadro de outro time a cada execução.
    */
   target: z.string().optional(),
+  /**
+   * Configuração da ação escrita por quem montou o fluxo: servidor, ferramenta
+   * e argumentos de `mcp.call`, método e endereço de `http.request`. Texto
+   * aceita `{{event.x}}` e `{{steps.k.campo}}`; um texto que é só um marcador
+   * vira o valor dele sem passar por texto, para número e objeto chegarem
+   * inteiros. Vale por cima da saída do passo de entrada.
+   */
+  params: z.record(z.string(), z.unknown()).optional(),
 });
 
 /**

@@ -6,6 +6,7 @@ import {
   CalendarClock,
   ClipboardList,
   GitPullRequest,
+  Globe,
   Hash,
   type LucideIcon,
   Play,
@@ -41,6 +42,8 @@ const ICONES: Record<string, LucideIcon> = {
   "slack.post": Send,
   "teams.post": Send,
   "tracker.create_issue": ClipboardList,
+  "mcp.call": Plug,
+  "http.request": Globe,
 };
 
 export function iconeDe(id: string): LucideIcon {
@@ -118,7 +121,7 @@ export function tituloDoGatilho(t: TFunction, config: TriggerConfig): string {
 
 /** Título do componente de passo, com a ação crua para o que a paleta não conhece. */
 export function tituloDoPasso(t: TFunction, id: string): string {
-  return ["ai", "agent", "slack.post", "teams.post", "tracker.create_issue"].includes(id)
+  return ["ai", "agent", "slack.post", "teams.post", "tracker.create_issue", "mcp.call", "http.request"].includes(id)
     ? t(`automations.steps.${id}.title`)
     : t("automations.steps.other.title", { action: id });
 }

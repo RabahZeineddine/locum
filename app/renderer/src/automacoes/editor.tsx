@@ -533,7 +533,7 @@ function CanvasDaAutomacao({
           titulo: p.name,
           subtitulo:
             p.type !== "model"
-              ? (p.target ?? "")
+              ? resumoDaAcao(p)
               : p.profile !== undefined
                 ? (agents.find((a) => a.id === p.profile)?.name ?? p.profile)
                 : (p.model.split("/").at(-1) ?? p.model),
@@ -626,6 +626,14 @@ function CanvasDaAutomacao({
       ) : null}
     </div>
   );
+}
+
+/** A linha de baixo do nó de ação: para onde ela vai. */
+function resumoDaAcao(p: Extract<Rascunho["spec"]["steps"][number], { type: "action" }>): string {
+  const prm = (p.params ?? {}) as Record<string, unknown>;
+  if (p.action === "mcp.call") return [prm.server, prm.tool].filter((x) => typeof x === "string" && x !== "").join(" · ");
+  if (p.action === "http.request") return typeof prm.url === "string" && prm.url !== "" ? `${String(prm.method ?? "POST")} ${prm.url}` : "";
+  return p.target ?? "";
 }
 
 function NoDoComponente({ data, selected }: NodeProps<NoDoCanvas>) {

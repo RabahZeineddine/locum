@@ -1235,6 +1235,24 @@ escolhe o agent e escreve só a tarefa, e o passo de IA avulso tem
 "Transformar em agent da biblioteca". O fluxo em lista continua em
 `#/agents/<id>`, fora da barra.
 
+**Automações, fatia 6: ação em app e chamada de API.** Duas ações novas na
+gate, em `src/actions/generic.ts`. `mcp.call` chama qualquer ferramenta de um
+servidor MCP ligado (o pool do executor, com a configuração relida na hora de
+publicar), e trata resposta com `isError` como falha. `http.request` chama
+qualquer endereço http ou https, manda JSON com `content-type` quando o corpo
+é objeto ou texto que começa com `{` ou `[`, e falha fora de 2xx com o começo
+da resposta. O passo de ação ganhou `params`, a configuração escrita por quem
+montou o fluxo: o executor troca os marcadores (`renderParams`; marcador
+sozinho devolve o valor cru) e põe por cima da saída do passo anterior. O
+canvas oferece "Ação em app" (escolhe o servidor, a ferramenta e preenche os
+argumentos num formulário montado pelo JSON Schema dela, que `mcp.tools` agora
+devolve) e "Chamar API" (método, endereço, cabeçalhos e corpo), com as
+variáveis inserindo no campo em foco. Toda ação mostra "Quando sai": os modos
+vêm do handler, então as novas oferecem "Aprovar antes" e "Automático", e as
+travadas (responder no Slack e no Teams, abrir tarefa) dizem que sempre param
+na fila. Na fila, as duas aparecem no grupo "Chamadas a apps e APIs" e a
+revisão mostra a chamada exata que vai sair.
+
 ## Próximos passos
 
 Iniciativas: I1, I2 e I3 prontos no código. Falta o teste à mão da sessão

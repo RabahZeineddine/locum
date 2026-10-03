@@ -5935,6 +5935,18 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
     writeFileSync(join(destino, "agents-vigia.png"), (await janela.webContents.capturePage()).toPNG());
   }
 
+  // O painel de ação do canvas só aparece com um nó escolhido: a captura
+  // acrescenta uma "Ação em app" ao rascunho, sem salvar.
+  if (primeiroAgent) {
+    await irPara(janela, "automations", primeiroAgent);
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    await janela.webContents.executeJavaScript(
+      `(document.querySelector('[data-locum-paleta="mcp.call"]')?.click(), null)`,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    writeFileSync(join(destino, "automations-acao.png"), (await janela.webContents.capturePage()).toPNG());
+  }
+
   // O editor abre por clique, então a captura clica.
   if (primeiroAgent) {
     await irPara(janela, "agents", primeiroAgent);

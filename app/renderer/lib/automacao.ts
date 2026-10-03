@@ -348,7 +348,38 @@ export const PASSOS: readonly ComponenteDePasso[] = [
       mode: "approve",
     }),
   },
+  {
+    id: "mcp.call",
+    app: "locum",
+    novo: (spec) => ({
+      type: "action",
+      key: novaChave(spec, "acao-em-app"),
+      name: "Ação em app",
+      needs: [],
+      optional: false,
+      action: "mcp.call",
+      mode: "approve",
+      params: { server: "", tool: "", args: {} },
+    }),
+  },
+  {
+    id: "http.request",
+    app: "locum",
+    novo: (spec) => ({
+      type: "action",
+      key: novaChave(spec, "chamar-api"),
+      name: "Chamar API",
+      needs: [],
+      optional: false,
+      action: "http.request",
+      mode: "approve",
+      params: { method: "POST", url: "", headers: {}, body: "" },
+    }),
+  },
 ];
+
+/** Ações que não leem a saída de uma IA: o que mandam está todo em `params`. */
+export const ACOES_POR_PARAMETRO: ReadonlySet<string> = new Set(["mcp.call", "http.request"]);
 
 /** O componente da paleta que corresponde a um passo já gravado. */
 export function componenteDoPasso(passo: Step): string {
@@ -484,8 +515,20 @@ export function problemas(r: Rascunho, ctx: Contexto): Problema[] {
       }
       continue;
     }
+    if (p.action === "mcp.call") {
+      const prm = (p.params ?? {}) as { server?: unknown; tool?: unknown };
+      if (typeof prm.server !== "string" || prm.server === "" || typeof prm.tool !== "string" || prm.tool === "") {
+        lista.push({ chave: "automations.problems.noTool", no: p.key, bloqueia: true });
+      }
+    }
+    if (p.action === "http.request") {
+      const url = (p.params ?? {}).url;
+      if (typeof url !== "string" || !/^https?:\/\/\S+/.test(url.replace(/\{\{[^}]*\}\}/g, "x"))) {
+        lista.push({ chave: "automations.problems.noUrl", no: p.key, bloqueia: true });
+      }
+    }
     const fonte = porChave.get(p.input ?? p.needs[0] ?? "");
-    if (fonte === undefined || fonte.type !== "model") {
+    if (!ACOES_POR_PARAMETRO.has(p.action) && (fonte === undefined || fonte.type !== "model")) {
       lista.push({ chave: "automations.problems.actionWithoutAi", no: p.key, bloqueia: false });
     }
     if (p.action === "slack.post" && !conversaDoSlack) {

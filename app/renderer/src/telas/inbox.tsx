@@ -76,6 +76,7 @@ function grupoDaPendencia(p: Pendencia): string {
   if (ehMensagem(p)) return "mensagens";
   if (p.kind === "tracker.create_issue") return "tarefas";
   if (p.kind === "digest.deliver") return "resumos";
+  if (ehChamada(p)) return "chamadas";
   const c = p.payload as Partial<CargaDePr> | null;
   if (c?.pull) return `pr:${c.owner ? `${c.owner}/` : ""}${c.repo ?? ""}`;
   return "outros";
@@ -87,6 +88,7 @@ function rotuloDoGrupo(t: TFunction, grupo: string): string {
   if (grupo === "mensagens") return t("inbox.group.messages");
   if (grupo === "tarefas") return t("inbox.group.issues");
   if (grupo === "resumos") return t("inbox.group.digests");
+  if (grupo === "chamadas") return t("inbox.group.calls");
   return t("inbox.group.other");
 }
 
@@ -783,7 +785,12 @@ export function cargaDaMensagem(p: Pendencia): {
 
 /** Tarefa para abrir num tracker ou resumo de canais: a pendência é um texto para ler. */
 export function ehDocumento(p: Pendencia): boolean {
-  return p.kind === "tracker.create_issue" || p.kind === "digest.deliver";
+  return p.kind === "tracker.create_issue" || p.kind === "digest.deliver" || ehChamada(p);
+}
+
+/** Ação montada no canvas, para app ou para API: a pendência é a chamada que vai sair. */
+export function ehChamada(p: Pendencia): boolean {
+  return p.kind === "mcp.call" || p.kind === "http.request";
 }
 
 /**
@@ -794,8 +801,21 @@ export function ehDocumento(p: Pendencia): boolean {
 export function cargaDoDocumento(
   p: Pendencia,
   t: TFunction,
-): { tipo: "issue" | "digest"; titulo: string; detalhe?: string; resumo?: string; corpo: string; link?: string } {
+): { tipo: "issue" | "digest" | "call"; titulo: string; detalhe?: string; resumo?: string; corpo: string; link?: string } {
   const c = (p.payload ?? {}) as Record<string, unknown>;
+  if (p.kind === "mcp.call") {
+    const args = JSON.stringify(c.args ?? {}, null, 2);
+    return { tipo: "call", titulo: `${String(c.server ?? "")} · ${String(c.tool ?? "")}`, resumo: args.replace(/\s+/g, " ").slice(0, 160), corpo: args };
+  }
+  if (p.kind === "http.request") {
+    const corpo = typeof c.body === "string" ? c.body : c.body === undefined ? "" : JSON.stringify(c.body, null, 2);
+    return {
+      tipo: "call",
+      titulo: `${String(c.method ?? "POST")} ${String(c.url ?? "")}`,
+      resumo: corpo.replace(/\s+/g, " ").slice(0, 160) || undefined,
+      corpo,
+    };
+  }
   const corpo = typeof c.body === "string" ? c.body : "";
   const primeira = corpo
     .split("\n")

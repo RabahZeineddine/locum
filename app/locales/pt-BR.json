@@ -315,7 +315,8 @@
       "other": "Outros",
       "messages": "Respostas em conversa",
       "issues": "Tarefas para abrir",
-      "digests": "Resumos de canais"
+      "digests": "Resumos de canais",
+      "calls": "Chamadas a apps e APIs"
     },
     "lead": "O que os agents prepararam e só sai depois do seu sim.",
     "message": {
@@ -327,7 +328,8 @@
     "document": {
       "issue": "Tarefa",
       "digest": "Resumo",
-      "counts": "{{reply}} pedem resposta · {{info}} informação"
+      "counts": "{{reply}} pedem resposta · {{info}} informação",
+      "call": "Chamada"
     },
     "stuckTitle": "Parou no meio da publicação",
     "stuckHint": "O Locum caiu ou perdeu a rede enquanto publicava. Confira no destino se saiu antes de escolher.",
@@ -1068,7 +1070,8 @@
     "document": {
       "approve": {
         "issue": "Aprovar e abrir tarefa",
-        "digest": "Dar por lido"
+        "digest": "Dar por lido",
+        "call": "Fazer a chamada"
       }
     }
   },
@@ -1477,7 +1480,16 @@
         "atlassian": "Jira",
         "locum": "Locum"
       },
-      "inputNone": "O passo de IA logo antes"
+      "inputNone": "O passo de IA logo antes",
+      "mode": "Quando sai",
+      "modes": {
+        "approve": "Aprovar antes",
+        "auto": "Automático",
+        "draft": "Rascunho"
+      },
+      "autoHint": "Sai sozinho, sem passar pela fila. Use quando já confiar no que esse fluxo manda.",
+      "approvalOnly": "Esta ação sempre para na fila até você aprovar.",
+      "variablesFocused": "Clique para inserir no campo selecionado:"
     },
     "triggers": {
       "manual": {
@@ -1594,6 +1606,29 @@
         "none": "Nenhum agent na biblioteca.",
         "toLibrary": "Transformar em agent da biblioteca",
         "toLibraryHint": "Leva modelo e ferramentas para um agent novo, que outras automações podem usar. O texto deste passo vira a tarefa."
+      },
+      "mcp.call": {
+        "title": "Ação em app",
+        "description": "Chama qualquer ferramenta de um app conectado: mandar mensagem, reagir, comentar, mudar status.",
+        "server": "App (servidor MCP)",
+        "chooseServer": "Escolha o app",
+        "tool": "Ferramenta",
+        "chooseTool": "Escolha a ferramenta",
+        "loading": "Lendo as ferramentas do app...",
+        "argsJson": "Argumentos (JSON)"
+      },
+      "http.request": {
+        "title": "Chamar API",
+        "description": "Chama qualquer endereço HTTP. Resposta fora de 2xx falha o passo.",
+        "url": "Endereço",
+        "urlPlaceholder": "https://api.exemplo.com/recurso",
+        "headers": "Cabeçalhos",
+        "headerPlaceholder": "Nome do cabeçalho",
+        "addHeader": "Adicionar",
+        "removeHeader": "Tirar {{name}}",
+        "headersHint": "Valor de cabeçalho fica gravado na automação. Não cole token de produção aqui.",
+        "body": "Corpo",
+        "bodyHint": "Texto que começa com { ou [ vai como JSON."
       }
     },
     "problems": {
@@ -1608,7 +1643,9 @@
       "slackReplyNeedsSlack": "Responder no Slack precisa de um gatilho do Slack: é dele que vem a thread.",
       "teamsReplyNeedsTeams": "Responder no Teams precisa de um gatilho do Teams.",
       "noTracker": "Escolha em qual tracker abrir a tarefa.",
-      "agentMissing": "O agent deste passo não existe mais na biblioteca."
+      "agentMissing": "O agent deste passo não existe mais na biblioteca.",
+      "noTool": "Escolha o app e a ferramenta desta ação.",
+      "noUrl": "Informe o endereço da API, começando com http:// ou https://."
     }
   },
   "apps": {

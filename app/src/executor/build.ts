@@ -1,3 +1,4 @@
+import { httpRequestHandler, mcpCallHandler } from "../actions/generic.js";
 import { ApprovalGate } from "../approval/gate.js";
 import { contextUpdateHandler } from "../context/action.js";
 import { digestDeliverHandler } from "../digest/action.js";
@@ -71,6 +72,20 @@ export function buildGate(): ApprovalGate {
       ["slack.post", slackPostHandler()],
       ["teams.post", teamsPostHandler()],
       ["context.update", contextUpdateHandler()],
+      ["mcp.call", mcpCallHandler({ call: chamarNoPool })],
+      ["http.request", httpRequestHandler()],
     ]),
   );
+}
+
+/**
+ * A chamada do `mcp.call`, pelo mesmo pool do executor. A pendência pode ser
+ * aprovada dias depois, num processo que ainda não montou executor nenhum, e
+ * por isso a configuração dos servidores é lida de novo antes de chamar.
+ */
+async function chamarNoPool(server: string, tool: string, args: Record<string, unknown>): Promise<unknown> {
+  const servers = await mcpService.enabledConfigs();
+  if (!servers.some((c) => c.name === server)) throw new Error(`o app "${server}" não está ligado nesta máquina`);
+  mcpPool.reconfigure(new Map(servers.map((c) => [c.name, c])));
+  return mcpPool.callTool(server, tool, args);
 }

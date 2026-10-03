@@ -299,7 +299,8 @@
       "other": "Other",
       "messages": "Conversation replies",
       "issues": "Issues to open",
-      "digests": "Channel digests"
+      "digests": "Channel digests",
+      "calls": "Calls to apps and APIs"
     },
     "lead": "What the agents prepared. Nothing leaves without your yes.",
     "message": {
@@ -311,7 +312,8 @@
     "document": {
       "issue": "Issue",
       "digest": "Digest",
-      "counts": "{{reply}} need a reply · {{info}} info"
+      "counts": "{{reply}} need a reply · {{info}} info",
+      "call": "Call"
     },
     "stuckTitle": "Stopped while publishing",
     "stuckHint": "Locum crashed or lost the network while publishing. Check the destination before choosing.",
@@ -1034,7 +1036,8 @@
     "document": {
       "approve": {
         "issue": "Approve and open issue",
-        "digest": "Mark as read"
+        "digest": "Mark as read",
+        "call": "Make the call"
       }
     }
   },
@@ -1436,7 +1439,16 @@
         "atlassian": "Jira",
         "locum": "Locum"
       },
-      "inputNone": "The AI step right before"
+      "inputNone": "The AI step right before",
+      "mode": "When it goes out",
+      "modes": {
+        "approve": "Approve first",
+        "auto": "Automatic",
+        "draft": "Draft"
+      },
+      "autoHint": "Goes out on its own, skipping the queue. Use it once you trust what this flow sends.",
+      "approvalOnly": "This action always waits in the queue for your approval.",
+      "variablesFocused": "Click to insert into the selected field:"
     },
     "triggers": {
       "manual": {
@@ -1552,6 +1564,29 @@
         "none": "No agent in the library.",
         "toLibrary": "Turn into a library agent",
         "toLibraryHint": "Moves model and tools into a new agent that other automations can use. This step's text becomes the task."
+      },
+      "mcp.call": {
+        "title": "App action",
+        "description": "Calls any tool of a connected app: send a message, react, comment, change status.",
+        "server": "App (MCP server)",
+        "chooseServer": "Choose the app",
+        "tool": "Tool",
+        "chooseTool": "Choose the tool",
+        "loading": "Reading the app's tools...",
+        "argsJson": "Arguments (JSON)"
+      },
+      "http.request": {
+        "title": "Call API",
+        "description": "Calls any HTTP address. A response outside 2xx fails the step.",
+        "url": "Address",
+        "urlPlaceholder": "https://api.example.com/resource",
+        "headers": "Headers",
+        "headerPlaceholder": "Header name",
+        "addHeader": "Add",
+        "removeHeader": "Remove {{name}}",
+        "headersHint": "Header values are saved in the automation. Do not paste a production token here.",
+        "body": "Body",
+        "bodyHint": "Text starting with { or [ goes as JSON."
       }
     },
     "problems": {
@@ -1566,7 +1601,9 @@
       "slackReplyNeedsSlack": "Replying in Slack needs a Slack trigger: that is where the thread comes from.",
       "teamsReplyNeedsTeams": "Replying in Teams needs a Teams trigger.",
       "noTracker": "Choose which tracker opens the task.",
-      "agentMissing": "This step's agent no longer exists in the library."
+      "agentMissing": "This step's agent no longer exists in the library.",
+      "noTool": "Choose the app and the tool for this action.",
+      "noUrl": "Fill in the API address, starting with http:// or https://."
     }
   },
   "apps": {

@@ -452,10 +452,19 @@ export class Executor {
     // faria a ação publicar em outro lugar, com o token da pessoa. Título e
     // corpo continuam vindo da saída, que é o conteúdo da ação.
     const alvo = alvoDoEvento(args.payload);
-    const payload =
+    const doPasso =
       saida !== null && typeof saida === "object"
         ? { ...alvo, ...(saida as object), ...destinoDoEvento(alvo) }
         : saida;
+    // `params` é de quem montou o fluxo, e não do modelo: por isso vale por
+    // cima de tudo, inclusive do destino que o evento trouxe.
+    const payload =
+      step.params === undefined
+        ? doPasso
+        : {
+            ...(doPasso !== null && typeof doPasso === "object" ? (doPasso as object) : {}),
+            ...(renderParams(step.params, args.payload, outputs) as object),
+          };
 
     // Queda entre gravar a pendência e marcar o passo deixa o passo sem
     // `awaiting_approval` com a pendência já na fila. Submeter de novo na
@@ -574,6 +583,38 @@ export function renderPrompt(
     if (root === "event") return texto(descer(payload, rest));
     return "";
   });
+}
+
+/**
+ * `renderPrompt` para a configuração de uma ação, descendo em objeto e lista.
+ *
+ * O texto que é só um marcador devolve o valor cru: `"{{steps.ler.total}}"`
+ * vira o número, e `"{{steps.ler}}"` o objeto inteiro, em vez do JSON dele
+ * escrito como texto, que a ferramenta do outro lado recusaria.
+ */
+export function renderParams(valor: unknown, payload: EventPayload, outputs: Map<string, unknown>): unknown {
+  if (typeof valor === "string") {
+    const sozinho = /^\{\{\s*([\w.]+)\s*\}\}$/.exec(valor);
+    if (sozinho !== null) {
+      const [root, ...rest] = sozinho[1]!.split(".");
+      const descer = (inicio: unknown, caminho: string[]) =>
+        caminho.reduce<unknown>(
+          (acc, key) => (acc && typeof acc === "object" ? (acc as Record<string, unknown>)[key] : undefined),
+          inicio,
+        );
+      if (root === "steps") {
+        const [chave, ...campo] = rest;
+        return descer(outputs.get(chave!), campo) ?? null;
+      }
+      if (root === "event") return descer(payload, rest) ?? null;
+    }
+    return renderPrompt(valor, payload, outputs);
+  }
+  if (Array.isArray(valor)) return valor.map((v) => renderParams(v, payload, outputs));
+  if (valor !== null && typeof valor === "object") {
+    return Object.fromEntries(Object.entries(valor).map(([k, v]) => [k, renderParams(v, payload, outputs)]));
+  }
+  return valor;
 }
 
 /**
