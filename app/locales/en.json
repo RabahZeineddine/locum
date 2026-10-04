@@ -115,6 +115,7 @@
         "customize": "choose tools",
         "inherit": "inherit again",
         "noServers": "no MCP server registered",
+        "account": "Claude account (connectors and plugins, read only, Claude Code models only)",
         "open": "show tools",
         "loading": "starting the server...",
         "tokens": "~{{tokens}} tok",

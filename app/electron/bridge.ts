@@ -1,4 +1,5 @@
 import { listTeamsChannels } from "../src/teams/channels.js";
+import { claudeAccountService, SERVIDOR_CONTA } from "../src/runtimes/claude-account.js";
 import { app, BrowserWindow, dialog, ipcMain, type WebContents } from "electron";
 import { readFile, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
@@ -232,7 +233,8 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
 
     "mcp.list": () => mcpService.list(),
     "mcp.test": (name) => mcpService.testConnection(name),
-    "mcp.tools": (name) => mcpService.listTools(name),
+    "mcp.tools": (name) => (name === SERVIDOR_CONTA ? claudeAccountService.tools() : mcpService.listTools(name)),
+    "claudeAccount.list": (renovar) => claudeAccountService.listar(renovar),
     "mcp.setEnabled": (name, enabled) => mcpService.setEnabled(name, enabled),
 
     "providers.list": async () => providerService.listProviders(),

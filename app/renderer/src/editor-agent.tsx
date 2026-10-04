@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { ActionMode, AgentSpec, ToolRef } from "../../src/config/types";
+import { SERVIDOR_CONTA, type ActionMode, type AgentSpec, type ToolRef } from "../../src/config/types";
 
 type Passo = AgentSpec["steps"][number];
 type PassoDeModelo = Extract<Passo, { type: "model" }>;
@@ -426,7 +426,7 @@ export function SeletorDeFerramentas({
     );
   }
 
-  const lista = servidores.data ?? [];
+  const lista = servidoresDoModelo(servidores.data);
 
   return (
     <div className="flex flex-col gap-2">
@@ -437,24 +437,26 @@ export function SeletorDeFerramentas({
       >
         {t("agents.editor.tools.inherit")}
       </button>
-      {lista.length === 0 ? (
-        <p className="text-muted-foreground text-xs">{t("agents.editor.tools.noServers")}</p>
-      ) : (
-        lista
-          .filter((s) => s.enabled)
-          .map(({ config }) => (
-            <FerramentasDoServidor
-              key={config.name}
-              marcadas={valor.filter((r) => r.server === config.name)}
-              servidor={config.name}
-              trocar={(doServidor) =>
-                trocar([...valor.filter((r) => r.server !== config.name), ...doServidor])
-              }
-            />
-          ))
-      )}
+      {lista.length === 1 && <p className="text-muted-foreground text-xs">{t("agents.editor.tools.noServers")}</p>}
+      {lista.map((nome) => (
+        <FerramentasDoServidor
+          key={nome}
+          marcadas={valor.filter((r) => r.server === nome)}
+          servidor={nome}
+          trocar={(doServidor) => trocar([...valor.filter((r) => r.server !== nome), ...doServidor])}
+        />
+      ))}
     </div>
   );
+}
+
+/**
+ * Servidores cujas ferramentas um passo de modelo pode usar: os ligados no
+ * Locum e, por último, a conta Claude. A conta lista vazio quando não há
+ * Claude Code na máquina, e aí o bloco aparece sem nada para marcar.
+ */
+export function servidoresDoModelo(lista: { config: { name: string }; enabled: boolean }[] | undefined): string[] {
+  return [...(lista ?? []).filter((s) => s.enabled).map((s) => s.config.name), SERVIDOR_CONTA];
 }
 
 export function FerramentasDoServidor({
@@ -494,7 +496,7 @@ export function FerramentasDoServidor({
         type="button"
       >
         {aberto ? <ChevronDown className="size-3.5" aria-hidden /> : <ChevronRight className="size-3.5" aria-hidden />}
-        <span className="font-mono">{servidor}</span>
+        <span className="font-mono">{servidor === SERVIDOR_CONTA ? t("agents.editor.tools.account") : servidor}</span>
         {marcadas.length > 0 && (
           <span className="text-muted-foreground ml-auto">
             {t("agents.editor.tools.total", { count: marcadas.length, tokens })}

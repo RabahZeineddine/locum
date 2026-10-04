@@ -269,9 +269,18 @@ export function resolveTools(spec: AgentSpec, step: ModelStep): ToolRef[] {
  */
 export const SERVIDOR_NATIVO = "locum-ferramentas";
 
-/** Servidores que o escopo de uma iniciativa precisa cobrir: os exigidos, menos o nativo. */
+/**
+ * As ferramentas que a conta Claude da pessoa já traz: conectores do claude.ai
+ * e servidores MCP dos plugins do Claude Code. Não é servidor cadastrado: o
+ * nome da ferramenta é o do Claude Code (`mcp__claude_ai_Microsoft_365__...`)
+ * e só o runtime do Claude Code alcança. Fica fora do escopo da iniciativa
+ * como o nativo, porque só entra ferramenta de leitura.
+ */
+export const SERVIDOR_CONTA = "claude-conta";
+
+/** Servidores que o escopo de uma iniciativa precisa cobrir: os exigidos, menos o nativo e a conta Claude. */
 export function serversInScope(spec: AgentSpec): string[] {
-  return requiredServers(spec).filter((s) => s !== SERVIDOR_NATIVO);
+  return requiredServers(spec).filter((s) => s !== SERVIDOR_NATIVO && s !== SERVIDOR_CONTA);
 }
 
 export function requiredServers(spec: AgentSpec): string[] {

@@ -16,6 +16,7 @@ import type { ClaudeSessionsService } from "../src/services/claude-sessions-serv
 import type { MachineService } from "../src/services/machine-service.js";
 import type { McpService } from "../src/services/mcp-service.js";
 import type { MetricsService } from "../src/services/metrics-service.js";
+import type { ClaudeAccountService } from "../src/runtimes/claude-account.js";
 import type { PriceService } from "../src/services/price-service.js";
 import type { PromptService } from "../src/services/prompt-service.js";
 import type { ProviderService } from "../src/services/provider-service.js";
@@ -212,6 +213,11 @@ interface ServiceApi {
   "mcp.tools": McpService["listTools"];
   /** Ligar é da pessoa: o que entra pelo servidor MCP nasce desligado. */
   "mcp.setEnabled": McpService["setEnabled"];
+  /**
+   * Conectores do claude.ai e MCPs de plugin da conta Claude, só leitura.
+   * `mcp.tools` com o nome `claude-conta` devolve a mesma lista.
+   */
+  "claudeAccount.list": ClaudeAccountService["listar"];
 
   "providers.list": ProviderService["listProviders"];
   "providers.fallbacks": ProviderService["getFallbacks"];
@@ -513,6 +519,7 @@ export const BRIDGE_CHANNELS = [
   "mcp.test",
   "mcp.tools",
   "mcp.setEnabled",
+  "claudeAccount.list",
   "providers.list",
   "providers.fallbacks",
   "providers.preview",

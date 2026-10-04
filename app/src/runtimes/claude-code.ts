@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import type { McpServerConfig } from "../config/types.js";
 import { claudeBinary } from "./claude-binary.js";
+import { ehLeitura, flagsDaConta } from "./claude-account.js";
 import type { Runtime, RuntimeRequest, RuntimeResult } from "./types.js";
 
 const run = promisify(execFile);
@@ -23,6 +24,13 @@ export function claudeArgs(req: RuntimeRequest, mcpConfigPath?: string): string[
     return `mcp__${server}__${rest.join("__")}`;
   });
 
+  const daConta = req.accountTools ?? [];
+  const escrita = daConta.filter((nome) => !ehLeitura(nome));
+  if (escrita.length > 0) {
+    throw new Error(`ferramenta de escrita da conta Claude não entra em passo de modelo: ${escrita.join(", ")}`);
+  }
+  allowed.push(...daConta);
+
   const args = ["-p", req.prompt, "--model", req.model, "--output-format", "json"];
 
   if (req.system) args.push("--append-system-prompt", req.system);
@@ -32,8 +40,12 @@ export function claudeArgs(req: RuntimeRequest, mcpConfigPath?: string): string[
     args.push("--mcp-config", mcpConfigPath);
   }
   if (allowed.length > 0) args.push("--allowedTools", allowed.join(","));
-  args.push("--permission-prompts", "none");
-  args.push("--strict-mcp-config", "--no-session-persistence", "--setting-sources", "");
+  args.push("--permission-prompts", "none", "--no-session-persistence");
+  // Com ferramenta da conta, a configuração da pessoa precisa entrar, senão
+  // conector e plugin somem; `flagsDaConta` desliga o que viria junto. Sem
+  // ela, o isolamento de sempre.
+  if (daConta.length > 0) args.push(...flagsDaConta());
+  else args.push("--strict-mcp-config", "--setting-sources", "");
   return args;
 }
 
@@ -60,6 +72,10 @@ export function mcpConfigJson(servers: string[], mcpConfigs: Map<string, McpServ
  * servidores da máquina, inclusive os de produção, subam junto com um agent que
  * lê diff de terceiro; `--no-session-persistence` deixa o histórico pessoal
  * limpo. `--json-schema` continua sendo a proteção da saída estruturada.
+ *
+ * A exceção é o passo com ferramenta da conta Claude: ver `flagsDaConta`.
+ * Mesmo nele, os servidores do Locum continuam indo por `--mcp-config` e só
+ * roda ferramenta listada em `--allowedTools`.
  */
 export class ClaudeCodeRuntime implements Runtime {
   readonly id = "claude-code";

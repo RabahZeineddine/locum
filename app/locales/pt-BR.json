@@ -117,6 +117,7 @@
         "customize": "escolher ferramentas",
         "inherit": "voltar a herdar",
         "noServers": "nenhum servidor MCP cadastrado",
+        "account": "Conta Claude (conectores e plugins, só leitura, só com modelo do Claude Code)",
         "open": "ver ferramentas",
         "loading": "subindo o servidor...",
         "tokens": "~{{tokens}} tok",

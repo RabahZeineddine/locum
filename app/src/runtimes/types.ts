@@ -15,6 +15,12 @@ export type RuntimeRequest = {
   tools: ToolSet;
   /** Nomes de servidor usados, para o adaptador de CLI montar --mcp-config. */
   mcpServers?: string[];
+  /**
+   * Ferramentas da conta Claude (conectores do claude.ai e MCPs de plugin),
+   * pelo nome do Claude Code. Só o runtime do Claude Code alcança; os outros
+   * recusam o passo.
+   */
+  accountTools?: string[];
   maxSteps: number;
   /** Ausente deixa o padrão do provedor. Runtime de assinatura ignora. */
   temperature?: number;

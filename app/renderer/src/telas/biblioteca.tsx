@@ -8,7 +8,7 @@ import { ArrowLeft, Bot, Plus, Trash2, Wrench } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { AgentProfile, ToolRef, Toolset } from "../../../src/config/types";
-import { FerramentasDoServidor, SeletorDeModelo, useCatalogo } from "../editor-agent";
+import { FerramentasDoServidor, SeletorDeModelo, servidoresDoModelo, useCatalogo } from "../editor-agent";
 import type { TelaProps } from "../rotas";
 
 type ResumoDoAgent = ReadResult<"library.profiles">[number];
@@ -542,16 +542,16 @@ function EditorDoToolset({
 function EscolhaDeFerramentas({ valor, trocar }: { valor: ToolRef[]; trocar: (v: ToolRef[]) => void }) {
   const { t } = useTranslation();
   const servidores = useRead("mcp.list");
-  const ligados = (servidores.data ?? []).filter((s) => s.enabled);
-  if (ligados.length === 0) return <p className="text-muted-foreground text-xs">{t("agents.editor.tools.noServers")}</p>;
+  const nomes = servidoresDoModelo(servidores.data);
   return (
     <div className="flex flex-col gap-2">
-      {ligados.map(({ config }) => (
+      {nomes.length === 1 && <p className="text-muted-foreground text-xs">{t("agents.editor.tools.noServers")}</p>}
+      {nomes.map((nome) => (
         <FerramentasDoServidor
-          key={config.name}
-          marcadas={valor.filter((r) => r.server === config.name)}
-          servidor={config.name}
-          trocar={(doServidor) => trocar([...valor.filter((r) => r.server !== config.name), ...doServidor])}
+          key={nome}
+          marcadas={valor.filter((r) => r.server === nome)}
+          servidor={nome}
+          trocar={(doServidor) => trocar([...valor.filter((r) => r.server !== nome), ...doServidor])}
         />
       ))}
     </div>

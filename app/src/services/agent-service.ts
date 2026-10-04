@@ -1,3 +1,4 @@
+import { recusarEscritaDaConta } from "../runtimes/claude-account.js";
 import { randomUUID } from "node:crypto";
 import { desc, eq } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
@@ -517,6 +518,7 @@ export class AgentService {
    * passa, porque alguém a pôs ali antes, e a nova fica para a tela.
    */
   private async refuseNewWriteServerTools(spec: AgentSpec, stored: unknown): Promise<void> {
+    recusarEscritaDaConta(toolRefs(spec));
     const escrita = new Set(
       (await this.db.select({ name: schema.mcpServers.name, scope: schema.mcpServers.scope }).from(schema.mcpServers))
         .filter((linha) => linha.scope === "write")

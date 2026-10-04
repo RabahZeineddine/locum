@@ -1,6 +1,7 @@
 import { SERVIDOR_NATIVO } from "../config/types.js";
 import { recordSpend } from "../executor/budget.js";
 import type { McpRegistry } from "../mcp/registry.js";
+import { separarDaConta } from "../runtimes/claude-account.js";
 import { resolveModel } from "../providers/registry.js";
 import type { Runtime } from "../runtimes/types.js";
 import { SUBSCRIPTION_RUNTIMES } from "../runtimes/types.js";
@@ -45,7 +46,8 @@ export async function consultarAgent(id: string, pergunta: string, deps: Consult
   if (runtime === undefined) throw new Error(`runtime indisponível para "${resolucao.provider}"`);
 
   const refs = perfil.tools.filter((t) => !(t.server === SERVIDOR_NATIVO && t.tool === "ask_agent"));
-  const { tools, release } = await mcp.toolsFor(refs);
+  const { doLocum, daConta } = separarDaConta(refs, runtime.id);
+  const { tools, release } = await mcp.toolsFor(doLocum);
   try {
     const resultado = await runtime.run({
       provider: resolucao.provider,
@@ -53,7 +55,8 @@ export async function consultarAgent(id: string, pergunta: string, deps: Consult
       system: perfil.system.length > 0 ? perfil.system : undefined,
       prompt: pergunta,
       tools,
-      mcpServers: [...new Set(refs.map((t) => t.server))],
+      mcpServers: [...new Set(doLocum.map((t) => t.server))],
+      ...(daConta.length > 0 ? { accountTools: daConta } : {}),
       maxSteps: spec.maxSteps,
       ...(spec.temperature === undefined ? {} : { temperature: spec.temperature }),
     });

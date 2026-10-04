@@ -7,6 +7,7 @@ import {
   type ModelStep,
   type Step,
   resolveTools,
+  SERVIDOR_CONTA,
   SERVIDOR_NATIVO,
   topoSort,
 } from "../config/types.js";
@@ -20,6 +21,7 @@ import { selectSkills, skillsPreamble, type SkillContext } from "../skills/loade
 import { ApprovalGate, settleStep } from "../approval/gate.js";
 import { BudgetExceeded, assertWithinBudget, recordSpend, type Spend } from "./budget.js";
 import { SUBSCRIPTION_RUNTIMES } from "../runtimes/types.js";
+import { separarDaConta } from "../runtimes/claude-account.js";
 
 export type EventPayload = {
   repo: string;
@@ -351,7 +353,9 @@ export class Executor {
       const exigidos = new Set([...toolRefs.map((t) => t.server), ...step.requiresServers]);
       // As ferramentas nativas são do próprio Locum e só leem: valem em toda
       // iniciativa sem precisar estar na aba Integrações.
-      const fora = [...exigidos].filter((servidor) => servidor !== SERVIDOR_NATIVO && !initiativeServers.has(servidor));
+      const fora = [...exigidos].filter(
+        (servidor) => servidor !== SERVIDOR_NATIVO && servidor !== SERVIDOR_CONTA && !initiativeServers.has(servidor),
+      );
       if (fora.length > 0) {
         if (!step.optional) {
           await db
@@ -387,7 +391,8 @@ export class Executor {
 
     const ctx: SkillContext = { repo: payload.repo, changedFiles: payload.changedFiles };
     const skills = selectSkills(spec.skills, ctx);
-    const { tools, release } = await this.deps.mcp.toolsFor(toolRefs);
+    const { doLocum, daConta } = separarDaConta(toolRefs, runtime.id);
+    const { tools, release } = await this.deps.mcp.toolsFor(doLocum);
 
     await db
       .update(schema.steps)
@@ -419,7 +424,8 @@ export class Executor {
         prompt: renderPrompt(step.prompt, payload, outputs),
         stablePrefix: stablePrefix(step.prompt),
         tools,
-        mcpServers: [...new Set(toolRefs.map((t) => t.server))],
+        mcpServers: [...new Set(doLocum.map((t) => t.server))],
+        ...(daConta.length > 0 ? { accountTools: daConta } : {}),
         maxSteps,
         outputSchema: step.outputSchema,
         ...(perfil?.version.spec.temperature === undefined ? {} : { temperature: perfil.version.spec.temperature }),

@@ -1303,6 +1303,26 @@ apps da aba Integrações. O servidor `locum-ferramentas` (`SERVIDOR_NATIVO`)
 não conta para esse escopo: `serversInScope` o tira da conta no `linkAgent`,
 na gravação de versão e no executor.
 
+**Conta Claude como fonte de ferramentas.** Os conectores do claude.ai
+(Microsoft 365, Slack, Waroom e o que mais a conta tiver) e os MCPs dos
+plugins do Claude Code aparecem nos seletores de ferramenta do passo de
+modelo como "Conta Claude", servidor virtual `claude-conta`
+(`SERVIDOR_CONTA`). O catálogo vem do evento `init` do `claude -p`, lido e
+encerrado antes de qualquer chamada ao modelo (cerca de 4 s, guardado por
+10 min); servidor ainda conectando entra na próxima listagem. Só entra
+ferramenta com verbo de leitura no nome, porque o Claude Code não entrega a
+anotação, e a escrita é recusada ao gravar e ao rodar. O passo que usa a
+conta troca o isolamento: `--setting-sources user` para os conectores
+aparecerem, e `--settings` com `disableAllHooks`, `claudeMdExcludes` e
+`autoMemoryEnabled: false` para não vir hook, CLAUDE.md nem memória da
+pessoa; `--permission-mode dontAsk` porque o modo dela pode ser `auto`; e
+`--tools ToolSearch`, sem o qual o schema de todos os conectores estoura o
+contexto. Conferido à mão: ferramenta fora de `--allowedTools` volta em
+`permission_denials` e Bash não existe para o agent. Só roda no runtime do
+Claude Code; com outro modelo o passo falha dizendo por quê. A base continua
+sendo servidor cadastrado no Locum, que roda com qualquer modelo; a conta é
+uma fonte a mais para quem tem Claude.
+
 ## Próximos passos
 
 Iniciativas: I1, I2 e I3 prontos no código. Falta o teste à mão da sessão

@@ -1,3 +1,4 @@
+import { recusarEscritaDaConta } from "../runtimes/claude-account.js";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { db, schema } from "../db/index.js";
@@ -119,6 +120,7 @@ async function ferramentasDoAgent(spec: AgentProfile): Promise<ToolRef[]> {
 }
 
 async function recusarEscritaNova(novas: readonly ToolRef[], jaEstavam: readonly ToolRef[]): Promise<void> {
+  recusarEscritaDaConta(novas);
   const escrita = new Set(
     (await db.select({ name: schema.mcpServers.name, scope: schema.mcpServers.scope }).from(schema.mcpServers))
       .filter((s) => s.scope === "write")
