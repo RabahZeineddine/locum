@@ -1,4 +1,5 @@
 import { claudeCodeService, type ClaudeCodeService } from "./claude-code-service.js";
+import { claudeImportService } from "./claude-import.js";
 import { githubService, type GithubService } from "./github-service.js";
 import { chaveDoClienteOAuth, mcpOAuthService, type McpOAuthService, type PreRegisteredClient } from "./mcp-oauth-service.js";
 import { mcpService, type McpService } from "./mcp-service.js";
@@ -126,6 +127,8 @@ export interface ConnectionServiceDeps {
   github: GithubService;
   slack: SlackService;
   settings: SettingsService;
+  /** App OAuth que o Claude Code declara para o servidor, quando a importação não guardou. */
+  clienteDoClaude?: (nome: string) => Promise<PreRegisteredClient | undefined>;
 }
 
 /**
@@ -145,6 +148,7 @@ export class ConnectionService {
       github: githubService,
       slack: slackService,
       settings: settingsService,
+      clienteDoClaude: (nome) => claudeImportService.clienteOAuth(nome),
       ...deps,
     };
   }
@@ -198,7 +202,10 @@ export class ConnectionService {
     if (atual === undefined || atual.config.transport !== "http" || atual.config.url !== url) {
       await this.deps.mcp.register({ name: id, transport: "http", url });
     }
-    await this.deps.oauth.connect(id, await clienteGuardado(this.deps.settings, id));
+    const cliente =
+      (await clienteGuardado(this.deps.settings, id)) ??
+      (entry === undefined ? await this.deps.clienteDoClaude?.(id) : undefined);
+    await this.deps.oauth.connect(id, cliente);
     return this.um(id);
   }
 

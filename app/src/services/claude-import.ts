@@ -105,6 +105,19 @@ export function variaveisCitadas(entrada: Entrada): string[] {
   return [...nomes];
 }
 
+/** O app OAuth que o Claude Code declara para o servidor (`oauth.clientId` e `callbackPort`). */
+export function clienteDeclarado(entrada: Entrada): PreRegisteredClient | undefined {
+  const declarado = entrada.oauth;
+  if (typeof declarado?.clientId !== "string" || typeof declarado.callbackPort !== "number") return undefined;
+  return {
+    clientId: declarado.clientId,
+    redirectUri: `http://localhost:${declarado.callbackPort}/callback`,
+    ...(declarado.scopes === undefined
+      ? {}
+      : { scope: Array.isArray(declarado.scopes) ? declarado.scopes.join(" ") : declarado.scopes }),
+  };
+}
+
 /**
  * Monta o cadastro do Locum a partir do que o Claude Code declara.
  *
@@ -158,17 +171,7 @@ export function preparar(
       ? { name, transport, command: [expandir(entrada.command ?? ""), ...(entrada.args ?? []).map(expandir)], ...(env ? { env } : {}), scope: "write" }
       : { name, transport, url: expandir(entrada.url ?? ""), ...(headers ? { headers } : {}), scope: "write" };
 
-  const declarado = entrada.oauth;
-  const cliente: PreRegisteredClient | undefined =
-    transport !== "stdio" && typeof declarado?.clientId === "string" && typeof declarado.callbackPort === "number"
-      ? {
-          clientId: declarado.clientId,
-          redirectUri: `http://localhost:${declarado.callbackPort}/callback`,
-          ...(declarado.scopes === undefined
-            ? {}
-            : { scope: Array.isArray(declarado.scopes) ? declarado.scopes.join(" ") : declarado.scopes }),
-        }
-      : undefined;
+  const cliente = transport === "stdio" ? undefined : clienteDeclarado(entrada);
 
   return {
     name,
@@ -252,6 +255,17 @@ export class ClaudeImportService {
     for (const nome of Object.keys(doUsuario)) out[nome] ??= "usuário";
     for (const f of servidoresDosPlugins(this.deps.home)) for (const nome of Object.keys(f.servidores)) out[nome] ??= f.origem;
     return out;
+  }
+
+  /**
+   * O app OAuth que o Claude Code declara para um servidor com este nome. Serve
+   * a quem importou antes de a importação guardar o app: autorizar consulta
+   * aqui em vez de exigir importar de novo.
+   */
+  async clienteOAuth(nome: string): Promise<PreRegisteredClient | undefined> {
+    const doUsuario = comoObjeto(comoObjeto(lerJson(join(this.deps.home, ".claude.json"))).mcpServers) as Record<string, Entrada>;
+    const entrada = doUsuario[nome] ?? servidoresDosPlugins(this.deps.home).find((f) => nome in f.servidores)?.servidores[nome];
+    return entrada === undefined ? undefined : clienteDeclarado(entrada);
   }
 
   /** O que dá para importar, sem segredo nem cadastro completo. */

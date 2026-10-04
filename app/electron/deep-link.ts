@@ -22,6 +22,11 @@ export interface CaptureOptions {
    * morrer por causa dele.
    */
   singleInstance?: boolean;
+  /**
+   * Processo de linha de comando (`--mcp`) não trata URL: passa adiante para
+   * o app de verdade. O macOS entrega a ele porque o vê como o Locum aberto.
+   */
+  encaminhar?: (url: string) => void;
 }
 
 /**
@@ -35,7 +40,8 @@ export function captureDeepLinks(options: CaptureOptions = {}): void {
 
   app.on("open-url", (event, url) => {
     event.preventDefault();
-    receive(url);
+    if (options.encaminhar !== undefined) options.encaminhar(url);
+    else receive(url);
   });
 
   // Fora do macOS, e tambem quando o macOS lanca por argumento, a URL vem na

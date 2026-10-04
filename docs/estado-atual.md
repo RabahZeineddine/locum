@@ -1407,7 +1407,17 @@ Três causas de falha que a tela escondia:
   `oauth.clientId` e `callbackPort` (backoffice, no Entra) não aceita registro
   automático. A importação guarda esse app em `mcp.oauthCliente.<nome>`, e
   autorizar usa ele, com retorno em `http://localhost:<porta>/callback`.
-  Servidor importado antes disto precisa ser importado de novo.
+  Quem importou antes não precisa importar de novo: sem app guardado,
+  autorizar lê o que o plugin declara (`clienteOAuth`). Com o Entra como
+  servidor de autorização, o pedido vai sem `resource`, que o v2 recusa; o
+  recurso já vem nos escopos anunciados.
+
+**O app não abria depois de atualizar.** O `--mcp` que cada sessão do Claude
+Code sobe é um processo do mesmo pacote. Com a janela fechada (o updater
+fecha), o macOS o tomava pelo Locum aberto e o clique só reativava esse
+processo, sem janela. Agora o `--mcp` que recebe `activate` (passados 5 s do
+lançamento, para não confundir com a subida) ou `open-url` sobe o app de
+verdade, e o app no ar traz a janela para a frente no `second-instance`.
 
 ## Próximos passos
 

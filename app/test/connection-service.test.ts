@@ -23,7 +23,7 @@ before(() => {
  * Vitrine com cadastro de verdade num cofre de rascunho, e o resto de mentira.
  * O OAuth falso grava o que o de verdade gravaria, para o estado seguinte bater.
  */
-function montar(sonda = { oauth: true, registration: true }) {
+function montar(sonda = { oauth: true, registration: true }, clienteDoClaude: (nome: string) => Promise<undefined | { clientId: string; redirectUri: string }> = async () => undefined) {
   const secrets = new SecretService(mkdtempSync(join(tmpdir(), "locum-vitrine-")));
   secrets.useBackend({
     available: () => true,
@@ -33,11 +33,13 @@ function montar(sonda = { oauth: true, registration: true }) {
   const mcp = new McpService(undefined, secrets);
   const ligados = new Set<string>();
   const chamadas: string[] = [];
+  const clientes: unknown[] = [];
   const oauth = {
     probe: async () => sonda,
     status: (name: string) => ({ connected: ligados.has(name), expiresAt: null, renewable: false }),
-    connect: async (name: string) => {
+    connect: async (name: string, client?: unknown) => {
       chamadas.push(`connect:${name}`);
+      clientes.push(client);
       ligados.add(name);
       return { connected: true, expiresAt: null, renewable: false };
     },
@@ -53,8 +55,9 @@ function montar(sonda = { oauth: true, registration: true }) {
     claudeCode: { status: async () => ({ registered: false, current: false }) } as unknown as ClaudeCodeService,
     github: { status: async () => ({ stored: true, env: false, identity: { login: "octo" } }) } as unknown as GithubService,
     slack: { get: async () => ({ server: null }) } as unknown as SlackService,
+    clienteDoClaude,
   });
-  return { servico, mcp, chamadas };
+  return { servico, mcp, chamadas, clientes };
 }
 
 test("o catálogo inteiro aparece, com o estado de cada um", async () => {
@@ -298,5 +301,17 @@ test("conectar pela vitrine recadastra o servidor que tem o nome do catálogo e 
     );
   } finally {
     await mcp.remove("notion");
+  }
+});
+
+test("servidor próprio autoriza com o app OAuth que o plugin declara", async () => {
+  const declarado = { clientId: "app-da-casa", redirectUri: "http://localhost:53682/callback" };
+  const { servico, mcp, clientes } = montar(undefined, async (nome) => (nome === "casa-oauth" ? declarado : undefined));
+  await mcp.register({ name: "casa-oauth", transport: "http", url: "https://casa.example/mcp" });
+  try {
+    await servico.connect("casa-oauth");
+    assert.deepEqual(clientes.at(-1), declarado);
+  } finally {
+    await mcp.remove("casa-oauth");
   }
 });

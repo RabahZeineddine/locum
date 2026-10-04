@@ -173,7 +173,11 @@ export class McpOAuthService {
     if (client === undefined && metadata.registration_endpoint === undefined) {
       throw new Error(`o servidor de autorização de ${url} não aceita registro automático de cliente`);
     }
-    const resource = info.resourceMetadata?.resource === undefined ? undefined : new URL(info.resourceMetadata.resource);
+    // O Entra v2 recusa `resource` e tira o recurso dos escopos, que o
+    // servidor já anuncia (`api://.../access_as_user`).
+    const doEntra = new URL(info.authorizationServerUrl).hostname === "login.microsoftonline.com";
+    const resource =
+      doEntra || info.resourceMetadata?.resource === undefined ? undefined : new URL(info.resourceMetadata.resource);
     const scope = client?.scope ?? (info.resourceMetadata?.scopes_supported?.join(" ") || undefined);
 
     const clientInformation: OAuthClientInformationMixed | undefined =

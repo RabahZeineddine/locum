@@ -76,7 +76,42 @@ if (pastaDaFumaca) {
 // o processo sair calado, sem responder ao primeiro pedido.
 const comandoDeLinha =
   modoMcp || process.argv.includes("--set-secret") || process.argv.includes("--remove-secret");
-captureDeepLinks({ singleInstance: !smoke && !comandoDeLinha });
+captureDeepLinks({
+  singleInstance: !smoke && !comandoDeLinha,
+  ...(modoMcp ? { encaminhar: abrirOAppDeVerdade } : {}),
+});
+
+/**
+ * O `--mcp` que o Claude Code sobe é um processo do mesmo pacote. Sem a janela
+ * no ar, o macOS o toma pelo Locum aberto: clicar no ícone, abrir depois de
+ * atualizar ou voltar de um `locum://` só reativa este processo, que não tem
+ * janela, e o app parece não abrir. Aqui ele sobe o app de verdade, que pega a
+ * instância única, ou entrega a ele pelo `second-instance` se já estiver no ar.
+ */
+let ultimaAbertura = 0;
+function abrirOAppDeVerdade(url?: string): void {
+  const agora = Date.now();
+  if (url === undefined && agora - ultimaAbertura < 3_000) return;
+  ultimaAbertura = agora;
+  // Empacotado, o argv é só o binário e as bandeiras; no desenvolvimento vem o
+  // `main.cjs` antes delas, e ele precisa ir junto.
+  const args = process.argv
+    .slice(1)
+    .filter((a) => a !== "--mcp" && a !== "--ferramentas" && !a.startsWith("locum://"));
+  const env = { ...process.env };
+  delete env.ELECTRON_RUN_AS_NODE;
+  void import("node:child_process").then(({ spawn }) => {
+    spawn(process.execPath, url === undefined ? args : [...args, url], { detached: true, stdio: "ignore", env }).unref();
+  });
+}
+// O Electron pode soltar `activate` no próprio lançamento; nesse caso quem
+// subiu o processo foi o Claude Code, e abrir a janela seria engano.
+const inicioDoProcesso = Date.now();
+if (modoMcp) {
+  app.on("activate", () => {
+    if (Date.now() - inicioDoProcesso > 5_000) abrirOAppDeVerdade();
+  });
+}
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -6385,6 +6420,9 @@ async function main(): Promise<void> {
   await ensureWindow();
 
   app.on("activate", showWindow);
+  // Outro processo abriu o app (o `--mcp` reencaminhando o clique, ou o Finder
+  // com o app já no ar): a janela vem para a frente.
+  app.on("second-instance", showWindow);
 }
 
 app.on("window-all-closed", () => {
