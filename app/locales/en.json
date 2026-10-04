@@ -438,7 +438,10 @@
         "new": "New Claude session",
         "close": "Close terminal",
         "empty": "No terminal open for this initiative. A new session opens Claude Code in its folder, with the usual context and handoff; resuming a conversation from the Sessions tab also lands here when the chosen terminal is Locum's.",
-        "ended": "the session ended (code {{code}})"
+        "ended": "the session ended (code {{code}})",
+        "full": "Full screen",
+        "exitFull": "Exit full screen",
+        "fullHint": "Toggle full screen (⌘⇧F)"
       }
     },
     "status": {
@@ -634,15 +637,15 @@
     },
     "servers": {
       "title": "MCP servers",
-      "description": "Registrations the steps reference. Testing starts the server, and only when asked.",
+      "description": "Servers that agents and steps use, grouped by origin. Imported servers start off: check the command or URL and turn them on.",
       "empty": "No server registered.",
       "enabled": "enabled",
       "disabled": "disabled",
-      "turnOn": "Enable",
-      "turnOff": "Disable",
-      "test": "Test connection",
+      "turnOn": "Turn on",
+      "turnOff": "Turn off",
+      "test": "Test",
       "testing": "testing...",
-      "list": "list tools",
+      "list": "Tools",
       "listing": "listing...",
       "noTools": "no tool",
       "tool": "{{name}} · {{tokens}} tok",
@@ -655,6 +658,26 @@
         "needsAuth": "needs sign-in",
         "failed": "failed {{when}}",
         "ok": "responded {{when}}"
+      },
+      "search": "Search servers",
+      "authorize": "Authorize",
+      "scopeRead": "read",
+      "scopeWrite": "write",
+      "groups": {
+        "manual": "Added here",
+        "user": "From Claude Code",
+        "plugin": "{{name}} plugin",
+        "apps": "Registered by apps",
+        "count_zero": "{{on}} of {{count}} on",
+        "count_one": "{{on}} of {{count}} on",
+        "count_other": "{{on}} of {{count}} on"
+      },
+      "dot": {
+        "off": "off",
+        "auth": "needs authorization",
+        "failed": "failed last time",
+        "ok": "responding",
+        "untested": "on, not tested yet"
       }
     },
     "github": {

@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal as XTerm } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
-import { Plus, SquareTerminal, X } from "lucide-react";
+import { Maximize2, Minimize2, Plus, SquareTerminal, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -16,8 +16,28 @@ type Aberto = Awaited<ReturnType<typeof call<"terminal.list">>>[number];
  * na pasta dela, aberta pelo mesmo script da sessão no Terminal de fora. O
  * processo vive no processo principal; trocar de aba ou de tela não o encerra.
  */
-export function AbaTerminal({ slug, focar }: { slug: string | null; focar?: string }) {
+export function AbaTerminal({ slug, focar, titulo }: { slug: string | null; focar?: string; titulo?: string }) {
   const { t } = useTranslation();
+  const [cheia, setCheia] = useState(lerTelaCheia);
+  const alternarTelaCheia = useCallback(() => {
+    setCheia((atual) => {
+      gravarTelaCheia(!atual);
+      return !atual;
+    });
+  }, []);
+
+  // ⌘⇧F alterna sem tirar a mão do teclado; Esc fica com o Claude Code, que
+  // usa a tecla para interromper.
+  useEffect(() => {
+    const tecla = (e: KeyboardEvent): void => {
+      if (e.metaKey && e.shiftKey && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        alternarTelaCheia();
+      }
+    };
+    window.addEventListener("keydown", tecla, true);
+    return () => window.removeEventListener("keydown", tecla, true);
+  }, [alternarTelaCheia]);
   const [disponivel, setDisponivel] = useState<boolean | null>(null);
   const [terminais, setTerminais] = useState<Aberto[]>([]);
   const [ativo, setAtivo] = useState<string | null>(focar ?? null);
@@ -75,54 +95,115 @@ export function AbaTerminal({ slug, focar }: { slug: string | null; focar?: stri
 
   const atual = terminais.find((x) => x.id === ativo);
 
-  return (
-    <div className="flex flex-col gap-3" data-locum-probe="initiative-terminal" data-total={terminais.length}>
-      <div className="flex flex-wrap items-center gap-2">
-        {terminais.map((x) => (
-          <span
-            className={cn(
-              "border-border flex h-8 items-center gap-1.5 rounded-md border pr-1 pl-2.5 text-xs",
-              x.id === ativo ? "bg-muted text-foreground" : "text-muted-foreground",
-            )}
-            key={x.id}
+  const barra = (
+    <div className="flex flex-wrap items-center gap-2">
+      {cheia && titulo ? <span className="mr-2 text-sm font-medium">{titulo}</span> : null}
+      {terminais.map((x) => (
+        <span
+          className={cn(
+            "border-border flex h-8 items-center gap-1.5 rounded-md border pr-1 pl-2.5 text-xs",
+            x.id === ativo ? "bg-muted text-foreground" : "text-muted-foreground",
+          )}
+          key={x.id}
+        >
+          <button className="flex cursor-pointer items-center gap-1.5" onClick={() => setAtivo(x.id)} type="button">
+            <span className={cn("size-1.5 rounded-full", x.vivo ? "bg-emerald-400" : "bg-muted-foreground/50")} />
+            <span className="max-w-48 truncate">{x.titulo}</span>
+          </button>
+          <button
+            aria-label={t("initiatives.detail.terminal.close")}
+            className="hover:bg-accent cursor-pointer rounded p-0.5"
+            onClick={() => void fechar(x.id)}
+            type="button"
           >
-            <button className="flex cursor-pointer items-center gap-1.5" onClick={() => setAtivo(x.id)} type="button">
-              <span className={cn("size-1.5 rounded-full", x.vivo ? "bg-emerald-400" : "bg-muted-foreground/50")} />
-              <span className="max-w-48 truncate">{x.titulo}</span>
-            </button>
-            <button
-              aria-label={t("initiatives.detail.terminal.close")}
-              className="hover:bg-accent cursor-pointer rounded p-0.5"
-              onClick={() => void fechar(x.id)}
-              type="button"
-            >
-              <X className="size-3" aria-hidden />
-            </button>
-          </span>
-        ))}
-        {slug !== null && (
-          <Button className="cursor-pointer" disabled={abrindo} onClick={() => void nova()} size="sm" variant="outline">
-            <Plus className="size-3.5" aria-hidden />
-            {t("initiatives.detail.terminal.new")}
-          </Button>
-        )}
-      </div>
-      {erro && <p className="text-sev-critical text-xs">{erro}</p>}
+            <X className="size-3" aria-hidden />
+          </button>
+        </span>
+      ))}
+      {slug !== null && (
+        <Button className="cursor-pointer" disabled={abrindo} onClick={() => void nova()} size="sm" variant="outline">
+          <Plus className="size-3.5" aria-hidden />
+          {t("initiatives.detail.terminal.new")}
+        </Button>
+      )}
+      <Button
+        aria-label={t(cheia ? "initiatives.detail.terminal.exitFull" : "initiatives.detail.terminal.full")}
+        className="ml-auto cursor-pointer"
+        data-locum-terminal-cheio={cheia ? "sim" : "nao"}
+        onClick={alternarTelaCheia}
+        size="sm"
+        title={t("initiatives.detail.terminal.fullHint")}
+        variant="ghost"
+      >
+        {cheia ? <Minimize2 className="size-3.5" aria-hidden /> : <Maximize2 className="size-3.5" aria-hidden />}
+        {t(cheia ? "initiatives.detail.terminal.exitFull" : "initiatives.detail.terminal.full")}
+      </Button>
+    </div>
+  );
 
+  const corpo = (
+    <>
+      {erro && <p className="text-sev-critical text-xs">{erro}</p>}
       {atual === undefined ? (
-        <div className="border-border text-muted-foreground flex h-[calc(100vh-380px)] min-h-[360px] flex-col items-center justify-center gap-2 rounded-lg border border-dashed text-sm">
+        <div
+          className={cn(
+            "border-border text-muted-foreground flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed text-sm",
+            cheia ? "min-h-0 flex-1" : "h-[calc(100vh-330px)] min-h-[360px]",
+          )}
+        >
           <SquareTerminal className="size-5" aria-hidden />
           <p className="max-w-md text-center">{t("initiatives.detail.terminal.empty")}</p>
         </div>
       ) : (
-        <TelaDoTerminal key={atual.id} terminal={atual} />
+        <TelaDoTerminal cheia={cheia} key={atual.id} terminal={atual} />
       )}
+    </>
+  );
+
+  if (cheia) {
+    // Cobre a janela inteira, menos a faixa dos botões do macOS, que fica
+    // como região de arrasto.
+    return (
+      <div
+        className="bg-background fixed inset-0 z-[45] flex flex-col gap-3 px-4 pb-4"
+        data-locum-probe="initiative-terminal"
+        data-total={terminais.length}
+      >
+        <div className="regiao-de-arrasto h-9 shrink-0" />
+        {barra}
+        {corpo}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-3" data-locum-probe="initiative-terminal" data-total={terminais.length}>
+      {barra}
+      {corpo}
     </div>
   );
 }
 
+const CHAVE_TELA_CHEIA = "locum.terminal.telaCheia";
+
+function lerTelaCheia(): boolean {
+  try {
+    return localStorage.getItem(CHAVE_TELA_CHEIA) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function gravarTelaCheia(valor: boolean): void {
+  try {
+    localStorage.setItem(CHAVE_TELA_CHEIA, valor ? "1" : "0");
+  } catch {
+    // Sem armazenamento, a escolha vale só até fechar a tela.
+  }
+}
+
 /** Um xterm ligado a um terminal do processo principal: escreve o que já saiu e segue o fluxo. */
-function TelaDoTerminal({ terminal }: { terminal: Aberto }) {
+function TelaDoTerminal({ cheia, terminal }: { cheia: boolean; terminal: Aberto }) {
   const { t } = useTranslation();
   const caixa = useRef<HTMLDivElement>(null);
   const [vivo, setVivo] = useState(terminal.vivo);
@@ -192,9 +273,12 @@ function TelaDoTerminal({ terminal }: { terminal: Aberto }) {
   }, [terminal.id]);
 
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className={cn("flex flex-col gap-1.5", cheia && "min-h-0 flex-1")}>
       <div
-        className="border-border h-[calc(100vh-380px)] min-h-[360px] overflow-hidden rounded-lg border bg-[#0f1115] p-2"
+        className={cn(
+          "border-border overflow-hidden rounded-lg border bg-[#0f1115] p-2",
+          cheia ? "min-h-0 flex-1" : "h-[calc(100vh-330px)] min-h-[360px]",
+        )}
         data-locum-terminal={terminal.id}
         ref={caixa}
       />

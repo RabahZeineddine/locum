@@ -223,7 +223,7 @@ function DetalheDaIniciativa({
           <Conversa iniciativa={slug} irParaModelos={() => navegar("settings", "models")} />
         </div>
       )}
-      {aba === "terminal" && <AbaTerminal slug={slug} />}
+      {aba === "terminal" && <AbaTerminal slug={slug} titulo={iniciativa.title} />}
       {aba === "context" && <AbaContexto slug={slug} />}
       {aba === "agents" && <AbaAutomacoes iniciativa={iniciativa} navegar={navegar} />}
       {aba === "integrations" && <AbaIntegrations iniciativa={iniciativa} />}

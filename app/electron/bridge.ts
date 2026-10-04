@@ -284,6 +284,7 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "connections.addCustom": (input) => connectionService.addCustom(input),
     "claudeImport.list": () => claudeImportService.listar(),
     "claudeImport.apply": (nomes) => claudeImportService.importar(nomes),
+    "claudeImport.origins": () => claudeImportService.origens(),
     "connections.slackApp": () => connectionService.slackApp(),
     "connections.connectSlack": (clientId) => connectionService.connectSlack(clientId),
     "connections.disconnectSlack": () => connectionService.disconnectSlack(),

@@ -6078,6 +6078,12 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
       await irPara(janela, "initiatives", `${primeiraIniciativa}/terminal`);
       await new Promise((resolve) => setTimeout(resolve, 1500));
       writeFileSync(join(destino, "initiatives-terminal.png"), (await janela.webContents.capturePage()).toPNG());
+      const alternar = `(() => { document.querySelector("[data-locum-terminal-cheio]")?.click(); return null; })()`;
+      await janela.webContents.executeJavaScript(alternar);
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      writeFileSync(join(destino, "initiatives-terminal-cheio.png"), (await janela.webContents.capturePage()).toPNG());
+      // Volta ao normal: a escolha fica guardada e mudaria as próximas capturas.
+      await janela.webContents.executeJavaScript(alternar);
       terminalService.fechar(aberto.id);
     }
   }

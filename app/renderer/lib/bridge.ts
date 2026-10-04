@@ -95,6 +95,8 @@ export const READ_CHANNELS = [
   // escrever nada. Ligar é o `claudeCode.connect`, que mora entre as ações.
   "claudeCode.status",
   "connections.list",
+  // Só lê os arquivos do Claude Code, sem shell nem segredo.
+  "claudeImport.origins",
   "connections.slackApp",
   "connections.teamsApp",
   // Mesma razão de `github.status`: endereço, sim ou não, e o que a última

@@ -1370,6 +1370,22 @@ dá, e o pacote o leva desempacotado do asar. Sem o módulo, a opção some e os
 terminais de fora continuam valendo. Captura `initiatives-terminal.png`
 roda um script real no pseudoterminal.
 
+O terminal tem modo tela cheia (botão ou ⌘⇧F): cobre a janela inteira, com o
+nome da iniciativa e as sessões numa faixa só, e a escolha fica guardada no
+`localStorage`. Esc não sai do modo, porque o Claude Code usa a tecla para
+interromper. Captura `initiatives-terminal-cheio.png`.
+
+**Apps e servidores MCP separados.** A vitrine de Apps mostra só o catálogo;
+servidor próprio ou importado não vira mais cartão (o cartão dizia "precisa
+de atenção" para todo servidor desligado e não tinha o que fazer). A seção
+Servidores MCP agrupa pela origem: os adicionados aqui, um grupo por plugin,
+os de usuário do Claude Code e, recolhidos, os que os apps cadastraram. A
+origem sai de `claudeImport.origins`, que só lê os arquivos do Claude Code,
+sem shell nem segredo. Cada linha tem um ponto de estado (desligado, precisa
+autorizar, falhou, respondendo, ligado sem teste), o comando ou endereço,
+leitura ou escrita, e Autorizar quando um servidor http pede OAuth. Importar
+e adicionar ficam no cabeçalho da seção, que relê o cadastro depois.
+
 ## Próximos passos
 
 Iniciativas: I1, I2 e I3 prontos no código. Falta o teste à mão da sessão

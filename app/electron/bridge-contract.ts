@@ -311,6 +311,8 @@ interface ServiceApi {
   "claudeImport.list": ClaudeImportService["listar"];
   /** Cadastra os escolhidos desligados, com o segredo no cofre. */
   "claudeImport.apply": ClaudeImportService["importar"];
+  /** De onde vem cada servidor do Claude Code, para agrupar os já importados. */
+  "claudeImport.origins": ClaudeImportService["origens"];
   /** Slack pelo servidor oficial, com o app que a pessoa criou no workspace. */
   "connections.slackApp": ConnectionService["slackApp"];
   "connections.connectSlack": ConnectionService["connectSlack"];
@@ -570,6 +572,7 @@ export const BRIDGE_CHANNELS = [
   "connections.addCustom",
   "claudeImport.list",
   "claudeImport.apply",
+  "claudeImport.origins",
   "connections.slackApp",
   "connections.connectSlack",
   "connections.disconnectSlack",

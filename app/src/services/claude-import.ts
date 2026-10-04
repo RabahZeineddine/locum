@@ -220,6 +220,19 @@ export class ClaudeImportService {
     return saida;
   }
 
+  /**
+   * De onde vem cada servidor que o Claude Code declara, pelo nome: "usuário"
+   * ou o plugin. Só lê os arquivos, sem shell nem segredo, para a tela agrupar
+   * o que já foi importado.
+   */
+  async origens(): Promise<Record<string, string>> {
+    const out: Record<string, string> = {};
+    const doUsuario = comoObjeto(comoObjeto(lerJson(join(this.deps.home, ".claude.json"))).mcpServers);
+    for (const nome of Object.keys(doUsuario)) out[nome] ??= "usuário";
+    for (const f of servidoresDosPlugins(this.deps.home)) for (const nome of Object.keys(f.servidores)) out[nome] ??= f.origem;
+    return out;
+  }
+
   /** O que dá para importar, sem segredo nem cadastro completo. */
   async listar(): Promise<Candidato[]> {
     return (await this.preparados()).map(({ config: _c, segredo: _s, ...candidato }) => candidato);

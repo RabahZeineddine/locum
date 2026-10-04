@@ -2,7 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { call, read, useRead, type ReadResult } from "@/lib/bridge";
 import { cn } from "@/lib/utils";
-import { Download, MessageSquare, Plug, Plus, Search, Users, X } from "lucide-react";
+import { MessageSquare, Plug, Search, Users, X } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { GATILHOS, PASSOS } from "@/lib/automacao";
@@ -37,7 +37,9 @@ export function Vitrine({ paineis }: { paineis: Record<string, ReactNode> }) {
   const [ligando, setLigando] = useState<string | null>(null);
   const [erros, setErros] = useState<Record<string, string>>({});
 
-  const lista = recarregada ?? inicial.data ?? [];
+  // Servidor MCP próprio ou importado mora na seção de servidores, agrupado
+  // por origem: aqui ficam só os apps do catálogo.
+  const lista = (recarregada ?? inicial.data ?? []).filter((c) => !c.custom);
   const recarregar = (): Promise<void> =>
     read("connections.list").then(setRecarregada, () => undefined);
 
@@ -126,53 +128,13 @@ export function Vitrine({ paineis }: { paineis: Record<string, ReactNode> }) {
               onLigar={() => ligar(c.id)}
             />
           ))}
-          {categoria === null && termo === "" ? (
-            <button
-              className="border-border text-muted-foreground hover:border-foreground/40 hover:text-foreground flex min-h-[132px] cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed text-sm transition-colors"
-              data-locum-vitrine-propria=""
-              onClick={() => setAberta("__custom")}
-              type="button"
-            >
-              <Plus aria-hidden className="size-4" />
-              {t("connections.custom.open")}
-            </button>
-          ) : null}
-          {categoria === null && termo === "" ? (
-            <button
-              className="border-border text-muted-foreground hover:border-foreground/40 hover:text-foreground flex min-h-[132px] cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed text-sm transition-colors"
-              data-locum-vitrine-importar=""
-              onClick={() => setAberta("__importar")}
-              type="button"
-            >
-              <Download aria-hidden className="size-4" />
-              {t("connections.import.open")}
-            </button>
-          ) : null}
         </div>
       )}
       {visiveis.length === 0 && lista.length > 0 ? (
         <p className="text-muted-foreground text-sm">{t("connections.none")}</p>
       ) : null}
 
-      {aberta === "__importar" ? (
-        <Painel id="__importar" onFechar={() => setAberta(null)} titulo={t("connections.import.title")}>
-          <ImportarDoClaude
-            onPronto={() => {
-              void recarregar();
-              setAberta(null);
-            }}
-          />
-        </Painel>
-      ) : aberta === "__custom" ? (
-        <Painel id="__custom" onFechar={() => setAberta(null)} titulo={t("connections.custom.title")}>
-          <Propria
-            onPronta={(id) => {
-              void recarregar();
-              setAberta(id);
-            }}
-          />
-        </Painel>
-      ) : selecionada !== null ? (
+      {selecionada !== null ? (
         <Painel
           cabeca={<Logo conexao={selecionada} tamanho="lg" />}
           id={selecionada.id}
@@ -316,7 +278,7 @@ function Cartao({
  * Painel lateral sobre a tela. Esc e clique fora fecham, e o foco entra no
  * botão de fechar para o teclado não ficar preso na grade por trás.
  */
-function Painel({
+export function Painel({
   cabeca,
   children,
   id,
@@ -527,7 +489,7 @@ function Oferece({ app }: { app: string }) {
  */
 type Candidato = Awaited<ReturnType<typeof call<"claudeImport.list">>>[number];
 
-function ImportarDoClaude({ onPronto }: { onPronto: () => void }) {
+export function ImportarDoClaude({ onPronto }: { onPronto: () => void }) {
   const { t } = useTranslation();
   // Lê arquivos e o shell de login, então vai por chamada e não por leitura.
   const [candidatos, setCandidatos] = useState<{ status: "loading" | "ready"; data: Candidato[] }>({ status: "loading", data: [] });
@@ -617,7 +579,7 @@ function ImportarDoClaude({ onPronto }: { onPronto: () => void }) {
   );
 }
 
-function Propria({ onPronta }: { onPronta: (id: string) => void }) {
+export function Propria({ onPronta }: { onPronta: (id: string) => void }) {
   const { t } = useTranslation();
   const [nome, setNome] = useState("");
   const [url, setUrl] = useState("");

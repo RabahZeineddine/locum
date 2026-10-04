@@ -456,7 +456,10 @@
         "new": "Nova sessão com Claude",
         "close": "Fechar terminal",
         "empty": "Nenhum terminal aberto nesta iniciativa. Uma sessão nova abre o Claude Code na pasta dela, com o contexto e o handoff de sempre; retomar uma conversa da aba Sessões também cai aqui quando o terminal escolhido é o do Locum.",
-        "ended": "a sessão terminou (código {{code}})"
+        "ended": "a sessão terminou (código {{code}})",
+        "full": "Tela cheia",
+        "exitFull": "Sair da tela cheia",
+        "fullHint": "Alterna a tela cheia (⌘⇧F)"
       }
     },
     "status": {
@@ -661,15 +664,15 @@
     },
     "servers": {
       "title": "Servidores MCP",
-      "description": "Cadastros que os passos referenciam. Testar sobe o servidor, e só quando pedido.",
+      "description": "Os servidores que agents e passos usam, separados pela origem. Importado entra desligado: confira o comando ou o endereço e ligue.",
       "empty": "Nenhum servidor cadastrado.",
       "enabled": "habilitado",
       "disabled": "desabilitado",
-      "turnOn": "Habilitar",
-      "turnOff": "Desabilitar",
-      "test": "Testar conexão",
+      "turnOn": "Ligar",
+      "turnOff": "Desligar",
+      "test": "Testar",
       "testing": "testando...",
-      "list": "listar ferramentas",
+      "list": "Ferramentas",
       "listing": "listando...",
       "noTools": "nenhuma ferramenta",
       "tool": "{{name}} · {{tokens}} tok",
@@ -683,6 +686,26 @@
         "needsAuth": "precisa autenticar",
         "failed": "falhou {{when}}",
         "ok": "respondeu {{when}}"
+      },
+      "search": "Buscar servidor",
+      "authorize": "Autorizar",
+      "scopeRead": "leitura",
+      "scopeWrite": "escrita",
+      "groups": {
+        "manual": "Adicionados aqui",
+        "user": "Do Claude Code",
+        "plugin": "Plugin {{name}}",
+        "apps": "Cadastrados pelos apps",
+        "count_zero": "{{on}} de {{count}} ligados",
+        "count_one": "{{on}} de {{count}} ligado",
+        "count_other": "{{on}} de {{count}} ligados"
+      },
+      "dot": {
+        "off": "desligado",
+        "auth": "precisa autorizar",
+        "failed": "falhou no último uso",
+        "ok": "respondendo",
+        "untested": "ligado, ainda sem teste"
       }
     },
     "github": {

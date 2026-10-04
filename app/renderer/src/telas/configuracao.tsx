@@ -7,7 +7,8 @@ import { nomeDoPadrao, padraoDoRepo } from "@/lib/padrao-do-repo";
 import { rotuloDoModelo, rotuloDoProvedor } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
 import { EscolhaDoModelo } from "../assistente-modelo";
-import { Vitrine } from "./conexoes";
+import { ImportarDoClaude, Painel, Propria, Vitrine } from "./conexoes";
+import { ChevronRight, Download, Plus, Search } from "lucide-react";
 import { quando } from "./sessoes";
 import { useIdioma } from "../idioma";
 import { useEffect, useState } from "react";
@@ -285,8 +286,6 @@ export function Configuracao({ detalhe, navegar }: TelaProps) {
  * de Apps só a monta.
  */
 export function ConexoesDoLocum() {
-  const { t } = useTranslation();
-  const servidores = useRead("mcp.list");
   const credenciais = useRead("credentials.overview");
   const porCadastro = new Map<string, Credencial>();
   for (const credencial of credenciais.data?.refs ?? []) {
@@ -316,23 +315,8 @@ export function ConexoesDoLocum() {
             }}
           />
 
-          <Secao
-            descricao={t("settings.servers.description")}
-            titulo={t("settings.servers.title")}
-          >
-            {(servidores.data ?? []).length === 0 ? (
-              <Vazio>{t("settings.servers.empty")}</Vazio>
-            ) : (
-              (servidores.data ?? []).map((servidor) => (
-                <LinhaDoServidor
-                  credencial={porCadastro.get(`mcp:${servidor.config.name}`)}
-                  key={servidor.config.name}
-                  servidor={servidor}
-                />
-              ))
-            )}
-          </Secao>
-            </div>
+          <ServidoresMcp porCadastro={porCadastro} />
+        </div>
   );
 }
 
@@ -1424,6 +1408,210 @@ type EstadoDoTeste =
   | { fase: "respondeu"; teste: Teste }
   | { fase: "recusado"; erro: string };
 
+type Grupo = { chave: string; titulo: string; servidores: Servidor[] };
+
+/**
+ * De onde veio o servidor, para a lista não misturar o que a pessoa
+ * cadastrou com o que veio de um plugin do Claude Code ou o que um app do
+ * catálogo cadastrou ao ligar. A origem é lida dos arquivos do Claude Code a
+ * cada abertura: um servidor com o mesmo nome de um que ele declara conta
+ * como importado de lá.
+ */
+function agrupar(
+  servidores: Servidor[],
+  origens: Record<string, string>,
+  doCatalogo: ReadonlySet<string>,
+  t: (chave: string, opcoes?: Record<string, unknown>) => string,
+): Grupo[] {
+  const grupos = new Map<string, Grupo>();
+  const em = (chave: string, titulo: string, servidor: Servidor): void => {
+    const grupo = grupos.get(chave) ?? { chave, titulo, servidores: [] };
+    grupo.servidores.push(servidor);
+    grupos.set(chave, grupo);
+  };
+  for (const servidor of servidores) {
+    const nome = servidor.config.name;
+    const origem = origens[nome];
+    if (doCatalogo.has(nome)) em("apps", t("settings.servers.groups.apps"), servidor);
+    else if (origem === "usuário") em("usuario", t("settings.servers.groups.user"), servidor);
+    else if (origem !== undefined) {
+      const plugin = origem.split("@")[0] ?? origem;
+      em(`plugin:${plugin}`, t("settings.servers.groups.plugin", { name: plugin }), servidor);
+    } else em("seus", t("settings.servers.groups.manual"), servidor);
+  }
+  // Os seus primeiro, depois os plugins e o Claude Code, e por último os
+  // que os apps cadastraram, que já têm cartão na vitrine.
+  const peso = (g: Grupo): number => (g.chave === "seus" ? 0 : g.chave === "apps" ? 3 : g.chave === "usuario" ? 2 : 1);
+  return [...grupos.values()]
+    .map((g) => ({ ...g, servidores: g.servidores.sort((a, b) => a.config.name.localeCompare(b.config.name)) }))
+    .sort((a, b) => peso(a) - peso(b) || a.titulo.localeCompare(b.titulo));
+}
+
+/**
+ * Os servidores MCP cadastrados, separados dos apps: agrupados pela origem,
+ * com busca e os dois jeitos de cadastrar (importar do Claude Code ou
+ * adicionar pelo endereço).
+ */
+function ServidoresMcp({ porCadastro }: { porCadastro: Map<string, Credencial> }) {
+  const { t } = useTranslation();
+  const inicial = useRead("mcp.list");
+  const origens = useRead("claudeImport.origins");
+  const conexoes = useRead("connections.list");
+  const [relidos, setRelidos] = useState<Servidor[] | null>(null);
+  const [painel, setPainel] = useState<"importar" | "adicionar" | null>(null);
+  const [busca, setBusca] = useState("");
+  // A versão sobe a cada releitura para as linhas recomeçarem do cadastro.
+  const [versao, setVersao] = useState(0);
+
+  const servidores = relidos ?? inicial.data ?? [];
+  const reler = (): void => {
+    read("mcp.list").then(
+      (lista) => {
+        setRelidos(lista);
+        setVersao((v) => v + 1);
+      },
+      () => undefined,
+    );
+  };
+
+  const doCatalogo = new Set((conexoes.data ?? []).filter((c) => !c.custom).map((c) => c.id));
+  const termo = busca.trim().toLowerCase();
+  const visiveis = servidores.filter((s) => {
+    if (termo === "") return true;
+    const destino = s.config.transport === "stdio" ? (s.config.command ?? []).join(" ") : (s.config.url ?? "");
+    return s.config.name.toLowerCase().includes(termo) || destino.toLowerCase().includes(termo);
+  });
+  const grupos = agrupar(visiveis, origens.data ?? {}, doCatalogo, t);
+
+  return (
+    <section className="flex flex-col gap-4" data-locum-probe="servidores-mcp">
+      <header className="flex flex-col gap-1">
+        <h2 className="font-medium text-[15px] tracking-tight">{t("settings.servers.title")}</h2>
+        <p className="text-muted-foreground max-w-[68ch] text-xs">{t("settings.servers.description")}</p>
+      </header>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="border-border bg-card focus-within:ring-ring flex h-8 min-w-[220px] flex-1 items-center gap-2 rounded-md border px-2 focus-within:ring-2">
+          <Search aria-hidden className="text-muted-foreground size-3.5" />
+          <input
+            aria-label={t("settings.servers.search")}
+            className="placeholder:text-muted-foreground w-full bg-transparent text-sm outline-none"
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder={t("settings.servers.search")}
+            value={busca}
+          />
+        </label>
+        <Button
+          className="cursor-pointer"
+          data-locum-vitrine-importar=""
+          onClick={() => setPainel("importar")}
+          size="sm"
+          variant="outline"
+        >
+          <Download aria-hidden className="size-3.5" />
+          {t("connections.import.open")}
+        </Button>
+        <Button
+          className="cursor-pointer"
+          data-locum-vitrine-propria=""
+          onClick={() => setPainel("adicionar")}
+          size="sm"
+          variant="outline"
+        >
+          <Plus aria-hidden className="size-3.5" />
+          {t("connections.custom.open")}
+        </Button>
+      </div>
+
+      {servidores.length === 0 ? (
+        <Vazio>{t("settings.servers.empty")}</Vazio>
+      ) : grupos.length === 0 ? (
+        <p className="text-muted-foreground text-sm">{t("connections.none")}</p>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {grupos.map((grupo) => (
+            <GrupoDeServidores
+              aberto={termo !== "" || grupo.chave !== "apps"}
+              grupo={grupo}
+              key={`${grupo.chave}:${versao}:${termo === "" ? "" : "busca"}`}
+              onMudou={reler}
+              porCadastro={porCadastro}
+            />
+          ))}
+        </div>
+      )}
+
+      {painel === "importar" ? (
+        <Painel id="__importar" onFechar={() => setPainel(null)} titulo={t("connections.import.title")}>
+          <ImportarDoClaude
+            onPronto={() => {
+              reler();
+              setPainel(null);
+            }}
+          />
+        </Painel>
+      ) : painel === "adicionar" ? (
+        <Painel id="__custom" onFechar={() => setPainel(null)} titulo={t("connections.custom.title")}>
+          <Propria
+            onPronta={() => {
+              reler();
+              setPainel(null);
+            }}
+          />
+        </Painel>
+      ) : null}
+    </section>
+  );
+}
+
+function GrupoDeServidores({
+  aberto,
+  grupo,
+  onMudou,
+  porCadastro,
+}: {
+  aberto: boolean;
+  grupo: Grupo;
+  onMudou: () => void;
+  porCadastro: Map<string, Credencial>;
+}) {
+  const { t } = useTranslation();
+  const [expandido, setExpandido] = useState(aberto);
+  const ligados = grupo.servidores.filter((s) => s.enabled).length;
+
+  return (
+    <div className="border-border bg-card overflow-hidden rounded-lg border" data-locum-grupo-servidores={grupo.chave}>
+      <button
+        aria-expanded={expandido}
+        className="hover:bg-muted/40 flex w-full cursor-pointer items-center gap-2 px-4 py-2.5 text-left transition-colors"
+        onClick={() => setExpandido(!expandido)}
+        type="button"
+      >
+        <ChevronRight
+          aria-hidden
+          className={cn("text-muted-foreground size-3.5 transition-transform", expandido && "rotate-90")}
+        />
+        <span className="text-sm font-medium">{grupo.titulo}</span>
+        <span className="text-muted-foreground ml-auto text-xs tabular-nums">
+          {t("settings.servers.groups.count", { count: grupo.servidores.length, on: ligados })}
+        </span>
+      </button>
+      {expandido ? (
+        <div className="border-border border-t">
+          {grupo.servidores.map((servidor) => (
+            <LinhaDoServidor
+              credencial={porCadastro.get(`mcp:${servidor.config.name}`)}
+              key={servidor.config.name}
+              onMudou={onMudou}
+              servidor={servidor}
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 /**
  * Um servidor MCP cadastrado, com os dois exames que ele aceita.
  *
@@ -1434,9 +1622,11 @@ type EstadoDoTeste =
  */
 function LinhaDoServidor({
   credencial,
+  onMudou,
   servidor,
 }: {
   credencial: Credencial | undefined;
+  onMudou: () => void;
   servidor: Servidor;
 }) {
   const { t } = useTranslation();
@@ -1448,6 +1638,8 @@ function LinhaDoServidor({
   const saude = saudeRelida ?? servidor.health;
   const [ligado, setLigado] = useState(servidor.enabled);
   const [ligando, setLigando] = useState(false);
+  const [autorizando, setAutorizando] = useState(false);
+  const [erroDeAutorizar, setErroDeAutorizar] = useState<string | null>(null);
 
   // Servidor cadastrado por um assistente nasce desligado, e é aqui que a
   // pessoa vê o comando ou o endereço antes de deixar o executor usá-lo.
@@ -1503,6 +1695,24 @@ function LinhaDoServidor({
     );
   };
 
+  // http sem credencial que pediu autorização: o OAuth do Locum resolve
+  // aqui mesmo, sem passar pela vitrine.
+  const podeAutorizar = servidor.config.transport === "http" && saude.needsAuth;
+  const autorizar = (): void => {
+    setAutorizando(true);
+    setErroDeAutorizar(null);
+    call("connections.connect", nome).then(
+      () => {
+        setAutorizando(false);
+        onMudou();
+      },
+      (erro: unknown) => {
+        setAutorizando(false);
+        setErroDeAutorizar(erro instanceof Error ? erro.message : String(erro));
+      },
+    );
+  };
+
   return (
     <div
       className="flex flex-col gap-2 border-border border-b px-4 py-3 last:border-b-0"
@@ -1511,31 +1721,40 @@ function LinhaDoServidor({
       data-locum-servidor={nome}
       data-locum-transporte={servidor.config.transport}
     >
-      <div className="flex flex-wrap items-center gap-3 text-sm">
-        <span className="w-40 shrink-0 truncate font-medium" title={destino}>
-          {nome}
-        </span>
-        <Badge variant="outline">{servidor.config.transport}</Badge>
-        <Badge variant={servidor.config.scope === "write" ? "destructive" : "outline"}>
-          {servidor.config.scope}
-        </Badge>
-        <Badge variant={ligado ? "secondary" : "outline"}>
-          {t(ligado ? "settings.servers.enabled" : "settings.servers.disabled")}
-        </Badge>
-        <Credenciais credencial={credencial} />
-        <SaudeDoServidor saude={saude} />
-        <div className="ml-auto flex items-center gap-1">
+      <div className="flex items-center gap-3 text-sm">
+        <PontoDoServidor ligado={ligado} saude={saude} />
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <span className={cn("truncate font-medium", !ligado && "text-muted-foreground")}>{nome}</span>
+            <span className="text-muted-foreground text-[11px]">
+              {servidor.config.transport}
+              {" · "}
+              <span className={servidor.config.scope === "write" ? "text-sev-medium" : undefined}>
+                {t(servidor.config.scope === "write" ? "settings.servers.scopeWrite" : "settings.servers.scopeRead")}
+              </span>
+            </span>
+            <Credenciais credencial={credencial} />
+            <SaudeDoServidor saude={saude} />
+          </div>
+          <span className="text-muted-foreground truncate font-mono text-[11px]" title={destino}>
+            {destino}
+          </span>
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          {podeAutorizar ? (
+            <Button
+              className="cursor-pointer"
+              data-locum-autorizar={nome}
+              disabled={autorizando}
+              onClick={autorizar}
+              size="sm"
+              variant="outline"
+            >
+              {t(autorizando ? "connections.connecting" : "settings.servers.authorize")}
+            </Button>
+          ) : null}
           <Button
-            data-locum-ligar-servidor={nome}
-            disabled={ligando}
-            onClick={alternar}
-            size="sm"
-            title={destino}
-            variant="ghost"
-          >
-            {t(ligado ? "settings.servers.turnOff" : "settings.servers.turnOn")}
-          </Button>
-          <Button
+            className="cursor-pointer"
             data-locum-testar={nome}
             disabled={teste.fase === "testando"}
             onClick={testar}
@@ -1545,6 +1764,7 @@ function LinhaDoServidor({
             {t(teste.fase === "testando" ? "settings.servers.testing" : "settings.servers.test")}
           </Button>
           <Button
+            className="cursor-pointer"
             data-locum-listar={nome}
             disabled={listando}
             onClick={listar}
@@ -1553,9 +1773,20 @@ function LinhaDoServidor({
           >
             {t(listando ? "settings.servers.listing" : "settings.servers.list")}
           </Button>
+          <Button
+            className="cursor-pointer"
+            data-locum-ligar-servidor={nome}
+            disabled={ligando}
+            onClick={alternar}
+            size="sm"
+            variant={ligado ? "ghost" : "secondary"}
+          >
+            {t(ligado ? "settings.servers.turnOff" : "settings.servers.turnOn")}
+          </Button>
         </div>
       </div>
 
+      {erroDeAutorizar === null ? null : <p className="text-destructive text-xs">{erroDeAutorizar}</p>}
       <ResultadoDoTeste estado={teste} nome={nome} />
 
       {ferramentas === null ? null : (
@@ -1580,6 +1811,28 @@ function LinhaDoServidor({
         </div>
       )}
     </div>
+  );
+}
+
+/** Estado num relance: desligado, precisa autorizar, falhou, respondeu ou nunca testado. */
+function PontoDoServidor({ ligado, saude }: { ligado: boolean; saude: Servidor["health"] }) {
+  const { t } = useTranslation();
+  const falhando =
+    saude.lastFailureAt !== null && (saude.lastOkAt === null || saude.lastFailureAt > saude.lastOkAt);
+  const [cor, chave] = !ligado
+    ? ["bg-muted-foreground/30", "off"]
+    : saude.needsAuth || falhando
+      ? ["bg-destructive", saude.needsAuth ? "auth" : "failed"]
+      : saude.lastOkAt !== null
+        ? ["bg-emerald-500", "ok"]
+        : ["bg-sev-medium", "untested"];
+  return (
+    <span
+      aria-label={t(`settings.servers.dot.${chave}`)}
+      className={cn("size-2 shrink-0 rounded-full", cor)}
+      role="img"
+      title={t(`settings.servers.dot.${chave}`)}
+    />
   );
 }
 
