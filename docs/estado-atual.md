@@ -1386,6 +1386,29 @@ autorizar, falhou, respondendo, ligado sem teste), o comando ou endereço,
 leitura ou escrita, e Autorizar quando um servidor http pede OAuth. Importar
 e adicionar ficam no cabeçalho da seção, que relê o cadastro depois.
 
+**Servidores MCP para diagnosticar.** A seção ganhou filtro por estado (com
+problema, ligados, desligados), "Testar ligados" (um de cada vez) e o motivo
+da falha na própria linha. O nome abre o detalhe: estado com o erro inteiro,
+comando ou endereço, credencial, ferramentas marcadas como leitura ou escrita
+pelo mesmo critério da conta Claude (`src/config/leitura.ts`) e as
+iniciativas que usam o servidor (`mcp.usage`). Servidor sem OAuth recebe a
+chave colada ali (`mcp.setCredential`): o valor vai para o cofre em
+`mcp/<nome>` e o cadastro ganha o marcador no cabeçalho ou na variável; em
+`Authorization`, sem esquema, ganha "Bearer ".
+
+Três causas de falha que a tela escondia:
+- **stdio sem motivo.** O stderr do processo era herdado e sumia, e o erro
+  chegava só como "Connection closed". Agora é lido, e as últimas linhas vão
+  junto com o erro (`stdioComSaida` no registro).
+- **Autorizado e ainda pedindo autorização.** O OAuth guardava o token, mas a
+  falha 401 de antes seguia no cadastro até a próxima conexão. Depois de
+  autorizar, o Locum testa na hora e grava o desfecho.
+- **App OAuth do plugin.** Servidor que o plugin declara com
+  `oauth.clientId` e `callbackPort` (backoffice, no Entra) não aceita registro
+  automático. A importação guarda esse app em `mcp.oauthCliente.<nome>`, e
+  autorizar usa ele, com retorno em `http://localhost:<porta>/callback`.
+  Servidor importado antes disto precisa ser importado de novo.
+
 ## Próximos passos
 
 Iniciativas: I1, I2 e I3 prontos no código. Falta o teste à mão da sessão

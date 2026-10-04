@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
 import { isAuthError, McpRegistry, type McpConnectOutcome, type McpToolInfo } from "../mcp/registry.js";
 import { McpServerConfig, type McpServerInput } from "../config/types.js";
-import { fillCredential, secretService, type SecretService } from "./secret-service.js";
+import { CREDENTIAL_PLACEHOLDER, fillCredential, secretService, type SecretService } from "./secret-service.js";
 
 export type { McpToolInfo };
 export { isAuthError };
@@ -150,6 +150,46 @@ export class McpService {
       .where(eq(schema.mcpServers.name, name))
       .returning();
     if (updated.length === 0) throw new Error(`servidor MCP "${name}" nao cadastrado`);
+  }
+
+  /**
+   * Guarda um token colado pela pessoa, para servidor que não autoriza por
+   * OAuth (chave de API, token pessoal). O valor vai para o cofre em
+   * `mcp/<nome>`; o cadastro ganha o marcador no cabeçalho (http) ou na
+   * variável (stdio) indicada. Em `Authorization`, valor sem esquema ganha
+   * "Bearer ", que é o que esses servidores esperam.
+   */
+  async setCredential(name: string, entrada: { campo: string; valor: string }): Promise<McpServerEntry> {
+    const row = await this.row(name);
+    if (row === undefined) throw new Error(`servidor MCP "${name}" nao cadastrado`);
+    const campo = entrada.campo.trim();
+    const valor = entrada.valor.trim();
+    if (campo === "" || valor === "") throw new Error("informe o campo e o valor da credencial");
+    if (!/^[A-Za-z0-9_-]+$/.test(campo)) throw new Error(`"${campo}" não serve de nome de cabeçalho ou variável`);
+
+    const { config } = toEntry(row);
+    const ref = `mcp/${name}`;
+    const http = config.transport !== "stdio";
+    const final = http && campo.toLowerCase() === "authorization" && !/^(bearer|basic|token)\s/i.test(valor) ? `Bearer ${valor}` : valor;
+    this.secrets.set(ref, final);
+    await this.register(
+      http
+        ? { ...config, headers: { ...(config.headers ?? {}), [campo]: CREDENTIAL_PLACEHOLDER } }
+        : { ...config, env: { ...(config.env ?? {}), [campo]: CREDENTIAL_PLACEHOLDER } },
+    );
+    await this.setCredentialRef(name, ref);
+    return toEntry((await this.row(name))!);
+  }
+
+  /** Títulos das iniciativas que usam cada servidor, para a tela dizer quem depende dele. */
+  async usage(): Promise<Record<string, string[]>> {
+    const linhas = await this.db
+      .select({ servidor: schema.initiativeMcpServers.serverName, titulo: schema.initiatives.title })
+      .from(schema.initiativeMcpServers)
+      .innerJoin(schema.initiatives, eq(schema.initiatives.id, schema.initiativeMcpServers.initiativeId));
+    const uso: Record<string, string[]> = {};
+    for (const { servidor, titulo } of linhas) (uso[servidor] ??= []).push(titulo);
+    return uso;
   }
 
   async setEnabled(name: string, enabled: boolean): Promise<void> {

@@ -5958,6 +5958,23 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
     writeFileSync(join(destino, `${id}${sufixo}.png`), imagem.toPNG());
   }
 
+  // Os servidores MCP ficam abaixo da vitrine, e o detalhe abre por clique.
+  await irPara(janela, "apps");
+  await new Promise((resolve) => setTimeout(resolve, 1200));
+  await janela.webContents.executeJavaScript(
+    `(document.querySelector("[data-locum-probe=servidores-mcp]")?.scrollIntoView({ block: "start" }), null)`,
+  );
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  writeFileSync(join(destino, "apps-servidores.png"), (await janela.webContents.capturePage()).toPNG());
+  await janela.webContents.executeJavaScript(
+    `(document.querySelector("[data-locum-detalhe-servidor]")?.click(), null)`,
+  );
+  await new Promise((resolve) => setTimeout(resolve, 2500));
+  writeFileSync(join(destino, "apps-servidor-detalhe.png"), (await janela.webContents.capturePage()).toPNG());
+  await janela.webContents.executeJavaScript(
+    `(document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })), window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })), null)`,
+  );
+
   // O que vigia e quanto gasta ficam abaixo dos passos, fora da primeira foto.
   if (primeiroAgent) {
     await irPara(janela, "agents", primeiroAgent);

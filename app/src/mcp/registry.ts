@@ -112,22 +112,32 @@ export class McpRegistry {
     const cfg = this.configs.get(name);
     if (!cfg) throw new Error(`servidor MCP "${name}" nao cadastrado`);
 
-    const client =
-      cfg.transport === "stdio"
-        ? await createMCPClient({
-            transport: new Experimental_StdioMCPTransport({
-              command: cfg.command![0]!,
-              args: cfg.command!.slice(1),
-              env: cfg.env,
-            }),
-          })
-        : await createMCPClient({
-            transport: { type: cfg.transport, url: cfg.url!, headers: cfg.headers },
-          });
+    let client: Awaited<ReturnType<typeof createMCPClient>>;
+    let tools: ToolSet;
+    if (cfg.transport === "stdio") {
+      const { transport, saida } = stdioComSaida(cfg);
+      try {
+        client = await createMCPClient({ transport });
+        tools = await client.tools();
+      } catch (err) {
+        // "Connection closed" sozinho não diz nada; o que o processo escreveu
+        // no stderr antes de sair costuma dizer (comando que não existe,
+        // token ausente, pacote que não baixou).
+        const ultimas = saida();
+        if (ultimas === "") throw err;
+        const message = err instanceof Error ? err.message : String(err);
+        throw new Error(`${message}: ${ultimas}`, { cause: err });
+      }
+    } else {
+      client = await createMCPClient({
+        transport: { type: cfg.transport, url: cfg.url!, headers: cfg.headers },
+      });
+      tools = await client.tools();
+    }
 
     const entry: Entry = {
       client,
-      tools: await client.tools(),
+      tools,
       timer: null,
       refs: 0,
       fingerprint: fingerprint(cfg),
@@ -314,3 +324,40 @@ function estimateTokens(name: string, description: string | undefined, inputSche
   const payload = JSON.stringify({ name, description: description ?? "", schema: raw ?? {} });
   return Math.ceil(payload.length / 4);
 }
+
+/** O que o stderr guarda para a mensagem de erro: o fim, que é onde está o motivo. */
+const TETO_DO_STDERR = 2_000;
+
+/**
+ * Transporte stdio com o stderr lido em vez de herdado. Herdado, ele ia para
+ * o terminal do app, que aberto pelo Finder não existe. O stream é sempre
+ * consumido, para o processo nunca travar com o buffer cheio.
+ */
+export function stdioComSaida(cfg: McpServerConfig): { transport: Experimental_StdioMCPTransport; saida: () => string } {
+  let texto = "";
+  const transport = new Experimental_StdioMCPTransport({
+    command: cfg.command![0]!,
+    args: cfg.command!.slice(1),
+    env: cfg.env,
+    stderr: "pipe",
+  });
+  const iniciar = transport.start.bind(transport);
+  transport.start = async () => {
+    await iniciar();
+    const processo = (transport as unknown as { process?: { stderr?: NodeJS.ReadableStream | null } }).process;
+    processo?.stderr?.on("data", (pedaco: Buffer | string) => {
+      texto = (texto + pedaco.toString()).slice(-TETO_DO_STDERR * 2);
+    });
+  };
+  return {
+    transport,
+    saida: () =>
+      texto
+        .split("\n")
+        .map((l) => l.trim())
+        .filter((l) => l !== "")
+        .join(" | ")
+        .slice(-TETO_DO_STDERR),
+  };
+}
+

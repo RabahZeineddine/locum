@@ -68,6 +68,9 @@ export interface PreRegisteredClient {
   scope?: string;
 }
 
+/** Onde a importação guarda o app OAuth que o plugin declara, por servidor. */
+export const chaveDoClienteOAuth = (nome: string): string => `mcp.oauthCliente.${nome}`;
+
 export interface McpOAuthDeps {
   mcp: McpService;
   secrets: SecretService;
@@ -184,6 +187,14 @@ export class McpOAuthService {
       resource,
     });
     await this.ensureHeader(name);
+    // A falha de antes da autorização segue no cadastro até a próxima
+    // conexão, e a tela continuaria pedindo para autorizar. Testar agora
+    // grava o desfecho com o token novo.
+    try {
+      await this.deps.mcp.testConnection(name);
+    } catch {
+      // O teste devolve a falha como dado; chegar aqui é cadastro sumido.
+    }
     return this.status(name);
   }
 

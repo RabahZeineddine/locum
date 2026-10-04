@@ -1,6 +1,6 @@
 import { claudeCodeService, type ClaudeCodeService } from "./claude-code-service.js";
 import { githubService, type GithubService } from "./github-service.js";
-import { mcpOAuthService, type McpOAuthService } from "./mcp-oauth-service.js";
+import { chaveDoClienteOAuth, mcpOAuthService, type McpOAuthService, type PreRegisteredClient } from "./mcp-oauth-service.js";
 import { mcpService, type McpService } from "./mcp-service.js";
 import { settingsService, type SettingsService } from "./settings-service.js";
 import {
@@ -198,7 +198,7 @@ export class ConnectionService {
     if (atual === undefined || atual.config.transport !== "http" || atual.config.url !== url) {
       await this.deps.mcp.register({ name: id, transport: "http", url });
     }
-    await this.deps.oauth.connect(id);
+    await this.deps.oauth.connect(id, await clienteGuardado(this.deps.settings, id));
     return this.um(id);
   }
 
@@ -414,3 +414,22 @@ export class ConnectionService {
 }
 
 export const connectionService = new ConnectionService();
+
+/**
+ * O app OAuth cadastrado no serviço para este servidor, quando há um. Sem ele
+ * vale o registro automático, que servidor da casa (backoffice no Entra)
+ * costuma não aceitar.
+ */
+async function clienteGuardado(settings: Pick<SettingsService, "get">, nome: string): Promise<PreRegisteredClient | undefined> {
+  const bruto = await settings.get(chaveDoClienteOAuth(nome));
+  if (bruto === undefined) return undefined;
+  try {
+    const c = JSON.parse(bruto) as Partial<PreRegisteredClient>;
+    return typeof c.clientId === "string" && typeof c.redirectUri === "string"
+      ? { clientId: c.clientId, redirectUri: c.redirectUri, ...(typeof c.scope === "string" ? { scope: c.scope } : {}) }
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+

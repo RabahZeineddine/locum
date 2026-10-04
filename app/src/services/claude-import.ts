@@ -4,7 +4,9 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { McpServerInput } from "../config/types.js";
 import { mcpService, type McpService } from "./mcp-service.js";
+import { chaveDoClienteOAuth, type PreRegisteredClient } from "./mcp-oauth-service.js";
 import { CREDENTIAL_PLACEHOLDER, secretService, type SecretService } from "./secret-service.js";
+import { settingsService, type SettingsService } from "./settings-service.js";
 
 /**
  * Traz para o Locum os servidores MCP que o Claude Code da pessoa já usa: os
@@ -32,6 +34,8 @@ export interface Candidato {
 interface Preparado extends Candidato {
   config: McpServerInput;
   segredo?: string;
+  /** App OAuth que o plugin declara, para autorizar sem registro automático. */
+  cliente?: PreRegisteredClient;
 }
 
 interface Entrada {
@@ -41,6 +45,8 @@ interface Entrada {
   env?: Record<string, string>;
   url?: string;
   headers?: Record<string, string>;
+  /** Como o Claude Code declara app OAuth já cadastrado no serviço. */
+  oauth?: { clientId?: string; callbackPort?: number; scopes?: string[] | string };
 }
 
 export interface ImportDeps {
@@ -49,6 +55,7 @@ export interface ImportDeps {
   ambiente: (nomes: string[]) => Promise<Record<string, string>>;
   mcp: Pick<McpService, "list" | "register" | "setEnabled" | "setCredentialRef">;
   secrets: Pick<SecretService, "set">;
+  settings: Pick<SettingsService, "set">;
 }
 
 const NOME_DE_SEGREDO = /key|token|secret|password|passwd|auth|bearer|cookie/i;
@@ -151,6 +158,18 @@ export function preparar(
       ? { name, transport, command: [expandir(entrada.command ?? ""), ...(entrada.args ?? []).map(expandir)], ...(env ? { env } : {}), scope: "write" }
       : { name, transport, url: expandir(entrada.url ?? ""), ...(headers ? { headers } : {}), scope: "write" };
 
+  const declarado = entrada.oauth;
+  const cliente: PreRegisteredClient | undefined =
+    transport !== "stdio" && typeof declarado?.clientId === "string" && typeof declarado.callbackPort === "number"
+      ? {
+          clientId: declarado.clientId,
+          redirectUri: `http://localhost:${declarado.callbackPort}/callback`,
+          ...(declarado.scopes === undefined
+            ? {}
+            : { scope: Array.isArray(declarado.scopes) ? declarado.scopes.join(" ") : declarado.scopes }),
+        }
+      : undefined;
+
   return {
     name,
     origem,
@@ -161,6 +180,7 @@ export function preparar(
     jaCadastrado: cadastrados.has(name),
     config,
     ...(segredo === undefined ? {} : { segredo }),
+    ...(cliente === undefined ? {} : { cliente }),
   };
 }
 
@@ -192,6 +212,7 @@ export class ClaudeImportService {
       ambiente: shellDeLogin,
       mcp: mcpService,
       secrets: secretService,
+      settings: settingsService,
     },
   ) {}
 
@@ -235,7 +256,7 @@ export class ClaudeImportService {
 
   /** O que dá para importar, sem segredo nem cadastro completo. */
   async listar(): Promise<Candidato[]> {
-    return (await this.preparados()).map(({ config: _c, segredo: _s, ...candidato }) => candidato);
+    return (await this.preparados()).map(({ config: _c, segredo: _s, cliente: _k, ...candidato }) => candidato);
   }
 
   /**
@@ -248,6 +269,7 @@ export class ClaudeImportService {
     for (const p of escolhidos) {
       await this.deps.mcp.register(p.config);
       if (!p.jaCadastrado) await this.deps.mcp.setEnabled(p.name, false);
+      if (p.cliente !== undefined) await this.deps.settings.set(chaveDoClienteOAuth(p.name), JSON.stringify(p.cliente));
       if (p.segredo !== undefined) {
         const ref = `mcp/${p.name}`;
         this.deps.secrets.set(ref, p.segredo);

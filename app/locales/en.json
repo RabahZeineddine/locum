@@ -670,7 +670,10 @@
         "apps": "Registered by apps",
         "count_zero": "{{on}} of {{count}} on",
         "count_one": "{{on}} of {{count}} on",
-        "count_other": "{{on}} of {{count}} on"
+        "count_other": "{{on}} of {{count}} on",
+        "problems_one": "{{count}} with problems",
+        "problems_other": "{{count}} with problems",
+        "problems_zero": "{{count}} with problems"
       },
       "dot": {
         "off": "off",
@@ -678,6 +681,47 @@
         "failed": "failed last time",
         "ok": "responding",
         "untested": "on, not tested yet"
+      },
+      "testAll": "Test enabled",
+      "testingAll": "testing {{done}} of {{total}}",
+      "none": "No server matches this filter.",
+      "reauthorize": "Authorize again",
+      "filter": {
+        "label": "Filter by state",
+        "todos": "All",
+        "problema": "With problems",
+        "ligados": "On",
+        "desligados": "Off"
+      },
+      "tags": {
+        "internal": "internal network",
+        "usedBy_one": "{{count}} initiative",
+        "usedBy_other": "{{count}} initiatives",
+        "usedBy_zero": "{{count}} initiatives"
+      },
+      "detail": {
+        "neverOk": "Never responded. Turn it on and test.",
+        "url": "URL",
+        "command": "Command",
+        "headers": "Headers: {{names}}",
+        "env": "Variables: {{names}}",
+        "credential": "Credential",
+        "noCredential": "No credential stored.",
+        "pasteHttp": "For servers without OAuth: paste the key or token. It goes to the vault and into the given header; in Authorization it gets \"Bearer \" when missing.",
+        "pasteStdio": "Paste the key or token. It goes to the vault and into the given environment variable when the process starts.",
+        "header": "Header",
+        "variable": "Variable",
+        "value": "Value",
+        "save": "Save and test",
+        "tools": "Tools",
+        "toolsCount": "{{read}} read, {{write}} write",
+        "toolsOff": "Turn the server on to list its tools, or use Tools to start it now.",
+        "tokens_one": "{{count}} tok",
+        "tokens_other": "{{count}} tok",
+        "tokens_zero": "{{count}} tok",
+        "usedBy": "Used by",
+        "unused": "No initiative uses this server.",
+        "reload": "List again"
       }
     },
     "github": {

@@ -95,3 +95,28 @@ test("servidor que responde 401 falha dizendo que a credencial foi recusada", as
     servidor.close();
   }
 });
+
+test("credencial colada vai para o cofre, com o marcador no cadastro e Bearer no Authorization", async () => {
+  const cofre = new Map<string, string>();
+  const segredos = {
+    set: (ref: string, valor: string) => void cofre.set(ref, valor),
+    get: (ref: string) => cofre.get(ref),
+    pathFor: (ref: string) => ref,
+  } as unknown as ConstructorParameters<typeof McpService>[1];
+  const servico = new McpService(undefined, segredos);
+
+  const remoto = nomeNovo();
+  await servico.register({ name: remoto, transport: "http", url: "http://127.0.0.1:9/mcp" });
+  const http = await servico.setCredential(remoto, { campo: "Authorization", valor: "abc" });
+  assert.equal(http.config.headers?.Authorization, "${credential}");
+  assert.equal(http.credentialRef, `mcp/${remoto}`);
+  assert.equal(cofre.get(`mcp/${remoto}`), "Bearer abc");
+
+  const local = nomeNovo();
+  await servico.register({ name: local, transport: "stdio", command: ["/bin/true"] });
+  const stdio = await servico.setCredential(local, { campo: "API_KEY", valor: "Bearer fica" });
+  assert.equal(stdio.config.env?.API_KEY, "${credential}");
+  assert.equal(cofre.get(`mcp/${local}`), "Bearer fica");
+
+  await assert.rejects(servico.setCredential(local, { campo: "com espaço", valor: "x" }), /não serve/);
+});

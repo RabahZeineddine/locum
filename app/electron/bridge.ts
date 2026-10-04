@@ -253,6 +253,12 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "mcp.tools": (name) => (name === SERVIDOR_CONTA ? claudeAccountService.tools() : mcpService.listTools(name)),
     "claudeAccount.list": (renovar) => claudeAccountService.listar(renovar),
     "mcp.setEnabled": (name, enabled) => mcpService.setEnabled(name, enabled),
+    "mcp.setCredential": async (name, entrada) => {
+      // Devolve só o nome: o cadastro vem com o marcador, mas não há motivo
+      // para a janela receber mais que a confirmação.
+      await mcpService.setCredential(name, entrada);
+    },
+    "mcp.usage": () => mcpService.usage(),
 
     "providers.list": async () => providerService.listProviders(),
     "providers.fallbacks": (machine) => providerService.getFallbacks(machine),

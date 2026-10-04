@@ -63,6 +63,10 @@ test("segredo vai para o marcador, variável resolve e a que falta aparece", () 
   assert.deepEqual(local.config.command, ["/raiz/s.sh", "leitura"]);
   assert.equal(local.destino, "<plugin>/s.sh leitura");
   assert.equal(local.config.scope, "write");
+
+  const daCasa = preparar("backoffice", "acme", { type: "http", url: "https://b/mcp", oauth: { clientId: "app-1", callbackPort: 53682 } }, undefined, {}, new Set());
+  assert.deepEqual(daCasa.cliente, { clientId: "app-1", redirectUri: "http://localhost:53682/callback" });
+  assert.equal(daCasa.oauth, true);
 });
 
 test("importar cadastra desligado, guarda o segredo e não traz o próprio Locum", async () => {
@@ -84,6 +88,7 @@ test("importar cadastra desligado, guarda o segredo e não traz o próprio Locum
       setCredentialRef: async (n, r) => void refs.set(n, r),
     },
     secrets: { set: (r, v) => void cofre.set(r, v) },
+    settings: { set: async () => undefined },
   });
 
   const lista = await servico.listar();

@@ -8,7 +8,8 @@ import { rotuloDoModelo, rotuloDoProvedor } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
 import { EscolhaDoModelo } from "../assistente-modelo";
 import { ImportarDoClaude, Painel, Propria, Vitrine } from "./conexoes";
-import { ChevronRight, Download, Plus, Search } from "lucide-react";
+import { ChevronRight, Download, Plus, RefreshCw, Search } from "lucide-react";
+import { ehLeitura } from "../../../src/config/leitura.js";
 import { quando } from "./sessoes";
 import { useIdioma } from "../idioma";
 import { useEffect, useState } from "react";
@@ -1410,6 +1411,25 @@ type EstadoDoTeste =
 
 type Grupo = { chave: string; titulo: string; servidores: Servidor[] };
 
+type FiltroDeServidor = "todos" | "problema" | "ligados" | "desligados";
+
+/** Ligado e com a falha mais recente depois do último sucesso, ou pedindo autorização. */
+function comProblema(servidor: Servidor): boolean {
+  const { health } = servidor;
+  const falhando = health.lastFailureAt !== null && (health.lastOkAt === null || health.lastFailureAt > health.lastOkAt);
+  return servidor.enabled && (health.needsAuth || falhando);
+}
+
+function destinoDe(servidor: Servidor): string {
+  return servidor.config.transport === "stdio" ? (servidor.config.command ?? []).join(" ") : (servidor.config.url ?? "");
+}
+
+/** Endereço que só a rede da casa alcança: o servidor falha fora da VPN, e a tela avisa. */
+function redeInterna(servidor: Servidor): boolean {
+  const url = servidor.config.url ?? "";
+  return /\.internal\.|\/\/(localhost|127\.0\.0\.1|\[::1\])[:/]/.test(url);
+}
+
 /**
  * De onde veio o servidor, para a lista não misturar o que a pessoa
  * cadastrou com o que veio de um plugin do Claude Code ou o que um app do
@@ -1417,6 +1437,21 @@ type Grupo = { chave: string; titulo: string; servidores: Servidor[] };
  * cada abertura: um servidor com o mesmo nome de um que ele declara conta
  * como importado de lá.
  */
+function chaveDaOrigem(nome: string, origens: Record<string, string>, doCatalogo: ReadonlySet<string>): string {
+  const origem = origens[nome];
+  if (doCatalogo.has(nome)) return "apps";
+  if (origem === "usuário") return "usuario";
+  if (origem !== undefined) return `plugin:${origem.split("@")[0] ?? origem}`;
+  return "seus";
+}
+
+function tituloDaOrigem(chave: string, t: (chave: string, opcoes?: Record<string, unknown>) => string): string {
+  if (chave === "apps") return t("settings.servers.groups.apps");
+  if (chave === "usuario") return t("settings.servers.groups.user");
+  if (chave.startsWith("plugin:")) return t("settings.servers.groups.plugin", { name: chave.slice("plugin:".length) });
+  return t("settings.servers.groups.manual");
+}
+
 function agrupar(
   servidores: Servidor[],
   origens: Record<string, string>,
@@ -1424,20 +1459,11 @@ function agrupar(
   t: (chave: string, opcoes?: Record<string, unknown>) => string,
 ): Grupo[] {
   const grupos = new Map<string, Grupo>();
-  const em = (chave: string, titulo: string, servidor: Servidor): void => {
-    const grupo = grupos.get(chave) ?? { chave, titulo, servidores: [] };
+  for (const servidor of servidores) {
+    const chave = chaveDaOrigem(servidor.config.name, origens, doCatalogo);
+    const grupo = grupos.get(chave) ?? { chave, titulo: tituloDaOrigem(chave, t), servidores: [] };
     grupo.servidores.push(servidor);
     grupos.set(chave, grupo);
-  };
-  for (const servidor of servidores) {
-    const nome = servidor.config.name;
-    const origem = origens[nome];
-    if (doCatalogo.has(nome)) em("apps", t("settings.servers.groups.apps"), servidor);
-    else if (origem === "usuário") em("usuario", t("settings.servers.groups.user"), servidor);
-    else if (origem !== undefined) {
-      const plugin = origem.split("@")[0] ?? origem;
-      em(`plugin:${plugin}`, t("settings.servers.groups.plugin", { name: plugin }), servidor);
-    } else em("seus", t("settings.servers.groups.manual"), servidor);
   }
   // Os seus primeiro, depois os plugins e o Claude Code, e por último os
   // que os apps cadastraram, que já têm cartão na vitrine.
@@ -1449,21 +1475,28 @@ function agrupar(
 
 /**
  * Os servidores MCP cadastrados, separados dos apps: agrupados pela origem,
- * com busca e os dois jeitos de cadastrar (importar do Claude Code ou
- * adicionar pelo endereço).
+ * com filtro por estado, teste de todos os ligados de uma vez e os dois
+ * jeitos de cadastrar (importar do Claude Code ou adicionar pelo endereço).
+ * Clicar no nome abre o detalhe, onde ficam o erro inteiro, a credencial,
+ * as ferramentas e quem usa o servidor.
  */
 function ServidoresMcp({ porCadastro }: { porCadastro: Map<string, Credencial> }) {
   const { t } = useTranslation();
   const inicial = useRead("mcp.list");
   const origens = useRead("claudeImport.origins");
   const conexoes = useRead("connections.list");
+  const usoInicial = useRead("mcp.usage");
   const [relidos, setRelidos] = useState<Servidor[] | null>(null);
   const [painel, setPainel] = useState<"importar" | "adicionar" | null>(null);
+  const [detalhe, setDetalhe] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
+  const [filtro, setFiltro] = useState<FiltroDeServidor>("todos");
+  const [testando, setTestando] = useState<{ feitos: number; total: number } | null>(null);
   // A versão sobe a cada releitura para as linhas recomeçarem do cadastro.
   const [versao, setVersao] = useState(0);
 
   const servidores = relidos ?? inicial.data ?? [];
+  const uso = usoInicial.data ?? {};
   const reler = (): void => {
     read("mcp.list").then(
       (lista) => {
@@ -1474,14 +1507,36 @@ function ServidoresMcp({ porCadastro }: { porCadastro: Map<string, Credencial> }
     );
   };
 
+  // Um de cada vez: servidor stdio é um processo, e subir vinte juntos
+  // pesa mais que a espera.
+  const testarLigados = async (): Promise<void> => {
+    const ligados = servidores.filter((s) => s.enabled);
+    setTestando({ feitos: 0, total: ligados.length });
+    for (const [i, s] of ligados.entries()) {
+      await call("mcp.test", s.config.name).catch(() => undefined);
+      setTestando({ feitos: i + 1, total: ligados.length });
+    }
+    setTestando(null);
+    reler();
+  };
+
   const doCatalogo = new Set((conexoes.data ?? []).filter((c) => !c.custom).map((c) => c.id));
+  const contagem: Record<FiltroDeServidor, number> = {
+    todos: servidores.length,
+    problema: servidores.filter(comProblema).length,
+    ligados: servidores.filter((s) => s.enabled).length,
+    desligados: servidores.filter((s) => !s.enabled).length,
+  };
   const termo = busca.trim().toLowerCase();
   const visiveis = servidores.filter((s) => {
-    if (termo === "") return true;
-    const destino = s.config.transport === "stdio" ? (s.config.command ?? []).join(" ") : (s.config.url ?? "");
-    return s.config.name.toLowerCase().includes(termo) || destino.toLowerCase().includes(termo);
+    if (filtro === "problema" && !comProblema(s)) return false;
+    if (filtro === "ligados" && !s.enabled) return false;
+    if (filtro === "desligados" && s.enabled) return false;
+    return termo === "" || s.config.name.toLowerCase().includes(termo) || destinoDe(s).toLowerCase().includes(termo);
   });
   const grupos = agrupar(visiveis, origens.data ?? {}, doCatalogo, t);
+  const aberto = detalhe === null ? undefined : servidores.find((s) => s.config.name === detalhe);
+  const filtrando = termo !== "" || filtro !== "todos";
 
   return (
     <section className="flex flex-col gap-4" data-locum-probe="servidores-mcp">
@@ -1501,6 +1556,19 @@ function ServidoresMcp({ porCadastro }: { porCadastro: Map<string, Credencial> }
             value={busca}
           />
         </label>
+        <Button
+          className="cursor-pointer"
+          data-locum-testar-todos=""
+          disabled={testando !== null || contagem.ligados === 0}
+          onClick={() => void testarLigados()}
+          size="sm"
+          variant="outline"
+        >
+          <RefreshCw aria-hidden className={cn("size-3.5", testando !== null && "animate-spin")} />
+          {testando === null
+            ? t("settings.servers.testAll")
+            : t("settings.servers.testingAll", { done: testando.feitos, total: testando.total })}
+        </Button>
         <Button
           className="cursor-pointer"
           data-locum-vitrine-importar=""
@@ -1523,19 +1591,41 @@ function ServidoresMcp({ porCadastro }: { porCadastro: Map<string, Credencial> }
         </Button>
       </div>
 
+      <div className="flex flex-wrap gap-1" role="group" aria-label={t("settings.servers.filter.label")}>
+        {(["todos", "problema", "ligados", "desligados"] as const).map((f) => (
+          <button
+            aria-pressed={filtro === f}
+            className={cn(
+              "flex h-7 cursor-pointer items-center gap-1.5 rounded-md px-2.5 text-xs transition-colors",
+              filtro === f ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground",
+            )}
+            data-locum-filtro-servidor={f}
+            key={f}
+            onClick={() => setFiltro(f)}
+            type="button"
+          >
+            {f === "problema" && contagem.problema > 0 ? <span className="bg-destructive size-1.5 rounded-full" /> : null}
+            {t(`settings.servers.filter.${f}`)}
+            <span className="tabular-nums opacity-60">{contagem[f]}</span>
+          </button>
+        ))}
+      </div>
+
       {servidores.length === 0 ? (
         <Vazio>{t("settings.servers.empty")}</Vazio>
       ) : grupos.length === 0 ? (
-        <p className="text-muted-foreground text-sm">{t("connections.none")}</p>
+        <p className="text-muted-foreground text-sm">{t("settings.servers.none")}</p>
       ) : (
         <div className="flex flex-col gap-3">
           {grupos.map((grupo) => (
             <GrupoDeServidores
-              aberto={termo !== "" || grupo.chave !== "apps"}
+              aberto={filtrando || grupo.chave !== "apps"}
               grupo={grupo}
-              key={`${grupo.chave}:${versao}:${termo === "" ? "" : "busca"}`}
+              key={`${grupo.chave}:${versao}:${filtrando ? "filtro" : ""}`}
+              onAbrir={setDetalhe}
               onMudou={reler}
               porCadastro={porCadastro}
+              uso={uso}
             />
           ))}
         </div>
@@ -1559,6 +1649,17 @@ function ServidoresMcp({ porCadastro }: { porCadastro: Map<string, Credencial> }
             }}
           />
         </Painel>
+      ) : aberto !== undefined ? (
+        <Painel id={`servidor:${aberto.config.name}`} onFechar={() => setDetalhe(null)} titulo={aberto.config.name}>
+          <DetalheDoServidor
+            credencial={porCadastro.get(`mcp:${aberto.config.name}`)}
+            key={`${aberto.config.name}:${versao}`}
+            onMudou={reler}
+            origem={tituloDaOrigem(chaveDaOrigem(aberto.config.name, origens.data ?? {}, doCatalogo), t)}
+            servidor={aberto}
+            uso={uso[aberto.config.name] ?? []}
+          />
+        </Painel>
       ) : null}
     </section>
   );
@@ -1567,17 +1668,22 @@ function ServidoresMcp({ porCadastro }: { porCadastro: Map<string, Credencial> }
 function GrupoDeServidores({
   aberto,
   grupo,
+  onAbrir,
   onMudou,
   porCadastro,
+  uso,
 }: {
   aberto: boolean;
   grupo: Grupo;
+  onAbrir: (nome: string) => void;
   onMudou: () => void;
   porCadastro: Map<string, Credencial>;
+  uso: Record<string, string[]>;
 }) {
   const { t } = useTranslation();
   const [expandido, setExpandido] = useState(aberto);
   const ligados = grupo.servidores.filter((s) => s.enabled).length;
+  const problemas = grupo.servidores.filter(comProblema).length;
 
   return (
     <div className="border-border bg-card overflow-hidden rounded-lg border" data-locum-grupo-servidores={grupo.chave}>
@@ -1592,6 +1698,9 @@ function GrupoDeServidores({
           className={cn("text-muted-foreground size-3.5 transition-transform", expandido && "rotate-90")}
         />
         <span className="text-sm font-medium">{grupo.titulo}</span>
+        {problemas > 0 ? (
+          <span className="text-destructive text-xs">{t("settings.servers.groups.problems", { count: problemas })}</span>
+        ) : null}
         <span className="text-muted-foreground ml-auto text-xs tabular-nums">
           {t("settings.servers.groups.count", { count: grupo.servidores.length, on: ligados })}
         </span>
@@ -1602,13 +1711,31 @@ function GrupoDeServidores({
             <LinhaDoServidor
               credencial={porCadastro.get(`mcp:${servidor.config.name}`)}
               key={servidor.config.name}
+              onAbrir={() => onAbrir(servidor.config.name)}
               onMudou={onMudou}
               servidor={servidor}
+              usadoPor={uso[servidor.config.name]?.length ?? 0}
             />
           ))}
         </div>
       ) : null}
     </div>
+  );
+}
+
+/** Rótulos curtos do servidor: transporte, leitura ou escrita, rede da casa e uso. */
+function TagsDoServidor({ servidor, usadoPor }: { servidor: Servidor; usadoPor: number }) {
+  const { t } = useTranslation();
+  const tag = "border-border text-muted-foreground rounded border px-1.5 py-px text-[10px] leading-4";
+  return (
+    <span className="flex flex-wrap items-center gap-1">
+      <span className={tag}>{servidor.config.transport}</span>
+      <span className={cn(tag, servidor.config.scope === "write" && "border-sev-medium/40 text-sev-medium")}>
+        {t(servidor.config.scope === "write" ? "settings.servers.scopeWrite" : "settings.servers.scopeRead")}
+      </span>
+      {redeInterna(servidor) ? <span className={tag}>{t("settings.servers.tags.internal")}</span> : null}
+      {usadoPor > 0 ? <span className={tag}>{t("settings.servers.tags.usedBy", { count: usadoPor })}</span> : null}
+    </span>
   );
 }
 
@@ -1618,16 +1745,21 @@ function GrupoDeServidores({
  * Testar conexao e listar ferramentas sobem o mesmo processo, mas respondem
  * perguntas diferentes: a primeira diz se o cadastro esta certo, a segunda diz
  * o que cada ferramenta pesa antes de alguem marca-la num passo. Por isso sao
- * dois botoes, e nao um exame que sempre faz as duas coisas.
+ * dois botoes, e nao um exame que sempre faz as duas coisas. Falhando, a
+ * linha mostra o motivo, para não depender de abrir o detalhe.
  */
 function LinhaDoServidor({
   credencial,
+  onAbrir,
   onMudou,
   servidor,
+  usadoPor,
 }: {
   credencial: Credencial | undefined;
+  onAbrir: () => void;
   onMudou: () => void;
   servidor: Servidor;
+  usadoPor: number;
 }) {
   const { t } = useTranslation();
   const nome = servidor.config.name;
@@ -1653,8 +1785,7 @@ function LinhaDoServidor({
       () => setLigando(false),
     );
   };
-  const destino =
-    servidor.config.transport === "stdio" ? (servidor.config.command ?? []).join(" ") : (servidor.config.url ?? "");
+  const destino = destinoDe(servidor);
 
   // O teste grava o desfecho no cadastro; a linha relê para o selo acompanhar.
   const relerSaude = (): void => {
@@ -1712,6 +1843,8 @@ function LinhaDoServidor({
       },
     );
   };
+  const falhando =
+    saude.lastFailureAt !== null && (saude.lastOkAt === null || saude.lastFailureAt > saude.lastOkAt);
 
   return (
     <div
@@ -1725,20 +1858,34 @@ function LinhaDoServidor({
         <PontoDoServidor ligado={ligado} saude={saude} />
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <span className={cn("truncate font-medium", !ligado && "text-muted-foreground")}>{nome}</span>
-            <span className="text-muted-foreground text-[11px]">
-              {servidor.config.transport}
-              {" · "}
-              <span className={servidor.config.scope === "write" ? "text-sev-medium" : undefined}>
-                {t(servidor.config.scope === "write" ? "settings.servers.scopeWrite" : "settings.servers.scopeRead")}
-              </span>
-            </span>
+            <button
+              className={cn(
+                "cursor-pointer truncate font-medium underline-offset-4 hover:underline",
+                !ligado && "text-muted-foreground",
+              )}
+              data-locum-detalhe-servidor={nome}
+              onClick={onAbrir}
+              type="button"
+            >
+              {nome}
+            </button>
+            <TagsDoServidor servidor={servidor} usadoPor={usadoPor} />
             <Credenciais credencial={credencial} />
             <SaudeDoServidor saude={saude} />
           </div>
           <span className="text-muted-foreground truncate font-mono text-[11px]" title={destino}>
             {destino}
           </span>
+          {falhando && saude.lastError !== null && teste.fase !== "respondeu" ? (
+            <button
+              className="text-destructive cursor-pointer truncate text-left text-[11px]"
+              onClick={onAbrir}
+              title={saude.lastError}
+              type="button"
+            >
+              {saude.lastError}
+            </button>
+          ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {podeAutorizar ? (
@@ -1814,18 +1961,269 @@ function LinhaDoServidor({
   );
 }
 
+/**
+ * Tudo de um servidor num lugar: estado com o erro inteiro, onde ele roda,
+ * a credencial (OAuth ou colada), as ferramentas separadas entre leitura e
+ * escrita, e as iniciativas que dependem dele.
+ */
+function DetalheDoServidor({
+  credencial,
+  onMudou,
+  origem,
+  servidor,
+  uso,
+}: {
+  credencial: Credencial | undefined;
+  onMudou: () => void;
+  origem: string;
+  servidor: Servidor;
+  uso: string[];
+}) {
+  const { t, i18n } = useTranslation();
+  const nome = servidor.config.name;
+  const saude = servidor.health;
+  const http = servidor.config.transport !== "stdio";
+  const [ocupado, setOcupado] = useState<"ligar" | "testar" | "autorizar" | "credencial" | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [ferramentas, setFerramentas] = useState<Ferramenta[] | null>(null);
+  const [erroDasFerramentas, setErroDasFerramentas] = useState<string | null>(null);
+  const [campo, setCampo] = useState(http ? "Authorization" : "API_KEY");
+  const [valor, setValor] = useState("");
+
+  const agir = (qual: NonNullable<typeof ocupado>, fazer: () => Promise<unknown>): void => {
+    setOcupado(qual);
+    setErro(null);
+    fazer().then(
+      () => {
+        setOcupado(null);
+        onMudou();
+      },
+      (falha: unknown) => {
+        setOcupado(null);
+        setErro(falha instanceof Error ? falha.message : String(falha));
+      },
+    );
+  };
+
+  const carregarFerramentas = (): void => {
+    setErroDasFerramentas(null);
+    call("mcp.tools", nome).then(setFerramentas, (falha: unknown) => {
+      setFerramentas([]);
+      setErroDasFerramentas(falha instanceof Error ? falha.message : String(falha));
+    });
+  };
+  useEffect(() => {
+    // Desligado não sobe sozinho: listar roda o comando, e isso é da pessoa.
+    if (servidor.enabled) carregarFerramentas();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nome]);
+
+  const falhando =
+    saude.lastFailureAt !== null && (saude.lastOkAt === null || saude.lastFailureAt > saude.lastOkAt);
+  const leituras = (ferramentas ?? []).filter((f) => ehLeitura(f.name));
+  const escritas = (ferramentas ?? []).filter((f) => !ehLeitura(f.name));
+  const titulo = "text-muted-foreground text-[11px] font-medium tracking-wide uppercase";
+  const campoCss = "border-border bg-card focus:ring-ring h-9 w-full rounded-md border px-3 text-sm outline-none focus:ring-2";
+
+  return (
+    <div className="flex flex-col gap-6 text-sm" data-locum-detalhe={nome}>
+      <section className="flex flex-col gap-2">
+        <div className="flex items-center gap-2">
+          <PontoDoServidor ligado={servidor.enabled} saude={saude} />
+          <span className="font-medium">{t(`settings.servers.dot.${chaveDoPonto(servidor.enabled, saude)}`)}</span>
+          <span className="text-muted-foreground text-xs">{origem}</span>
+        </div>
+        <TagsDoServidor servidor={servidor} usadoPor={uso.length} />
+        <p className="text-muted-foreground text-xs">
+          {saude.lastOkAt === null
+            ? t("settings.servers.detail.neverOk")
+            : t("settings.servers.health.ok", { when: quando(i18n.language, saude.lastOkAt / 1000) })}
+        </p>
+        {falhando && saude.lastError !== null ? (
+          <pre className="border-destructive/30 bg-destructive/5 text-destructive max-h-48 overflow-auto rounded-md border p-2 font-mono text-[11px] whitespace-pre-wrap">
+            {saude.lastError}
+          </pre>
+        ) : null}
+        <div className="flex flex-wrap gap-2">
+          <Button
+            className="cursor-pointer"
+            disabled={ocupado !== null}
+            onClick={() => agir("ligar", () => call("mcp.setEnabled", nome, !servidor.enabled))}
+            size="sm"
+            variant={servidor.enabled ? "outline" : "default"}
+          >
+            {t(servidor.enabled ? "settings.servers.turnOff" : "settings.servers.turnOn")}
+          </Button>
+          <Button
+            className="cursor-pointer"
+            disabled={ocupado !== null}
+            onClick={() => agir("testar", () => call("mcp.test", nome))}
+            size="sm"
+            variant="outline"
+          >
+            {t(ocupado === "testar" ? "settings.servers.testing" : "settings.servers.test")}
+          </Button>
+          {servidor.config.transport === "http" ? (
+            <Button
+              className="cursor-pointer"
+              disabled={ocupado !== null}
+              onClick={() => agir("autorizar", () => call("connections.connect", nome))}
+              size="sm"
+              variant="outline"
+            >
+              {t(
+                ocupado === "autorizar"
+                  ? "connections.connecting"
+                  : credencial === undefined
+                    ? "settings.servers.authorize"
+                    : "settings.servers.reauthorize",
+              )}
+            </Button>
+          ) : null}
+        </div>
+        {erro === null ? null : <p className="text-destructive text-xs">{erro}</p>}
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <h3 className={titulo}>{t(http ? "settings.servers.detail.url" : "settings.servers.detail.command")}</h3>
+        <code className="bg-muted/40 rounded-md p-2 font-mono text-[11px] break-all">{destinoDe(servidor)}</code>
+        {Object.keys(servidor.config.env ?? {}).length + Object.keys(servidor.config.headers ?? {}).length > 0 ? (
+          <p className="text-muted-foreground text-xs">
+            {t(http ? "settings.servers.detail.headers" : "settings.servers.detail.env", {
+              names: Object.keys((http ? servidor.config.headers : servidor.config.env) ?? {}).join(", ") || "—",
+            })}
+          </p>
+        ) : null}
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <h3 className={titulo}>{t("settings.servers.detail.credential")}</h3>
+        {credencial === undefined ? (
+          <p className="text-muted-foreground text-xs">{t("settings.servers.detail.noCredential")}</p>
+        ) : (
+          <Credenciais credencial={credencial} />
+        )}
+        <form
+          className="flex flex-col gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            agir("credencial", async () => {
+              await call("mcp.setCredential", nome, { campo, valor });
+              setValor("");
+              await call("mcp.test", nome);
+            });
+          }}
+        >
+          <p className="text-muted-foreground text-xs">
+            {t(http ? "settings.servers.detail.pasteHttp" : "settings.servers.detail.pasteStdio")}
+          </p>
+          <div className="flex gap-2">
+            <input
+              aria-label={t(http ? "settings.servers.detail.header" : "settings.servers.detail.variable")}
+              autoComplete="off"
+              className={cn(campoCss, "w-40 shrink-0 font-mono text-xs")}
+              onChange={(e) => setCampo(e.target.value)}
+              value={campo}
+            />
+            <input
+              aria-label={t("settings.servers.detail.value")}
+              autoComplete="off"
+              className={campoCss}
+              onChange={(e) => setValor(e.target.value)}
+              placeholder={t("settings.servers.detail.value")}
+              type="password"
+              value={valor}
+            />
+          </div>
+          <div>
+            <Button className="cursor-pointer" disabled={ocupado !== null || valor.trim() === ""} size="sm" type="submit">
+              {t(ocupado === "credencial" ? "settings.servers.testing" : "settings.servers.detail.save")}
+            </Button>
+          </div>
+        </form>
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <div className="flex items-center gap-2">
+          <h3 className={titulo}>{t("settings.servers.detail.tools")}</h3>
+          {ferramentas === null ? null : (
+            <span className="text-muted-foreground text-xs">
+              {t("settings.servers.detail.toolsCount", { read: leituras.length, write: escritas.length })}
+            </span>
+          )}
+          <Button className="ml-auto cursor-pointer" onClick={carregarFerramentas} size="sm" variant="ghost">
+            <RefreshCw aria-hidden className="size-3.5" />
+            {t("settings.servers.detail.reload")}
+          </Button>
+        </div>
+        {erroDasFerramentas === null ? null : <p className="text-destructive text-xs">{erroDasFerramentas}</p>}
+        {ferramentas === null ? (
+          <p className="text-muted-foreground text-xs">
+            {t(servidor.enabled ? "connections.loading" : "settings.servers.detail.toolsOff")}
+          </p>
+        ) : (
+          <ul className="flex flex-col gap-1">
+            {[...leituras, ...escritas].map((f) => (
+              <li className="flex flex-col gap-0.5 rounded-md px-2 py-1.5 hover:bg-muted/40" key={f.name}>
+                <span className="flex items-center gap-2">
+                  <span className="font-mono text-xs">{f.name}</span>
+                  <span
+                    className={cn(
+                      "rounded border px-1.5 text-[10px] leading-4",
+                      ehLeitura(f.name) ? "border-border text-muted-foreground" : "border-sev-medium/40 text-sev-medium",
+                    )}
+                  >
+                    {t(ehLeitura(f.name) ? "settings.servers.scopeRead" : "settings.servers.scopeWrite")}
+                  </span>
+                  <span className="text-muted-foreground ml-auto text-[10px] tabular-nums">
+                    {t("settings.servers.detail.tokens", { count: f.estimatedTokens })}
+                  </span>
+                </span>
+                {f.description ? <span className="text-muted-foreground line-clamp-2 text-xs">{f.description}</span> : null}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <h3 className={titulo}>{t("settings.servers.detail.usedBy")}</h3>
+        {uso.length === 0 ? (
+          <p className="text-muted-foreground text-xs">{t("settings.servers.detail.unused")}</p>
+        ) : (
+          <ul className="flex flex-wrap gap-1">
+            {uso.map((titulo) => (
+              <li className="border-border rounded-md border px-2 py-0.5 text-xs" key={titulo}>
+                {titulo}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function chaveDoPonto(ligado: boolean, saude: Servidor["health"]): "off" | "auth" | "failed" | "ok" | "untested" {
+  const falhando =
+    saude.lastFailureAt !== null && (saude.lastOkAt === null || saude.lastFailureAt > saude.lastOkAt);
+  if (!ligado) return "off";
+  if (saude.needsAuth) return "auth";
+  if (falhando) return "failed";
+  return saude.lastOkAt !== null ? "ok" : "untested";
+}
+
 /** Estado num relance: desligado, precisa autorizar, falhou, respondeu ou nunca testado. */
 function PontoDoServidor({ ligado, saude }: { ligado: boolean; saude: Servidor["health"] }) {
   const { t } = useTranslation();
-  const falhando =
-    saude.lastFailureAt !== null && (saude.lastOkAt === null || saude.lastFailureAt > saude.lastOkAt);
-  const [cor, chave] = !ligado
-    ? ["bg-muted-foreground/30", "off"]
-    : saude.needsAuth || falhando
-      ? ["bg-destructive", saude.needsAuth ? "auth" : "failed"]
-      : saude.lastOkAt !== null
-        ? ["bg-emerald-500", "ok"]
-        : ["bg-sev-medium", "untested"];
+  const chave = chaveDoPonto(ligado, saude);
+  const cor = {
+    off: "bg-muted-foreground/30",
+    auth: "bg-destructive",
+    failed: "bg-destructive",
+    ok: "bg-emerald-500",
+    untested: "bg-sev-medium",
+  }[chave];
   return (
     <span
       aria-label={t(`settings.servers.dot.${chave}`)}

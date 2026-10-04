@@ -215,6 +215,9 @@ interface ServiceApi {
   "mcp.tools": McpService["listTools"];
   /** Ligar é da pessoa: o que entra pelo servidor MCP nasce desligado. */
   "mcp.setEnabled": McpService["setEnabled"];
+  /** Token colado pela pessoa, para servidor sem OAuth. O valor nunca volta pela ponte. */
+  "mcp.setCredential": (name: string, entrada: { campo: string; valor: string }) => Promise<void>;
+  "mcp.usage": McpService["usage"];
   /**
    * Conectores do claude.ai e MCPs de plugin da conta Claude, só leitura.
    * `mcp.tools` com o nome `claude-conta` devolve a mesma lista.
@@ -543,6 +546,8 @@ export const BRIDGE_CHANNELS = [
   "mcp.test",
   "mcp.tools",
   "mcp.setEnabled",
+  "mcp.setCredential",
+  "mcp.usage",
   "claudeAccount.list",
   "providers.list",
   "providers.fallbacks",

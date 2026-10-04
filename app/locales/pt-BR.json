@@ -698,7 +698,10 @@
         "apps": "Cadastrados pelos apps",
         "count_zero": "{{on}} de {{count}} ligados",
         "count_one": "{{on}} de {{count}} ligado",
-        "count_other": "{{on}} de {{count}} ligados"
+        "count_other": "{{on}} de {{count}} ligados",
+        "problems_one": "{{count}} com problema",
+        "problems_other": "{{count}} com problema",
+        "problems_zero": "{{count}} com problema"
       },
       "dot": {
         "off": "desligado",
@@ -706,6 +709,47 @@
         "failed": "falhou no último uso",
         "ok": "respondendo",
         "untested": "ligado, ainda sem teste"
+      },
+      "testAll": "Testar ligados",
+      "testingAll": "testando {{done}} de {{total}}",
+      "none": "Nenhum servidor neste filtro.",
+      "reauthorize": "Autorizar de novo",
+      "filter": {
+        "label": "Filtrar por estado",
+        "todos": "Todos",
+        "problema": "Com problema",
+        "ligados": "Ligados",
+        "desligados": "Desligados"
+      },
+      "tags": {
+        "internal": "rede interna",
+        "usedBy_one": "{{count}} iniciativa",
+        "usedBy_other": "{{count}} iniciativas",
+        "usedBy_zero": "{{count}} iniciativas"
+      },
+      "detail": {
+        "neverOk": "Nunca respondeu. Ligue e teste.",
+        "url": "Endereço",
+        "command": "Comando",
+        "headers": "Cabeçalhos: {{names}}",
+        "env": "Variáveis: {{names}}",
+        "credential": "Credencial",
+        "noCredential": "Nenhuma credencial guardada.",
+        "pasteHttp": "Para servidor sem OAuth: cole a chave ou o token. Vai para o cofre e entra no cabeçalho indicado; em Authorization, ganha \"Bearer \" se vier sem.",
+        "pasteStdio": "Cole a chave ou o token. Vai para o cofre e entra na variável de ambiente indicada quando o processo sobe.",
+        "header": "Cabeçalho",
+        "variable": "Variável",
+        "value": "Valor",
+        "save": "Guardar e testar",
+        "tools": "Ferramentas",
+        "toolsCount": "{{read}} de leitura, {{write}} de escrita",
+        "toolsOff": "Ligue o servidor para listar as ferramentas, ou use Ferramentas para subir agora.",
+        "tokens_one": "{{count}} tok",
+        "tokens_other": "{{count}} tok",
+        "tokens_zero": "{{count}} tok",
+        "usedBy": "Usado por",
+        "unused": "Nenhuma iniciativa usa este servidor.",
+        "reload": "Listar de novo"
       }
     },
     "github": {
