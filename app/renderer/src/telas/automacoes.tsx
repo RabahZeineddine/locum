@@ -40,7 +40,7 @@ function ListaDeAutomacoes({ navegar }: Pick<TelaProps, "navegar">) {
   };
 
   return (
-    <div className="flex max-w-5xl flex-col gap-6" data-locum-probe="automacoes" data-total={lista.length}>
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6" data-locum-probe="automacoes" data-total={lista.length}>
       <CabecalhoDaTela
         acoes={
           <Button className="cursor-pointer" data-locum-automacao-nova="" onClick={() => setCriando(true)}>

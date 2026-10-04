@@ -87,7 +87,7 @@ export function Sessoes(_props: TelaProps) {
 
   return (
     <div
-      className="flex max-w-5xl flex-col gap-8 pt-4"
+      className="mx-auto flex w-full max-w-6xl flex-col gap-8 pt-4"
       data-estado={leitura.status}
       data-locum-probe="sessions"
       data-sessoes={leitura.status === "ready" ? sessoes.length : -1}

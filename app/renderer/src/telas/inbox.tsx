@@ -223,7 +223,7 @@ function Fila({ navegar, aoMudarFila }: TelaProps & { aoMudarFila: () => void })
   if (itens === null) return <Esqueleto />;
 
   return (
-    <div className="flex w-full max-w-4xl flex-col gap-5 pt-4">
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 pt-4">
       <Cabecalho quantidade={itens.length} />
       <PainelDeIniciativas navegar={navegar} />
       {falhas.length > 0 && <FaixaDeFalha quantidade={falhas.length} navegar={navegar} />}
@@ -916,7 +916,7 @@ function Atalhos() {
 
 function Esqueleto() {
   return (
-    <div className="flex w-full max-w-4xl flex-col gap-1.5 pt-4">
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-1.5 pt-4">
       {[0, 1, 2].map((i) => (
         <div key={i} className="border-border/60 bg-card h-24 animate-pulse rounded-md border" />
       ))}

@@ -264,12 +264,14 @@ function Cartao({
           </span>
         </span>
       </button>
-      <div className="mt-auto flex items-center gap-2">
+      {/* Quebra de linha antes de vazar: com o selo de atenção e o botão em
+          "conectando...", a linha passava da largura de um cartão estreito. */}
+      <div className="mt-auto flex flex-wrap items-center gap-2">
         <Estado conexao={conexao} />
         {conexao.account === null ? null : (
-          <span className="text-muted-foreground truncate text-xs">{conexao.account}</span>
+          <span className="text-muted-foreground min-w-0 truncate text-xs">{conexao.account}</span>
         )}
-        <div className="ml-auto">
+        <div className="ml-auto shrink-0">
           {conexao.state === "soon" ? (
             <Button disabled size="sm" variant="ghost">
               {t("connections.soon")}

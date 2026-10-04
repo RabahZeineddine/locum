@@ -89,7 +89,7 @@ export function Hoje({ navegar }: TelaProps) {
   }, [terminadas.data]);
 
   return (
-    <div className="flex max-w-5xl flex-col gap-8 pt-2">
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 pt-2">
       <header className="flex flex-col gap-2 pt-4">
         <span className="text-muted-foreground font-medium text-xs uppercase tracking-[0.08em]">
           {dataDeHoje(idioma)}

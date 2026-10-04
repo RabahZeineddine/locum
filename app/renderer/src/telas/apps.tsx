@@ -13,7 +13,7 @@ import { ConexoesDoLocum } from "./configuracao";
 export function Apps(_props: TelaProps) {
   const { t } = useTranslation();
   return (
-    <div className="flex max-w-5xl flex-col gap-8" data-locum-probe="apps">
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-8" data-locum-probe="apps">
       <CabecalhoDaTela descricao={t("apps.lead")} titulo={t("apps.title")} />
       <ConexoesDoLocum />
     </div>

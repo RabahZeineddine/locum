@@ -38,7 +38,7 @@ export function Biblioteca({ detalhe, navegar }: TelaProps) {
   }
 
   return (
-    <div className="flex max-w-5xl flex-col gap-6" data-locum-probe="biblioteca">
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6" data-locum-probe="biblioteca">
       <CabecalhoDaTela
         acoes={
           aba === "agents" ? (

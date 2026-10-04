@@ -53,7 +53,7 @@ function Lista({ navegar }: { navegar: TelaProps["navegar"] }) {
   const [criando, setCriando] = useState(false);
 
   return (
-    <div className="flex max-w-5xl flex-col gap-6 pt-4">
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 pt-4">
       <header className="flex items-end gap-6">
         <div className="flex flex-1 flex-col gap-1.5">
           <h1 className="font-semibold text-[32px] leading-tight tracking-[-0.02em]">{t("initiatives.list.title")}</h1>
@@ -174,7 +174,7 @@ function DetalheDaIniciativa({
 
   return (
     <div
-      className="flex max-w-5xl flex-col gap-5 pt-2"
+      className="mx-auto flex w-full max-w-6xl flex-col gap-5 pt-2"
       data-locum-probe="initiative"
       data-slug={slug}
       data-tab={aba}

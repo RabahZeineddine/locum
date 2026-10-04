@@ -141,7 +141,7 @@ export function Configuracao({ detalhe, navegar }: TelaProps) {
 
   return (
     <div
-      className="flex max-w-5xl flex-col gap-8"
+      className="mx-auto flex w-full max-w-6xl flex-col gap-8"
       data-estado={estado}
       data-locum-cofre={credenciais.data?.available === true ? "legivel" : "fechado"}
       data-locum-fallbacks={fallbacks.data?.length ?? -1}
