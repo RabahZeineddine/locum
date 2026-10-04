@@ -5,6 +5,7 @@ import { Streamdown } from "streamdown";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { call, read, useRead, type ReadResult } from "@/lib/bridge";
+import { Conversa } from "../assistente";
 import type { TelaProps } from "../rotas";
 import { LinhaDaAutomacao, NovaAutomacao } from "./automacoes";
 import { LinhaDeExecucao } from "./execucoes";
@@ -18,7 +19,7 @@ const classeDoCampo = "border-border bg-background w-full rounded border px-2 py
 
 /** As cinco abas do detalhe. So `context` le e escreve de verdade nesta fatia:
  * as outras quatro so mostram o que o detalhe composto ja trouxe. */
-const ABAS = ["deliveries", "context", "agents", "integrations", "runs", "sessions", "actions"] as const;
+const ABAS = ["deliveries", "chat", "context", "agents", "integrations", "runs", "sessions", "actions"] as const;
 type Aba = (typeof ABAS)[number];
 
 function ehAba(valor: string): valor is Aba {
@@ -213,6 +214,14 @@ function DetalheDaIniciativa({
       <TirasDeAba aba={aba} navegar={navegar} slug={slug} />
 
       {aba === "deliveries" && <AbaEntregas navegar={navegar} slug={slug} />}
+      {aba === "chat" && (
+        <div
+          className="border-border bg-card flex h-[calc(100vh-340px)] min-h-[420px] flex-col overflow-hidden rounded-lg border"
+          data-locum-probe="initiative-chat"
+        >
+          <Conversa iniciativa={slug} irParaModelos={() => navegar("settings", "models")} />
+        </div>
+      )}
       {aba === "context" && <AbaContexto slug={slug} />}
       {aba === "agents" && <AbaAutomacoes iniciativa={iniciativa} navegar={navegar} />}
       {aba === "integrations" && <AbaIntegrations iniciativa={iniciativa} />}

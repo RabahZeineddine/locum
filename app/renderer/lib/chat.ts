@@ -1,13 +1,14 @@
 import { BRIDGE_GLOBAL } from "../../electron/bridge-contract.js";
 
-/** O mesmo formato que `electron/chat.ts` emite. */
-export type ChatEvent =
+/** O mesmo formato que `electron/chat.ts` emite, com a conversa a que pertence. */
+export type ChatEvent = (
   | { tipo: "texto"; delta: string }
   | { tipo: "ferramenta"; nome: string; entrada: unknown }
   | { tipo: "resultado"; nome: string }
   | { tipo: "fim"; motivo: string }
   | { tipo: "resumido" }
-  | { tipo: "erro"; mensagem: string };
+  | { tipo: "erro"; mensagem: string }
+) & { chave: string };
 
 interface PonteDeChat {
   chat: { onEvent: (ouvinte: (evento: ChatEvent) => void) => () => void };

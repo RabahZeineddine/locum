@@ -5926,6 +5926,7 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
     ["initiatives", undefined],
     ["initiatives", primeiraIniciativa],
     ["initiatives", primeiraIniciativa === undefined ? undefined : `${primeiraIniciativa}/agents`],
+    ["initiatives", primeiraIniciativa === undefined ? undefined : `${primeiraIniciativa}/chat`],
     ["sessions", undefined],
     // Uma foto por seção, com o nome dela: a Configuração tem duas.
     ["settings", "general"],
@@ -5951,7 +5952,9 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
           ? `-${detalhe}`
           : detalhe.endsWith("/agents")
             ? "-automacoes"
-            : "-detalhe";
+            : detalhe.endsWith("/chat")
+              ? "-chat"
+              : "-detalhe";
     writeFileSync(join(destino, `${id}${sufixo}.png`), imagem.toPNG());
   }
 
@@ -6130,7 +6133,11 @@ async function main(): Promise<void> {
   // Cadastrado a cada abertura, para seguir o app quando ele muda de lugar.
   {
     const { cadastrarFerramentasNativas } = await import("../src/native-tools/register.js");
-    const comando = [process.execPath, ...(app.isPackaged ? [] : [join(__dirname, "main.cjs")]), "--ferramentas"];
+    const binario = [process.execPath, ...(app.isPackaged ? [] : [join(__dirname, "main.cjs")])];
+    const comando = [...binario, "--ferramentas"];
+    // O chat pelo Claude Code alcança o próprio Locum pelo mesmo binário, com `--mcp`.
+    const { usarComandoDoLocum } = await import("./chat.js");
+    usarComandoDoLocum([...binario, "--mcp"]);
     await cadastrarFerramentasNativas(comando).catch((err: unknown) => {
       console.error(`ferramentas nativas: cadastro falhou (${err instanceof Error ? err.message : String(err)})`);
     });

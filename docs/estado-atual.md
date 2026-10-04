@@ -1336,6 +1336,24 @@ pelo MCP não acrescenta ferramenta dele sem a pessoa. O próprio Locum fica de
 fora. A pasta do plugin tem a versão no caminho: plugin atualizado pede
 importar de novo.
 
+**Chat da iniciativa.** A iniciativa ganhou a aba Chat, e o assistente
+flutuante passou a guardar uma conversa por iniciativa (e uma geral): as
+falas ficam em `settings` (`chat.falas.<slug>`, as 200 últimas) e voltam ao
+reabrir, nas duas telas. Sem modelo escolhido e com Claude Code na máquina, a
+assinatura responde (`claude-code/sonnet`), então quem não tem chave de API
+conversa. Pelo Claude Code, cada mensagem é um `claude -p` com
+`--include-partial-messages` (o texto chega aos pedaços) e `--resume` da
+sessão guardada em `chat.sessao.<slug>`, na `cwd` do plano da sessão da
+iniciativa (o workspace, ou a pasta de contexto, que entra também por
+`--add-dir`), com as regras `deny` dela. Alcança o próprio Locum (`--mcp`,
+servidor `locum-chat`), os servidores da iniciativa (inteiros quando
+`read`, só as ferramentas de leitura quando `write`) e a conta Claude, além
+de Read, Grep e Glob. Não edita: mudança em código é no terminal da
+iniciativa, e o que sai para fora vai como automação. Modelo de API segue
+pelo caminho de antes, com o catálogo escrito à mão. Conferido à mão com
+haiku: chamou `list_initiatives` e `get_me` do Microsoft 365 e a segunda
+mensagem retomou a mesma sessão.
+
 ## Próximos passos
 
 Iniciativas: I1, I2 e I3 prontos no código. Falta o teste à mão da sessão

@@ -10,9 +10,10 @@ import { assinarEventosDoChat, type ChatEvent } from "@/lib/chat";
 import { cn } from "@/lib/utils";
 import { useCurrentInitiative } from "./current-initiative";
 import type { TelaProps } from "./rotas";
-import { ArrowUp, Settings2, Sparkles, Square, Wrench, X } from "lucide-react";
+import { ArrowUp, RotateCcw, Settings2, Sparkles, Square, Wrench, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Streamdown } from "streamdown";
 
 interface Fala {
   de: "user" | "assistant";
@@ -34,12 +35,7 @@ interface Fala {
 export function Assistente({ navegar }: Pick<TelaProps, "navegar">) {
   const { t } = useTranslation();
   const [aberto, setAberto] = useState(false);
-  const [falas, setFalas] = useState<Fala[]>([]);
-  const [rascunho, setRascunho] = useState("");
-  const [respondendo, setRespondendo] = useState(false);
-  const [resumido, setResumido] = useState(false);
   const status = useRead("chat.status");
-  const campo = useRef<HTMLTextAreaElement>(null);
   const { slug: iniciativaAtual } = useCurrentInitiative();
 
   useEffect(() => {
@@ -54,48 +50,7 @@ export function Assistente({ navegar }: Pick<TelaProps, "navegar">) {
     return () => globalThis.removeEventListener("keydown", ouvir);
   }, []);
 
-  useEffect(() => {
-    if (aberto) campo.current?.focus();
-  }, [aberto]);
-
-  // O fluxo chega pedaco a pedaco e cai sempre na ultima fala do assistente.
-  useEffect(() => {
-    return assinarEventosDoChat((evento: ChatEvent) => {
-      if (evento.tipo === "resumido") {
-        setResumido(true);
-        return;
-      }
-      setFalas((atual) => {
-        const copia = [...atual];
-        const ultima = copia.at(-1);
-        if (!ultima || ultima.de !== "assistant") return copia;
-
-        if (evento.tipo === "texto") ultima.texto += evento.delta;
-        else if (evento.tipo === "ferramenta") ultima.ferramentas = [...ultima.ferramentas, evento.nome];
-        else if (evento.tipo === "erro") ultima.texto += `\n\n[${evento.mensagem}]`;
-        return copia;
-      });
-
-      if (evento.tipo === "fim" || evento.tipo === "erro") setRespondendo(false);
-    });
-  }, []);
-
-  async function enviar() {
-    const texto = rascunho.trim();
-    if (!texto || respondendo) return;
-    setRascunho("");
-    setRespondendo(true);
-    setFalas((a) => [
-      ...a,
-      { de: "user", texto, ferramentas: [] },
-      { de: "assistant", texto: "", ferramentas: [] },
-    ]);
-    await call("chat.send", texto, iniciativaAtual ? { initiative: iniciativaAtual } : undefined);
-  }
-
   if (!aberto) return <BotaoFlutuante aoAbrir={() => setAberto(true)} />;
-
-  const indisponivel = status.status === "ready" && !status.data.disponivel;
 
   return (
     <aside
@@ -120,8 +75,118 @@ export function Assistente({ navegar }: Pick<TelaProps, "navegar">) {
           <span className="sr-only">{t("assistant.close")}</span>
         </Button>
       </header>
+      <Conversa
+        foco
+        iniciativa={iniciativaAtual ?? undefined}
+        irParaModelos={() => {
+          setAberto(false);
+          navegar("settings", "models");
+        }}
+      />
+    </aside>
+  );
+}
 
-      <Conversation className="flex-1">
+/**
+ * Uma conversa com o assistente: a geral, ou a de uma iniciativa. A mesma
+ * conversa aparece no painel flutuante e na aba Chat da iniciativa, guardada
+ * no processo principal; quem não mandou a mensagem relê as falas no fim.
+ */
+export function Conversa({
+  iniciativa,
+  irParaModelos,
+  foco = false,
+}: {
+  iniciativa?: string;
+  irParaModelos: () => void;
+  foco?: boolean;
+}) {
+  const { t } = useTranslation();
+  const [falas, setFalas] = useState<Fala[]>([]);
+  const [rascunho, setRascunho] = useState("");
+  const [respondendo, setRespondendo] = useState(false);
+  const [resumido, setResumido] = useState(false);
+  const status = useRead("chat.status");
+  const campo = useRef<HTMLTextAreaElement>(null);
+  const meu = useRef(false);
+  const chave = iniciativa ?? "geral";
+  const contexto = iniciativa ? { initiative: iniciativa } : undefined;
+
+  useEffect(() => {
+    if (foco) campo.current?.focus();
+  }, [foco]);
+
+  useEffect(() => {
+    let vivo = true;
+    setFalas([]);
+    setResumido(false);
+    void call("chat.history", iniciativa ? { initiative: iniciativa } : undefined).then((guardadas) => {
+      if (vivo) setFalas(guardadas);
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [iniciativa]);
+
+  // O fluxo chega pedaco a pedaco e cai sempre na ultima fala do assistente.
+  useEffect(() => {
+    return assinarEventosDoChat((evento: ChatEvent) => {
+      if (evento.chave !== chave) return;
+      if (!meu.current) {
+        // Mensagem mandada por outra janela desta conversa: relê no fim.
+        if (evento.tipo === "fim" || evento.tipo === "erro") {
+          void call("chat.history", iniciativa ? { initiative: iniciativa } : undefined).then(setFalas);
+        }
+        return;
+      }
+      if (evento.tipo === "resumido") {
+        setResumido(true);
+        return;
+      }
+      setFalas((atual) => {
+        const copia = [...atual];
+        const ultima = copia.at(-1);
+        if (!ultima || ultima.de !== "assistant") return copia;
+        const nova = { ...ultima };
+        if (evento.tipo === "texto") nova.texto += evento.delta;
+        else if (evento.tipo === "ferramenta") nova.ferramentas = [...nova.ferramentas, evento.nome];
+        else if (evento.tipo === "erro") nova.texto += `\n\n[${evento.mensagem}]`;
+        copia[copia.length - 1] = nova;
+        return copia;
+      });
+
+      if (evento.tipo === "fim" || evento.tipo === "erro") {
+        meu.current = false;
+        setRespondendo(false);
+      }
+    });
+  }, [chave, iniciativa]);
+
+  async function enviar() {
+    const texto = rascunho.trim();
+    if (!texto || respondendo) return;
+    setRascunho("");
+    setRespondendo(true);
+    meu.current = true;
+    setFalas((a) => [
+      ...a,
+      { de: "user", texto, ferramentas: [] },
+      { de: "assistant", texto: "", ferramentas: [] },
+    ]);
+    await call("chat.send", texto, contexto);
+  }
+
+  async function recomecar() {
+    await call("chat.reset", contexto);
+    setFalas([]);
+    setResumido(false);
+  }
+
+  const indisponivel = status.status === "ready" && !status.data.disponivel;
+
+  return (
+    <>
+      <Conversation className="min-h-0 flex-1">
         <ConversationContent
           className={cn(
             "flex min-h-full flex-col gap-3 p-4",
@@ -140,17 +205,14 @@ export function Assistente({ navegar }: Pick<TelaProps, "navegar">) {
                 <p className="text-muted-foreground mx-auto max-w-72 text-sm">
                   {indisponivel
                     ? (status.data.motivo ?? t("assistant.unavailable.body"))
-                    : t("assistant.empty.body")}
+                    : t(iniciativa ? "assistant.empty.bodyInitiative" : "assistant.empty.body")}
                 </p>
               </div>
               {indisponivel && (
                 <Button
                   className="mt-3 cursor-pointer"
                   data-locum-assistente-modelo
-                  onClick={() => {
-                    setAberto(false);
-                    navegar("settings", "models");
-                  }}
+                  onClick={irParaModelos}
                   size="sm"
                 >
                   <Settings2 className="size-3.5" aria-hidden />
@@ -173,15 +235,19 @@ export function Assistente({ navegar }: Pick<TelaProps, "navegar">) {
                 {fala.ferramentas.length > 0 && (
                   <p className="text-muted-foreground mb-1.5 flex flex-wrap items-center gap-1 text-xs">
                     <Wrench className="size-3" aria-hidden />
-                    {fala.ferramentas.join(", ")}
+                    {fala.ferramentas.map(nomeCurto).join(", ")}
                   </p>
                 )}
-                <p className="whitespace-pre-wrap text-sm">
-                  {fala.texto}
-                  {respondendo && i === falas.length - 1 && (
-                    <span className="bg-foreground/70 ml-0.5 inline-block h-3.5 w-1.5 animate-pulse align-middle" />
-                  )}
-                </p>
+                {fala.de === "assistant" ? (
+                  <div className="text-sm [&_pre]:text-xs">
+                    <Streamdown>{fala.texto}</Streamdown>
+                    {respondendo && i === falas.length - 1 && (
+                      <span className="bg-foreground/70 ml-0.5 inline-block h-3.5 w-1.5 animate-pulse align-middle" />
+                    )}
+                  </div>
+                ) : (
+                  <p className="whitespace-pre-wrap text-sm">{fala.texto}</p>
+                )}
               </MessageContent>
             </Message>
           ))}
@@ -215,7 +281,7 @@ export function Assistente({ navegar }: Pick<TelaProps, "navegar">) {
           {respondendo ? (
             <Button
               className="size-7 cursor-pointer"
-              onClick={() => void call("chat.cancel")}
+              onClick={() => void call("chat.cancel", contexto)}
               size="icon"
               variant="ghost"
             >
@@ -235,10 +301,27 @@ export function Assistente({ navegar }: Pick<TelaProps, "navegar">) {
             </Button>
           )}
         </div>
-        <p className="text-muted-foreground/70 mt-1.5 text-xs">{t("assistant.disclaimer")}</p>
+        <div className="mt-1.5 flex items-center gap-2">
+          <p className="text-muted-foreground/70 flex-1 text-xs">{t("assistant.disclaimer")}</p>
+          {falas.length > 0 && !respondendo && (
+            <button
+              className="text-muted-foreground hover:text-foreground flex cursor-pointer items-center gap-1 text-xs"
+              onClick={() => void recomecar()}
+              type="button"
+            >
+              <RotateCcw className="size-3" aria-hidden />
+              {t("assistant.reset")}
+            </button>
+          )}
+        </div>
       </div>
-    </aside>
+    </>
   );
+}
+
+/** `mcp__claude_ai_Microsoft_365__teams_list_chats` vira `teams_list_chats`. */
+function nomeCurto(nome: string): string {
+  return nome.replace(/^mcp__.+?__/, "");
 }
 
 function BotaoFlutuante({ aoAbrir }: { aoAbrir: () => void }) {

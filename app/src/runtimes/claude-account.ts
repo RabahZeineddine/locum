@@ -28,8 +28,17 @@ export const CONFIG_ISOLADA = {
  * ferramentas, sem a qual o Claude Code põe o schema de todos os conectores
  * no contexto e estoura o limite.
  */
-export function flagsDaConta(): string[] {
-  return ["--setting-sources", "user", "--settings", JSON.stringify(CONFIG_ISOLADA), "--permission-mode", "dontAsk", "--tools", "ToolSearch"];
+export function flagsDaConta(opcoes: { internas?: string[]; ajustes?: Record<string, unknown> } = {}): string[] {
+  return [
+    "--setting-sources",
+    "user",
+    "--settings",
+    JSON.stringify({ ...opcoes.ajustes, ...CONFIG_ISOLADA }),
+    "--permission-mode",
+    "dontAsk",
+    "--tools",
+    ["ToolSearch", ...(opcoes.internas ?? [])].join(","),
+  ];
 }
 
 const VERBOS_DE_ESCRITA =

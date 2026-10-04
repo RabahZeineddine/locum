@@ -452,7 +452,11 @@ interface ServiceApi {
   "chat.status": () => Promise<{ disponivel: boolean; modelo: string | null; motivo?: string }>;
   "chat.setModel": (modelo: string) => Promise<void>;
   "chat.send": (texto: string, context?: { initiative?: string }) => Promise<void>;
-  "chat.cancel": () => Promise<void>;
+  "chat.cancel": (context?: { initiative?: string }) => Promise<void>;
+  /** As falas guardadas da conversa geral ou da iniciativa. */
+  "chat.history": (context?: { initiative?: string }) => Promise<{ de: "user" | "assistant"; texto: string; ferramentas: string[] }[]>;
+  /** Começa a conversa do zero. */
+  "chat.reset": (context?: { initiative?: string }) => Promise<void>;
 }
 
 export type LocumApi = { [K in keyof ServiceApi]: Asyncify<ServiceApi[K]> };
@@ -611,6 +615,8 @@ export const BRIDGE_CHANNELS = [
   "chat.setModel",
   "chat.send",
   "chat.cancel",
+  "chat.history",
+  "chat.reset",
 ] as const satisfies readonly (keyof LocumApi)[];
 
 export type BridgeChannel = (typeof BRIDGE_CHANNELS)[number];

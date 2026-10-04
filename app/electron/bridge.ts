@@ -230,7 +230,9 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
       if (!remetente) throw new Error("sem janela para receber o fluxo");
       await chatSession.enviar(texto, remetente, context);
     },
-    "chat.cancel": async () => chatSession.interromper(),
+    "chat.cancel": async (context) => chatSession.interromper(context),
+    "chat.history": (context) => chatSession.falas(context),
+    "chat.reset": (context) => chatSession.limpar(context),
 
     "mcp.list": () => mcpService.list(),
     "mcp.test": (name) => mcpService.testConnection(name),
