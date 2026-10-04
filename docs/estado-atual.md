@@ -1295,6 +1295,14 @@ comum, aparece no seletor de ferramentas de toolset e agent, e os dois
 runtimes enxergam igual. A fumaça e a fumaça do pacote examinam o
 `--ferramentas` como já examinavam o `--mcp`.
 
+**Automações, fatia 9: iniciativa com automações.** A aba Agents da iniciativa
+virou Automações: a mesma linha da lista (rodar, ligar, abrir no canvas),
+"Nova automação" que já nasce ligada à iniciativa, trazer uma existente e
+tirar da iniciativa. O aviso no topo diz que automação daqui só alcança os
+apps da aba Integrações. O servidor `locum-ferramentas` (`SERVIDOR_NATIVO`)
+não conta para esse escopo: `serversInScope` o tira da conta no `linkAgent`,
+na gravação de versão e no executor.
+
 ## Próximos passos
 
 Iniciativas: I1, I2 e I3 prontos no código. Falta o teste à mão da sessão

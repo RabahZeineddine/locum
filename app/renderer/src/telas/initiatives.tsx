@@ -1,11 +1,12 @@
-import { ArrowLeft, Copy, FileText, SquareTerminal } from "lucide-react";
+import { ArrowLeft, Copy, FileText, Plus, SquareTerminal } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Streamdown } from "streamdown";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { call, useRead, type ReadResult } from "@/lib/bridge";
+import { call, read, useRead, type ReadResult } from "@/lib/bridge";
 import type { TelaProps } from "../rotas";
+import { LinhaDaAutomacao, NovaAutomacao } from "./automacoes";
 import { LinhaDeExecucao } from "./execucoes";
 import { AbaSessoes } from "./sessoes-da-iniciativa";
 
@@ -213,7 +214,7 @@ function DetalheDaIniciativa({
 
       {aba === "deliveries" && <AbaEntregas navegar={navegar} slug={slug} />}
       {aba === "context" && <AbaContexto slug={slug} />}
-      {aba === "agents" && <AbaAgents iniciativa={iniciativa} />}
+      {aba === "agents" && <AbaAutomacoes iniciativa={iniciativa} navegar={navegar} />}
       {aba === "integrations" && <AbaIntegrations iniciativa={iniciativa} />}
       {aba === "runs" && <AbaRuns initiativeId={iniciativa.id} navegar={navegar} />}
       {aba === "sessions" && <AbaSessoes iniciativa={iniciativa} />}
@@ -443,46 +444,85 @@ function FormularioDeIniciativa({
   );
 }
 
-function AbaAgents({ iniciativa }: { iniciativa: IniciativaDetalhada }) {
+/**
+ * As automações da iniciativa, com a mesma linha da lista de automações:
+ * rodar, ligar e abrir sem sair daqui. Automação ligada a uma iniciativa só
+ * alcança os apps da aba Integrações dela, e o aviso diz isso antes do
+ * primeiro run falhar.
+ */
+function AbaAutomacoes({ iniciativa, navegar }: { iniciativa: IniciativaDetalhada; navegar: TelaProps["navegar"] }) {
   const { t } = useTranslation();
-  const agentes = iniciativa.agents;
-  const todos = useRead("agents.overview");
+  const ligadas = new Set(iniciativa.agents.map((a) => a.id));
+  const inicial = useRead("agents.overview");
+  const [relida, setRelida] = useState<ReadResult<"agents.overview"> | null>(null);
+  const todas = relida ?? inicial.data ?? [];
+  const reler = (): void => {
+    read("agents.overview").then(setRelida, () => undefined);
+  };
+  const daIniciativa = todas.filter((a) => ligadas.has(a.id));
+  const disponiveis = todas.filter((a) => !ligadas.has(a.id));
   const [selecionado, setSelecionado] = useState("");
+  const [criando, setCriando] = useState(false);
   const [ocupado, setOcupado] = useState(false);
 
-  const disponiveis = (todos.data ?? []).filter(
-    (agent) => !agentes.some((ligado) => ligado.id === agent.id),
-  );
-
-  const vincular = (): void => {
-    if (selecionado.length === 0) return;
+  const ligar = (id: string | null, agentId: string): void => {
     setOcupado(true);
-    call("initiatives.linkAgent", selecionado, iniciativa.slug)
-      .then(() => setSelecionado(""))
+    call("initiatives.linkAgent", agentId, id)
+      .then(() => {
+        setSelecionado("");
+        reler();
+      })
       .finally(() => setOcupado(false));
   };
 
   return (
     <div className="flex flex-col gap-3" data-locum-probe="initiative-agents">
-      {agentes.length === 0 ? (
+      <div className="flex items-center gap-3">
+        <p className="text-muted-foreground flex-1 text-xs">{t("initiatives.detail.agents.scope")}</p>
+        <Button className="cursor-pointer" onClick={() => setCriando(true)} size="sm">
+          <Plus className="size-4" />
+          {t("automations.list.new")}
+        </Button>
+      </div>
+
+      {criando ? (
+        <NovaAutomacao
+          aoCancelar={() => setCriando(false)}
+          aoCriar={(id) => navegar("automations", id)}
+          iniciativa={iniciativa.slug}
+        />
+      ) : null}
+
+      {daIniciativa.length === 0 ? (
         <p className="text-muted-foreground text-sm">{t("initiatives.detail.agents.empty")}</p>
       ) : (
         <ul className="divide-border border-border superficie divide-y overflow-hidden rounded-lg border">
-          {agentes.map((agent) => (
-            <li className="px-4 py-2 text-sm" data-locum-agent={agent.id} key={agent.id}>
-              {agent.name}
-            </li>
+          {daIniciativa.map((linha) => (
+            <LinhaDaAutomacao
+              abrir={() => navegar("automations", linha.id)}
+              aoMudar={reler}
+              extra={
+                <Button
+                  className="cursor-pointer"
+                  data-locum-agent={linha.id}
+                  disabled={ocupado}
+                  onClick={() => ligar(null, linha.id)}
+                  size="sm"
+                  variant="ghost"
+                >
+                  {t("initiatives.detail.agents.unlink")}
+                </Button>
+              }
+              key={linha.id}
+              linha={linha}
+            />
           ))}
         </ul>
       )}
 
       {disponiveis.length > 0 && (
         <div className="flex items-center gap-2" data-locum-probe="initiative-agents-form">
-          <select
-            className={classeDoCampo}
-            onChange={(e) => setSelecionado(e.target.value)}
-            value={selecionado}
-          >
+          <select className={classeDoCampo} onChange={(e) => setSelecionado(e.target.value)} value={selecionado}>
             <option value="">{t("initiatives.form.selectAgent")}</option>
             {disponiveis.map((agent) => (
               <option key={agent.id} value={agent.id}>
@@ -493,7 +533,7 @@ function AbaAgents({ iniciativa }: { iniciativa: IniciativaDetalhada }) {
           <Button
             className="cursor-pointer"
             disabled={ocupado || selecionado.length === 0}
-            onClick={vincular}
+            onClick={() => ligar(iniciativa.slug, selecionado)}
             size="sm"
             variant="secondary"
           >

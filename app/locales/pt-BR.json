@@ -361,7 +361,7 @@
       "objective": "Objetivo",
       "doneCriteria": "Criterio de pronto",
       "goalRef": "Referencia de meta",
-      "selectAgent": "Selecione um agent...",
+      "selectAgent": "Trazer uma automação existente",
       "selectServer": "Selecione um servidor...",
       "link": "Ligar",
       "add": "Adicionar",
@@ -382,7 +382,7 @@
       "tabs": {
         "deliveries": "Entregas",
         "context": "O que o Locum sabe",
-        "agents": "Agents",
+        "agents": "Automações",
         "integrations": "Integrações",
         "runs": "Execuções",
         "sessions": "Sessões",
@@ -396,7 +396,9 @@
         "empty": "Ainda sem context.md."
       },
       "agents": {
-        "empty": "Nenhum agent ligado a esta iniciativa ainda."
+        "empty": "Nenhuma automação nesta iniciativa ainda.",
+        "scope": "Automação daqui só alcança os apps da aba Integrações. As ferramentas nativas do Locum valem sempre.",
+        "unlink": "Tirar da iniciativa"
       },
       "integrations": {
         "empty": "Esta iniciativa ainda nao enxerga servidor MCP nenhum."

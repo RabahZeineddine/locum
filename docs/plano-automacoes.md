@@ -168,3 +168,5 @@ separa em quatro peças, cada uma com um dono só.
 8. **Ferramentas nativas.** Servidor `locum-ferramentas` com HTTP GET, JSON e
    agent-to-agent (um agent consulta outro da biblioteca, só leitura).
 9. **Iniciativa com automações.**
+
+As cinco fatias da revisão 2 saíram entre a v0.1.40 e a v0.1.46.

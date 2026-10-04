@@ -1,3 +1,4 @@
+import { SERVIDOR_NATIVO } from "../config/types.js";
 import { recordSpend } from "../executor/budget.js";
 import type { McpRegistry } from "../mcp/registry.js";
 import { resolveModel } from "../providers/registry.js";
@@ -7,8 +8,7 @@ import { libraryService, type LibraryService } from "../services/library-service
 import { machineId } from "../services/machine-service.js";
 import { providerService } from "../services/provider-service.js";
 
-/** Nome do servidor das ferramentas nativas, como os passos o referenciam. */
-export const SERVIDOR_NATIVO = "locum-ferramentas";
+export { SERVIDOR_NATIVO };
 
 export interface ConsultaDeps {
   library?: Pick<LibraryService, "resolveProfile">;

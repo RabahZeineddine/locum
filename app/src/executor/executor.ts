@@ -7,6 +7,7 @@ import {
   type ModelStep,
   type Step,
   resolveTools,
+  SERVIDOR_NATIVO,
   topoSort,
 } from "../config/types.js";
 import { McpRegistry } from "../mcp/registry.js";
@@ -348,7 +349,9 @@ export class Executor {
     // (`initiativeServers` nulo) nao passa por aqui, e ve tudo como hoje.
     if (initiativeServers) {
       const exigidos = new Set([...toolRefs.map((t) => t.server), ...step.requiresServers]);
-      const fora = [...exigidos].filter((servidor) => !initiativeServers.has(servidor));
+      // As ferramentas nativas são do próprio Locum e só leem: valem em toda
+      // iniciativa sem precisar estar na aba Integrações.
+      const fora = [...exigidos].filter((servidor) => servidor !== SERVIDOR_NATIVO && !initiativeServers.has(servidor));
       if (fora.length > 0) {
         if (!step.optional) {
           await db

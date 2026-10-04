@@ -5,7 +5,7 @@ import { isAbsolute, join } from "node:path";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { ApprovalGate } from "../approval/gate.js";
 import { db as defaultDb, schema } from "../db/index.js";
-import { AgentSpec, requiredServers } from "../config/types.js";
+import { AgentSpec, SERVIDOR_NATIVO, serversInScope } from "../config/types.js";
 import { SYSTEM_CONTEXT_AGENT_SPEC, SYSTEM_CONTEXT_AGENT_VERSION_ID } from "../db/migrate.js";
 import { buildGate } from "../executor/build.js";
 import { ID_DE_AGENT } from "./agent-service.js";
@@ -242,7 +242,7 @@ export class InitiativeService {
         for (const ref of passo.tools ?? spec.data.defaultTools) exigidos.add(ref.server);
         for (const servidor of passo.requiresServers) exigidos.add(servidor);
       }
-      const faltando = [...exigidos].some((servidor) => !names.includes(servidor));
+      const faltando = [...exigidos].some((servidor) => servidor !== SERVIDOR_NATIVO && !names.includes(servidor));
       if (faltando) afetados.push({ agentId: agent.id, name: agent.name });
     }
 
@@ -318,7 +318,7 @@ export class InitiativeService {
     if (versaoRow) {
       const spec = AgentSpec.safeParse(versaoRow.spec);
       if (spec.success) {
-        const fora = requiredServers(spec.data).filter((servidor) => !servidores.has(servidor));
+        const fora = serversInScope(spec.data).filter((servidor) => !servidores.has(servidor));
         if (fora.length > 0) {
           throw new Error(`agent usa servidor fora da iniciativa "${slug}": ${fora.join(", ")}`);
         }

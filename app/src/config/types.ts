@@ -263,6 +263,17 @@ export function resolveTools(spec: AgentSpec, step: ModelStep): ToolRef[] {
  * ligar quanto a cada `upsert` seguinte: o agent nao pode passar a depender de
  * um servidor de fora da iniciativa.
  */
+/**
+ * O servidor das ferramentas nativas, servido pelo próprio Locum. Só lê, então
+ * vale em toda iniciativa sem precisar estar na lista de servidores dela.
+ */
+export const SERVIDOR_NATIVO = "locum-ferramentas";
+
+/** Servidores que o escopo de uma iniciativa precisa cobrir: os exigidos, menos o nativo. */
+export function serversInScope(spec: AgentSpec): string[] {
+  return requiredServers(spec).filter((s) => s !== SERVIDOR_NATIVO);
+}
+
 export function requiredServers(spec: AgentSpec): string[] {
   const servers = new Set<string>();
   for (const step of spec.steps) {

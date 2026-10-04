@@ -5925,6 +5925,7 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
     ["agents", primeiroAgent],
     ["initiatives", undefined],
     ["initiatives", primeiraIniciativa],
+    ["initiatives", primeiraIniciativa === undefined ? undefined : `${primeiraIniciativa}/agents`],
     ["sessions", undefined],
     // Uma foto por seção, com o nome dela: a Configuração tem duas.
     ["settings", "general"],
@@ -5943,7 +5944,14 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
     // registraria o esqueleto em vez do conteúdo.
     await new Promise((resolve) => setTimeout(resolve, 1200));
     const imagem = await janela.webContents.capturePage();
-    const sufixo = detalhe === undefined ? "" : id === "settings" || id === "library" ? `-${detalhe}` : "-detalhe";
+    const sufixo =
+      detalhe === undefined
+        ? ""
+        : id === "settings" || id === "library"
+          ? `-${detalhe}`
+          : detalhe.endsWith("/agents")
+            ? "-automacoes"
+            : "-detalhe";
     writeFileSync(join(destino, `${id}${sufixo}.png`), imagem.toPNG());
   }
 

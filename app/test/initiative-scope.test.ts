@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { ApprovalGate, type ActionHandler } from "../src/approval/gate.js";
-import { AgentSpec, type McpServerConfig } from "../src/config/types.js";
+import { AgentSpec, SERVIDOR_NATIVO, serversInScope, type McpServerConfig } from "../src/config/types.js";
 import { db, schema } from "../src/db/index.js";
 import { migrateDb } from "../src/db/migrate.js";
 import { Executor } from "../src/executor/executor.js";
@@ -248,4 +248,34 @@ test("retomada usa a fotografia do run, nao o agent atual, e a lista de servidor
 
   assert.equal((await passo(runId, "depois"))?.status, "skipped");
   assert.equal((await passo(runId, "depois"))?.error, "outside_initiative");
+});
+
+test("ferramenta nativa não conta como servidor fora da iniciativa", async () => {
+  const initiatives = new InitiativeService();
+  const slug = `frente-${randomUUID()}`;
+  await initiatives.upsert({ slug, title: "T", objective: "o", doneCriteria: "d" });
+  await cadastrarServidores();
+  await initiatives.setServers(slug, ["srv-a"]);
+
+  const agentId = `agente-${randomUUID()}`;
+  const servico = new AgentService();
+  const spec = (tools: { server: string; tool: string }[]) =>
+    AgentSpec.parse({
+      id: agentId,
+      name: "Com nativa",
+      steps: [{ type: "model", key: "ler", name: "Ler", model: "ollama/modelo", prompt: "leia", tools, requiresServers: ["srv-a"] }],
+    });
+  await servico.upsert(spec([{ server: SERVIDOR_NATIVO, tool: "http_get" }]), undefined, "human");
+  await initiatives.linkAgent(agentId, slug);
+
+  // Já ligado, a versão nova com a nativa e outra ferramenta da frente passa.
+  await servico.upsert(
+    spec([
+      { server: SERVIDOR_NATIVO, tool: "json_query" },
+      { server: "srv-a", tool: "x" },
+    ]),
+    undefined,
+    "human",
+  );
+  assert.deepEqual(serversInScope(spec([{ server: SERVIDOR_NATIVO, tool: "http_get" }])), ["srv-a"]);
 });

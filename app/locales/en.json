@@ -344,7 +344,7 @@
       "objective": "Objective",
       "doneCriteria": "Done criteria",
       "goalRef": "Goal reference",
-      "selectAgent": "Select an agent...",
+      "selectAgent": "Bring an existing automation",
       "selectServer": "Select a server...",
       "link": "Link",
       "add": "Add",
@@ -365,7 +365,7 @@
       "tabs": {
         "deliveries": "Deliveries",
         "context": "What Locum knows",
-        "agents": "Agents",
+        "agents": "Automations",
         "integrations": "Integrations",
         "runs": "Runs",
         "sessions": "Sessions",
@@ -379,7 +379,9 @@
         "empty": "No context.md yet."
       },
       "agents": {
-        "empty": "No agent linked to this initiative yet."
+        "empty": "No automations in this initiative yet.",
+        "scope": "Automations here only reach the apps in the Integrations tab. Locum's native tools always apply.",
+        "unlink": "Remove from initiative"
       },
       "integrations": {
         "empty": "This initiative sees no MCP server yet."

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { desc, eq } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
-import { AgentBudgetPatch, AgentSpec, requiredServers, resolveTools, type ActionMode, type ActionStep, type AgentBudget, type ToolRef } from "../config/types.js";
+import { AgentBudgetPatch, AgentSpec, resolveTools, serversInScope, type ActionMode, type ActionStep, type AgentBudget, type ToolRef } from "../config/types.js";
 import { today } from "../executor/budget.js";
 import { splitModelId } from "../providers/registry.js";
 import { SUBSCRIPTION_RUNTIMES } from "../runtimes/types.js";
@@ -552,7 +552,7 @@ export class AgentService {
       ).map((r) => r.serverName),
     );
 
-    const fora = requiredServers(spec).filter((servidor) => !servidores.has(servidor));
+    const fora = serversInScope(spec).filter((servidor) => !servidores.has(servidor));
     if (fora.length > 0) {
       throw new Error(`agent ligado a uma iniciativa nao pode usar servidor fora dela: ${fora.join(", ")}`);
     }

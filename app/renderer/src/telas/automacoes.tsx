@@ -6,7 +6,7 @@ import { call, read, useRead, type ReadResult } from "@/lib/bridge";
 import { rotuloDeEstado } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
 import { Loader2, Play, Plus } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { TriggerConfig } from "../../../src/config/types";
 import { EditorDeAutomacao } from "../automacoes/editor";
@@ -82,7 +82,18 @@ function ListaDeAutomacoes({ navegar }: Pick<TelaProps, "navegar">) {
   );
 }
 
-function LinhaDaAutomacao({ linha, abrir, aoMudar }: { linha: Linha; abrir: () => void; aoMudar: () => void }) {
+export function LinhaDaAutomacao({
+  linha,
+  abrir,
+  aoMudar,
+  extra,
+}: {
+  linha: Linha;
+  abrir: () => void;
+  aoMudar: () => void;
+  /** Ação a mais no fim da linha, para quem a mostra em outro contexto. */
+  extra?: ReactNode;
+}) {
   const { t } = useTranslation();
   const [agindo, setAgindo] = useState<"ligar" | "rodar" | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
@@ -174,6 +185,7 @@ function LinhaDaAutomacao({ linha, abrir, aoMudar }: { linha: Linha; abrir: () =
         <Button className="cursor-pointer" onClick={abrir} size="sm" variant="outline">
           {t("automations.list.open")}
         </Button>
+        {extra}
       </div>
       {aviso === null ? null : <p className="text-muted-foreground text-xs">{aviso}</p>}
     </li>
@@ -182,9 +194,18 @@ function LinhaDaAutomacao({ linha, abrir, aoMudar }: { linha: Linha; abrir: () =
 
 /**
  * Criar por modelo. A automação nasce gravada, com o gatilho desligado, e
- * abre no canvas: é lá que se diz o canal, o tracker e o texto.
+ * abre no canvas: é lá que se diz o canal, o tracker e o texto. Criada de
+ * dentro de uma iniciativa, nasce ligada a ela.
  */
-function NovaAutomacao({ aoCancelar, aoCriar }: { aoCancelar: () => void; aoCriar: (id: string) => void }) {
+export function NovaAutomacao({
+  aoCancelar,
+  aoCriar,
+  iniciativa,
+}: {
+  aoCancelar: () => void;
+  aoCriar: (id: string) => void;
+  iniciativa?: string;
+}) {
   const { t } = useTranslation();
   const [modelo, setModelo] = useState<ModeloId>("slackReply");
   const [nome, setNome] = useState("");
@@ -207,6 +228,7 @@ function NovaAutomacao({ aoCancelar, aoCriar }: { aoCancelar: () => void; aoCria
         note: t(`automations.templates.${modelo}.title`),
         create: true,
       });
+      if (iniciativa !== undefined) await call("initiatives.linkAgent", id, iniciativa);
       aoCriar(id);
     } catch (e) {
       setErro(e instanceof Error ? e.message : String(e));
