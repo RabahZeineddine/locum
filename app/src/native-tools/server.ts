@@ -1,0 +1,66 @@
+import { z } from "zod";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { respond } from "../mcp-server/respond.js";
+import { consultarAgent, SERVIDOR_NATIVO, type ConsultaDeps } from "./ask.js";
+import { httpGet, jsonQuery } from "./tools.js";
+
+export interface NativeToolsDeps {
+  fetch?: typeof fetch;
+  consulta: ConsultaDeps;
+}
+
+/**
+ * O servidor `locum-ferramentas`: as ferramentas que o Locum dá aos agents
+ * por conta própria. É um servidor MCP como qualquer outro, servido pelo
+ * próprio binário com `--ferramentas`, para o runtime nativo e o do Claude
+ * Code enxergarem igual e toolset não precisar de caso especial.
+ *
+ * Tudo aqui é leitura. Escrever fora é nó de ação no fluxo.
+ */
+export function buildNativeToolsServer(deps: NativeToolsDeps): McpServer {
+  const server = new McpServer({ name: SERVIDOR_NATIVO, version: "0.1.0" });
+
+  server.registerTool(
+    "http_get",
+    {
+      description:
+        "GET request to any http or https address. Returns status, content type and the body, already parsed when it is JSON. Bodies over 60k characters are cut.",
+      inputSchema: {
+        url: z.string(),
+        headers: z.record(z.string(), z.string()).optional(),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: true },
+    },
+    async ({ url, headers }) => respond(() => httpGet(url, headers ?? {}, deps.fetch)),
+  );
+
+  server.registerTool(
+    "json_query",
+    {
+      description:
+        'Reads a value from JSON by path, like "items[0].name" or "a.b". The JSON can come as text, with or without a ```json fence. An empty path returns the whole JSON; a missing path returns null.',
+      inputSchema: {
+        json: z.unknown(),
+        path: z.string().optional(),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ json, path }) => respond(async () => jsonQuery(json, path ?? "")),
+  );
+
+  server.registerTool(
+    "ask_agent",
+    {
+      description:
+        "Asks a library agent a question and returns its answer. The agent runs with its own instructions, model and tools, but cannot ask another agent in turn.",
+      inputSchema: {
+        agent: z.string().describe("id of the library agent"),
+        question: z.string(),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ agent, question }) => respond(() => consultarAgent(agent, question, deps.consulta)),
+  );
+
+  return server;
+}

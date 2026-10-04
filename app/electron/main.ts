@@ -1,6 +1,6 @@
 // Primeiro import de propósito: com `--mcp`, desvia o log do stdout antes que
 // qualquer outro módulo escreva nele.
-import { modoMcp } from "./mcp-stdout.js";
+import { modoFerramentas, modoMcp } from "./mcp-stdout.js";
 import { app, BrowserWindow, shell } from "electron";
 import { captureDeepLinks } from "./deep-link.js";
 import { VERSAO } from "./versao.js";
@@ -5830,6 +5830,31 @@ async function serveMcp(): Promise<void> {
 }
 
 /**
+ * O `locum-ferramentas`, que o executor sobe como qualquer servidor MCP
+ * cadastrado. O processo vive enquanto o pool o mantiver aberto.
+ */
+async function serveFerramentas(): Promise<void> {
+  const { installSecretBackend } = await import("./safe-storage.js");
+  if (!installSecretBackend()) console.error("keychain indisponivel, credenciais vem so do ambiente");
+
+  const { buildRuntimes, closeMcpPool } = await import("../src/executor/build.js");
+  const { buildNativeToolsServer } = await import("../src/native-tools/server.js");
+  const { StdioServerTransport } = await import("@modelcontextprotocol/sdk/server/stdio.js");
+
+  const sair = (): void => {
+    void closeMcpPool()
+      .catch(() => undefined)
+      .finally(() => app.exit(0));
+  };
+  process.stdin.on("end", sair);
+  process.stdin.on("close", sair);
+
+  const server = buildNativeToolsServer({ consulta: { build: buildRuntimes } });
+  await server.connect(new StdioServerTransport());
+  console.error("ferramentas nativas do locum no ar");
+}
+
+/**
  * Poe o processo principal no idioma de quem esta na maquina.
  *
  * Qual idioma vale sai do mesmo servico que responde a janela, entao a bandeja
@@ -6084,9 +6109,23 @@ async function main(): Promise<void> {
   mcpOAuthService.useBrowser((url) => shell.openExternal(url));
   mcpService.useRefresher((name) => mcpOAuthService.refreshIfNeeded(name));
 
+  if (modoFerramentas) {
+    await serveFerramentas();
+    return;
+  }
   if (modoMcp) {
     await serveMcp();
     return;
+  }
+
+  // O servidor das ferramentas nativas é este binário com `--ferramentas`.
+  // Cadastrado a cada abertura, para seguir o app quando ele muda de lugar.
+  {
+    const { cadastrarFerramentasNativas } = await import("../src/native-tools/register.js");
+    const comando = [process.execPath, ...(app.isPackaged ? [] : [join(__dirname, "main.cjs")]), "--ferramentas"];
+    await cadastrarFerramentasNativas(comando).catch((err: unknown) => {
+      console.error(`ferramentas nativas: cadastro falhou (${err instanceof Error ? err.message : String(err)})`);
+    });
   }
 
   // Achar o `claude` abre um shell de login, que leva segundos. Começar agora

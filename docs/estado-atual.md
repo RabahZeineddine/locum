@@ -1281,6 +1281,20 @@ comparações, ações com modos e marcadores), `list_library_agents`,
 Com elas o Claude Code monta automação inteira conversando. Ferramenta nova de
 servidor `write` é recusada também por aqui, direto ou pelo toolset.
 
+**Automações, fatia 8: ferramentas nativas.** O próprio binário serve o
+servidor MCP `locum-ferramentas` com `--ferramentas` (`src/native-tools/`), e
+o app o cadastra a cada abertura (nasce ligado; depois só corrige o comando
+quando o app muda de lugar, e respeita quem desligou). Três ferramentas de
+leitura: `http_get` (qualquer endereço http ou https, JSON já interpretado,
+corpo cortado em 60 mil caracteres), `json_query` (valor por caminho como
+`itens[0].nome`, aceita texto com cerca) e `ask_agent` (pergunta a um agent da
+biblioteca, que roda com as instruções, o modelo e as ferramentas dele, menos
+a própria consulta, então não encadeia). O gasto da consulta entra no dia como
+`biblioteca:<id>`, fora do teto do run que perguntou. Como é servidor MCP
+comum, aparece no seletor de ferramentas de toolset e agent, e os dois
+runtimes enxergam igual. A fumaça e a fumaça do pacote examinam o
+`--ferramentas` como já examinavam o `--mcp`.
+
 ## Próximos passos
 
 Iniciativas: I1, I2 e I3 prontos no código. Falta o teste à mão da sessão

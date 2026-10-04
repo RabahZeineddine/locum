@@ -40,6 +40,16 @@ export function closeMcpPool(): Promise<void> {
  * para reexecutar um passo, e o servidor MCP vai precisar da mesma montagem.
  */
 export async function buildExecutor(): Promise<Executor> {
+  const { mcp, runtimes } = await buildRuntimes();
+  return new Executor({ mcp, runtimes, gate: buildGate(), machineId });
+}
+
+/**
+ * Os runtimes e o pool de servidores, já com o que está cadastrado e ligado.
+ * Separado do executor porque a consulta a agent das ferramentas nativas roda
+ * modelo sem run.
+ */
+export async function buildRuntimes(): Promise<{ mcp: McpRegistry; runtimes: Map<string, Runtime> }> {
   // Credencial guardada no keychain entra aqui, antes de qualquer conexao. Sem
   // keychain, ou sem nada guardado, vale o ambiente do processo como sempre.
   await providerService.loadSecrets();
@@ -51,7 +61,7 @@ export async function buildExecutor(): Promise<Executor> {
   if (providerService.isAvailable("codex")) runtimes.set("codex", new CodexRuntime(configs));
 
   mcpPool.reconfigure(configs);
-  return new Executor({ mcp: mcpPool, runtimes, gate: buildGate(), machineId });
+  return { mcp: mcpPool, runtimes };
 }
 
 /**

@@ -81,14 +81,16 @@ filho.on("exit", (code, signal) => {
   }
   // Depois da bateria, o caminho de quem usa o Locum pelo Claude Code: o mesmo
   // binário servindo MCP, que só dentro do `.app` alcança o cofre.
-  examinarMcp(binario).then(
-    (resumo) => {
-      console.log(resumo);
-      console.log("fumaça do pacote: ok");
-    },
-    (erro) => {
-      console.error(erro.message);
-      process.exit(1);
-    },
-  );
+  examinarMcp(binario)
+    .then(async (resumo) => [resumo, await examinarMcp(binario, [], "--ferramentas")])
+    .then(
+      (resumos) => {
+        for (const resumo of resumos) console.log(resumo);
+        console.log("fumaça do pacote: ok");
+      },
+      (erro) => {
+        console.error(erro.message);
+        process.exit(1);
+      },
+    );
 });
