@@ -104,7 +104,7 @@ export function Vitrine({ paineis }: { paineis: Record<string, ReactNode> }) {
           <Filtro ativo={categoria === null} onClick={() => setCategoria(null)}>
             {t("connections.categories.all")}
           </Filtro>
-          {CATEGORIAS.map((c) => (
+          {CATEGORIAS.filter((c) => lista.some((x) => x.category === c)).map((c) => (
             <Filtro ativo={categoria === c} key={c} onClick={() => setCategoria(c)}>
               {t(`connections.categories.${c}`)}
             </Filtro>

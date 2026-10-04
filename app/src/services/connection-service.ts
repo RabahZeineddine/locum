@@ -104,16 +104,10 @@ export interface CatalogEntry {
 export const CATALOG: CatalogEntry[] = [
   { id: "claude-code", name: "Claude Code", category: "dev", kind: "claude-code", logo: "claude", color: "D97757" },
   { id: "github", name: "GitHub", category: "dev", kind: "github", logo: "github", color: "181717" },
-  { id: "linear", name: "Linear", category: "work", kind: "oauth", url: "https://mcp.linear.app/mcp", logo: "linear", color: "5E6AD2" },
   { id: "notion", name: "Notion", category: "work", kind: "oauth", url: "https://mcp.notion.com/mcp", logo: "notion", color: "000000" },
   { id: "atlassian", name: "Atlassian", category: "work", kind: "oauth", url: "https://mcp.atlassian.com/v1/mcp", logo: "atlassian", color: "0052CC" },
   { id: "slack", name: "Slack", category: "communication", kind: "panel", logo: null, color: "4A154B" },
   { id: "teams", name: "Microsoft Teams", category: "communication", kind: "panel", logo: null, color: "5059C9" },
-  { id: "sentry", name: "Sentry", category: "observability", kind: "oauth", url: "https://mcp.sentry.dev/mcp", logo: "sentry", color: "362D59" },
-  { id: "cloudflare", name: "Cloudflare", category: "observability", kind: "oauth", url: "https://mcp.cloudflare.com/mcp", logo: "cloudflare", color: "F38020" },
-  { id: "vercel", name: "Vercel", category: "dev", kind: "oauth", url: "https://mcp.vercel.com", logo: "vercel", color: "000000" },
-  { id: "supabase", name: "Supabase", category: "data", kind: "oauth", url: "https://mcp.supabase.com/mcp", logo: "supabase", color: "3FCF8E" },
-  { id: "stripe", name: "Stripe", category: "data", kind: "oauth", url: "https://mcp.stripe.com", logo: "stripe", color: "635BFF" },
   { id: "figma", name: "Figma", category: "work", kind: "oauth", url: "https://mcp.figma.com/mcp", logo: "figma", color: "F24E1E" },
 ];
 

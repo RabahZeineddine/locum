@@ -71,7 +71,7 @@ test("o catálogo inteiro aparece, com o estado de cada um", async () => {
 
 test("conectar servidor do catálogo cadastra pelo id e autoriza", async () => {
   const { servico, mcp, chamadas } = montar();
-  const id = "linear";
+  const id = "notion";
   try {
     const conexao = await servico.connect(id);
     assert.equal(conexao.state, "connected");
@@ -109,7 +109,7 @@ test("servidor próprio com OAuth sem registro automático é recusado antes de 
 test("endereço sem https e nome do catálogo são recusados", async () => {
   const { servico } = montar();
   await assert.rejects(servico.addCustom({ name: "x", url: "http://exemplo.test/mcp" }), /https/);
-  await assert.rejects(servico.addCustom({ name: "linear", url: "https://exemplo.test/mcp" }), /catálogo/);
+  await assert.rejects(servico.addCustom({ name: "notion", url: "https://exemplo.test/mcp" }), /catálogo/);
 });
 
 /** Configuração em memória, para o Slack de um teste não vazar para o outro. */
@@ -288,15 +288,15 @@ test("consentimento do administrador abre o link do tenant e exige a confirmaç�
 
 test("conectar pela vitrine recadastra o servidor que tem o nome do catálogo e outro endereço", async () => {
   const { servico, mcp, pedidos } = montarSlack();
-  await mcp.register({ name: "linear", transport: "http", url: "https://outro.exemplo.dev/mcp" });
+  await mcp.register({ name: "notion", transport: "http", url: "https://outro.exemplo.dev/mcp" });
   try {
-    await servico.connect("linear");
-    assert.equal((await mcp.get("linear"))?.config.url, "https://mcp.linear.app/mcp");
+    await servico.connect("notion");
+    assert.equal((await mcp.get("notion"))?.config.url, "https://mcp.notion.com/mcp");
     assert.deepEqual(
       pedidos.map((p) => p.name),
-      ["linear"],
+      ["notion"],
     );
   } finally {
-    await mcp.remove("linear");
+    await mcp.remove("notion");
   }
 });
