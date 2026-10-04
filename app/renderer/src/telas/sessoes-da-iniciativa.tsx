@@ -77,7 +77,7 @@ export function AbaSessoes({ iniciativa }: { iniciativa: IniciativaDetalhada }) 
   };
 
   const acoes: Acoes = {
-    retomar: (s) => agir(() => call("claudeSessions.resume", s.id).then(() => null)),
+    retomar: (s) => agir(() => call("claudeSessions.resume", s.id, slug).then(() => null)),
     terminar: (s) => agir(() => call("claudeSessions.markDone", s.id, s.lastActivityAt).then(() => null)),
     reabrir: (s) => agir(() => call("claudeSessions.reopen", s.id).then(() => null)),
   };
@@ -175,7 +175,7 @@ function LinhaDaSessao({
     ),
   );
   const encerrar = rodar(() => call("sessions.close", sessao.id).then(() => t("initiatives.detail.sessions.closed")));
-  const retomar = rodar(() => call("claudeSessions.resume", sessao.id).then(() => null));
+  const retomar = rodar(() => call("claudeSessions.resume", sessao.id, slug).then(() => null));
 
   return (
     <li

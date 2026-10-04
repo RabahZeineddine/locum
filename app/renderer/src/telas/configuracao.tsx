@@ -676,7 +676,7 @@ function EscolhaDoTerminal() {
 }
 
 type SessionTerminal = ReadResult<"sessions.terminal">;
-const TERMINAIS: readonly SessionTerminal[] = ["terminal", "iterm", "warp"];
+const TERMINAIS: readonly SessionTerminal[] = ["locum", "terminal", "iterm", "warp"];
 
 /* --------------------------------------------------------------- provedores */
 

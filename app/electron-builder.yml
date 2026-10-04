@@ -39,6 +39,10 @@ files:
   # copia que vale e a de `native/`, apontada por `LOCUM_SQLITE_BINDING`.
   - node_modules/better-sqlite3/package.json
   - node_modules/better-sqlite3/lib/**
+  - node_modules/node-pty/package.json
+  - node_modules/node-pty/lib/**
+  - "!node_modules/node-pty/lib/**/*.test.js"
+  - node_modules/node-pty/prebuilds/darwin-*/**
 
 # O Electron traz 220 traduções do Chromium, e a interface do Locum existe em
 # duas. As outras 218 são o menu de contexto e o corretor ortográfico em idioma
@@ -64,6 +68,7 @@ electronLanguages:
 asar: true
 asarUnpack:
   - native/**
+  - node_modules/node-pty/prebuilds/**
   # O servidor de brinquedo sobe como processo filho, fora do Electron, e o
   # `fs` remendado que enxerga dentro do asar nao vale para ele.
   - dist/mcp-fixture-server.mjs

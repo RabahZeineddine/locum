@@ -10,6 +10,7 @@ import type { TelaProps } from "../rotas";
 import { LinhaDaAutomacao, NovaAutomacao } from "./automacoes";
 import { LinhaDeExecucao } from "./execucoes";
 import { AbaSessoes } from "./sessoes-da-iniciativa";
+import { AbaTerminal } from "./terminal-da-iniciativa";
 
 type LinhaDeIniciativa = ReadResult<"initiatives.list">[number];
 type IniciativaDetalhada = NonNullable<ReadResult<"initiatives.detail">>;
@@ -19,7 +20,7 @@ const classeDoCampo = "border-border bg-background w-full rounded border px-2 py
 
 /** As cinco abas do detalhe. So `context` le e escreve de verdade nesta fatia:
  * as outras quatro so mostram o que o detalhe composto ja trouxe. */
-const ABAS = ["deliveries", "chat", "context", "agents", "integrations", "runs", "sessions", "actions"] as const;
+const ABAS = ["deliveries", "chat", "terminal", "context", "agents", "integrations", "runs", "sessions", "actions"] as const;
 type Aba = (typeof ABAS)[number];
 
 function ehAba(valor: string): valor is Aba {
@@ -222,6 +223,7 @@ function DetalheDaIniciativa({
           <Conversa iniciativa={slug} irParaModelos={() => navegar("settings", "models")} />
         </div>
       )}
+      {aba === "terminal" && <AbaTerminal slug={slug} />}
       {aba === "context" && <AbaContexto slug={slug} />}
       {aba === "agents" && <AbaAutomacoes iniciativa={iniciativa} navegar={navegar} />}
       {aba === "integrations" && <AbaIntegrations iniciativa={iniciativa} />}

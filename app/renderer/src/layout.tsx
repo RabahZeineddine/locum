@@ -1,11 +1,13 @@
+import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useRead } from "@/lib/bridge";
 import { useRota } from "@/lib/router";
 import { cn } from "@/lib/utils";
+import { assinarEventosDoTerminal } from "@/lib/terminal";
 import { Assistente } from "./assistente";
 import { CurrentInitiativeProvider } from "./current-initiative";
 import { Paleta } from "./paleta";
-import { ROTA_IDS, ROTA_PADRAO, ROTAS, ROTAS_ANTIGAS, ROTAS_DA_BARRA } from "./rotas";
+import { ROTA_IDS, ROTA_PADRAO, ROTAS, ROTAS_ANTIGAS, ROTAS_DA_BARRA, type TelaProps } from "./rotas";
 
 /**
  * Estado da ponte, no rodape da barra lateral.
@@ -198,6 +200,7 @@ export function Layout() {
 
       <Paleta navegar={navegar} />
       <Assistente navegar={navegar} />
+      <SeguirTerminal navegar={navegar} />
 
       {/*
         Marcador do smoke. Ele confere que este elemento esta com display none,
@@ -212,4 +215,22 @@ export function Layout() {
     </div>
     </CurrentInitiativeProvider>
   );
+}
+
+/**
+ * Terminal embutido aberto por outra tela (abrir sessão, retomar conversa)
+ * leva a pessoa até ele: a aba Terminal da iniciativa, ou Sessões quando ele
+ * não é de iniciativa nenhuma.
+ */
+function SeguirTerminal({ navegar }: Pick<TelaProps, "navegar">) {
+  useEffect(
+    () =>
+      assinarEventosDoTerminal((evento) => {
+        if (evento.tipo !== "aberto") return;
+        if (evento.iniciativa === null) navegar("sessions");
+        else navegar("initiatives", `${evento.iniciativa}/terminal`);
+      }),
+    [navegar],
+  );
+  return null;
 }

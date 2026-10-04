@@ -1354,6 +1354,22 @@ pelo caminho de antes, com o catálogo escrito à mão. Conferido à mão com
 haiku: chamou `list_initiatives` e `get_me` do Microsoft 365 e a segunda
 mensagem retomou a mesma sessão.
 
+**Terminal embutido.** O Locum virou mais uma opção de terminal da sessão
+("Dentro do Locum", `locum` em `TERMINALS`), ao lado de Terminal, iTerm e
+Warp. A iniciativa ganhou a aba Terminal: "Nova sessão com Claude" roda o
+mesmo `open-session.command` da sessão de fora (contexto, handoff, regras,
+`--session-id`) num pseudoterminal do processo principal (`node-pty`,
+`TerminalService`), desenhado pelo `xterm.js`. O processo sobrevive à troca
+de tela: quem volta pede o buffer (os últimos 256 KB) e segue no fluxo do
+canal `terminal:event`. Com o Locum como terminal escolhido, "Abrir sessão" e
+"Retomar" das telas de sessões também abrem aqui, e a janela leva até a aba
+(ou a Sessões, para conversa sem iniciativa). O `node-pty` 1.1 traz binário
+N-API por arquitetura, que vale no Node e no Electron sem recompilar; o build
+só dá o bit de execução ao `spawn-helper`, que a instalação sem script não
+dá, e o pacote o leva desempacotado do asar. Sem o módulo, a opção some e os
+terminais de fora continuam valendo. Captura `initiatives-terminal.png`
+roda um script real no pseudoterminal.
+
 ## Próximos passos
 
 Iniciativas: I1, I2 e I3 prontos no código. Falta o teste à mão da sessão

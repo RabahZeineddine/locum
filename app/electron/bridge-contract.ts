@@ -16,6 +16,7 @@ import type { ClaudeSessionsService } from "../src/services/claude-sessions-serv
 import type { MachineService } from "../src/services/machine-service.js";
 import type { McpService } from "../src/services/mcp-service.js";
 import type { MetricsService } from "../src/services/metrics-service.js";
+import type { Terminal } from "../src/terminal/terminal-service.js";
 import type { ClaudeImportService } from "../src/services/claude-import.js";
 import type { ClaudeAccountService } from "../src/runtimes/claude-account.js";
 import type { PriceService } from "../src/services/price-service.js";
@@ -453,6 +454,18 @@ interface ServiceApi {
   "chat.setModel": (modelo: string) => Promise<void>;
   "chat.send": (texto: string, context?: { initiative?: string }) => Promise<void>;
   "chat.cancel": (context?: { initiative?: string }) => Promise<void>;
+
+  /** Terminais embutidos: os abertos, com o slug da iniciativa de cada um. */
+  "terminal.list": (iniciativa?: string | null) => Promise<Terminal[]>;
+  "terminal.available": () => Promise<boolean>;
+  /** Sessão nova da iniciativa num terminal embutido, seja qual for o terminal preferido. */
+  "terminal.openSession": (slug: string) => Promise<{ sessionId: string }>;
+  /** Retoma uma conversa do Claude Code num terminal embutido. */
+  "terminal.resume": (claudeSessionId: string, iniciativa?: string) => Promise<void>;
+  "terminal.buffer": (id: string) => Promise<string>;
+  "terminal.write": (id: string, dados: string) => Promise<void>;
+  "terminal.resize": (id: string, colunas: number, linhas: number) => Promise<void>;
+  "terminal.close": (id: string) => Promise<void>;
   /** As falas guardadas da conversa geral ou da iniciativa. */
   "chat.history": (context?: { initiative?: string }) => Promise<{ de: "user" | "assistant"; texto: string; ferramentas: string[] }[]>;
   /** Começa a conversa do zero. */
@@ -616,6 +629,14 @@ export const BRIDGE_CHANNELS = [
   "chat.send",
   "chat.cancel",
   "chat.history",
+  "terminal.list",
+  "terminal.available",
+  "terminal.openSession",
+  "terminal.resume",
+  "terminal.buffer",
+  "terminal.write",
+  "terminal.resize",
+  "terminal.close",
   "chat.reset",
 ] as const satisfies readonly (keyof LocumApi)[];
 
@@ -672,6 +693,9 @@ export type LocumBridge = {
  * Fica fora de `BRIDGE_CHANNELS` porque nao e chamada com resposta: e fluxo.
  */
 export const CHAT_EVENT_CHANNEL = "chat:event";
+
+/** Saída e fim dos terminais embutidos, no mesmo esquema do chat. */
+export const TERMINAL_EVENT_CHANNEL = "terminal:event";
 
 /** O nome sob o qual o preload pendura a ponte na janela. */
 export const BRIDGE_GLOBAL = "locum";

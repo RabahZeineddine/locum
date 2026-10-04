@@ -6,6 +6,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { agentBuilder, criadorDisponivel } from "./agent-builder.js";
 import { chatSession } from "./chat.js";
+import { terminalService } from "./terminal.js";
 import {
   BRIDGE_CHANNELS,
   type BridgeChannel,
@@ -169,7 +170,7 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "claudeSessions.list": () => claudeSessionsService.list(),
     "claudeSessions.markDone": (id, lastActivityAt) => claudeSessionsService.markDone(id, lastActivityAt),
     "claudeSessions.reopen": (id) => claudeSessionsService.reopen(id),
-    "claudeSessions.resume": (id) => claudeSessionsService.resume(id),
+    "claudeSessions.resume": (id, iniciativa) => claudeSessionsService.resume(id, iniciativa),
     "prompts.list": (initiativeId) => promptService.list(initiativeId),
 
     "runs.list": (filter) => runService.list(filter),
@@ -232,6 +233,19 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     },
     "chat.cancel": async (context) => chatSession.interromper(context),
     "chat.history": (context) => chatSession.falas(context),
+    "terminal.list": async (iniciativa) => terminalService.listar(iniciativa),
+    "terminal.available": async () => terminalService.disponivel(),
+    "terminal.openSession": async (slug) => {
+      const aberta = await sessionService.open(slug, { terminal: "locum" });
+      return { sessionId: aberta.sessionId };
+    },
+    "terminal.resume": async (id, iniciativa) => {
+      await claudeSessionsService.resume(id, iniciativa, "locum");
+    },
+    "terminal.buffer": async (id) => terminalService.buffer(id),
+    "terminal.write": async (id, dados) => terminalService.escrever(id, dados),
+    "terminal.resize": async (id, colunas, linhas) => terminalService.redimensionar(id, colunas, linhas),
+    "terminal.close": async (id) => terminalService.fechar(id),
     "chat.reset": (context) => chatSession.limpar(context),
 
     "mcp.list": () => mcpService.list(),

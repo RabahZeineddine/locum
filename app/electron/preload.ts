@@ -3,6 +3,7 @@ import {
   BRIDGE_CHANNELS,
   BRIDGE_GLOBAL,
   CHAT_EVENT_CHANNEL,
+  TERMINAL_EVENT_CHANNEL,
   type LocumBridge,
 } from "./bridge-contract.js";
 
@@ -33,6 +34,14 @@ bridge["chat"]["onEvent"] = (ouvinte: (evento: unknown) => void) => {
   const encaminha = (_e: unknown, evento: unknown) => ouvinte(evento);
   ipcRenderer.on(CHAT_EVENT_CHANNEL, encaminha);
   return () => ipcRenderer.removeListener(CHAT_EVENT_CHANNEL, encaminha);
+};
+
+// Saída dos terminais embutidos, pelo mesmo motivo: canal fixo.
+bridge["terminal"] ??= {};
+bridge["terminal"]["onEvent"] = (ouvinte: (evento: unknown) => void) => {
+  const encaminha = (_e: unknown, evento: unknown) => ouvinte(evento);
+  ipcRenderer.on(TERMINAL_EVENT_CHANNEL, encaminha);
+  return () => ipcRenderer.removeListener(TERMINAL_EVENT_CHANNEL, encaminha);
 };
 
 contextBridge.exposeInMainWorld(BRIDGE_GLOBAL, bridge as unknown as LocumBridge);

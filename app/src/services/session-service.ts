@@ -14,14 +14,26 @@ import { translate } from "./text-service.js";
 
 type Db = typeof defaultDb;
 
-export const TERMINALS = ["terminal", "iterm", "warp"] as const;
+/** `locum` é o terminal embutido, dentro da janela; os outros são aplicativos à parte. */
+export const TERMINALS = ["locum", "terminal", "iterm", "warp"] as const;
 export type SessionTerminal = (typeof TERMINALS)[number];
 
 const TERMINAL_KEY = "session.terminal";
 const DEFAULT_TERMINAL: SessionTerminal = "terminal";
 
+/**
+ * Quem abre o script dentro do Locum. Registrado pelo processo principal na
+ * subida; sem registro (linha de comando, teste) o terminal embutido conta
+ * como não instalado.
+ */
+export type AbrirEmbutido = (entrada: { script: string; cwd: string; titulo: string; iniciativa?: string }) => void;
+let embutido: AbrirEmbutido | null = null;
+export function usarTerminalEmbutido(abrir: AbrirEmbutido | null): void {
+  embutido = abrir;
+}
+
 /** Nome do aplicativo que o `open -a` do macOS reconhece, por terminal. */
-const TERMINAL_APP: Record<SessionTerminal, string> = {
+const TERMINAL_APP: Record<Exclude<SessionTerminal, "locum">, string> = {
   terminal: "Terminal",
   iterm: "iTerm",
   warp: "Warp",
@@ -187,6 +199,7 @@ function renderScript(input: {
 
 /** `open -Ra` so procura o aplicativo, sem abrir nada, e falha quando ele nao existe. */
 async function terminalInstalled(exec: Exec, terminal: SessionTerminal): Promise<boolean> {
+  if (terminal === "locum") return Promise.resolve(embutido !== null);
   return exec("open", ["-Ra", TERMINAL_APP[terminal]]).then(
     () => true,
     () => false,
@@ -202,14 +215,31 @@ export async function installedTerminals(exec: Exec): Promise<SessionTerminal[]>
  * Abre o script no terminal pedido. Sem conferir antes, o `open -a` de um
  * aplicativo que nao existe devolve um erro cru do macOS no lugar do aviso.
  */
-export async function openInTerminal(exec: Exec, terminal: SessionTerminal, script: string): Promise<void> {
+export async function openInTerminal(
+  exec: Exec,
+  terminal: SessionTerminal,
+  script: string,
+  info: { cwd: string; titulo: string; iniciativa?: string },
+): Promise<void> {
   await requireTerminal(exec, terminal);
-  await exec("open", ["-a", TERMINAL_APP[terminal], script]);
+  await abrirNoTerminal(exec, terminal, script, info);
+}
+
+/** Abre sem conferir de novo: quem chama já conferiu antes de gravar alguma coisa. */
+async function abrirNoTerminal(
+  exec: Exec,
+  terminal: SessionTerminal,
+  script: string,
+  info: { cwd: string; titulo: string; iniciativa?: string },
+): Promise<void> {
+  if (terminal === "locum") embutido!({ script, ...info });
+  else await exec("open", ["-a", TERMINAL_APP[terminal], script]);
 }
 
 async function requireTerminal(exec: Exec, terminal: SessionTerminal): Promise<void> {
   if (!(await terminalInstalled(exec, terminal))) {
-    throw new Error(`${TERMINAL_APP[terminal]} nao esta instalado; escolha outro terminal em Configuracoes`);
+    const nome = terminal === "locum" ? "O terminal do Locum" : TERMINAL_APP[terminal];
+    throw new Error(`${nome} nao esta instalado; escolha outro terminal em Configuracoes`);
   }
 }
 
@@ -338,7 +368,7 @@ export class SessionService {
       startedAt: Math.floor(this.deps.now() / 1000),
     });
 
-    await this.deps.exec("open", ["-a", TERMINAL_APP[terminal], scriptPath]);
+    await abrirNoTerminal(this.deps.exec, terminal, scriptPath, { cwd: plano.cwd, titulo: initiative.title, iniciativa: slug });
 
     return { sessionId: plano.sessionId, terminal, scriptPath, cwd: plano.cwd, claudeFound: plano.claude !== null };
   }

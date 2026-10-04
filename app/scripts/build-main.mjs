@@ -1,6 +1,6 @@
 import { build } from "esbuild";
 import { execFileSync } from "node:child_process";
-import { copyFileSync, cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -48,6 +48,21 @@ function ensureElectronBinding() {
 ensureElectronBinding();
 
 /**
+ * O node-pty traz o binário pronto por arquitetura, em N-API, então vale no
+ * Node e no Electron sem recompilar. O que falta é o bit de execução do
+ * `spawn-helper`, que o script de instalação daria e a instalação sem script
+ * não dá; sem ele todo terminal embutido falha em `posix_spawnp`.
+ */
+function ensurePtyHelper() {
+  for (const alvo of ["darwin-arm64", "darwin-x64"]) {
+    const helper = join(appDir, "node_modules", "node-pty", "prebuilds", alvo, "spawn-helper");
+    if (existsSync(helper)) chmodSync(helper, 0o755);
+  }
+}
+
+ensurePtyHelper();
+
+/**
  * As migracoes viajam como arquivo, ao lado do bundle.
  *
  * O migrator do drizzle le os `.sql` do disco na hora de rodar, entao embutir
@@ -85,7 +100,7 @@ await build({
    * React e o Shiki que o Vite ja tinha embutido na janela viajando de novo em
    * codigo-fonte, e o Octokit sozinho passando de cem megabytes.
    */
-  external: ["electron", "better-sqlite3"],
+  external: ["electron", "better-sqlite3", "node-pty"],
 });
 
 /**

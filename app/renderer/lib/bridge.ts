@@ -227,6 +227,14 @@ export const ACTION_CHANNELS = [
   "chat.cancel",
   "chat.history",
   "chat.reset",
+  "terminal.list",
+  "terminal.available",
+  "terminal.openSession",
+  "terminal.resume",
+  "terminal.buffer",
+  "terminal.write",
+  "terminal.resize",
+  "terminal.close",
   // Escolher o que observar, e ligar ou desligar a varredura. Cada um é um
   // clique de quem está usando, e o gatilho gravado nasce parado: ligar é o
   // segundo clique, e não uma consequência de ter cadastrado.

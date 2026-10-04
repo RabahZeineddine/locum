@@ -1,3 +1,5 @@
+import { assinarEventosDoTerminal } from "@/lib/terminal";
+import { AbaTerminal } from "./terminal-da-iniciativa";
 import { Check, ChevronDown, CircleHelp, FileDiff, GitBranch, Play, RefreshCw, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -109,6 +111,8 @@ export function Sessoes(_props: TelaProps) {
           {t("claudeSessions.refresh")}
         </Button>
       </header>
+
+      <TerminaisSoltos />
 
       {leitura.status === "ready" && sessoes.length > 0 && (
         <Placar abertas={grupos.abertas} pendentes={grupos.pendentes} terminadas={grupos.terminadas} />
@@ -398,4 +402,20 @@ export function quando(idioma: string, segundos: number): string {
   if (abs < 3600) return rtf.format(Math.round(delta / 60), "minute");
   if (abs < 86_400) return rtf.format(Math.round(delta / 3600), "hour");
   return rtf.format(Math.round(delta / 86_400), "day");
+}
+
+/**
+ * Conversa retomada daqui não é de iniciativa nenhuma, então o terminal
+ * embutido dela aparece nesta tela. Sem nenhum aberto, nada aparece.
+ */
+function TerminaisSoltos() {
+  const [ha, setHa] = useState(false);
+  useEffect(() => {
+    const conferir = () => void call("terminal.list", null).then((lista) => setHa(lista.length > 0));
+    conferir();
+    return assinarEventosDoTerminal((evento) => {
+      if (evento.tipo !== "dados") conferir();
+    });
+  }, []);
+  return ha ? <AbaTerminal slug={null} /> : null;
 }

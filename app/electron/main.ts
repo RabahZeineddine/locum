@@ -6062,6 +6062,26 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
     }
   }
 
+  // O terminal embutido de verdade, com um script que só imprime: prova o
+  // node-pty dentro do Electron e o xterm desenhando a saída.
+  if (primeiraIniciativa !== undefined) {
+    const { ligarTerminalEmbutido, terminalService } = await import("./terminal.js");
+    if (terminalService.disponivel()) {
+      ligarTerminalEmbutido();
+      const script = join(destino, "terminal-exemplo.sh");
+      writeFileSync(
+        script,
+        "#!/bin/sh\nprintf '\\033[1;35mlocum\\033[0m terminal embutido\\n'\nprintf 'colunas: %s\\n' \"$(tput cols)\"\nexec cat\n",
+        { mode: 0o755 },
+      );
+      const aberto = terminalService.abrir({ script, cwd: destino, titulo: "exemplo", iniciativa: primeiraIniciativa });
+      await irPara(janela, "initiatives", `${primeiraIniciativa}/terminal`);
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      writeFileSync(join(destino, "initiatives-terminal.png"), (await janela.webContents.capturePage()).toPNG());
+      terminalService.fechar(aberto.id);
+    }
+  }
+
   // O painel do assistente abre por atalho, então a captura usa o mesmo caminho.
   await irPara(janela, "inbox");
   await janela.webContents.executeJavaScript(
@@ -6138,6 +6158,9 @@ async function main(): Promise<void> {
     // O chat pelo Claude Code alcança o próprio Locum pelo mesmo binário, com `--mcp`.
     const { usarComandoDoLocum } = await import("./chat.js");
     usarComandoDoLocum([...binario, "--mcp"]);
+    const { ligarTerminalEmbutido, terminalService } = await import("./terminal.js");
+    ligarTerminalEmbutido();
+    app.on("will-quit", () => terminalService.fecharTodos());
     await cadastrarFerramentasNativas(comando).catch((err: unknown) => {
       console.error(`ferramentas nativas: cadastro falhou (${err instanceof Error ? err.message : String(err)})`);
     });

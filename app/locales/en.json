@@ -370,6 +370,7 @@
       "tabs": {
         "deliveries": "Deliveries",
         "chat": "Chat",
+        "terminal": "Terminal",
         "context": "What Locum knows",
         "agents": "Automations",
         "integrations": "Integrations",
@@ -431,6 +432,13 @@
         "resume": "Resume",
         "proposed": "Handoff {{file}} sent to the review queue.",
         "closed": "Session marked as ended."
+      },
+      "terminal": {
+        "unavailable": "The embedded terminal is not available in this installation. Sessions still open in the terminal chosen in Settings.",
+        "new": "New Claude session",
+        "close": "Close terminal",
+        "empty": "No terminal open for this initiative. A new session opens Claude Code in its folder, with the usual context and handoff; resuming a conversation from the Sessions tab also lands here when the chosen terminal is Locum's.",
+        "ended": "the session ended (code {{code}})"
       }
     },
     "status": {
@@ -845,6 +853,7 @@
     "sessionTerminal": {
       "title": "Session terminal",
       "description": "Which terminal opens the Claude session of an initiative.",
+      "locum": "Inside Locum",
       "terminal": "Terminal",
       "iterm": "iTerm",
       "warp": "Warp",

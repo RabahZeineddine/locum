@@ -4,7 +4,7 @@ import { open, readdir, readFile, stat } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { claudeBinary } from "../runtimes/claude-binary.js";
-import { openInTerminal, sessionService, shellQuote, type SessionService } from "./session-service.js";
+import { openInTerminal, sessionService, shellQuote, type SessionService, type SessionTerminal } from "./session-service.js";
 import { settingsService, type SettingsService } from "./settings-service.js";
 
 /**
@@ -434,14 +434,14 @@ export class ClaudeSessionsService {
    * rodava. Sessão com processo vivo não é retomada: dois processos na mesma
    * conversa escreveriam o mesmo arquivo.
    */
-  async resume(id: string): Promise<{ terminal: string; cwd: string }> {
+  async resume(id: string, iniciativa?: string, escolhido?: SessionTerminal): Promise<{ terminal: string; cwd: string }> {
     if (!/^[0-9a-f-]{36}$/.test(id)) throw new Error(`sessão inválida: "${id}"`);
     const sessao = (await this.list()).find((s) => s.id === id);
     if (sessao === undefined) throw new Error(`sessão ${id} não encontrada`);
     if (sessao.pid !== null) throw new Error(`a sessão ${id} ainda está aberta no processo ${sessao.pid}`);
 
     const claude = (await this.deps.resolveClaude()) ?? "claude";
-    const terminal = await this.deps.sessions.terminal();
+    const terminal = escolhido ?? (await this.deps.sessions.terminal());
     mkdirSync(this.deps.scriptDir, { recursive: true });
     const script = join(this.deps.scriptDir, `${id}.command`);
     writeFileSync(
@@ -449,7 +449,11 @@ export class ClaudeSessionsService {
       ["#!/bin/sh", `cd ${shellQuote(sessao.cwd)} || exit 1`, `exec ${shellQuote(claude)} --resume ${shellQuote(id)}`, ""].join("\n"),
     );
     chmodSync(script, 0o755);
-    await openInTerminal(this.deps.exec, terminal, script);
+    await openInTerminal(this.deps.exec, terminal, script, {
+      cwd: sessao.cwd,
+      titulo: sessao.title ?? id.slice(0, 8),
+      ...(iniciativa ? { iniciativa } : {}),
+    });
     return { terminal, cwd: sessao.cwd };
   }
 }
