@@ -170,6 +170,8 @@ export const ACTION_CHANNELS = [
   "connections.connect",
   "connections.disconnect",
   "connections.addCustom",
+  "claudeImport.list",
+  "claudeImport.apply",
   "connections.connectSlack",
   "connections.disconnectSlack",
   "connections.openSlackManifest",
@@ -188,6 +190,7 @@ export const ACTION_CHANNELS = [
   "providers.checkSecret",
   "mcp.test",
   "mcp.tools",
+  "claudeAccount.list",
   "mcp.setEnabled",
   // O tracker de tarefa: cadastrar, apontar destino, guardar a credencial e
   // testar. Escrita e rede, as duas atrás de um clique, pelo mesmo motivo dos

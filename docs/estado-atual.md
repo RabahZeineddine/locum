@@ -1323,6 +1323,19 @@ Claude Code; com outro modelo o passo falha dizendo por quê. A base continua
 sendo servidor cadastrado no Locum, que roda com qualquer modelo; a conta é
 uma fonte a mais para quem tem Claude.
 
+**Importar do Claude Code.** Em Conexões, "Importar do Claude Code" lista os
+servidores MCP de `~/.claude.json` e dos plugins ligados (`enabledPlugins`
+com `installed_plugins.json`, lendo `.mcp.json` ou o `mcpServers` do
+manifesto). Importado, o servidor é do Locum e roda com qualquer modelo, sem
+Claude na máquina. `${CLAUDE_PLUGIN_ROOT}` vira a pasta do plugin, `${VAR}`
+e `${VAR:-padrão}` saem do ambiente e, para quem abriu pelo Finder, do shell
+de login. Valor de `env` ou `headers` com nome de segredo vai para o cofre e
+o cadastro fica com `${credential}`; o segundo segredo do mesmo servidor
+aparece como faltando. Entra desligado e com escopo `write`, então agent
+pelo MCP não acrescenta ferramenta dele sem a pessoa. O próprio Locum fica de
+fora. A pasta do plugin tem a versão no caminho: plugin atualizado pede
+importar de novo.
+
 ## Próximos passos
 
 Iniciativas: I1, I2 e I3 prontos no código. Falta o teste à mão da sessão

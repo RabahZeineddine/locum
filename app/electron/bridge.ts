@@ -1,5 +1,6 @@
 import { listTeamsChannels } from "../src/teams/channels.js";
 import { claudeAccountService, SERVIDOR_CONTA } from "../src/runtimes/claude-account.js";
+import { claudeImportService } from "../src/services/claude-import.js";
 import { app, BrowserWindow, dialog, ipcMain, type WebContents } from "electron";
 import { readFile, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
@@ -265,6 +266,8 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "connections.connect": (id) => connectionService.connect(id),
     "connections.disconnect": (id) => connectionService.disconnect(id),
     "connections.addCustom": (input) => connectionService.addCustom(input),
+    "claudeImport.list": () => claudeImportService.listar(),
+    "claudeImport.apply": (nomes) => claudeImportService.importar(nomes),
     "connections.slackApp": () => connectionService.slackApp(),
     "connections.connectSlack": (clientId) => connectionService.connectSlack(clientId),
     "connections.disconnectSlack": () => connectionService.disconnectSlack(),

@@ -2,7 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { call, read, useRead, type ReadResult } from "@/lib/bridge";
 import { cn } from "@/lib/utils";
-import { MessageSquare, Plug, Plus, Search, Users, X } from "lucide-react";
+import { Download, MessageSquare, Plug, Plus, Search, Users, X } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { GATILHOS, PASSOS } from "@/lib/automacao";
@@ -137,13 +137,33 @@ export function Vitrine({ paineis }: { paineis: Record<string, ReactNode> }) {
               {t("connections.custom.open")}
             </button>
           ) : null}
+          {categoria === null && termo === "" ? (
+            <button
+              className="border-border text-muted-foreground hover:border-foreground/40 hover:text-foreground flex min-h-[132px] cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed text-sm transition-colors"
+              data-locum-vitrine-importar=""
+              onClick={() => setAberta("__importar")}
+              type="button"
+            >
+              <Download aria-hidden className="size-4" />
+              {t("connections.import.open")}
+            </button>
+          ) : null}
         </div>
       )}
       {visiveis.length === 0 && lista.length > 0 ? (
         <p className="text-muted-foreground text-sm">{t("connections.none")}</p>
       ) : null}
 
-      {aberta === "__custom" ? (
+      {aberta === "__importar" ? (
+        <Painel id="__importar" onFechar={() => setAberta(null)} titulo={t("connections.import.title")}>
+          <ImportarDoClaude
+            onPronto={() => {
+              void recarregar();
+              setAberta(null);
+            }}
+          />
+        </Painel>
+      ) : aberta === "__custom" ? (
         <Painel id="__custom" onFechar={() => setAberta(null)} titulo={t("connections.custom.title")}>
           <Propria
             onPronta={(id) => {
@@ -500,6 +520,103 @@ function Oferece({ app }: { app: string }) {
 }
 
 /** Servidor MCP remoto qualquer, pelo endereço. */
+/**
+ * Os servidores MCP que o Claude Code já usa, para trazer ao Locum. Os já
+ * cadastrados vêm desmarcados: reimportar troca o cadastro, e um servidor com
+ * o mesmo nome pode ter sido ligado aqui por outro caminho.
+ */
+type Candidato = Awaited<ReturnType<typeof call<"claudeImport.list">>>[number];
+
+function ImportarDoClaude({ onPronto }: { onPronto: () => void }) {
+  const { t } = useTranslation();
+  // Lê arquivos e o shell de login, então vai por chamada e não por leitura.
+  const [candidatos, setCandidatos] = useState<{ status: "loading" | "ready"; data: Candidato[] }>({ status: "loading", data: [] });
+  useEffect(() => {
+    let vivo = true;
+    call("claudeImport.list").then(
+      (data) => vivo && setCandidatos({ status: "ready", data }),
+      (falha: unknown) => {
+        if (!vivo) return;
+        setCandidatos({ status: "ready", data: [] });
+        setErro(falha instanceof Error ? falha.message : String(falha));
+      },
+    );
+    return () => {
+      vivo = false;
+    };
+  }, []);
+  const [marcados, setMarcados] = useState<Set<string> | null>(null);
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  const lista = candidatos.data;
+  const escolhidos = marcados ?? new Set(lista.filter((c) => !c.jaCadastrado).map((c) => c.name));
+  const alternar = (nome: string): void => {
+    const novo = new Set(escolhidos);
+    if (novo.has(nome)) novo.delete(nome);
+    else novo.add(nome);
+    setMarcados(novo);
+  };
+
+  const importar = (): void => {
+    setEnviando(true);
+    setErro(null);
+    call("claudeImport.apply", [...escolhidos]).then(
+      () => {
+        setEnviando(false);
+        onPronto();
+      },
+      (falha: unknown) => {
+        setEnviando(false);
+        setErro(falha instanceof Error ? falha.message : String(falha));
+      },
+    );
+  };
+
+  if (candidatos.status === "loading") return <p className="text-muted-foreground text-sm">{t("connections.loading")}</p>;
+  if (lista.length === 0) return <p className="text-muted-foreground text-sm">{t("connections.import.empty")}</p>;
+
+  return (
+    <div className="flex flex-col gap-4" data-locum-importar="">
+      <p className="text-muted-foreground text-sm">{t("connections.import.description")}</p>
+      <ul className="flex flex-col gap-1.5">
+        {lista.map((c) => (
+          <li key={c.name}>
+            <label className="border-border hover:bg-muted/40 flex cursor-pointer items-start gap-3 rounded-md border px-3 py-2 text-sm">
+              <input
+                checked={escolhidos.has(c.name)}
+                className="accent-primary mt-1 cursor-pointer"
+                onChange={() => alternar(c.name)}
+                type="checkbox"
+              />
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="flex flex-wrap items-center gap-2">
+                  <span className="font-mono text-xs font-medium">{c.name}</span>
+                  <span className="text-muted-foreground text-xs">{c.origem}</span>
+                  {c.jaCadastrado ? <span className="text-sev-medium text-xs">{t("connections.import.exists")}</span> : null}
+                  {c.oauth ? <span className="text-muted-foreground text-xs">{t("connections.import.oauth")}</span> : null}
+                </span>
+                <span className="text-muted-foreground truncate font-mono text-[11px]">{c.destino}</span>
+                {c.faltando.length > 0 ? (
+                  <span className="text-sev-critical text-xs">
+                    {t("connections.import.missing", { names: c.faltando.join(", ") })}
+                  </span>
+                ) : null}
+              </span>
+            </label>
+          </li>
+        ))}
+      </ul>
+      <div>
+        <Button className="cursor-pointer" disabled={enviando || escolhidos.size === 0} onClick={importar} type="button">
+          {t(enviando ? "connections.connecting" : "connections.import.submit", { count: escolhidos.size })}
+        </Button>
+      </div>
+      {erro === null ? null : <p className="text-sev-critical text-xs">{erro}</p>}
+    </div>
+  );
+}
+
 function Propria({ onPronta }: { onPronta: (id: string) => void }) {
   const { t } = useTranslation();
   const [nome, setNome] = useState("");

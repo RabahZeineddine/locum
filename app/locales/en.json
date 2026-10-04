@@ -1296,6 +1296,18 @@
         "tagline": "Files, frames and design system",
         "description": "Figma's remote MCP server. Agents read frames and variables to compare screens with the design."
       }
+    },
+    "import": {
+      "open": "Import from Claude Code",
+      "title": "Import from Claude Code",
+      "description": "The MCP servers your Claude Code uses: your own and the ones from enabled plugins. Once imported they belong to Locum and run with any model, even without Claude on the machine. They come in disabled; credentials go to the vault. claude.ai connectors are not listed: they only exist through the Claude account.",
+      "empty": "No MCP server in this machine's Claude Code.",
+      "exists": "already registered; importing replaces it",
+      "oauth": "authorize in the browser afterwards",
+      "missing": "missing {{names}}: it is added but will not connect without it",
+      "submit_one": "Import {{count}}",
+      "submit_other": "Import {{count}}",
+      "submit_zero": "Import {{count}}"
     }
   },
   "claudeSessions": {

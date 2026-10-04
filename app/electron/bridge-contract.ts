@@ -16,6 +16,7 @@ import type { ClaudeSessionsService } from "../src/services/claude-sessions-serv
 import type { MachineService } from "../src/services/machine-service.js";
 import type { McpService } from "../src/services/mcp-service.js";
 import type { MetricsService } from "../src/services/metrics-service.js";
+import type { ClaudeImportService } from "../src/services/claude-import.js";
 import type { ClaudeAccountService } from "../src/runtimes/claude-account.js";
 import type { PriceService } from "../src/services/price-service.js";
 import type { PromptService } from "../src/services/prompt-service.js";
@@ -305,6 +306,10 @@ interface ServiceApi {
   "connections.connect": ConnectionService["connect"];
   "connections.disconnect": ConnectionService["disconnect"];
   "connections.addCustom": ConnectionService["addCustom"];
+  /** Servidores MCP do Claude Code (usuário e plugins ligados) que dá para trazer. */
+  "claudeImport.list": ClaudeImportService["listar"];
+  /** Cadastra os escolhidos desligados, com o segredo no cofre. */
+  "claudeImport.apply": ClaudeImportService["importar"];
   /** Slack pelo servidor oficial, com o app que a pessoa criou no workspace. */
   "connections.slackApp": ConnectionService["slackApp"];
   "connections.connectSlack": ConnectionService["connectSlack"];
@@ -546,6 +551,8 @@ export const BRIDGE_CHANNELS = [
   "connections.connect",
   "connections.disconnect",
   "connections.addCustom",
+  "claudeImport.list",
+  "claudeImport.apply",
   "connections.slackApp",
   "connections.connectSlack",
   "connections.disconnectSlack",
