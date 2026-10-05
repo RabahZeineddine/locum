@@ -127,7 +127,11 @@ export class ClaudeCodeRuntime implements Runtime {
       });
       let resto = "";
       let erros = "";
-      const prazo = setTimeout(() => filho.kill("SIGTERM"), TIMEOUT_MS);
+      let estourou = false;
+      const prazo = setTimeout(() => {
+        estourou = true;
+        filho.kill("SIGTERM");
+      }, TIMEOUT_MS);
       filho.stdout.setEncoding("utf8");
       filho.stdout.on("data", (pedaco: string) => {
         const linhas = (resto + pedaco).split("\n");
@@ -146,7 +150,8 @@ export class ClaudeCodeRuntime implements Runtime {
         clearTimeout(prazo);
         if (resto.length > 0) leitor.linha(resto);
         if (leitor.final !== null) return pronto();
-        const motivo = sinal === "SIGTERM" ? `passou de ${TIMEOUT_MS / 60000} min` : `saiu com ${codigo ?? sinal}`;
+        // O claude trata o SIGTERM e sai com 143, então o sinal não serve para saber se foi o prazo.
+        const motivo = estourou ? `passou de ${TIMEOUT_MS / 60000} min` : `saiu com ${codigo ?? sinal}`;
         falhou(new Error(`claude -p ${motivo}: ${erros.trim().slice(-800) || "sem detalhe"}`));
       });
     });
