@@ -318,6 +318,7 @@ export class RunService {
           substitutionReason: null,
           skillsUsed: null,
           toolsUsed: null,
+          activity: null,
           output: null,
           promptTokens: 0,
           completionTokens: 0,

@@ -1440,6 +1440,18 @@ lista na hora. Medido em 2026-10-04: cada servidor, stdio ou http, responde em
 0,1 a 2 s; a espera vinha de testar quinze em fila e de subir de novo a cada
 janela.
 
+**Acompanhar o passo enquanto roda.** O passo de modelo grava o que vai
+fazendo em `steps.activity` (migração 0009): cada ferramenta chamada, com
+servidor e argumentos, o resultado com o tempo e se deu erro, e o texto do
+modelo entre uma e outra. O Claude Code roda com `--output-format stream-json
+--verbose`, lido linha a linha (`LeitorDoStream`); o runtime nativo conta por
+volta do laço. A gravação vai em lotes de 700 ms, com teto de 300
+acontecimentos. A tela da execução relê a cada 1,5 s enquanto o run anda, e
+a linha do tempo segue o fim sozinha. "Executar agora" no canvas abre a
+execução na hora. O `claude` agora roda com a entrada fechada, que fazia ele
+esperar 3 s por stdin, e a falha diz o motivo (passou do teto, código de
+saída e o fim do stderr) em vez de repetir o comando inteiro.
+
 **Cron em frase.** O gatilho de horário fixo aparece como "Toda segunda às
 07:30 · cron 30 7 * * 1" na lista e no canvas, e a frase entra acima da
 próxima ocorrência no formulário (`renderer/lib/descricao-do-cron.ts`). O que

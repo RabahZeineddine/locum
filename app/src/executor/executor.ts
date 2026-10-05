@@ -14,7 +14,7 @@ import {
 import { McpRegistry } from "../mcp/registry.js";
 import { resolveModel, type FallbackRow } from "../providers/registry.js";
 import { providerService } from "../services/provider-service.js";
-import type { Runtime } from "../runtimes/types.js";
+import type { Atividade, Runtime } from "../runtimes/types.js";
 import { libraryService, type LibraryService } from "../services/library-service.js";
 import { runLogic } from "./logic.js";
 import { selectSkills, skillsPreamble, type SkillContext } from "../skills/loader.js";
@@ -404,12 +404,36 @@ export class Executor {
         modelUsed: resolution.used,
         substitutionReason: resolution.substitutionReason,
         skillsUsed: skills.map((s) => ({ name: s.name, origin: s.origin, hash: s.hash })),
+        activity: [],
         input: {
           needs: step.needs.map((k) => outputs.get(k)),
           ...(perfil === null ? {} : { profile: { id: perfil.version.profileId, version: perfil.version.version } }),
         },
       })
       .where(eq(schema.steps.id, stepId));
+
+    // A atividade vai para o banco em lotes curtos: a tela relê o passo e
+    // acompanha sem esperar o fim, e um passo com cem chamadas não vira cem
+    // escritas seguidas.
+    const atividade: Atividade[] = [];
+    let lote: ReturnType<typeof setTimeout> | null = null;
+    const gravarAtividade = (): void => {
+      lote = null;
+      void db
+        .update(schema.steps)
+        .set({ activity: [...atividade] })
+        .where(eq(schema.steps.id, stepId))
+        .catch(() => undefined);
+    };
+    const onActivity = (a: Atividade): void => {
+      atividade.push(a);
+      if (atividade.length > TETO_DE_ATIVIDADES) atividade.shift();
+      lote ??= setTimeout(gravarAtividade, 700);
+    };
+    const fecharAtividade = (): void => {
+      if (lote !== null) clearTimeout(lote);
+      lote = null;
+    };
 
     try {
       // O corpo vai sempre no texto, inclusive para o claude-code: ele roda com
@@ -429,7 +453,9 @@ export class Executor {
         maxSteps,
         outputSchema: step.outputSchema,
         ...(perfil?.version.spec.temperature === undefined ? {} : { temperature: perfil.version.spec.temperature }),
+        onActivity,
       });
+      fecharAtividade();
 
       const output = step.outputSchema ? result.structured : result.text;
 
@@ -445,6 +471,7 @@ export class Executor {
           costUsd: result.costUsd,
           billable: result.billable,
           toolsUsed: result.toolsUsed,
+          activity: atividade,
         })
         .where(eq(schema.steps.id, stepId));
 
@@ -456,10 +483,11 @@ export class Executor {
         billable: result.billable,
       };
     } catch (err) {
+      fecharAtividade();
       const message = err instanceof Error ? err.message : String(err);
       await db
         .update(schema.steps)
-        .set({ status: "failed", endedAt: nowSec(), error: message })
+        .set({ status: "failed", endedAt: nowSec(), error: message, activity: atividade })
         .where(eq(schema.steps.id, stepId));
       throw err;
     } finally {
@@ -586,6 +614,9 @@ export function alvoDoEvento(payload: EventPayload): Record<string, unknown> {
 }
 
 /** Os campos do alvo que dizem onde publicar, e não o quê. */
+/** Quantos acontecimentos de um passo ficam guardados; os mais velhos saem. */
+const TETO_DE_ATIVIDADES = 300;
+
 const DESTINO = ["owner", "repo", "pull", "headSha"] as const;
 
 function destinoDoEvento(alvo: Record<string, unknown>): Record<string, unknown> {

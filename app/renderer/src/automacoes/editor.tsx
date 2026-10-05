@@ -172,10 +172,11 @@ function EditorCarregado({
       return;
     }
     setOcupado("rodar");
+    // Abre a execução na hora: é lá que se acompanha o que o agent vai fazendo.
     call("automations.runNow", agentId).then(
-      () => {
+      ({ runId }) => {
         setOcupado(null);
-        setAviso({ tipo: "ok", texto: t("automations.list.started") });
+        navegar("runs", runId);
       },
       (e: unknown) => {
         setOcupado(null);

@@ -14,7 +14,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { CabecalhoDaTela } from "@/components/cabecalho-da-tela";
 import { Button } from "@/components/ui/button";
-import { call, useRead, type ReadResult } from "@/lib/bridge";
+import { call, read, useRead, type ReadResult } from "@/lib/bridge";
 import { useJanela } from "@/lib/janela";
 import {
   rotuloDeEstado,
@@ -24,8 +24,8 @@ import {
   type Estado,
 } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, RotateCcw, X } from "lucide-react";
-import { useState } from "react";
+import { ArrowLeft, Check, CornerDownRight, Loader2, MessageSquareText, RotateCcw, Wrench, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import type { TFunction } from "i18next";
 import { Trans, useTranslation } from "react-i18next";
 import { useCurrentInitiative } from "../current-initiative";
@@ -220,6 +220,18 @@ function Execucao({ navegar, runId }: { navegar: TelaProps["navegar"]; runId: st
   const { t } = useTranslation();
   const run = useRead("runs.get", runId);
   const achados = useRead("runs.findings", runId);
+  const [relido, setRelido] = useState<ReadResult<"runs.get">>(undefined);
+  const andando = (relido ?? run.data)?.status;
+
+  // Enquanto o run anda, a tela relê a cada segundo e meio: o passo grava o que
+  // vai fazendo, e é isso que aparece na linha do tempo de cada passo.
+  useEffect(() => {
+    if (andando !== "running" && andando !== "pending") return;
+    const id = window.setInterval(() => {
+      read("runs.get", runId).then(setRelido, () => undefined);
+    }, 1500);
+    return () => window.clearInterval(id);
+  }, [andando, runId]);
 
   if (run.status === "error") {
     return <Aviso probe="execucao">{t("runs.refused", { message: run.error.message })}</Aviso>;
@@ -231,7 +243,7 @@ function Execucao({ navegar, runId }: { navegar: TelaProps["navegar"]; runId: st
     return <Aviso probe="execucao">{t("runs.detail.missing", { runId })}</Aviso>;
   }
 
-  const detalhe = run.data;
+  const detalhe = relido ?? run.data;
   // O primeiro passo com saida carrega o marcador do bloco de codigo, que e
   // por onde o smoke confere que o destaque do shiki chegou: ele precisa de um
   // alvo estavel, e nao do primeiro `pre` que aparecer na tela.
@@ -309,8 +321,14 @@ function PassoDaExecucao({
   runId: string;
 }) {
   const { t } = useTranslation();
+  const rodando = passo.status === "running";
   const segundos =
-    passo.startedAt !== null && passo.endedAt !== null ? passo.endedAt - passo.startedAt : undefined;
+    passo.startedAt !== null && passo.endedAt !== null
+      ? passo.endedAt - passo.startedAt
+      : rodando && passo.startedAt !== null
+        ? Math.max(0, Math.round(Date.now() / 1000) - passo.startedAt)
+        : undefined;
+  const atividade = lista(passo.activity) as Atividade[];
   const ferramentas = lista(passo.toolsUsed);
   const skills = lista(passo.skillsUsed).map((s) =>
     typeof s === "object" && s !== null && "name" in s ? String((s as { name: unknown }).name) : String(s),
@@ -350,6 +368,10 @@ function PassoDaExecucao({
         </div>
       ) : null}
 
+      {atividade.length > 0 || (rodando && passo.modelRequested !== null) ? (
+        <AtividadeDoPasso atividade={atividade} rodando={rodando} />
+      ) : null}
+
       {passo.modelRequested !== null ? (
         <Reasoning className="mt-3" defaultOpen={false} duration={segundos}>
           <ReasoningTrigger>{t("runs.step.reasoning.trigger")}</ReasoningTrigger>
@@ -386,6 +408,89 @@ function PassoDaExecucao({
       {passo.output !== null ? (
         <Json marcado={marcado} rotulo={t("runs.step.output")} valor={passo.output} />
       ) : null}
+    </div>
+  );
+}
+
+type Atividade = {
+  at: number;
+  tipo: "ferramenta" | "resultado" | "texto";
+  ferramenta?: string;
+  detalhe?: string;
+  erro?: boolean;
+  ms?: number;
+};
+
+/**
+ * O que o passo de modelo fez, em ordem: cada ferramenta chamada com os
+ * argumentos, o que ela devolveu e quanto levou, e o que o modelo escreveu
+ * entre uma e outra. Com o passo andando, a lista segue o fim sozinha.
+ */
+function AtividadeDoPasso({ atividade, rodando }: { atividade: Atividade[]; rodando: boolean }) {
+  const { t } = useTranslation();
+  const caixa = useRef<HTMLOListElement>(null);
+  const chamadas = atividade.filter((a) => a.tipo === "ferramenta").length;
+  const erros = atividade.filter((a) => a.erro === true).length;
+
+  useEffect(() => {
+    if (rodando && caixa.current !== null) caixa.current.scrollTop = caixa.current.scrollHeight;
+  }, [atividade.length, rodando]);
+
+  return (
+    <div className="mt-3 flex flex-col gap-2" data-locum-atividade={atividade.length}>
+      <span className="text-muted-foreground text-xs">
+        {t("runs.step.activity.title", { count: chamadas })}
+        {erros > 0 ? ` · ${t("runs.step.activity.errors", { count: erros })}` : ""}
+      </span>
+      <ol className="border-border superficie flex max-h-96 flex-col gap-1.5 overflow-y-auto rounded-md border p-3" ref={caixa}>
+        {atividade.map((a, i) => (
+          <li className="flex items-start gap-2 text-xs" key={`${a.at}-${i}`}>
+            <span className="text-muted-foreground w-14 shrink-0 pt-0.5 font-mono tabular-nums">
+              {new Date(a.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+            </span>
+            {a.tipo === "ferramenta" ? (
+              <>
+                <Wrench aria-hidden className="text-primary mt-0.5 size-3.5 shrink-0" />
+                <span className="flex min-w-0 flex-col gap-0.5">
+                  <span className="font-mono font-medium">{a.ferramenta}</span>
+                  {a.detalhe !== undefined && a.detalhe !== "{}" ? (
+                    <span className="text-muted-foreground font-mono break-all">{a.detalhe}</span>
+                  ) : null}
+                </span>
+              </>
+            ) : a.tipo === "resultado" ? (
+              <>
+                <CornerDownRight aria-hidden className="text-muted-foreground mt-0.5 ml-3 size-3.5 shrink-0" />
+                {a.erro === true ? (
+                  <X aria-hidden className="text-sev-critical mt-0.5 size-3.5 shrink-0" />
+                ) : (
+                  <Check aria-hidden className="mt-0.5 size-3.5 shrink-0 text-emerald-400" />
+                )}
+                <span className={cn("min-w-0 flex-1 break-all font-mono", a.erro === true ? "text-sev-critical" : "text-muted-foreground")}>
+                  {a.detalhe === undefined || a.detalhe === "" ? t("runs.step.activity.empty") : a.detalhe}
+                </span>
+                {a.ms === undefined ? null : (
+                  <span className="text-muted-foreground shrink-0 font-mono tabular-nums">
+                    {t("runs.step.activity.took", { seconds: (a.ms / 1000).toFixed(1) })}
+                  </span>
+                )}
+              </>
+            ) : (
+              <>
+                <MessageSquareText aria-hidden className="mt-0.5 size-3.5 shrink-0 text-violet-300" />
+                <span className="min-w-0 flex-1">{a.detalhe}</span>
+              </>
+            )}
+          </li>
+        ))}
+        {rodando ? (
+          <li className="text-muted-foreground flex items-center gap-2 text-xs">
+            <span className="w-14 shrink-0" />
+            <Loader2 aria-hidden className="size-3.5 animate-spin" />
+            {atividade.length === 0 ? t("runs.step.activity.starting") : t("runs.step.activity.working")}
+          </li>
+        ) : null}
+      </ol>
     </div>
   );
 }

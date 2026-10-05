@@ -26,7 +26,39 @@ export type RuntimeRequest = {
   temperature?: number;
   /** JSON Schema. Presente, a saida e validada. */
   outputSchema?: Record<string, unknown>;
+  /**
+   * O que o passo vai fazendo, para a tela acompanhar: cada ferramenta chamada,
+   * o resultado dela e o que o modelo escreve entre uma e outra.
+   */
+  onActivity?: (atividade: Atividade) => void;
 };
+
+/** Um acontecimento dentro do passo de modelo. Texto já cortado para caber na tela. */
+export type Atividade = {
+  /** Epoch em ms. */
+  at: number;
+  tipo: "ferramenta" | "resultado" | "texto";
+  /** "servidor · ferramenta" quando dá para separar. */
+  ferramenta?: string;
+  detalhe?: string;
+  erro?: boolean;
+  /** No resultado: quanto a ferramenta levou. */
+  ms?: number;
+};
+
+/** Teto de cada texto guardado na atividade. */
+export const TETO_DA_ATIVIDADE = 400;
+
+export function cortar(texto: string, teto = TETO_DA_ATIVIDADE): string {
+  const limpo = texto.replace(/\s+/g, " ").trim();
+  return limpo.length > teto ? `${limpo.slice(0, teto - 1)}…` : limpo;
+}
+
+/** `mcp__ms365__get-excel-range` e `ms365__get-excel-range` viram "ms365 · get-excel-range". */
+export function nomeDaFerramenta(nome: string): string {
+  const partes = nome.replace(/^mcp__/, "").split("__");
+  return partes.length > 1 ? `${partes[0]} · ${partes.slice(1).join("__")}` : nome;
+}
 
 export type RuntimeResult = {
   text: string;

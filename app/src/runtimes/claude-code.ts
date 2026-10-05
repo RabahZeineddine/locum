@@ -1,14 +1,14 @@
-import { execFile } from "node:child_process";
+import { spawn } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { promisify } from "node:util";
 import type { McpServerConfig } from "../config/types.js";
 import { claudeBinary } from "./claude-binary.js";
 import { ehLeitura, flagsDaConta } from "./claude-account.js";
-import type { Runtime, RuntimeRequest, RuntimeResult } from "./types.js";
+import { cortar, nomeDaFerramenta, type Atividade, type Runtime, type RuntimeRequest, type RuntimeResult } from "./types.js";
 
-const run = promisify(execFile);
+/** O mesmo teto de sempre para um passo inteiro, com todas as voltas de ferramenta. */
+const TIMEOUT_MS = 15 * 60 * 1000;
 
 /**
  * Argumentos da chamada, separados para o teste conferir o isolamento.
@@ -31,7 +31,9 @@ export function claudeArgs(req: RuntimeRequest, mcpConfigPath?: string): string[
   }
   allowed.push(...daConta);
 
-  const args = ["-p", req.prompt, "--model", req.model, "--output-format", "json"];
+  // stream-json traz cada chamada de ferramenta enquanto acontece, para a tela
+  // acompanhar; o resultado final vem na última linha, igual ao modo json.
+  const args = ["-p", req.prompt, "--model", req.model, "--output-format", "stream-json", "--verbose"];
 
   if (req.system) args.push("--append-system-prompt", req.system);
   if (req.outputSchema) args.push("--json-schema", JSON.stringify(req.outputSchema));
@@ -94,31 +96,48 @@ export class ClaudeCodeRuntime implements Runtime {
         caminho = join(pasta, "mcp.json");
         await writeFile(caminho, mcpConfigJson(servers, this.mcpConfigs), { mode: 0o600 });
       }
-      return await this.chamar(claudeArgs(req, caminho));
+      return await this.chamar(claudeArgs(req, caminho), req.onActivity);
     } finally {
       if (pasta !== undefined) await rm(pasta, { recursive: true, force: true });
     }
   }
 
-  private async chamar(args: string[]): Promise<RuntimeResult> {
-
+  private async chamar(args: string[], onActivity?: (a: Atividade) => void): Promise<RuntimeResult> {
     // O mesmo caminho absoluto que a sessão interativa usa. Instalado em
     // `~/.claude/local`, o `claude` existe só como alias do `.zshrc`, fora do
     // PATH que o processo herda, e chamar pelo nome falhava com ENOENT.
     const comando = (await this.binario()) ?? "claude";
-    const { stdout } = await run(comando, args, {
-      maxBuffer: 64 * 1024 * 1024,
-      timeout: 15 * 60 * 1000,
+    const leitor = new LeitorDoStream(onActivity);
+
+    await new Promise<void>((pronto, falhou) => {
+      const filho = spawn(comando, args, { stdio: ["ignore", "pipe", "pipe"] });
+      let resto = "";
+      let erros = "";
+      const prazo = setTimeout(() => filho.kill("SIGTERM"), TIMEOUT_MS);
+      filho.stdout.setEncoding("utf8");
+      filho.stdout.on("data", (pedaco: string) => {
+        const linhas = (resto + pedaco).split("\n");
+        resto = linhas.pop() ?? "";
+        for (const linha of linhas) leitor.linha(linha);
+      });
+      filho.stderr.setEncoding("utf8");
+      filho.stderr.on("data", (pedaco: string) => {
+        erros = (erros + pedaco).slice(-4000);
+      });
+      filho.on("error", (err) => {
+        clearTimeout(prazo);
+        falhou(err);
+      });
+      filho.on("close", (codigo, sinal) => {
+        clearTimeout(prazo);
+        if (resto.length > 0) leitor.linha(resto);
+        if (leitor.final !== null) return pronto();
+        const motivo = sinal === "SIGTERM" ? `passou de ${TIMEOUT_MS / 60000} min` : `saiu com ${codigo ?? sinal}`;
+        falhou(new Error(`claude -p ${motivo}: ${erros.trim().slice(-800) || "sem detalhe"}`));
+      });
     });
 
-    const payload = JSON.parse(stdout) as {
-      result?: string;
-      structured_output?: unknown;
-      total_cost_usd?: number;
-      usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number };
-      is_error?: boolean;
-    };
-
+    const payload = leitor.final!;
     if (payload.is_error) throw new Error(`claude -p falhou: ${payload.result ?? "sem detalhe"}`);
 
     return {
@@ -131,7 +150,80 @@ export class ClaudeCodeRuntime implements Runtime {
       // e cota, nao dinheiro, entao nao entra no orcamento em dolar.
       costUsd: payload.total_cost_usd ?? 0,
       billable: false,
-      toolsUsed: [],
+      toolsUsed: [...leitor.ferramentas],
     };
   }
+}
+
+type Final = {
+  result?: string;
+  structured_output?: unknown;
+  total_cost_usd?: number;
+  usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number };
+  is_error?: boolean;
+};
+
+type Conteudo = { type?: string; id?: string; name?: string; input?: unknown; text?: string; tool_use_id?: string; is_error?: boolean; content?: unknown };
+
+/**
+ * Lê o `--output-format stream-json` linha a linha: cada `tool_use` vira uma
+ * chamada, cada `tool_result` o desfecho dela, e o texto do modelo entra entre
+ * os dois. A ferramenta `StructuredOutput` é o próprio Claude Code montando a
+ * saída e fica de fora. A linha `result` é a mesma do modo json.
+ */
+export class LeitorDoStream {
+  final: Final | null = null;
+  readonly ferramentas = new Set<string>();
+  private readonly inicio = new Map<string, number>();
+
+  constructor(
+    private readonly onActivity?: (a: Atividade) => void,
+    private readonly agora: () => number = Date.now,
+  ) {}
+
+  linha(texto: string): void {
+    if (texto.trim() === "") return;
+    let evento: { type?: string; message?: { content?: unknown } } & Final;
+    try {
+      evento = JSON.parse(texto);
+    } catch {
+      return;
+    }
+    if (evento.type === "result") {
+      this.final = evento;
+      return;
+    }
+    const conteudo = Array.isArray(evento.message?.content) ? (evento.message.content as Conteudo[]) : [];
+    for (const c of conteudo) {
+      if (evento.type === "assistant" && c.type === "tool_use" && c.name !== undefined && c.name !== "StructuredOutput") {
+        this.ferramentas.add(c.name);
+        if (c.id !== undefined) this.inicio.set(c.id, this.agora());
+        this.emitir({ tipo: "ferramenta", ferramenta: nomeDaFerramenta(c.name), detalhe: cortar(JSON.stringify(c.input ?? {})) });
+      } else if (evento.type === "assistant" && c.type === "text" && (c.text ?? "").trim() !== "") {
+        this.emitir({ tipo: "texto", detalhe: cortar(c.text!) });
+      } else if (evento.type === "user" && c.type === "tool_result" && c.tool_use_id !== undefined) {
+        const comecou = this.inicio.get(c.tool_use_id);
+        if (comecou === undefined) continue;
+        this.inicio.delete(c.tool_use_id);
+        this.emitir({
+          tipo: "resultado",
+          detalhe: cortar(textoDoResultado(c.content)),
+          erro: c.is_error === true,
+          ms: this.agora() - comecou,
+        });
+      }
+    }
+  }
+
+  private emitir(a: Omit<Atividade, "at">): void {
+    this.onActivity?.({ at: this.agora(), ...a });
+  }
+}
+
+function textoDoResultado(conteudo: unknown): string {
+  if (typeof conteudo === "string") return conteudo;
+  if (Array.isArray(conteudo)) {
+    return conteudo.map((c: { text?: string }) => (typeof c?.text === "string" ? c.text : "")).join(" ");
+  }
+  return "";
 }

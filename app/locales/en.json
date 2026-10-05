@@ -534,7 +534,19 @@
         "attempt_one": "Attempt {{attempt}}, {{count}} input token and {{completion}} output.",
         "attempt_other": "Attempt {{attempt}}, {{count}} input tokens and {{completion}} output."
       },
-      "raw": "Show the JSON"
+      "raw": "Show the JSON",
+      "activity": {
+        "title_zero": "Activity: no tools called",
+        "title_one": "Activity: {{count}} tool called",
+        "title_other": "Activity: {{count}} tools called",
+        "errors_one": "{{count}} failed",
+        "errors_other": "{{count}} failed",
+        "errors_zero": "none failed",
+        "empty": "(empty)",
+        "took": "{{seconds}} s",
+        "starting": "starting the model and tools…",
+        "working": "working…"
+      }
     },
     "progress": "{{done}}/{{total}} steps",
     "waiting_steps": "{{count}} waiting",

@@ -555,7 +555,19 @@
         "attempt_other": "Tentativa {{attempt}}, {{count}} tokens de entrada e {{completion}} de saída.",
         "attempt_zero": "Tentativa {{attempt}}, {{count}} tokens de entrada e {{completion}} de saída."
       },
-      "raw": "Ver o JSON"
+      "raw": "Ver o JSON",
+      "activity": {
+        "title_zero": "Atividade: nenhuma ferramenta chamada",
+        "title_one": "Atividade: {{count}} ferramenta chamada",
+        "title_other": "Atividade: {{count}} ferramentas chamadas",
+        "errors_one": "{{count}} com erro",
+        "errors_other": "{{count}} com erro",
+        "errors_zero": "nenhuma com erro",
+        "empty": "(sem conteúdo)",
+        "took": "{{seconds}} s",
+        "starting": "subindo o modelo e as ferramentas…",
+        "working": "trabalhando…"
+      }
     },
     "progress": "{{done}}/{{total}} passos",
     "waiting_steps": "{{count}} aguardando",

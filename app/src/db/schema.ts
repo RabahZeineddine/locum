@@ -173,6 +173,8 @@ export const steps = sqliteTable(
     /** [{ nome, origem, hash }]. Sem o hash a metrica mente. */
     skillsUsed: text("skills_used", { mode: "json" }),
     toolsUsed: text("tools_used", { mode: "json" }),
+    /** O que o passo de modelo fez, em ordem: chamada, resultado, texto. A tela acompanha por aqui. */
+    activity: text("activity", { mode: "json" }),
     input: text("input", { mode: "json" }),
     output: text("output", { mode: "json" }),
     promptTokens: integer("prompt_tokens").notNull().default(0),

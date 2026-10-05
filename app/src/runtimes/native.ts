@@ -1,7 +1,7 @@
 import { generateText, stepCountIs, type LanguageModel, type ModelMessage, type TextPart } from "ai";
 import { buildProviders, type ProviderEntry } from "../providers/registry.js";
 import { costOf, priceService, type PriceService } from "../services/price-service.js";
-import type { Runtime, RuntimeRequest, RuntimeResult } from "./types.js";
+import { cortar, nomeDaFerramenta, type Runtime, type RuntimeRequest, type RuntimeResult } from "./types.js";
 
 /**
  * Runtime padrao: qualquer provedor por chave de API, via AI SDK.
@@ -48,6 +48,24 @@ export class NativeRuntime implements Runtime {
       // responder deixava o run em `running` para sempre, e run em andamento
       // não aceita reexecução.
       abortSignal: AbortSignal.timeout(NATIVE_TIMEOUT_MS),
+      // Cada volta do laço conta o que chamou e o que voltou. Sem o tempo de
+      // cada ferramenta: o AI SDK entrega a volta inteira de uma vez.
+      onStepFinish: (volta) => {
+        if (req.onActivity === undefined) return;
+        const at = Date.now();
+        if (volta.text.trim() !== "") req.onActivity({ at, tipo: "texto", detalhe: cortar(volta.text) });
+        for (const chamada of volta.toolCalls ?? []) {
+          req.onActivity({
+            at,
+            tipo: "ferramenta",
+            ferramenta: nomeDaFerramenta(chamada.toolName),
+            detalhe: cortar(JSON.stringify(chamada.input ?? {})),
+          });
+        }
+        for (const r of volta.toolResults ?? []) {
+          req.onActivity({ at, tipo: "resultado", detalhe: cortar(JSON.stringify(r.output ?? "")) });
+        }
+      },
     });
 
     const toolsUsed = new Set<string>();
