@@ -1520,6 +1520,13 @@ campo de chave só na seção "Ligar provedor", lá em cima, e quem cadastrava
 procurava a chave na linha do gateway. Agora o campo fica na linha, e o gateway
 sem chave sai da seção de cima para não aparecer duas vezes.
 
+**opencode com `.jsonc`, e erro do cartão inteiro.** Quem usa
+`opencode.jsonc` recebia "tem comentário ou não é JSON puro" e tinha que colar
+o trecho. Agora o `OpencodeService` lê os dois formatos com `jsonc-parser` e
+edita só a chave `mcp.locum` no lugar, sem perder comentário nem vírgula
+sobrando; só arquivo quebrado é recusado. O erro do cartão na vitrine, que
+ficava cortado em três linhas, abre inteiro num clique.
+
 **Cron em frase.** O gatilho de horário fixo aparece como "Toda segunda às
 07:30 · cron 30 7 * * 1" na lista e no canvas, e a frase entra acima da
 próxima ocorrência no formulário (`renderer/lib/descricao-do-cron.ts`). O que

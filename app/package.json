@@ -46,6 +46,7 @@
     "cn": "^0.3.0",
     "drizzle-orm": "^0.44.0",
     "i18next": "^26.4.2",
+    "jsonc-parser": "^3.3.1",
     "lucide-react": "^1.47.0",
     "motion": "^13.4.0",
     "node-pty": "^1.1.0",

@@ -1,6 +1,9 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+// A build ESM, porque a UMD (o "main" do pacote) faz `require` dinâmico que o
+// esbuild não embute.
+import { applyEdits, modify, parse, type ParseError } from "jsonc-parser/lib/esm/main.js";
 import { CLAUDE_CODE_SERVER, type McpLauncher } from "./claude-code-service.js";
 
 export interface OpencodeStatus {
@@ -25,10 +28,10 @@ type Entrada = { type: "local"; command: string[]; enabled: boolean };
  * Liga o Locum ao opencode, como o `ClaudeCodeService` faz com o Claude Code.
  *
  * O opencode não tem comando que cadastre servidor MCP sem perguntar, então o
- * cadastro é escrito no `opencode.json` global, só na chave `mcp.locum`, com o
- * resto do arquivo preservado. Arquivo com comentário (`opencode.jsonc`, ou
- * `.json` que não é JSON puro) não é reescrito: regravar perderia os
- * comentários, e a tela mostra o trecho para colar.
+ * cadastro é escrito na configuração global, só na chave `mcp.locum`. O
+ * arquivo é editado no lugar, e não regravado, porque o `opencode.jsonc` tem
+ * comentário que precisa sobreviver. Só arquivo quebrado é recusado, com a
+ * tela mostrando o trecho para colar.
  */
 export class OpencodeService {
   private launcher: McpLauncher | null = null;
@@ -47,17 +50,13 @@ export class OpencodeService {
     const esperada = this.entrada();
     const lida = this.lerConfig();
     const cadastrada = lida.config?.mcp?.[CLAUDE_CODE_SERVER] as Partial<Entrada> | undefined;
-    // Arquivo com comentário não é lido como objeto: basta o caminho deste
-    // aplicativo aparecer nele, que é o que quem colou o trecho deixou lá.
-    const colado = lida.config === null && lida.texto !== null && lida.texto.includes(JSON.stringify(esperada.command[0]));
     return {
       configPath: lida.path,
-      registered: cadastrada !== undefined || colado,
+      registered: cadastrada !== undefined,
       current:
-        colado ||
-        (cadastrada !== undefined &&
-          cadastrada.enabled !== false &&
-          JSON.stringify(cadastrada.command) === JSON.stringify(esperada.command)),
+        cadastrada !== undefined &&
+        cadastrada.enabled !== false &&
+        JSON.stringify(cadastrada.command) === JSON.stringify(esperada.command),
       snippet: JSON.stringify({ mcp: { [CLAUDE_CODE_SERVER]: esperada } }, null, 2),
     };
   }
@@ -66,12 +65,14 @@ export class OpencodeService {
   async connect(): Promise<OpencodeStatus> {
     const lida = this.lerConfig();
     if (lida.texto !== null && lida.config === null) {
-      throw new Error(`${lida.path} tem comentário ou não é JSON puro; cole o trecho mostrado na chave "mcp"`);
+      throw new Error(`${lida.path} não é JSON válido; cole o trecho mostrado na chave "mcp"`);
     }
-    const config = lida.config ?? { $schema: "https://opencode.ai/config.json" };
-    config.mcp = { ...(config.mcp ?? {}), [CLAUDE_CODE_SERVER]: this.entrada() };
+    const base = lida.texto ?? `${JSON.stringify({ $schema: "https://opencode.ai/config.json" }, null, 2)}\n`;
+    const edicoes = modify(base, ["mcp", CLAUDE_CODE_SERVER], this.entrada(), {
+      formattingOptions: { insertSpaces: true, tabSize: 2, eol: "\n" },
+    });
     mkdirSync(dirname(lida.path), { recursive: true });
-    writeFileSync(lida.path, `${JSON.stringify(config, null, 2)}\n`);
+    writeFileSync(lida.path, applyEdits(base, edicoes));
     return this.status();
   }
 
@@ -82,7 +83,8 @@ export class OpencodeService {
 
   /**
    * O `.json` quando existe, e senão o `.jsonc`; sem nenhum, o `.json` que o
-   * botão vai criar. `config` nulo com texto é arquivo que não se reescreve.
+   * botão vai criar. Os dois são lidos aceitando comentário e vírgula sobrando,
+   * como o opencode lê. `config` nulo com texto é arquivo quebrado.
    */
   private lerConfig(): { path: string; texto: string | null; config: OpencodeConfig | null } {
     const json = join(this.deps.configDir, "opencode.json");
@@ -94,13 +96,10 @@ export class OpencodeService {
     } catch {
       return { path, texto: null, config: null };
     }
-    if (path === jsonc) return { path, texto, config: null };
-    try {
-      const config = JSON.parse(texto) as unknown;
-      return { path, texto, config: config !== null && typeof config === "object" ? (config as OpencodeConfig) : null };
-    } catch {
-      return { path, texto, config: null };
-    }
+    const erros: ParseError[] = [];
+    const config = parse(texto, erros, { allowTrailingComma: true }) as unknown;
+    const objeto = erros.length === 0 && config !== null && typeof config === "object" && !Array.isArray(config);
+    return { path, texto, config: objeto ? (config as OpencodeConfig) : null };
   }
 }
 

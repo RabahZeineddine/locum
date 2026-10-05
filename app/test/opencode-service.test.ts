@@ -48,15 +48,31 @@ test("conectar preserva o resto do arquivo e troca o locum que aponta para outra
   }
 });
 
-test("arquivo com comentário não é reescrito, e o trecho colado conta como conectado", async () => {
+test("opencode.jsonc ganha o locum e os comentários ficam", async () => {
   const { servico, configDir, limpar } = montar();
   try {
     const arquivo = join(configDir, "opencode.jsonc");
-    writeFileSync(arquivo, '{\n  // meu modelo\n  "model": "x/y"\n}\n');
+    writeFileSync(arquivo, '{\n  // meu modelo\n  "model": "x/y",\n  "mcp": {\n    // o de sempre\n    "outro": { "type": "remote", "url": "https://a" },\n  },\n}\n');
+    assert.equal((await servico.status()).registered, false);
+    const estado = await servico.connect();
+    assert.equal(estado.configPath, arquivo);
+    assert.equal(estado.current, true);
+    const texto = readFileSync(arquivo, "utf8");
+    assert.match(texto, /\/\/ meu modelo/);
+    assert.match(texto, /\/\/ o de sempre/);
+    assert.match(texto, /"outro"/);
+  } finally {
+    limpar();
+  }
+});
+
+test("arquivo quebrado não é reescrito, e o erro manda colar o trecho", async () => {
+  const { servico, configDir, limpar } = montar();
+  try {
+    const arquivo = join(configDir, "opencode.json");
+    writeFileSync(arquivo, '{ "model": ');
     await assert.rejects(servico.connect(), /cole o trecho/);
-    assert.equal(readFileSync(arquivo, "utf8"), '{\n  // meu modelo\n  "model": "x/y"\n}\n');
-    writeFileSync(arquivo, `{\n  // meu modelo\n  "mcp": { "locum": { "type": "local", "command": ["${APP}", "--mcp"] } }\n}\n`);
-    assert.equal((await servico.status()).current, true);
+    assert.equal(readFileSync(arquivo, "utf8"), '{ "model": ');
   } finally {
     limpar();
   }

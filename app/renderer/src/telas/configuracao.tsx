@@ -2438,8 +2438,9 @@ function ClaudeCode() {
  * O Locum dentro do opencode, num clique.
  *
  * O opencode não tem comando que cadastre servidor sem perguntar, então o
- * botão grava `mcp.locum` no `opencode.json` global. Com arquivo que tem
- * comentário, o botão recusa e o trecho fica para colar.
+ * botão grava `mcp.locum` na configuração global, `.json` ou `.jsonc`, sem
+ * perder comentário. Com arquivo quebrado, o botão recusa e o trecho fica para
+ * colar.
  */
 function Opencode() {
   const { t } = useTranslation();
