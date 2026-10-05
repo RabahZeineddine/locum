@@ -6010,6 +6010,17 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
     `(document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })), window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })), null)`,
   );
 
+  // O editor do agent separa em abas; uma foto das instruções e uma das ferramentas.
+  for (const aba of ["instructions", "tools"]) {
+    await irPara(janela, "library", "novo");
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await janela.webContents.executeJavaScript(
+      `(document.querySelector('[data-locum-agent-aba="${aba}"]')?.click(), null)`,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    writeFileSync(join(destino, `library-novo-${aba}.png`), (await janela.webContents.capturePage()).toPNG());
+  }
+
   // O que vigia e quanto gasta ficam abaixo dos passos, fora da primeira foto.
   if (primeiroAgent) {
     await irPara(janela, "agents", primeiroAgent);

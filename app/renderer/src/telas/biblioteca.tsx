@@ -4,9 +4,10 @@ import { Button } from "@/components/ui/button";
 import { call, read, useRead, type ReadResult } from "@/lib/bridge";
 import { rotuloDoModelo } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, Bot, Plus, Trash2, Wrench } from "lucide-react";
+import { ArrowLeft, Bot, Plus, Trash2, Workflow, Wrench, X } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { ehLeitura } from "../../../src/config/leitura.js";
 import type { AgentProfile, ToolRef, Toolset } from "../../../src/config/types";
 import { FerramentasDoServidor, SeletorDeModelo, servidoresDoModelo, useCatalogo } from "../editor-agent";
 import type { TelaProps } from "../rotas";
@@ -22,6 +23,9 @@ const ABA_TOOLSETS = "toolsets";
 /** O detalhe do agent novo, ainda sem id. */
 const NOVO = "novo";
 
+const ABAS_DO_AGENT = ["general", "instructions", "tools", "usage"] as const;
+type AbaDoAgent = (typeof ABAS_DO_AGENT)[number];
+
 /**
  * Agents: a biblioteca de especialidades e os toolsets que elas usam.
  *
@@ -34,7 +38,14 @@ export function Biblioteca({ detalhe, navegar }: TelaProps) {
   const aba = detalhe === ABA_TOOLSETS ? "toolsets" : "agents";
 
   if (detalhe !== null && detalhe !== ABA_TOOLSETS) {
-    return <EditorDoAgent id={detalhe === NOVO ? null : detalhe} voltar={() => navegar("library")} abrir={(id) => navegar("library", id)} />;
+    return (
+      <EditorDoAgent
+        abrir={(id) => navegar("library", id)}
+        id={detalhe === NOVO ? null : detalhe}
+        navegar={navegar}
+        voltar={() => navegar("library")}
+      />
+    );
   }
 
   return (
@@ -128,7 +139,17 @@ function CartaoDoAgent({ agent, abrir }: { agent: ResumoDoAgent; abrir: () => vo
   );
 }
 
-function EditorDoAgent({ id, voltar, abrir }: { id: string | null; voltar: () => void; abrir: (id: string) => void }) {
+function EditorDoAgent({
+  id,
+  voltar,
+  abrir,
+  navegar,
+}: {
+  id: string | null;
+  voltar: () => void;
+  abrir: (id: string) => void;
+  navegar: TelaProps["navegar"];
+}) {
   const { t } = useTranslation();
   const lido = useRead("library.profile", id ?? "");
   if (id !== null && lido.status === "loading") return <p className="text-muted-foreground pt-6 text-sm">{t("library.loading")}</p>;
@@ -142,17 +163,19 @@ function EditorDoAgent({ id, voltar, abrir }: { id: string | null; voltar: () =>
       </div>
     );
   }
-  return <FormularioDoAgent abrir={abrir} inicial={id === null ? null : (lido.data ?? null)} voltar={voltar} />;
+  return <FormularioDoAgent abrir={abrir} inicial={id === null ? null : (lido.data ?? null)} navegar={navegar} voltar={voltar} />;
 }
 
 function FormularioDoAgent({
   inicial,
   voltar,
   abrir,
+  navegar,
 }: {
   inicial: ReadResult<"library.profile">;
   voltar: () => void;
   abrir: (id: string) => void;
+  navegar: TelaProps["navegar"];
 }) {
   const { t } = useTranslation();
   const catalogo = useCatalogo();
@@ -176,6 +199,7 @@ function FormularioDoAgent({
   const [nota, setNota] = useState("");
   const [ocupado, setOcupado] = useState(false);
   const [aviso, setAviso] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
+  const [aba, setAba] = useState<AbaDoAgent>("general");
   const novo = salvo === null;
   const mudou = salvo === null || JSON.stringify(salvo.spec) !== JSON.stringify(spec);
   const usadoPor = (usos.data ?? []).find((u) => u.id === spec.id)?.usedBy ?? [];
@@ -211,137 +235,219 @@ function FormularioDoAgent({
     });
   };
 
+  const ferramentasNoTotal = spec.tools.length + (toolsets.data ?? []).filter((ts) => spec.toolsets.includes(ts.id)).reduce((n, ts) => n + ts.tools.length, 0);
+  const contagem: Partial<Record<AbaDoAgent, number>> = { tools: ferramentasNoTotal, usage: usadoPor.length };
+
+  // As abas ficam todas montadas e só a escolhida aparece: o que se digitou numa
+  // não some ao trocar de aba, e o salvar vale para o agent inteiro.
   return (
-    <div className="flex max-w-3xl flex-col gap-5 pt-2" data-locum-probe="agent-da-biblioteca">
+    <div className="flex max-w-4xl flex-col gap-5 pt-2" data-locum-probe="agent-da-biblioteca">
       <div className="flex flex-wrap items-center gap-2">
         <Button className="cursor-pointer" onClick={voltar} size="sm" variant="ghost">
           <ArrowLeft className="size-4" />
           {t("library.back")}
         </Button>
-        <span className="flex-1" />
-        {salvo === null ? null : <span className="text-muted-foreground text-xs">{t("library.version", { version: salvo.version })}</span>}
-        {!novo && mudou ? <Badge variant="outline">{t("library.editor.unsaved")}</Badge> : null}
       </div>
 
-      <Campo rotulo={t("library.editor.name")}>
-        <input
-          className={cn(CAMPO, "font-medium")}
-          data-locum-agent-nome=""
-          onChange={(e) => trocar("name", e.target.value)}
-          placeholder={t("library.editor.namePlaceholder")}
-          value={spec.name}
-        />
-      </Campo>
-      <Campo rotulo={t("library.editor.description")}>
-        <input
-          className={CAMPO}
-          onChange={(e) => trocar("description", e.target.value)}
-          placeholder={t("library.editor.descriptionPlaceholder")}
-          value={spec.description}
-        />
-      </Campo>
-      <Campo dica={t("library.editor.contextHint")} rotulo={t("library.editor.context")}>
-        <textarea
-          className={cn(CAMPO, "min-h-28 resize-y text-[13px] leading-relaxed")}
-          onChange={(e) => trocar("context", e.target.value)}
-          value={spec.context}
-        />
-      </Campo>
-      <Campo dica={t("library.editor.instructionsHint")} rotulo={t("library.editor.instructions")}>
-        <textarea
-          className={cn(CAMPO, "min-h-36 resize-y text-[13px] leading-relaxed")}
-          data-locum-agent-instrucoes=""
-          onChange={(e) => trocar("instructions", e.target.value)}
-          value={spec.instructions}
-        />
-      </Campo>
+      <div className="flex flex-wrap items-start gap-4">
+        <span aria-hidden className="ia-gradiente text-primary-foreground flex size-11 shrink-0 items-center justify-center rounded-lg">
+          <Bot className="size-5" />
+        </span>
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <h1 className="truncate text-xl font-semibold">{spec.name.trim() === "" ? t("library.editor.untitled") : spec.name}</h1>
+          <p className="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+            <span>{rotuloDoModelo(spec.model)}</span>
+            {salvo === null ? null : <span>{t("library.version", { version: salvo.version })}</span>}
+            {!novo && mudou ? <Badge variant="outline">{t("library.editor.unsaved")}</Badge> : null}
+          </p>
+          {spec.description === "" ? null : <p className="text-muted-foreground text-sm">{spec.description}</p>}
+        </div>
+      </div>
 
-      <div className="grid gap-5 sm:grid-cols-2">
-        <Campo rotulo={t("library.editor.model")}>
-          <SeletorDeModelo catalogo={catalogo} trocar={(v) => trocar("model", v)} valor={spec.model} />
+      <div className="border-border flex gap-1 border-b" role="tablist">
+        {ABAS_DO_AGENT.map((a) => (
+          <button
+            aria-selected={aba === a}
+            className={cn(
+              "-mb-px flex cursor-pointer items-center gap-1.5 border-b-2 px-3 py-2 text-sm transition-colors",
+              aba === a ? "border-primary text-foreground" : "text-muted-foreground hover:text-foreground border-transparent",
+            )}
+            data-locum-agent-aba={a}
+            key={a}
+            onClick={() => setAba(a)}
+            role="tab"
+            type="button"
+          >
+            {t(`library.editor.tabs.${a}`)}
+            {contagem[a] === undefined || contagem[a] === 0 ? null : (
+              <span className="bg-muted text-muted-foreground rounded-full px-1.5 text-[11px] tabular-nums">{contagem[a]}</span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      <section className="flex flex-col gap-5" hidden={aba !== "general"} role="tabpanel">
+        <Campo rotulo={t("library.editor.name")}>
+          <input
+            className={cn(CAMPO, "font-medium")}
+            data-locum-agent-nome=""
+            onChange={(e) => trocar("name", e.target.value)}
+            placeholder={t("library.editor.namePlaceholder")}
+            value={spec.name}
+          />
         </Campo>
-        <Campo dica={t("library.editor.temperatureHint")} rotulo={t("library.editor.temperature")}>
-          <div className="flex items-center gap-3">
-            <input
-              aria-label={t("library.editor.temperature")}
-              className="accent-primary flex-1 cursor-pointer"
-              disabled={spec.temperature === undefined}
-              max={1}
-              min={0}
-              onChange={(e) => trocar("temperature", Number(e.target.value))}
-              step={0.1}
-              type="range"
-              value={spec.temperature ?? 0.7}
-            />
-            <span className="w-8 text-right font-mono text-xs tabular-nums">
-              {spec.temperature === undefined ? "" : spec.temperature.toFixed(1)}
-            </span>
-            <label className="flex cursor-pointer items-center gap-1.5 text-xs">
+        <Campo rotulo={t("library.editor.description")}>
+          <input
+            className={CAMPO}
+            onChange={(e) => trocar("description", e.target.value)}
+            placeholder={t("library.editor.descriptionPlaceholder")}
+            value={spec.description}
+          />
+        </Campo>
+        <div className="grid gap-5 sm:grid-cols-2">
+          <Campo rotulo={t("library.editor.model")}>
+            <SeletorDeModelo catalogo={catalogo} trocar={(v) => trocar("model", v)} valor={spec.model} />
+          </Campo>
+          <Campo dica={t("library.editor.temperatureHint")} rotulo={t("library.editor.temperature")}>
+            <div className="flex items-center gap-3">
               <input
-                checked={spec.temperature === undefined}
-                className="accent-primary cursor-pointer"
-                onChange={(e) =>
-                  setSpec((s) => {
-                    const { temperature: _antiga, ...resto } = s;
-                    return e.target.checked ? resto : { ...resto, temperature: 0.7 };
-                  })
-                }
-                type="checkbox"
+                aria-label={t("library.editor.temperature")}
+                className="accent-primary flex-1 cursor-pointer"
+                disabled={spec.temperature === undefined}
+                max={1}
+                min={0}
+                onChange={(e) => trocar("temperature", Number(e.target.value))}
+                step={0.1}
+                type="range"
+                value={spec.temperature ?? 0.7}
               />
-              {t("library.editor.temperatureDefault")}
-            </label>
-          </div>
+              <span className="w-8 text-right font-mono text-xs tabular-nums">
+                {spec.temperature === undefined ? "" : spec.temperature.toFixed(1)}
+              </span>
+              <label className="flex cursor-pointer items-center gap-1.5 text-xs">
+                <input
+                  checked={spec.temperature === undefined}
+                  className="accent-primary cursor-pointer"
+                  onChange={(e) =>
+                    setSpec((s) => {
+                      const { temperature: _antiga, ...resto } = s;
+                      return e.target.checked ? resto : { ...resto, temperature: 0.7 };
+                    })
+                  }
+                  type="checkbox"
+                />
+                {t("library.editor.temperatureDefault")}
+              </label>
+            </div>
+          </Campo>
+        </div>
+        <Campo dica={t("library.editor.maxStepsHint")} rotulo={t("library.editor.maxSteps")}>
+          <input
+            className={cn(CAMPO, "w-28")}
+            min={1}
+            onChange={(e) => {
+              const n = Number.parseInt(e.target.value, 10);
+              if (Number.isFinite(n) && n >= 1) trocar("maxSteps", n);
+            }}
+            type="number"
+            value={spec.maxSteps}
+          />
         </Campo>
-      </div>
+      </section>
 
-      <Campo dica={t("library.editor.toolsetsHint")} rotulo={t("library.editor.toolsets")}>
-        {(toolsets.data ?? []).length === 0 ? (
-          <p className="text-muted-foreground text-xs">{t("library.editor.toolsetsNone")}</p>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            {(toolsets.data ?? []).map((ts) => {
-              const marcado = spec.toolsets.includes(ts.id);
-              return (
-                <button
-                  aria-pressed={marcado}
-                  className={cn(
-                    "border-border flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors",
-                    marcado ? "border-primary bg-primary/10" : "hover:border-foreground/30",
-                  )}
-                  data-locum-agent-toolset={ts.id}
-                  key={ts.id}
-                  onClick={() => trocar("toolsets", marcado ? spec.toolsets.filter((x) => x !== ts.id) : [...spec.toolsets, ts.id])}
-                  title={ts.description}
-                  type="button"
-                >
-                  <Wrench className="size-3" />
-                  {ts.name}
-                  <span className="text-muted-foreground">{t("library.toolsCount", { count: ts.tools.length })}</span>
-                </button>
-              );
-            })}
+      <section className="flex flex-col gap-5" hidden={aba !== "instructions"} role="tabpanel">
+        <Campo dica={t("library.editor.contextHint")} rotulo={t("library.editor.context")}>
+          <textarea
+            className={cn(CAMPO, "min-h-40 resize-y font-mono text-[12.5px] leading-relaxed")}
+            onChange={(e) => trocar("context", e.target.value)}
+            value={spec.context}
+          />
+        </Campo>
+        <Campo dica={t("library.editor.instructionsHint")} rotulo={t("library.editor.instructions")}>
+          <textarea
+            className={cn(CAMPO, "min-h-[22rem] resize-y font-mono text-[12.5px] leading-relaxed")}
+            data-locum-agent-instrucoes=""
+            onChange={(e) => trocar("instructions", e.target.value)}
+            value={spec.instructions}
+          />
+        </Campo>
+      </section>
+
+      <section className="flex flex-col gap-6" hidden={aba !== "tools"} role="tabpanel">
+        <FerramentasEscolhidas
+          remover={(r) => trocar("tools", spec.tools.filter((x) => x.server !== r.server || x.tool !== r.tool))}
+          tools={spec.tools}
+        />
+        <Campo dica={t("library.editor.toolsetsHint")} rotulo={t("library.editor.toolsets")}>
+          {(toolsets.data ?? []).length === 0 ? (
+            <p className="text-muted-foreground text-xs">{t("library.editor.toolsetsNone")}</p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {(toolsets.data ?? []).map((ts) => {
+                const marcado = spec.toolsets.includes(ts.id);
+                return (
+                  <button
+                    aria-pressed={marcado}
+                    className={cn(
+                      "border-border flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors",
+                      marcado ? "border-primary bg-primary/10" : "hover:border-foreground/30",
+                    )}
+                    data-locum-agent-toolset={ts.id}
+                    key={ts.id}
+                    onClick={() => trocar("toolsets", marcado ? spec.toolsets.filter((x) => x !== ts.id) : [...spec.toolsets, ts.id])}
+                    title={ts.description}
+                    type="button"
+                  >
+                    <Wrench className="size-3" />
+                    {ts.name}
+                    <span className="text-muted-foreground">{t("library.toolsCount", { count: ts.tools.length })}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </Campo>
+        <Campo dica={t("library.editor.extraToolsHint")} rotulo={t("library.editor.addTools")}>
+          <EscolhaDeFerramentas trocar={(v) => trocar("tools", v)} valor={spec.tools} />
+        </Campo>
+      </section>
+
+      <section className="flex flex-col gap-5" hidden={aba !== "usage"} role="tabpanel">
+        <Campo dica={t("library.editor.usageHint")} rotulo={t("library.editor.usage")}>
+          {usadoPor.length === 0 ? (
+            <p className="text-muted-foreground text-sm">{t("library.editor.usageNone")}</p>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {usadoPor.map((id) => (
+                <li key={id}>
+                  <button
+                    className="border-border superficie hover:border-foreground/30 flex w-full cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors"
+                    onClick={() => navegar("automations", id)}
+                    type="button"
+                  >
+                    <Workflow className="text-muted-foreground size-4" />
+                    <span className="font-mono text-xs">{id}</span>
+                    <span className="text-muted-foreground ml-auto text-xs">{t("library.editor.openAutomation")}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Campo>
+        {novo ? null : (
+          <div className="border-sev-critical/30 flex flex-wrap items-center gap-3 rounded-md border p-3">
+            <span className="text-muted-foreground flex-1 text-xs">
+              {usadoPor.length > 0 ? t("library.editor.inUse", { list: usadoPor.join(", ") }) : t("library.editor.removeHint")}
+            </span>
+            <Button className="cursor-pointer" disabled={ocupado || usadoPor.length > 0} onClick={remover} size="sm" variant="ghost">
+              <Trash2 className="size-4" />
+              {t("library.editor.remove")}
+            </Button>
           </div>
         )}
-      </Campo>
+      </section>
 
-      <Campo dica={t("library.editor.extraToolsHint")} rotulo={t("library.editor.extraTools")}>
-        <EscolhaDeFerramentas trocar={(v) => trocar("tools", v)} valor={spec.tools} />
-      </Campo>
-
-      <Campo rotulo={t("library.editor.maxSteps")}>
-        <input
-          className={cn(CAMPO, "w-28")}
-          min={1}
-          onChange={(e) => {
-            const n = Number.parseInt(e.target.value, 10);
-            if (Number.isFinite(n) && n >= 1) trocar("maxSteps", n);
-          }}
-          type="number"
-          value={spec.maxSteps}
-        />
-      </Campo>
-
-      <div className="border-border flex flex-wrap items-center gap-2 border-t pt-4">
+      <div className="border-border bg-background/95 sticky bottom-0 flex flex-wrap items-center gap-2 border-t py-3 backdrop-blur">
         {novo ? null : (
           <input
             className={cn(CAMPO, "min-w-56 flex-1")}
@@ -358,24 +464,59 @@ function FormularioDoAgent({
         >
           {t(novo ? "library.editor.create" : "library.editor.save")}
         </Button>
-        {novo ? null : (
-          <Button
-            className="cursor-pointer"
-            disabled={ocupado || usadoPor.length > 0}
-            onClick={remover}
-            title={usadoPor.length > 0 ? t("library.editor.inUse", { list: usadoPor.join(", ") }) : undefined}
-            variant="ghost"
-          >
-            <Trash2 className="size-4" />
-            {t("library.editor.remove")}
-          </Button>
+        {aviso === null ? null : (
+          <p className={cn("w-full text-xs", aviso.tipo === "erro" ? "text-sev-critical" : "text-emerald-400")}>{aviso.texto}</p>
         )}
       </div>
-      {usadoPor.length > 0 ? (
-        <p className="text-muted-foreground text-xs">{t("library.editor.inUse", { list: usadoPor.join(", ") })}</p>
-      ) : null}
-      {aviso === null ? null : (
-        <p className={cn("text-xs", aviso.tipo === "erro" ? "text-sev-critical" : "text-emerald-400")}>{aviso.texto}</p>
+    </div>
+  );
+}
+
+/**
+ * O que o agent já pode usar, num olhar: as ferramentas avulsas por servidor,
+ * cada uma dizendo se só lê ou se escreve, e um x para tirar.
+ */
+function FerramentasEscolhidas({ tools, remover }: { tools: ToolRef[]; remover: (r: ToolRef) => void }) {
+  const { t } = useTranslation();
+  const porServidor = new Map<string, ToolRef[]>();
+  for (const r of tools) porServidor.set(r.server, [...(porServidor.get(r.server) ?? []), r]);
+  return (
+    <div className="flex flex-col gap-2">
+      <span className="text-muted-foreground text-xs">{t("library.editor.chosenTools")}</span>
+      {tools.length === 0 ? (
+        <p className="border-border text-muted-foreground rounded-md border border-dashed p-3 text-sm">{t("library.editor.chosenNone")}</p>
+      ) : (
+        <ul className="flex flex-col gap-2" data-locum-agent-escolhidas={tools.length}>
+          {[...porServidor].map(([servidor, refs]) => (
+            <li className="border-border superficie flex flex-col gap-2 rounded-md border p-3" key={servidor}>
+              <span className="font-mono text-xs">{servidor}</span>
+              <span className="flex flex-wrap gap-1.5">
+                {refs.map((r) => {
+                  const leitura = ehLeitura(r.tool);
+                  return (
+                    <span
+                      className="border-border flex items-center gap-1.5 rounded-full border py-0.5 pr-1 pl-2.5 text-xs"
+                      key={r.tool}
+                    >
+                      <span className="font-mono">{r.tool}</span>
+                      <span className={cn("text-[10px]", leitura ? "text-muted-foreground" : "text-amber-400")}>
+                        {t(leitura ? "library.editor.read" : "library.editor.write")}
+                      </span>
+                      <button
+                        aria-label={t("library.editor.removeTool", { tool: r.tool })}
+                        className="hover:bg-accent cursor-pointer rounded-full p-0.5"
+                        onClick={() => remover(r)}
+                        type="button"
+                      >
+                        <X className="size-3" />
+                      </button>
+                    </span>
+                  );
+                })}
+              </span>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

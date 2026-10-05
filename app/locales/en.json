@@ -1854,7 +1854,26 @@
       "edited": "edited in the library",
       "unsaved": "unsaved",
       "remove": "Remove",
-      "inUse": "Used in: {{list}}. Take it out of those automations before removing."
+      "inUse": "Used in: {{list}}. Take it out of those automations before removing.",
+      "untitled": "Untitled agent",
+      "maxStepsHint": "How many tool calls it can make in one task before stopping.",
+      "tabs": {
+        "general": "General",
+        "instructions": "Instructions",
+        "tools": "Tools",
+        "usage": "Where it is used"
+      },
+      "chosenTools": "Tools it can already use",
+      "chosenNone": "No standalone tools yet. Pick them below, by server.",
+      "addTools": "Add tools",
+      "read": "read",
+      "write": "write",
+      "removeTool": "Remove {{tool}}",
+      "usage": "Automations that use this agent",
+      "usageHint": "The agent does the work; the automation says when and with which task.",
+      "usageNone": "No automation uses this agent yet.",
+      "openAutomation": "Open automation",
+      "removeHint": "Removing deletes the agent from the library, with every version."
     },
     "toolsets": {
       "lead": "A toolset groups tools from one or more apps. An agent that includes the toolset gets all of them.",

@@ -1900,7 +1900,26 @@
       "edited": "editado na biblioteca",
       "unsaved": "não salvo",
       "remove": "Remover",
-      "inUse": "Em uso em: {{list}}. Tire das automações antes de remover."
+      "inUse": "Em uso em: {{list}}. Tire das automações antes de remover.",
+      "untitled": "Agent sem nome",
+      "maxStepsHint": "Quantas vezes ele pode chamar ferramenta numa tarefa antes de parar.",
+      "tabs": {
+        "general": "Geral",
+        "instructions": "Instruções",
+        "tools": "Ferramentas",
+        "usage": "Onde é usado"
+      },
+      "chosenTools": "Ferramentas que ele já pode usar",
+      "chosenNone": "Nenhuma ferramenta avulsa ainda. Escolha abaixo, por servidor.",
+      "addTools": "Adicionar ferramentas",
+      "read": "leitura",
+      "write": "escrita",
+      "removeTool": "Tirar {{tool}}",
+      "usage": "Automações que usam este agent",
+      "usageHint": "O agent é quem trabalha; a automação diz quando e com que tarefa.",
+      "usageNone": "Nenhuma automação usa este agent ainda.",
+      "openAutomation": "Abrir automação",
+      "removeHint": "Remover apaga o agent da biblioteca, com todas as versões."
     },
     "toolsets": {
       "lead": "Um toolset junta ferramentas de um ou mais apps. O agent que inclui o toolset ganha todas elas.",

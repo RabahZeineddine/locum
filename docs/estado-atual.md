@@ -1419,6 +1419,21 @@ processo, sem janela. Agora o `--mcp` que recebe `activate` (passados 5 s do
 lançamento, para não confundir com a subida) ou `open-url` sobe o app de
 verdade, e o app no ar traz a janela para a frente no `second-instance`.
 
+**Editor do agent em abas.** O formulário único virou quatro abas: Geral
+(nome, descrição, modelo, temperatura, teto de passos), Instruções (contexto
+e instruções, em campos maiores), Ferramentas e Onde é usado. Ferramentas
+mostra primeiro o que o agent já pode usar, por servidor, com leitura ou
+escrita e um x para tirar, e depois toolsets e a escolha por servidor. Onde é
+usado lista as automações, cada uma abrindo a sua, e guarda o remover. As abas
+ficam montadas e escondidas, então o que se digita numa não some, e a barra
+de salvar fica presa no rodapé.
+
+**Cron em frase.** O gatilho de horário fixo aparece como "Toda segunda às
+07:30 · cron 30 7 * * 1" na lista e no canvas, e a frase entra acima da
+próxima ocorrência no formulário (`renderer/lib/descricao-do-cron.ts`). O que
+não cabe numa frase, como dia do mês junto com dia da semana, fica só com a
+expressão.
+
 ## Próximos passos
 
 Iniciativas: I1, I2 e I3 prontos no código. Falta o teste à mão da sessão
