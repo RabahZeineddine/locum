@@ -25,6 +25,14 @@ test("http_get lê JSON já interpretado, corta corpo grande e recusa outro prot
   await assert.rejects(httpGet("file:///etc/passwd"), /só http e https/);
 });
 
+test("http_get com caminho devolve só o pedaço, mesmo de corpo maior que o teto", async () => {
+  const corpo = JSON.stringify({ periods: [{ start: "2026-09-28", total: 7 }], lixo: "x".repeat(LIMITE_DO_CORPO + 10) });
+  const recorte = await httpGet("https://api.exemplo.com/x", {}, fetchQueResponde(corpo, "application/json"), "periods[0]");
+  assert.deepEqual(recorte, { status: 200, contentType: "application/json", json: { start: "2026-09-28", total: 7 }, truncated: false });
+  const nada = await httpGet("https://api.exemplo.com/x", {}, fetchQueResponde(corpo, "application/json"), "nao.existe");
+  assert.equal(nada.json, null);
+});
+
 test("json_query segue o caminho, aceita texto com cerca e devolve null no que falta", () => {
   const dado = { itens: [{ nome: "a" }, { nome: "b" }], total: 2 };
   assert.equal(jsonQuery(dado, "itens[1].nome"), "b");

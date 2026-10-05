@@ -398,7 +398,8 @@ export class Executor {
     const ctx: SkillContext = { repo: payload.repo, changedFiles: payload.changedFiles };
     const skills = selectSkills(spec.skills, ctx);
     const { doLocum, daConta } = separarDaConta(toolRefs, runtime.id);
-    const { tools, release } = await this.deps.mcp.toolsFor(doLocum);
+    const { tools, release } =
+      runtime.id === "claude-code" ? this.deps.mcp.nomesPara(doLocum) : await this.deps.mcp.toolsFor(doLocum);
 
     await db
       .update(schema.steps)

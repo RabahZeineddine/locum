@@ -1462,6 +1462,12 @@ leu arquivo de outro projeto. Duas causas e duas correções:
   acima do teto vira arquivo, que sem Read o modelo não abriria.
 - O `context.md` da iniciativa do run não chegava ao prompt. O executor lê o
   arquivo (até 40 mil caracteres) e põe no system, entre o agent e as skills.
+- Para o Claude Code, o executor não sobe mais os servidores MCP do passo
+  antes de começar (`nomesPara` no registro): ele só usava o nome de cada
+  ferramenta, e subir um por um segurava o passo uns 45 s em "pendente".
+- `http_get` aceita `path`, com a sintaxe do `json_query`, aplicado antes do
+  teto de 60 mil caracteres: o DORA board (118 KB) e o finops (80 KB) passam a
+  voltar só o pedaço pedido.
 
 **Cron em frase.** O gatilho de horário fixo aparece como "Toda segunda às
 07:30 · cron 30 7 * * 1" na lista e no canvas, e a frase entra acima da

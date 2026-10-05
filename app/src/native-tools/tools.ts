@@ -25,6 +25,7 @@ export async function httpGet(
   url: string,
   headers: Record<string, string> = {},
   fetchFn: typeof fetch = clienteHttp,
+  caminho?: string,
 ): Promise<RespostaHttp> {
   let endereco: URL;
   try {
@@ -37,6 +38,18 @@ export async function httpGet(
   const resposta = await fetchFn(endereco.toString(), { method: "GET", headers });
   const contentType = resposta.headers.get("content-type");
   const corpo = await resposta.text();
+  // Com caminho, o recorte vem antes do teto: o agent pede só o pedaço que
+  // precisa de uma resposta de 75 KB, e o pedaço volta inteiro.
+  if (caminho !== undefined && caminho.trim() !== "" && /json/i.test(contentType ?? "")) {
+    try {
+      const recorte = jsonQuery(JSON.parse(corpo), caminho);
+      const texto = JSON.stringify(recorte) ?? "null";
+      if (texto.length <= LIMITE_DO_CORPO) return { status: resposta.status, contentType, json: recorte, truncated: false };
+      return { status: resposta.status, contentType, text: texto.slice(0, LIMITE_DO_CORPO), truncated: true };
+    } catch {
+      // Corpo que não fecha como JSON segue o caminho de sempre, como texto.
+    }
+  }
   const truncated = corpo.length > LIMITE_DO_CORPO;
   const base = { status: resposta.status, contentType, truncated };
   if (!truncated && /json/i.test(contentType ?? "")) {

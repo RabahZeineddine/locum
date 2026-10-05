@@ -24,14 +24,15 @@ export function buildNativeToolsServer(deps: NativeToolsDeps): McpServer {
     "http_get",
     {
       description:
-        "GET request to any http or https address. Returns status, content type and the body, already parsed when it is JSON. Bodies over 60k characters are cut.",
+        'GET request to any http or https address. Returns status, content type and the body, already parsed when it is JSON. Bodies over 60k characters are cut: for large JSON, pass path (like "periods[3]" or "indicators.deployFrequency") to get only that part.',
       inputSchema: {
         url: z.string(),
         headers: z.record(z.string(), z.string()).optional(),
+        path: z.string().optional().describe("JSON path applied to the body before it is returned, same syntax as json_query"),
       },
       annotations: { readOnlyHint: true, openWorldHint: true },
     },
-    async ({ url, headers }) => respond(() => httpGet(url, headers ?? {}, deps.fetch)),
+    async ({ url, headers, path }) => respond(() => httpGet(url, headers ?? {}, deps.fetch, path)),
   );
 
   server.registerTool(

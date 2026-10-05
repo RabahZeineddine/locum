@@ -204,12 +204,7 @@ export class McpRegistry {
   async toolsFor(refs: ToolRef[]): Promise<{ tools: ToolSet; release: () => void }> {
     const wanted = new Map<string, ToolRef[]>();
     for (const ref of refs) {
-      if (ref.class === "external_write") {
-        throw new Error(
-          `ferramenta "${ref.server}.${ref.tool}" e escrita externa e nao pode entrar como tool de passo. ` +
-            `Escrita externa vira passo de acao, que passa pela fila de aprovacao.`,
-        );
-      }
+      recusarEscritaExterna(ref);
       const list = wanted.get(ref.server) ?? [];
       list.push(ref);
       wanted.set(ref.server, list);
@@ -236,6 +231,21 @@ export class McpRegistry {
         for (const [server, entry] of taken) this.drop(server, entry);
       },
     };
+  }
+
+  /**
+   * Só os nomes, sem subir servidor nenhum. Serve o runtime do Claude Code,
+   * que sobe os servidores ele mesmo pelo `--mcp-config` e daqui só usa o nome
+   * de cada ferramenta: subir aqui também segurava o passo uns 45 s em
+   * "pendente", um servidor de cada vez, para nada.
+   */
+  nomesPara(refs: ToolRef[]): { tools: ToolSet; release: () => void } {
+    const tools: ToolSet = {};
+    for (const ref of refs) {
+      recusarEscritaExterna(ref);
+      tools[`${ref.server}__${ref.tool}`] = {} as ToolSet[string];
+    }
+    return { tools, release: () => undefined };
   }
 
   /**
@@ -361,3 +371,12 @@ export function stdioComSaida(cfg: McpServerConfig): { transport: Experimental_S
   };
 }
 
+
+function recusarEscritaExterna(ref: ToolRef): void {
+  if (ref.class === "external_write") {
+    throw new Error(
+      `ferramenta "${ref.server}.${ref.tool}" e escrita externa e nao pode entrar como tool de passo. ` +
+        `Escrita externa vira passo de acao, que passa pela fila de aprovacao.`,
+    );
+  }
+}
