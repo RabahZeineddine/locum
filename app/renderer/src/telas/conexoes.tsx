@@ -504,7 +504,8 @@ function Oferece({ app }: { app: string }) {
 
 /** Servidor MCP remoto qualquer, pelo endereço. */
 /**
- * Os servidores MCP que o Claude Code já usa, para trazer ao Locum. Os já
+ * Os servidores MCP que as ferramentas da máquina já usam (Claude Code,
+ * opencode, Cursor, VS Code, Claude Desktop), para trazer ao Locum. Os já
  * cadastrados vêm desmarcados: reimportar troca o cadastro, e um servidor com
  * o mesmo nome pode ter sido ligado aqui por outro caminho.
  */

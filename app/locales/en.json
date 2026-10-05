@@ -689,6 +689,7 @@
         "manual": "Added here",
         "user": "From Claude Code",
         "plugin": "{{name}} plugin",
+        "tool": "From {{name}}",
         "apps": "Registered by apps",
         "count_zero": "{{on}} of {{count}} on",
         "count_one": "{{on}} of {{count}} on",
@@ -1411,10 +1412,10 @@
       }
     },
     "import": {
-      "open": "Import from Claude Code",
-      "title": "Import from Claude Code",
-      "description": "The MCP servers your Claude Code uses: your own and the ones from enabled plugins. Once imported they belong to Locum and run with any model, even without Claude on the machine. They come in disabled; credentials go to the vault. claude.ai connectors are not listed: they only exist through the Claude account.",
-      "empty": "No MCP server in this machine's Claude Code.",
+      "open": "Import from other tools",
+      "title": "Import from other tools",
+      "description": "The MCP servers already set up on this machine: in Claude Code (your own and the ones from enabled plugins), opencode, Cursor, VS Code and Claude Desktop. Once imported they belong to Locum and run with any model, even without the original tool. They come in disabled; credentials go to the vault. claude.ai connectors are not listed: they only exist through the Claude account.",
+      "empty": "No MCP server in this machine's Claude Code, opencode, Cursor, VS Code or Claude Desktop.",
       "exists": "already registered; importing replaces it",
       "oauth": "authorize in the browser afterwards",
       "missing": "missing {{names}}: it is added but will not connect without it",

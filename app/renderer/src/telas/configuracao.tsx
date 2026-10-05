@@ -1462,16 +1462,18 @@ function redeInterna(servidor: Servidor): boolean {
 
 /**
  * De onde veio o servidor, para a lista não misturar o que a pessoa
- * cadastrou com o que veio de um plugin do Claude Code ou o que um app do
- * catálogo cadastrou ao ligar. A origem é lida dos arquivos do Claude Code a
- * cada abertura: um servidor com o mesmo nome de um que ele declara conta
- * como importado de lá.
+ * cadastrou com o que veio do Claude Code, de um plugin dele, de outra
+ * ferramenta ou o que um app do catálogo cadastrou ao ligar. A origem é lida
+ * dos arquivos das ferramentas a cada abertura: um servidor com o mesmo nome
+ * de um que elas declaram conta como importado de lá.
  */
 function chaveDaOrigem(nome: string, origens: Record<string, string>, doCatalogo: ReadonlySet<string>): string {
   const origem = origens[nome];
   if (doCatalogo.has(nome)) return "apps";
   if (origem === "usuário") return "usuario";
-  if (origem !== undefined) return `plugin:${origem.split("@")[0] ?? origem}`;
+  // Plugin do Claude Code vem como `nome@marketplace`; o resto é ferramenta.
+  if (origem?.includes("@") === true) return `plugin:${origem.split("@")[0] ?? origem}`;
+  if (origem !== undefined) return `ferramenta:${origem}`;
   return "seus";
 }
 
@@ -1479,6 +1481,7 @@ function tituloDaOrigem(chave: string, t: (chave: string, opcoes?: Record<string
   if (chave === "apps") return t("settings.servers.groups.apps");
   if (chave === "usuario") return t("settings.servers.groups.user");
   if (chave.startsWith("plugin:")) return t("settings.servers.groups.plugin", { name: chave.slice("plugin:".length) });
+  if (chave.startsWith("ferramenta:")) return t("settings.servers.groups.tool", { name: chave.slice("ferramenta:".length) });
   return t("settings.servers.groups.manual");
 }
 
@@ -1495,9 +1498,11 @@ function agrupar(
     grupo.servidores.push(servidor);
     grupos.set(chave, grupo);
   }
-  // Os seus primeiro, depois os plugins e o Claude Code, e por último os
-  // que os apps cadastraram, que já têm cartão na vitrine.
-  const peso = (g: Grupo): number => (g.chave === "seus" ? 0 : g.chave === "apps" ? 3 : g.chave === "usuario" ? 2 : 1);
+  // Os seus primeiro, depois os plugins, o Claude Code e as outras
+  // ferramentas, e por último os que os apps cadastraram, que já têm cartão
+  // na vitrine.
+  const peso = (g: Grupo): number =>
+    g.chave === "seus" ? 0 : g.chave === "apps" ? 3 : g.chave === "usuario" || g.chave.startsWith("ferramenta:") ? 2 : 1;
   return [...grupos.values()]
     .map((g) => ({ ...g, servidores: g.servidores.sort((a, b) => a.config.name.localeCompare(b.config.name)) }))
     .sort((a, b) => peso(a) - peso(b) || a.titulo.localeCompare(b.titulo));
@@ -1506,7 +1511,8 @@ function agrupar(
 /**
  * Os servidores MCP cadastrados, separados dos apps: agrupados pela origem,
  * com filtro por estado, teste de todos os ligados de uma vez e os dois
- * jeitos de cadastrar (importar do Claude Code ou adicionar pelo endereço).
+ * jeitos de cadastrar (importar de outra ferramenta ou adicionar pelo
+ * endereço).
  * Clicar no nome abre o detalhe, onde ficam o erro inteiro, a credencial,
  * as ferramentas e quem usa o servidor.
  */

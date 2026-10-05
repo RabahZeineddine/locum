@@ -1527,6 +1527,16 @@ edita só a chave `mcp.locum` no lugar, sem perder comentário nem vírgula
 sobrando; só arquivo quebrado é recusado. O erro do cartão na vitrine, que
 ficava cortado em três linhas, abre inteiro num clique.
 
+**Importar de outras ferramentas.** A importação de servidores MCP só lia o
+Claude Code. Agora lê também o opencode (`~/.config/opencode/opencode.json` e
+`.jsonc`, chave `mcp`), o Cursor (`~/.cursor/mcp.json`), o VS Code (`mcp.json`
+e o `mcp.servers` antigo do `settings.json`) e o Claude Desktop
+(`claude_desktop_config.json`). Cada formato é traduzido para o do Claude Code
+em `claude-import.ts`, inclusive a variável (`{env:X}`, `${env:X}`,
+`${input:X}` viram `${X}`); nome repetido fica com a primeira origem, na ordem
+Claude Code, plugins, opencode, Cursor, VS Code, Claude Desktop. Na lista de
+servidores, o importado de outra ferramenta ganha grupo "Do <ferramenta>".
+
 **Cron em frase.** O gatilho de horário fixo aparece como "Toda segunda às
 07:30 · cron 30 7 * * 1" na lista e no canvas, e a frase entra acima da
 próxima ocorrência no formulário (`renderer/lib/descricao-do-cron.ts`). O que

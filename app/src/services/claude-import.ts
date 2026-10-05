@@ -2,6 +2,8 @@ import { execFile } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+// A build ESM: a UMD, que é o "main" do pacote, não passa pelo esbuild.
+import { parse, type ParseError } from "jsonc-parser/lib/esm/main.js";
 import type { McpServerInput } from "../config/types.js";
 import { mcpService, type McpService } from "./mcp-service.js";
 import { chaveDoClienteOAuth, type PreRegisteredClient } from "./mcp-oauth-service.js";
@@ -9,16 +11,22 @@ import { CREDENTIAL_PLACEHOLDER, secretService, type SecretService } from "./sec
 import { settingsService, type SettingsService } from "./settings-service.js";
 
 /**
- * Traz para o Locum os servidores MCP que o Claude Code da pessoa já usa: os
- * de usuário, em `~/.claude.json`, e os dos plugins ligados. Depois de
- * importado o servidor é do Locum e roda com qualquer modelo, com ou sem
- * Claude na máquina. Os conectores do claude.ai não entram: rodam nos
- * servidores da Anthropic e só se alcançam pela conta (ver `claude-account`).
+ * Traz para o Locum os servidores MCP que a pessoa já configurou nas
+ * ferramentas desta máquina: o Claude Code (os de usuário, em `~/.claude.json`,
+ * e os dos plugins ligados), o opencode, o Cursor, o VS Code e o Claude
+ * Desktop. Cada uma tem seu formato, e todas são lidas para o formato do
+ * Claude Code antes de virar cadastro. Depois de importado o servidor é do
+ * Locum e roda com qualquer modelo, com ou sem a ferramenta de origem. Os
+ * conectores do claude.ai não entram: rodam nos servidores da Anthropic e só
+ * se alcançam pela conta (ver `claude-account`).
  */
 
 export interface Candidato {
   name: string;
-  /** "usuário" ou o plugin de onde veio, como `akad@akad`. */
+  /**
+   * "usuário" para o Claude Code, o plugin de onde veio (como `akad@akad`), ou
+   * o nome da outra ferramenta (`ORIGENS`).
+   */
   origem: string;
   transport: "stdio" | "http" | "sse";
   /** Resumo para a tela: comando ou endereço, sem segredo. */
@@ -71,6 +79,142 @@ function lerJson(caminho: string): unknown {
 
 function comoObjeto(v: unknown): Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+}
+
+/** JSON com comentário e vírgula sobrando, como o opencode e o VS Code aceitam. */
+function lerJsonc(caminho: string): unknown {
+  let texto: string;
+  try {
+    texto = readFileSync(caminho, "utf8");
+  } catch {
+    return undefined;
+  }
+  const erros: ParseError[] = [];
+  const valor = parse(texto, erros, { allowTrailingComma: true }) as unknown;
+  return erros.length === 0 ? valor : undefined;
+}
+
+/** O nome que a tela mostra para cada ferramenta além do Claude Code. */
+export const ORIGENS = {
+  opencode: "opencode",
+  cursor: "Cursor",
+  vscode: "VS Code",
+  claudeDesktop: "Claude Desktop",
+} as const;
+
+/** Uma origem lida: de onde, a pasta do plugin (só plugin) e os servidores. */
+interface Fonte {
+  origem: string;
+  raiz?: string;
+  servidores: Record<string, Entrada>;
+}
+
+/**
+ * Variável escrita do jeito de cada ferramenta (`${env:X}` no Cursor e no VS
+ * Code, `{env:X}` no opencode, `${input:X}` no VS Code) vira `${X}`, que é o
+ * que o `preparar` resolve. O `input` do VS Code é perguntado na hora pela
+ * própria ferramenta; aqui ele só se resolve se houver variável com o nome, e
+ * senão aparece como faltando.
+ */
+export function variavelDoClaude(texto: string): string {
+  return texto
+    .replace(/\$\{(?:env|input):([A-Za-z_][A-Za-z0-9_.-]*)\}/g, (_t, nome: string) => `\${${nome.replace(/[.-]/g, "_")}}`)
+    .replace(/(?<!\$)\{env:([A-Za-z_][A-Za-z0-9_]*)\}/g, (_t, nome: string) => `\${${nome}}`);
+}
+
+function textos(v: unknown): string[] | undefined {
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string").map(variavelDoClaude) : undefined;
+}
+
+function registro(v: unknown): Record<string, string> | undefined {
+  const o = comoObjeto(v);
+  const pares = Object.entries(o).filter((p): p is [string, string] => typeof p[1] === "string");
+  return pares.length === 0 ? undefined : Object.fromEntries(pares.map(([k, x]) => [k, variavelDoClaude(x)]));
+}
+
+/** Servidor no formato do Claude Code (Cursor, VS Code, Claude Desktop), com a variável traduzida. */
+function entradaParecida(v: unknown): Entrada | undefined {
+  const o = comoObjeto(v);
+  const url = typeof o.url === "string" ? variavelDoClaude(o.url) : undefined;
+  const command = typeof o.command === "string" ? variavelDoClaude(o.command) : undefined;
+  if (url === undefined && command === undefined) return undefined;
+  const args = textos(o.args);
+  const env = registro(o.env);
+  const headers = registro(o.headers);
+  return {
+    ...(typeof o.type === "string" ? { type: o.type } : {}),
+    ...(command === undefined ? {} : { command }),
+    ...(args === undefined ? {} : { args }),
+    ...(env === undefined ? {} : { env }),
+    ...(url === undefined ? {} : { url }),
+    ...(headers === undefined ? {} : { headers }),
+  };
+}
+
+function servidoresParecidos(v: unknown): Record<string, Entrada> {
+  const out: Record<string, Entrada> = {};
+  for (const [nome, bruto] of Object.entries(comoObjeto(v))) {
+    const entrada = entradaParecida(bruto);
+    if (entrada !== undefined) out[nome] = entrada;
+  }
+  return out;
+}
+
+/**
+ * O `mcp` do opencode: `local` com o comando inteiro numa lista e o ambiente
+ * em `environment`, `remote` com `url` e `headers`. Os dois arquivos globais
+ * entram, `.json` e `.jsonc`, e o primeiro ganha no nome repetido.
+ */
+export function servidoresDoOpencode(home: string): Record<string, Entrada> {
+  const out: Record<string, Entrada> = {};
+  for (const arquivo of ["opencode.json", "opencode.jsonc"]) {
+    for (const [nome, bruto] of Object.entries(comoObjeto(comoObjeto(lerJsonc(join(home, ".config", "opencode", arquivo))).mcp))) {
+      if (nome in out) continue;
+      const o = comoObjeto(bruto);
+      if (o.type === "remote" && typeof o.url === "string") {
+        const headers = registro(o.headers);
+        out[nome] = { type: "http", url: variavelDoClaude(o.url), ...(headers === undefined ? {} : { headers }) };
+      } else if (o.type === "local") {
+        const comando = textos(o.command) ?? [];
+        if (comando.length === 0) continue;
+        const env = registro(o.environment);
+        out[nome] = { command: comando[0]!, args: comando.slice(1), ...(env === undefined ? {} : { env }) };
+      }
+    }
+  }
+  return out;
+}
+
+/** A pasta de configuração de um app de desktop: `Application Support` no Mac, `.config` no resto. */
+function pastaDoApp(home: string, app: string): string {
+  return process.platform === "darwin" ? join(home, "Library", "Application Support", app) : join(home, ".config", app);
+}
+
+/** O VS Code guarda em `mcp.json` (`servers`) e, nas versões antigas, em `settings.json` (`mcp.servers`). */
+export function servidoresDoVscode(home: string): Record<string, Entrada> {
+  const usuario = join(pastaDoApp(home, "Code"), "User");
+  const antigos = comoObjeto(comoObjeto(lerJsonc(join(usuario, "settings.json")))["mcp"]).servers;
+  return { ...servidoresParecidos(antigos), ...servidoresParecidos(comoObjeto(lerJsonc(join(usuario, "mcp.json"))).servers) };
+}
+
+/**
+ * Todas as origens, na ordem em que o nome repetido se resolve: o Claude Code
+ * primeiro, porque é de onde a importação nasceu e o plugin traz o app OAuth;
+ * depois as outras ferramentas.
+ */
+export function fontes(home: string): Fonte[] {
+  const candidatas: Fonte[] = [
+    { origem: "usuário", servidores: comoObjeto(comoObjeto(lerJson(join(home, ".claude.json"))).mcpServers) as Record<string, Entrada> },
+    ...servidoresDosPlugins(home),
+    { origem: ORIGENS.opencode, servidores: servidoresDoOpencode(home) },
+    { origem: ORIGENS.cursor, servidores: servidoresParecidos(comoObjeto(lerJson(join(home, ".cursor", "mcp.json"))).mcpServers) },
+    { origem: ORIGENS.vscode, servidores: servidoresDoVscode(home) },
+    {
+      origem: ORIGENS.claudeDesktop,
+      servidores: servidoresParecidos(comoObjeto(lerJson(join(pastaDoApp(home, "Claude"), "claude_desktop_config.json"))).mcpServers),
+    },
+  ];
+  return candidatas.filter((f) => Object.keys(f.servidores).length > 0);
 }
 
 /** Servidores declarados pelos plugins ligados, com a pasta de cada plugin. */
@@ -221,21 +365,17 @@ export class ClaudeImportService {
 
   private async preparados(): Promise<Preparado[]> {
     const cadastrados = new Set((await this.deps.mcp.list()).map((s) => s.config.name));
-    const doUsuario = comoObjeto(comoObjeto(lerJson(join(this.deps.home, ".claude.json"))).mcpServers) as Record<string, Entrada>;
-    const fontes = [
-      { origem: "usuário", raiz: undefined as string | undefined, servidores: doUsuario },
-      ...servidoresDosPlugins(this.deps.home),
-    ];
+    const lidas = fontes(this.deps.home);
 
     const nomes = new Set<string>();
-    for (const f of fontes) for (const e of Object.values(f.servidores)) for (const n of variaveisCitadas(e)) nomes.add(n);
+    for (const f of lidas) for (const e of Object.values(f.servidores)) for (const n of variaveisCitadas(e)) nomes.add(n);
     const doShell = await this.deps.ambiente([...nomes].filter((n) => process.env[n] === undefined));
     const ambiente = { ...doShell, ...Object.fromEntries(Object.entries(process.env).filter((p): p is [string, string] => p[1] !== undefined)) };
 
     const saida: Preparado[] = [];
-    for (const f of fontes) {
+    for (const f of lidas) {
       for (const [nome, entrada] of Object.entries(f.servidores)) {
-        // O próprio Locum, que a pessoa registrou no Claude Code, não se importa.
+        // O próprio Locum, que a pessoa registrou na ferramenta, não se importa.
         if (nome === "locum" || (entrada.command ?? "").includes("Locum")) continue;
         if (saida.some((p) => p.name === nome)) continue;
         saida.push(preparar(nome, f.origem, entrada, f.raiz, ambiente, cadastrados));
@@ -245,15 +385,13 @@ export class ClaudeImportService {
   }
 
   /**
-   * De onde vem cada servidor que o Claude Code declara, pelo nome: "usuário"
-   * ou o plugin. Só lê os arquivos, sem shell nem segredo, para a tela agrupar
-   * o que já foi importado.
+   * De onde vem cada servidor declarado nas ferramentas, pelo nome: "usuário",
+   * o plugin ou a ferramenta. Só lê os arquivos, sem shell nem segredo, para a
+   * tela agrupar o que já foi importado.
    */
   async origens(): Promise<Record<string, string>> {
     const out: Record<string, string> = {};
-    const doUsuario = comoObjeto(comoObjeto(lerJson(join(this.deps.home, ".claude.json"))).mcpServers);
-    for (const nome of Object.keys(doUsuario)) out[nome] ??= "usuário";
-    for (const f of servidoresDosPlugins(this.deps.home)) for (const nome of Object.keys(f.servidores)) out[nome] ??= f.origem;
+    for (const f of fontes(this.deps.home)) for (const nome of Object.keys(f.servidores)) out[nome] ??= f.origem;
     return out;
   }
 
@@ -263,8 +401,7 @@ export class ClaudeImportService {
    * aqui em vez de exigir importar de novo.
    */
   async clienteOAuth(nome: string): Promise<PreRegisteredClient | undefined> {
-    const doUsuario = comoObjeto(comoObjeto(lerJson(join(this.deps.home, ".claude.json"))).mcpServers) as Record<string, Entrada>;
-    const entrada = doUsuario[nome] ?? servidoresDosPlugins(this.deps.home).find((f) => nome in f.servidores)?.servidores[nome];
+    const entrada = fontes(this.deps.home).find((f) => nome in f.servidores)?.servidores[nome];
     return entrada === undefined ? undefined : clienteDeclarado(entrada);
   }
 
