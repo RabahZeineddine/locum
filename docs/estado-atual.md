@@ -1433,7 +1433,12 @@ abre os que têm ferramenta com o nome ou a descrição procurados e esconde o
 resto. Cada lista boa fica guardada em `mcp.ferramentas.<nome>` (`mcp.toolsCached`
 na ponte): abrir um servidor mostra a guardada na hora e sobe o processo por
 trás uma vez por janela para conferir. A lista de cada servidor rola sozinha,
-então o ms365, com 120 ferramentas, não empurra a página.
+então o ms365, com 120 ferramentas, não empurra a página. Lista guardada há menos de 6 h é
+confiada sem subir o servidor; mais velha, a tela mostra e confere por trás.
+"Testar ligados" roda quatro servidores de cada vez, e cada desfecho entra na
+lista na hora. Medido em 2026-10-04: cada servidor, stdio ou http, responde em
+0,1 a 2 s; a espera vinha de testar quinze em fila e de subir de novo a cada
+janela.
 
 **Cron em frase.** O gatilho de horário fixo aparece como "Toda segunda às
 07:30 · cron 30 7 * * 1" na lista e no canvas, e a frase entra acima da

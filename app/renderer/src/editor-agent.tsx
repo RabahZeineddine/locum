@@ -458,6 +458,8 @@ export function servidoresDoModelo(lista: { config: { name: string }; enabled: b
 const MEMORIA_DE_FERRAMENTAS = new Map<string, McpToolInfo[]>();
 /** Servidores que já subiram nesta janela para conferir a lista guardada. */
 const CONFERIDOS = new Set<string>();
+/** Lista guardada mais nova que isto é confiada sem subir o servidor. */
+const LISTA_FRESCA_MS = 6 * 60 * 60_000;
 
 /**
  * Os servidores, cada um com as suas ferramentas, e uma busca por cima de
@@ -530,7 +532,10 @@ export function FerramentasDoServidor({
       // O guardado aparece na hora; subir o servidor para conferir fica por trás.
       if (!MEMORIA_DE_FERRAMENTAS.has(servidor)) {
         const guardada = await read("mcp.toolsCached", servidor).catch(() => null);
-        if (guardada !== null) guardar(guardada.tools);
+        if (guardada !== null) {
+          guardar(guardada.tools);
+          if (Date.now() - guardada.at < LISTA_FRESCA_MS) CONFERIDOS.add(servidor);
+        }
       }
       if (CONFERIDOS.has(servidor)) return;
       CONFERIDOS.add(servidor);

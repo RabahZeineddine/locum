@@ -1507,15 +1507,23 @@ function ServidoresMcp({ porCadastro }: { porCadastro: Map<string, Credencial> }
     );
   };
 
-  // Um de cada vez: servidor stdio é um processo, e subir vinte juntos
-  // pesa mais que a espera.
+  // Quatro de cada vez: um por um, quinze servidores davam meio minuto, e
+  // todos juntos subiriam quinze processos de uma vez. Cada desfecho já
+  // aparece na lista, sem esperar o último.
   const testarLigados = async (): Promise<void> => {
-    const ligados = servidores.filter((s) => s.enabled);
-    setTestando({ feitos: 0, total: ligados.length });
-    for (const [i, s] of ligados.entries()) {
-      await call("mcp.test", s.config.name).catch(() => undefined);
-      setTestando({ feitos: i + 1, total: ligados.length });
-    }
+    const fila = servidores.filter((s) => s.enabled).map((s) => s.config.name);
+    const total = fila.length;
+    let feitos = 0;
+    setTestando({ feitos, total });
+    const trabalhador = async (): Promise<void> => {
+      for (let nome = fila.shift(); nome !== undefined; nome = fila.shift()) {
+        await call("mcp.test", nome).catch(() => undefined);
+        feitos += 1;
+        setTestando({ feitos, total });
+        reler();
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(4, total) }, trabalhador));
     setTestando(null);
     reler();
   };
