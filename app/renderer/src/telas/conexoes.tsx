@@ -217,6 +217,27 @@ function ligaNoCartao(c: Conexao): boolean {
   return (c.kind === "oauth" || c.kind === "claude-code" || c.kind === "opencode") && c.state !== "connected";
 }
 
+/**
+ * O erro do cartão em três linhas, que abre inteiro num clique. Cortado de vez,
+ * a parte que diz o que fazer ficava escondida no fim da mensagem.
+ */
+function ErroDoCartao({ erro }: { erro: string }) {
+  const [aberto, setAberto] = useState(false);
+  return (
+    <button
+      className={cn(
+        "text-sev-critical cursor-pointer text-left text-xs break-words whitespace-pre-wrap select-text",
+        !aberto && "line-clamp-3",
+      )}
+      onClick={() => setAberto((a) => !a)}
+      title={erro}
+      type="button"
+    >
+      {erro}
+    </button>
+  );
+}
+
 function Cartao({
   conexao,
   erro,
@@ -269,7 +290,7 @@ function Cartao({
           )}
         </div>
       </div>
-      {erro === null ? null : <p className="text-sev-critical line-clamp-3 text-xs">{erro}</p>}
+      {erro === null ? null : <ErroDoCartao erro={erro} />}
     </article>
   );
 }
