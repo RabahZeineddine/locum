@@ -96,6 +96,7 @@ export const READ_CHANNELS = [
   // Se o Claude Code enxerga o Locum: lê o cadastro e procura o `claude`, sem
   // escrever nada. Ligar é o `claudeCode.connect`, que mora entre as ações.
   "claudeCode.status",
+  "opencode.status",
   "connections.list",
   // Só lê os arquivos do Claude Code, sem shell nem segredo.
   "claudeImport.origins",
@@ -171,6 +172,7 @@ export const ACTION_CHANNELS = [
   // Cadastrar o Locum no Claude Code roda o `claude mcp add`: processo e
   // escrita no cadastro de outro programa, atrás de um clique.
   "claudeCode.connect",
+  "opencode.connect",
   "connections.connect",
   "connections.disconnect",
   "connections.addCustom",

@@ -1,5 +1,6 @@
 import { claudeCodeService, type ClaudeCodeService } from "./claude-code-service.js";
 import { claudeImportService } from "./claude-import.js";
+import { opencodeService, type OpencodeService } from "./opencode-service.js";
 import { githubService, type GithubService } from "./github-service.js";
 import { chaveDoClienteOAuth, mcpOAuthService, type McpOAuthService, type PreRegisteredClient } from "./mcp-oauth-service.js";
 import { mcpService, type McpService } from "./mcp-service.js";
@@ -74,12 +75,13 @@ export type ConnectionCategory = "dev" | "communication" | "work" | "observabili
  * Como cada conexão liga.
  *
  * - `claude-code`: cadastra o Locum no Claude Code.
+ * - `opencode`: cadastra o Locum no opencode.
  * - `github`: token pessoal no cofre, pelo painel.
  * - `oauth`: servidor MCP remoto que aceita registro automático; um clique abre o navegador.
  * - `panel`: liga por um formulário do próprio Locum (Jira, Slack, Teams).
  * - `soon`: ainda sem caminho que não exija terminal, e a tela diz o porquê.
  */
-export type ConnectionKind = "claude-code" | "github" | "oauth" | "panel" | "soon";
+export type ConnectionKind = "claude-code" | "opencode" | "github" | "oauth" | "panel" | "soon";
 
 export type ConnectionState = "connected" | "attention" | "available" | "soon";
 
@@ -104,6 +106,7 @@ export interface CatalogEntry {
  */
 export const CATALOG: CatalogEntry[] = [
   { id: "claude-code", name: "Claude Code", category: "dev", kind: "claude-code", logo: "claude", color: "D97757" },
+  { id: "opencode", name: "opencode", category: "dev", kind: "opencode", logo: null, color: "211E1E" },
   { id: "github", name: "GitHub", category: "dev", kind: "github", logo: "github", color: "181717" },
   { id: "notion", name: "Notion", category: "work", kind: "oauth", url: "https://mcp.notion.com/mcp", logo: "notion", color: "000000" },
   { id: "atlassian", name: "Atlassian", category: "work", kind: "oauth", url: "https://mcp.atlassian.com/v1/mcp", logo: "atlassian", color: "0052CC" },
@@ -124,6 +127,7 @@ export interface ConnectionServiceDeps {
   mcp: McpService;
   oauth: McpOAuthService;
   claudeCode: ClaudeCodeService;
+  opencode: OpencodeService;
   github: GithubService;
   slack: SlackService;
   settings: SettingsService;
@@ -145,6 +149,7 @@ export class ConnectionService {
       mcp: mcpService,
       oauth: mcpOAuthService,
       claudeCode: claudeCodeService,
+      opencode: opencodeService,
       github: githubService,
       slack: slackService,
       settings: settingsService,
@@ -190,6 +195,10 @@ export class ConnectionService {
     const entry = CATALOG.find((c) => c.id === id);
     if (entry?.kind === "claude-code") {
       await this.deps.claudeCode.connect();
+      return this.um(id);
+    }
+    if (entry?.kind === "opencode") {
+      await this.deps.opencode.connect();
       return this.um(id);
     }
 
@@ -388,6 +397,11 @@ export class ConnectionService {
     switch (entry.kind) {
       case "claude-code": {
         const s = await this.deps.claudeCode.status().catch(() => null);
+        const state: ConnectionState = s?.current ? "connected" : s?.registered ? "attention" : "available";
+        return { ...base, state };
+      }
+      case "opencode": {
+        const s = await this.deps.opencode.status().catch(() => null);
         const state: ConnectionState = s?.current ? "connected" : s?.registered ? "attention" : "available";
         return { ...base, state };
       }

@@ -6208,13 +6208,13 @@ async function main(): Promise<void> {
   }
 
   // Como este Locum sobe como servidor MCP, para a tela poder cadastrá-lo no
-  // Claude Code. Empacotado, o binário do `.app` basta; rodando por `electron dist/main.cjs`,
+  // Claude Code e no opencode. Empacotado, o binário do `.app` basta; rodando por `electron dist/main.cjs`,
   // o Electron precisa saber qual script abrir.
   const { claudeCodeService } = await import("../src/services/claude-code-service.js");
-  claudeCodeService.useLauncher({
-    command: process.execPath,
-    args: app.isPackaged ? [] : [join(__dirname, "main.cjs")],
-  });
+  const launcher = { command: process.execPath, args: app.isPackaged ? [] : [join(__dirname, "main.cjs")] };
+  claudeCodeService.useLauncher(launcher);
+  const { opencodeService } = await import("../src/services/opencode-service.js");
+  opencodeService.useLauncher(launcher);
 
   // Conexão por OAuth abre o navegador padrão para a pessoa autorizar, e todo
   // uso de servidor MCP renova antes o token que estiver perto de vencer. Vale

@@ -29,6 +29,7 @@ type ConferenciaDeProvedor = ReadResult<"providers.checkSecret">;
 type EstadoDoGithub = ReadResult<"github.status">;
 type ConferenciaDoGithub = ReadResult<"github.check">;
 type EstadoDoClaudeCode = ReadResult<"claudeCode.status">;
+type EstadoDoOpencode = ReadResult<"opencode.status">;
 type Tracker = ReadResult<"trackers.list">[number];
 type TesteDoTracker = ReadResult<"trackers.test">;
 type Gatilho = ReadResult<"triggers.schedule">[number];
@@ -299,6 +300,7 @@ export function ConexoesDoLocum() {
           <Vitrine
             paineis={{
               "claude-code": <ClaudeCode />,
+              opencode: <Opencode />,
               github: (
                 <>
                   <Github />
@@ -2399,6 +2401,82 @@ function ClaudeCode() {
         <code className="bg-muted text-muted-foreground block overflow-x-auto rounded-md px-2 py-1 font-mono text-[11px] whitespace-nowrap">
           {estado.command}
         </code>
+      )}
+    </div>
+  );
+}
+
+/**
+ * O Locum dentro do opencode, num clique.
+ *
+ * O opencode não tem comando que cadastre servidor sem perguntar, então o
+ * botão grava `mcp.locum` no `opencode.json` global. Com arquivo que tem
+ * comentário, o botão recusa e o trecho fica para colar.
+ */
+function Opencode() {
+  const { t } = useTranslation();
+  const inicial = useRead("opencode.status");
+  const [recarregado, setRecarregado] = useState<EstadoDoOpencode | null>(null);
+  const [ligando, setLigando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  const estado = recarregado ?? inicial.data ?? null;
+
+  const ligar = (): void => {
+    setLigando(true);
+    setErro(null);
+    call("opencode.connect").then(
+      (novo) => {
+        setRecarregado(novo);
+        setLigando(false);
+      },
+      (e: unknown) => {
+        setErro(e instanceof Error ? e.message : String(e));
+        setLigando(false);
+      },
+    );
+  };
+
+  const situacao = estado === null ? null : estado.current ? "connected" : estado.registered ? "stale" : "absent";
+
+  return (
+    <div className="flex flex-col gap-3 px-4 py-3" data-locum-probe="opencode">
+      <div className="flex flex-wrap items-center gap-3 text-sm">
+        <span className="font-medium">{t("settings.opencode.title")}</span>
+        {situacao === null ? null : (
+          <Badge variant={situacao === "connected" ? "secondary" : situacao === "stale" ? "outline" : "destructive"}>
+            {t(`settings.claudeCode.${situacao}`)}
+          </Badge>
+        )}
+        <div className="ml-auto">
+          <Button
+            className="cursor-pointer"
+            disabled={ligando || estado === null || estado.current}
+            onClick={ligar}
+            size="sm"
+            variant={estado?.current === true ? "ghost" : "default"}
+          >
+            {t(
+              ligando
+                ? "settings.claudeCode.connecting"
+                : situacao === "stale"
+                  ? "settings.claudeCode.reconnect"
+                  : "settings.claudeCode.connect",
+            )}
+          </Button>
+        </div>
+      </div>
+      {situacao === "connected" ? (
+        <p className="text-muted-foreground text-xs">{t("settings.opencode.connectedHint")}</p>
+      ) : null}
+      {erro === null ? null : <p className="text-sev-critical text-xs">{erro}</p>}
+      {estado === null ? null : (
+        <>
+          <p className="text-muted-foreground text-xs">{t("settings.opencode.snippet", { path: estado.configPath })}</p>
+          <code className="bg-muted text-muted-foreground block overflow-x-auto rounded-md px-2 py-1 font-mono text-[11px] whitespace-pre">
+            {estado.snippet}
+          </code>
+        </>
       )}
     </div>
   );

@@ -5,6 +5,7 @@ import type { ApprovalService } from "../src/services/approval-service.js";
 import type { AutomationService } from "../src/services/automation-service.js";
 import type { LibraryService } from "../src/services/library-service.js";
 import type { ClaudeCodeService } from "../src/services/claude-code-service.js";
+import type { OpencodeService } from "../src/services/opencode-service.js";
 import type { ConnectionService } from "../src/services/connection-service.js";
 import type { CredentialService } from "../src/services/credential-service.js";
 import type { ExecutionService } from "../src/services/execution-service.js";
@@ -299,6 +300,8 @@ interface ServiceApi {
   /** Se o Claude Code desta máquina enxerga o Locum, e o clique que o liga. */
   "claudeCode.status": ClaudeCodeService["status"];
   "claudeCode.connect": ClaudeCodeService["connect"];
+  "opencode.status": OpencodeService["status"];
+  "opencode.connect": OpencodeService["connect"];
 
   /**
    * A vitrine de conexões: catálogo e estado de cada uma nesta máquina.
@@ -574,6 +577,8 @@ export const BRIDGE_CHANNELS = [
   "github.check",
   "claudeCode.status",
   "claudeCode.connect",
+  "opencode.status",
+  "opencode.connect",
   "connections.list",
   "connections.connect",
   "connections.disconnect",

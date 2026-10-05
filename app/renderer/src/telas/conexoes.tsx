@@ -214,7 +214,7 @@ function Estado({ conexao }: { conexao: Conexao }) {
 
 /** Ligar no próprio cartão vale só para quem liga sem formulário. */
 function ligaNoCartao(c: Conexao): boolean {
-  return (c.kind === "oauth" || c.kind === "claude-code") && c.state !== "connected";
+  return (c.kind === "oauth" || c.kind === "claude-code" || c.kind === "opencode") && c.state !== "connected";
 }
 
 function Cartao({

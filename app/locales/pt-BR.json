@@ -1047,6 +1047,11 @@
       "toggleHint": "Menção em canal escolhido também acorda o agent, e a resposta aprovada entra na thread. Acrescenta {{scopes}} ao pedido, e ler canal exige o consentimento do administrador do tenant.",
       "reconnect": "Vale no próximo conectar. Conecte de novo para o Entra pedir os escopos de canal.",
       "inLine": ", e menções em {{channels}}"
+    },
+    "opencode": {
+      "title": "opencode",
+      "connectedHint": "Abra uma sessão nova do opencode e as ferramentas do Locum já aparecem.",
+      "snippet": "O botão grava isto em {{path}}. Se preferir, cole você mesmo na chave \"mcp\"."
     }
   },
   "severity": {
@@ -1434,6 +1439,10 @@
       "figma": {
         "tagline": "Arquivos, frames e design system",
         "description": "Servidor MCP remoto do Figma. Os agents leem frames e variáveis para comparar tela com design."
+      },
+      "opencode": {
+        "tagline": "Seus agents e a fila em qualquer sessão do opencode",
+        "description": "Cadastra o Locum como servidor MCP no opencode desta máquina, no opencode.json global. Qualquer sessão nova passa a ver agents, execuções e a fila, usando as credenciais guardadas aqui."
       }
     },
     "import": {

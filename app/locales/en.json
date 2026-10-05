@@ -1014,6 +1014,11 @@
       "toggleHint": "A mention in a chosen channel also wakes the agent, and the approved reply goes into the thread. Adds {{scopes}} to the request, and reading channels needs the tenant admin's consent.",
       "reconnect": "Takes effect on the next connect. Connect again so Entra asks for the channel scopes.",
       "inLine": ", and mentions in {{channels}}"
+    },
+    "opencode": {
+      "title": "opencode",
+      "connectedHint": "Open a new opencode session and the Locum tools show up.",
+      "snippet": "The button writes this to {{path}}. Or paste it yourself under the \"mcp\" key."
     }
   },
   "severity": {
@@ -1399,6 +1404,10 @@
       "figma": {
         "tagline": "Files, frames and design system",
         "description": "Figma's remote MCP server. Agents read frames and variables to compare screens with the design."
+      },
+      "opencode": {
+        "tagline": "Your agents and queue in any opencode session",
+        "description": "Registers Locum as an MCP server in this machine's opencode, in the global opencode.json. Every new session sees agents, runs and the queue, using the credentials stored here."
       }
     },
     "import": {

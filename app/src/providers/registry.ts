@@ -125,13 +125,18 @@ export function codexAvailable(): boolean {
 
 let claudeBinaryChecked: boolean | undefined;
 
-/** Binario presente e sessao valida. Sem isso a via de assinatura nao existe. */
+/**
+ * Binario presente e sessao valida. Sem isso a via de assinatura nao existe.
+ *
+ * So o binario nao basta: num Mac com o Claude Code instalado e sem login, a
+ * tela de Modelos oferecia a assinatura e o passo falhava ao rodar.
+ */
 export function claudeCodeAvailable(): boolean {
   if (claudeBinaryChecked !== undefined) return claudeBinaryChecked;
   // Pelo nome primeiro, e depois nos lugares fixos: instalado em
   // `~/.claude/local`, o binário só existe como alias do `.zshrc` e o nome
   // sozinho não acha, embora o runtime o encontre pelo caminho absoluto.
-  claudeBinaryChecked = ["claude", ...claudeFixedPaths()].some((comando) => {
+  const binario = ["claude", ...claudeFixedPaths()].find((comando) => {
     try {
       execFileSync(comando, ["--version"], { stdio: "ignore", timeout: 5000 });
       return true;
@@ -139,7 +144,26 @@ export function claudeCodeAvailable(): boolean {
       return false;
     }
   });
+  claudeBinaryChecked = binario !== undefined && claudeLogado(binario);
   return claudeBinaryChecked;
+}
+
+/**
+ * O que `claude auth status` diz do login. Versão antiga, sem o comando, conta
+ * como logada, que era o comportamento de antes dele existir.
+ */
+export function claudeLogado(binario: string, rodar: typeof execFileSync = execFileSync): boolean {
+  let saida: string;
+  try {
+    saida = String(rodar(binario, ["auth", "status", "--json"], { encoding: "utf8", timeout: 10_000 }));
+  } catch {
+    return true;
+  }
+  try {
+    return (JSON.parse(saida) as { loggedIn?: unknown }).loggedIn !== false;
+  } catch {
+    return true;
+  }
 }
 
 /**

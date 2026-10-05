@@ -1506,6 +1506,15 @@ barraria o módulo nativo do SQLite). Sem notarização, o primeiro uso ainda pe
 Ajustes > Privacidade e Segurança > Abrir mesmo assim. A atualização não muda:
 ela é própria, sem o Squirrel, e não confere assinatura.
 
+**Claude Code só conta com login, e o Locum entra no opencode.** A assinatura
+do Claude Code aparecia disponível em todo Mac com o binário instalado, mesmo
+sem login; o passo falhava ao rodar, e a substituição de modelo nunca entrava,
+porque ela só age quando o provedor está indisponível. Agora a detecção pede
+`claude auth status --json` e exige `loggedIn` (versão sem o comando segue
+valendo o binário). O opencode virou app na vitrine: o botão grava `mcp.locum`
+no `~/.config/opencode/opencode.json` (`OpencodeService`), preservando o resto
+do arquivo, e com arquivo que tem comentário recusa e mostra o trecho para colar.
+
 **Cron em frase.** O gatilho de horário fixo aparece como "Toda segunda às
 07:30 · cron 30 7 * * 1" na lista e no canvas, e a frase entra acima da
 próxima ocorrência no formulário (`renderer/lib/descricao-do-cron.ts`). O que
