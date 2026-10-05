@@ -47,7 +47,11 @@ export function claudeArgs(req: RuntimeRequest, mcpConfigPath?: string): string[
   // conector e plugin somem; `flagsDaConta` desliga o que viria junto. Sem
   // ela, o isolamento de sempre.
   if (daConta.length > 0) args.push(...flagsDaConta());
-  else args.push("--strict-mcp-config", "--setting-sources", "");
+  // `--tools ""` tira Bash, Read, Edit e as outras embutidas: sem isso, o
+  // agent saía procurando arquivo pelo disco, até `find /`. Ficam só os
+  // servidores MCP liberados e a saída estruturada. Com a conta, quem fecha
+  // as embutidas é `flagsDaConta`.
+  else args.push("--strict-mcp-config", "--setting-sources", "", "--tools", "");
   return args;
 }
 
@@ -110,7 +114,17 @@ export class ClaudeCodeRuntime implements Runtime {
     const leitor = new LeitorDoStream(onActivity);
 
     await new Promise<void>((pronto, falhou) => {
-      const filho = spawn(comando, args, { stdio: ["ignore", "pipe", "pipe"] });
+      // Numa pasta vazia: a pasta de trabalho do app levava junto memória e
+      // CLAUDE.md de projeto que não têm nada com o passo.
+      // A resposta de ferramenta acima do teto vira arquivo, e sem Read o
+      // modelo não teria como abrir; o teto mais alto deixa a resposta voltar
+      // direto. Planilha inteira continua grande demais: a instrução do agent
+      // pede só o intervalo que interessa.
+      const filho = spawn(comando, args, {
+        cwd: tmpdir(),
+        env: { ...process.env, MAX_MCP_OUTPUT_TOKENS: process.env.MAX_MCP_OUTPUT_TOKENS ?? "60000" },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
       let resto = "";
       let erros = "";
       const prazo = setTimeout(() => filho.kill("SIGTERM"), TIMEOUT_MS);

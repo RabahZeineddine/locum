@@ -1452,6 +1452,17 @@ execução na hora. O `claude` agora roda com a entrada fechada, que fazia ele
 esperar 3 s por stdin, e a falha diz o motivo (passou do teto, código de
 saída e o fim do stderr) em vez de repetir o comando inteiro.
 
+**O passo de modelo não mexe no disco.** A primeira execução do ops-review
+mostrou o agent usando Bash e Read do Claude Code: procurou "o contexto da
+iniciativa" pela máquina, até `find /`, que segurou o passo os 15 minutos, e
+leu arquivo de outro projeto. Duas causas e duas correções:
+- As embutidas vinham ligadas. Agora o `claude -p` isolado roda com
+  `--tools ""` (só ficam os MCP liberados e o StructuredOutput), numa pasta
+  temporária, e com `MAX_MCP_OUTPUT_TOKENS=60000`: resposta de ferramenta
+  acima do teto vira arquivo, que sem Read o modelo não abriria.
+- O `context.md` da iniciativa do run não chegava ao prompt. O executor lê o
+  arquivo (até 40 mil caracteres) e põe no system, entre o agent e as skills.
+
 **Cron em frase.** O gatilho de horário fixo aparece como "Toda segunda às
 07:30 · cron 30 7 * * 1" na lista e no canvas, e a frase entra acima da
 próxima ocorrência no formulário (`renderer/lib/descricao-do-cron.ts`). O que

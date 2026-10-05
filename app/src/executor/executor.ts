@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { and, desc, eq, inArray, ne } from "drizzle-orm";
 import { db, schema } from "../db/index.js";
 import {
@@ -179,6 +181,8 @@ export class Executor {
         )
       : null;
 
+    const contextoDaIniciativa = run.initiativeId ? await lerContextoDaIniciativa(run.initiativeId) : null;
+
     const outputs = new Map<string, unknown>();
     // Passos pulados por estarem num caminho que a decisão não escolheu. Quem
     // depende só deles também pula; quem junta dois caminhos roda com o que
@@ -260,6 +264,7 @@ export class Executor {
                 spec,
                 payload,
                 outputs,
+                contextoDaIniciativa,
                 fallbacks,
                 run: { usd: runCost, tokens: runTokens },
                 initiativeServers,
@@ -333,6 +338,7 @@ export class Executor {
     fallbacks: FallbackRow[];
     run: Spend;
     initiativeServers: Set<string> | null;
+    contextoDaIniciativa: string | null;
   }): Promise<StepOutcome | { kind: "skipped" }> {
     const { runId, stepId, step, spec, payload, outputs, fallbacks, initiativeServers } = args;
 
@@ -439,7 +445,11 @@ export class Executor {
       // O corpo vai sempre no texto, inclusive para o claude-code: ele roda com
       // `--setting-sources ""` e so com as ferramentas MCP liberadas, entao nao
       // enxerga plugin nem consegue abrir a skill pelo nome.
-      const system = [perfil?.system ?? "", skillsPreamble(skills, true)].filter((s) => s.length > 0).join("\n\n");
+      // O contexto da iniciativa entra no system: sem ele, o agent saía
+      // procurando "o contexto da iniciativa" pelo disco.
+      const system = [perfil?.system ?? "", args.contextoDaIniciativa ?? "", skillsPreamble(skills, true)]
+        .filter((s) => s.length > 0)
+        .join("\n\n");
 
       const result = await runtime.run({
         provider: resolution.provider,
@@ -614,6 +624,25 @@ export function alvoDoEvento(payload: EventPayload): Record<string, unknown> {
 }
 
 /** Os campos do alvo que dizem onde publicar, e não o quê. */
+/** Teto do contexto da iniciativa no prompt. O ops-review tem uns 10 mil caracteres. */
+const TETO_DO_CONTEXTO = 40_000;
+
+/**
+ * O `context.md` da iniciativa do run, com um título que diz de onde veio.
+ * Nulo quando a iniciativa não tem o arquivo; falha de leitura não derruba o
+ * passo, que segue sem o contexto.
+ */
+async function lerContextoDaIniciativa(initiativeId: string): Promise<string | null> {
+  const [linha] = await db
+    .select({ title: schema.initiatives.title, contextPath: schema.initiatives.contextPath })
+    .from(schema.initiatives)
+    .where(eq(schema.initiatives.id, initiativeId));
+  if (linha === undefined) return null;
+  const texto = await readFile(join(linha.contextPath, "context.md"), "utf8").catch(() => null);
+  if (texto === null || texto.trim() === "") return null;
+  return `# Contexto da iniciativa ${linha.title}\n\n${texto.slice(0, TETO_DO_CONTEXTO)}`;
+}
+
 /** Quantos acontecimentos de um passo ficam guardados; os mais velhos saem. */
 const TETO_DE_ATIVIDADES = 300;
 

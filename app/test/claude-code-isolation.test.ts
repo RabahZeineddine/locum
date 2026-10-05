@@ -50,6 +50,11 @@ test("nenhuma fonte de configuração pessoal é carregada", () => {
   assert.equal(valorDe(claudeArgs(pedido()), "--setting-sources"), "");
 });
 
+test("as ferramentas embutidas ficam desligadas: o agent não abre shell nem lê o disco", () => {
+  assert.equal(valorDe(claudeArgs(pedido()), "--tools"), "");
+  assert.equal(claudeArgs(pedido()).filter((a) => a === "--tools").length, 1);
+});
+
 test("execução não grava sessão no histórico pessoal", () => {
   assert.ok(claudeArgs(pedido()).includes("--no-session-persistence"));
 });
