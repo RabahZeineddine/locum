@@ -1469,6 +1469,18 @@ leu arquivo de outro projeto. Duas causas e duas correções:
   teto de 60 mil caracteres: o DORA board (118 KB) e o finops (80 KB) passam a
   voltar só o pedaço pedido.
 
+**Digest com leitura própria.** A saída de um passo de digest aparecia em
+Execuções como campos genéricos, e na Fila como um texto corrido, com cada
+assunto num parágrafo. As duas telas agora usam `LeituraDoDigest`
+(`renderer/src/leitura-do-digest.tsx`): a manchete, a contagem por classe, e
+por canal uma linha por assunto, com a primeira linha do resumo ao lado e o
+resto recolhido em "Fonte e detalhe". O agent escreve para isso: o ops-review
+v6 põe o valor na primeira linha ("16 · planilha 16 · bate") e a fonte depois.
+- Servidor MCP que não conecta no `claude -p` aparece na atividade do passo
+  como erro, com o nome. Antes o modelo só dizia que a ferramenta não existia.
+  O prazo de subida vai a 90 s (`MCP_TIMEOUT`): servidor por npx leva uns 30 s
+  na primeira vez, perto do padrão.
+
 **Cron em frase.** O gatilho de horário fixo aparece como "Toda segunda às
 07:30 · cron 30 7 * * 1" na lista e no canvas, e a frase entra acima da
 próxima ocorrência no formulário (`renderer/lib/descricao-do-cron.ts`). O que

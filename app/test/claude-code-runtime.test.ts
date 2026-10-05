@@ -54,6 +54,25 @@ test("o stream vira atividade: chamada, resultado com o tempo, e texto do modelo
   assert.deepEqual(leitor.final?.structured_output, { r: 1 });
 });
 
+test("servidor que não conectou aparece na atividade como erro", () => {
+  const vistas: Atividade[] = [];
+  const leitor = new LeitorDoStream((a) => vistas.push(a), () => 5);
+  leitor.linha(
+    JSON.stringify({
+      type: "system",
+      subtype: "init",
+      mcp_servers: [
+        { name: "newrelic", status: "connected" },
+        { name: "ms365", status: "failed" },
+      ],
+    }),
+  );
+  assert.deepEqual(
+    vistas.map((a) => [a.tipo, a.detalhe, a.erro]),
+    [["resultado", "servidor ms365 não conectou (failed)", true]],
+  );
+});
+
 test("sem a linha de resultado, o passo falha com o que saiu no stderr", async () => {
   const pasta = mkdtempSync(join(tmpdir(), "locum-claude-"));
   const falso = join(pasta, "claude");

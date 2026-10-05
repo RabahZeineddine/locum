@@ -122,7 +122,13 @@ export class ClaudeCodeRuntime implements Runtime {
       // pede só o intervalo que interessa.
       const filho = spawn(comando, args, {
         cwd: tmpdir(),
-        env: { ...process.env, MAX_MCP_OUTPUT_TOKENS: process.env.MAX_MCP_OUTPUT_TOKENS ?? "60000" },
+        // MCP_TIMEOUT: servidor por npx leva uns 30 s na primeira subida, perto
+        // do prazo padrão, e quando passa o claude segue sem ele.
+        env: {
+          ...process.env,
+          MAX_MCP_OUTPUT_TOKENS: process.env.MAX_MCP_OUTPUT_TOKENS ?? "60000",
+          MCP_TIMEOUT: process.env.MCP_TIMEOUT ?? "90000",
+        },
         stdio: ["ignore", "pipe", "pipe"],
       });
       let resto = "";
@@ -210,6 +216,17 @@ export class LeitorDoStream {
     }
     if (evento.type === "result") {
       this.final = evento;
+      return;
+    }
+    // Servidor que não subiu some calado: o modelo só diz que a ferramenta
+    // não existe, e a tela precisa mostrar qual servidor faltou.
+    if (evento.type === "system") {
+      const servidores = (evento as { mcp_servers?: { name?: string; status?: string }[] }).mcp_servers ?? [];
+      for (const m of servidores) {
+        if (m.status !== undefined && m.status !== "connected") {
+          this.emitir({ tipo: "resultado", detalhe: `servidor ${m.name ?? "?"} não conectou (${m.status})`, erro: true });
+        }
+      }
       return;
     }
     const conteudo = Array.isArray(evento.message?.content) ? (evento.message.content as Conteudo[]) : [];

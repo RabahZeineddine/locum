@@ -1912,5 +1912,13 @@
       "usedBy_one": "in {{count}} agent",
       "usedBy_other": "in {{count}} agents"
     }
+  },
+  "digest": {
+    "kind": {
+      "needs_reply": "Needs attention",
+      "info": "Info",
+      "ignore": "Can be ignored"
+    },
+    "detail": "Source and detail"
   }
 }

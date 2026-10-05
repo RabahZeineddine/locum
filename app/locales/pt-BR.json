@@ -1959,5 +1959,13 @@
       "usedBy_other": "em {{count}} agents",
       "usedBy_zero": "sem uso"
     }
+  },
+  "digest": {
+    "kind": {
+      "needs_reply": "Pede atenção",
+      "info": "Informação",
+      "ignore": "Dá para ignorar"
+    },
+    "detail": "Fonte e detalhe"
   }
 }

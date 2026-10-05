@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { LeituraDoDigest, lerDigest } from "../leitura-do-digest";
 import type { TelaProps } from "../rotas";
 import { cargaDaMensagem, cargaDoDocumento, ehDocumento, ehMensagem } from "./inbox";
 
@@ -656,6 +657,7 @@ function RevisaoDeDocumento({
 }) {
   const { t } = useTranslation();
   const carga = cargaDoDocumento(pendencia, t);
+  const digest = carga.tipo === "digest" ? lerDigest(pendencia.payload) : null;
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4" data-locum-probe="revisao-documento">
@@ -677,14 +679,20 @@ function RevisaoDeDocumento({
         )}
       </div>
 
-      {carga.titulo && <h1 className="text-lg font-semibold tracking-tight">{carga.titulo}</h1>}
+      {digest === null && carga.titulo && <h1 className="text-lg font-semibold tracking-tight">{carga.titulo}</h1>}
 
-      <div
-        className="superficie border-border max-h-[60vh] overflow-auto rounded-lg border px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap"
-        data-locum-documento-corpo=""
-      >
-        {carga.corpo}
-      </div>
+      {digest !== null ? (
+        <div className="max-h-[65vh] overflow-auto" data-locum-documento-corpo="">
+          <LeituraDoDigest digest={digest} />
+        </div>
+      ) : (
+        <div
+          className="superficie border-border max-h-[60vh] overflow-auto rounded-lg border px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap"
+          data-locum-documento-corpo=""
+        >
+          {carga.corpo}
+        </div>
+      )}
 
       <div className="flex items-center gap-3">
         <Button

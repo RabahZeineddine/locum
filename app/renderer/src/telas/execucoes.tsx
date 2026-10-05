@@ -30,6 +30,7 @@ import type { TFunction } from "i18next";
 import { Trans, useTranslation } from "react-i18next";
 import { useCurrentInitiative } from "../current-initiative";
 import { GrafoDaExecucao } from "../grafo";
+import { LeituraDoDigest, lerDigest } from "../leitura-do-digest";
 import type { TelaProps } from "../rotas";
 
 export type Execucao = ReadResult<"runs.list">[number];
@@ -568,6 +569,8 @@ function Json({
 }) {
   const { t } = useTranslation();
   const legivel = valor !== null && typeof valor === "object";
+  // Digest tem leitura própria: lido como campos genéricos, vira parede de texto.
+  const digest = lerDigest(valor);
 
   return (
     <div className="mt-2" {...(marcado ? { "data-locum-probe": "code-block" } : {})}>
@@ -577,7 +580,9 @@ function Json({
         entende sem saber JSON. O texto cru continua a um clique, para copiar
         ou conferir o que a ação recebeu.
       */}
-      {legivel ? (
+      {digest !== null ? (
+        <LeituraDoDigest digest={digest} />
+      ) : legivel ? (
         <div className="rounded-md border border-border px-3 py-2">
           <Valor valor={valor} />
         </div>
