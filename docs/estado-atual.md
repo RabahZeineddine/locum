@@ -1515,6 +1515,11 @@ valendo o binário). O opencode virou app na vitrine: o botão grava `mcp.locum`
 no `~/.config/opencode/opencode.json` (`OpencodeService`), preservando o resto
 do arquivo, e com arquivo que tem comentário recusa e mostra o trecho para colar.
 
+**Chave do gateway na linha dele.** O gateway compatível cadastrado ganhava
+campo de chave só na seção "Ligar provedor", lá em cima, e quem cadastrava
+procurava a chave na linha do gateway. Agora o campo fica na linha, e o gateway
+sem chave sai da seção de cima para não aparecer duas vezes.
+
 **Cron em frase.** O gatilho de horário fixo aparece como "Toda segunda às
 07:30 · cron 30 7 * * 1" na lista e no canvas, e a frase entra acima da
 próxima ocorrência no formulário (`renderer/lib/descricao-do-cron.ts`). O que

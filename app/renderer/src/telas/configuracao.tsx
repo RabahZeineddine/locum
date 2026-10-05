@@ -94,7 +94,9 @@ export function Configuracao({ detalhe, navegar }: TelaProps) {
 
   const listaDeProvedores = provedoresRecarregados?.lista ?? provedores.data ?? [];
   const ligados = listaDeProvedores.filter((p) => p.available);
-  const paraLigar = listaDeProvedores.filter((p) => !p.available);
+  // Gateway cadastrado sem chave guarda a chave na própria linha, na seção de
+  // gateways: aqui ele apareceria duas vezes, e longe de onde foi cadastrado.
+  const paraLigar = listaDeProvedores.filter((p) => !p.available && p.registered === null);
   const modelos = useModelosLigados(ligados.map((p) => p.name).join(","));
   const chavesPorProvedor = new Map(
     (provedoresRecarregados?.chaves ?? chaves.data ?? []).map((c) => [c.provider, c]),
@@ -251,7 +253,11 @@ export function Configuracao({ detalhe, navegar }: TelaProps) {
             descricao={t("settings.registered.description")}
             titulo={t("settings.registered.title")}
           >
-            <ProvedoresCadastrados recarregar={recarregarProvedores} />
+            <ProvedoresCadastrados
+              chaves={chavesPorProvedor}
+              provedores={listaDeProvedores}
+              recarregar={recarregarProvedores}
+            />
           </Secao>
 
           <Secao
@@ -1116,7 +1122,15 @@ type Remocao = ReadResult<"providers.remove">;
  * que recebeu e oferece o segundo clique, mas a decisão de não apagar em
  * silêncio é do lado que apaga.
  */
-function ProvedoresCadastrados({ recarregar }: { recarregar: () => Promise<void> }) {
+function ProvedoresCadastrados({
+  chaves,
+  provedores,
+  recarregar,
+}: {
+  chaves: Map<string, ChaveDeProvedor>;
+  provedores: Provedor[];
+  recarregar: () => Promise<void>;
+}) {
   const { t } = useTranslation();
   const inicial = useRead("providers.registered");
   const [relido, setRelido] = useState<Cadastrado[] | null>(null);
@@ -1201,8 +1215,11 @@ function ProvedoresCadastrados({ recarregar }: { recarregar: () => Promise<void>
               aoRemover={(force) => remover(cadastrado.id, force)}
               aviso={avisos[cadastrado.id]}
               cadastrado={cadastrado}
+              chave={chaves.get(cadastrado.id)}
               key={cadastrado.id}
               ocupado={ocupado}
+              provedor={provedores.find((p) => p.name === cadastrado.id)}
+              recarregar={reler}
             />
           ))}
         </ul>
@@ -1265,12 +1282,18 @@ function LinhaDoCadastrado({
   aoRemover,
   aviso,
   cadastrado,
+  chave,
   ocupado,
+  provedor,
+  recarregar,
 }: {
   aoRemover: (force: boolean) => void;
   aviso: Remocao | undefined;
   cadastrado: Cadastrado;
+  chave: ChaveDeProvedor | undefined;
   ocupado: boolean;
+  provedor: Provedor | undefined;
+  recarregar: () => Promise<void>;
 }) {
   const { t } = useTranslation();
   const usos = aviso === undefined || aviso.removed ? [] : aviso.usedBy;
@@ -1323,6 +1346,11 @@ function LinhaDoCadastrado({
               .join(", "),
           })}
         </p>
+      )}
+      {chave === undefined || chave.variable === null || provedor === undefined ? null : (
+        <div className="w-full">
+          <ChaveDoProvedor chave={chave} provedor={provedor} recarregar={recarregar} />
+        </div>
       )}
     </li>
   );
