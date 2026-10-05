@@ -122,12 +122,14 @@ export class ClaudeCodeRuntime implements Runtime {
       // pede só o intervalo que interessa.
       const filho = spawn(comando, args, {
         cwd: tmpdir(),
-        // MCP_TIMEOUT: servidor por npx leva uns 30 s na primeira subida, perto
-        // do prazo padrão, e quando passa o claude segue sem ele.
+        // MCP_TIMEOUT: servidor por npx leva de 10 a 90 s para subir com a
+        // máquina carregada e o antivírus lendo cada arquivo do pacote, e quando
+        // passa do prazo o claude segue sem ele. Servidor morto de verdade só
+        // custa a espera.
         env: {
           ...process.env,
           MAX_MCP_OUTPUT_TOKENS: process.env.MAX_MCP_OUTPUT_TOKENS ?? "60000",
-          MCP_TIMEOUT: process.env.MCP_TIMEOUT ?? "90000",
+          MCP_TIMEOUT: process.env.MCP_TIMEOUT ?? "180000",
         },
         stdio: ["ignore", "pipe", "pipe"],
       });

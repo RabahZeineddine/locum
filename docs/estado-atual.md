@@ -1478,8 +1478,10 @@ resto recolhido em "Fonte e detalhe". O agent escreve para isso: o ops-review
 v6 põe o valor na primeira linha ("16 · planilha 16 · bate") e a fonte depois.
 - Servidor MCP que não conecta no `claude -p` aparece na atividade do passo
   como erro, com o nome. Antes o modelo só dizia que a ferramenta não existia.
-  O prazo de subida vai a 90 s (`MCP_TIMEOUT`): servidor por npx leva uns 30 s
-  na primeira vez, perto do padrão.
+  O prazo de subida vai a 180 s (`MCP_TIMEOUT`): com a máquina carregada e o
+  Defender lendo cada arquivo do pacote, o ms365 por npx levou de 10 a 90 s
+  para subir. `npx --prefer-offline` foi medido e não muda nada: a demora não
+  é a consulta ao registro.
 
 **O digest aprovado vira entrega da iniciativa.** O run já nascia amarrado à
 iniciativa (o `initiative_id` vai no run e o `context.md` entra no system),
@@ -1495,6 +1497,14 @@ sem escrita nenhuma. O nome sai do run, então repetir reescreve o mesmo arquivo
 - Token OAuth que vai para passo de Claude Code ou Codex é renovado com 16 min
   de folga: o header vai fixo no arquivo de configuração, o passo dura até
   15 min, e com a margem de 2 min o Waroom recusava o token no fim do passo.
+
+**O dmg abre em outro Mac.** O build saía com `identity: null`: só o binário
+principal tinha a assinatura do linker, o selo do bundle não fechava, e num Mac
+que baixou o dmg o Gatekeeper dizia "danificado", sem saída pela tela. Agora o
+bundle sai com assinatura ad-hoc (`identity: "-"`, sem runtime endurecido, que
+barraria o módulo nativo do SQLite). Sem notarização, o primeiro uso ainda pede
+Ajustes > Privacidade e Segurança > Abrir mesmo assim. A atualização não muda:
+ela é própria, sem o Squirrel, e não confere assinatura.
 
 **Cron em frase.** O gatilho de horário fixo aparece como "Toda segunda às
 07:30 · cron 30 7 * * 1" na lista e no canvas, e a frase entra acima da

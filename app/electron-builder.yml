@@ -82,9 +82,15 @@ npmRebuild: false
 mac:
   category: public.app-category.productivity
   # Sem certificado da Apple: assinatura e notarização dependem de conta de
-  # desenvolvedor, que é decisão do dono do repositório. Sem isto o
-  # electron-builder procuraria identidade no keychain e falharia por engano.
-  identity: null
+  # desenvolvedor, que é decisão do dono do repositório. "-" é assinatura
+  # ad-hoc do bundle inteiro. Sem ela só o binário principal saía assinado (pelo
+  # linker), o selo do bundle não fechava, e num Mac que baixou o dmg o
+  # Gatekeeper dizia "danificado", sem saída pela tela. Assinado, o aviso vira
+  # "não verificado", que abre por Ajustes > Privacidade e Segurança.
+  identity: "-"
+  # Runtime endurecido com assinatura ad-hoc barra o carregamento do módulo
+  # nativo do SQLite, que não tem a mesma assinatura do app.
+  hardenedRuntime: false
   target:
     - target: dmg
       arch:
