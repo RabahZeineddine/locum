@@ -94,7 +94,7 @@ export function LinhaDaAutomacao({
   /** Ação a mais no fim da linha, para quem a mostra em outro contexto. */
   extra?: ReactNode;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [agindo, setAgindo] = useState<"ligar" | "rodar" | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const gatilhos = linha.triggers.map((g) => ({ ...g, config: g.config as TriggerConfig }));
@@ -142,7 +142,7 @@ export function LinhaDaAutomacao({
               gatilhos.map((g, i) => (
                 <span className="flex items-center gap-1.5" key={`${g.kind}-${i}`}>
                   <Selo app={appDoGatilho(g.config.kind)} id={g.config.kind} tamanho="sm" />
-                  {tituloDoGatilho(t, g.config)} · {resumoDoGatilho(t, g.config)}
+                  {tituloDoGatilho(t, g.config)} · {resumoDoGatilho(t, g.config, i18n.language)}
                 </span>
               ))
             )}

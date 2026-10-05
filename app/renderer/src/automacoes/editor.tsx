@@ -529,7 +529,7 @@ function CanvasDaAutomacao({
   problemasPorNo: Map<string, Problema[]>;
   agents: readonly AgentDaBiblioteca[];
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [erro, setErro] = useState<string | null>(null);
 
   const base = useMemo<NoDoCanvas[]>(() => {
@@ -549,7 +549,7 @@ function CanvasDaAutomacao({
         componente: g.config.kind,
         tipo: t("automations.palette.triggers"),
         titulo: tituloDoGatilho(t, g.config),
-        subtitulo: resumoDoGatilho(t, g.config),
+        subtitulo: resumoDoGatilho(t, g.config, i18n.language),
         gatilho: true,
         aprovacao: false,
         problema: nivel(g.chave),

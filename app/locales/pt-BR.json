@@ -1610,7 +1610,38 @@
           "hourly": "A cada hora",
           "monday9": "Segunda às 9h"
         },
-        "never": "Nunca roda nos próximos 5 anos"
+        "never": "Nunca roda nos próximos 5 anos",
+        "describe": {
+          "weekdays": "dias úteis",
+          "weekend": "sábados e domingos",
+          "every": {
+            "0": "todo domingo",
+            "1": "toda segunda",
+            "2": "toda terça",
+            "3": "toda quarta",
+            "4": "toda quinta",
+            "5": "toda sexta",
+            "6": "todo sábado"
+          },
+          "days": {
+            "0": "domingo",
+            "1": "segunda",
+            "2": "terça",
+            "3": "quarta",
+            "4": "quinta",
+            "5": "sexta",
+            "6": "sábado"
+          },
+          "monthDays": "todo dia {{days}} do mês",
+          "months": "em {{months}}",
+          "hourly": "a cada hora",
+          "hourlyAt": "a cada hora, no minuto {{minute}}",
+          "at": "às {{times}}",
+          "everyMinutes": "a cada {{minutes}} min",
+          "between": "{{every}}, entre {{from}} e {{to}}",
+          "daily": "todo dia"
+        },
+        "summaryHuman": "{{human}} · cron {{expression}}"
       },
       "schedule": {
         "title": "Intervalo",

@@ -1569,7 +1569,38 @@
           "hourly": "Every hour",
           "monday9": "Monday at 9am"
         },
-        "never": "Never runs in the next 5 years"
+        "never": "Never runs in the next 5 years",
+        "describe": {
+          "weekdays": "weekdays",
+          "weekend": "weekends",
+          "every": {
+            "0": "every Sunday",
+            "1": "every Monday",
+            "2": "every Tuesday",
+            "3": "every Wednesday",
+            "4": "every Thursday",
+            "5": "every Friday",
+            "6": "every Saturday"
+          },
+          "days": {
+            "0": "Sunday",
+            "1": "Monday",
+            "2": "Tuesday",
+            "3": "Wednesday",
+            "4": "Thursday",
+            "5": "Friday",
+            "6": "Saturday"
+          },
+          "monthDays": "on day {{days}} of the month",
+          "months": "in {{months}}",
+          "hourly": "every hour",
+          "hourlyAt": "every hour at minute {{minute}}",
+          "at": "at {{times}}",
+          "everyMinutes": "every {{minutes}} min",
+          "between": "{{every}}, between {{from}} and {{to}}",
+          "daily": "every day"
+        },
+        "summaryHuman": "{{human}} · cron {{expression}}"
       },
       "schedule": {
         "title": "Interval",

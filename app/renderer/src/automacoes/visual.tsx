@@ -25,6 +25,7 @@ import {
   Zap,
 } from "lucide-react";
 import type { AppDoComponente } from "@/lib/automacao";
+import { descreverCron } from "@/lib/descricao-do-cron";
 import type { TriggerConfig } from "../../../src/config/types";
 
 /**
@@ -105,13 +106,20 @@ export function Selo({ app, id, tamanho = "md" }: { app: AppDoComponente; id: st
   );
 }
 
-/** A frase curta de um gatilho: "a cada 15 min", "2 canais", "cron 0 9 * * 1-5". */
-export function resumoDoGatilho(t: TFunction, config: TriggerConfig): string {
+/**
+ * A frase curta de um gatilho: "a cada 15 min", "2 canais", "Dias úteis às
+ * 09:00 · cron 0 9 * * 1-5". O cron leva a frase junto quando dá para dizer.
+ */
+export function resumoDoGatilho(t: TFunction, config: TriggerConfig, idioma: string): string {
   switch (config.kind) {
     case "manual":
       return t("automations.triggers.manual.summary");
-    case "cron":
-      return t("automations.triggers.cron.summary", { expression: config.expression });
+    case "cron": {
+      const frase = descreverCron(config.expression, t, idioma);
+      return frase === null
+        ? t("automations.triggers.cron.summary", { expression: config.expression })
+        : t("automations.triggers.cron.summaryHuman", { human: frase, expression: config.expression });
+    }
     case "schedule":
       return t("automations.triggers.schedule.summary", { minutes: config.everyMinutes });
     case "slack-channel":

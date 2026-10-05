@@ -22,6 +22,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { LogicCompare, type LogicStep, type TriggerConfig } from "../../../src/config/types";
 import { parseCron, proximaOcorrencia } from "../../../src/triggers/cron";
+import { descreverCron } from "@/lib/descricao-do-cron";
 import { SeletorDeFerramentas, SeletorDeModelo, useCatalogo } from "../editor-agent";
 import type { RotaId } from "../rotas";
 import { appDoGatilho, appDoPasso, Selo, tituloDoGatilho, tituloDoPasso } from "./visual";
@@ -231,6 +232,7 @@ function ConfigDoCron({ expressao, trocar }: { expressao: string; trocar: (e: st
   } catch (e) {
     erro = e instanceof Error ? e.message : String(e);
   }
+  const frase = descreverCron(expressao, t, i18n.language);
   return (
     <>
       <Campo rotulo={t("automations.triggers.cron.expression")}>
@@ -256,6 +258,11 @@ function ConfigDoCron({ expressao, trocar }: { expressao: string; trocar: (e: st
           </button>
         ))}
       </div>
+      {erro === null && frase !== null && (
+        <p className="text-sm font-medium" data-locum-cron-frase="">
+          {frase}
+        </p>
+      )}
       <p className={cn("text-xs", erro === null ? "text-muted-foreground" : "text-sev-critical")}>
         {erro !== null
           ? t("automations.triggers.cron.invalid", { message: erro })
