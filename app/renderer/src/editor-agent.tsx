@@ -1,13 +1,15 @@
 import { Button } from "@/components/ui/button";
-import { call, useRead } from "@/lib/bridge";
+import { call, read, useRead } from "@/lib/bridge";
 import { comContexto, diffJson, type LinhaDoDiff } from "@/lib/diff";
 import { salvarAgent } from "@/lib/editar-agent";
 import { rotuloDoModelo, rotuloDoProvedor } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
-import { ChevronDown, ChevronRight, Loader2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { ehLeitura } from "../../src/config/leitura";
 import { SERVIDOR_CONTA, type ActionMode, type AgentSpec, type ToolRef } from "../../src/config/types";
+import type { McpToolInfo } from "../../src/mcp/registry";
 
 type Passo = AgentSpec["steps"][number];
 type PassoDeModelo = Extract<Passo, { type: "model" }>;
@@ -438,14 +440,7 @@ export function SeletorDeFerramentas({
         {t("agents.editor.tools.inherit")}
       </button>
       {lista.length === 1 && <p className="text-muted-foreground text-xs">{t("agents.editor.tools.noServers")}</p>}
-      {lista.map((nome) => (
-        <FerramentasDoServidor
-          key={nome}
-          marcadas={valor.filter((r) => r.server === nome)}
-          servidor={nome}
-          trocar={(doServidor) => trocar([...valor.filter((r) => r.server !== nome), ...doServidor])}
-        />
-      ))}
+      <ServidoresComBusca nomes={lista} trocar={trocar} valor={valor} />
     </div>
   );
 }
@@ -459,37 +454,117 @@ export function servidoresDoModelo(lista: { config: { name: string }; enabled: b
   return [...(lista ?? []).filter((s) => s.enabled).map((s) => s.config.name), SERVIDOR_CONTA];
 }
 
+/** Ferramentas já lidas nesta janela, por servidor. Some ao recarregar; o guardado no banco não. */
+const MEMORIA_DE_FERRAMENTAS = new Map<string, McpToolInfo[]>();
+/** Servidores que já subiram nesta janela para conferir a lista guardada. */
+const CONFERIDOS = new Set<string>();
+
+/**
+ * Os servidores, cada um com as suas ferramentas, e uma busca por cima de
+ * todos. Buscar abre os servidores, porque ninguém lembra em qual deles mora
+ * `get-excel-range`.
+ */
+export function ServidoresComBusca({
+  nomes,
+  valor,
+  trocar,
+}: {
+  nomes: string[];
+  valor: ToolRef[];
+  trocar: (v: ToolRef[]) => void;
+}) {
+  const { t } = useTranslation();
+  const [filtro, setFiltro] = useState("");
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="relative">
+        <Search aria-hidden className="text-muted-foreground absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
+        <input
+          aria-label={t("agents.editor.tools.search")}
+          className="border-border bg-background focus-visible:ring-ring w-full rounded-md border py-1.5 pr-3 pl-8 text-sm outline-none focus-visible:ring-1"
+          data-locum-busca-ferramentas=""
+          onChange={(e) => setFiltro(e.target.value)}
+          placeholder={t("agents.editor.tools.search")}
+          value={filtro}
+        />
+      </div>
+      {nomes.map((nome) => (
+        <FerramentasDoServidor
+          filtro={filtro}
+          key={nome}
+          marcadas={valor.filter((r) => r.server === nome)}
+          servidor={nome}
+          trocar={(doServidor) => trocar([...valor.filter((r) => r.server !== nome), ...doServidor])}
+        />
+      ))}
+    </div>
+  );
+}
+
 export function FerramentasDoServidor({
   marcadas,
   servidor,
   trocar,
+  filtro = "",
 }: {
   marcadas: ToolRef[];
   servidor: string;
   trocar: (v: ToolRef[]) => void;
+  filtro?: string;
 }) {
   const { t } = useTranslation();
-  const [aberto, setAberto] = useState(marcadas.length > 0);
-  const [ferramentas, setFerramentas] = useState<{ name: string; description: string; estimatedTokens: number }[] | null>(null);
-  const [carregando, setCarregando] = useState(false);
+  const [abertoPelaPessoa, setAberto] = useState(marcadas.length > 0);
+  const [ferramentas, setFerramentas] = useState<McpToolInfo[] | null>(() => MEMORIA_DE_FERRAMENTAS.get(servidor) ?? null);
+  const [atualizando, setAtualizando] = useState(false);
+  const busca = filtro.trim().toLowerCase();
+  const aberto = abertoPelaPessoa || busca !== "";
 
   useEffect(() => {
-    if (!aberto || ferramentas !== null || carregando) return;
-    setCarregando(true);
-    // Listar sobe o servidor, então só acontece quando alguém abriu a lista.
-    call("mcp.tools", servidor)
-      .then(setFerramentas)
-      .catch(() => setFerramentas([]))
-      .finally(() => setCarregando(false));
-  }, [aberto, ferramentas, carregando, servidor]);
+    if (!aberto) return;
+    let vivo = true;
+    const guardar = (lista: McpToolInfo[]): void => {
+      MEMORIA_DE_FERRAMENTAS.set(servidor, lista);
+      if (vivo) setFerramentas(lista);
+    };
+    void (async () => {
+      // O guardado aparece na hora; subir o servidor para conferir fica por trás.
+      if (!MEMORIA_DE_FERRAMENTAS.has(servidor)) {
+        const guardada = await read("mcp.toolsCached", servidor).catch(() => null);
+        if (guardada !== null) guardar(guardada.tools);
+      }
+      if (CONFERIDOS.has(servidor)) return;
+      CONFERIDOS.add(servidor);
+      if (vivo) setAtualizando(true);
+      try {
+        guardar(await call("mcp.tools", servidor));
+      } catch {
+        if (!MEMORIA_DE_FERRAMENTAS.has(servidor)) guardar([]);
+        CONFERIDOS.delete(servidor);
+      } finally {
+        if (vivo) setAtualizando(false);
+      }
+    })();
+    return () => {
+      vivo = false;
+    };
+  }, [aberto, servidor]);
 
   const marcadasPorNome = new Set(marcadas.map((m) => m.tool));
+  const visiveis =
+    ferramentas === null
+      ? null
+      : busca === ""
+        ? ferramentas
+        : ferramentas.filter((f) => f.name.toLowerCase().includes(busca) || f.description.toLowerCase().includes(busca));
   const tokens = (ferramentas ?? [])
     .filter((f) => marcadasPorNome.has(f.name))
     .reduce((acc, f) => acc + f.estimatedTokens, 0);
 
+  // Na busca, servidor sem nada que case some, para a lista não virar um mar de cabeçalhos.
+  if (busca !== "" && visiveis !== null && visiveis.length === 0 && !atualizando) return null;
+
   return (
-    <div className="border-border rounded-md border">
+    <div className="border-border rounded-md border" data-locum-servidor-ferramentas={servidor}>
       <button
         className="hover:bg-accent/40 flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-xs"
         onClick={() => setAberto((a) => !a)}
@@ -497,6 +572,14 @@ export function FerramentasDoServidor({
       >
         {aberto ? <ChevronDown className="size-3.5" aria-hidden /> : <ChevronRight className="size-3.5" aria-hidden />}
         <span className="font-mono">{servidor === SERVIDOR_CONTA ? t("agents.editor.tools.account") : servidor}</span>
+        {ferramentas === null ? null : (
+          <span className="text-muted-foreground">
+            {busca === ""
+              ? t("agents.editor.tools.count", { count: ferramentas.length })
+              : t("agents.editor.tools.matches", { count: visiveis?.length ?? 0 })}
+          </span>
+        )}
+        {atualizando && ferramentas !== null ? <Loader2 aria-label={t("agents.editor.tools.refreshing")} className="text-muted-foreground size-3 animate-spin" /> : null}
         {marcadas.length > 0 && (
           <span className="text-muted-foreground ml-auto">
             {t("agents.editor.tools.total", { count: marcadas.length, tokens })}
@@ -506,14 +589,14 @@ export function FerramentasDoServidor({
 
       {aberto && (
         <div className="border-border border-t px-3 py-2">
-          {carregando || ferramentas === null ? (
+          {visiveis === null ? (
             <p className="text-muted-foreground flex items-center gap-1.5 text-xs">
               <Loader2 className="size-3 animate-spin" aria-hidden />
               {t("agents.editor.tools.loading")}
             </p>
           ) : (
-            <ul className="flex flex-col gap-1">
-              {ferramentas.map((f) => (
+            <ul className="flex max-h-72 flex-col gap-1 overflow-y-auto pr-1">
+              {visiveis.map((f) => (
                 <li key={f.name}>
                   <label className="flex cursor-pointer items-baseline gap-2 text-xs">
                     <input
@@ -529,7 +612,12 @@ export function FerramentasDoServidor({
                       type="checkbox"
                     />
                     <span className="font-mono">{f.name}</span>
-                    <span className="text-muted-foreground min-w-0 flex-1 truncate">{f.description}</span>
+                    {ehLeitura(f.name) ? null : (
+                      <span className="shrink-0 text-[10px] text-amber-400">{t("agents.editor.tools.write")}</span>
+                    )}
+                    <span className="text-muted-foreground min-w-0 flex-1 truncate" title={f.description}>
+                      {f.description}
+                    </span>
                     <span className="text-muted-foreground shrink-0 font-mono tabular-nums">
                       {t("agents.editor.tools.tokens", { tokens: f.estimatedTokens })}
                     </span>

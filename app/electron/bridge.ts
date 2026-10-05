@@ -251,6 +251,7 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "mcp.list": () => mcpService.list(),
     "mcp.test": (name) => mcpService.testConnection(name),
     "mcp.tools": (name) => (name === SERVIDOR_CONTA ? claudeAccountService.tools() : mcpService.listTools(name)),
+    "mcp.toolsCached": async (name) => (name === SERVIDOR_CONTA ? null : mcpService.cachedTools(name)),
     "claudeAccount.list": (renovar) => claudeAccountService.listar(renovar),
     "mcp.setEnabled": (name, enabled) => mcpService.setEnabled(name, enabled),
     "mcp.setCredential": async (name, entrada) => {

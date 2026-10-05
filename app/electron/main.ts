@@ -6020,6 +6020,21 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 600));
     writeFileSync(join(destino, `library-novo-${aba}.png`), (await janela.webContents.capturePage()).toPNG());
   }
+  // A busca abre os servidores e deixa só o que casa.
+  await janela.webContents.executeJavaScript(`(() => {
+    const campo = document.querySelector("[data-locum-busca-ferramentas]");
+    if (campo === null) return null;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(campo, "e");
+    campo.dispatchEvent(new Event("input", { bubbles: true }));
+    return null;
+  })()`);
+  await new Promise((resolve) => setTimeout(resolve, 2500));
+  writeFileSync(join(destino, "library-novo-tools-busca.png"), (await janela.webContents.capturePage()).toPNG());
+  await janela.webContents.executeJavaScript(
+    `(document.querySelector("[data-locum-servidor-ferramentas]:last-of-type")?.scrollIntoView({ block: "end" }), null)`,
+  );
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  writeFileSync(join(destino, "library-novo-tools-rolado.png"), (await janela.webContents.capturePage()).toPNG());
 
   // O que vigia e quanto gasta ficam abaixo dos passos, fora da primeira foto.
   if (primeiroAgent) {

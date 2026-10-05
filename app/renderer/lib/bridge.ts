@@ -77,6 +77,7 @@ export const READ_CHANNELS = [
   "approvals.get",
   "mcp.list",
   "mcp.usage",
+  "mcp.toolsCached",
   "providers.list",
   "providers.fallbacks",
   "providers.preview",

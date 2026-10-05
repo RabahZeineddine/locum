@@ -120,7 +120,16 @@
         "loading": "starting the server...",
         "tokens": "~{{tokens}} tok",
         "total": "{{count}} selected, ~{{tokens}} tokens per call",
-        "inherits_zero": "no MCP tools"
+        "inherits_zero": "no MCP tools",
+        "search": "Search tools across all servers",
+        "count_one": "{{count}} tool",
+        "count_other": "{{count}} tools",
+        "matches_one": "{{count}} match",
+        "matches_other": "{{count}} matches",
+        "refreshing": "refreshing the list",
+        "write": "write",
+        "count_zero": "no tools",
+        "matches_zero": "no matches"
       },
       "budget": {
         "title": "Budget",

@@ -1426,7 +1426,14 @@ mostra primeiro o que o agent já pode usar, por servidor, com leitura ou
 escrita e um x para tirar, e depois toolsets e a escolha por servidor. Onde é
 usado lista as automações, cada uma abrindo a sua, e guarda o remover. As abas
 ficam montadas e escondidas, então o que se digita numa não some, e a barra
-de salvar fica presa no rodapé.
+de salvar fica no topo, presa junto com o título e as abas.
+
+**Escolher ferramenta sem caçar.** Uma busca por cima de todos os servidores
+abre os que têm ferramenta com o nome ou a descrição procurados e esconde o
+resto. Cada lista boa fica guardada em `mcp.ferramentas.<nome>` (`mcp.toolsCached`
+na ponte): abrir um servidor mostra a guardada na hora e sobe o processo por
+trás uma vez por janela para conferir. A lista de cada servidor rola sozinha,
+então o ms365, com 120 ferramentas, não empurra a página.
 
 **Cron em frase.** O gatilho de horário fixo aparece como "Toda segunda às
 07:30 · cron 30 7 * * 1" na lista e no canvas, e a frase entra acima da

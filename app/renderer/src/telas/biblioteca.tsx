@@ -9,7 +9,7 @@ import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { ehLeitura } from "../../../src/config/leitura.js";
 import type { AgentProfile, ToolRef, Toolset } from "../../../src/config/types";
-import { FerramentasDoServidor, SeletorDeModelo, servidoresDoModelo, useCatalogo } from "../editor-agent";
+import { SeletorDeModelo, ServidoresComBusca, servidoresDoModelo, useCatalogo } from "../editor-agent";
 import type { TelaProps } from "../rotas";
 
 type ResumoDoAgent = ReadResult<"library.profiles">[number];
@@ -249,6 +249,8 @@ function FormularioDoAgent({
         </Button>
       </div>
 
+      {/* Título, salvar e abas ficam presos no topo: a lista de ferramentas do ms365 é longa. */}
+      <div className="bg-background/95 sticky top-0 z-10 -mx-2 flex flex-col gap-4 px-2 pt-2 backdrop-blur">
       <div className="flex flex-wrap items-start gap-4">
         <span aria-hidden className="ia-gradiente text-primary-foreground flex size-11 shrink-0 items-center justify-center rounded-lg">
           <Bot className="size-5" />
@@ -262,6 +264,14 @@ function FormularioDoAgent({
           </p>
           {spec.description === "" ? null : <p className="text-muted-foreground text-sm">{spec.description}</p>}
         </div>
+        <Button
+          className="cursor-pointer"
+          data-locum-agent-salvar=""
+          disabled={ocupado || !mudou || spec.name.trim() === ""}
+          onClick={() => void salvar()}
+        >
+          {t(novo ? "library.editor.create" : "library.editor.save")}
+        </Button>
       </div>
 
       <div className="border-border flex gap-1 border-b" role="tablist">
@@ -284,6 +294,10 @@ function FormularioDoAgent({
             )}
           </button>
         ))}
+      </div>
+      {aviso === null ? null : (
+        <p className={cn("-mt-2 text-xs", aviso.tipo === "erro" ? "text-sev-critical" : "text-emerald-400")}>{aviso.texto}</p>
+      )}
       </div>
 
       <section className="flex flex-col gap-5" hidden={aba !== "general"} role="tabpanel">
@@ -447,27 +461,16 @@ function FormularioDoAgent({
         )}
       </section>
 
-      <div className="border-border bg-background/95 sticky bottom-0 flex flex-wrap items-center gap-2 border-t py-3 backdrop-blur">
-        {novo ? null : (
+      {novo ? null : (
+        <div className="border-border flex flex-wrap items-center gap-2 border-t pt-4">
           <input
             className={cn(CAMPO, "min-w-56 flex-1")}
             onChange={(e) => setNota(e.target.value)}
             placeholder={t("library.editor.note")}
             value={nota}
           />
-        )}
-        <Button
-          className="cursor-pointer"
-          data-locum-agent-salvar=""
-          disabled={ocupado || !mudou || spec.name.trim() === ""}
-          onClick={() => void salvar()}
-        >
-          {t(novo ? "library.editor.create" : "library.editor.save")}
-        </Button>
-        {aviso === null ? null : (
-          <p className={cn("w-full text-xs", aviso.tipo === "erro" ? "text-sev-critical" : "text-emerald-400")}>{aviso.texto}</p>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -687,14 +690,7 @@ function EscolhaDeFerramentas({ valor, trocar }: { valor: ToolRef[]; trocar: (v:
   return (
     <div className="flex flex-col gap-2">
       {nomes.length === 1 && <p className="text-muted-foreground text-xs">{t("agents.editor.tools.noServers")}</p>}
-      {nomes.map((nome) => (
-        <FerramentasDoServidor
-          key={nome}
-          marcadas={valor.filter((r) => r.server === nome)}
-          servidor={nome}
-          trocar={(doServidor) => trocar([...valor.filter((r) => r.server !== nome), ...doServidor])}
-        />
-      ))}
+      <ServidoresComBusca nomes={nomes} trocar={trocar} valor={valor} />
     </div>
   );
 }

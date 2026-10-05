@@ -41,6 +41,9 @@ export interface McpServerEntry {
   health: McpServerHealth;
 }
 
+/** Onde fica a última lista de ferramentas de cada servidor. */
+const chaveDasFerramentas = (nome: string): string => `mcp.ferramentas.${nome}`;
+
 /** Teto do erro guardado: o bastante para a tela, sem guardar página de HTML. */
 const TETO_DO_ERRO = 500;
 
@@ -213,6 +216,7 @@ export class McpService {
     const started = Date.now();
     try {
       const tools = await this.probe(name, (registry) => registry.describeTools(name));
+      await this.guardarFerramentas(name, tools);
       // O observador do registro também grava, mas sem esperar; aqui a tela
       // relê o cadastro logo depois e precisa ver o desfecho.
       await this.recordConnection(name, { ok: true });
@@ -245,9 +249,38 @@ export class McpService {
       .where(eq(schema.mcpServers.name, name));
   }
 
-  /** Catalogo de ferramentas do servidor, para escolher quais marcar num passo. */
+  /**
+   * Catalogo de ferramentas do servidor, para escolher quais marcar num passo.
+   * Cada leitura boa fica guardada, e a tela mostra a guardada enquanto esta
+   * sobe o servidor de novo: listar o ms365 leva segundos, e escolher
+   * ferramenta não devia esperar isso toda vez.
+   */
   async listTools(name: string): Promise<McpToolInfo[]> {
-    return this.probe(name, (registry) => registry.describeTools(name));
+    const tools = await this.probe(name, (registry) => registry.describeTools(name));
+    await this.guardarFerramentas(name, tools);
+    return tools;
+  }
+
+  /** A última lista boa de ferramentas, sem subir o servidor. Nula quando nunca listou. */
+  async cachedTools(name: string): Promise<{ at: number; tools: McpToolInfo[] } | null> {
+    const [row] = await this.db
+      .select({ value: schema.settings.value })
+      .from(schema.settings)
+      .where(eq(schema.settings.key, chaveDasFerramentas(name)));
+    if (row === undefined) return null;
+    try {
+      return JSON.parse(row.value) as { at: number; tools: McpToolInfo[] };
+    } catch {
+      return null;
+    }
+  }
+
+  private async guardarFerramentas(name: string, tools: McpToolInfo[]): Promise<void> {
+    const value = JSON.stringify({ at: Date.now(), tools });
+    await this.db
+      .insert(schema.settings)
+      .values({ key: chaveDasFerramentas(name), value })
+      .onConflictDoUpdate({ target: schema.settings.key, set: { value } });
   }
 
   /**

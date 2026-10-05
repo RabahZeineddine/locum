@@ -213,6 +213,8 @@ interface ServiceApi {
   "mcp.list": McpService["list"];
   "mcp.test": McpService["testConnection"];
   "mcp.tools": McpService["listTools"];
+  /** A última lista boa, sem subir o servidor: a tela mostra enquanto `mcp.tools` atualiza. */
+  "mcp.toolsCached": McpService["cachedTools"];
   /** Ligar é da pessoa: o que entra pelo servidor MCP nasce desligado. */
   "mcp.setEnabled": McpService["setEnabled"];
   /** Token colado pela pessoa, para servidor sem OAuth. O valor nunca volta pela ponte. */
@@ -545,6 +547,7 @@ export const BRIDGE_CHANNELS = [
   "mcp.list",
   "mcp.test",
   "mcp.tools",
+  "mcp.toolsCached",
   "mcp.setEnabled",
   "mcp.setCredential",
   "mcp.usage",

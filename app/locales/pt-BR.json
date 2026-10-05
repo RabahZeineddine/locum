@@ -122,7 +122,16 @@
         "loading": "subindo o servidor...",
         "tokens": "~{{tokens}} tok",
         "total": "{{count}} marcadas, ~{{tokens}} tokens por chamada",
-        "inherits_zero": "sem ferramentas MCP"
+        "inherits_zero": "sem ferramentas MCP",
+        "search": "Buscar ferramenta em todos os servidores",
+        "count_one": "{{count}} ferramenta",
+        "count_other": "{{count}} ferramentas",
+        "matches_one": "{{count}} encontrada",
+        "matches_other": "{{count}} encontradas",
+        "refreshing": "atualizando a lista",
+        "write": "escrita",
+        "count_zero": "nenhuma ferramenta",
+        "matches_zero": "nenhuma encontrada"
       },
       "budget": {
         "title": "Orçamento",

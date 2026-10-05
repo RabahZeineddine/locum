@@ -1,6 +1,7 @@
 import { before, test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { fileURLToPath } from "node:url";
 import { migrateDb } from "../src/db/migrate.js";
 import { McpRegistry } from "../src/mcp/registry.js";
 import { McpServerConfig } from "../src/config/types.js";
@@ -119,4 +120,24 @@ test("credencial colada vai para o cofre, com o marcador no cadastro e Bearer no
   assert.equal(cofre.get(`mcp/${local}`), "Bearer fica");
 
   await assert.rejects(servico.setCredential(local, { campo: "com espaço", valor: "x" }), /não serve/);
+});
+
+test("a lista de ferramentas fica guardada para a tela mostrar sem subir o servidor", async () => {
+  const servico = new McpService();
+  const nome = nomeNovo();
+  await servico.register({ name: nome, transport: "stdio", command: ["/nao/existe/locum-cache"] });
+  assert.equal(await servico.cachedTools(nome), null, "nunca listou, nada guardado");
+  await assert.rejects(servico.listTools(nome));
+  assert.equal(await servico.cachedTools(nome), null, "falha não apaga nem inventa lista");
+  await servico.remove(nome);
+
+  const vivo = nomeNovo();
+  const fixture = fileURLToPath(new URL("../src/fixtures/mcp-fixture-server.ts", import.meta.url));
+  await servico.register({ name: vivo, transport: "stdio", command: [process.execPath, "--import", "tsx", fixture] });
+  const lidas = await servico.listTools(vivo);
+  const guardada = await servico.cachedTools(vivo);
+  assert.ok(lidas.length > 0);
+  assert.deepEqual(guardada?.tools, lidas);
+  assert.ok((guardada?.at ?? 0) > 0);
+  await servico.remove(vivo);
 });
