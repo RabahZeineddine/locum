@@ -1481,6 +1481,14 @@ v6 põe o valor na primeira linha ("16 · planilha 16 · bate") e a fonte depois
   O prazo de subida vai a 90 s (`MCP_TIMEOUT`): servidor por npx leva uns 30 s
   na primeira vez, perto do padrão.
 
+**O digest aprovado vira entrega da iniciativa.** O run já nascia amarrado à
+iniciativa (o `initiative_id` vai no run e o `context.md` entra no system),
+mas o resultado não voltava: aprovar o `digest.deliver` não gravava nada, e a
+entrega da W-39 tinha sido escrita à mão. Agora, quando o run tem iniciativa,
+o `publish` grava `entregas/AAAA-MM-DD-<run>.md` na pasta dela, com uma tabela
+por canal (linha, resultado, situação, fonte). Digest sem iniciativa continua
+sem escrita nenhuma. O nome sai do run, então repetir reescreve o mesmo arquivo.
+
 **Cron em frase.** O gatilho de horário fixo aparece como "Toda segunda às
 07:30 · cron 30 7 * * 1" na lista e no canvas, e a frase entra acima da
 próxima ocorrência no formulário (`renderer/lib/descricao-do-cron.ts`). O que
