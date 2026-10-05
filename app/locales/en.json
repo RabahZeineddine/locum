@@ -11,7 +11,8 @@
       "missing": "the agent {{agentId}} has no saved version",
       "back": "Agents",
       "history_one": "History: {{count}} version, viewing v{{version}}",
-      "history_other": "History: {{count}} versions, viewing v{{version}}"
+      "history_other": "History: {{count}} versions, viewing v{{version}}",
+      "asFlow": "View as flow"
     },
     "history": {
       "noNote": "no note",

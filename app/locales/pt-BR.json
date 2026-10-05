@@ -12,7 +12,8 @@
       "back": "Agents",
       "history_one": "Histórico: {{count}} versão, vendo a v{{version}}",
       "history_other": "Histórico: {{count}} versões, vendo a v{{version}}",
-      "history_zero": "Histórico: {{count}} versões"
+      "history_zero": "Histórico: {{count}} versões",
+      "asFlow": "Ver como fluxo"
     },
     "history": {
       "noNote": "sem nota",

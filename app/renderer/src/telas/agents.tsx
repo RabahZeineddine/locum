@@ -10,7 +10,7 @@ import { LinhaDoOrcamento, Observados, Secao } from "./configuracao";
 import { comContexto, diffJson, type LinhaDoDiff } from "@/lib/diff";
 import { rotuloDeEstado, rotuloDoModelo } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, Plus, Sparkles, X } from "lucide-react";
+import { ArrowLeft, Plus, Sparkles, Workflow, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { useCurrentInitiative } from "../current-initiative";
@@ -384,15 +384,26 @@ function DetalheDoAgent({
       data-versoes={lista.map((v) => v.version).join(",")}
     >
       <div className="flex items-center gap-3">
-        <Button onClick={() => navegar("agents")} size="sm" variant="ghost">
+        {/* A lista de agents saiu da barra; voltar leva às automações, de onde se chega aqui. */}
+        <Button onClick={() => navegar("automations")} size="sm" variant="ghost">
           <ArrowLeft className="size-4" />
-          {t("agents.detail.back")}
+          {t("nav.automations")}
         </Button>
         <span className="font-medium text-sm">{atual.spec.name}</span>
         <span className="text-muted-foreground text-xs">{agentId}</span>
         <span className="ml-auto" />
         {!editando && (
           <>
+            <Button
+              className="cursor-pointer"
+              data-locum-ver-fluxo=""
+              onClick={() => navegar("automations", agentId)}
+              size="sm"
+              variant="ghost"
+            >
+              <Workflow className="size-4" />
+              {t("agents.detail.asFlow")}
+            </Button>
             <Button
               className="cursor-pointer"
               onClick={() => {
