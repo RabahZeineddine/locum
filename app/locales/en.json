@@ -1265,10 +1265,11 @@
           "go": "Connections"
         },
         "trigger": {
-          "title": "Turn on an agent",
-          "hint": "Import or create an agent and say when it wakes up. Slack and Teams have a ready reply.",
-          "go": "Agents"
-        }
+          "title": "Turn on an automation",
+          "hint": "Create an automation or start from a template, then turn on the trigger that says when it wakes up.",
+          "go": "Automations"
+        },
+        "hide": "Hide"
       },
       "sessions": {
         "title_one": "{{count}} Claude session left halfway",

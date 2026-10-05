@@ -1299,10 +1299,11 @@
           "go": "Conexões"
         },
         "trigger": {
-          "title": "Ligar um agent",
-          "hint": "Importe ou crie um agent e diga quando ele acorda. No Slack e no Teams há uma resposta pronta.",
-          "go": "Agents"
-        }
+          "title": "Ligar uma automação",
+          "hint": "Crie uma automação ou use um modelo pronto, e ligue o gatilho que diz quando ela acorda.",
+          "go": "Automações"
+        },
+        "hide": "Ocultar"
       },
       "sessions": {
         "title_one": "{{count}} sessão do Claude ficou pela metade",

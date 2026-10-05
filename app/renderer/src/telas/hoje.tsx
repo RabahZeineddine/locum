@@ -1,5 +1,5 @@
 import { CalendarClock, Check, CheckCheck, ChevronRight, Inbox as InboxIcon, KeyRound, Sparkles, TerminalSquare } from "lucide-react";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
@@ -450,12 +450,22 @@ type Passo = { id: "model" | "connection" | "trigger"; feito: boolean; ir: () =>
  * quando tudo está feito, e não aparece enquanto alguma leitura não voltou,
  * para não piscar um passo pendente que já estava feito.
  */
+const CHAVE_COMECE_OCULTO = "locum.hoje.comeceOculto";
+
 function ComeceAqui({ agenda, navegar }: { agenda: Agenda[] | undefined; navegar: TelaProps["navegar"] }) {
   const { t } = useTranslation();
   const provedores = useRead("providers.list");
   const conexoes = useRead("connections.list");
+  // Quem já usa o Locum e só não ligou gatilho ainda pode tirar o guia da frente.
+  const [oculto, setOculto] = useState(() => {
+    try {
+      return window.localStorage.getItem(CHAVE_COMECE_OCULTO) === "1";
+    } catch {
+      return false;
+    }
+  });
 
-  if (agenda === undefined || provedores.data === undefined || conexoes.data === undefined) return null;
+  if (oculto || agenda === undefined || provedores.data === undefined || conexoes.data === undefined) return null;
 
   const passos: Passo[] = [
     {
@@ -471,7 +481,7 @@ function ComeceAqui({ agenda, navegar }: { agenda: Agenda[] | undefined; navegar
     {
       id: "trigger",
       feito: agenda.some((g) => g.enabled),
-      ir: () => navegar("agents"),
+      ir: () => navegar("automations"),
     },
   ];
   if (passos.every((p) => p.feito)) return null;
@@ -493,8 +503,24 @@ function ComeceAqui({ agenda, navegar }: { agenda: Agenda[] | undefined; navegar
           </h2>
           <p className="text-muted-foreground text-sm">{t("home.today.start.lead")}</p>
         </div>
-        <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
-          {feitos}/{passos.length}
+        <span className="flex shrink-0 items-center gap-3">
+          <span className="text-muted-foreground text-xs tabular-nums">
+            {feitos}/{passos.length}
+          </span>
+          <button
+            className="text-muted-foreground hover:text-foreground cursor-pointer text-xs"
+            onClick={() => {
+              setOculto(true);
+              try {
+                window.localStorage.setItem(CHAVE_COMECE_OCULTO, "1");
+              } catch {
+                // Sem armazenamento, oculta só até recarregar.
+              }
+            }}
+            type="button"
+          >
+            {t("home.today.start.hide")}
+          </button>
         </span>
       </div>
       <div aria-hidden className="bg-muted h-1 overflow-hidden rounded-full">
