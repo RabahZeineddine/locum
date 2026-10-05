@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import type { ActionHandler } from "../approval/gate.js";
 import { db as defaultDb, schema } from "../db/index.js";
 import { LocalFolderContextStore, type ContextStore } from "../services/context-store.js";
-import { buildDigestProposal, DigestProposal } from "./proposal.js";
+import { buildDigestProposal, DigestProposal, type DigestItem } from "./proposal.js";
 
 type Db = typeof defaultDb;
 
@@ -72,24 +72,62 @@ export function digestDeliverHandler(options: DigestDeliverHandlerOptions = {}):
 }
 
 /**
- * O digest como documento: uma tabela por canal, com o resultado na frente e a
- * fonte na última coluna. A primeira linha do resumo é o resultado, como na
- * tela (`renderer/lib/digest.ts`).
+ * O digest como documento para conferir e copiar, não para auditar: por canal,
+ * uma tabela de linha e valor, o que pede atenção logo abaixo, e as fontes no
+ * fim. O resultado é a primeira linha do resumo, como na tela
+ * (`renderer/lib/digest.ts`), e o valor é o trecho dele antes do primeiro " · ".
+ *
+ * Quando todo assunto do canal que é linha de planilha vem numerado
+ * ("6 · Incidentes"), sai também um bloco com um valor por linha, da primeira à
+ * última, com linha vazia onde não há assunto: copiado, cola direto na coluna.
  */
 export function markdownDaEntrega(proposta: DigestProposal): string {
-  const situacao = { needs_reply: "pede atenção", info: "ok", ignore: "ignorar" } as const;
   const celula = (texto: string) => texto.replace(/\|/g, "\\|").replace(/\s*\n\s*/g, " ").trim();
+  const partes = (item: DigestItem) => {
+    const texto = item.summary.trim();
+    const quebra = texto.indexOf("\n");
+    const resultado = (quebra >= 0 ? texto.slice(0, quebra) : texto).trim();
+    const corte = resultado.indexOf(" · ");
+    return {
+      resultado,
+      valor: corte >= 0 ? resultado.slice(0, corte) : resultado,
+      detalhe: quebra >= 0 ? texto.slice(quebra + 1).trim() : "",
+    };
+  };
+  const numerada = /^(\d+)\s*·\s*(.+)$/;
+
   const linhas = [`# ${proposta.headline.trim()}`, ""];
+  const fontes: string[] = [];
   for (const canal of proposta.channels) {
-    linhas.push(`## ${canal.channel}`, "", "| Linha | Resultado | Situação | Fonte e detalhe |", "|---|---|---|---|");
-    for (const item of canal.items) {
-      const texto = item.summary.trim();
-      const quebra = texto.indexOf("\n");
-      const valor = quebra >= 0 ? texto.slice(0, quebra) : texto;
-      const detalhe = quebra >= 0 ? texto.slice(quebra + 1) : "";
-      linhas.push(`| ${celula(item.subject)} | ${celula(valor)} | ${situacao[item.kind]} | ${celula(detalhe)} |`);
+    // A ordem é a do digest, que segue a planilha; a da proposta põe o que
+    // pede atenção primeiro, e aqui a atenção tem lista própria.
+    const itens = [...canal.items].sort((a, b) => {
+      const na = numerada.exec(a.subject)?.[1];
+      const nb = numerada.exec(b.subject)?.[1];
+      return na !== undefined && nb !== undefined ? Number(na) - Number(nb) : 0;
+    });
+    linhas.push(`## ${canal.channel}`, "", "| Linha | Valor |", "|---|---|");
+    const atencao: string[] = [];
+    const porLinha = new Map<number, string>();
+    for (const item of itens) {
+      const { resultado, valor, detalhe } = partes(item);
+      const m = numerada.exec(item.subject);
+      const nome = m ? m[2]! : item.subject;
+      if (m) porLinha.set(Number(m[1]), valor);
+      linhas.push(`| ${celula(nome)} | ${celula(valor)} |`);
+      if (item.kind === "needs_reply") atencao.push(`- **${nome}**: ${resultado}`);
+      if (detalhe !== "") fontes.push(`- ${canal.channel} · ${nome}: ${celula(detalhe)}`);
     }
     linhas.push("");
+    if (atencao.length > 0) linhas.push("Pede atenção:", "", ...atencao, "");
+    if (porLinha.size > 1) {
+      const numeros = [...porLinha.keys()];
+      const de = Math.min(...numeros);
+      const ate = Math.max(...numeros);
+      const coluna = Array.from({ length: ate - de + 1 }, (_, i) => porLinha.get(de + i) ?? "");
+      linhas.push(`Para colar na coluna, linhas ${de} a ${ate}:`, "", "```text", ...coluna, "```", "");
+    }
   }
+  if (fontes.length > 0) linhas.push("## De onde veio cada número", "", ...fontes, "");
   return linhas.join("\n").trimEnd() + "\n";
 }

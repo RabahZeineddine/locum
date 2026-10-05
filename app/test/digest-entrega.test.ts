@@ -15,16 +15,20 @@ before(() => {
 const leitura = {
   headline: "W-40 (28/09 a 04/10), coluna 5/10: Cotação abaixo do alvo.",
   items: [
-    { channel: "Parcerias", subject: "Toil | quantidade", kind: "info", summary: "16 · planilha vazia\nFonte: /api/toil/PAR." },
+    { channel: "Parcerias", subject: "8 · Toil | quantidade", kind: "info", summary: "16 · planilha vazia\nFonte: /api/toil/PAR." },
+    { channel: "Parcerias", subject: "6 · Incidentes", kind: "info", summary: "1 · planilha vazia" },
     { channel: "Novos Produtos", subject: "SLO · Cotação", kind: "needs_reply", summary: "93,41% · alvo 99% · abaixo" },
   ],
 };
 
-test("a entrega vira uma tabela por canal, com o resultado na frente", () => {
+test("a entrega traz linha e valor, o que pede atenção e o bloco para colar", () => {
   const md = markdownDaEntrega(buildDigestProposal(leitura));
   assert.match(md, /^# W-40 \(28\/09 a 04\/10\)/);
-  assert.match(md, /\| Toil \\\| quantidade \| 16 · planilha vazia \| ok \| Fonte: \/api\/toil\/PAR\. \|/);
-  assert.match(md, /\| SLO · Cotação \| 93,41% · alvo 99% · abaixo \| pede atenção \|  \|/);
+  assert.match(md, /\| Incidentes \| 1 \|\n\| Toil \\\| quantidade \| 16 \|/);
+  assert.match(md, /- \*\*SLO · Cotação\*\*: 93,41% · alvo 99% · abaixo/);
+  // Linha 7 sem assunto vira linha vazia, para a colagem não escorregar.
+  assert.match(md, /linhas 6 a 8:\n\n```text\n1\n\n16\n```/);
+  assert.match(md, /## De onde veio cada número\n\n- Parcerias · Toil \| quantidade: Fonte: \/api\/toil\/PAR\./);
 });
 
 test("aprovar o digest de um run de iniciativa grava a entrega na pasta dela", async () => {

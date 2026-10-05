@@ -1488,6 +1488,13 @@ entrega da W-39 tinha sido escrita à mão. Agora, quando o run tem iniciativa,
 o `publish` grava `entregas/AAAA-MM-DD-<run>.md` na pasta dela, com uma tabela
 por canal (linha, resultado, situação, fonte). Digest sem iniciativa continua
 sem escrita nenhuma. O nome sai do run, então repetir reescreve o mesmo arquivo.
+- O arquivo é para conferir e copiar: por canal, linha e valor, o que pede
+  atenção logo abaixo, e as fontes no fim. Assunto numerado ("6 · Incidentes")
+  gera um bloco com um valor por linha, com linha vazia nos buracos, que cola
+  direto na coluna da planilha.
+- Token OAuth que vai para passo de Claude Code ou Codex é renovado com 16 min
+  de folga: o header vai fixo no arquivo de configuração, o passo dura até
+  15 min, e com a margem de 2 min o Waroom recusava o token no fim do passo.
 
 **Cron em frase.** O gatilho de horário fixo aparece como "Toda segunda às
 07:30 · cron 30 7 * * 1" na lista e no canvas, e a frase entra acima da

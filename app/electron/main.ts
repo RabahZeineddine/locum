@@ -6222,7 +6222,7 @@ async function main(): Promise<void> {
   const { mcpOAuthService } = await import("../src/services/mcp-oauth-service.js");
   const { mcpService } = await import("../src/services/mcp-service.js");
   mcpOAuthService.useBrowser((url) => shell.openExternal(url));
-  mcpService.useRefresher((name) => mcpOAuthService.refreshIfNeeded(name));
+  mcpService.useRefresher((name, margemMs) => mcpOAuthService.refreshIfNeeded(name, margemMs));
 
   if (modoFerramentas) {
     await serveFerramentas();

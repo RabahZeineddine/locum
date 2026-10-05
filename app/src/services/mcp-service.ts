@@ -5,6 +5,13 @@ import { isAuthError, McpRegistry, type McpConnectOutcome, type McpToolInfo } fr
 import { McpServerConfig, type McpServerInput } from "../config/types.js";
 import { CREDENTIAL_PLACEHOLDER, fillCredential, secretService, type SecretService } from "./secret-service.js";
 
+/**
+ * A margem para o que vai a um passo de Claude Code ou Codex. Eles recebem o
+ * header pronto no arquivo de configuração e não renovam sozinhos, e o passo
+ * dura até 15 min: com a margem curta, o token vencia no meio dele.
+ */
+export const RUN_REFRESH_MARGIN_MS = 16 * 60_000;
+
 export type { McpToolInfo };
 export { isAuthError };
 
@@ -53,7 +60,7 @@ const TETO_DO_ERRO = 500;
  * quem entra no executor precisam valer para os tres.
  */
 export class McpService {
-  private refresher: ((name: string) => Promise<void>) | null = null;
+  private refresher: ((name: string, margemMs?: number) => Promise<void>) | null = null;
 
   constructor(
     private readonly db: Db = defaultDb,
@@ -64,7 +71,7 @@ export class McpService {
    * Quem renova token antes de conectar. Fica injetado, e não importado, porque
    * a renovação de OAuth depende deste serviço para gravar a credencial.
    */
-  useRefresher(refresher: (name: string) => Promise<void>): void {
+  useRefresher(refresher: (name: string, margemMs?: number) => Promise<void>): void {
     this.refresher = refresher;
   }
 
@@ -87,7 +94,9 @@ export class McpService {
       .select()
       .from(schema.mcpServers)
       .where(eq(schema.mcpServers.enabled, true));
-    await this.refreshAll(rows);
+    // Daqui sai o que o executor entrega ao passo, que pode durar 15 min com
+    // o mesmo header: renova com folga para o passo inteiro.
+    await this.refreshAll(rows, RUN_REFRESH_MARGIN_MS);
     const atuais = await this.db
       .select()
       .from(schema.mcpServers)
@@ -306,10 +315,10 @@ export class McpService {
    * conexão: o servidor responde 401 com o token velho, e a tela mostra
    * "reconectar", que é o desfecho certo para refresh token revogado.
    */
-  private async refreshAll(rows: { name: string }[]): Promise<void> {
+  private async refreshAll(rows: { name: string }[], margemMs?: number): Promise<void> {
     if (this.refresher === null) return;
     for (const { name } of rows) {
-      await this.refresher(name).catch((err: unknown) => {
+      await this.refresher(name, margemMs).catch((err: unknown) => {
         console.error(`renovar o token de ${name} falhou: ${err instanceof Error ? err.message : String(err)}`);
       });
     }

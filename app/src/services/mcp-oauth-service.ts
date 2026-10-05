@@ -19,8 +19,9 @@ import { clienteHttp } from "../net/http.js";
 
 type FetchLike = typeof fetch;
 
-/** Quanto antes do vencimento o token é trocado, para não vencer no meio de um passo. */
+/** Quanto antes do vencimento o token é trocado, para não vencer no meio de uma chamada. */
 const REFRESH_MARGIN_MS = 2 * 60_000;
+
 
 /** Quanto a janela espera a pessoa autorizar no navegador. */
 const DEFAULT_TIMEOUT_MS = 5 * 60_000;
@@ -331,20 +332,20 @@ export class McpOAuthService {
    * serviço gira o refresh token, só o primeiro passa, e onde ele detecta
    * reuso, a autorização inteira cai e a pessoa precisa reconectar.
    */
-  async refreshIfNeeded(name: string): Promise<void> {
+  async refreshIfNeeded(name: string, margemMs = REFRESH_MARGIN_MS): Promise<void> {
     const emCurso = this.renovando.get(name);
     if (emCurso !== undefined) return emCurso;
-    const troca = this.renovar(name).finally(() => this.renovando.delete(name));
+    const troca = this.renovar(name, margemMs).finally(() => this.renovando.delete(name));
     this.renovando.set(name, troca);
     return troca;
   }
 
   private readonly renovando = new Map<string, Promise<void>>();
 
-  private async renovar(name: string): Promise<void> {
+  private async renovar(name: string, margemMs: number): Promise<void> {
     const grant = this.readGrant(name);
     if (grant?.refreshToken === undefined || grant.expiresAt === null) return;
-    if (grant.expiresAt - this.deps.now() > REFRESH_MARGIN_MS) return;
+    if (grant.expiresAt - this.deps.now() > margemMs) return;
 
     const tokens = await refreshAuthorization(grant.authorizationServerUrl, {
       metadata: grant.metadata,
