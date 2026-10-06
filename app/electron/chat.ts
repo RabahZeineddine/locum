@@ -7,7 +7,6 @@ import { join } from "node:path";
 import { conversarPeloClaude, type EventoDoChat } from "../src/chat/claude-chat.js";
 import type { McpServerConfig } from "../src/config/types.js";
 import { appHome } from "../src/db/path.js";
-import { claudeCodeAvailable } from "../src/providers/registry.js";
 import { claudeAccountService, ehLeitura, prefixoDoServidor } from "../src/runtimes/claude-account.js";
 import { claudeBinary } from "../src/runtimes/claude-binary.js";
 import { mcpConfigJson } from "../src/runtimes/claude-code.js";
@@ -60,7 +59,7 @@ export const CHAVE_DO_MODELO = "chat.model";
 async function escolherModelo(): Promise<{ provedor: string; modelo: string } | null> {
   // Sem escolha, e com Claude Code na máquina, a assinatura responde: quem
   // não tem chave de API nenhuma ainda conversa.
-  const guardado = (await settingsService.get(CHAVE_DO_MODELO)) ?? (claudeCodeAvailable() ? "claude-code/sonnet" : null);
+  const guardado = (await settingsService.get(CHAVE_DO_MODELO)) ?? (providerService.isAvailable("claude-code") ? "claude-code/sonnet" : null);
   if (!guardado) return null;
 
   const corte = guardado.indexOf("/");
@@ -68,7 +67,7 @@ async function escolherModelo(): Promise<{ provedor: string; modelo: string } | 
   const provedor = guardado.slice(0, corte);
   const modelo = guardado.slice(corte + 1);
 
-  if (provedor === "claude-code") return claudeCodeAvailable() ? { provedor, modelo } : null;
+  if (provedor === "claude-code") return providerService.isAvailable("claude-code") ? { provedor, modelo } : null;
   // Pelo serviço, e não por um registro novo: só ele tem a chave guardada no
   // cofre e os provedores compatíveis cadastrados pela tela.
   const entry = providerService.entries()[provedor];

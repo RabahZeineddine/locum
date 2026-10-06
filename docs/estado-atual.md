@@ -1546,6 +1546,14 @@ cofre ou gateway compatível cadastrado pela tela não respondiam. A assinatura
 do Claude Code agora pede plano: login do claude.ai com `subscriptionType`
 nulo ou `free` conta como indisponível, e o chat deixa de escolhê-la sozinho.
 
+**Provedor se desliga.** Em Modelos, todo provedor disponível ganha
+"Desligar", inclusive o que o Locum acha sozinho, como o Claude Code
+instalado. O `enabled` da tabela `providers` passou a valer: o
+`ProviderService` embrulha o desligado com `available` falso, e chat,
+executor, substituição e catálogo deixam de vê-lo. O desligado continua na
+lista de ligados, com "Ligar". Só vale no app, que é quem chama `loadSecrets`;
+a linha de comando e o servidor MCP seguem vendo o ambiente.
+
 **Cron em frase.** O gatilho de horário fixo aparece como "Toda segunda às
 07:30 · cron 30 7 * * 1" na lista e no canvas, e a frase entra acima da
 próxima ocorrência no formulário (`renderer/lib/descricao-do-cron.ts`). O que

@@ -269,6 +269,7 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "providers.allModels": (opcoes) => providerService.listAllModels(opcoes),
     "providers.registered": () => providerService.listRegistered(),
     "providers.register": (cadastro) => providerService.register(cadastro),
+    "providers.setEnabled": (name, enabled) => providerService.setEnabled(name, enabled),
     "providers.remove": (id, force) => providerService.remove(id, force),
     "providers.credentials": () => providerService.credentials(),
     "providers.saveSecret": (nome, chave) => providerService.setSecret(nome, chave),

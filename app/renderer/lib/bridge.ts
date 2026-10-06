@@ -222,6 +222,8 @@ export const ACTION_CHANNELS = [
   // provedor aparece em vez de apagar.
   "providers.register",
   "providers.remove",
+  // Ligar e desligar provedor. Escrita, um clique, e desfaz no mesmo botão.
+  "providers.setEnabled",
   // Gravar e apagar preço de modelo. Escrita, e cada uma é um clique.
   "providers.setPrice",
   "providers.removePrice",

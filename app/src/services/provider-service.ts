@@ -56,6 +56,8 @@ export interface ProviderInfo {
   requires: string[];
   /** O que alguém cadastrou, ou nulo quando o provedor é de fábrica. */
   registered: { label: string; baseUrl: string } | null;
+  /** Desligado por quem administra: some de tudo mesmo com credencial ou binário. */
+  disabled: boolean;
 }
 
 /** Um provedor cadastrado como ele está no banco. */
@@ -175,8 +177,37 @@ export class ProviderService {
       carregados.push(row.id);
     }
 
-    this.providers = this.build(secrets, cadastrados);
+    this.desligados = new Set(rows.filter((r) => !r.enabled).map((r) => r.id));
+    this.providers = this.desligar(this.build(secrets, cadastrados));
     return carregados;
+  }
+
+  /** Os que alguém desligou na tela, lidos no último `loadSecrets`. */
+  private desligados = new Set<string>();
+
+  /**
+   * Provedor desligado responde indisponível para todo mundo: chat, executor,
+   * substituição de modelo e catálogo leem `available` daqui. É o que deixa
+   * esconder o Claude Code que o Locum acha na máquina, mas que não é para
+   * ser usado.
+   */
+  private desligar(entradas: Record<string, ProviderEntry>): Record<string, ProviderEntry> {
+    return Object.fromEntries(
+      Object.entries(entradas).map(([nome, entrada]) => [
+        nome,
+        this.desligados.has(nome) ? { ...entrada, available: () => false } : entrada,
+      ]),
+    );
+  }
+
+  /** Liga ou desliga o provedor, criando a linha se ele ainda não tem uma. */
+  async setEnabled(name: string, enabled: boolean): Promise<void> {
+    if (!(name in this.providers)) throw new Error(`provider "${name}" nao existe`);
+    await this.db
+      .insert(schema.providers)
+      .values({ id: name, kind: name, enabled })
+      .onConflictDoUpdate({ target: schema.providers.id, set: { enabled } });
+    await this.loadSecrets();
   }
 
   /** Os provedores como estao agora, para quem precisa montar um runtime. */
@@ -350,6 +381,7 @@ export class ProviderService {
       subscription: entry.model === undefined,
       requires: entry.requires,
       registered: entry.registered ?? null,
+      disabled: this.desligados.has(name),
     }));
   }
 

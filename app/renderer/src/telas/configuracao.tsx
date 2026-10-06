@@ -93,11 +93,13 @@ export function Configuracao({ detalhe, navegar }: TelaProps) {
     );
 
   const listaDeProvedores = provedoresRecarregados?.lista ?? provedores.data ?? [];
-  const ligados = listaDeProvedores.filter((p) => p.available);
+  // O desligado fica entre os ligados, com o botão de religar: foi a pessoa
+  // que desligou, e ele não precisa de chave nenhuma para voltar.
+  const ligados = listaDeProvedores.filter((p) => p.available || p.disabled);
   // Gateway cadastrado sem chave guarda a chave na própria linha, na seção de
   // gateways: aqui ele apareceria duas vezes, e longe de onde foi cadastrado.
-  const paraLigar = listaDeProvedores.filter((p) => !p.available && p.registered === null);
-  const modelos = useModelosLigados(ligados.map((p) => p.name).join(","));
+  const paraLigar = listaDeProvedores.filter((p) => !p.available && !p.disabled && p.registered === null);
+  const modelos = useModelosLigados(ligados.filter((p) => p.available).map((p) => p.name).join(","));
   const chavesPorProvedor = new Map(
     (provedoresRecarregados?.chaves ?? chaves.data ?? []).map((c) => [c.provider, c]),
   );
@@ -744,6 +746,41 @@ function ListaDeModelos({ modelos, provedor }: { modelos: ModelosDoProvedor | nu
   );
 }
 
+/**
+ * Desligar vale para o que o Locum acha sozinho, como o Claude Code instalado
+ * na máquina: o provedor some do chat, dos agents e da substituição, sem
+ * apagar chave nem desinstalar nada.
+ */
+function LigaDesligaProvedor({ provedor, recarregar }: { provedor: Provedor; recarregar: () => Promise<void> }) {
+  const { t } = useTranslation();
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  const alternar = (): void => {
+    setEnviando(true);
+    setErro(null);
+    call("providers.setEnabled", provedor.name, provedor.disabled).then(
+      async () => {
+        await recarregar();
+        setEnviando(false);
+      },
+      (falha: unknown) => {
+        setEnviando(false);
+        setErro(falha instanceof Error ? falha.message : String(falha));
+      },
+    );
+  };
+
+  return (
+    <span className="ml-auto flex items-center gap-2">
+      {erro === null ? null : <span className="text-sev-critical text-xs">{erro}</span>}
+      <Button className="h-7 cursor-pointer" disabled={enviando} onClick={alternar} size="sm" variant="ghost">
+        {t(provedor.disabled ? "settings.providers.enable" : "settings.providers.disable")}
+      </Button>
+    </span>
+  );
+}
+
 function LinhaDoProvedor({
   chave,
   modelos,
@@ -791,6 +828,12 @@ function LinhaDoProvedor({
           <span className="text-muted-foreground border-border shrink-0 rounded border px-1.5 text-[11px]">
             {t("settings.providers.subscription")}
           </span>
+        ) : null}
+        {provedor.disabled ? (
+          <span className="text-muted-foreground shrink-0 text-xs">{t("settings.providers.disabled")}</span>
+        ) : null}
+        {provedor.available || provedor.disabled ? (
+          <LigaDesligaProvedor provedor={provedor} recarregar={recarregar} />
         ) : null}
         {chave === undefined || chave.ref === null || (!chave.stored && !provedor.available) ? null : (
           <Badge

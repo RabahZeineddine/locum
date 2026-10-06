@@ -248,6 +248,7 @@ interface ServiceApi {
    */
   "providers.registered": ProviderService["listRegistered"];
   "providers.register": ProviderService["register"];
+  "providers.setEnabled": ProviderService["setEnabled"];
   "providers.remove": ProviderService["remove"];
 
   /**
@@ -562,6 +563,7 @@ export const BRIDGE_CHANNELS = [
   "providers.allModels",
   "providers.registered",
   "providers.register",
+  "providers.setEnabled",
   "providers.remove",
   "providers.credentials",
   "providers.saveSecret",
