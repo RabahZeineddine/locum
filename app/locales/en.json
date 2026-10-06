@@ -1367,7 +1367,7 @@
       },
       "linear": {
         "tagline": "Issues, projects and cycles",
-        "description": "Linear's official MCP server. Agents read issues and projects; writing still goes through the approval queue."
+        "description": "Linear's official MCP server. Agents search, read and comment on issues in the authorized workspace."
       },
       "notion": {
         "tagline": "Workspace pages and databases",
@@ -1386,8 +1386,8 @@
         "description": "Teams through Microsoft Graph, with an app registered in your organization's Entra. Wakes agents on mentions and chat messages, and a proposed reply goes out under your name after you approve it."
       },
       "sentry": {
-        "tagline": "Errors, issues and releases",
-        "description": "Sentry's official MCP server. Agents look up errors and releases to investigate incidents."
+        "tagline": "Production errors and issues",
+        "description": "Sentry's official MCP server. Agents search errors, events and stack traces in the authorized organizations."
       },
       "cloudflare": {
         "tagline": "Workers, logs and observability",
@@ -1395,7 +1395,7 @@
       },
       "vercel": {
         "tagline": "Deployments, projects and logs",
-        "description": "Vercel's official MCP server. Agents read deployments, projects and build logs."
+        "description": "Vercel's official MCP server. Agents look up projects, deployments and build logs."
       },
       "supabase": {
         "tagline": "Project database, schema and logs",
@@ -1412,6 +1412,38 @@
       "opencode": {
         "tagline": "Your agents and queue in any opencode session",
         "description": "Registers Locum as an MCP server in this machine's opencode, in the global opencode.json. Every new session sees agents, runs and the queue, using the credentials stored here."
+      },
+      "shortcut": {
+        "tagline": "Stories, epics and iterations",
+        "description": "Shortcut's official MCP server. Agents read and update stories and epics in the workspace you authorize."
+      },
+      "asana": {
+        "tagline": "Tasks and projects",
+        "description": "Asana's official MCP server. Agents read and update tasks in the projects you allow."
+      },
+      "miro": {
+        "tagline": "Boards and diagrams",
+        "description": "Miro's official MCP server. Agents read and draw on the boards you allow."
+      },
+      "canva": {
+        "tagline": "Designs and presentations",
+        "description": "Canva's official MCP server. Agents search and read designs in your account."
+      },
+      "newrelic": {
+        "tagline": "APM, logs and alerts",
+        "description": "New Relic's official MCP server. Agents run NRQL, read logs and look up incidents in the authorized account."
+      },
+      "amplitude": {
+        "tagline": "Events, charts and funnels",
+        "description": "Amplitude's official MCP server. Agents query charts, cohorts and events in the authorized project."
+      },
+      "posthog": {
+        "tagline": "Events, funnels and feature flags",
+        "description": "PostHog's official MCP server. Agents query events, insights and flags in the authorized project."
+      },
+      "intercom": {
+        "tagline": "Support conversations and contacts",
+        "description": "Intercom's official MCP server. Agents search conversations and contacts in the authorized workspace."
       }
     },
     "import": {

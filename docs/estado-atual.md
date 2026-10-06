@@ -1564,6 +1564,15 @@ terminal, com o binário por caminho absoluto (`~/.opencode/bin` primeiro). Cada
 linha ganha o selo da ferramenta. Versão antiga do opencode, que guardava JSON
 em `storage/`, não é lida.
 
+**Onze apps novos na vitrine.** Shortcut, Linear, Asana (`/v2/mcp`), Miro,
+Canva, Vercel, Sentry, New Relic, Amplitude, PostHog e Intercom entram como
+`oauth`. Cada endereço foi conferido em 05/10/2026: responde 401 e o servidor
+de autorização anuncia `registration_endpoint`, então conecta num clique sem
+client id. Ficaram de fora Stripe e HubSpot, que não anunciam registro, e
+Monday, Supabase e Grafana, cujo metadado não respondeu. Servidor já cadastrado
+com o mesmo nome e outro endereço é trocado pelo da vitrine ao conectar, como
+já valia para os outros.
+
 **Cron em frase.** O gatilho de horário fixo aparece como "Toda segunda às
 07:30 · cron 30 7 * * 1" na lista e no canvas, e a frase entra acima da
 próxima ocorrência no formulário (`renderer/lib/descricao-do-cron.ts`). O que

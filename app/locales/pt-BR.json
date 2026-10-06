@@ -1402,7 +1402,7 @@
       },
       "linear": {
         "tagline": "Issues, projetos e ciclos",
-        "description": "Servidor MCP oficial do Linear. Os agents leem issues e projetos; escrever continua passando pela fila de aprovação."
+        "description": "Servidor MCP oficial do Linear. Os agents buscam, leem e comentam issues do workspace autorizado."
       },
       "notion": {
         "tagline": "Páginas e bases do workspace",
@@ -1421,8 +1421,8 @@
         "description": "Teams pelo Microsoft Graph, com um app registrado no Entra da sua organização. Acorda agents com menções e mensagens de chat, e a resposta proposta sai com o seu nome depois da sua aprovação."
       },
       "sentry": {
-        "tagline": "Erros, issues e releases",
-        "description": "Servidor MCP oficial do Sentry. Os agents consultam erros e releases para investigar incidente."
+        "tagline": "Erros e issues de produção",
+        "description": "Servidor MCP oficial do Sentry. Os agents buscam erros, eventos e stack traces das organizações autorizadas."
       },
       "cloudflare": {
         "tagline": "Workers, logs e observabilidade",
@@ -1430,7 +1430,7 @@
       },
       "vercel": {
         "tagline": "Deploys, projetos e logs",
-        "description": "Servidor MCP oficial da Vercel. Os agents leem deploys, projetos e logs de build."
+        "description": "Servidor MCP oficial da Vercel. Os agents consultam projetos, deploys e logs de build."
       },
       "supabase": {
         "tagline": "Banco, schema e logs do projeto",
@@ -1447,6 +1447,38 @@
       "opencode": {
         "tagline": "Seus agents e a fila em qualquer sessão do opencode",
         "description": "Cadastra o Locum como servidor MCP no opencode desta máquina, no opencode.json global. Qualquer sessão nova passa a ver agents, execuções e a fila, usando as credenciais guardadas aqui."
+      },
+      "shortcut": {
+        "tagline": "Stories, épicos e iterações",
+        "description": "Servidor MCP oficial do Shortcut. Os agents leem e atualizam stories e épicos do workspace que você autorizar."
+      },
+      "asana": {
+        "tagline": "Tarefas e projetos",
+        "description": "Servidor MCP oficial do Asana. Os agents leem e atualizam tarefas dos projetos que você liberar."
+      },
+      "miro": {
+        "tagline": "Quadros e diagramas",
+        "description": "Servidor MCP oficial do Miro. Os agents leem e desenham em quadros que você liberar."
+      },
+      "canva": {
+        "tagline": "Designs e apresentações",
+        "description": "Servidor MCP oficial do Canva. Os agents buscam e leem designs da sua conta."
+      },
+      "newrelic": {
+        "tagline": "APM, logs e alertas",
+        "description": "Servidor MCP oficial do New Relic. Os agents rodam NRQL, leem logs e consultam incidentes da conta autorizada."
+      },
+      "amplitude": {
+        "tagline": "Eventos, gráficos e funis",
+        "description": "Servidor MCP oficial do Amplitude. Os agents consultam gráficos, coortes e eventos do projeto autorizado."
+      },
+      "posthog": {
+        "tagline": "Eventos, funis e feature flags",
+        "description": "Servidor MCP oficial do PostHog. Os agents consultam eventos, insights e flags do projeto autorizado."
+      },
+      "intercom": {
+        "tagline": "Conversas e contatos de suporte",
+        "description": "Servidor MCP oficial do Intercom. Os agents buscam conversas e contatos do workspace autorizado."
       }
     },
     "import": {

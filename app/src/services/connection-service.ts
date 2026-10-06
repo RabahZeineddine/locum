@@ -101,8 +101,8 @@ export interface CatalogEntry {
 /**
  * O catálogo. Endereços de `oauth` foram conferidos à mão: cada um responde
  * 401 com metadado de recurso e anuncia `registration_endpoint`, que é o que
- * deixa conectar sem client id. Slack, GitHub remoto e Asana não anunciam, e
- * por isso não estão aqui como `oauth`.
+ * deixa conectar sem client id. Slack e GitHub remoto não anunciam, e por isso
+ * não estão aqui como `oauth`. O Asana anuncia só no endereço `v2`.
  */
 export const CATALOG: CatalogEntry[] = [
   { id: "claude-code", name: "Claude Code", category: "dev", kind: "claude-code", logo: "claude", color: "D97757" },
@@ -113,6 +113,17 @@ export const CATALOG: CatalogEntry[] = [
   { id: "slack", name: "Slack", category: "communication", kind: "panel", logo: null, color: "4A154B" },
   { id: "teams", name: "Microsoft Teams", category: "communication", kind: "panel", logo: null, color: "5059C9" },
   { id: "figma", name: "Figma", category: "work", kind: "oauth", url: "https://mcp.figma.com/mcp", logo: "figma", color: "F24E1E" },
+  { id: "shortcut", name: "Shortcut", category: "work", kind: "oauth", url: "https://mcp.shortcut.com/mcp", logo: null, color: "58B1E4" },
+  { id: "linear", name: "Linear", category: "work", kind: "oauth", url: "https://mcp.linear.app/mcp", logo: null, color: "5E6AD2" },
+  { id: "asana", name: "Asana", category: "work", kind: "oauth", url: "https://mcp.asana.com/v2/mcp", logo: null, color: "F06A6A" },
+  { id: "miro", name: "Miro", category: "work", kind: "oauth", url: "https://mcp.miro.com/", logo: null, color: "FFD02F" },
+  { id: "canva", name: "Canva", category: "work", kind: "oauth", url: "https://mcp.canva.com/mcp", logo: null, color: "00C4CC" },
+  { id: "vercel", name: "Vercel", category: "dev", kind: "oauth", url: "https://mcp.vercel.com", logo: null, color: "000000" },
+  { id: "sentry", name: "Sentry", category: "observability", kind: "oauth", url: "https://mcp.sentry.dev/mcp", logo: null, color: "362D59" },
+  { id: "newrelic", name: "New Relic", category: "observability", kind: "oauth", url: "https://mcp.newrelic.com/mcp", logo: null, color: "1CE783" },
+  { id: "amplitude", name: "Amplitude", category: "data", kind: "oauth", url: "https://mcp.amplitude.com/mcp", logo: null, color: "1E61F0" },
+  { id: "posthog", name: "PostHog", category: "data", kind: "oauth", url: "https://mcp.posthog.com/mcp", logo: null, color: "F54E00" },
+  { id: "intercom", name: "Intercom", category: "communication", kind: "oauth", url: "https://mcp.intercom.com/mcp", logo: null, color: "1F8DED" },
 ];
 
 export interface Connection extends CatalogEntry {
