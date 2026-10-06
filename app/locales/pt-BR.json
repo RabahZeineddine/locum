@@ -609,6 +609,7 @@
       "description": "Os modelos que os agents podem usar neste computador.",
       "available": "disponível",
       "subscription": "assinatura",
+      "addKey": "Adicionar chave",
       "disabled": "desligado",
       "disable": "Desligar",
       "enable": "Ligar",
@@ -962,7 +963,19 @@
     "sections": {
       "general": "Geral",
       "models": "Modelos",
+      "assistant": "Assistente",
+      "tools": "Ferramentas",
       "connections": "Conexões"
+    },
+    "sectionLead": {
+      "general": "Idioma, atualização e onde o Locum guarda o trabalho das iniciativas.",
+      "models": "Os provedores que pensam pelos agents nesta máquina: assinatura, chave de API ou gateway compatível. Desligue o que não deve ser usado.",
+      "assistant": "Com quem você conversa no ⌘J, e para qual modelo o Locum troca quando o escolhido não está disponível.",
+      "tools": "O Locum dentro das ferramentas de código que você já usa, e o terminal que abre as sessões."
+    },
+    "toolsLocum": {
+      "title": "Locum nas ferramentas de código",
+      "description": "Um clique cadastra o Locum como servidor MCP, e os agents, as execuções e a fila aparecem dentro da ferramenta."
     },
     "staleDays": {
       "title": "Iniciativa parada",
@@ -1068,6 +1081,7 @@
     "opencode": {
       "title": "opencode",
       "connectedHint": "Abra uma sessão nova do opencode e as ferramentas do Locum já aparecem.",
+      "showSnippet": "Ver o trecho para colar à mão",
       "snippet": "O botão grava isto em {{path}}. Se preferir, cole você mesmo na chave \"mcp\"."
     }
   },

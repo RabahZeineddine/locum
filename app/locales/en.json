@@ -586,6 +586,7 @@
       "description": "The models agents can use on this computer.",
       "available": "available",
       "subscription": "subscription",
+      "addKey": "Add key",
       "disabled": "off",
       "disable": "Turn off",
       "enable": "Turn on",
@@ -929,7 +930,19 @@
     "sections": {
       "general": "General",
       "models": "Models",
+      "assistant": "Assistant",
+      "tools": "Tools",
       "connections": "Connections"
+    },
+    "sectionLead": {
+      "general": "Language, updates and where Locum keeps initiative work.",
+      "models": "The providers that think for your agents on this machine: subscription, API key or compatible gateway. Turn off what should not be used.",
+      "assistant": "Who you talk to in ⌘J, and which model Locum switches to when the chosen one is unavailable.",
+      "tools": "Locum inside the coding tools you already use, and the terminal that opens sessions."
+    },
+    "toolsLocum": {
+      "title": "Locum in your coding tools",
+      "description": "One click registers Locum as an MCP server, and agents, runs and the queue show up inside the tool."
     },
     "staleDays": {
       "title": "Stalled initiative",
@@ -1035,6 +1048,7 @@
     "opencode": {
       "title": "opencode",
       "connectedHint": "Open a new opencode session and the Locum tools show up.",
+      "showSnippet": "Show the snippet to paste by hand",
       "snippet": "The button writes this to {{path}}. Or paste it yourself under the \"mcp\" key."
     }
   },

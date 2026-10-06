@@ -8,7 +8,7 @@ import { rotuloDoModelo, rotuloDoProvedor } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
 import { EscolhaDoModelo } from "../assistente-modelo";
 import { ImportarDoClaude, Painel, Propria, Vitrine } from "./conexoes";
-import { ChevronRight, Download, Plus, RefreshCw, Search } from "lucide-react";
+import { ChevronRight, Cpu, Download, Plus, RefreshCw, Search, SlidersHorizontal, Sparkles, SquareTerminal, type LucideIcon } from "lucide-react";
 import { ehLeitura } from "../../../src/config/leitura.js";
 import { quando } from "./sessoes";
 import { useIdioma } from "../idioma";
@@ -62,7 +62,7 @@ type Teste = ReadResult<"mcp.test">;
  * O que ficou se divide pelo que a pessoa veio fazer: ajustar o app, dizer
  * quais modelos rodam, ou ligar o Locum a outro serviço.
  */
-export const SECOES = ["general", "models"] as const;
+export const SECOES = ["general", "models", "assistant", "tools"] as const;
 export type SecaoId = (typeof SECOES)[number];
 
 export function Configuracao({ detalhe, navegar }: TelaProps) {
@@ -146,9 +146,21 @@ export function Configuracao({ detalhe, navegar }: TelaProps) {
     for (const uso of credencial.users) porCadastro.set(`${uso.kind}:${uso.name}`, credencial);
   }
 
+  const ligadosEmCartao = ligados.map((provedor) => (
+    <LinhaDoProvedor
+      chave={chavesPorProvedor.get(provedor.name)}
+      key={provedor.name}
+      modelos={modelos === null ? null : (modelos.get(provedor.name) ?? null)}
+      precos={listaDePrecos.filter((p) => p.provider === provedor.name)}
+      provedor={provedor}
+      recarregar={recarregarProvedores}
+      recarregarPrecos={recarregarPrecos}
+    />
+  ));
+
   return (
     <div
-      className="mx-auto flex w-full max-w-6xl flex-col gap-8"
+      className="mx-auto flex w-full max-w-6xl flex-col gap-6"
       data-estado={estado}
       data-locum-cofre={credenciais.data?.available === true ? "legivel" : "fechado"}
       data-locum-fallbacks={fallbacks.data?.length ?? -1}
@@ -159,22 +171,6 @@ export function Configuracao({ detalhe, navegar }: TelaProps) {
       data-locum-servidores={(servidores.data ?? []).map((s) => s.config.name).join(",")}
     >
       <CabecalhoDaTela descricao={t("settings.lead")} titulo={t("nav.settings")} />
-      <div className="flex gap-1 -mt-3" data-locum-probe="secoes" role="tablist">
-        {SECOES.map((id) => (
-          <Button
-            aria-selected={id === secao}
-            className="cursor-pointer"
-            data-locum-secao={id}
-            key={id}
-            onClick={() => navegar("settings", id)}
-            role="tab"
-            size="sm"
-            variant={id === secao ? "secondary" : "ghost"}
-          >
-            {t(`settings.sections.${id}`)}
-          </Button>
-        ))}
-      </div>
 
       {erro === undefined ? null : (
         <p className="text-destructive text-sm">
@@ -182,108 +178,219 @@ export function Configuracao({ detalhe, navegar }: TelaProps) {
         </p>
       )}
 
-      {secao === "general" ? (
-        <>
-          <Secao
-            descricao={t("settings.language.description")}
-            titulo={t("settings.language.title")}
-          >
-            <EscolhaDoIdioma />
-          </Secao>
+      <div className="flex flex-col gap-8 md:flex-row md:items-start">
+        <NavDaConfiguracao atual={secao} navegar={navegar} />
 
-          <Secao descricao={t("settings.updates.description")} titulo={t("settings.updates.title")}>
-            <Atualizacao />
-          </Secao>
+        <div className="flex min-w-0 flex-1 flex-col gap-8">
+          <TopoDaSecao secao={secao} />
 
-          <Secao descricao={t("settings.staleDays.description")} titulo={t("settings.staleDays.title")}>
-            <EscolhaDeStaleDays />
-          </Secao>
+          {secao === "general" ? (
+            <Grupo>
+              <Preferencia descricao={t("settings.language.description")} titulo={t("settings.language.title")}>
+                <EscolhaDoIdioma />
+              </Preferencia>
+              <Preferencia descricao={t("settings.updates.description")} titulo={t("settings.updates.title")}>
+                <Atualizacao />
+              </Preferencia>
+              <Preferencia descricao={t("settings.staleDays.description")} titulo={t("settings.staleDays.title")}>
+                <EscolhaDeStaleDays />
+              </Preferencia>
+              <Preferencia
+                descricao={t("settings.initiativesRoot.description")}
+                empilhado
+                titulo={t("settings.initiativesRoot.title")}
+              >
+                <EscolhaDaRaiz />
+              </Preferencia>
+            </Grupo>
+          ) : null}
 
-          <Secao descricao={t("settings.initiativesRoot.description")} titulo={t("settings.initiativesRoot.title")}>
-            <EscolhaDaRaiz />
-          </Secao>
+          {secao === "models" ? (
+            <>
+              <SecaoEmGrade descricao={t("settings.providers.description")} titulo={t("settings.providers.title")}>
+                {ligados.length === 0 ? <Vazio>{t("settings.providers.empty")}</Vazio> : ligadosEmCartao}
+              </SecaoEmGrade>
 
-          <Secao descricao={t("settings.sessionTerminal.description")} titulo={t("settings.sessionTerminal.title")}>
-            <EscolhaDoTerminal />
-          </Secao>
-        </>
-      ) : null}
+              {paraLigar.length === 0 ? null : (
+                <SecaoEmGrade
+                  colunas
+                  descricao={t("settings.providers.addDescription")}
+                  titulo={t("settings.providers.addTitle")}
+                >
+                  {paraLigar.map((provedor) => (
+                    <LinhaDoProvedor
+                      chave={chavesPorProvedor.get(provedor.name)}
+                      key={provedor.name}
+                      modelos={null}
+                      precos={[]}
+                      provedor={provedor}
+                      recarregar={recarregarProvedores}
+                      recarregarPrecos={recarregarPrecos}
+                    />
+                  ))}
+                </SecaoEmGrade>
+              )}
 
-      {secao === "models" ? (
-        <>
-          <Secao
-            descricao={t("settings.providers.description")}
-            titulo={t("settings.providers.title")}
-          >
-            {ligados.length === 0 ? (
-              <Vazio>{t("settings.providers.empty")}</Vazio>
-            ) : (
-              ligados.map((provedor) => (
-                <LinhaDoProvedor
-                  chave={chavesPorProvedor.get(provedor.name)}
-                  key={provedor.name}
-                  modelos={modelos === null ? null : (modelos.get(provedor.name) ?? null)}
-                  precos={listaDePrecos.filter((p) => p.provider === provedor.name)}
-                  provedor={provedor}
+              <Secao descricao={t("settings.registered.description")} titulo={t("settings.registered.title")}>
+                <ProvedoresCadastrados
+                  chaves={chavesPorProvedor}
+                  provedores={listaDeProvedores}
                   recarregar={recarregarProvedores}
-                  recarregarPrecos={recarregarPrecos}
                 />
-              ))
-            )}
-          </Secao>
+              </Secao>
+            </>
+          ) : null}
 
-          {paraLigar.length === 0 ? null : (
-            <Secao
-              descricao={t("settings.providers.addDescription")}
-              titulo={t("settings.providers.addTitle")}
+          {secao === "assistant" ? (
+            <>
+              <section className="superficie relative overflow-hidden rounded-xl">
+                <div aria-hidden className="ia-gradiente absolute inset-x-0 top-0 h-px opacity-80" />
+                <div className="flex items-start gap-3 px-4 pt-4 pb-2">
+                  <span className="ia-gradiente flex size-8 shrink-0 items-center justify-center rounded-lg">
+                    <Sparkles className="text-primary-foreground size-4" aria-hidden />
+                  </span>
+                  <div className="flex flex-col gap-0.5">
+                    <h2 className="text-[15px] font-medium tracking-tight">{t("settings.assistantModel.title")}</h2>
+                    <p className="text-muted-foreground max-w-[68ch] text-xs">{t("settings.assistantModel.description")}</p>
+                  </div>
+                </div>
+                <EscolhaDoModelo />
+              </section>
+
+              <Secao
+                descricao={t("settings.fallbacks.description", { machine: machineId ?? "..." })}
+                titulo={t("settings.fallbacks.title")}
+              >
+                {(fallbacks.data ?? []).length === 0 ? (
+                  <Vazio>{t("settings.fallbacks.empty")}</Vazio>
+                ) : (
+                  (fallbacks.data ?? []).map((fallback) => (
+                    <LinhaDoFallback fallback={fallback} key={`${fallback.fromModel}>${fallback.toModel}`} />
+                  ))
+                )}
+              </Secao>
+            </>
+          ) : null}
+
+          {secao === "tools" ? (
+            <>
+              <Secao descricao={t("settings.toolsLocum.description")} titulo={t("settings.toolsLocum.title")}>
+                <ClaudeCode />
+                <Opencode />
+              </Secao>
+              <Grupo>
+                <Preferencia
+                  descricao={t("settings.sessionTerminal.description")}
+                  titulo={t("settings.sessionTerminal.title")}
+                >
+                  <EscolhaDoTerminal />
+                </Preferencia>
+              </Grupo>
+            </>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const ICONE_DA_SECAO: Record<SecaoId, LucideIcon> = {
+  general: SlidersHorizontal,
+  models: Cpu,
+  assistant: Sparkles,
+  tools: SquareTerminal,
+};
+
+/**
+ * A navegação entre as seções, de lado, como nas preferências do sistema: com
+ * quatro seções e mais por vir, abas em linha viravam uma fila de palavras sem
+ * dizer o que cada uma guarda.
+ */
+function NavDaConfiguracao({ atual, navegar }: { atual: SecaoId; navegar: TelaProps["navegar"] }) {
+  const { t } = useTranslation();
+  return (
+    <nav
+      aria-label={t("nav.settings")}
+      className="flex shrink-0 gap-1 overflow-x-auto md:sticky md:top-4 md:w-52 md:flex-col"
+      data-locum-probe="secoes"
+      role="tablist"
+    >
+      {SECOES.map((id) => {
+        const Icone = ICONE_DA_SECAO[id];
+        const ativo = id === atual;
+        return (
+          <button
+            aria-selected={ativo}
+            className={cn(
+              "focus-visible:ring-ring flex shrink-0 cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm transition-colors duration-150 focus-visible:ring-2 focus-visible:outline-none",
+              ativo ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+            )}
+            data-locum-secao={id}
+            key={id}
+            onClick={() => navegar("settings", id)}
+            role="tab"
+            type="button"
+          >
+            <span
+              className={cn(
+                "flex size-6 items-center justify-center rounded-md",
+                ativo ? (id === "assistant" ? "ia-gradiente text-primary-foreground" : "bg-foreground/10") : "",
+              )}
             >
-              {paraLigar.map((provedor) => (
-                <LinhaDoProvedor
-                  chave={chavesPorProvedor.get(provedor.name)}
-                  key={provedor.name}
-                  modelos={null}
-                  precos={[]}
-                  provedor={provedor}
-                  recarregar={recarregarProvedores}
-                  recarregarPrecos={recarregarPrecos}
-                />
-              ))}
-            </Secao>
-          )}
+              <Icone aria-hidden className="size-3.5" />
+            </span>
+            {t(`settings.sections.${id}`)}
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
 
-          <Secao
-            descricao={t("settings.registered.description")}
-            titulo={t("settings.registered.title")}
-          >
-            <ProvedoresCadastrados
-              chaves={chavesPorProvedor}
-              provedores={listaDeProvedores}
-              recarregar={recarregarProvedores}
-            />
-          </Secao>
+/** Título grande e o que a seção guarda, no topo do conteúdo. */
+function TopoDaSecao({ secao }: { secao: SecaoId }) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex flex-col gap-1">
+      <h2 className="text-xl font-semibold tracking-[-0.01em]">{t(`settings.sections.${secao}`)}</h2>
+      <p className="text-muted-foreground max-w-[68ch] text-sm">{t(`settings.sectionLead.${secao}`)}</p>
+    </div>
+  );
+}
 
-          <Secao
-            descricao={t("settings.fallbacks.description", { machine: machineId ?? "..." })}
-            titulo={t("settings.fallbacks.title")}
-          >
-            {(fallbacks.data ?? []).length === 0 ? (
-              <Vazio>{t("settings.fallbacks.empty")}</Vazio>
-            ) : (
-              (fallbacks.data ?? []).map((fallback) => (
-                <LinhaDoFallback fallback={fallback} key={`${fallback.fromModel}>${fallback.toModel}`} />
-              ))
-            )}
-          </Secao>
+/** Um bloco de preferências, uma por linha, como nos ajustes do sistema. */
+function Grupo({ children }: { children: React.ReactNode }) {
+  return <div className="superficie divide-border divide-y overflow-hidden rounded-xl">{children}</div>;
+}
 
-          <Secao
-            descricao={t("settings.assistantModel.description")}
-            titulo={t("settings.assistantModel.title")}
-          >
-            <EscolhaDoModelo />
-          </Secao>
-        </>
-      ) : null}
-
+/**
+ * Uma preferência: nome e explicação à esquerda, controle à direita. O
+ * controle que precisa de largura (um caminho de pasta) desce para baixo do
+ * texto com `empilhado`.
+ */
+function Preferencia({
+  children,
+  descricao,
+  empilhado = false,
+  titulo,
+}: {
+  children: React.ReactNode;
+  descricao: string;
+  empilhado?: boolean;
+  titulo: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex gap-x-8 gap-y-3 px-4 py-4",
+        empilhado ? "flex-col" : "flex-col lg:flex-row lg:items-center lg:justify-between",
+      )}
+    >
+      <div className="flex max-w-[52ch] flex-col gap-0.5">
+        <span className="text-sm font-medium">{titulo}</span>
+        <span className="text-muted-foreground text-xs leading-relaxed">{descricao}</span>
+      </div>
+      <div className={cn("min-w-0 [&>*]:p-0", empilhado ? "w-full" : "lg:shrink-0")}>{children}</div>
     </div>
   );
 }
@@ -358,6 +465,27 @@ export function Secao({
       <div className="divide-border border-border superficie mt-2 divide-y overflow-hidden rounded-lg border">
         {children}
       </div>
+    </section>
+  );
+}
+
+/** Seção cujos itens já são cartões: sem a moldura de lista, em grade. */
+function SecaoEmGrade({
+  children,
+  colunas = false,
+  descricao,
+  titulo,
+}: {
+  children: React.ReactNode;
+  colunas?: boolean;
+  descricao: string;
+  titulo: string;
+}) {
+  return (
+    <section className="flex flex-col gap-1">
+      <h2 className="text-[15px] font-medium tracking-tight">{titulo}</h2>
+      <p className="text-muted-foreground max-w-[68ch] text-xs">{descricao}</p>
+      <div className={cn("mt-2 grid items-start gap-3", colunas && "lg:grid-cols-2")}>{children}</div>
     </section>
   );
 }
@@ -782,6 +910,34 @@ function LigaDesligaProvedor({ provedor, recarregar }: { provedor: Provedor; rec
   );
 }
 
+/** Cor de cada provedor no monograma; o resto usa o cinza da interface. */
+const COR_DO_PROVEDOR: Record<string, string> = {
+  "claude-code": "#D97757",
+  anthropic: "#D97757",
+  openai: "#10A37F",
+  codex: "#10A37F",
+  google: "#4285F4",
+  glm: "#3859FF",
+  ollama: "#64748B",
+};
+
+/** A inicial do provedor numa pastilha com a cor da marca, apagada quando ele não roda. */
+function Monograma({ nome, apagado }: { nome: string; apagado: boolean }) {
+  const rotulo = rotuloDoProvedor(nome);
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "flex size-8 shrink-0 items-center justify-center rounded-lg text-[13px] font-semibold text-white ring-1 ring-white/10",
+        apagado && "opacity-45 grayscale",
+      )}
+      style={{ backgroundColor: COR_DO_PROVEDOR[nome] ?? "#475569" }}
+    >
+      {rotulo.slice(0, 1).toUpperCase()}
+    </span>
+  );
+}
+
 function LinhaDoProvedor({
   chave,
   modelos,
@@ -801,7 +957,7 @@ function LinhaDoProvedor({
 
   return (
     <div
-      className="flex flex-col gap-2 px-3 py-2 text-sm"
+      className="superficie flex flex-col gap-3 rounded-xl px-4 py-3 text-sm"
       data-locum-chave-ambiente={chave?.env === true ? "sim" : "nao"}
       data-locum-chave-conferida={chave?.checkedAt ?? ""}
       data-locum-chave-guardada={chave === undefined ? "" : chave.stored ? "sim" : "nao"}
@@ -811,14 +967,8 @@ function LinhaDoProvedor({
       data-locum-provider={provedor.name}
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <span
-          aria-hidden
-          className={cn(
-            "size-1.5 shrink-0 rounded-full",
-            provedor.available ? "bg-chart-2" : "bg-muted-foreground/40",
-          )}
-        />
-        <span className="w-36 shrink-0 truncate text-[13px] font-medium" title={provedor.name}>
+        <Monograma apagado={!provedor.available} nome={provedor.name} />
+        <span className="min-w-28 truncate text-sm font-medium" title={provedor.name}>
           {rotuloDoProvedor(provedor.name)}
         </span>
         {/* Na seção de adicionar, dizer "indisponível" em cada linha só repete o título. */}
@@ -859,8 +1009,20 @@ function LinhaDoProvedor({
 
       {provedor.available ? <ListaDeModelos modelos={modelos} provedor={provedor.name} /> : null}
 
-      {chave === undefined || chave.variable === null ? null : (
+      {chave === undefined || chave.variable === null ? null : provedor.available || provedor.disabled ? (
         <ChaveDoProvedor chave={chave} provedor={provedor} recarregar={recarregar} />
+      ) : (
+        // Recolhida enquanto o provedor não está em uso: cinco campos de senha
+        // abertos viravam o assunto da tela. Fechada, ela continua no DOM.
+        <details className="group">
+          <summary className="text-primary hover:text-foreground w-fit cursor-pointer list-none text-xs font-medium">
+            <Plus aria-hidden className="mr-1 inline size-3.5 align-[-2px]" />
+            {t("settings.providers.addKey")}
+          </summary>
+          <div className="mt-2">
+            <ChaveDoProvedor chave={chave} provedor={provedor} recarregar={recarregar} />
+          </div>
+        </details>
       )}
 
       {/*
@@ -2669,12 +2831,17 @@ function Opencode() {
       ) : null}
       {erro === null ? null : <p className="text-sev-critical text-xs">{erro}</p>}
       {estado === null ? null : (
-        <>
-          <p className="text-muted-foreground text-xs">{t("settings.opencode.snippet", { path: estado.configPath })}</p>
-          <code className="bg-muted text-muted-foreground block overflow-x-auto rounded-md px-2 py-1 font-mono text-[11px] whitespace-pre">
+        // Recolhido: o botão resolve quase sempre, e o trecho só interessa a
+        // quem precisa colar à mão. Abre sozinho quando o botão falhou.
+        <details className="group" open={erro !== null}>
+          <summary className="text-muted-foreground hover:text-foreground w-fit cursor-pointer text-xs">
+            {t("settings.opencode.showSnippet")}
+          </summary>
+          <p className="text-muted-foreground mt-2 text-xs">{t("settings.opencode.snippet", { path: estado.configPath })}</p>
+          <code className="bg-muted text-muted-foreground mt-2 block overflow-x-auto rounded-md px-2 py-1 font-mono text-[11px] whitespace-pre">
             {estado.snippet}
           </code>
-        </>
+        </details>
       )}
     </div>
   );

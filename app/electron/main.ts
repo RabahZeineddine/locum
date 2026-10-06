@@ -5963,9 +5963,11 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
     ["initiatives", primeiraIniciativa === undefined ? undefined : `${primeiraIniciativa}/agents`],
     ["initiatives", primeiraIniciativa === undefined ? undefined : `${primeiraIniciativa}/chat`],
     ["sessions", undefined],
-    // Uma foto por seção, com o nome dela: a Configuração tem duas.
+    // Uma foto por seção, com o nome dela.
     ["settings", "general"],
     ["settings", "models"],
+    ["settings", "assistant"],
+    ["settings", "tools"],
     ["apps", undefined],
     ["automations", undefined],
     ["automations", primeiroAgent],

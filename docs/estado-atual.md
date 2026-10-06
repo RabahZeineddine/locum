@@ -1581,6 +1581,16 @@ mesmo nome troca o endereço e só troca o token se outro for colado. As
 instâncias não aparecem como cartão próprio na vitrine, só dentro do Grafana.
 Precisa de Docker na máquina.
 
+**Configuração redesenhada.** A tela era uma pilha de título, texto e caixa.
+Agora tem navegação lateral com ícone e quatro seções: Geral (preferências em
+linha, nome à esquerda e controle à direita, como nos ajustes do sistema),
+Modelos (cada provedor um cartão com monograma na cor da marca; os sem chave
+em grade, com a chave recolhida em "Adicionar chave", ainda no DOM para a
+fumaça), Assistente (o modelo do chat em destaque com o gradiente da IA, e as
+substituições) e Ferramentas (Locum no Claude Code e no opencode, com o trecho
+de colar recolhido, e o terminal da sessão). As capturas passaram a fotografar
+as quatro seções.
+
 **Cron em frase.** O gatilho de horário fixo aparece como "Toda segunda às
 07:30 · cron 30 7 * * 1" na lista e no canvas, e a frase entra acima da
 próxima ocorrência no formulário (`renderer/lib/descricao-do-cron.ts`). O que
