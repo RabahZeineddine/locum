@@ -1463,12 +1463,12 @@
     }
   },
   "claudeSessions": {
-    "title": "Sessões do Claude",
-    "lead": "Toda conversa do Claude Code nesta máquina nas últimas duas semanas. O que ficou pela metade fica aqui até você retomar ou marcar que terminou.",
+    "title": "Sessões",
+    "lead": "Toda conversa do Claude Code e do opencode nesta máquina nas últimas duas semanas. O que ficou pela metade fica aqui até você retomar ou marcar que terminou.",
     "refresh": "Atualizar",
     "loading": "Lendo as sessões…",
     "refused": "Não consegui ler as sessões: {{message}}",
-    "empty": "Nenhuma sessão do Claude Code nas últimas duas semanas.",
+    "empty": "Nenhuma sessão do Claude Code ou do opencode nas últimas duas semanas.",
     "groups": {
       "unfinished_one": "Ficou pela metade, {{count}}",
       "unfinished_other": "Ficaram pela metade, {{count}}",
@@ -1501,6 +1501,10 @@
     "resume": "Retomar",
     "markDone": "Terminei",
     "reopen": "Reabrir",
+    "tool": {
+      "claude-code": "Claude Code",
+      "opencode": "opencode"
+    },
     "uncommitted_zero": "{{count}} arquivos sem commit"
   },
   "automations": {

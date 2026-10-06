@@ -1428,12 +1428,12 @@
     }
   },
   "claudeSessions": {
-    "title": "Claude sessions",
-    "lead": "Every Claude Code conversation on this machine in the last two weeks. Anything left halfway stays here until you resume it or mark it done.",
+    "title": "Sessions",
+    "lead": "Every Claude Code and opencode conversation on this machine in the last two weeks. Anything left halfway stays here until you resume it or mark it done.",
     "refresh": "Refresh",
     "loading": "Reading sessions…",
     "refused": "Could not read sessions: {{message}}",
-    "empty": "No Claude Code sessions in the last two weeks.",
+    "empty": "No Claude Code or opencode sessions in the last two weeks.",
     "groups": {
       "unfinished_one": "Left halfway, {{count}}",
       "unfinished_other": "Left halfway, {{count}}",
@@ -1462,7 +1462,11 @@
     "openHint": "Open in a terminal",
     "resume": "Resume",
     "markDone": "Mark done",
-    "reopen": "Reopen"
+    "reopen": "Reopen",
+    "tool": {
+      "claude-code": "Claude Code",
+      "opencode": "opencode"
+    }
   },
   "automations": {
     "title": "Automations",

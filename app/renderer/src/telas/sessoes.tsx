@@ -316,8 +316,13 @@ export function Cartao({ acoes, idioma, sessao }: { acoes: Acoes; idioma: string
           )}
         </div>
 
-        <span className="truncate font-medium text-[15px] tracking-tight" title={sessao.title}>
-          {sessao.title}
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="truncate font-medium text-[15px] tracking-tight" title={sessao.title}>
+            {sessao.title}
+          </span>
+          <span className="text-muted-foreground border-border shrink-0 rounded border px-1.5 text-[11px]">
+            {t(`claudeSessions.tool.${sessao.tool}`)}
+          </span>
         </span>
 
         <span className="text-muted-foreground flex min-w-0 items-center gap-2 font-mono text-xs">

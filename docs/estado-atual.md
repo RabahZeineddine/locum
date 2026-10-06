@@ -1554,6 +1554,16 @@ executor, substituição e catálogo deixam de vê-lo. O desligado continua na
 lista de ligados, com "Ligar". Só vale no app, que é quem chama `loadSecrets`;
 a linha de comando e o servidor MCP seguem vendo o ambiente.
 
+**Sessões do opencode.** A aba Sessões lê também o opencode
+(`src/services/opencode-sessions.ts`): o `opencode.db` em
+`~/.local/share/opencode`, aberto só para leitura, tabelas `session`,
+`message` e `part`, sem as sessões de subagent. O opencode não registra
+processo aberto, então o estado sai do relógio: atividade nos últimos 5 min
+conta como aberta. Retomar escreve `opencode --session <id>` no script do
+terminal, com o binário por caminho absoluto (`~/.opencode/bin` primeiro). Cada
+linha ganha o selo da ferramenta. Versão antiga do opencode, que guardava JSON
+em `storage/`, não é lida.
+
 **Cron em frase.** O gatilho de horário fixo aparece como "Toda segunda às
 07:30 · cron 30 7 * * 1" na lista e no canvas, e a frase entra acima da
 próxima ocorrência no formulário (`renderer/lib/descricao-do-cron.ts`). O que

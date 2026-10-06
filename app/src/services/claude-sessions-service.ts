@@ -4,6 +4,7 @@ import { open, readdir, readFile, stat } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { claudeBinary } from "../runtimes/claude-binary.js";
+import { bancoDoOpencode, binarioDoOpencode, lerConversasDoOpencode, OPENCODE_ABERTA_MS } from "./opencode-sessions.js";
 import { openInTerminal, sessionService, shellQuote, type SessionService, type SessionTerminal } from "./session-service.js";
 import { settingsService, type SettingsService } from "./settings-service.js";
 
@@ -36,6 +37,8 @@ export type EstadoDaSessao =
 
 export interface SessaoDoClaude {
   id: string;
+  /** De qual ferramenta é a conversa: muda o comando de retomar e o selo na tela. */
+  tool: "claude-code" | "opencode";
   title: string;
   cwd: string;
   branch: string | null;
@@ -62,6 +65,8 @@ export interface ClaudeSessionsDeps {
   gitChanges: (cwd: string) => Promise<number | null>;
   exec: (command: string, args: string[]) => Promise<void>;
   resolveClaude: () => Promise<string | undefined>;
+  /** Sem valor, `~/.local/share/opencode/opencode.db`. */
+  opencodeDb: string | undefined;
   scriptDir: string;
   now: () => number;
 }
@@ -276,6 +281,7 @@ export class ClaudeSessionsService {
       gitChanges: mudancasNoGit,
       exec: execPadrao,
       resolveClaude: () => claudeBinary(),
+      opencodeDb: undefined,
       scriptDir: join(tmpdir(), "locum-resume"),
       now: Date.now,
       ...deps,
@@ -330,7 +336,7 @@ export class ClaudeSessionsService {
     try {
       pastas = await readdir(projetos);
     } catch {
-      return [];
+      pastas = [];
     }
 
     const candidatos: { id: string; caminho: string; mtime: number; tamanho: number }[] = [];
@@ -395,6 +401,7 @@ export class ClaudeSessionsService {
 
         return {
           id: c.id,
+          tool: "claude-code" as const,
           title: resumo.titulo ?? c.id.slice(0, 8),
           cwd,
           branch: resumo.branch,
@@ -411,9 +418,54 @@ export class ClaudeSessionsService {
       }),
     );
 
-    return sessoes
+    const doOpencode = await Promise.all(
+      lerConversasDoOpencode(this.deps.opencodeDb ?? bancoDoOpencode(), limite * 1000).map(
+        async (c): Promise<SessaoDoClaude | null> => {
+          if (c.turns === 0) return null;
+          const aberta = agora - c.lastActivityAt * 1000 < OPENCODE_ABERTA_MS;
+          const marca = marcadas[c.id];
+          const estado: EstadoDaSessao =
+            marca !== undefined && marca >= c.lastActivityAt
+              ? "done"
+              : aberta
+                ? c.respondeu
+                  ? "waiting"
+                  : "working"
+                : c.respondeu
+                  ? "unfinished"
+                  : "interrupted";
+          return {
+            id: c.id,
+            tool: "opencode",
+            title: c.title,
+            cwd: c.cwd,
+            branch: null,
+            state: estado,
+            lastActivityAt: c.lastActivityAt,
+            startedAt: c.startedAt,
+            lastPrompt: trecho(c.lastPrompt),
+            lastReply: trecho(c.lastReply),
+            askedQuestion: c.lastReply !== null && /\?\s*$/.test(c.lastReply.trim()),
+            uncommitted: estado === "done" || c.cwd === "" ? null : await this.git(c.cwd, agora),
+            pid: null,
+            turns: c.turns,
+          };
+        },
+      ),
+    );
+
+    return [...sessoes, ...doOpencode]
       .filter((s): s is SessaoDoClaude => s !== null)
       .sort((a, b) => b.lastActivityAt - a.lastActivityAt);
+  }
+
+  /** Arquivos sem commit na pasta, guardados por um minuto. */
+  private git(cwd: string, agora: number): Promise<number | null> {
+    const guardado = this.gitCache.get(cwd);
+    if (guardado !== undefined && agora - guardado.em < GIT_TTL_MS) return guardado.valor;
+    const valor = this.deps.gitChanges(cwd);
+    this.gitCache.set(cwd, { em: agora, valor });
+    return valor;
   }
 
   /** Marca como terminada. Guarda o instante da última atividade, que é o que faz a marca cair se a conversa andar. */
@@ -430,23 +482,26 @@ export class ClaudeSessionsService {
   }
 
   /**
-   * Retoma no terminal preferido com `claude --resume`, na pasta onde a sessão
-   * rodava. Sessão com processo vivo não é retomada: dois processos na mesma
+   * Retoma no terminal preferido com `claude --resume` ou `opencode --session`,
+   * na pasta onde a sessão rodava. Sessão com processo vivo não é retomada: dois processos na mesma
    * conversa escreveriam o mesmo arquivo.
    */
   async resume(id: string, iniciativa?: string, escolhido?: SessionTerminal): Promise<{ terminal: string; cwd: string }> {
-    if (!/^[0-9a-f-]{36}$/.test(id)) throw new Error(`sessão inválida: "${id}"`);
+    if (!/^[0-9a-f-]{36}$/.test(id) && !/^ses_[A-Za-z0-9]+$/.test(id)) throw new Error(`sessão inválida: "${id}"`);
     const sessao = (await this.list()).find((s) => s.id === id);
     if (sessao === undefined) throw new Error(`sessão ${id} não encontrada`);
     if (sessao.pid !== null) throw new Error(`a sessão ${id} ainda está aberta no processo ${sessao.pid}`);
 
-    const claude = (await this.deps.resolveClaude()) ?? "claude";
+    const comando =
+      sessao.tool === "opencode"
+        ? `exec ${shellQuote(binarioDoOpencode())} --session ${shellQuote(id)}`
+        : `exec ${shellQuote((await this.deps.resolveClaude()) ?? "claude")} --resume ${shellQuote(id)}`;
     const terminal = escolhido ?? (await this.deps.sessions.terminal());
     mkdirSync(this.deps.scriptDir, { recursive: true });
     const script = join(this.deps.scriptDir, `${id}.command`);
     writeFileSync(
       script,
-      ["#!/bin/sh", `cd ${shellQuote(sessao.cwd)} || exit 1`, `exec ${shellQuote(claude)} --resume ${shellQuote(id)}`, ""].join("\n"),
+      ["#!/bin/sh", `cd ${shellQuote(sessao.cwd)} || exit 1`, comando, ""].join("\n"),
     );
     chmodSync(script, 0o755);
     await openInTerminal(this.deps.exec, terminal, script, {
