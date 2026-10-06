@@ -309,6 +309,7 @@ export function ConexoesDoLocum() {
             paineis={{
               "claude-code": <ClaudeCode />,
               opencode: <Opencode />,
+              grafana: <Grafana />,
               github: (
                 <>
                   <Github />
@@ -2491,6 +2492,125 @@ function ClaudeCode() {
  * perder comentário. Com arquivo quebrado, o botão recusa e o trecho fica para
  * colar.
  */
+/**
+ * As instâncias do Grafana, uma por servidor MCP (`grafana-dev`,
+ * `grafana-prod`). Salvar com o mesmo nome troca o endereço, e o token só é
+ * trocado quando um novo é colado.
+ */
+function Grafana() {
+  const { t } = useTranslation();
+  const inicial = useRead("grafana.list");
+  const [relidas, setRelidas] = useState<ReadResult<"grafana.list"> | null>(null);
+  const [nome, setNome] = useState("");
+  const [url, setUrl] = useState("");
+  const [token, setToken] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const instancias = relidas ?? inicial.data ?? [];
+
+  const agir = (acao: () => Promise<ReadResult<"grafana.list">>, limpar: boolean): void => {
+    setEnviando(true);
+    setErro(null);
+    acao().then(
+      (novas) => {
+        setRelidas(novas);
+        setEnviando(false);
+        if (limpar) {
+          setNome("");
+          setUrl("");
+          setToken("");
+        }
+      },
+      (falha: unknown) => {
+        setEnviando(false);
+        setErro(falha instanceof Error ? falha.message : String(falha));
+      },
+    );
+  };
+
+  const campo = "border-border bg-card focus:ring-ring h-9 w-full rounded-md border px-3 text-sm outline-none focus:ring-2";
+
+  return (
+    <div className="flex flex-col gap-3 px-4 py-3" data-locum-probe="grafana">
+      <p className="text-muted-foreground text-xs">{t("settings.grafana.description")}</p>
+      {instancias.length === 0 ? null : (
+        <ul className="divide-border border-border divide-y rounded-md border">
+          {instancias.map((i) => (
+            <li className="flex items-center gap-3 px-3 py-2 text-sm" key={i.name}>
+              <span className="font-mono text-xs font-medium">{i.name}</span>
+              <span className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-[11px]">{i.url}</span>
+              {i.hasToken ? null : <span className="text-sev-critical text-xs">{t("settings.grafana.noToken")}</span>}
+              <Button
+                className="h-7 cursor-pointer"
+                disabled={enviando}
+                onClick={() => {
+                  setNome(i.name);
+                  setUrl(i.url);
+                }}
+                size="sm"
+                variant="ghost"
+              >
+                {t("settings.grafana.edit")}
+              </Button>
+              <Button
+                className="h-7 cursor-pointer"
+                disabled={enviando}
+                onClick={() => agir(() => call("grafana.remove", i.name), false)}
+                size="sm"
+                variant="ghost"
+              >
+                {t("settings.grafana.remove")}
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form
+        className="grid grid-cols-1 gap-2 sm:grid-cols-[8rem_1fr]"
+        onSubmit={(e) => {
+          e.preventDefault();
+          agir(() => call("grafana.save", { nome, url, token }), true);
+        }}
+      >
+        <input
+          aria-label={t("settings.grafana.name")}
+          autoComplete="off"
+          className={campo}
+          onChange={(e) => setNome(e.target.value)}
+          placeholder={t("settings.grafana.namePlaceholder")}
+          required
+          value={nome}
+        />
+        <input
+          aria-label={t("settings.grafana.url")}
+          autoComplete="off"
+          className={campo}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder={t("settings.grafana.urlPlaceholder")}
+          required
+          type="url"
+          value={url}
+        />
+        <input
+          aria-label={t("settings.grafana.token")}
+          autoComplete="off"
+          className={cn(campo, "sm:col-span-2")}
+          onChange={(e) => setToken(e.target.value)}
+          placeholder={t("settings.grafana.tokenPlaceholder")}
+          type="password"
+          value={token}
+        />
+        <div className="sm:col-span-2">
+          <Button className="cursor-pointer" disabled={enviando} size="sm" type="submit">
+            {t("settings.grafana.save")}
+          </Button>
+        </div>
+      </form>
+      {erro === null ? null : <p className="text-sev-critical text-xs break-words">{erro}</p>}
+    </div>
+  );
+}
+
 function Opencode() {
   const { t } = useTranslation();
   const inicial = useRead("opencode.status");

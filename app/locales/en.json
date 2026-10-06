@@ -1019,6 +1019,19 @@
       "reconnect": "Takes effect on the next connect. Connect again so Entra asks for the channel scopes.",
       "inLine": ", and mentions in {{channels}}"
     },
+    "grafana": {
+      "description": "Each instance becomes its own MCP server, like grafana-dev and grafana-prod, running the official mcp/grafana image through Docker. The token is a service account token (Administration > Service accounts) and goes to the vault.",
+      "name": "Name",
+      "namePlaceholder": "dev",
+      "url": "Address",
+      "urlPlaceholder": "https://grafana.company.com",
+      "token": "Token",
+      "tokenPlaceholder": "service account token (leave empty to keep the current one)",
+      "save": "Save instance",
+      "edit": "Edit",
+      "remove": "Remove",
+      "noToken": "no token"
+    },
     "opencode": {
       "title": "opencode",
       "connectedHint": "Open a new opencode session and the Locum tools show up.",
@@ -1357,6 +1370,10 @@
       "submit": "Add"
     },
     "catalog": {
+      "grafana": {
+        "tagline": "Dashboards, metrics and alerts, one connection per instance",
+        "description": "Grafana's official MCP server, through Docker. Register each instance (dev, prod) with its address and a service account token."
+      },
       "claude-code": {
         "tagline": "Your agents and queue in any Claude Code session",
         "description": "Registers Locum as an MCP server in this machine's Claude Code. Every new session sees agents, runs and the queue, using the credentials stored here."

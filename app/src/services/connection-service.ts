@@ -1,3 +1,4 @@
+import { IMAGEM_DO_GRAFANA } from "./grafana-service.js";
 import { claudeCodeService, type ClaudeCodeService } from "./claude-code-service.js";
 import { claudeImportService } from "./claude-import.js";
 import { opencodeService, type OpencodeService } from "./opencode-service.js";
@@ -78,7 +79,7 @@ export type ConnectionCategory = "dev" | "communication" | "work" | "observabili
  * - `opencode`: cadastra o Locum no opencode.
  * - `github`: token pessoal no cofre, pelo painel.
  * - `oauth`: servidor MCP remoto que aceita registro automático; um clique abre o navegador.
- * - `panel`: liga por um formulário do próprio Locum (Jira, Slack, Teams).
+ * - `panel`: liga por um formulário do próprio Locum (Jira, Slack, Teams, Grafana).
  * - `soon`: ainda sem caminho que não exija terminal, e a tela diz o porquê.
  */
 export type ConnectionKind = "claude-code" | "opencode" | "github" | "oauth" | "panel" | "soon";
@@ -112,6 +113,7 @@ export const CATALOG: CatalogEntry[] = [
   { id: "atlassian", name: "Atlassian", category: "work", kind: "oauth", url: "https://mcp.atlassian.com/v1/mcp", logo: "atlassian", color: "0052CC" },
   { id: "slack", name: "Slack", category: "communication", kind: "panel", logo: null, color: "4A154B" },
   { id: "teams", name: "Microsoft Teams", category: "communication", kind: "panel", logo: null, color: "5059C9" },
+  { id: "grafana", name: "Grafana", category: "observability", kind: "panel", logo: null, color: "F46800" },
   { id: "figma", name: "Figma", category: "work", kind: "oauth", url: "https://mcp.figma.com/mcp", logo: "figma", color: "F24E1E" },
   { id: "shortcut", name: "Shortcut", category: "work", kind: "oauth", url: "https://mcp.shortcut.com/mcp", logo: null, color: "58B1E4" },
   { id: "linear", name: "Linear", category: "work", kind: "oauth", url: "https://mcp.linear.app/mcp", logo: null, color: "5E6AD2" },
@@ -177,6 +179,8 @@ export class ConnectionService {
 
     const proprios: Connection[] = servidores
       .filter((s) => !CATALOG.some((c) => c.id === s.config.name))
+      // As instâncias do Grafana moram no cartão dele, e não cada uma no seu.
+      .filter((s) => !ehDoGrafana(s.config))
       .map((s) => ({
         id: s.config.name,
         name: s.config.name,
@@ -434,6 +438,10 @@ export class ConnectionService {
           const s = await this.deps.slack.get();
           return { ...base, state: s.server === null ? "available" : "connected" };
         }
+        if (entry.id === "grafana") {
+          const instancias = (await this.deps.mcp.list()).filter((s) => ehDoGrafana(s.config));
+          return { ...base, state: instancias.length > 0 ? "connected" : "available" };
+        }
         if (entry.id === TEAMS_SERVER) {
           return { ...base, state: this.deps.oauth.status(TEAMS_SERVER).connected ? "connected" : "available" };
         }
@@ -446,6 +454,10 @@ export class ConnectionService {
 }
 
 export const connectionService = new ConnectionService();
+
+function ehDoGrafana(config: { transport: string; command?: string[] }): boolean {
+  return config.transport === "stdio" && (config.command ?? []).includes(IMAGEM_DO_GRAFANA);
+}
 
 /**
  * O app OAuth cadastrado no serviço para este servidor, quando há um. Sem ele

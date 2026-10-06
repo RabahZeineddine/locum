@@ -22,6 +22,7 @@ import { automationService } from "../src/services/automation-service.js";
 import { libraryService } from "../src/services/library-service.js";
 import { claudeCodeService } from "../src/services/claude-code-service.js";
 import { opencodeService } from "../src/services/opencode-service.js";
+import { grafanaService } from "../src/services/grafana-service.js";
 import { connectionService } from "../src/services/connection-service.js";
 import { credentialService } from "../src/services/credential-service.js";
 import { executionService } from "../src/services/execution-service.js";
@@ -289,6 +290,9 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "claudeCode.connect": () => claudeCodeService.connect(),
     "opencode.status": () => opencodeService.status(),
     "opencode.connect": () => opencodeService.connect(),
+    "grafana.list": () => grafanaService.list(),
+    "grafana.save": (entrada) => grafanaService.save(entrada),
+    "grafana.remove": (nome) => grafanaService.remove(nome),
     "connections.list": () => connectionService.list(),
     "connections.connect": (id) => connectionService.connect(id),
     "connections.disconnect": (id) => connectionService.disconnect(id),

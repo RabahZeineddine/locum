@@ -6,6 +6,7 @@ import type { AutomationService } from "../src/services/automation-service.js";
 import type { LibraryService } from "../src/services/library-service.js";
 import type { ClaudeCodeService } from "../src/services/claude-code-service.js";
 import type { OpencodeService } from "../src/services/opencode-service.js";
+import type { GrafanaService } from "../src/services/grafana-service.js";
 import type { ConnectionService } from "../src/services/connection-service.js";
 import type { CredentialService } from "../src/services/credential-service.js";
 import type { ExecutionService } from "../src/services/execution-service.js";
@@ -303,6 +304,9 @@ interface ServiceApi {
   "claudeCode.connect": ClaudeCodeService["connect"];
   "opencode.status": OpencodeService["status"];
   "opencode.connect": OpencodeService["connect"];
+  "grafana.list": GrafanaService["list"];
+  "grafana.save": GrafanaService["save"];
+  "grafana.remove": GrafanaService["remove"];
 
   /**
    * A vitrine de conexões: catálogo e estado de cada uma nesta máquina.
@@ -581,6 +585,9 @@ export const BRIDGE_CHANNELS = [
   "claudeCode.connect",
   "opencode.status",
   "opencode.connect",
+  "grafana.list",
+  "grafana.save",
+  "grafana.remove",
   "connections.list",
   "connections.connect",
   "connections.disconnect",

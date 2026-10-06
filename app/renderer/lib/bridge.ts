@@ -97,6 +97,7 @@ export const READ_CHANNELS = [
   // escrever nada. Ligar é o `claudeCode.connect`, que mora entre as ações.
   "claudeCode.status",
   "opencode.status",
+  "grafana.list",
   "connections.list",
   // Só lê os arquivos do Claude Code, sem shell nem segredo.
   "claudeImport.origins",
@@ -173,6 +174,10 @@ export const ACTION_CHANNELS = [
   // escrita no cadastro de outro programa, atrás de um clique.
   "claudeCode.connect",
   "opencode.connect",
+  // Cadastrar e remover instância do Grafana: escrita no cadastro de
+  // servidores e token no cofre, cada uma atrás de um clique.
+  "grafana.save",
+  "grafana.remove",
   "connections.connect",
   "connections.disconnect",
   "connections.addCustom",

@@ -1052,6 +1052,19 @@
       "reconnect": "Vale no próximo conectar. Conecte de novo para o Entra pedir os escopos de canal.",
       "inLine": ", e menções em {{channels}}"
     },
+    "grafana": {
+      "description": "Cada instância vira um servidor MCP próprio, como grafana-dev e grafana-prod, rodando a imagem oficial mcp/grafana pelo Docker. O token é de service account (Administration > Service accounts) e vai para o cofre.",
+      "name": "Nome",
+      "namePlaceholder": "dev",
+      "url": "Endereço",
+      "urlPlaceholder": "https://grafana.empresa.com",
+      "token": "Token",
+      "tokenPlaceholder": "token de service account (deixe vazio para manter o atual)",
+      "save": "Salvar instância",
+      "edit": "Editar",
+      "remove": "Remover",
+      "noToken": "sem token"
+    },
     "opencode": {
       "title": "opencode",
       "connectedHint": "Abra uma sessão nova do opencode e as ferramentas do Locum já aparecem.",
@@ -1392,6 +1405,10 @@
       "submit": "Adicionar"
     },
     "catalog": {
+      "grafana": {
+        "tagline": "Dashboards, métricas e alertas, uma conexão por instância",
+        "description": "Servidor MCP oficial do Grafana, pelo Docker. Cadastre cada instância (dev, prod) com o endereço e um token de service account."
+      },
       "claude-code": {
         "tagline": "Seus agents e a fila em qualquer sessão do Claude Code",
         "description": "Cadastra o Locum como servidor MCP do Claude Code desta máquina. Qualquer sessão nova passa a ver agents, execuções e a fila, usando as credenciais guardadas aqui."
