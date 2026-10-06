@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { conversarPeloClaude, type EventoDoChat } from "../src/chat/claude-chat.js";
 import type { McpServerConfig } from "../src/config/types.js";
 import { appHome } from "../src/db/path.js";
-import { buildProviders, claudeCodeAvailable } from "../src/providers/registry.js";
+import { claudeCodeAvailable } from "../src/providers/registry.js";
 import { claudeAccountService, ehLeitura, prefixoDoServidor } from "../src/runtimes/claude-account.js";
 import { claudeBinary } from "../src/runtimes/claude-binary.js";
 import { mcpConfigJson } from "../src/runtimes/claude-code.js";
@@ -69,7 +69,9 @@ async function escolherModelo(): Promise<{ provedor: string; modelo: string } | 
   const modelo = guardado.slice(corte + 1);
 
   if (provedor === "claude-code") return claudeCodeAvailable() ? { provedor, modelo } : null;
-  const entry = buildProviders()[provedor];
+  // Pelo serviço, e não por um registro novo: só ele tem a chave guardada no
+  // cofre e os provedores compatíveis cadastrados pela tela.
+  const entry = providerService.entries()[provedor];
   if (!entry?.model || !entry.available()) return null;
   return { provedor, modelo };
 }
@@ -301,7 +303,7 @@ export class ChatSession {
     sinal: AbortSignal,
     context?: { initiative?: string },
   ): Promise<void> {
-    const entry = buildProviders()[escolha.provedor]!;
+    const entry = providerService.entries()[escolha.provedor]!;
     const historico = this.historicos.get(chave) ?? [];
     historico.push({ role: "user", content: texto });
     // Guardado já enxuto, e não só enviado enxuto: o processo principal fica

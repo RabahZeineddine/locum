@@ -149,8 +149,8 @@ export function claudeCodeAvailable(): boolean {
 }
 
 /**
- * O que `claude auth status` diz do login. Versão antiga, sem o comando, conta
- * como logada, que era o comportamento de antes dele existir.
+ * O que `claude auth status` diz do login e do plano. Versão antiga, sem o
+ * comando, conta como logada, que era o comportamento de antes dele existir.
  */
 export function claudeLogado(binario: string, rodar: typeof execFileSync = execFileSync): boolean {
   let saida: string;
@@ -159,11 +159,18 @@ export function claudeLogado(binario: string, rodar: typeof execFileSync = execF
   } catch {
     return true;
   }
+  let estado: { loggedIn?: unknown; authMethod?: unknown; subscriptionType?: unknown };
   try {
-    return (JSON.parse(saida) as { loggedIn?: unknown }).loggedIn !== false;
+    estado = JSON.parse(saida) as typeof estado;
   } catch {
     return true;
   }
+  if (estado.loggedIn === false) return false;
+  // Conta do claude.ai sem plano pago faz login, mas o Claude Code recusa
+  // rodar: sem esta conferência a assinatura aparecia disponível e o chat
+  // escolhia ela sozinho. Versão que não informa o plano segue valendo o login.
+  const semPlano = estado.subscriptionType === null || estado.subscriptionType === "free";
+  return !(estado.authMethod === "claude.ai" && "subscriptionType" in estado && semPlano);
 }
 
 /**

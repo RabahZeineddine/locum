@@ -1338,7 +1338,7 @@ async function checkPalette(window: BrowserWindow): Promise<string> {
   )) as string | null;
   if (painel === null) throw new Error("o atalho nao abriu o painel do assistente");
   if (painel !== "no-drag") throw new Error(`o painel do assistente ficou com app-region ${painel}, e o X cai no arrasto`);
-  await tecla(`(document.querySelector("[data-locum-probe=assistente-painel] header button")?.click(), null)`);
+  await tecla(`(document.querySelector("[data-locum-probe=assistente-painel] [data-locum-fechar]")?.click(), null)`);
   const fechou = (await window.webContents.executeJavaScript(
     `document.querySelector("[data-locum-probe=assistente-painel]") === null`,
   )) as boolean;

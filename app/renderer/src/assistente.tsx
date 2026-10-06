@@ -8,9 +8,10 @@ import { Button } from "@/components/ui/button";
 import { call, useRead } from "@/lib/bridge";
 import { assinarEventosDoChat, type ChatEvent } from "@/lib/chat";
 import { cn } from "@/lib/utils";
+import { EscolhaDoModelo } from "./assistente-modelo";
 import { useCurrentInitiative } from "./current-initiative";
 import type { TelaProps } from "./rotas";
-import { ArrowUp, RotateCcw, Settings2, Sparkles, Square, Wrench, X } from "lucide-react";
+import { ArrowUp, ChevronDown, RotateCcw, Settings2, Sparkles, Square, Wrench, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Streamdown } from "streamdown";
@@ -33,10 +34,10 @@ interface Fala {
  * e e escrito a mao pelo motivo da emenda 5 do ADR 0003.
  */
 export function Assistente({ navegar }: Pick<TelaProps, "navegar">) {
-  const { t } = useTranslation();
   const [aberto, setAberto] = useState(false);
-  const status = useRead("chat.status");
-  const { slug: iniciativaAtual } = useCurrentInitiative();
+  // Sobe a cada troca de modelo para o painel reler o estado do chat: a
+  // leitura não tem recarga, e a conversa precisa saber que agora há modelo.
+  const [versao, setVersao] = useState(0);
 
   useEffect(() => {
     function ouvir(evento: KeyboardEvent) {
@@ -53,6 +54,32 @@ export function Assistente({ navegar }: Pick<TelaProps, "navegar">) {
   if (!aberto) return <BotaoFlutuante aoAbrir={() => setAberto(true)} />;
 
   return (
+    <PainelDoAssistente
+      aoFechar={() => setAberto(false)}
+      aoTrocarModelo={() => setVersao((v) => v + 1)}
+      key={versao}
+      navegar={navegar}
+    />
+  );
+}
+
+/**
+ * O painel aberto. O modelo fica no cabeçalho e troca ali mesmo: escolher
+ * provedor e modelo é coisa de conversa, e mandar a pessoa para Configuração
+ * no meio dela é perder o assunto.
+ */
+function PainelDoAssistente({
+  navegar,
+  aoFechar,
+  aoTrocarModelo,
+}: Pick<TelaProps, "navegar"> & { aoFechar: () => void; aoTrocarModelo: () => void }) {
+  const { t } = useTranslation();
+  const status = useRead("chat.status");
+  const { slug: iniciativaAtual } = useCurrentInitiative();
+  const [escolhendo, setEscolhendo] = useState(false);
+  const modelo = status.status === "ready" ? status.data.modelo : null;
+
+  return (
     <aside
       className="sem-arrasto border-border bg-popover/97 animate-in slide-in-from-right-4 fixed top-0 right-0 bottom-0 z-40 flex w-[420px] flex-col border-l shadow-[-24px_0_48px_-12px_rgba(0,0,0,0.5)] backdrop-blur-xl duration-200"
       data-locum-probe="assistente-painel"
@@ -62,24 +89,30 @@ export function Assistente({ navegar }: Pick<TelaProps, "navegar">) {
           <Sparkles className="text-primary-foreground size-3.5" aria-hidden />
         </span>
         <span className="flex-1 text-sm font-semibold tracking-[-0.01em]">{t("assistant.title")}</span>
-        {status.status === "ready" && status.data.modelo && (
-          <span className="text-muted-foreground font-mono text-[11px]">{status.data.modelo}</span>
-        )}
-        <Button
-          className="size-7 cursor-pointer"
-          onClick={() => setAberto(false)}
-          size="icon"
-          variant="ghost"
+        <button
+          aria-expanded={escolhendo}
+          className="text-muted-foreground hover:text-foreground focus-visible:ring-ring flex max-w-[220px] cursor-pointer items-center gap-1 rounded-md px-1.5 py-1 font-mono text-[11px] focus-visible:ring-2 focus-visible:outline-none"
+          onClick={() => setEscolhendo((v) => !v)}
+          type="button"
         >
+          <span className="truncate">{modelo ?? t("assistant.model.none")}</span>
+          <ChevronDown className="size-3 shrink-0" aria-hidden />
+        </button>
+        <Button className="size-7 cursor-pointer" data-locum-fechar="" onClick={aoFechar} size="icon" variant="ghost">
           <X className="size-4" aria-hidden />
           <span className="sr-only">{t("assistant.close")}</span>
         </Button>
       </header>
+      {escolhendo ? (
+        <div className="border-border max-h-[50vh] overflow-y-auto border-b">
+          <EscolhaDoModelo aoEscolher={aoTrocarModelo} />
+        </div>
+      ) : null}
       <Conversa
         foco
         iniciativa={iniciativaAtual ?? undefined}
         irParaModelos={() => {
-          setAberto(false);
+          aoFechar();
           navegar("settings", "models");
         }}
       />

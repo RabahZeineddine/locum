@@ -214,7 +214,7 @@
     "model": {
       "none": "no model chosen",
       "refresh": "Refresh catalog",
-      "noProvider": "No provider with an API key on this machine. The assistant does not use the subscription runtime, because it does not deliver text in pieces and the conversation would go mute.",
+      "noProvider": "No provider available on this machine. Add an API key or a compatible provider in Settings > Models, or log in to Claude Code with a paid plan.",
       "count_one": "{{count}} model",
       "count_other": "{{count}} models"
     },

@@ -1537,6 +1537,15 @@ em `claude-import.ts`, inclusive a variável (`{env:X}`, `${env:X}`,
 Claude Code, plugins, opencode, Cursor, VS Code, Claude Desktop. Na lista de
 servidores, o importado de outra ferramenta ganha grupo "Do <ferramenta>".
 
+**Chat escolhe provedor e modelo no próprio painel.** O modelo virou botão no
+cabeçalho do assistente e abre o catálogo ali mesmo, com a assinatura do
+Claude Code junto dos provedores de API (o Codex segue fora, sem texto aos
+pedaços). O chat passou a montar o provedor pelo `providerService`, e não por
+um registro novo: antes ele só via variável de ambiente, e chave guardada no
+cofre ou gateway compatível cadastrado pela tela não respondiam. A assinatura
+do Claude Code agora pede plano: login do claude.ai com `subscriptionType`
+nulo ou `free` conta como indisponível, e o chat deixa de escolhê-la sozinho.
+
 **Cron em frase.** O gatilho de horário fixo aparece como "Toda segunda às
 07:30 · cron 30 7 * * 1" na lista e no canvas, e a frase entra acima da
 próxima ocorrência no formulário (`renderer/lib/descricao-do-cron.ts`). O que

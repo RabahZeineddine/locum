@@ -221,7 +221,7 @@
     "model": {
       "none": "nenhum modelo escolhido",
       "refresh": "Atualizar catálogo",
-      "noProvider": "Nenhum provedor com chave de API nesta máquina. O assistente não usa o runtime de assinatura, porque ele não entrega texto em pedaço e a conversa ficaria muda.",
+      "noProvider": "Nenhum provedor disponível nesta máquina. Ligue uma chave de API ou um provedor compatível em Configuração > Modelos, ou faça login no Claude Code com plano pago.",
       "count_one": "{{count}} modelo",
       "count_other": "{{count}} modelos",
       "count_zero": "{{count}} modelos"

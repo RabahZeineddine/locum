@@ -19,7 +19,7 @@ interface Catalogo {
  * decidiu, entao id escrito aqui envelhece e, pior, quebra tarde: o erro volta
  * falando de credencial quando o problema era o nome do modelo.
  */
-export function EscolhaDoModelo() {
+export function EscolhaDoModelo({ aoEscolher }: { aoEscolher?: (modelo: string) => void } = {}) {
   const { t } = useTranslation();
   const status = useRead("chat.status");
   const [catalogos, setCatalogos] = useState<Catalogo[] | null>(null);
@@ -33,7 +33,10 @@ export function EscolhaDoModelo() {
   const buscar = useCallback(async () => {
     setCarregando(true);
     try {
-      setCatalogos(await call("providers.allModels"));
+      // A assinatura do Claude Code conversa também; o Codex não, porque não
+      // entrega o texto aos pedaços (ver `escolherModelo` em `electron/chat.ts`).
+      const todos = await call("providers.allModels", { assinatura: true });
+      setCatalogos(todos.filter((c) => c.provedor !== "codex"));
     } finally {
       setCarregando(false);
     }
@@ -46,6 +49,7 @@ export function EscolhaDoModelo() {
   async function escolher(modelo: string) {
     await call("chat.setModel", modelo);
     setAtual(modelo);
+    aoEscolher?.(modelo);
   }
 
   const semProvedor = catalogos !== null && catalogos.length === 0;
