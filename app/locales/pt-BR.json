@@ -912,6 +912,8 @@
       "stored": "credencial guardada no keychain",
       "absent": "nenhuma credencial guardada",
       "viaAtlassian": "usa a credencial da conexão Atlassian",
+      "viaShortcut": "usa a credencial da conexão Shortcut",
+      "shortcutMissing": "a conexão Shortcut não está autorizada",
       "atlassianMissing": "a Atlassian não está conectada: conecte acima",
       "lastCheck_one": "{{count}} destino visível em {{when}}",
       "lastCheck_other": "{{count}} destinos visíveis em {{when}}",
