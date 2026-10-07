@@ -883,6 +883,8 @@
       "stored": "credential stored in the keychain",
       "absent": "no credential stored",
       "viaAtlassian": "uses the Atlassian connection credential",
+      "viaShortcut": "uses the Shortcut connection credential",
+      "shortcutMissing": "the Shortcut connection is not authorized",
       "atlassianMissing": "Atlassian is not connected: connect it above",
       "lastCheck_one": "{{count}} destination visible at {{when}}",
       "lastCheck_other": "{{count}} destinations visible at {{when}}",
