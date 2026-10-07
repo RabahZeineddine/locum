@@ -3132,12 +3132,16 @@ function Trackers({ kinds }: { kinds: Tracker["kind"][] }) {
   };
 
   const cadastrar = (): void => {
+    const finalId = id.trim() || (tipo === "shortcut" ? "shortcut" : tipo === "github-issues" ? "github-issues" : "jira");
+    const finalNome = nome.trim() || (tipo === "shortcut" ? "Shortcut" : tipo === "github-issues" ? "GitHub Issues" : "Jira");
+    const finalUrl = url.trim() || (tipo === "shortcut" ? "https://api.app.shortcut.com/api/v3" : "");
+
     void agir(
       call("trackers.register", {
-        id: id.trim(),
+        id: finalId,
         kind: tipo,
-        label: nome.trim(),
-        baseUrl: url.trim(),
+        label: finalNome,
+        baseUrl: finalUrl,
         account: tipo === "jira" ? conta.trim() : "",
         project: projeto.trim(),
       }).then(() => {
@@ -3151,13 +3155,16 @@ function Trackers({ kinds }: { kinds: Tracker["kind"][] }) {
   };
 
   // O e-mail só é exigido no Jira por token, e o endereço só no Jira: o GitHub
-  // tem um de fábrica, e pedir que alguém digite api.github.com é cerimônia.
-  // Pela Atlassian o site basta, porque a credencial é a da conexão.
+  // e o Shortcut têm URLs de fábrica conhecidas.
   const jira = tipo === "jira" || tipo === "jira-atlassian";
+  const ehShortcut = tipo === "shortcut";
+  const ehGithub = tipo === "github-issues";
+  const precisaUrl = tipo === "jira" || tipo === "jira-atlassian";
+
   const valido =
-    id.trim() !== "" &&
-    nome.trim() !== "" &&
-    (!jira || url.trim() !== "") &&
+    (ehShortcut || ehGithub || id.trim() !== "") &&
+    (ehShortcut || ehGithub || nome.trim() !== "") &&
+    (!precisaUrl || url.trim() !== "") &&
     (tipo !== "jira" || conta.trim() !== "");
 
   return (
@@ -3187,7 +3194,12 @@ function Trackers({ kinds }: { kinds: Tracker["kind"][] }) {
             aria-label={t("settings.trackers.kind")}
             className="border-border bg-background focus-visible:ring-ring rounded-md border px-2 py-1.5 text-xs outline-none focus-visible:ring-1"
             data-locum-tracker-tipo=""
-            onChange={(evento) => setTipo(evento.target.value as Tracker["kind"])}
+            onChange={(evento) => {
+              const novoTipo = evento.target.value as Tracker["kind"];
+              setTipo(novoTipo);
+              if (novoTipo === "shortcut" && !nome) setNome("Shortcut");
+              if (novoTipo === "github-issues" && !nome) setNome("GitHub Issues");
+            }}
             value={tipo}
           >
             {kinds.map((kind) => (
@@ -3197,38 +3209,42 @@ function Trackers({ kinds }: { kinds: Tracker["kind"][] }) {
             ))}
           </select>
         ) : null}
-        <input
-          aria-label={t("settings.trackers.id")}
-          autoComplete="off"
-          className="border-border bg-background focus-visible:ring-ring w-36 rounded-md border px-3 py-1.5 font-mono text-xs outline-none focus-visible:ring-1"
-          data-locum-tracker-id=""
-          onChange={(evento) => setId(evento.target.value)}
-          placeholder={t("settings.trackers.idHint")}
-          spellCheck={false}
-          value={id}
-        />
+        {!ehShortcut && !ehGithub ? (
+          <input
+            aria-label={t("settings.trackers.id")}
+            autoComplete="off"
+            className="border-border bg-background focus-visible:ring-ring w-36 rounded-md border px-3 py-1.5 font-mono text-xs outline-none focus-visible:ring-1"
+            data-locum-tracker-id=""
+            onChange={(evento) => setId(evento.target.value)}
+            placeholder={t("settings.trackers.idHint")}
+            spellCheck={false}
+            value={id}
+          />
+        ) : null}
         <input
           aria-label={t("settings.trackers.label")}
           autoComplete="off"
           className="border-border bg-background focus-visible:ring-ring w-40 rounded-md border px-3 py-1.5 text-xs outline-none focus-visible:ring-1"
           data-locum-tracker-nome=""
           onChange={(evento) => setNome(evento.target.value)}
-          placeholder={t("settings.trackers.labelHint")}
+          placeholder={ehShortcut ? "Shortcut" : t("settings.trackers.labelHint")}
           spellCheck={false}
           value={nome}
         />
-        <input
-          aria-label={t("settings.trackers.baseUrl")}
-          autoComplete="off"
-          className="border-border bg-background focus-visible:ring-ring min-w-48 flex-1 rounded-md border px-3 py-1.5 font-mono text-xs outline-none focus-visible:ring-1"
-          data-locum-tracker-url=""
-          onChange={(evento) => setUrl(evento.target.value)}
-          placeholder={t(
-            jira ? "settings.trackers.baseUrlHint" : "settings.trackers.baseUrlDefault",
-          )}
-          spellCheck={false}
-          value={url}
-        />
+        {precisaUrl ? (
+          <input
+            aria-label={t("settings.trackers.baseUrl")}
+            autoComplete="off"
+            className="border-border bg-background focus-visible:ring-ring min-w-48 flex-1 rounded-md border px-3 py-1.5 font-mono text-xs outline-none focus-visible:ring-1"
+            data-locum-tracker-url=""
+            onChange={(evento) => setUrl(evento.target.value)}
+            placeholder={t(
+              jira ? "settings.trackers.baseUrlHint" : "settings.trackers.baseUrlDefault",
+            )}
+            spellCheck={false}
+            value={url}
+          />
+        ) : null}
         {tipo === "jira" ? (
           <input
             aria-label={t("settings.trackers.account")}
@@ -3248,7 +3264,11 @@ function Trackers({ kinds }: { kinds: Tracker["kind"][] }) {
           data-locum-tracker-projeto=""
           onChange={(evento) => setProjeto(evento.target.value)}
           placeholder={t(
-            jira ? "settings.trackers.projectHint" : "settings.trackers.repoHint",
+            ehShortcut
+              ? "Projeto / Equipe padrão"
+              : jira
+                ? "settings.trackers.projectHint"
+                : "settings.trackers.repoHint",
           )}
           spellCheck={false}
           value={projeto}
@@ -3290,6 +3310,20 @@ function LinhaDoTracker({
   const [valor, setValor] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [exame, setExame] = useState<ExameDoTracker>({ fase: "parado" });
+  const [projetos, setProjetos] = useState<{ key: string; name: string }[] | null>(null);
+  const [carregandoProjetos, setCarregandoProjetos] = useState(false);
+
+  const buscarProjetos = (): void => {
+    setCarregandoProjetos(true);
+    call("trackers.projects", tracker.id)
+      .then((lista) => setProjetos(lista))
+      .catch(() => undefined)
+      .finally(() => setCarregandoProjetos(false));
+  };
+
+  const selecionarProjeto = (dest: string): void => {
+    void call("trackers.setProject", tracker.id, dest).then(recarregar);
+  };
 
   const guardar = (): void => {
     setSalvando(true);
@@ -3304,6 +3338,7 @@ function LinhaDoTracker({
         setSalvando(false);
         // O teste anterior era da credencial antiga, e o serviço já o apagou.
         setExame({ fase: "parado" });
+        buscarProjetos();
       });
   };
 
@@ -3319,6 +3354,7 @@ function LinhaDoTracker({
       (resultado) => {
         setExame({ fase: "respondeu", resultado });
         void recarregar();
+        buscarProjetos();
       },
       // `test` devolve a recusa do tracker como dado, então chegar aqui quer
       // dizer que a ponte recusou, e não que a credencial está errada.
@@ -3431,6 +3467,35 @@ function LinhaDoTracker({
             variant="ghost"
           >
             {t("settings.trackers.forget")}
+          </Button>
+        ) : null}
+
+        {tracker.stored && projetos && projetos.length > 0 ? (
+          <div className="flex items-center gap-1.5 ml-2">
+            <span className="text-xs text-muted-foreground font-medium">Projeto:</span>
+            <select
+              className="border-border bg-background focus-visible:ring-ring rounded-md border px-2 py-1 text-xs outline-none focus-visible:ring-1"
+              disabled={ocupado}
+              onChange={(e) => selecionarProjeto(e.target.value)}
+              value={tracker.project ?? ""}
+            >
+              <option value="">Selecione um projeto...</option>
+              {projetos.map((p) => (
+                <option key={p.key} value={p.name}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : tracker.stored && (tracker.kind === "shortcut" || tracker.kind === "jira-atlassian") ? (
+          <Button
+            className="text-xs"
+            disabled={carregandoProjetos}
+            onClick={buscarProjetos}
+            size="sm"
+            variant="outline"
+          >
+            {carregandoProjetos ? "Buscando..." : "Carregar Projetos"}
           </Button>
         ) : null}
       </div>
