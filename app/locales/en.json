@@ -1300,6 +1300,9 @@
         "check_now": "Check now",
         "checking": "Checking...",
         "last_checked": "last check {{when}}",
+        "just_now": "just now",
+        "minutes_ago_one": "{{count}} min ago",
+        "minutes_ago_other": "{{count}} min ago",
         "no_events": "no updates"
       },
       "done": {
