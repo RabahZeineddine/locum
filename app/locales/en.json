@@ -1294,7 +1294,13 @@
         "title": "Runs next",
         "empty": "No agent scheduled.",
         "due": "now",
-        "when": "{{day}} {{time}}"
+        "when": "{{day}} {{time}}",
+        "watch_title": "Active Watch",
+        "watch_badge": "{{count}} active",
+        "check_now": "Check now",
+        "checking": "Checking...",
+        "last_checked": "last check {{when}}",
+        "no_events": "no updates"
       },
       "done": {
         "title": "Finished",
