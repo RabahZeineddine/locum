@@ -3504,8 +3504,8 @@ function LinhaDoTracker({
         {t(
           pelaConexao
             ? tracker.stored
-              ? "settings.trackers.viaAtlassian"
-              : "settings.trackers.atlassianMissing"
+              ? tracker.kind === "shortcut" ? "settings.trackers.viaShortcut" : "settings.trackers.viaAtlassian"
+              : tracker.kind === "shortcut" ? "settings.trackers.shortcutMissing" : "settings.trackers.atlassianMissing"
             : tracker.stored
               ? "settings.trackers.stored"
               : "settings.trackers.absent",

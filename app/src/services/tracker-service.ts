@@ -40,9 +40,15 @@ export function trackerCredentialRef(id: string): string {
  */
 const ATLASSIAN_TOKEN_REF = `mcp/${ATLASSIAN_SERVER}`;
 
-/** Credencial que vem de uma conexão, e não de um token guardado pelo tracker. */
+/** Credencial que vem de uma conexão OAuth/MCP, e não de um token avulso guardado pelo tracker. */
+function refDeConexao(kind: string): string | null {
+  if (kind === "jira-atlassian") return ATLASSIAN_TOKEN_REF;
+  if (kind === "shortcut") return "mcp/shortcut";
+  return null;
+}
+
 function pelaConexao(kind: string): boolean {
-  return kind === "jira-atlassian";
+  return refDeConexao(kind) !== null;
 }
 
 /**
@@ -142,6 +148,8 @@ export class TrackerService {
     return Promise.all(
       rows.map(async (row) => {
         const ref = row.credentialRef ?? trackerCredentialRef(row.id);
+        const refConexao = refDeConexao(row.kind);
+        const temCredencial = this.secrets.has(ref) || (refConexao !== null && this.secrets.has(refConexao));
         const [conferidoEm, projetos] = await Promise.all([
           this.settings.get(this.chave(ref, CONFERIDO_EM)),
           this.settings.get(this.chave(ref, PROJETOS)),
@@ -160,7 +168,7 @@ export class TrackerService {
           account: row.account,
           enabled: row.enabled,
           ref,
-          stored: this.secrets.has(pelaConexao(row.kind) ? ATLASSIAN_TOKEN_REF : ref),
+          stored: temCredencial,
           vault: this.secrets.available,
           checkedAt: conferidoEm === undefined ? null : Number(conferidoEm),
           projectCount: projetos === undefined ? null : Number(projetos),
@@ -330,9 +338,10 @@ export class TrackerService {
    */
   async testConnection(id: string): Promise<TrackerCheck> {
     const row = await this.linha(id);
+    const refConexao = refDeConexao(row.kind);
     const ref = row.credentialRef ?? trackerCredentialRef(id);
-    const credencial = pelaConexao(row.kind) ? ATLASSIAN_TOKEN_REF : ref;
-    if (!this.secrets.has(credencial)) return { ok: false, reason: "missing" };
+    const temCredencial = this.secrets.has(ref) || (refConexao !== null && this.secrets.has(refConexao));
+    if (!temCredencial) return { ok: false, reason: "missing" };
 
     try {
       const projetos = await this.listProjects(id);
@@ -399,18 +408,20 @@ export class TrackerService {
    */
   private async adapter(id: string): Promise<TrackerAdapter> {
     const row = await this.linha(id);
-    if (pelaConexao(row.kind)) {
+    if (row.kind === "jira-atlassian") {
       if (!this.secrets.has(ATLASSIAN_TOKEN_REF)) {
         throw new Error(`o tracker "${id}" usa a conexão Atlassian, que nao esta autorizada`);
       }
       return new JiraAtlassianAdapter(row.baseUrl, (tool, args) => this.mcp(ATLASSIAN_SERVER, tool, args));
     }
+
+    const refConexao = refDeConexao(row.kind);
     const ref = row.credentialRef ?? trackerCredentialRef(id);
-    const secret = this.secrets.get(ref);
+    const secret = this.secrets.get(ref) ?? (refConexao ? this.secrets.get(refConexao) : undefined);
 
     if (secret === undefined) {
       throw new Error(
-        this.secrets.has(ref)
+        this.secrets.has(ref) || (refConexao && this.secrets.has(refConexao))
           ? `a credencial de "${id}" esta guardada mas o keychain nao abre neste processo`
           : `o tracker "${id}" esta sem credencial guardada`,
       );
