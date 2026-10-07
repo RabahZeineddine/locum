@@ -566,7 +566,21 @@
       "rejected": "rejected",
       "publish_conflict": "the target changed before this could be published"
     },
-    "lead": "Every time an agent ran: step by step, what it found and what it cost."
+    "lead": "Every time an agent ran: step by step, what it found and what it cost.",
+    "tabs": {
+      "executive": "Executive View",
+      "technical": "Pipeline & JSON"
+    },
+    "technicalDetails": "Technical Details & Pipeline",
+    "technicalDetailsHint": "Dependency graph, model reasoning, and step I/O.",
+    "prSummary": "Pull Request Summary",
+    "auditSummary": "Code Audit",
+    "verdict": {
+      "APPROVE": "Approval recommended",
+      "COMMENT": "General comments",
+      "REQUEST_CHANGES": "Changes requested"
+    },
+    "fixSuggestion": "Fix suggestion"
   },
   "settings": {
     "refused": "the bridge refused {{channel}}: {{message}}",
