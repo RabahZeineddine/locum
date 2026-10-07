@@ -334,6 +334,7 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "triggers.remove": (id) => triggerService.remove(id),
     "triggers.setEnabled": (id, enabled) => triggerService.setEnabled(id, enabled),
     "triggers.schedule": (at) => scheduler.schedule(at),
+    "triggers.tick": () => scheduler.tick({ reason: "manual", wait: true }),
 
     "app.version": async () => VERSAO,
     "startup.get": () => startupService.getPreference(),

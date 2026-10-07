@@ -1,4 +1,5 @@
 import {
+  Activity,
   CalendarClock,
   Check,
   CheckCheck,
@@ -9,6 +10,7 @@ import {
   Inbox as InboxIcon,
   KeyRound,
   MessageSquare,
+  RefreshCw,
   Sparkles,
   TerminalSquare,
   User,
@@ -18,7 +20,7 @@ import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { read, useRead, type ReadResult } from "@/lib/bridge";
+import { call, read, useRead, type ReadResult } from "@/lib/bridge";
 import { cn } from "@/lib/utils";
 import type { TelaProps } from "../rotas";
 import { alvoDaPendencia, idade } from "./inbox";
@@ -85,6 +87,23 @@ export function Hoje({ navegar }: TelaProps) {
   const nomeDoAgent = new Map((agents.data ?? []).map((a) => [a.id, a.name]));
 
   const fila = pendentes.data ?? [];
+  const [verificando, setVerificando] = useState(false);
+
+  const checarAgora = async () => {
+    setVerificando(true);
+    try {
+      await call("triggers.tick");
+    } catch {
+      // Ignora erro de rede ou cancelamento para a UI não quebrar
+    } finally {
+      setTimeout(() => setVerificando(false), 800);
+    }
+  };
+
+  const ativos = useMemo(
+    () => (agenda.data ?? []).filter((g) => g.enabled),
+    [agenda.data],
+  );
 
   const proximas = useMemo(
     () =>
@@ -168,12 +187,43 @@ export function Hoje({ navegar }: TelaProps) {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <section aria-labelledby="hoje-proximas" className="flex flex-col gap-3">
-          <h2
-            className="text-muted-foreground font-semibold text-xs uppercase tracking-[0.06em]"
-            id="hoje-proximas"
-          >
-            {t("home.today.next.title")}
-          </h2>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="relative flex size-2">
+                {ativos.length > 0 ? (
+                  <>
+                    <span className="bg-emerald-400 absolute inline-flex h-full w-full animate-ping rounded-full opacity-75" />
+                    <span className="bg-emerald-500 relative inline-flex size-2 rounded-full" />
+                  </>
+                ) : (
+                  <span className="bg-muted-foreground/40 relative inline-flex size-2 rounded-full" />
+                )}
+              </span>
+              <h2
+                className="text-muted-foreground font-semibold text-xs uppercase tracking-[0.06em]"
+                id="hoje-proximas"
+              >
+                {t("home.today.next.watch_title")}
+              </h2>
+              {ativos.length > 0 && (
+                <span className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-mono text-[10px] font-semibold px-1.5 py-0.5 rounded-full">
+                  {t("home.today.next.watch_badge", { count: ativos.length })}
+                </span>
+              )}
+            </div>
+
+            <Button
+              className="text-muted-foreground hover:text-foreground h-6 px-2 text-[11px] gap-1.5 font-medium cursor-pointer"
+              disabled={verificando}
+              onClick={checarAgora}
+              size="sm"
+              variant="ghost"
+            >
+              <RefreshCw className={cn("size-3", verificando && "animate-spin text-primary")} />
+              <span>{verificando ? t("home.today.next.checking") : t("home.today.next.check_now")}</span>
+            </Button>
+          </div>
+
           {proximas.length === 0 ? (
             <Vazio
               icone={CalendarClock}
@@ -181,21 +231,43 @@ export function Hoje({ navegar }: TelaProps) {
             />
           ) : (
             <ul className="divide-border border-border superficie divide-y overflow-hidden rounded-xl border">
-              {proximas.map((g) => (
-                <li className="flex items-center gap-3.5 px-4 py-3" key={g.triggerId}>
-                  <span className="text-primary w-20 shrink-0 font-mono text-xs tabular-nums">
-                    {quandoRoda(t, idioma, g.nextDueAt)}
-                  </span>
-                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <span className="truncate text-sm">{nomeDoAgent.get(g.agentId) ?? g.agentId}</span>
-                    {iniciativaDoAgent.get(g.agentId) && (
-                      <span className="text-muted-foreground truncate text-xs">
-                        {iniciativaDoAgent.get(g.agentId)}
+              {proximas.map((g) => {
+                const ultima = g.lastFireAt ? idade(t, g.lastFireAt / 1000).texto : undefined;
+                return (
+                  <li className="flex items-center justify-between gap-3.5 px-4 py-3" key={g.triggerId}>
+                    <div className="flex min-w-0 flex-1 flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                        <span className="truncate text-sm font-medium">{nomeDoAgent.get(g.agentId) ?? g.agentId}</span>
+                        {iniciativaDoAgent.get(g.agentId) && (
+                          <span className="bg-muted text-muted-foreground truncate rounded px-1.5 py-0.5 text-[10px] font-medium">
+                            {iniciativaDoAgent.get(g.agentId)}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
+                        {g.everyMinutes && (
+                          <span>{t("common.cadence", { minutes: g.everyMinutes, defaultValue: `a cada ${g.everyMinutes}m` })}</span>
+                        )}
+                        {ultima && (
+                          <>
+                            <span>·</span>
+                            <span>{t("home.today.next.last_checked", { when: ultima })}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      <span className="text-primary font-mono text-xs tabular-nums font-semibold">
+                        {quandoRoda(t, idioma, g.nextDueAt)}
                       </span>
-                    )}
-                  </div>
-                </li>
-              ))}
+                      <span className="text-muted-foreground/60 text-[10px]">
+                        {t("home.today.next.no_events")}
+                      </span>
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>
