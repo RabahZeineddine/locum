@@ -8,7 +8,7 @@ import { rotuloDoModelo, rotuloDoProvedor } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
 import { EscolhaDoModelo } from "../assistente-modelo";
 import { ImportarDoClaude, Painel, Propria, Vitrine } from "./conexoes";
-import { ChevronRight, Cpu, Download, Plus, RefreshCw, Search, SlidersHorizontal, Sparkles, SquareTerminal, type LucideIcon } from "lucide-react";
+import { ChevronRight, Cpu, Download, ListTodo, Plus, RefreshCw, Search, SlidersHorizontal, Sparkles, SquareTerminal, type LucideIcon } from "lucide-react";
 import { ehLeitura } from "../../../src/config/leitura.js";
 import { quando } from "./sessoes";
 import { useIdioma } from "../idioma";
@@ -62,7 +62,7 @@ type Teste = ReadResult<"mcp.test">;
  * O que ficou se divide pelo que a pessoa veio fazer: ajustar o app, dizer
  * quais modelos rodam, ou ligar o Locum a outro serviço.
  */
-export const SECOES = ["general", "models", "assistant", "tools"] as const;
+export const SECOES = ["general", "models", "assistant", "trackers", "tools"] as const;
 export type SecaoId = (typeof SECOES)[number];
 
 export function Configuracao({ detalhe, navegar }: TelaProps) {
@@ -272,6 +272,12 @@ export function Configuracao({ detalhe, navegar }: TelaProps) {
             </>
           ) : null}
 
+          {secao === "trackers" ? (
+            <Secao descricao={t("settings.sectionLead.trackers")} titulo={t("settings.sections.trackers")}>
+              <Trackers kinds={["shortcut", "jira-atlassian", "jira", "github-issues"]} />
+            </Secao>
+          ) : null}
+
           {secao === "tools" ? (
             <>
               <Secao descricao={t("settings.toolsLocum.description")} titulo={t("settings.toolsLocum.title")}>
@@ -298,6 +304,7 @@ const ICONE_DA_SECAO: Record<SecaoId, LucideIcon> = {
   general: SlidersHorizontal,
   models: Cpu,
   assistant: Sparkles,
+  trackers: ListTodo,
   tools: SquareTerminal,
 };
 
