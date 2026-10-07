@@ -49,8 +49,6 @@ export function argsDoChat(p: PedidoDoChat): string[] {
     "--include-partial-messages",
     "--append-system-prompt",
     p.system,
-    "--permission-prompts",
-    "none",
   ];
   for (const pasta of p.pastas) args.push("--add-dir", pasta);
   if (p.sessao !== undefined) args.push("--resume", p.sessao);
