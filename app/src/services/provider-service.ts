@@ -171,7 +171,7 @@ export class ProviderService {
       const variavel = semSegredo[row.id]?.secretVar;
       if (!variavel) continue;
 
-      const secret = this.secrets.get(row.credentialRef);
+      const secret = this.secrets.get(row.credentialRef) ?? process.env[variavel];
       if (secret === undefined) continue;
       secrets[variavel] = secret;
       carregados.push(row.id);

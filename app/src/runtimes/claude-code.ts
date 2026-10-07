@@ -42,7 +42,7 @@ export function claudeArgs(req: RuntimeRequest, mcpConfigPath?: string): string[
     args.push("--mcp-config", mcpConfigPath);
   }
   if (allowed.length > 0) args.push("--allowedTools", allowed.join(","));
-  args.push("--permission-prompts", "none", "--no-session-persistence");
+  args.push("--permission-mode", "dontAsk", "--no-session-persistence");
   // Com ferramenta da conta, a configuração da pessoa precisa entrar, senão
   // conector e plugin somem; `flagsDaConta` desliga o que viria junto. Sem
   // ela, o isolamento de sempre.
