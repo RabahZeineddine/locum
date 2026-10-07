@@ -19,7 +19,7 @@ import { clienteHttp } from "../net/http.js";
  * `jira-atlassian` não tem token próprio: fala pelo servidor MCP da Atlassian
  * que a vitrine conectou por OAuth, e o adaptador mora em `jira-atlassian.ts`.
  */
-export const TRACKER_KINDS = ["jira", "jira-atlassian", "github-issues"] as const;
+export const TRACKER_KINDS = ["jira", "jira-atlassian", "github-issues", "shortcut"] as const;
 export type TrackerKind = (typeof TRACKER_KINDS)[number];
 
 export function isTrackerKind(value: string): value is TrackerKind {
@@ -376,11 +376,118 @@ class GithubIssuesAdapter implements TrackerAdapter {
   }
 }
 
+/* ----------------------------------------------------------------- shortcut */
+
+interface ShortcutItem {
+  id: number | string;
+  name: string;
+}
+
+interface ShortcutStory {
+  id: number;
+  app_url: string;
+  name: string;
+}
+
+interface ShortcutSearchStories {
+  data?: ShortcutStory[];
+}
+
+/**
+ * Shortcut (antigo Clubhouse).
+ *
+ * A autenticação usa o token em `Shortcut-Token`. O "projeto" do cadastro
+ * aceita tanto o id numérico de um projeto quanto o id de um workspace/time
+ * (group_id), permitindo que a tarefa caia na equipe certa.
+ */
+export class ShortcutAdapter implements TrackerAdapter {
+  readonly kind = "shortcut" as const;
+  private readonly segredos: string[];
+
+  constructor(private readonly conexao: TrackerConnection) {
+    this.segredos = [conexao.secret];
+  }
+
+  private get headers(): Record<string, string> {
+    return {
+      "Shortcut-Token": this.conexao.secret,
+      "Content-Type": "application/json",
+    };
+  }
+
+  async listProjects(): Promise<TrackerProject[]> {
+    let itens: ShortcutItem[] = [];
+    try {
+      itens = await pedir<ShortcutItem[]>(
+        endereco(this.conexao.baseUrl, "/groups"),
+        { headers: this.headers, segredos: this.segredos },
+      );
+      if (!Array.isArray(itens) || itens.length === 0) {
+        throw new Error("vazio");
+      }
+    } catch {
+      itens = await pedir<ShortcutItem[]>(
+        endereco(this.conexao.baseUrl, "/projects"),
+        { headers: this.headers, segredos: this.segredos },
+      );
+    }
+
+    return (Array.isArray(itens) ? itens : [])
+      .filter((item): item is ShortcutItem => item.id !== undefined && typeof item.name === "string")
+      .map((item) => ({ key: String(item.id), name: item.name }));
+  }
+
+  async findByPullRequest(project: string, pullRequestUrl: string): Promise<TrackerIssue | null> {
+    const resposta = await pedir<ShortcutSearchStories>(
+      endereco(
+        this.conexao.baseUrl,
+        `/search/stories?query=${encodeURIComponent(pullRequestUrl)}`,
+      ),
+      { headers: this.headers, segredos: this.segredos },
+    );
+
+    const achada = (resposta.data ?? [])[0];
+    if (achada?.id === undefined) return null;
+    return {
+      key: String(achada.id),
+      url: achada.app_url,
+      title: achada.name,
+    };
+  }
+
+  async createIssue(draft: TrackerIssueDraft): Promise<TrackerIssue> {
+    const criada = await pedir<ShortcutStory>(
+      endereco(this.conexao.baseUrl, "/stories"),
+      {
+        method: "POST",
+        headers: this.headers,
+        body: {
+          name: draft.title,
+          description: `${draft.body}\n\n${draft.pullRequestUrl}`,
+          project_id: Number(draft.project) || undefined,
+          group_id: typeof draft.project === "string" ? draft.project : undefined,
+        },
+        segredos: this.segredos,
+      },
+    );
+
+    if (criada.id === undefined) {
+      throw new Error("o Shortcut criou a história sem devolver o id dela");
+    }
+    return {
+      key: String(criada.id),
+      url: criada.app_url,
+      title: criada.name,
+    };
+  }
+}
+
 /** O endereço de fábrica de cada tipo, para o cadastro que não quer escolher. */
 export const TRACKER_DEFAULT_BASE_URL: Record<TrackerKind, string> = {
   jira: "",
   "jira-atlassian": "",
   "github-issues": "https://api.github.com",
+  shortcut: "https://api.app.shortcut.com/api/v3",
 };
 
 export function buildTracker(conexao: TrackerConnection): TrackerAdapter {
@@ -389,6 +496,8 @@ export function buildTracker(conexao: TrackerConnection): TrackerAdapter {
       return new JiraAdapter(conexao);
     case "github-issues":
       return new GithubIssuesAdapter(conexao);
+    case "shortcut":
+      return new ShortcutAdapter(conexao);
     case "jira-atlassian":
       // Não há segredo para montar este: a credencial é a da conexão, e quem
       // sabe chamar o servidor MCP é o `TrackerService`.
