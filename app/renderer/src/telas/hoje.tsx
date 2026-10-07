@@ -232,7 +232,7 @@ export function Hoje({ navegar }: TelaProps) {
           ) : (
             <ul className="divide-border border-border superficie divide-y overflow-hidden rounded-xl border">
               {proximas.map((g) => {
-                const ultima = g.lastFireAt ? idade(t, g.lastFireAt / 1000).texto : undefined;
+                const ultima = g.lastFireAt ? tempoRelativoCurto(t, g.lastFireAt / 1000) : undefined;
                 return (
                   <li className="flex items-center justify-between gap-3.5 px-4 py-3" key={g.triggerId}>
                     <div className="flex min-w-0 flex-1 flex-col gap-1">
@@ -612,6 +612,14 @@ function dataDeHoje(idioma: string): string {
     new Date(),
   );
   return texto.charAt(0).toLocaleUpperCase(idioma) + texto.slice(1);
+}
+
+function tempoRelativoCurto(t: TFunction, segundos: number): string {
+  const diffSegundos = Math.max(0, Math.floor(Date.now() / 1000 - segundos));
+  if (diffSegundos < 60) return t("home.today.next.just_now");
+  const minutos = Math.floor(diffSegundos / 60);
+  if (minutos < 60) return t("home.today.next.minutes_ago", { count: minutos });
+  return idade(t, segundos).texto;
 }
 
 function mesmoDia(a: Date, b: Date): boolean {

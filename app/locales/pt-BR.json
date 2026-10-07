@@ -1334,6 +1334,9 @@
         "check_now": "Verificar agora",
         "checking": "Verificando...",
         "last_checked": "última checagem {{when}}",
+        "just_now": "agora mesmo",
+        "minutes_ago_one": "há {{count}} min",
+        "minutes_ago_other": "há {{count}} min",
         "no_events": "sem novidades"
       },
       "done": {
