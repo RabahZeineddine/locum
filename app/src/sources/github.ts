@@ -379,7 +379,7 @@ export function githubReviewHandler(client: () => ReviewClient = octokit): Actio
       return ((payload as ReviewPayload).verdict ?? "COMMENT") !== "COMMENT";
     },
     async publish(payload, externalId) {
-      const p = payload as ReviewPayload;
+      const p = payload as ReviewPayload & { slackChannel?: string; slackTs?: string };
       if (await jaSaiu(p, externalId)) return;
       await client().rest.pulls.createReview({
         owner: p.owner,
@@ -389,6 +389,22 @@ export function githubReviewHandler(client: () => ReviewClient = octokit): Actio
         body: `${renderBody(p.findings)}\n${marca(externalId)}`,
         comments: comments(p.findings),
       });
+
+      // Se este review veio de uma mensagem no Slack, sincroniza a reação
+      if (p.slackChannel && p.slackTs) {
+        try {
+          const emoji = p.verdict === "APPROVE" ? "approved-5788" : p.verdict === "REQUEST_CHANGES" ? "warning" : "speech_balloon";
+          const { mcpService } = await import("../services/mcp-service.js");
+          const { McpRegistry } = await import("../mcp/registry.js");
+          const configs = await mcpService.enabledConfigs();
+          if (configs.some((c) => c.name === "slack")) {
+            const reg = McpRegistry.fromList(configs);
+            await reg.callTool("slack", "slack_remove_reaction", { channel_id: p.slackChannel, timestamp: p.slackTs, name: "eyes" }).catch(() => undefined);
+            await reg.callTool("slack", "slack_add_reaction", { channel_id: p.slackChannel, timestamp: p.slackTs, name: emoji }).catch(() => undefined);
+            await reg.closeAll();
+          }
+        } catch {}
+      }
     },
     async draft(payload, externalId) {
       const p = payload as ReviewPayload;
