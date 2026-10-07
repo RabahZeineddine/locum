@@ -409,8 +409,11 @@ export class ShortcutAdapter implements TrackerAdapter {
   }
 
   private get headers(): Record<string, string> {
+    const isBearer = /^bearer\s+/i.test(this.conexao.secret);
     return {
-      "Shortcut-Token": this.conexao.secret,
+      ...(isBearer
+        ? { Authorization: this.conexao.secret }
+        : { "Shortcut-Token": this.conexao.secret }),
       "Content-Type": "application/json",
     };
   }
