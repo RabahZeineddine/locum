@@ -390,7 +390,7 @@ export class Executor {
       return { kind: "skipped" };
     }
 
-    const resolution = resolveModel(modelo, fallbacks);
+    const resolution = resolveModel(modelo, fallbacks, providerService.entries());
     const runtime =
       this.deps.runtimes.get(SUBSCRIPTION_RUNTIMES.has(resolution.provider) ? resolution.provider : "native");
     if (!runtime) throw new Error(`runtime indisponivel para "${resolution.provider}"`);
