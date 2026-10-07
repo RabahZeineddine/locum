@@ -589,7 +589,21 @@
       "rejected": "rejeitado",
       "publish_conflict": "o alvo mudou antes disso poder ser publicado"
     },
-    "lead": "Cada vez que um agent rodou: passo a passo, o que achou e quanto custou."
+    "lead": "Cada vez que um agent rodou: passo a passo, o que achou e quanto custou.",
+    "tabs": {
+      "executive": "Visão Executiva",
+      "technical": "Pipeline & JSON"
+    },
+    "technicalDetails": "Detalhes Técnicos & Pipeline",
+    "technicalDetailsHint": "Grafo de dependência, reasoning dos modelos e I/O de cada passo.",
+    "prSummary": "Resumo do Pull Request",
+    "auditSummary": "Auditoria de Código",
+    "verdict": {
+      "APPROVE": "Aprovação recomendada",
+      "COMMENT": "Comentários gerais",
+      "REQUEST_CHANGES": "Alterações necessárias"
+    },
+    "fixSuggestion": "Sugestão de correção"
   },
   "settings": {
     "refused": "a ponte recusou {{channel}}: {{message}}",
