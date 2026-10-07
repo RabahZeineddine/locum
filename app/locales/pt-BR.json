@@ -1328,7 +1328,13 @@
         "title": "Roda a seguir",
         "empty": "Nenhum agent com hora marcada.",
         "due": "agora",
-        "when": "{{day}} {{time}}"
+        "when": "{{day}} {{time}}",
+        "watch_title": "Vigilância Ativa",
+        "watch_badge": "{{count}} ativos",
+        "check_now": "Verificar agora",
+        "checking": "Verificando...",
+        "last_checked": "última checagem {{when}}",
+        "no_events": "sem novidades"
       },
       "done": {
         "title": "Terminou",
