@@ -649,7 +649,7 @@ function Linha({
  * junção por ponto empilha tudo no mesmo tom e obriga a ler a linha inteira
  * para achar o que importa.
  */
-interface Alvo {
+export interface Alvo {
   principal: string;
   /** Ao lado do principal, apagado: o modo e o tamanho de uma proposta de contexto. */
   detalhe?: string;
@@ -661,9 +661,14 @@ interface Alvo {
   /** A revisão só mostra o diff: o botão diz "Revisar" e não promete edição. */
   somenteLeitura?: boolean;
   repo?: string;
+  pull?: number;
   titulo?: string;
   autor?: string;
   ramos?: string;
+  headBranch?: string;
+  baseBranch?: string;
+  additions?: number;
+  deletions?: number;
   tamanho?: string;
   rascunho?: boolean;
 }
@@ -721,6 +726,7 @@ export function alvoDaPendencia(p: Pendencia, t: TFunction): Alvo {
 
   return {
     principal: `PR #${c.pull}`,
+    pull: c.pull,
     repo: `${c.owner ? `${c.owner}/` : ""}${c.repo ?? ""}`,
     titulo: c.title,
     autor: c.author ? t("inbox.by", { author: c.author }) : undefined,
@@ -728,6 +734,10 @@ export function alvoDaPendencia(p: Pendencia, t: TFunction): Alvo {
       c.headBranch && c.baseBranch
         ? t("inbox.branch", { head: c.headBranch, base: c.baseBranch })
         : undefined,
+    headBranch: c.headBranch,
+    baseBranch: c.baseBranch,
+    additions: c.additions,
+    deletions: c.deletions,
     tamanho:
       c.fileCount === undefined
         ? undefined
