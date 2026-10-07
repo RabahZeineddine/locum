@@ -979,6 +979,7 @@
       "general": "Geral",
       "models": "Modelos",
       "assistant": "Assistente",
+      "trackers": "Trackers de Tarefas",
       "tools": "Ferramentas",
       "connections": "Conexões"
     },
@@ -986,6 +987,7 @@
       "general": "Idioma, atualização e onde o Locum guarda o trabalho das iniciativas.",
       "models": "Os provedores que pensam pelos agents nesta máquina: assinatura, chave de API ou gateway compatível. Desligue o que não deve ser usado.",
       "assistant": "Com quem você conversa no ⌘J, e para qual modelo o Locum troca quando o escolhido não está disponível.",
+      "trackers": "Shortcut, Jira e GitHub Issues: onde as tarefas e histórias são acompanhadas e vinculadas às suas entregas.",
       "tools": "O Locum dentro das ferramentas de código que você já usa, e o terminal que abre as sessões."
     },
     "toolsLocum": {
