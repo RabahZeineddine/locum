@@ -3,10 +3,12 @@ import {
   Check,
   CheckCheck,
   ChevronRight,
+  ExternalLink,
   GitBranch,
   GitPullRequest,
   Inbox as InboxIcon,
   KeyRound,
+  MessageSquare,
   Sparkles,
   TerminalSquare,
   User,
@@ -248,6 +250,7 @@ function CartaoDeEspera({
   const { texto: quando } = idade(t, pendencia.createdAt);
   const titulo = alvo.titulo ?? alvo.principal;
   const ehPr = Boolean(alvo.pull || alvo.repo);
+  const ehMsg = Boolean(alvo.servico || pendencia.kind === "slack.post" || pendencia.kind === "teams.post");
   // Pendência sem pull request já traz o nome do agent no título; repetir em
   // cima só faz a linha dizer a mesma coisa duas vezes.
   const rotulo = iniciativa ?? (titulo.includes(pendencia.agentName) ? undefined : pendencia.agentName);
@@ -256,9 +259,12 @@ function CartaoDeEspera({
     <li className="ia-borda group flex items-center gap-4 rounded-xl px-5 py-4 shadow-[0_8px_30px_-16px_var(--ia-2)]">
       <span
         aria-hidden
-        className="bg-primary/12 text-primary flex size-9 shrink-0 items-center justify-center rounded-lg"
+        className={cn(
+          "flex size-9 shrink-0 items-center justify-center rounded-lg",
+          ehMsg ? "bg-amber-500/12 text-amber-500" : "bg-primary/12 text-primary",
+        )}
       >
-        <Sparkles className="size-4" />
+        {ehMsg ? <MessageSquare className="size-4" /> : <Sparkles className="size-4" />}
       </span>
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
         <div className="flex flex-wrap items-center gap-2">
@@ -274,6 +280,18 @@ function CartaoDeEspera({
                 <span className="text-primary inline-flex items-center gap-0.5 font-mono text-xs font-semibold">
                   <GitPullRequest aria-hidden className="size-3" />
                   #{alvo.pull}
+                </span>
+              )}
+            </div>
+          )}
+          {ehMsg && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium inline-flex items-center rounded px-1.5 py-0.5 text-xs capitalize">
+                {alvo.servico ?? (pendencia.kind.startsWith("slack") ? "slack" : "teams")}
+              </span>
+              {alvo.detalhe && (
+                <span className="bg-muted text-muted-foreground inline-flex items-center rounded px-1.5 py-0.5 font-mono text-xs">
+                  {alvo.detalhe}
                 </span>
               )}
             </div>
@@ -307,14 +325,34 @@ function CartaoDeEspera({
               )}
             </span>
           )}
-          {!ehPr && alvo.detalhe && <span>{alvo.detalhe}</span>}
+          {!ehPr && !ehMsg && alvo.detalhe && <span>{alvo.detalhe}</span>}
+          {alvo.resumo && ehMsg && (
+            <span className="line-clamp-1 italic text-muted-foreground/80">
+              "{alvo.resumo}"
+            </span>
+          )}
           <span>·</span>
           <span>{quando}</span>
         </div>
       </div>
-      <Button className="shrink-0 cursor-pointer" onClick={() => navegar("inbox", pendencia.id)}>
-        {alvo.somenteLeitura ? t("inbox.review") : t("home.today.waiting.open")}
-      </Button>
+      <div className="flex shrink-0 items-center gap-2">
+        {alvo.link && (
+          <Button
+            asChild
+            className="shrink-0 cursor-pointer text-xs"
+            size="sm"
+            variant="outline"
+          >
+            <a href={alvo.link} rel="noreferrer" target="_blank">
+              <ExternalLink aria-hidden className="mr-1 size-3.5" />
+              {alvo.servico === "slack" ? "Slack" : "Teams"}
+            </a>
+          </Button>
+        )}
+        <Button className="shrink-0 cursor-pointer" onClick={() => navegar("inbox", pendencia.id)}>
+          {alvo.somenteLeitura ? t("inbox.review") : t("home.today.waiting.open")}
+        </Button>
+      </div>
     </li>
   );
 }

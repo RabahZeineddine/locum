@@ -1,0 +1,82 @@
+{
+  "id": "inbox-triage",
+  "name": "Triagem da Caixa de Entrada",
+  "defaultTools": [],
+  "skills": [],
+  "budget": {
+    "perRunUsd": 0.05,
+    "perDayUsd": 1
+  },
+  "steps": [
+    {
+      "type": "model",
+      "key": "classify",
+      "name": "Classificar Mensagens",
+      "needs": [],
+      "optional": false,
+      "model": "aihub/glm-5.3-flash",
+      "maxSteps": 4,
+      "requiresServers": [],
+      "prompt": "Você é o assistente executivo e de engenharia de um Staff Software Engineer e Tech Lead.\nAnalise as conversas e menções recebidas (Slack ou Teams) e identifique apenas o que realmente exige a atenção dele.\n\nPara cada assunto relevante:\n- `channel`: nome ou id do canal/chat.\n- `subject`: remetente e assunto conciso (ex: \"@igor sobre endpoint do BFF\").\n- `kind`: \n  • `needs_reply` se alguém fez uma pergunta direta ou solicitou uma decisão técnica/alinhamento pendente dele.\n  • `info` se for comunicado ou atualização que ele deve saber mas sem ação imediata.\n  • `ignore` se for ruído, bate-papo sem contexto de trabalho ou mensagem do próprio usuário.\n- `summary`: resumo executivo em UMA frase explicando o que foi pedido ou comunicado.\n- `threadTs`: carimbo da thread se houver.\n\nConversa recebida:\n{{event.channels}}",
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "headline",
+          "items"
+        ],
+        "properties": {
+          "headline": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "channel",
+                "subject",
+                "kind",
+                "summary"
+              ],
+              "properties": {
+                "channel": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string"
+                },
+                "kind": {
+                  "enum": [
+                    "needs_reply",
+                    "info",
+                    "ignore"
+                  ]
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "threadTs": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "action",
+      "key": "deliver",
+      "name": "Apresentar na Fila",
+      "needs": [
+        "classify"
+      ],
+      "optional": false,
+      "action": "digest.deliver",
+      "mode": "approve",
+      "input": "classify"
+    }
+  ]
+}

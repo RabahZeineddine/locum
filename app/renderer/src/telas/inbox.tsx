@@ -671,6 +671,8 @@ export interface Alvo {
   deletions?: number;
   tamanho?: string;
   rascunho?: boolean;
+  servico?: "slack" | "teams";
+  link?: string;
 }
 
 export function alvoDaPendencia(p: Pendencia, t: TFunction): Alvo {
@@ -703,6 +705,8 @@ export function alvoDaPendencia(p: Pendencia, t: TFunction): Alvo {
       titulo: m.assunto || undefined,
       autor: m.autor ? t("inbox.by", { author: m.autor }) : undefined,
       resumo: m.texto ? t("inbox.message.reply", { text: m.texto }) : undefined,
+      servico: m.servico,
+      link: m.link,
       semSeveridade: true,
     };
   }
