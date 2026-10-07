@@ -3257,22 +3257,22 @@ function Trackers({ kinds }: { kinds: Tracker["kind"][] }) {
             value={conta}
           />
         ) : null}
-        <input
-          aria-label={t("settings.trackers.project")}
-          autoComplete="off"
-          className="border-border bg-background focus-visible:ring-ring w-40 rounded-md border px-3 py-1.5 font-mono text-xs outline-none focus-visible:ring-1"
-          data-locum-tracker-projeto=""
-          onChange={(evento) => setProjeto(evento.target.value)}
-          placeholder={t(
-            ehShortcut
-              ? "Projeto / Equipe padrão"
-              : jira
+        {!ehShortcut ? (
+          <input
+            aria-label={t("settings.trackers.project")}
+            autoComplete="off"
+            className="border-border bg-background focus-visible:ring-ring w-40 rounded-md border px-3 py-1.5 font-mono text-xs outline-none focus-visible:ring-1"
+            data-locum-tracker-projeto=""
+            onChange={(evento) => setProjeto(evento.target.value)}
+            placeholder={t(
+              jira
                 ? "settings.trackers.projectHint"
                 : "settings.trackers.repoHint",
-          )}
-          spellCheck={false}
-          value={projeto}
-        />
+            )}
+            spellCheck={false}
+            value={projeto}
+          />
+        ) : null}
         <Button
           data-locum-tracker-salvar=""
           disabled={ocupado || !valido}
