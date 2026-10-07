@@ -431,6 +431,7 @@ export function ConexoesDoLocum() {
               ),
               teams: <TeamsPeloGraph />,
               atlassian: <Trackers kinds={["jira-atlassian", "jira"]} />,
+              shortcut: <Trackers kinds={["shortcut"]} />,
             }}
           />
 
