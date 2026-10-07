@@ -270,7 +270,7 @@ function Execucao({ navegar, runId }: { navegar: TelaProps["navegar"]; runId: st
   // alvo estavel, e nao do primeiro `pre` que aparecer na tela.
   const comSaida = detalhe.steps.find((p) => p.output !== null)?.stepKey ?? null;
 
-  const veredito = useMemo(() => extrairVeredito(detalhe.steps), [detalhe.steps]);
+  const veredito = extrairVeredito(detalhe.steps);
   const achadosLista = achados.data ?? [];
   const target = detalhe.target;
   const ehPr = Boolean(target && (target.pull || target.repo));
@@ -311,11 +311,20 @@ function Execucao({ navegar, runId }: { navegar: TelaProps["navegar"]; runId: st
       {veredito && <BannerVeredito veredito={veredito} />}
       <DestaqueAchados achados={achadosLista} />
 
-      {/* Detalhes Técnicos & Pipeline: Colapsável com Grafo e Passos */}
-      <SecaoDetalhesTecnicos
-        comSaida={comSaida}
-        detalhe={detalhe}
-      />
+      {/* Grafo e Passos sempre visíveis no DOM para o React Flow medir as caixas e desenhar as arestas */}
+      <GrafoDaExecucao detalhe={detalhe} />
+
+      <ol className="flex flex-col gap-3">
+        {detalhe.steps.map((passo) => (
+          <li key={passo.id}>
+            <PassoDaExecucao
+              marcado={passo.stepKey === comSaida}
+              passo={passo}
+              runId={detalhe.id}
+            />
+          </li>
+        ))}
+      </ol>
     </div>
   );
 }
