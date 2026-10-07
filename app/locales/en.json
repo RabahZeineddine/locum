@@ -946,6 +946,7 @@
       "general": "General",
       "models": "Models",
       "assistant": "Assistant",
+      "trackers": "Issue Trackers",
       "tools": "Tools",
       "connections": "Connections"
     },
@@ -953,6 +954,7 @@
       "general": "Language, updates and where Locum keeps initiative work.",
       "models": "The providers that think for your agents on this machine: subscription, API key or compatible gateway. Turn off what should not be used.",
       "assistant": "Who you talk to in ⌘J, and which model Locum switches to when the chosen one is unavailable.",
+      "trackers": "Shortcut, Jira and GitHub Issues: where tasks and stories are tracked and linked to your work.",
       "tools": "Locum inside the coding tools you already use, and the terminal that opens sessions."
     },
     "toolsLocum": {
