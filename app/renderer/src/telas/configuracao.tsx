@@ -3086,6 +3086,7 @@ const ROTULO_DO_TRACKER: Record<Tracker["kind"], string> = {
   "jira-atlassian": "settings.trackers.kindJiraAtlassian",
   jira: "settings.trackers.kindJira",
   "github-issues": "settings.trackers.kindGithub",
+  shortcut: "settings.trackers.kindShortcut",
 };
 
 function Trackers({ kinds }: { kinds: Tracker["kind"][] }) {

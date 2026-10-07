@@ -855,6 +855,7 @@
       "kindJiraAtlassian": "Jira through the Atlassian connection",
       "kindJira": "Jira with API token",
       "kindGithub": "GitHub Issues",
+      "kindShortcut": "Shortcut",
       "id": "tracker identifier",
       "idHint": "my-jira",
       "label": "tracker name",
