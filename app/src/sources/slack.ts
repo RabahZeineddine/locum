@@ -1,4 +1,6 @@
-import { db as defaultDb } from "../db/index.js";
+import { fetchPr } from "./github.js";
+import { db as defaultDb, schema } from "../db/index.js";
+import { eq } from "drizzle-orm";
 import { McpRegistry } from "../mcp/registry.js";
 import { mcpService, type McpService } from "../services/mcp-service.js";
 import { slackService, type SlackService, type SlackWatch } from "../services/slack-service.js";
@@ -10,6 +12,25 @@ import {
 } from "./mcp-poll.js";
 
 type Db = typeof defaultDb;
+
+
+export interface ParsedGithubPr {
+  owner: string;
+  repo: string;
+  pull: number;
+}
+
+export function extractGithubPr(text: string): ParsedGithubPr | null {
+  const match = GITHUB_PR_LINK_REGEX.exec(text);
+  if (!match) return null;
+  return {
+    owner: match[1]!,
+    repo: match[2]!,
+    pull: Number(match[3]!)
+  };
+}
+
+export const GITHUB_PR_LINK_REGEX = /https?:\/\/github\.com\/([^\/\s]+)\/([^\/\s]+)\/pull\/(\d+)/;
 
 /**
  * Cursor de um canal que nunca foi varrido.
@@ -91,11 +112,11 @@ export function slackShape(server: string, channel: string): McpPollShape {
     watermark: slackWatermark,
     payload: (item) => {
       const mensagem = normalize(item, channel);
+      const pr = extractGithubPr(mensagem.text);
       return {
-        // O executor lê `repo` e `changedFiles` de todo evento. Aqui não há
-        // repositório, e o canal é o que responde "de onde veio isto" na lista
-        // de execuções.
-        repo: `slack/${channel}`,
+        // O executor lê `repo` e `changedFiles` de todo evento. Se houver link de PR,
+        // já apontamos o repo para o do PR para o reviewer se situar de imediato.
+        repo: pr ? `${pr.owner}/${pr.repo}` : `slack/${channel}`,
         changedFiles: [],
         server,
         channel,
@@ -106,6 +127,7 @@ export function slackShape(server: string, channel: string): McpPollShape {
         reply: mensagem.reply,
         permalink: mensagem.permalink,
         item,
+        ...(pr ? { prOwner: pr.owner, prRepo: pr.repo, prNumber: pr.pull } : {}),
       };
     },
   };
@@ -281,6 +303,30 @@ export async function pollSlack(
           { server, tool: watch.tool, args: slackArgs(watch, channel) },
           { db, call, shape: slackShape(server, channel) },
         );
+
+        // Enriquecer eventos que contêm links para PR do GitHub com dados reais do PR (diff, título, etc)
+        for (const evId of inWindow) {
+          try {
+            const [ev] = await db.select().from(schema.events).where(eq(schema.events.id, evId)).limit(1);
+            const payload = ev?.payload as Record<string, unknown> | null;
+            if (payload && payload.prOwner && payload.prRepo && payload.prNumber && !payload.diff) {
+              const prCtx = await fetchPr(String(payload.prOwner), String(payload.prRepo), Number(payload.prNumber));
+              await db.update(schema.events).set({
+                payload: {
+                  ...payload,
+                  ...prCtx,
+                  // Preserva dados originais do Slack para poder responder/reagir depois
+                  slackChannel: payload.channel,
+                  slackTs: payload.ts,
+                  slackThreadTs: payload.threadTs,
+                }
+              }).where(eq(schema.events.id, evId));
+            }
+          } catch (e) {
+            // Falha ao enriquecer PR não derruba a varredura
+          }
+        }
+
         byChannel.push({ channel, eventIds, seen });
         janela.push(...inWindow);
       } catch (err) {
