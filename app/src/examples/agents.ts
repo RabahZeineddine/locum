@@ -1,3 +1,4 @@
+import inboxTriage from "../../../examples/agents/inbox-triage.json";
 import prReview from "../../../examples/agents/pr-review.json";
 import slackDigest from "../../../examples/agents/slack-digest.json";
 import slackReply from "../../../examples/agents/slack-reply.json";
@@ -20,6 +21,7 @@ export const prReviewSpec = AgentSpec.parse(prReview);
 export const slackDigestSpec = AgentSpec.parse(slackDigest);
 export const slackReplySpec = AgentSpec.parse(slackReply);
 export const teamsReplySpec = AgentSpec.parse(teamsReply);
+export const inboxTriageSpec = AgentSpec.parse(inboxTriage);
 
 /**
  * A resposta pronta de cada conversa, que a tela da conexão oferece para quem
