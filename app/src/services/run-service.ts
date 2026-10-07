@@ -33,7 +33,17 @@ export interface RunSummary extends RunRow {
    * para saber de que trabalho se trata. O alvo vem do evento e a contagem de
    * passos vem da própria execução.
    */
-  target: { pull?: number; repo?: string; title?: string; author?: string } | null;
+  target: {
+    pull?: number;
+    repo?: string;
+    title?: string;
+    author?: string;
+    baseBranch?: string;
+    headBranch?: string;
+    additions?: number;
+    deletions?: number;
+    fileCount?: number;
+  } | null;
   stepTotal: number;
   stepDone: number;
   stepPending: number;
@@ -41,7 +51,7 @@ export interface RunSummary extends RunRow {
   findingCount: number;
 }
 
-export interface RunDetail extends Omit<RunSummary, "target" | "stepTotal" | "stepDone" | "stepPending" | "stepFailed" | "findingCount"> {
+export interface RunDetail extends Omit<RunSummary, "stepTotal" | "stepDone" | "stepPending" | "stepFailed" | "findingCount"> {
   /** A versao exata que executou, nao a mais recente do agent. */
   spec: AgentSpec;
   steps: StepRow[];
@@ -166,10 +176,12 @@ export class RunService {
         agentName: schema.agents.name,
         agentVersion: schema.agentVersions.version,
         spec: schema.agentVersions.spec,
+        evento: schema.events.payload,
       })
       .from(schema.runs)
       .innerJoin(schema.agentVersions, eq(schema.runs.agentVersionId, schema.agentVersions.id))
       .innerJoin(schema.agents, eq(schema.agentVersions.agentId, schema.agents.id))
+      .leftJoin(schema.events, eq(schema.runs.eventId, schema.events.id))
       .where(eq(schema.runs.id, runId));
     if (!row) return undefined;
 
@@ -178,6 +190,7 @@ export class RunService {
       agentId: row.agentId,
       agentName: row.agentName,
       agentVersion: row.agentVersion,
+      target: alvo(row.evento),
       spec: AgentSpec.parse(row.spec),
       steps: await this.steps(runId),
     };
@@ -398,12 +411,26 @@ function dependents(spec: AgentSpec, stepKey: string): Set<string> {
 function alvo(payload: unknown): RunSummary["target"] {
   if (payload === null || typeof payload !== "object") return null;
   const p = payload as Record<string, unknown>;
-  if (typeof p.pull !== "number") return null;
+  const pull = typeof p.pull === "number" ? p.pull : typeof p.prNumber === "number" ? p.prNumber : undefined;
+  if (pull === undefined) return null;
+
+  const repo =
+    typeof p.repo === "string"
+      ? p.repo
+      : typeof p.prOwner === "string" && typeof p.prRepo === "string"
+        ? `${p.prOwner}/${p.prRepo}`
+        : undefined;
+
   return {
-    pull: p.pull,
-    repo: typeof p.repo === "string" ? p.repo : undefined,
+    pull,
+    repo,
     title: typeof p.title === "string" ? p.title : undefined,
     author: typeof p.author === "string" ? p.author : undefined,
+    baseBranch: typeof p.baseBranch === "string" ? p.baseBranch : undefined,
+    headBranch: typeof p.headBranch === "string" ? p.headBranch : undefined,
+    additions: typeof p.additions === "number" ? p.additions : undefined,
+    deletions: typeof p.deletions === "number" ? p.deletions : undefined,
+    fileCount: typeof p.fileCount === "number" ? p.fileCount : undefined,
   };
 }
 

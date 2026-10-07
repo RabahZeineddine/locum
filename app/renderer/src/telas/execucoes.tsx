@@ -24,8 +24,28 @@ import {
   type Estado,
 } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, Check, CornerDownRight, Loader2, MessageSquareText, RotateCcw, Wrench, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import {
+  AlertCircle,
+  AlertTriangle,
+  ArrowLeft,
+  Check,
+  CheckCircle2,
+  ChevronDown,
+  CornerDownRight,
+  FileCode,
+  GitBranch,
+  GitPullRequest,
+  Info,
+  Loader2,
+  MessageSquareText,
+  RotateCcw,
+  Sparkles,
+  User,
+  Wrench,
+  X,
+  XCircle,
+} from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { TFunction } from "i18next";
 import { Trans, useTranslation } from "react-i18next";
 import { useCurrentInitiative } from "../current-initiative";
@@ -250,9 +270,14 @@ function Execucao({ navegar, runId }: { navegar: TelaProps["navegar"]; runId: st
   // alvo estavel, e nao do primeiro `pre` que aparecer na tela.
   const comSaida = detalhe.steps.find((p) => p.output !== null)?.stepKey ?? null;
 
+  const veredito = useMemo(() => extrairVeredito(detalhe.steps), [detalhe.steps]);
+  const achadosLista = achados.data ?? [];
+  const target = detalhe.target;
+  const ehPr = Boolean(target && (target.pull || target.repo));
+
   return (
     <div
-      className="flex flex-col gap-4"
+      className="flex flex-col gap-5"
       data-achados={achados.data?.length ?? -1}
       data-chaves={detalhe.steps.map((p) => p.stepKey).join(",")}
       data-locum-probe="execucao"
@@ -281,26 +306,272 @@ function Execucao({ navegar, runId }: { navegar: TelaProps["navegar"]; runId: st
         </p>
       ) : null}
 
-      {/*
-        O grafo antes da linha do tempo de proposito: ele responde "o que esta
-        esperando o que", e a lista abaixo responde "o que aconteceu em cada
-        um". Quem abre um run parado quer a primeira pergunta.
-      */}
-      <GrafoDaExecucao detalhe={detalhe} />
+      {/* Resumo Executivo: PR, Veredito e Achados em destaque */}
+      {ehPr && target && <CardResumoPr target={target} />}
+      {veredito && <BannerVeredito veredito={veredito} />}
+      <DestaqueAchados achados={achadosLista} />
 
-      <ol className="flex flex-col gap-3">
-        {detalhe.steps.map((passo) => (
-          <li key={passo.id}>
-            <PassoDaExecucao
-              marcado={passo.stepKey === comSaida}
-              passo={passo}
-              runId={detalhe.id}
-            />
-          </li>
-        ))}
-      </ol>
+      {/* Detalhes Técnicos & Pipeline: Colapsável com Grafo e Passos */}
+      <SecaoDetalhesTecnicos
+        comSaida={comSaida}
+        detalhe={detalhe}
+      />
+    </div>
+  );
+}
 
-      <Achados achados={achados.data ?? []} />
+/** Extrai veredito (APPROVE, COMMENT, REQUEST_CHANGES) e sumário se algum step produziu. */
+function extrairVeredito(steps: Passo[]): { tipo: "APPROVE" | "COMMENT" | "REQUEST_CHANGES"; resumo?: string } | null {
+  for (const step of steps) {
+    if (!step.output || typeof step.output !== "object") continue;
+    const out = step.output as Record<string, unknown>;
+    const v = out.verdict ?? (out.review as Record<string, unknown> | undefined)?.verdict;
+    if (v === "APPROVE" || v === "COMMENT" || v === "REQUEST_CHANGES") {
+      const resumo =
+        typeof out.summary === "string"
+          ? out.summary
+          : typeof out.body === "string"
+            ? out.body
+            : typeof (out.review as Record<string, unknown> | undefined)?.body === "string"
+              ? String((out.review as Record<string, unknown>).body)
+              : undefined;
+      return { tipo: v, resumo };
+    }
+  }
+  return null;
+}
+
+/** Card de Resumo Executivo do PR no topo */
+function CardResumoPr({ target }: { target: NonNullable<Detalhe["target"]> }) {
+  const { t } = useTranslation();
+
+  return (
+    <div className="superficie flex flex-col gap-3 rounded-xl border border-border p-5 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          {target.repo && (
+            <span className="bg-muted text-muted-foreground inline-flex items-center rounded-md px-2.5 py-1 font-mono text-xs font-medium">
+              {target.repo}
+            </span>
+          )}
+          {target.pull && (
+            <span className="text-primary inline-flex items-center gap-1 font-mono text-sm font-semibold">
+              <GitPullRequest aria-hidden className="size-4" />
+              #{target.pull}
+            </span>
+          )}
+          {target.author && (
+            <span className="text-muted-foreground inline-flex items-center gap-1.5 text-xs">
+              <User aria-hidden className="size-3.5 text-muted-foreground/70" />
+              <span className="font-medium text-foreground">{target.author}</span>
+            </span>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3 text-xs">
+          {target.headBranch && target.baseBranch && (
+            <span className="inline-flex items-center gap-1.5 font-mono">
+              <GitBranch aria-hidden className="size-3.5 text-muted-foreground" />
+              <span className="text-foreground font-medium">{target.headBranch}</span>
+              <span className="text-muted-foreground">→</span>
+              <span className="text-muted-foreground">{target.baseBranch}</span>
+            </span>
+          )}
+          {(target.additions !== undefined || target.deletions !== undefined) && (
+            <span className="inline-flex items-center gap-1 font-mono tabular-nums">
+              {target.fileCount !== undefined && (
+                <span className="text-muted-foreground mr-1">
+                  {target.fileCount} {target.fileCount === 1 ? "arq" : "arqs"} ·
+                </span>
+              )}
+              {target.additions !== undefined && (
+                <span className="text-emerald-500 font-medium">+{target.additions}</span>
+              )}
+              {target.deletions !== undefined && (
+                <span className="text-rose-500 font-medium">−{target.deletions}</span>
+              )}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {target.title && (
+        <h2 className="text-base font-semibold tracking-tight text-foreground">
+          {target.title}
+        </h2>
+      )}
+    </div>
+  );
+}
+
+/** Banner do Veredito da Auditoria */
+function BannerVeredito({ veredito }: { veredito: { tipo: "APPROVE" | "COMMENT" | "REQUEST_CHANGES"; resumo?: string } }) {
+  const { t } = useTranslation();
+
+  const configs = {
+    APPROVE: {
+      bg: "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400",
+      icon: CheckCircle2,
+      titulo: t("runs.verdict.APPROVE"),
+    },
+    REQUEST_CHANGES: {
+      bg: "bg-destructive/10 border-destructive/30 text-destructive",
+      icon: XCircle,
+      titulo: t("runs.verdict.REQUEST_CHANGES"),
+    },
+    COMMENT: {
+      bg: "bg-sky-500/10 border-sky-500/30 text-sky-600 dark:text-sky-400",
+      icon: MessageSquareText,
+      titulo: t("runs.verdict.COMMENT"),
+    },
+  }[veredito.tipo];
+
+  const Icone = configs.icon;
+
+  return (
+    <div className={cn("flex flex-col gap-2 rounded-xl border p-4.5", configs.bg)}>
+      <div className="flex items-center gap-2.5 font-semibold text-sm">
+        <Icone aria-hidden className="size-5 shrink-0" />
+        <span>{configs.titulo}</span>
+      </div>
+      {veredito.resumo && (
+        <p className="text-foreground/90 text-sm leading-relaxed whitespace-pre-wrap pl-7.5">
+          {veredito.resumo}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Cards destacados de achados */
+function DestaqueAchados({ achados }: { achados: ReadResult<"runs.findings"> }) {
+  const { t } = useTranslation();
+
+  if (achados.length === 0) return null;
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <h3 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">
+          {t("findings.count", { count: achados.length })}
+        </h3>
+      </div>
+      <div className="grid grid-cols-1 gap-3">
+        {achados.map((achado, i) => {
+          const severidadeTinta =
+            achado.severity === "critical"
+              ? "border-sev-critical/40 bg-sev-critical/5"
+              : achado.severity === "high"
+                ? "border-sev-high/40 bg-sev-high/5"
+                : achado.severity === "medium"
+                  ? "border-sev-medium/40 bg-sev-medium/5"
+                  : "border-border bg-card";
+
+          const badgeVariant =
+            achado.severity === "critical"
+              ? "destructive"
+              : achado.severity === "high"
+                ? "destructive"
+                : "secondary";
+
+          return (
+            <div
+              className={cn("superficie flex flex-col gap-2.5 rounded-xl border p-4 transition-all", severidadeTinta)}
+              key={`${achado.file ?? "sem-arquivo"}-${achado.line ?? i}`}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Badge variant={badgeVariant}>
+                    {rotuloDeSeveridade(t, achado.severity)}
+                  </Badge>
+                  {achado.category && (
+                    <span className="text-muted-foreground text-xs uppercase tracking-wide">
+                      {achado.category}
+                    </span>
+                  )}
+                </div>
+                {(achado.file || achado.line !== undefined) && (
+                  <span className="text-muted-foreground inline-flex items-center gap-1 font-mono text-xs">
+                    <FileCode aria-hidden className="size-3.5" />
+                    <span className="font-medium text-foreground">{achado.file ?? t("findings.general")}</span>
+                    {achado.line !== undefined && <span>:{achado.line}</span>}
+                  </span>
+                )}
+              </div>
+
+              <p className="text-foreground text-sm font-medium leading-relaxed">
+                {achado.problem}
+              </p>
+
+              {achado.fix && (
+                <div className="mt-1 flex flex-col gap-1 rounded-lg border border-border/60 bg-muted/40 p-3 text-xs">
+                  <span className="font-semibold text-muted-foreground uppercase tracking-wider text-[10px]">
+                    {t("runs.fixSuggestion")}
+                  </span>
+                  <p className="font-mono text-foreground/90 leading-relaxed whitespace-pre-wrap">
+                    {achado.fix}
+                  </p>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** Seção colapsável de Pipeline & Detalhes Técnicos */
+function SecaoDetalhesTecnicos({
+  comSaida,
+  detalhe,
+}: {
+  comSaida: string | null;
+  detalhe: Detalhe;
+}) {
+  const { t } = useTranslation();
+  const [aberto, setAberto] = useState(false);
+
+  return (
+    <div className="mt-2 flex flex-col gap-3 rounded-xl border border-border/80 bg-background/50 p-4">
+      <button
+        className="flex w-full cursor-pointer items-center justify-between text-left transition-colors hover:text-foreground"
+        onClick={() => setAberto((v) => !v)}
+        type="button"
+      >
+        <div className="flex flex-col gap-0.5">
+          <span className="font-semibold text-sm text-foreground">
+            {t("runs.technicalDetails")}
+          </span>
+          <span className="text-muted-foreground text-xs">
+            {t("runs.technicalDetailsHint")}
+          </span>
+        </div>
+        <div className="text-muted-foreground flex items-center gap-1.5 text-xs">
+          <span>{aberto ? t("inbox.collapse") : t("common.open_github") ? "expandir" : "expand"}</span>
+          <ChevronDown
+            aria-hidden
+            className={cn("size-4 transition-transform duration-200", aberto && "rotate-180")}
+          />
+        </div>
+      </button>
+
+      {/* O GrafoDaExecucao e os passos permanecem montados para manter probes estáveis */}
+      <div className={cn("flex flex-col gap-4 pt-2", !aberto && "hidden")}>
+        <GrafoDaExecucao detalhe={detalhe} />
+
+        <ol className="flex flex-col gap-3">
+          {detalhe.steps.map((passo) => (
+            <li key={passo.id}>
+              <PassoDaExecucao
+                marcado={passo.stepKey === comSaida}
+                passo={passo}
+                runId={detalhe.id}
+              />
+            </li>
+          ))}
+        </ol>
+      </div>
     </div>
   );
 }

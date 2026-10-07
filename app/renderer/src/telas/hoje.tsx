@@ -1,7 +1,20 @@
-import { CalendarClock, Check, CheckCheck, ChevronRight, Inbox as InboxIcon, KeyRound, Sparkles, TerminalSquare } from "lucide-react";
+import {
+  CalendarClock,
+  Check,
+  CheckCheck,
+  ChevronRight,
+  GitBranch,
+  GitPullRequest,
+  Inbox as InboxIcon,
+  KeyRound,
+  Sparkles,
+  TerminalSquare,
+  User,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { read, useRead, type ReadResult } from "@/lib/bridge";
 import { cn } from "@/lib/utils";
@@ -234,9 +247,7 @@ function CartaoDeEspera({
   const alvo = alvoDaPendencia(pendencia, t);
   const { texto: quando } = idade(t, pendencia.createdAt);
   const titulo = alvo.titulo ?? alvo.principal;
-  const detalhe = [alvo.titulo ? alvo.principal : undefined, alvo.repo ?? alvo.detalhe, quando]
-    .filter((parte): parte is string => Boolean(parte))
-    .join(" · ");
+  const ehPr = Boolean(alvo.pull || alvo.repo);
   // Pendência sem pull request já traz o nome do agent no título; repetir em
   // cima só faz a linha dizer a mesma coisa duas vezes.
   const rotulo = iniciativa ?? (titulo.includes(pendencia.agentName) ? undefined : pendencia.agentName);
@@ -249,10 +260,57 @@ function CartaoDeEspera({
       >
         <Sparkles className="size-4" />
       </span>
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
-        {rotulo && <span className="text-muted-foreground truncate text-xs">{rotulo}</span>}
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+        <div className="flex flex-wrap items-center gap-2">
+          {rotulo && <span className="text-muted-foreground truncate text-xs font-medium">{rotulo}</span>}
+          {ehPr && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {alvo.repo && (
+                <span className="bg-muted text-muted-foreground inline-flex items-center rounded px-1.5 py-0.5 font-mono text-xs">
+                  {alvo.repo}
+                </span>
+              )}
+              {alvo.pull && (
+                <span className="text-primary inline-flex items-center gap-0.5 font-mono text-xs font-semibold">
+                  <GitPullRequest aria-hidden className="size-3" />
+                  #{alvo.pull}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+
         <span className="truncate font-medium text-[15px] tracking-tight">{titulo}</span>
-        <span className="text-muted-foreground truncate text-sm">{detalhe}</span>
+
+        <div className="text-muted-foreground flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs">
+          {alvo.autor && (
+            <span className="inline-flex items-center gap-1">
+              <User aria-hidden className="size-3 text-muted-foreground/70" />
+              <span>{alvo.autor}</span>
+            </span>
+          )}
+          {alvo.headBranch && alvo.baseBranch && (
+            <span className="inline-flex items-center gap-1 font-mono text-[11px]">
+              <GitBranch aria-hidden className="size-3 text-muted-foreground/70" />
+              <span className="text-foreground/80">{alvo.headBranch}</span>
+              <span className="text-muted-foreground/60">→</span>
+              <span>{alvo.baseBranch}</span>
+            </span>
+          )}
+          {(alvo.additions !== undefined || alvo.deletions !== undefined) && (
+            <span className="inline-flex items-center gap-1 font-mono text-[11px] tabular-nums">
+              {alvo.additions !== undefined && (
+                <span className="text-emerald-500 font-medium">+{alvo.additions}</span>
+              )}
+              {alvo.deletions !== undefined && (
+                <span className="text-rose-500 font-medium">−{alvo.deletions}</span>
+              )}
+            </span>
+          )}
+          {!ehPr && alvo.detalhe && <span>{alvo.detalhe}</span>}
+          <span>·</span>
+          <span>{quando}</span>
+        </div>
       </div>
       <Button className="shrink-0 cursor-pointer" onClick={() => navegar("inbox", pendencia.id)}>
         {alvo.somenteLeitura ? t("inbox.review") : t("home.today.waiting.open")}
@@ -274,21 +332,64 @@ function LinhaTerminada({
 }) {
   const { t } = useTranslation();
   const alvo = run.target;
+  const ehPr = Boolean(alvo?.pull || alvo?.repo);
   // Execução sem evento de pull request não tem título próprio; o nome do
   // agent é o que diz de que trabalho se tratou.
-  const titulo = alvo?.pull
-    ? `${t("common.pull", { number: alvo.pull })}${alvo.title ? ` ${alvo.title}` : ""}`
-    : run.agentName;
+  const titulo = alvo?.title
+    ? alvo.title
+    : alvo?.pull
+      ? `${t("common.pull", { number: alvo.pull })}`
+      : run.agentName;
   const quando = quandoTerminou(t, idioma, run.endedAt ?? run.createdAt);
 
   return (
     <li className="flex items-center gap-3.5 px-4 py-3">
       <Check aria-hidden className="text-chart-2 size-4 shrink-0" />
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="truncate text-sm">{titulo}</span>
-        <span className="text-muted-foreground truncate text-xs">
-          {iniciativa ? `${iniciativa} · ${quando}` : quando}
-        </span>
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {alvo?.repo && (
+            <span className="bg-muted text-muted-foreground inline-flex items-center rounded px-1.5 py-0.5 font-mono text-[11px]">
+              {alvo.repo}
+            </span>
+          )}
+          {alvo?.pull && (
+            <span className="text-primary inline-flex items-center gap-0.5 font-mono text-xs font-semibold">
+              <GitPullRequest aria-hidden className="size-3" />
+              #{alvo.pull}
+            </span>
+          )}
+          <span className="truncate text-sm font-medium">{titulo}</span>
+        </div>
+
+        <div className="text-muted-foreground flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs">
+          {iniciativa && <span className="text-foreground/75 font-medium">{iniciativa}</span>}
+          {alvo?.author && (
+            <span className="inline-flex items-center gap-1">
+              <User aria-hidden className="size-3 text-muted-foreground/70" />
+              <span>{alvo.author}</span>
+            </span>
+          )}
+          {alvo?.headBranch && alvo?.baseBranch && (
+            <span className="inline-flex items-center gap-1 font-mono text-[11px]">
+              <GitBranch aria-hidden className="size-3 text-muted-foreground/70" />
+              <span className="text-foreground/80">{alvo.headBranch}</span>
+              <span className="text-muted-foreground/60">→</span>
+              <span>{alvo.baseBranch}</span>
+            </span>
+          )}
+          {(alvo?.additions !== undefined || alvo?.deletions !== undefined) && (
+            <span className="inline-flex items-center gap-1 font-mono text-[11px] tabular-nums">
+              {alvo.additions !== undefined && (
+                <span className="text-emerald-500 font-medium">+{alvo.additions}</span>
+              )}
+              {alvo.deletions !== undefined && (
+                <span className="text-rose-500 font-medium">−{alvo.deletions}</span>
+              )}
+            </span>
+          )}
+          <span>·</span>
+          <span>{quando}</span>
+        </div>
       </div>
       <button
         className="text-muted-foreground hover:text-foreground focus-visible:ring-ring shrink-0 cursor-pointer rounded px-1 text-sm transition-colors duration-200 focus-visible:ring-2 focus-visible:outline-none"
