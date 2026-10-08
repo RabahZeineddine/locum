@@ -40,8 +40,11 @@ export const ROTAS = [
   { id: "today", rotulo: "nav.today", icone: Sun, Tela: Hoje },
   { id: "inbox", rotulo: "nav.queue", icone: InboxIcon, Tela: Inbox },
   { id: "initiatives", rotulo: "nav.initiatives", icone: Target, Tela: Initiatives },
-  { id: "automations", rotulo: "nav.automations", icone: Workflow, Tela: Automacoes },
-  { id: "library", rotulo: "nav.library", icone: Bot, Tela: Biblioteca },
+  { id: "automations", rotulo: "nav.automations", icone: Bot, Tela: Automacoes },
+  // Fora da barra: a tela unificada de Agents oferece as especialidades em
+  // aba, e navegar para "library" continua valendo dos lugares que abrem o
+  // editor de uma especialidade direto (canvas do canvas, painel do passo).
+  { id: "library", rotulo: "nav.library", icone: Bot, Tela: Biblioteca, naBarra: false },
   { id: "runs", rotulo: "nav.runs", icone: ListTree, Tela: Execucoes },
   { id: "apps", rotulo: "nav.apps", icone: Blocks, Tela: Apps },
   // Fora da barra: é o fluxo da automação visto como lista, com histórico de
