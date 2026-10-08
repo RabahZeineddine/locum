@@ -16,6 +16,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { Language } from "../../../src/services/i18n-service.js";
 import type { UpdaterState } from "../../../src/update/state.js";
+import type { WorkingHoursConfig } from "../../../src/config/types.js";
 import type { TelaProps } from "../rotas";
 
 type Provedor = ReadResult<"providers.list">[number];
@@ -194,6 +195,9 @@ export function Configuracao({ detalhe, navegar }: TelaProps) {
               </Preferencia>
               <Preferencia descricao={t("settings.staleDays.description")} titulo={t("settings.staleDays.title")}>
                 <EscolhaDeStaleDays />
+              </Preferencia>
+              <Preferencia descricao={t("settings.workingHours.description")} titulo={t("settings.workingHours.title")}>
+                <EscolhaDeWorkingHours />
               </Preferencia>
               <Preferencia
                 descricao={t("settings.initiativesRoot.description")}
@@ -715,6 +719,85 @@ function EscolhaDeStaleDays() {
         {t("common.save")}
       </Button>
       {erro && <span className="text-sev-critical text-xs">{erro}</span>}
+    </div>
+  );
+}
+
+function EscolhaDeWorkingHours() {
+  const { t } = useTranslation();
+  const lido = useRead("scheduler.getWorkingHours");
+  const [config, setConfig] = useState<WorkingHoursConfig | null>(null);
+  const [ocupado, setOcupado] = useState(false);
+  const [salvo, setSalvo] = useState(false);
+
+  const atual: WorkingHoursConfig = config ?? lido.data ?? {
+    enabled: false,
+    start: "08:00",
+    end: "20:00",
+    days: [1, 2, 3, 4, 5],
+    offHoursBehavior: "pause",
+    slowCadenceMinutes: 60,
+  };
+
+  const salvar = (novo: WorkingHoursConfig) => {
+    setConfig(novo);
+    setOcupado(true);
+    call("scheduler.setWorkingHours", novo)
+      .then(() => {
+        setSalvo(true);
+        setTimeout(() => setSalvo(false), 1500);
+      })
+      .finally(() => setOcupado(false));
+  };
+
+  return (
+    <div className="flex flex-col gap-3 px-4 py-3 text-sm" data-locum-probe="working-hours">
+      <div className="flex items-center justify-between">
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            checked={atual.enabled}
+            className="size-4 rounded border-border"
+            onChange={(e) => salvar({ ...atual, enabled: e.target.checked })}
+            type="checkbox"
+          />
+          <span className="font-medium text-sm">{t("settings.workingHours.enableLabel")}</span>
+        </label>
+        {salvo && <span className="text-emerald-500 font-medium text-xs">Salvo</span>}
+      </div>
+
+      {atual.enabled && (
+        <div className="flex flex-wrap items-center gap-4 pt-1">
+          <div className="flex items-center gap-2">
+            <span className="text-muted-foreground text-xs">{t("settings.workingHours.start")}</span>
+            <input
+              className="border-border bg-background rounded border px-2 py-1 text-xs font-mono"
+              onChange={(e) => salvar({ ...atual, start: e.target.value })}
+              type="time"
+              value={atual.start}
+            />
+            <span className="text-muted-foreground text-xs">{t("settings.workingHours.end")}</span>
+            <input
+              className="border-border bg-background rounded border px-2 py-1 text-xs font-mono"
+              onChange={(e) => salvar({ ...atual, end: e.target.value })}
+              type="time"
+              value={atual.end}
+            />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-muted-foreground text-xs">{t("settings.workingHours.offHoursLabel")}</span>
+            <select
+              className="border-border bg-background rounded border px-2 py-1 text-xs"
+              onChange={(e) => salvar({ ...atual, offHoursBehavior: e.target.value as WorkingHoursConfig["offHoursBehavior"] })}
+              value={atual.offHoursBehavior}
+            >
+              <option value="pause">{t("settings.workingHours.behaviorPause")}</option>
+              <option value="slow">{t("settings.workingHours.behaviorSlow")}</option>
+              <option value="unrestricted">{t("settings.workingHours.behaviorUnrestricted")}</option>
+            </select>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

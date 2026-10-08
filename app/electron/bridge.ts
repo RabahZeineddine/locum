@@ -43,6 +43,7 @@ import { startupService } from "../src/services/startup-service.js";
 import { updateService } from "../src/services/update-service.js";
 import { trackerService } from "../src/services/tracker-service.js";
 import { triggerService } from "../src/services/trigger-service.js";
+import { settingsService } from "../src/services/settings-service.js";
 import { scheduler } from "../src/triggers/scheduler.js";
 import { refreshTray } from "./tray.js";
 
@@ -335,6 +336,8 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "triggers.setEnabled": (id, enabled) => triggerService.setEnabled(id, enabled),
     "triggers.schedule": (at) => scheduler.schedule(at),
     "triggers.tick": () => scheduler.tick({ reason: "manual", wait: true }),
+    "scheduler.getWorkingHours": () => settingsService.getWorkingHours(),
+    "scheduler.setWorkingHours": (config) => settingsService.setWorkingHours(config),
 
     "app.version": async () => VERSAO,
     "startup.get": () => startupService.getPreference(),
