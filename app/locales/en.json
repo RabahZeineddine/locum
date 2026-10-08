@@ -182,6 +182,10 @@
       "empty": "No ready-made agents in this installation's catalog.",
       "installed": "installed",
       "install": "Install",
+      "installWith": "Install with chosen models",
+      "modelHint": "Pick the model each step uses on this machine. The original is pre-selected.",
+      "modelFor": "Model for {{model}}",
+      "modelMissing": "not in this machine's catalog",
       "open": "Open",
       "steps_one": "{{count}} step",
       "steps_other": "{{count}} steps"
