@@ -296,6 +296,14 @@ function CartaoDoAgent({ agent, abrir }: { agent: ResumoDoAgent; abrir: () => vo
             <span className="truncate font-medium text-sm">{agent.name}</span>
             <span className="text-muted-foreground truncate text-xs">{rotuloDoModelo(agent.model)}</span>
           </span>
+          {/* O acoplamento é o que dá permissão: agent sem automação nenhuma
+              acoplada nasce approve, e é este badge que diz de relance que o
+              especialista já está montado em algum fluxo. */}
+          {agent.usedBy.length > 0 ? (
+            <Badge className="ml-auto shrink-0" variant="outline">
+              {t("library.coupled", { count: agent.usedBy.length })}
+            </Badge>
+          ) : null}
         </span>
         {agent.description === "" ? null : <span className="text-muted-foreground line-clamp-2 text-xs">{agent.description}</span>}
         <span className="text-muted-foreground mt-auto flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
