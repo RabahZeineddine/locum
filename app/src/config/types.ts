@@ -366,9 +366,31 @@ export type McpServerInput = z.input<typeof McpServerConfig>;
  * executa e o agendador do N.3, que anda por cursor porque o Mac dorme e uma
  * janela fixa perderia o intervalo inteiro.
  */
+/**
+ * Comportamento fora da janela ativa de operação:
+ * - pause: o agendador não dispara e aguarda a próxima janela de trabalho.
+ * - slow: reduz a cadência para o intervalo configurado em `slowCadenceMinutes`.
+ * - unrestricted: roda sem restrições de horário (24/7), ideal para observabilidade.
+ */
+export const OffHoursBehavior = z.enum(["pause", "slow", "unrestricted"]);
+export type OffHoursBehavior = z.infer<typeof OffHoursBehavior>;
+
+export const WorkingHoursConfig = z.object({
+  enabled: z.boolean().default(false),
+  start: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "formato HH:mm (00:00 - 23:59)").default("08:00"),
+  end: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "formato HH:mm (00:00 - 23:59)").default("20:00"),
+  /** 0 = Domingo, 1 = Segunda, ..., 6 = Sábado */
+  days: z.array(z.number().int().min(0).max(6)).default([1, 2, 3, 4, 5]),
+  offHoursBehavior: OffHoursBehavior.default("pause"),
+  /** Cadência em minutos caso behavior seja 'slow'. Default: 60 min */
+  slowCadenceMinutes: z.number().int().min(1).default(60),
+});
+export type WorkingHoursConfig = z.infer<typeof WorkingHoursConfig>;
+
 export const ScheduleTrigger = z.object({
   kind: z.literal("schedule"),
   everyMinutes: z.number().int().min(1),
+  workingHours: WorkingHoursConfig.optional(),
 });
 
 export const WebhookTrigger = z.object({
@@ -418,6 +440,7 @@ export const PollTrigger = z.object({
    */
   includeDrafts: z.boolean().default(false),
   everyMinutes: z.number().int().min(1).default(15),
+  workingHours: WorkingHoursConfig.optional(),
 });
 
 export const McpPollTrigger = z.object({
@@ -427,6 +450,7 @@ export const McpPollTrigger = z.object({
   tool: z.string().min(1),
   args: z.record(z.string(), z.unknown()).default({}),
   everyMinutes: z.number().int().min(1).default(15),
+  workingHours: WorkingHoursConfig.optional(),
 });
 
 /**
@@ -441,6 +465,7 @@ export const SlackInboxTrigger = z.object({
   mentions: z.boolean().default(true),
   dms: z.boolean().default(true),
   everyMinutes: z.number().int().min(1).default(5),
+  workingHours: WorkingHoursConfig.optional(),
 });
 
 /**
@@ -468,6 +493,7 @@ export const TeamsInboxTrigger = z.object({
     .max(20)
     .default([]),
   everyMinutes: z.number().int().min(1).default(5),
+  workingHours: WorkingHoursConfig.optional(),
 });
 
 /**
@@ -506,6 +532,7 @@ export const SlackChannelTrigger = z.object({
   kind: z.literal("slack-channel"),
   channels: z.array(z.string().trim().min(1)).min(1).max(20),
   everyMinutes: z.number().int().min(1).default(5),
+  workingHours: WorkingHoursConfig.optional(),
 });
 
 export const TriggerConfig = z.discriminatedUnion("kind", [

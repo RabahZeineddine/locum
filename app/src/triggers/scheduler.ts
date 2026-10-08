@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
-import { type Authorship, type TriggerConfig } from "../config/types.js";
+import { type Authorship, type TriggerConfig, type WorkingHoursConfig } from "../config/types.js";
 import { executionService, type ExecutionService } from "../services/execution-service.js";
 import { matchesAuthorship } from "../services/github-service.js";
 import { mcpService, type McpService } from "../services/mcp-service.js";
@@ -10,7 +10,9 @@ import { pollSlack, slackWatchFor, type SlackPollOutcome } from "../sources/slac
 import { pollSlackInbox, type SlackInboxOutcome } from "../sources/slack-inbox.js";
 import { pollTeamsInbox } from "../sources/teams-inbox.js";
 import { slackService, type SlackService } from "../services/slack-service.js";
+import { settingsService, type SettingsService } from "../services/settings-service.js";
 import { triggerService, type TriggerEntry, type TriggerService } from "../services/trigger-service.js";
+import { ajustarPorHorario } from "./working-hours.js";
 // So tipo: o servico de reconciliacao puxa o octokit pelo topo do modulo, e
 // quem carrega este agendador nem sempre quer isso junto. O valor entra por
 // import dinamico la embaixo.
@@ -198,6 +200,7 @@ export class Scheduler {
     private readonly viewer: ViewerFn = contaConferida,
     private readonly slackInbox: typeof pollSlackInbox = pollSlackInbox,
     private readonly teamsInbox: typeof pollTeamsInbox = pollTeamsInbox,
+    private readonly settings: SettingsService = settingsService,
   ) {}
 
   /** Batida vinda do evento de acordar da maquina, que o M3 vai ligar. */
@@ -209,9 +212,10 @@ export class Scheduler {
     const at = options.at ?? Date.now();
     const reason = options.reason ?? "manual";
     const outcomes: TriggerOutcome[] = [];
+    const globalHours = await this.settings.getWorkingHours().catch(() => undefined);
 
     for (const trigger of await this.triggers.enabled()) {
-      outcomes.push(await this.runTrigger(trigger, at, options.wait ?? false));
+      outcomes.push(await this.runTrigger(trigger, at, options.wait ?? false, globalHours));
     }
 
     // Depois dos gatilhos, e fora do laco deles: a conferencia nao pertence a
@@ -272,6 +276,7 @@ export class Scheduler {
    */
   async schedule(at: number = Date.now()): Promise<TriggerSchedule[]> {
     const schedules: TriggerSchedule[] = [];
+    const globalHours = await this.settings.getWorkingHours().catch(() => undefined);
 
     for (const trigger of await this.triggers.list()) {
       const cadence = cadenceMs(trigger.config);
@@ -289,7 +294,7 @@ export class Scheduler {
         // que acontecer. Nao e o mesmo que "daqui a uma cadencia": esperar um
         // ciclo inteiro depois de habilitar faria a primeira varredura demorar
         // sem que ninguem tivesse pedido isso.
-        nextDueAt: !trigger.enabled || !relogio ? null : vencimento(trigger.config, last, at),
+        nextDueAt: !trigger.enabled || !relogio ? null : vencimento(trigger.config, last, at, globalHours),
       });
     }
 
@@ -314,6 +319,7 @@ export class Scheduler {
     trigger: TriggerEntry,
     at: number,
     wait: boolean,
+    globalHours?: WorkingHoursConfig,
   ): Promise<TriggerOutcome> {
     const base = {
       triggerId: trigger.id,
@@ -342,10 +348,10 @@ export class Scheduler {
     // a expressão diz. A primeira batida só marca a partir de quando contar.
     if (trigger.config.kind === "cron" && last === null) {
       await this.claim(trigger.id, raw, at);
-      return { ...base, status: "waiting", nextDueAt: vencimento(trigger.config, at, at) };
+      return { ...base, status: "waiting", nextDueAt: vencimento(trigger.config, at, at, globalHours) };
     }
 
-    const devido = vencimento(trigger.config, last, at);
+    const devido = vencimento(trigger.config, last, at, globalHours);
     if (devido === null || at < devido) {
       return { ...base, status: "waiting", nextDueAt: devido };
     }
@@ -361,10 +367,10 @@ export class Scheduler {
     // os outros.
     if (!(await this.claim(trigger.id, raw, at))) {
       const depois = await this.lastFire(trigger.id);
-      return { ...base, status: "waiting", nextDueAt: vencimento(trigger.config, depois ?? at, at) };
+      return { ...base, status: "waiting", nextDueAt: vencimento(trigger.config, depois ?? at, at, globalHours) };
     }
 
-    const nextDueAt = vencimento(trigger.config, at, at);
+    const nextDueAt = vencimento(trigger.config, at, at, globalHours);
     try {
       const fired = await this.fire(trigger, at, wait);
       return { ...base, ...fired, status: "fired", nextDueAt };
@@ -748,11 +754,19 @@ function temRelogio(config: TriggerConfig): boolean {
  * ocorrência depois do último disparo, e quem nunca disparou conta a partir de
  * `at`: várias ocorrências perdidas com o Mac dormindo viram uma batida só.
  */
-function vencimento(config: TriggerConfig, last: number | null, at: number): number | null {
+function vencimento(
+  config: TriggerConfig,
+  last: number | null,
+  at: number,
+  globalHours?: WorkingHoursConfig,
+): number | null {
   if (config.kind === "cron") return proximaOcorrencia(config.expression, last ?? at);
   const cadence = cadenceMs(config);
   if (cadence === null) return null;
-  return last === null ? at : last + cadence;
+  const base = last === null ? at : last + cadence;
+
+  const hours = "workingHours" in config && config.workingHours ? config.workingHours : globalHours;
+  return ajustarPorHorario(base, last, at, hours);
 }
 
 function message(err: unknown): string {

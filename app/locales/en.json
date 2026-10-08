@@ -969,6 +969,17 @@
       "label": "days",
       "refused": "The value was not saved: {{message}}"
     },
+    "workingHours": {
+      "title": "Working Hours & Active Watch",
+      "description": "Define business hours when background triggers and watches monitor at full cadence.",
+      "enableLabel": "Enable working hours (Quiet Hours outside business schedule)",
+      "start": "Start",
+      "end": "End",
+      "offHoursLabel": "Outside schedule:",
+      "behaviorPause": "Pause triggers until next business window",
+      "behaviorSlow": "Slow cadence (every 60 min)",
+      "behaviorUnrestricted": "Unrestricted (24/7 continuous)"
+    },
     "initiativesRoot": {
       "title": "Initiatives root folder",
       "description": "Where each initiative's context folder lives. Leave empty for the default.",

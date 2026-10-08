@@ -127,6 +127,7 @@ export const READ_CHANNELS = [
   // Cadastro e agenda, sem bater em gatilho nenhum: ler quando foi a última
   // varredura não dispara a próxima.
   "triggers.schedule",
+  "scheduler.getWorkingHours",
   "startup.get",
   "app.version",
   // Versão instalada, a baixada e quando conferiu. Não pergunta ao GitHub.
@@ -256,6 +257,7 @@ export const ACTION_CHANNELS = [
   "triggers.remove",
   "triggers.setEnabled",
   "triggers.tick",
+  "scheduler.setWorkingHours",
   // O canvas grava spec e gatilhos juntos, e o gatilho novo nasce parado.
   // Ligar a automação e executar agora são cliques; executar agora para na
   // fila de aprovação no primeiro passo de ação, como qualquer run.

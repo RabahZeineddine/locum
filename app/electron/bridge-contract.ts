@@ -31,6 +31,7 @@ import type { UpdaterState } from "../src/update/state.js";
 import type { TrackerService } from "../src/services/tracker-service.js";
 import type { TriggerService } from "../src/services/trigger-service.js";
 import type { Scheduler, TickResult } from "../src/triggers/scheduler.js";
+import type { WorkingHoursConfig } from "../src/config/types.js";
 
 /**
  * Contrato da ponte entre a janela e a camada de servico.
@@ -406,6 +407,8 @@ interface ServiceApi {
   "triggers.schedule": Scheduler["schedule"];
   /** Força uma verificação manual imediata de todos os gatilhos habilitados. */
   "triggers.tick": () => Promise<TickResult>;
+  "scheduler.getWorkingHours": () => Promise<WorkingHoursConfig | undefined>;
+  "scheduler.setWorkingHours": (config: WorkingHoursConfig) => Promise<void>;
 
   /**
    * A automação: agent e gatilhos editados juntos pelo canvas. Gravar não
@@ -628,6 +631,8 @@ export const BRIDGE_CHANNELS = [
   "triggers.setEnabled",
   "triggers.schedule",
   "triggers.tick",
+  "scheduler.getWorkingHours",
+  "scheduler.setWorkingHours",
   "automations.get",
   "automations.save",
   "automations.setEnabled",
