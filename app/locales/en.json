@@ -1983,6 +1983,8 @@
     },
     "toolsetsCount_one": "{{count}} toolset",
     "toolsetsCount_other": "{{count}} toolsets",
+    "coupled_one": "coupled to {{count}} automation",
+    "coupled_other": "coupled to {{count}} automations",
     "usedBy_one": "in {{count}} automation",
     "usedBy_other": "in {{count}} automations",
     "toolsCount_one": "{{count}} tool",

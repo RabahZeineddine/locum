@@ -2027,6 +2027,8 @@
     "toolsetsCount_one": "{{count}} toolset",
     "toolsetsCount_other": "{{count}} toolsets",
     "toolsetsCount_zero": "sem toolset",
+    "coupled_one": "acoplado a {{count}} automação",
+    "coupled_other": "acoplado a {{count}} automações",
     "usedBy_one": "em {{count}} automação",
     "usedBy_other": "em {{count}} automações",
     "usedBy_zero": "sem uso",
