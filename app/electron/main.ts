@@ -1182,7 +1182,7 @@ async function irPara(window: BrowserWindow, id: string, detalhe?: string): Prom
  * so a exigencia da story, que sao estes quatro destinos.
  */
 async function checkRoutes(window: BrowserWindow): Promise<string> {
-  const esperados = ["today", "inbox", "initiatives", "automations", "library", "runs", "apps", "sessions", "settings"];
+  const esperados = ["today", "inbox", "initiatives", "automations", "runs", "apps", "sessions", "settings"];
 
   const barra = (await window.webContents.executeJavaScript(
     `Array.from(document.querySelectorAll("[data-locum-rota]")).map((b) => ({

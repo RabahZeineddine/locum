@@ -3,30 +3,174 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MODELOS, rascunhoDoModelo, type ModeloId } from "@/lib/automacao";
 import { call, read, useRead, type ReadResult } from "@/lib/bridge";
-import { rotuloDeEstado } from "@/lib/rotulos";
+import { rotuloDeEstado, rotuloDoModelo } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
-import { Loader2, Play, Plus } from "lucide-react";
+import { Bot, Download, Loader2, Play, Plus } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { TriggerConfig } from "../../../src/config/types";
 import { EditorDeAutomacao } from "../automacoes/editor";
 import { appDoGatilho, resumoDoGatilho, Selo, tituloDoGatilho } from "../automacoes/visual";
+import { Biblioteca } from "./biblioteca";
 import type { TelaProps } from "../rotas";
 
 type Linha = ReadResult<"agents.overview">[number];
+type Template = ReadResult<"agents.templates">[number];
+
+/** As abas da tela unificada de Agents, na ordem em que aparecem. */
+const ABAS = ["agents", "marketplace", "specialties"] as const;
+type Aba = (typeof ABAS)[number];
 
 /**
- * Automações: a lista, e o canvas de cada uma no detalhe.
+ * Agents: a tela unificada. Três abas respondem as três perguntas de quem usa:
+ * o que tenho instalado, o que posso trazer do marketplace, e as especialidades
+ * reutilizáveis que as automações acoplam.
  *
- * A linha responde o que a pessoa pergunta olhando a lista: o que acorda esta
- * automação, se ela está ligada, e como foi a última vez. Ligar e executar
- * ficam na própria linha, porque são as duas coisas que se faz sem abrir.
+ * O detalhe continua abrindo o canvas da automação, como sempre abriu; e o
+ * detalhe que veio com o prefixo "library/" abre o editor de especialidade,
+ * para os atalhos antigos de dentro do canvas não quebrarem.
  */
 export function Automacoes({ detalhe, navegar }: TelaProps) {
+  if (detalhe?.startsWith("library/")) {
+    const alvo = detalhe.slice("library/".length);
+    return <Biblioteca detalhe={alvo} navegar={navegar} />;
+  }
   if (detalhe !== null) {
     return <EditorDeAutomacao agentId={detalhe} voltar={() => navegar("automations")} navegar={navegar} />;
   }
-  return <ListaDeAutomacoes navegar={navegar} />;
+  return <TelaDeAgents navegar={navegar} />;
+}
+
+function TelaDeAgents({ navegar }: Pick<TelaProps, "navegar">) {
+  const { t } = useTranslation();
+  const [aba, setAba] = useState<Aba>("agents");
+
+  return (
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
+      <div className="border-border flex gap-1 border-b">
+        {ABAS.map((candidata) => (
+          <button
+            aria-pressed={aba === candidata}
+            className={cn(
+              "-mb-px cursor-pointer border-b-2 px-3 py-2 text-sm transition-colors",
+              aba === candidata
+                ? "border-primary text-foreground"
+                : "text-muted-foreground hover:text-foreground border-transparent",
+            )}
+            data-locum-agents-aba={candidata}
+            key={candidata}
+            onClick={() => setAba(candidata)}
+            type="button"
+          >
+            {t(`agents.tabs.${candidata}`)}
+          </button>
+        ))}
+      </div>
+      {aba === "agents" ? <ListaDeAutomacoes navegar={navegar} /> : null}
+      {aba === "marketplace" ? <Marketplace navegar={navegar} /> : null}
+      {aba === "specialties" ? <Biblioteca detalhe={null} navegar={navegar} /> : null}
+    </div>
+  );
+}
+
+/**
+ * O marketplace: os agents prontos que o aplicativo traz, lidos do disco como
+ * dado. Instalar é um clique e grava como o importar de arquivo faria; quem já
+ * instalou vê "instalado" e o botão some.
+ */
+function Marketplace({ navegar }: Pick<TelaProps, "navegar">) {
+  const { t } = useTranslation();
+  const templates = useRead("agents.templates");
+  const instalados = useRead("agents.list");
+  const [instalando, setInstalando] = useState<string | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [recem, setRecem] = useState<string | null>(null);
+  const idsInstalados = new Set((instalados.data ?? []).map((a) => a.id));
+
+  const instalar = (id: string): void => {
+    setInstalando(id);
+    setErro(null);
+    call("agents.importTemplate", id)
+      .then((r) => {
+        setRecem(r.agentId);
+        // Recarrega a lista de instalados para o selo aparecer sem sair da aba.
+        read("agents.list").then(() => undefined, () => undefined);
+      })
+      .catch((e: unknown) => setErro(e instanceof Error ? e.message : String(e)))
+      .finally(() => setInstalando(null));
+  };
+
+  return (
+    <div className="flex flex-col gap-4" data-locum-probe="agents-marketplace">
+      {erro === null ? null : <p className="text-destructive text-xs">{erro}</p>}
+      {templates.status === "loading" ? (
+        <p className="text-muted-foreground text-sm">{t("agents.marketplace.loading")}</p>
+      ) : (templates.data ?? []).length === 0 ? (
+        <p className="text-muted-foreground text-sm">{t("agents.marketplace.empty")}</p>
+      ) : (
+        <ul className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3">
+          {(templates.data ?? []).map((template) => (
+            <CartaoDeTemplate
+              instalado={idsInstalados.has(template.id) || recem === template.id}
+              instalando={instalando === template.id}
+              instalar={() => instalar(template.id)}
+              key={template.id}
+              template={template}
+              ver={(id) => navegar("automations", id)}
+            />
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function CartaoDeTemplate({
+  instalado,
+  instalando,
+  instalar,
+  template,
+  ver,
+}: {
+  instalado: boolean;
+  instalando: boolean;
+  instalar: () => void;
+  template: Template;
+  ver: (id: string) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <li className="border-border superficie flex flex-col gap-2 rounded-lg border p-4">
+      <div className="flex items-center gap-2.5">
+        <span aria-hidden className="ia-gradiente text-primary-foreground flex size-8 shrink-0 items-center justify-center rounded-md">
+          <Bot className="size-4" />
+        </span>
+        <span className="truncate font-medium text-sm">{template.name}</span>
+        {instalado ? (
+          <Badge className="ml-auto shrink-0" variant="outline">
+            {t("agents.marketplace.installed")}
+          </Badge>
+        ) : null}
+      </div>
+      <div className="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+        {template.modelo !== null ? <span>{rotuloDoModelo(template.modelo)}</span> : null}
+        <span>{t("agents.marketplace.steps", { count: template.passos })}</span>
+        <span className="font-mono">{template.id}</span>
+      </div>
+      <div className="mt-auto flex items-center gap-2 pt-1">
+        {instalado ? (
+          <Button className="cursor-pointer" onClick={() => ver(template.id)} size="sm" variant="outline">
+            {t("agents.marketplace.open")}
+          </Button>
+        ) : (
+          <Button className="cursor-pointer" disabled={instalando} onClick={instalar} size="sm">
+            {instalando ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
+            {t("agents.marketplace.install")}
+          </Button>
+        )}
+      </div>
+    </li>
+  );
 }
 
 function ListaDeAutomacoes({ navegar }: Pick<TelaProps, "navegar">) {
