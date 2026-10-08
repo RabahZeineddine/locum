@@ -488,9 +488,9 @@
     "version": "version {{version}}",
     "versionHint": "Updates, in Settings",
     "sessions": "Sessions",
-    "automations": "Agents",
+    "automations": "Automations",
     "apps": "Apps",
-    "library": "Specialties"
+    "library": "Agents"
   },
   "notification": {
     "runFailed": {
@@ -1974,6 +1974,7 @@
     "empty": "No agent in the library yet. Create one per subject: tickets, partnerships, PR review.",
     "tabs": {
       "agents": "Agents",
+      "marketplace": "Marketplace",
       "toolsets": "Toolsets"
     },
     "toolsetsCount_one": "{{count}} toolset",
