@@ -124,6 +124,52 @@ function ListaDeAgents({ abrir }: { abrir: (id: string) => void }) {
  * disco como dado. Instalar grava um profile como o importar de arquivo faria;
  * quem já instalou vê "instalado" e o botão vira "abrir".
  */
+/**
+ * A escolha de modelo de um passo do template: lista só o que esta máquina
+ * oferece, com o modelo original como default. Um passo por linha, porque o
+ * marketplace costuma trazer um ou dois, e a troca é por passo, não global.
+ */
+function EscolhaDeModelo({
+  escolher,
+  escolhido,
+  original,
+}: {
+  escolher: (modelo: string) => void;
+  escolhido: string;
+  original: string;
+}) {
+  const { t } = useTranslation();
+  const catalogo = useCatalogo();
+  const disponiveis = (catalogo ?? [])
+    .flatMap((c) => c.modelos.map((m) => `${c.provedor}/${m}`))
+    .sort();
+
+  return (
+    <label className="flex items-center gap-2 text-xs">
+      <span className="text-muted-foreground min-w-24 shrink-0">
+        {t("agents.marketplace.modelFor", { model: rotuloDoModelo(original) })}
+      </span>
+      <select
+        aria-label={t("agents.marketplace.modelFor", { model: rotuloDoModelo(original) })}
+        className="border-border bg-background focus-visible:ring-ring flex-1 rounded-md border px-2 py-1 text-xs outline-none focus-visible:ring-1"
+        onChange={(evento) => escolher(evento.target.value)}
+        value={escolhido}
+      >
+        {disponiveis.includes(escolhido) ? null : (
+          <option value={escolhido}>
+            {rotuloDoModelo(escolhido)} ({t("agents.marketplace.modelMissing")})
+          </option>
+        )}
+        {disponiveis.map((m) => (
+          <option key={m} value={m}>
+            {rotuloDoModelo(m)}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function Marketplace({ abrir }: { abrir: (id: string) => void }) {
   const { t } = useTranslation();
   const templates = useRead("agents.templates");
@@ -131,14 +177,19 @@ function Marketplace({ abrir }: { abrir: (id: string) => void }) {
   const [instalando, setInstalando] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [recem, setRecem] = useState<string | null>(null);
+  const [escolhendo, setEscolhendo] = useState<string | null>(null);
+  // Escolhas por template: id do passo do template para o modelo escolhido.
+  // O default é o modelo original, então só o que a pessoa mexer vai na troca.
+  const [escolhas, setEscolhas] = useState<Record<string, Record<number, string>>>({});
   const idsInstalados = new Set((instalados.data ?? []).map((a) => a.id));
 
   const instalar = (id: string): void => {
     setInstalando(id);
     setErro(null);
-    call("agents.importTemplate", id)
+    call("agents.importTemplate", id, escolhas[id])
       .then((r) => {
         setRecem(r.agentId);
+        setEscolhendo(null);
         void read("library.profiles").then(() => undefined, () => undefined);
       })
       .catch((e: unknown) => setErro(e instanceof Error ? e.message : String(e)))
@@ -172,14 +223,49 @@ function Marketplace({ abrir }: { abrir: (id: string) => void }) {
                 <span>{t("agents.marketplace.steps", { count: template.passos })}</span>
                 <span className="font-mono">{template.id}</span>
               </div>
+              {/* O seletor de modelo só aparece ao clicar em instalar: o card
+                  fica enxuto de relance, e a escolha é um passo de decisão, não
+                  um campo a mais sempre visível. */}
+              {escolhendo === template.id && template.passosDeModelo.length > 0 ? (
+                <div className="border-border flex flex-col gap-2 rounded-md border p-3">
+                  <p className="text-muted-foreground text-xs">{t("agents.marketplace.modelHint")}</p>
+                  {template.passosDeModelo.map((passo) => (
+                    <EscolhaDeModelo
+                      escolher={(modelo) =>
+                        setEscolhas((atual) => ({
+                          ...atual,
+                          [template.id]: { ...(atual[template.id] ?? {}), [passo.indice]: modelo },
+                        }))
+                      }
+                      escolhido={escolhas[template.id]?.[passo.indice] ?? passo.modelo}
+                      key={passo.indice}
+                      original={passo.modelo}
+                    />
+                  ))}
+                </div>
+              ) : null}
               <div className="mt-auto flex items-center gap-2 pt-1">
                 {idsInstalados.has(template.id) || recem === template.id ? (
                   <Button className="cursor-pointer" onClick={() => abrir(template.id)} size="sm" variant="outline">
                     {t("agents.marketplace.open")}
                   </Button>
-                ) : (
+                ) : template.passosDeModelo.length === 0 ? (
                   <Button className="cursor-pointer" disabled={instalando !== null} onClick={() => instalar(template.id)} size="sm">
                     {instalando === template.id ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
+                    {t("agents.marketplace.install")}
+                  </Button>
+                ) : escolhendo === template.id ? (
+                  <>
+                    <Button className="cursor-pointer" disabled={instalando !== null} onClick={() => instalar(template.id)} size="sm">
+                      {instalando === template.id ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
+                      {t("agents.marketplace.installWith")}
+                    </Button>
+                    <Button className="cursor-pointer" onClick={() => setEscolhendo(null)} size="sm" variant="ghost">
+                      {t("common.cancel")}
+                    </Button>
+                  </>
+                ) : (
+                  <Button className="cursor-pointer" onClick={() => setEscolhendo(template.id)} size="sm">
                     {t("agents.marketplace.install")}
                   </Button>
                 )}
