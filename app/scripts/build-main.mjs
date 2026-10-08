@@ -82,6 +82,24 @@ function copyMigrations() {
 
 copyMigrations();
 
+/**
+ * Os agents prontos do marketplace viajam como arquivo, ao lado do bundle.
+ *
+ * O processo principal os le do disco em runtime (`agents.templates`), sem
+ * import estatico: agent novo no catalogo e dado, e nao codigo. Copiar para
+ * `dist/` faz o caminho ser o mesmo rodando por `npx electron dist/main.cjs`
+ * e dentro do `.app`, onde `dist/` inteiro entra como recurso.
+ */
+function copyAgentTemplates() {
+  const source = join(appDir, "..", "examples", "agents");
+  const target = join(appDir, "dist", "agents");
+  if (!existsSync(source)) return;
+  rmSync(target, { recursive: true, force: true });
+  cpSync(source, target, { recursive: true });
+}
+
+copyAgentTemplates();
+
 await build({
   entryPoints: [join(appDir, "electron", "main.ts")],
   outfile: join(appDir, "dist", "main.cjs"),

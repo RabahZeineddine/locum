@@ -134,12 +134,13 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
       return escolha.filePath;
     },
     // O marketplace lê os templates do disco, e não de import estático: agent
-    // pronto é dado, e agent novo no catálogo não é razão de release. Em dev
-    // `getAppPath` é a raiz do repositório; empacotado, é o app.asar — e os
-    // JSONs de `examples/agents/` viajam dentro dele como asset (ver
-    // electron-builder.yml).
+    // pronto é dado, e agent novo no catálogo não é razão de release. Em dev,
+    // `getAppPath` é a raiz do repositório; empacotado, a pasta `dist/agents/`
+    // entra como recurso do app.asar (copiada por `scripts/build-main.mjs`).
     "agents.templates": async () => {
-      const pasta = join(app.getAppPath(), "examples", "agents");
+      const pasta = app.isPackaged
+        ? join(__dirname, "agents")
+        : join(app.getAppPath(), "examples", "agents");
       let nomes: string[] = [];
       try {
         nomes = (await readdir(pasta)).filter((n) => n.endsWith(".json")).sort();
