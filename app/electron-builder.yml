@@ -19,6 +19,10 @@ files:
   - locales/**
   - drizzle/**
   - package.json
+  # Os agents prontos do marketplace são dados, e não código: o processo
+  # principal os lê do disco em runtime (`agents.templates`), sem import
+  # estático. Um template novo no catálogo não é razão de release.
+  - "../examples/agents/*.json"
   # Mapa de origem so serve para quem tem o codigo, e quem tem o codigo roda
   # por `npm run start`. No pacote sao mais de cinco mil arquivos que ninguem
   # abre, e o download dobra de tamanho por causa deles.
