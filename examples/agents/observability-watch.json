@@ -1,0 +1,79 @@
+{
+  "id": "observability-watch",
+  "name": "Observabilidade do Squad",
+  "defaultTools": [],
+  "skills": [],
+  "budget": {
+    "perRunUsd": 0.1,
+    "perDayUsd": 2
+  },
+  "steps": [
+    {
+      "type": "model",
+      "key": "classify",
+      "name": "Classificar Incidentes",
+      "needs": [],
+      "optional": false,
+      "model": "aihub/glm-5.3-flash",
+      "maxSteps": 4,
+      "requiresServers": ["grafana"],
+      "prompt": "Você é o guardião de observabilidade de um Staff Software Engineer / Tech Lead do squad Promo/Generosity.\nAnalise os incidentes ativos do Grafana recebidos e diga o que realmente precisa dele agora.\n\nPara cada incidente relevante:\n- `id`: identificador do incidente exatamente como veio.\n- `title`: título do incidente.\n- `severity`:\n  • `critical` se produção está degradada, incidente em andamento com impacto real, ou alarme de p95/erros disparado.\n  • `warning` se é anomalia que merece acompanhamento (latência subindo, erros pontuais, incidente recém-aberto sem causa clara).\n  • `info` se é rotina, incidente já resolvido que entrou na lista, ou baixo impacto.\n- `summary`: resumo executivo em UMA frase: o que está acontecendo, qual serviço, e qual o próximo passo sugerido (investigar, aguardar, escalar).\n\nSe a lista vier vazia, devolva headline \"Sem incidentes ativos\" e lista vazia — sem inventar nada.\n\nIncidentes ativos:\n{{event.result}}",
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "headline",
+          "incidents"
+        ],
+        "properties": {
+          "headline": {
+            "type": "string"
+          },
+          "incidents": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "title",
+                "severity",
+                "summary"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "severity": {
+                  "enum": [
+                    "critical",
+                    "warning",
+                    "info"
+                  ]
+                },
+                "summary": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "action",
+      "key": "deliver",
+      "name": "Entregar na Fila",
+      "needs": [
+        "classify"
+      ],
+      "optional": false,
+      "action": "digest.deliver",
+      "mode": "approve",
+      "input": "classify"
+    }
+  ]
+}
