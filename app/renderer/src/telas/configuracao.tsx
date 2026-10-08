@@ -428,12 +428,10 @@ export function ConexoesDoLocum() {
               "claude-code": <ClaudeCode />,
               opencode: <Opencode />,
               grafana: <Grafana />,
-              github: (
-                <>
-                  <Github />
-                  <Trackers kinds={["github-issues"]} />
-                </>
-              ),
+              // O GitHub do card é só a credencial de pull request; o tracker
+              // de issues mora na seção única de Trackers de Tarefas, junto do
+              // Jira e do Shortcut — um formulário por conceito, sem duplicar.
+              github: <Github />,
               slack: (
                 <>
                   <SlackOficial />
