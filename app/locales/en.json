@@ -830,7 +830,7 @@
       "beats": "last scan {{last}} · next {{next}}",
       "never": "never",
       "parked": "none, the trigger is parked",
-      "howTo": "Type the repository name, several separated by commas, or use * to catch every one that starts the same (api-*). Scanning uses the GitHub token from Settings > Connections. Nothing turns into a comment on its own: the finding stops in the queue and waits for your click.",
+      "howTo": "Type the repository name, several separated by commas, or use * to catch every one that starts the same (api-*). Scanning uses the GitHub token from Apps > GitHub. Nothing turns into a comment on its own: the finding stops in the queue and waits for your click.",
       "refused": "the bridge refused: {{message}}",
       "advanced": "I want a regular expression",
       "advancedHow": "If the text has ^, $, parentheses or |, it counts as a regular expression matched against the name, unchanged: \"^api-\" catches every repo starting with it. Filtering by authorship needs the token checked, because its account is what tells which pull requests are yours."
