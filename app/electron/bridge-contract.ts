@@ -100,11 +100,23 @@ interface ServiceApi {
   /**
    * Os agents prontos do marketplace: os specs de `examples/agents/` lidos do
    * disco no processo principal, com o mesmo `AgentSpec` que valida a
-   * importação. Só leitura; instalar é o `agents.importTemplate`.
+   * importação. Só leitura; instalar é o `agents.importTemplate`. Cada passo
+   * de modelo vem com o índice e o modelo pedido, para o seletor de
+   * instalação oferecer a troca.
    */
-  "agents.templates": () => Promise<{ id: string; name: string; modelo: string | null; passos: number }[]>;
-  /** Instala um template do marketplace pelo id, como o importar de arquivo faria. */
-  "agents.importTemplate": (id: string) => Promise<{ agentId: string; version: number; created: boolean }>;
+  "agents.templates": () => Promise<
+    { id: string; name: string; modelo: string | null; passos: number; passosDeModelo: { indice: number; modelo: string }[] }[]
+  >;
+  /**
+   * Instala um template do marketplace pelo id, como o importar de arquivo
+   * faria. As substituições trocam o modelo dos passos de IA antes de gravar:
+   * índice do passo para o modelo escolhido, e o que não veier continua com o
+   * do template.
+   */
+  "agents.importTemplate": (
+    id: string,
+    substituicoes?: Record<number, string>,
+  ) => Promise<{ agentId: string; version: number; created: boolean }>;
   /**
    * Grava o agent de resposta pronto do Slack ou do Teams, como o importar
    * faria. Agent com o mesmo id que já existe fica como está: pode ter sido

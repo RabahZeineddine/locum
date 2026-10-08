@@ -156,10 +156,20 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
               steps?: unknown[];
             };
             if (typeof bruto.id !== "string" || typeof bruto.name !== "string") return null;
-            const modelo = (bruto.steps ?? [])
-              .map((p) => (p as { model?: unknown }).model)
-              .find((m): m is string => typeof m === "string");
-            return { id: bruto.id, name: bruto.name, modelo: modelo ?? null, passos: (bruto.steps ?? []).length };
+            const passos = Array.isArray(bruto.steps) ? bruto.steps : [];
+            const passosDeModelo = passos
+              .map((p, indice) => ({ indice, modelo: (p as { model?: unknown }).model }))
+              .filter(
+                (p): p is { indice: number; modelo: string } =>
+                  typeof p.modelo === "string",
+              );
+            return {
+              id: bruto.id,
+              name: bruto.name,
+              modelo: passosDeModelo[0]?.modelo ?? null,
+              passos: passos.length,
+              passosDeModelo,
+            };
           } catch {
             return null;
           }
@@ -167,11 +177,25 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
       );
       return modelos.filter((m): m is NonNullable<typeof m> => m !== null);
     },
-    "agents.importTemplate": async (id) => {
+    "agents.importTemplate": async (id, substituicoes) => {
       if (!/^[a-z0-9][a-z0-9-]{1,62}$/.test(id)) throw new Error(`id de template inválido: "${id}"`);
       const pasta = join(app.getAppPath(), "examples", "agents");
+      const bruto = JSON.parse(await readFile(join(pasta, `${id}.json`), "utf8")) as {
+        steps?: { model?: string }[];
+      };
+      // A troca de modelo acontece antes da validação do importar: quem escolhe
+      // no seletor só vê modelos disponíveis nesta máquina, e o spec gravado
+      // nasce já com a escolha — sem precisar editar o agent depois.
+      if (substituicoes && Array.isArray(bruto.steps)) {
+        for (const [indice, modelo] of Object.entries(substituicoes)) {
+          const passo = bruto.steps[Number(indice)];
+          if (passo && typeof passo.model === "string" && /^[a-z0-9][a-z0-9-]*\/[\w.@:-]+$/.test(modelo)) {
+            passo.model = modelo;
+          }
+        }
+      }
       const { version, created } = await agentService.importSpec(
-        await readFile(join(pasta, `${id}.json`), "utf8"),
+        JSON.stringify(bruto),
         `marketplace:${id}`,
       );
       return { agentId: version.agentId, version: version.version, created };

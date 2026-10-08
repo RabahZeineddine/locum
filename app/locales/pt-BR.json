@@ -189,6 +189,10 @@
       "empty": "Nenhum agent pronto no catálogo desta instalação.",
       "installed": "instalado",
       "install": "Instalar",
+      "installWith": "Instalar com estes modelos",
+      "modelHint": "Escolha o modelo de cada passo de IA. A lista mostra o que esta máquina oferece.",
+      "modelFor": "modelo {{model}}:",
+      "modelMissing": "fora do catálogo desta máquina",
       "open": "Abrir",
       "steps_one": "{{count}} passo",
       "steps_other": "{{count}} passos"
