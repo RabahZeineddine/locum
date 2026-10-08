@@ -1002,6 +1002,17 @@
       "label": "dias",
       "refused": "O valor não foi salvo: {{message}}"
     },
+    "workingHours": {
+      "title": "Horário de trabalho & Vigilância ativa",
+      "description": "Defina o horário do expediente em que os gatilhos e vigilantes devem monitorar com cadência rápida.",
+      "enableLabel": "Ativar janela de trabalho (Quiet Hours fora do expediente)",
+      "start": "Início",
+      "end": "Fim",
+      "offHoursLabel": "Fora do horário:",
+      "behaviorPause": "Pausar vigias até o próximo expediente",
+      "behaviorSlow": "Cadência lenta (a cada 60 min)",
+      "behaviorUnrestricted": "Sem restrição (24/7 ininterrupto)"
+    },
     "initiativesRoot": {
       "title": "Pasta raiz das iniciativas",
       "description": "Onde a pasta de contexto de cada iniciativa mora. Deixe em branco para o padrão.",
