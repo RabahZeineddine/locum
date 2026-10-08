@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { call, read, useRead, type ReadResult } from "@/lib/bridge";
 import { rotuloDoModelo } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, Bot, Plus, Trash2, Workflow, Wrench, X } from "lucide-react";
+import { ArrowLeft, Bot, Download, Loader2, Plus, Trash2, Workflow, Wrench, X } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { ehLeitura } from "../../../src/config/leitura.js";
@@ -14,12 +14,15 @@ import type { TelaProps } from "../rotas";
 
 type ResumoDoAgent = ReadResult<"library.profiles">[number];
 type ResumoDoToolset = ReadResult<"library.toolsets">[number];
+type Template = ReadResult<"agents.templates">[number];
 
 const CAMPO =
   "border-border bg-background focus-visible:ring-ring w-full rounded-md border px-3 py-1.5 text-sm outline-none focus-visible:ring-1";
 
 /** O detalhe que abre a aba de toolsets, e não um agent. */
 const ABA_TOOLSETS = "toolsets";
+/** O detalhe que abre a aba de marketplace, e não um agent. */
+const ABA_MARKETPLACE = "marketplace";
 /** O detalhe do agent novo, ainda sem id. */
 const NOVO = "novo";
 
@@ -35,9 +38,10 @@ type AbaDoAgent = (typeof ABAS_DO_AGENT)[number];
  */
 export function Biblioteca({ detalhe, navegar }: TelaProps) {
   const { t } = useTranslation();
-  const aba = detalhe === ABA_TOOLSETS ? "toolsets" : "agents";
+  const aba =
+    detalhe === ABA_TOOLSETS ? "toolsets" : detalhe === ABA_MARKETPLACE ? "marketplace" : "agents";
 
-  if (detalhe !== null && detalhe !== ABA_TOOLSETS) {
+  if (detalhe !== null && detalhe !== ABA_TOOLSETS && detalhe !== ABA_MARKETPLACE) {
     return (
       <EditorDoAgent
         abrir={(id) => navegar("library", id)}
@@ -63,7 +67,7 @@ export function Biblioteca({ detalhe, navegar }: TelaProps) {
         titulo={t("library.title")}
       />
       <div className="border-border flex gap-1 border-b">
-        {(["agents", "toolsets"] as const).map((a) => (
+        {(["agents", "marketplace", "toolsets"] as const).map((a) => (
           <button
             aria-pressed={aba === a}
             className={cn(
@@ -71,14 +75,20 @@ export function Biblioteca({ detalhe, navegar }: TelaProps) {
               aba === a ? "border-primary text-foreground" : "text-muted-foreground hover:text-foreground border-transparent",
             )}
             key={a}
-            onClick={() => (a === "agents" ? navegar("library") : navegar("library", ABA_TOOLSETS))}
+            onClick={() =>
+              a === "agents"
+                ? navegar("library")
+                : navegar("library", a === "toolsets" ? ABA_TOOLSETS : ABA_MARKETPLACE)
+            }
             type="button"
           >
             {t(`library.tabs.${a}`)}
           </button>
         ))}
       </div>
-      {aba === "agents" ? <ListaDeAgents abrir={(id) => navegar("library", id)} /> : <ListaDeToolsets />}
+      {aba === "agents" ? <ListaDeAgents abrir={(id) => navegar("library", id)} /> : null}
+      {aba === "marketplace" ? <Marketplace abrir={(id) => navegar("library", id)} /> : null}
+      {aba === "toolsets" ? <ListaDeToolsets /> : null}
     </div>
   );
 }
@@ -106,6 +116,79 @@ function ListaDeAgents({ abrir }: { abrir: (id: string) => void }) {
         <CartaoDoAgent agent={a} abrir={() => abrir(a.id)} key={a.id} />
       ))}
     </ul>
+  );
+}
+
+/**
+ * O marketplace da biblioteca: agents prontos que o aplicativo traz, lidos do
+ * disco como dado. Instalar grava um profile como o importar de arquivo faria;
+ * quem já instalou vê "instalado" e o botão vira "abrir".
+ */
+function Marketplace({ abrir }: { abrir: (id: string) => void }) {
+  const { t } = useTranslation();
+  const templates = useRead("agents.templates");
+  const instalados = useRead("library.profiles");
+  const [instalando, setInstalando] = useState<string | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [recem, setRecem] = useState<string | null>(null);
+  const idsInstalados = new Set((instalados.data ?? []).map((a) => a.id));
+
+  const instalar = (id: string): void => {
+    setInstalando(id);
+    setErro(null);
+    call("agents.importTemplate", id)
+      .then((r) => {
+        setRecem(r.agentId);
+        void read("library.profiles").then(() => undefined, () => undefined);
+      })
+      .catch((e: unknown) => setErro(e instanceof Error ? e.message : String(e)))
+      .finally(() => setInstalando(null));
+  };
+
+  return (
+    <div className="flex flex-col gap-4" data-locum-probe="agents-marketplace">
+      {erro === null ? null : <p className="text-destructive text-xs">{erro}</p>}
+      {templates.status === "loading" ? (
+        <p className="text-muted-foreground text-sm">{t("agents.marketplace.loading")}</p>
+      ) : (templates.data ?? []).length === 0 ? (
+        <p className="text-muted-foreground text-sm">{t("agents.marketplace.empty")}</p>
+      ) : (
+        <ul className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3">
+          {(templates.data ?? []).map((template) => (
+            <li className="border-border superficie flex flex-col gap-2 rounded-lg border p-4" key={template.id}>
+              <div className="flex items-center gap-2.5">
+                <span aria-hidden className="ia-gradiente text-primary-foreground flex size-8 shrink-0 items-center justify-center rounded-md">
+                  <Bot className="size-4" />
+                </span>
+                <span className="truncate font-medium text-sm">{template.name}</span>
+                {idsInstalados.has(template.id) || recem === template.id ? (
+                  <Badge className="ml-auto shrink-0" variant="outline">
+                    {t("agents.marketplace.installed")}
+                  </Badge>
+                ) : null}
+              </div>
+              <div className="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                {template.modelo !== null ? <span>{rotuloDoModelo(template.modelo)}</span> : null}
+                <span>{t("agents.marketplace.steps", { count: template.passos })}</span>
+                <span className="font-mono">{template.id}</span>
+              </div>
+              <div className="mt-auto flex items-center gap-2 pt-1">
+                {idsInstalados.has(template.id) || recem === template.id ? (
+                  <Button className="cursor-pointer" onClick={() => abrir(template.id)} size="sm" variant="outline">
+                    {t("agents.marketplace.open")}
+                  </Button>
+                ) : (
+                  <Button className="cursor-pointer" disabled={instalando !== null} onClick={() => instalar(template.id)} size="sm">
+                    {instalando === template.id ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
+                    {t("agents.marketplace.install")}
+                  </Button>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 

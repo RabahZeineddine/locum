@@ -506,9 +506,9 @@
     "version": "versão {{version}}",
     "versionHint": "Atualização, em Configuração",
     "sessions": "Sessões",
-    "automations": "Agents",
+    "automations": "Automações",
     "apps": "Apps",
-    "library": "Especialidades"
+    "library": "Agents"
   },
   "notification": {
     "runFailed": {
@@ -2017,6 +2017,7 @@
     "empty": "Nenhum agent na biblioteca ainda. Crie um por assunto: chamados, parcerias, revisão de PR.",
     "tabs": {
       "agents": "Agents",
+      "marketplace": "Marketplace",
       "toolsets": "Toolsets"
     },
     "toolsetsCount_one": "{{count}} toolset",
