@@ -98,6 +98,14 @@ interface ServiceApi {
   "agents.importFile": () => Promise<{ agentId: string; version: number; created: boolean } | null>;
   "agents.exportFile": (agentId: string) => Promise<string | null>;
   /**
+   * Os agents prontos do marketplace: os specs de `examples/agents/` lidos do
+   * disco no processo principal, com o mesmo `AgentSpec` que valida a
+   * importação. Só leitura; instalar é o `agents.importTemplate`.
+   */
+  "agents.templates": () => Promise<{ id: string; name: string; modelo: string | null; passos: number }[]>;
+  /** Instala um template do marketplace pelo id, como o importar de arquivo faria. */
+  "agents.importTemplate": (id: string) => Promise<{ agentId: string; version: number; created: boolean }>;
+  /**
    * Grava o agent de resposta pronto do Slack ou do Teams, como o importar
    * faria. Agent com o mesmo id que já existe fica como está: pode ter sido
    * editado, e o clique não é para desfazer isso.
@@ -512,6 +520,8 @@ export const BRIDGE_CHANNELS = [
   "agents.duplicate",
   "agents.importFile",
   "agents.exportFile",
+  "agents.templates",
+  "agents.importTemplate",
   "agents.installReply",
   "agents.aiStatus",
   "agents.aiDraft",

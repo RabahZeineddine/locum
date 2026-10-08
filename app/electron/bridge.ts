@@ -2,7 +2,7 @@ import { listTeamsChannels } from "../src/teams/channels.js";
 import { claudeAccountService, SERVIDOR_CONTA } from "../src/runtimes/claude-account.js";
 import { claudeImportService } from "../src/services/claude-import.js";
 import { app, BrowserWindow, dialog, ipcMain, type WebContents } from "electron";
-import { readFile, writeFile } from "node:fs/promises";
+import { readdir, readFile, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { agentBuilder, criadorDisponivel } from "./agent-builder.js";
 import { chatSession } from "./chat.js";
@@ -132,6 +132,48 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
       if (escolha.canceled || escolha.filePath === undefined) return null;
       await writeFile(escolha.filePath, texto);
       return escolha.filePath;
+    },
+    // O marketplace lê os templates do disco, e não de import estático: agent
+    // pronto é dado, e agent novo no catálogo não é razão de release. Em dev
+    // `getAppPath` é a raiz do repositório; empacotado, é o app.asar — e os
+    // JSONs de `examples/agents/` viajam dentro dele como asset (ver
+    // electron-builder.yml).
+    "agents.templates": async () => {
+      const pasta = join(app.getAppPath(), "examples", "agents");
+      let nomes: string[] = [];
+      try {
+        nomes = (await readdir(pasta)).filter((n) => n.endsWith(".json")).sort();
+      } catch {
+        return [];
+      }
+      const modelos = await Promise.all(
+        nomes.map(async (nome) => {
+          try {
+            const bruto = JSON.parse(await readFile(join(pasta, nome), "utf8")) as {
+              id?: unknown;
+              name?: unknown;
+              steps?: unknown[];
+            };
+            if (typeof bruto.id !== "string" || typeof bruto.name !== "string") return null;
+            const modelo = (bruto.steps ?? [])
+              .map((p) => (p as { model?: unknown }).model)
+              .find((m): m is string => typeof m === "string");
+            return { id: bruto.id, name: bruto.name, modelo: modelo ?? null, passos: (bruto.steps ?? []).length };
+          } catch {
+            return null;
+          }
+        }),
+      );
+      return modelos.filter((m): m is NonNullable<typeof m> => m !== null);
+    },
+    "agents.importTemplate": async (id) => {
+      if (!/^[a-z0-9][a-z0-9-]{1,62}$/.test(id)) throw new Error(`id de template inválido: "${id}"`);
+      const pasta = join(app.getAppPath(), "examples", "agents");
+      const { version, created } = await agentService.importSpec(
+        await readFile(join(pasta, `${id}.json`), "utf8"),
+        `marketplace:${id}`,
+      );
+      return { agentId: version.agentId, version: version.version, created };
     },
     "agents.installReply": async (service) => {
       const { REPLY_SPECS } = await import("../src/examples/agents.js");

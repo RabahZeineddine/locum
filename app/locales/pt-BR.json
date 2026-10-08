@@ -179,6 +179,20 @@
       "starting": "iniciando...",
       "placeholder": "https://github.com/owner/repo/pull/123"
     },
+    "tabs": {
+      "agents": "Meus Agents",
+      "marketplace": "Marketplace",
+      "specialties": "Especialidades"
+    },
+    "marketplace": {
+      "loading": "lendo o marketplace...",
+      "empty": "Nenhum agent pronto no catálogo desta instalação.",
+      "installed": "instalado",
+      "install": "Instalar",
+      "open": "Abrir",
+      "steps_one": "{{count}} passo",
+      "steps_other": "{{count}} passos"
+    },
     "lead": "Quem trabalha por você, o que cada um faz e quando acorda.",
     "new": {
       "button": "Novo agent",
@@ -492,9 +506,9 @@
     "version": "versão {{version}}",
     "versionHint": "Atualização, em Configuração",
     "sessions": "Sessões",
-    "automations": "Automações",
+    "automations": "Agents",
     "apps": "Apps",
-    "library": "Agents"
+    "library": "Especialidades"
   },
   "notification": {
     "runFailed": {

@@ -40,6 +40,9 @@ export const READ_CHANNELS = [
   "agents.versions",
   "agents.budgets",
   "agents.overview",
+  // Os templates do marketplace: leitura pura do disco, feita no processo
+  // principal. Instalar vai por `agents.importTemplate`, entre as ações.
+  "agents.templates",
   "actions.describe",
   // Lista, detalhe composto (servidores, workspaces, links, agents) e um
   // arquivo da pasta de contexto com hash. So leitura: mudar `context.md`
@@ -258,6 +261,9 @@ export const ACTION_CHANNELS = [
   "triggers.setEnabled",
   "triggers.tick",
   "scheduler.setWorkingHours",
+  // Instalar um template do marketplace é clique de quem está usando, e
+  // grava um agent como o importar de arquivo faria.
+  "agents.importTemplate",
   // O canvas grava spec e gatilhos juntos, e o gatilho novo nasce parado.
   // Ligar a automação e executar agora são cliques; executar agora para na
   // fila de aprovação no primeiro passo de ação, como qualquer run.
