@@ -858,7 +858,7 @@
       "beats": "última varredura {{last}} · próxima {{next}}",
       "never": "nunca",
       "parked": "nenhuma, o gatilho está parado",
-      "howTo": "Escreva o nome do repositório, vários separados por vírgula, ou use * para pegar todos que começam igual (api-*). A varredura usa o token do GitHub de Configuração > Conexões. Nada vira comentário sozinho: o achado para na fila e espera o seu clique.",
+      "howTo": "Escreva o nome do repositório, vários separados por vírgula, ou use * para pegar todos que começam igual (api-*). A varredura usa o token do GitHub de Apps > GitHub. Nada vira comentário sozinho: o achado para na fila e espera o seu clique.",
       "refused": "a ponte recusou: {{message}}",
       "every_zero": "a cada {{count}} minutos",
       "advanced": "Quero usar expressão regular",
