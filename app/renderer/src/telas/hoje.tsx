@@ -342,6 +342,10 @@ export function Hoje({ navegar }: TelaProps) {
                             <span>{t("home.today.next.last_checked", { when: ultima })}</span>
                           </>
                         )}
+                        <span className="inline-flex items-center gap-1 font-mono text-[11px] text-emerald-600 dark:text-emerald-400">
+                          <span className="size-1.5 rounded-full bg-emerald-500" />
+                          {t("home.today.next.active_synced", { defaultValue: "sincronizado" })}
+                        </span>
                       </div>
                     </div>
 
