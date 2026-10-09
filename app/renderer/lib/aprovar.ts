@@ -17,8 +17,9 @@ type Decisao = "approved" | "rejected";
 interface PonteDeDecisao {
   approvals: {
     decide: (id: string, decisao: Decisao) => Promise<DecisionResult>;
-    update: (id: string, findings: unknown[], verdict: string) => Promise<unknown>;
+    update: (id: string, findings: unknown[], verdict: string, summary?: string) => Promise<unknown>;
     updateText: (id: string, text: string) => Promise<unknown>;
+    createTrackerIssue: (id: string, trackerId: string) => Promise<{ issueApprovalId: string }>;
     settleStuck: (id: string, outcome: "published" | "retry") => Promise<{ status: "approved" | "pending" }>;
   };
 }
@@ -49,13 +50,20 @@ export async function gravarRevisao(
   approvalId: string,
   findings: unknown[],
   verdict: string,
+  summary?: string,
 ): Promise<void> {
-  await ponte().approvals.update(approvalId, findings, verdict);
+  await ponte().approvals.update(approvalId, findings, verdict, summary);
 }
 
 /** Grava o texto revisado de uma resposta de Slack ou Teams, sem publicar. */
 export async function gravarTexto(approvalId: string, texto: string): Promise<void> {
   await ponte().approvals.updateText(approvalId, texto);
+}
+
+export async function criarTarefaDoTracker(approvalId: string, trackerId: string): Promise<{ issueApprovalId: string }> {
+  const res = await ponte().approvals.createTrackerIssue(approvalId, trackerId);
+  invalidateReads("approvals.listPending");
+  return res;
 }
 
 /**

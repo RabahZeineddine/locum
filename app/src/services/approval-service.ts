@@ -76,6 +76,7 @@ export class ApprovalService {
     approvalId: string,
     findings: unknown,
     verdict?: unknown,
+    summary?: unknown,
   ): Promise<ApprovalSummary> {
     const [atual] = await this.query(eq(schema.approvals.id, approvalId));
     if (!atual) throw new Error(`aprovação ${approvalId} não encontrada`);
@@ -94,6 +95,7 @@ export class ApprovalService {
     if (!veredito.success) {
       throw new Error(`veredito fora do formato: ${String(verdict)}`);
     }
+    const resumo = z.string().optional().safeParse(summary);
 
     const escrita = this.db
       .update(schema.approvals)
@@ -102,6 +104,7 @@ export class ApprovalService {
           ...(atual.payload as object),
           findings: lidos.data,
           ...(veredito.data !== undefined && { verdict: veredito.data }),
+          ...(resumo.data !== undefined && { summary: resumo.data }),
         },
       })
       .where(and(eq(schema.approvals.id, approvalId), eq(schema.approvals.status, "pending")))
@@ -144,6 +147,74 @@ export class ApprovalService {
 
     const [novo] = await this.query(eq(schema.approvals.id, approvalId));
     return novo!;
+  }
+
+  /**
+   * Converte achados de um PR review em proposta de história no Tracker (Shortcut/Jira).
+   *
+   * Mantém a integridade arquitetural: não cria direto no Shortcut por fora,
+   * mas insere uma pendência oficial de `tracker.create_issue` na fila,
+   * pronta para ser aprovada e publicada com 1 clique.
+   */
+  async createTrackerIssueProposal(
+    approvalId: string,
+    trackerId: string,
+  ): Promise<{ issueApprovalId: string }> {
+    const [atual] = await this.query(eq(schema.approvals.id, approvalId));
+    if (!atual) throw new Error(`aprovação ${approvalId} não encontrada`);
+    if (atual.kind !== REVIEW_KIND) {
+      throw new Error(`apenas revisões de código podem gerar tarefas no tracker`);
+    }
+
+    const payload = atual.payload as {
+      pull?: number;
+      repo?: string;
+      owner?: string;
+      title?: string;
+      url?: string;
+      findings?: Array<{ file?: string; line?: number; problem?: string; fix?: string; severity?: string }>;
+      summary?: string;
+    };
+
+    const { trackerService } = await import("./tracker-service.js");
+    const project = await trackerService.defaultProject(trackerId);
+    if (!project) {
+      throw new Error(`o tracker "${trackerId}" não possui um projeto configurado`);
+    }
+
+    const pullUrl = payload.url ?? (payload.owner && payload.repo && payload.pull ? `https://github.com/${payload.owner}/${payload.repo}/pull/${payload.pull}` : "");
+    const titulo = `Fix PR #${payload.pull ?? ""}: ${payload.title ?? "Apontamentos de code review"}`.trim();
+    
+    const corpoAchados = (payload.findings ?? [])
+      .map((f) => `* **${f.file ?? "geral"}${f.line ? `:${f.line}` : ""}** [${f.severity ?? "defeito"}]: ${f.problem ?? ""}${f.fix ? `\n  _Sugestão:_ ${f.fix}` : ""}`)
+      .join("\n\n");
+    const corpo = [
+      payload.summary ? `### Resumo da Auditoria\n${payload.summary}\n` : "",
+      "### Apontamentos a Resolver\n",
+      corpoAchados || "Verificar apontamentos no pull request correspondente.",
+      pullUrl ? `\n\n---\n**Pull Request:** ${pullUrl}` : "",
+    ].filter(Boolean).join("\n");
+
+    const id = (await import("node:crypto")).randomUUID();
+    const externalId = `${atual.runId}:tracker:${Date.now()}`;
+
+    this.db.insert(schema.approvals).values({
+      id,
+      runId: atual.runId,
+      stepId: atual.stepId,
+      kind: "tracker.create_issue",
+      payload: {
+        tracker: trackerId,
+        project,
+        title: titulo,
+        body: corpo,
+        pullRequestUrl: pullUrl,
+      },
+      status: "pending",
+      externalId,
+    }).run();
+
+    return { issueApprovalId: id };
   }
 
   private async query(where: SQL): Promise<ApprovalSummary[]> {

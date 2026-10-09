@@ -217,6 +217,7 @@ interface ServiceApi {
   "approvals.update": ApprovalService["updateFindings"];
   /** O texto de uma resposta de Slack ou Teams, editado na revisão. */
   "approvals.updateText": ApprovalService["updateText"];
+  "approvals.createTrackerIssue": ApprovalService["createTrackerIssueProposal"];
 
   "approvals.decide": (
     approvalId: string,
@@ -577,6 +578,7 @@ export const BRIDGE_CHANNELS = [
   "approvals.get",
   "approvals.update",
   "approvals.updateText",
+  "approvals.createTrackerIssue",
   "approvals.decide",
   "approvals.settleStuck",
   "mcp.list",
