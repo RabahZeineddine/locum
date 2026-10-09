@@ -1308,7 +1308,11 @@ daquele item, e `since` a mais de 366 dias de `now` também. Janela que cruza a 
 `examples/agents/support-desk.json` usa a ferramenta numa triagem de chamados
 (Haiku), com `if` de vazio, investigação dos críticos (Sonnet) e duas entregas
 `digest.deliver` em aprovação, uma por ramo. Não está em `src/examples/agents.ts`
-e vem sem gatilho: a cadência sugerida está no README dos exemplos.
+e vem sem gatilho: a cadência sugerida está no README dos exemplos. O freio
+de leitura (200 mensagens por fonte, 40 threads) está no prompt, porque o
+runtime `claude-code` não mede token nem aplica `maxSteps`, e o `budget` do
+exemplo só vale nos provedores por API. Chamado aberto antes da janela de
+retenção (padrão 14 dias) não é visto: aumenta-se a janela no contexto.
 
 **Automações, fatia 9: iniciativa com automações.** A aba Agents da iniciativa
 virou Automações: a mesma linha da lista (rodar, ligar, abrir no canvas),

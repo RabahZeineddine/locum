@@ -57,7 +57,9 @@ essencial:
 - `needs` liga um passo aos anteriores, e `{{steps.<chave>}}` no prompt traz a
   saída deles;
 - `skills` carrega skills da sua máquina conforme os arquivos alterados;
-- `budget` põe teto por execução e por dia.
+- `budget` põe teto por execução e por dia nos provedores por API. No runtime
+  `claude-code` (assinatura) o gasto não é medido e o `maxSteps` não vale: o
+  freio é o prompt, como faz o `support-desk`.
 
 Passo de ação importado com `draft` ou `auto` vale como está, porque quem
 importa é uma pessoa. O mesmo spec gravado por um agent, pelo servidor MCP, é

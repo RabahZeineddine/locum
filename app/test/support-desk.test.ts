@@ -96,14 +96,20 @@ test("importa pelo serviço, que é por onde o exemplo entra de verdade", async 
   assert.equal(created, true);
 });
 
-test("a triagem não põe fechado nem em espera em items, e o chamado aberto não some pela janela", () => {
+test("a triagem não põe fechado nem em espera em items, acompanha o aberto dentro da janela e tem limite de leitura", () => {
   const triage = passo("triage");
   assert.ok(triage.type === "model");
   assert.equal(triage.maxSteps, 60);
   assert.match(triage.prompt, /waiting_requester, other_team ou resolved não vira item/);
   assert.match(triage.prompt, /14 dias corridos/);
   assert.doesNotMatch(triage.prompt, /72/);
-  // O que está aberto não some por ser antigo, e thread do solicitante é sempre aberta.
-  assert.match(triage.prompt, /qualquer que seja a idade/);
+  // Dentro da janela o aberto entra sem olhar a última atividade; fora dela, o
+  // prompt manda aumentar a janela em vez de prometer o que não vê.
+  assert.match(triage.prompt, /qualquer que seja a data da última atividade/);
+  assert.match(triage.prompt, /até 366 dias/);
+  assert.doesNotMatch(triage.prompt, /run anterior/);
+  // O runtime claude-code não aplica maxSteps nem conta tokens: o freio é o prompt.
+  assert.match(triage.prompt, /no máximo 200 mensagens por fonte/);
+  assert.match(triage.prompt, /no máximo 40 threads/);
   assert.match(triage.prompt, /solicitante falou por último é sempre aberta/);
 });
