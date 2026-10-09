@@ -274,10 +274,16 @@
     "onlyWithClick": "only with a click"
   },
   "inbox": {
-    "title": "Queue",
+    "title": "Inbox",
     "waiting_zero": "nothing waiting for you",
     "waiting_one": "{{count}} waiting for you",
     "waiting_other": "{{count}} waiting for you",
+    "severities": {
+      "critical": "critical",
+      "high": "high",
+      "medium": "medium",
+      "low": "low"
+    },
     "failures_one": "{{count}} run failed",
     "failures_other": "{{count}} runs failed",
     "approve": "Approve",
@@ -518,6 +524,16 @@
   },
   "runs": {
     "title": "Runs",
+    "lead": "History of everything the agents ran, with steps, costs and findings.",
+    "metrics": {
+      "total": "Total runs",
+      "executions": "runs",
+      "success_rate": "Success rate",
+      "failed": "failed",
+      "cost": "Total cost",
+      "avg_duration": "Avg duration",
+      "per_run": "per run"
+    },
     "loading": "reading runs...",
     "refused": "the bridge refused: {{message}}",
     "count_one": "{{count}} run",
@@ -1313,6 +1329,16 @@
       "lead": "What is waiting for you, what runs next and what already finished.",
       "loading": "reading...",
       "refused": "the bridge refused: {{message}}",
+      "kpi": {
+        "waiting": "Waiting for you",
+        "item": "item",
+        "items": "items",
+        "active_watch": "Active watch",
+        "monitors": "monitors",
+        "runs_today": "Runs (24h)",
+        "failures": "failures",
+        "cost_24h": "Estimated cost (24h)"
+      },
       "waiting": {
         "title_zero": "Waiting for you · {{count}}",
         "title_one": "Waiting for you · {{count}}",

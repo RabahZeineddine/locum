@@ -98,9 +98,100 @@ function Lista({ navegar }: { navegar: TelaProps["navegar"] }) {
   const linhas = runs.data ?? [];
   const janela = useJanela(linhas.length, ALTURA_DA_LINHA);
 
+  const metricas = useMemo(() => {
+    if (linhas.length === 0) return null;
+    const concluidas = linhas.filter((r) => r.status === "done").length;
+    const falhadas = linhas.filter((r) => r.status === "failed").length;
+    const taxaSucesso = Math.round((concluidas / (linhas.length || 1)) * 100);
+    const custoTotal = linhas.reduce(
+      (acc, r) => acc + (r.costUsd > 0 ? r.costUsd : r.estimateUsd || 0),
+      0,
+    );
+    const tempos = linhas
+      .filter((r) => r.endedAt && r.createdAt)
+      .map((r) => r.endedAt! - r.createdAt);
+    const tempoMedioS =
+      tempos.length > 0 ? Math.round(tempos.reduce((a, b) => a + b, 0) / tempos.length) : 0;
+
+    return {
+      total: linhas.length,
+      concluidas,
+      falhadas,
+      taxaSucesso,
+      custoTotal,
+      tempoMedioS,
+    };
+  }, [linhas]);
+
   return (
     <div className="flex h-full flex-col items-stretch gap-5">
       <CabecalhoDaTela descricao={t("runs.lead")} titulo={t("runs.title")} />
+
+      {metricas && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="superficie flex flex-col gap-1 rounded-xl p-3.5">
+            <span className="text-muted-foreground text-[11px] font-medium uppercase tracking-[0.06em]">
+              {t("runs.metrics.total")}
+            </span>
+            <div className="flex items-baseline gap-2">
+              <span className="font-mono text-2xl font-semibold text-foreground">
+                {metricas.total}
+              </span>
+              <span className="text-muted-foreground text-xs">{t("runs.metrics.executions")}</span>
+            </div>
+          </div>
+
+          <div className="superficie flex flex-col gap-1 rounded-xl p-3.5">
+            <span className="text-muted-foreground text-[11px] font-medium uppercase tracking-[0.06em]">
+              {t("runs.metrics.success_rate")}
+            </span>
+            <div className="flex items-baseline gap-2">
+              <span
+                className={cn(
+                  "font-mono text-2xl font-semibold",
+                  metricas.taxaSucesso >= 90
+                    ? "text-emerald-500"
+                    : metricas.taxaSucesso >= 70
+                      ? "text-sev-medium"
+                      : "text-sev-critical",
+                )}
+              >
+                {metricas.taxaSucesso}%
+              </span>
+              {metricas.falhadas > 0 && (
+                <span className="text-sev-critical text-xs">
+                  ({metricas.falhadas} {t("runs.metrics.failed")})
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="superficie flex flex-col gap-1 rounded-xl p-3.5">
+            <span className="text-muted-foreground text-[11px] font-medium uppercase tracking-[0.06em]">
+              {t("runs.metrics.cost")}
+            </span>
+            <div className="flex items-baseline gap-2">
+              <span className="font-mono text-2xl font-semibold text-foreground">
+                ${metricas.custoTotal.toFixed(2)}
+              </span>
+              <span className="text-muted-foreground text-xs">USD</span>
+            </div>
+          </div>
+
+          <div className="superficie flex flex-col gap-1 rounded-xl p-3.5">
+            <span className="text-muted-foreground text-[11px] font-medium uppercase tracking-[0.06em]">
+              {t("runs.metrics.avg_duration")}
+            </span>
+            <div className="flex items-baseline gap-2">
+              <span className="font-mono text-2xl font-semibold text-foreground">
+                {metricas.tempoMedioS}s
+              </span>
+              <span className="text-muted-foreground text-xs">{t("runs.metrics.per_run")}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {iniciativaAtual !== undefined ? (
         <div className="mb-3 flex items-center gap-1.5">
           <button

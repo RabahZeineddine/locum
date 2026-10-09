@@ -61,6 +61,8 @@ export function Hoje({ navegar }: TelaProps) {
   const pendentes = useRead("approvals.listPending");
   const agenda = useRead("triggers.schedule");
   const terminadas = useRead("runs.list", { status: "done", limit: 50 });
+  const falhadas = useRead("runs.list", { status: "failed", limit: 20 });
+  const todas24h = useRead("runs.list", { limit: 100 });
   const agents = useRead("agents.list");
   const iniciativas = useRead("initiatives.list");
 
@@ -122,6 +124,18 @@ export function Hoje({ navegar }: TelaProps) {
       .slice(0, LIMITE);
   }, [terminadas.data]);
 
+  const metricasExecutivas = useMemo(() => {
+    const corte24h = Date.now() / 1000 - 24 * 3600;
+    const lista24h = (todas24h.data ?? []).filter((r) => r.createdAt >= corte24h);
+    const custoTotal = lista24h.reduce((acc, r) => acc + (r.costUsd > 0 ? r.costUsd : r.estimateUsd || 0), 0);
+    const falhas24h = (falhadas.data ?? []).filter((r) => r.createdAt >= corte24h).length;
+    return {
+      total24h: lista24h.length,
+      custoTotal,
+      falhas24h,
+    };
+  }, [todas24h.data, falhadas.data]);
+
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 pt-2">
       <header className="flex flex-col gap-2 pt-4">
@@ -133,6 +147,80 @@ export function Hoje({ navegar }: TelaProps) {
         </h1>
         <p className="text-muted-foreground text-[15px]">{t("home.today.lead")}</p>
       </header>
+
+      {/* Resumo Executivo Operacional */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div
+          className="superficie flex cursor-pointer flex-col gap-1 rounded-xl p-3.5 transition-colors hover:border-foreground/20"
+          onClick={() => navegar("inbox")}
+        >
+          <span className="text-muted-foreground text-[11px] font-medium uppercase tracking-[0.06em]">
+            {t("home.today.kpi.waiting")}
+          </span>
+          <div className="flex items-baseline gap-2">
+            <span
+              className={cn(
+                "font-mono text-2xl font-semibold",
+                fila.length > 0 ? "text-sev-medium" : "text-foreground",
+              )}
+            >
+              {fila.length}
+            </span>
+            <span className="text-muted-foreground text-xs">
+              {fila.length === 1 ? t("home.today.kpi.item") : t("home.today.kpi.items")}
+            </span>
+          </div>
+        </div>
+
+        <div
+          className="superficie flex cursor-pointer flex-col gap-1 rounded-xl p-3.5 transition-colors hover:border-foreground/20"
+          onClick={() => navegar("agents")}
+        >
+          <span className="text-muted-foreground text-[11px] font-medium uppercase tracking-[0.06em]">
+            {t("home.today.kpi.active_watch")}
+          </span>
+          <div className="flex items-baseline gap-2">
+            <span className="text-emerald-500 font-mono text-2xl font-semibold">
+              {ativos.length}
+            </span>
+            <span className="text-muted-foreground text-xs">{t("home.today.kpi.monitors")}</span>
+          </div>
+        </div>
+
+        <div
+          className="superficie flex cursor-pointer flex-col gap-1 rounded-xl p-3.5 transition-colors hover:border-foreground/20"
+          onClick={() => navegar("runs")}
+        >
+          <span className="text-muted-foreground text-[11px] font-medium uppercase tracking-[0.06em]">
+            {t("home.today.kpi.runs_today")}
+          </span>
+          <div className="flex items-baseline gap-2">
+            <span className="font-mono text-2xl font-semibold text-foreground">
+              {metricasExecutivas.total24h}
+            </span>
+            {metricasExecutivas.falhas24h > 0 && (
+              <span className="text-sev-critical text-xs font-medium">
+                ({metricasExecutivas.falhas24h} {t("home.today.kpi.failures")})
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div
+          className="superficie flex cursor-pointer flex-col gap-1 rounded-xl p-3.5 transition-colors hover:border-foreground/20"
+          onClick={() => navegar("runs")}
+        >
+          <span className="text-muted-foreground text-[11px] font-medium uppercase tracking-[0.06em]">
+            {t("home.today.kpi.cost_24h")}
+          </span>
+          <div className="flex items-baseline gap-2">
+            <span className="font-mono text-2xl font-semibold text-foreground">
+              ${metricasExecutivas.custoTotal.toFixed(2)}
+            </span>
+            <span className="text-muted-foreground text-xs">USD</span>
+          </div>
+        </div>
+      </div>
 
       <ComeceAqui agenda={agenda.data} navegar={navegar} />
 

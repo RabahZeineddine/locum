@@ -289,6 +289,12 @@
     "waiting_zero": "nada esperando você",
     "waiting_one": "{{count}} esperando você",
     "waiting_other": "{{count}} esperando você",
+    "severities": {
+      "critical": "crítico",
+      "high": "alto",
+      "medium": "médio",
+      "low": "baixo"
+    },
     "failures_one": "{{count}} execução falhou",
     "failures_other": "{{count}} execuções falharam",
     "approve": "Aprovar",
@@ -538,6 +544,16 @@
   },
   "runs": {
     "title": "Execuções",
+    "lead": "Histórico de tudo o que os agents rodaram, com passos, custos e achados.",
+    "metrics": {
+      "total": "Total de execuções",
+      "executions": "execuções",
+      "success_rate": "Taxa de sucesso",
+      "failed": "falhas",
+      "cost": "Investimento total",
+      "avg_duration": "Tempo médio",
+      "per_run": "por execução"
+    },
     "loading": "lendo execuções...",
     "refused": "a ponte recusou: {{message}}",
     "count_one": "{{count}} execução",
@@ -1347,6 +1363,16 @@
       "lead": "O que espera você, o que roda a seguir e o que já terminou.",
       "loading": "lendo...",
       "refused": "a ponte recusou: {{message}}",
+      "kpi": {
+        "waiting": "Espera você",
+        "item": "item",
+        "items": "itens",
+        "active_watch": "Vigilância ativa",
+        "monitors": "monitores",
+        "runs_today": "Execuções (24h)",
+        "failures": "falhas",
+        "cost_24h": "Custo estimado (24h)"
+      },
       "waiting": {
         "title_zero": "Espera você · {{count}}",
         "title_one": "Espera você · {{count}}",
