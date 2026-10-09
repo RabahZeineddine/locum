@@ -1182,7 +1182,7 @@ async function irPara(window: BrowserWindow, id: string, detalhe?: string): Prom
  * so a exigencia da story, que sao estes quatro destinos.
  */
 async function checkRoutes(window: BrowserWindow): Promise<string> {
-  const esperados = ["today", "inbox", "initiatives", "automations", "runs", "apps", "sessions", "settings"];
+  const esperados = ["today", "inbox", "initiatives", "automations", "library", "runs", "apps", "sessions", "settings"];
 
   const barra = (await window.webContents.executeJavaScript(
     `Array.from(document.querySelectorAll("[data-locum-rota]")).map((b) => ({
@@ -2415,9 +2415,8 @@ async function checkRegisteredProviders(window: BrowserWindow): Promise<string> 
  * aprovação, e ele é assunto da próxima story.
  */
 async function checkTrackers(window: BrowserWindow): Promise<string> {
-  await irPara(window, "apps");
-  // O GitHub Issues mora no painel do GitHub, e o Jira no da Atlassian.
-  await abrirConexao(window, "github");
+  // Os trackers moram numa seção própria da Configuração, todos juntos.
+  await irPara(window, "settings", "trackers");
   const { createServer } = await import("node:http");
   const { eq } = await import("drizzle-orm");
   const { db, schema } = await import("../src/db/index.js");
@@ -2441,7 +2440,9 @@ async function checkTrackers(window: BrowserWindow): Promise<string> {
   }
 
   const idDoServico = `locum-smoke-jira-${randomUUID().slice(0, 6)}`;
-  const idDaTela = `locum-smoke-gh-${randomUUID().slice(0, 6)}`;
+  // O GitHub Issues não pede id nem nome na tela: o cadastro nasce com o id de
+  // fábrica, que é o único que a tela sabe produzir.
+  const idDaTela = "github-issues";
   const idDaAtlassian = `locum-smoke-atl-${randomUUID().slice(0, 6)}`;
   const contaDoJira = `smoke-${randomUUID().slice(0, 8)}@exemplo.invalido`;
   const tokenDoJira = `token-de-mentira-${randomUUID()}`;
@@ -2451,7 +2452,6 @@ async function checkTrackers(window: BrowserWindow): Promise<string> {
   const pullRequest = "https://github.com/locum-smoke/exemplo/pull/42";
   const tarefaExistente = `${projetoDoJira}-7`;
   const nomeDoServico = `Jira ${idDoServico}`;
-  const nomeDaTela = `Issues ${idDaTela}`;
   const nomeDaAtlassian = `Atlassian ${idDaAtlassian}`;
 
   /**
@@ -2591,34 +2591,60 @@ async function checkTrackers(window: BrowserWindow): Promise<string> {
     );
     if (semTarefa !== null) throw new Error("a procura inventou tarefa para um pull request novo");
 
-    // O segundo pela tela, que é o que a story entrega.
-    const preencheu = await window.webContents.executeJavaScript(
+    // O segundo pela tela, que é o que a story entrega. A tela do GitHub não
+    // pede id, nome nem endereço: só o tipo e o repositório de destino.
+    const escolheu = await window.webContents.executeJavaScript(
+      `(() => {
+        const tipo = document.querySelector("[data-locum-tracker-tipo]");
+        if (tipo === null) return false;
+        Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, "value").set.call(
+          tipo,
+          "github-issues",
+        );
+        tipo.dispatchEvent(new Event("change", { bubbles: true }));
+        return true;
+      })()`,
+    );
+    if (escolheu !== true) throw new Error("a tela nao ofereceu o seletor de tipo de tracker");
+
+    const formularioEnxuto = await esperarProbe<boolean>(
+      window,
+      "formulario do GitHub Issues",
+      `(() => {
+        if (document.querySelector("[data-locum-tracker-projeto]") === null) return null;
+        return (
+          document.querySelector("[data-locum-tracker-id]") === null &&
+          document.querySelector("[data-locum-tracker-url]") === null &&
+          document.querySelector("[data-locum-tracker-conta]") === null
+        );
+      })()`,
+    );
+    if (!formularioEnxuto) throw new Error("o formulario do GitHub Issues pediu campo a mais");
+
+    const digitouRepo = await window.webContents.executeJavaScript(
       `(() => {
         const setter = Object.getOwnPropertyDescriptor(
           window.HTMLInputElement.prototype,
           "value",
         ).set;
-        const digitar = (seletor, valor) => {
-          const campo = document.querySelector(seletor);
-          if (campo === null) return false;
-          setter.call(campo, valor);
-          campo.dispatchEvent(new Event("input", { bubbles: true }));
-          return true;
-        };
-        // O painel do GitHub só cadastra GitHub Issues, então não há tipo a
-        // escolher, e um seletor aqui seria o Jira aparecendo fora do lugar.
-        if (document.querySelector("[data-locum-tracker-tipo]") !== null) return false;
-        if (!digitar("[data-locum-tracker-id]", ${JSON.stringify(idDaTela)})) return false;
-        if (!digitar("[data-locum-tracker-nome]", ${JSON.stringify(nomeDaTela)})) return false;
-        if (!digitar("[data-locum-tracker-url]", ${JSON.stringify(baseUrl)})) return false;
-        if (!digitar("[data-locum-tracker-projeto]", ${JSON.stringify(repoDaTela)})) return false;
+        const campo = document.querySelector("[data-locum-tracker-projeto]");
+        if (campo === null) return false;
+        setter.call(campo, ${JSON.stringify(repoDaTela)});
+        campo.dispatchEvent(new Event("input", { bubbles: true }));
+        return true;
+      })()`,
+    );
+    if (digitouRepo !== true) throw new Error("a tela nao ofereceu o campo de repositorio");
+    await esperarProbe<true>(
+      window,
+      "botao de cadastrar tracker",
+      `(() => {
         const botao = document.querySelector("[data-locum-tracker-salvar]");
-        if (botao === null || botao.disabled) return false;
+        if (botao === null || botao.disabled) return null;
         botao.click();
         return true;
       })()`,
     );
-    if (preencheu !== true) throw new Error("a tela nao ofereceu o formulario de tracker");
 
     const naTela = await esperarProbe<Record<string, string>>(
       window,
@@ -2631,9 +2657,22 @@ async function checkTrackers(window: BrowserWindow): Promise<string> {
         return ${JSON.stringify(idDaTela)} in achados ? achados : null;
       })()`,
     );
-    if (naTela[idDaTela] !== "github-issues" || idDoServico in naTela) {
-      throw new Error(`o painel do GitHub listou ${JSON.stringify(naTela)}`);
+    // A seção é uma só para todos os serviços: o Jira cadastrado pelo serviço
+    // aparece ao lado do GitHub, cada um com o tipo dele.
+    if (naTela[idDaTela] !== "github-issues" || naTela[idDoServico] !== "jira") {
+      throw new Error(`a secao de trackers listou ${JSON.stringify(naTela)}`);
     }
+    const destinoNaTela = await window.webContents.executeJavaScript(
+      `document.querySelector('[data-locum-tracker="${idDaTela}"]').dataset.locumTrackerDestino`,
+    );
+    if (destinoNaTela !== repoDaTela) {
+      throw new Error(`a tela guardou o destino "${destinoNaTela}" para o GitHub Issues`);
+    }
+
+    // A tela não oferece endereço para o GitHub, e o de fábrica é o de verdade.
+    // O cadastro vai para o servidor de mentira antes de qualquer pergunta ao
+    // tracker, e é só isso que o exame faz fora da tela.
+    await db.update(schema.trackers).set({ baseUrl }).where(eq(schema.trackers.id, idDaTela));
 
     // A credencial indo da tela para o cofre, e voltando como "guardada" e
     // nunca como valor: não existe canal que a devolva.
@@ -2740,6 +2779,7 @@ async function checkTrackers(window: BrowserWindow): Promise<string> {
     );
     if (guardouNaAtlassian) throw new Error("o tracker pela Atlassian aceitou credencial propria");
 
+    await irPara(window, "apps");
     await abrirConexao(window, "atlassian");
     const naAtlassian = await esperarProbe<{ kind: string; credencial: boolean; outros: number }>(
       window,
@@ -2757,6 +2797,15 @@ async function checkTrackers(window: BrowserWindow): Promise<string> {
     if (naAtlassian.kind !== "jira-atlassian" || naAtlassian.credencial || naAtlassian.outros > 0) {
       throw new Error(`o painel da Atlassian mostrou ${JSON.stringify(naAtlassian)}`);
     }
+
+    // O painel do GitHub é só a credencial de pull request: o GitHub Issues
+    // vive na seção de trackers, e um segundo formulário seria o mesmo conceito
+    // cadastrado em dois lugares.
+    await abrirConexao(window, "github");
+    const noGithub = await window.webContents.executeJavaScript(
+      `document.querySelector("[data-locum-probe=trackers]") !== null`,
+    );
+    if (noGithub) throw new Error("o painel do GitHub voltou a oferecer cadastro de tracker");
 
     if (!(await trackerService.remove(idDaAtlassian))) {
       throw new Error("o tracker pela Atlassian nao saiu");

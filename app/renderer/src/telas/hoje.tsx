@@ -217,7 +217,7 @@ export function Hoje({ navegar }: TelaProps) {
             <span className="font-mono text-2xl font-semibold text-foreground">
               ${metricasExecutivas.custoTotal.toFixed(2)}
             </span>
-            <span className="text-muted-foreground text-xs">USD</span>
+            <span className="text-muted-foreground text-xs">{t("home.today.kpi.currency")}</span>
           </div>
         </div>
       </div>
