@@ -91,11 +91,21 @@ function Lista({ navegar }: { navegar: TelaProps["navegar"] }) {
   // O limite e alto de proposito: a janela virtual abaixo e quem sustenta a
   // lista longa, e pedir de vinte em vinte traria paginacao para uma tela que
   // ninguem pagina, ela rola.
+  const [categoria, setCategoria] = useState<"all" | "review" | "failed" | "digest">("all");
+
   const runs = useRead(
     "runs.list",
     aplicarFiltro ? { limit: 500, initiativeId: iniciativaAtual.id } : { limit: 500 },
   );
-  const linhas = runs.data ?? [];
+  const todasLinhas = runs.data ?? [];
+  const linhas = useMemo(() => {
+    if (categoria === "all") return todasLinhas;
+    if (categoria === "failed") return todasLinhas.filter((r) => r.status === "failed");
+    if (categoria === "review") return todasLinhas.filter((r) => r.agentId.includes("review") || r.target?.pull);
+    if (categoria === "digest") return todasLinhas.filter((r) => r.agentId.includes("triage") || r.agentId.includes("briefing") || r.agentId.includes("watch"));
+    return todasLinhas;
+  }, [todasLinhas, categoria]);
+
   const janela = useJanela(linhas.length, ALTURA_DA_LINHA);
 
   const metricas = useMemo(() => {
@@ -193,7 +203,7 @@ function Lista({ navegar }: { navegar: TelaProps["navegar"] }) {
       )}
 
       {iniciativaAtual !== undefined ? (
-        <div className="mb-3 flex items-center gap-1.5">
+        <div className="mb-1 flex items-center gap-1.5">
           <button
             aria-pressed={aplicarFiltro}
             className={cn(
@@ -214,6 +224,32 @@ function Lista({ navegar }: { navegar: TelaProps["navegar"] }) {
           </button>
         </div>
       ) : null}
+
+      <div className="flex flex-wrap items-center gap-1.5">
+        {(
+          [
+            { id: "all", rotulo: t("runs.filter.all", { defaultValue: "Todas" }) },
+            { id: "review", rotulo: t("runs.filter.review", { defaultValue: "PR Reviews" }) },
+            { id: "digest", rotulo: t("runs.filter.digest", { defaultValue: "Vigilância & Alertas" }) },
+            { id: "failed", rotulo: t("runs.filter.failed", { defaultValue: "Com Falha" }) },
+          ] as const
+        ).map((f) => (
+          <button
+            aria-pressed={categoria === f.id}
+            className={cn(
+              "cursor-pointer rounded-full px-3 py-1 font-medium text-xs transition-colors",
+              categoria === f.id
+                ? "bg-primary text-primary-foreground"
+                : "bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground",
+            )}
+            key={f.id}
+            onClick={() => setCategoria(f.id)}
+            type="button"
+          >
+            {f.rotulo}
+          </button>
+        ))}
+      </div>
 
       <div
         className="text-muted-foreground -mb-2 text-xs"

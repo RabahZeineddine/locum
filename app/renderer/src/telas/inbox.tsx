@@ -243,7 +243,7 @@ function Fila({ navegar, aoMudarFila }: TelaProps & { aoMudarFila: () => void })
       <Paradas aoMudarFila={aoMudarFila} />
 
       {itens.length === 0 ? (
-        <Vazio />
+        <Vazio navegar={navegar} />
       ) : (
         <ul
           className="divide-border superficie divide-y overflow-hidden rounded-xl"
@@ -947,14 +947,40 @@ interface CargaDePr {
  * Vazio confirma que o sistema rodou, e nao que ele parou. Sem isso, fila vazia
  * e fila quebrada sao a mesma tela.
  */
-function Vazio() {
+function Vazio({ navegar }: { navegar?: TelaProps["navegar"] }) {
   const { t } = useTranslation();
 
   return (
-    <div className="border-border flex flex-col items-center gap-2 rounded-xl border border-dashed px-6 py-14 text-center">
-      <InboxIcon className="text-muted-foreground/60 size-6" aria-hidden />
-      <p className="text-sm font-medium">{t("inbox.empty.title")}</p>
-      <p className="text-muted-foreground max-w-sm text-sm">{t("inbox.empty.body")}</p>
+    <div className="border-border flex flex-col items-center gap-3 rounded-xl border border-dashed px-6 py-12 text-center">
+      <div className="flex size-10 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+        <InboxIcon className="size-5" aria-hidden />
+      </div>
+      <div className="flex flex-col gap-1">
+        <p className="text-sm font-semibold text-foreground">{t("inbox.empty.title")}</p>
+        <p className="text-muted-foreground max-w-md text-xs leading-relaxed">
+          {t("inbox.empty.body")}
+        </p>
+      </div>
+      {navegar && (
+        <div className="mt-2 flex items-center gap-2">
+          <Button
+            className="h-7 cursor-pointer text-xs"
+            onClick={() => navegar("runs")}
+            size="sm"
+            variant="outline"
+          >
+            {t("inbox.empty.view_runs", { defaultValue: "Ver histórico de execuções" })}
+          </Button>
+          <Button
+            className="h-7 cursor-pointer text-xs"
+            onClick={() => navegar("agents")}
+            size="sm"
+            variant="ghost"
+          >
+            {t("inbox.empty.view_monitors", { defaultValue: "Conferir vigilância" })}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
