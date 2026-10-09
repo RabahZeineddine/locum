@@ -16,6 +16,7 @@ export type ReviewPayload = {
   repo: string;
   pull: number;
   findings: Finding[];
+  author?: string;
   // Opcional porque pendência gravada antes do veredito existir continua na fila.
   verdict?: ReviewVerdict;
 };
@@ -383,8 +384,24 @@ export function githubReviewHandler(client: () => ReviewClient = octokit): Actio
     // Aprovar ou pedir mudança no pull request de outra pessoa é decisão
     // assinada por quem revisa, e por isso nunca sai sem clique, nem com o
     // passo em modo automático. Só o comentário pode pular a fila.
+    //
+    // Auto-review é bloqueado: ninguém aprova ou pede mudanças no próprio PR.
     holdForApproval(payload) {
       return ((payload as ReviewPayload).verdict ?? "COMMENT") !== "COMMENT";
+    },
+    async propose(payload) {
+      const p = payload as ReviewPayload;
+      if (p.author) {
+        try {
+          const { githubService } = await import("../services/github-service.js");
+          const viewer = await githubService.viewerLogin();
+          if (viewer && p.author.toLowerCase() === viewer.toLowerCase()) {
+            // Se o PR for do próprio usuário autenticado, nunca abre proposta de review público na fila
+            return null;
+          }
+        } catch {}
+      }
+      return payload;
     },
     async publish(payload, externalId) {
       const p = payload as ReviewPayload & { summary?: string; slackChannel?: string; slackTs?: string; channel?: string; ts?: string };

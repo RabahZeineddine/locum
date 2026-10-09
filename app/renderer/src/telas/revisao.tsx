@@ -407,6 +407,27 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
           {t("review.discard")}
         </Button>
 
+        {achados.length > 0 && (
+          <Button
+            className="cursor-pointer text-xs"
+            disabled={resolvendo || jaResolvida}
+            onClick={async () => {
+              try {
+                setResolvendo(true);
+                await criarTarefaDoTracker(pendencia.id, "shortcut");
+                navegar("inbox");
+              } catch (e) {
+                alert(e instanceof Error ? e.message : String(e));
+              } finally {
+                setResolvendo(false);
+              }
+            }}
+            variant="outline"
+          >
+            {t("review.create_shortcut_issue", { defaultValue: "Criar história no Shortcut" })}
+          </Button>
+        )}
+
         <span className="text-muted-foreground ml-auto text-xs">
           {gravando
             ? t("review.saving")
