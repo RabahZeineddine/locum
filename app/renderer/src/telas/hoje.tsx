@@ -273,124 +273,138 @@ export function Hoje({ navegar }: TelaProps) {
 
       <SessoesPelaMetade navegar={navegar} />
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <section aria-labelledby="hoje-proximas" className="flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="relative flex size-2">
-                {ativos.length > 0 ? (
-                  <>
-                    <span className="bg-emerald-400 absolute inline-flex h-full w-full animate-ping rounded-full opacity-75" />
-                    <span className="bg-emerald-500 relative inline-flex size-2 rounded-full" />
-                  </>
-                ) : (
-                  <span className="bg-muted-foreground/40 relative inline-flex size-2 rounded-full" />
-                )}
-              </span>
+      {/* Painel Central de Vigilância Ativa - Cockpit Grid */}
+      <section aria-labelledby="hoje-proximas" className="flex flex-col gap-3.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <span className="relative flex size-2.5">
+              {ativos.length > 0 ? (
+                <>
+                  <span className="bg-emerald-400 absolute inline-flex h-full w-full animate-ping rounded-full opacity-75" />
+                  <span className="bg-emerald-500 relative inline-flex size-2.5 rounded-full" />
+                </>
+              ) : (
+                <span className="bg-muted-foreground/40 relative inline-flex size-2.5 rounded-full" />
+              )}
+            </span>
+            <div className="flex items-baseline gap-2">
               <h2
-                className="text-muted-foreground font-semibold text-xs uppercase tracking-[0.06em]"
+                className="text-foreground font-semibold text-sm tracking-tight"
                 id="hoje-proximas"
               >
-                {t("home.today.next.watch_title")}
+                {t("home.today.next.watch_title", { defaultValue: "Monitores em Tempo Real" })}
               </h2>
               {ativos.length > 0 && (
-                <span className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-mono text-[10px] font-semibold px-1.5 py-0.5 rounded-full">
+                <span className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-mono text-[11px] font-semibold px-2 py-0.5 rounded-full border border-emerald-500/20">
                   {t("home.today.next.watch_badge", { count: ativos.length })}
                 </span>
               )}
             </div>
-
-            <Button
-              className="text-muted-foreground hover:text-foreground h-6 px-2 text-[11px] gap-1.5 font-medium cursor-pointer"
-              disabled={verificando}
-              onClick={checarAgora}
-              size="sm"
-              variant="ghost"
-            >
-              <RefreshCw className={cn("size-3", verificando && "animate-spin text-primary")} />
-              <span>{verificando ? t("home.today.next.checking") : t("home.today.next.check_now")}</span>
-            </Button>
           </div>
 
-          {proximas.length === 0 ? (
-            <Vazio
-              icone={CalendarClock}
-              texto={agenda.status === "loading" ? t("home.today.loading") : t("home.today.next.empty")}
-            />
-          ) : (
-            <ul className="divide-border border-border superficie divide-y overflow-hidden rounded-xl border">
-              {proximas.map((g) => {
-                const ultima = g.lastFireAt ? tempoRelativoCurto(t, g.lastFireAt / 1000) : undefined;
-                return (
-                  <li className="flex items-center justify-between gap-3.5 px-4 py-3" key={g.triggerId}>
-                    <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <Button
+            className="text-muted-foreground hover:text-foreground h-7 px-2.5 text-xs gap-1.5 font-medium cursor-pointer"
+            disabled={verificando}
+            onClick={checarAgora}
+            size="sm"
+            variant="outline"
+          >
+            <RefreshCw className={cn("size-3.5", verificando && "animate-spin text-primary")} />
+            <span>{verificando ? t("home.today.next.checking") : t("home.today.next.check_now")}</span>
+          </Button>
+        </div>
+
+        {proximas.length === 0 ? (
+          <Vazio
+            icone={CalendarClock}
+            texto={agenda.status === "loading" ? t("home.today.loading") : t("home.today.next.empty")}
+          />
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {proximas.map((g) => {
+              const ultima = g.lastFireAt ? tempoRelativoCurto(t, g.lastFireAt / 1000) : undefined;
+              const nome = nomeDoAgent.get(g.agentId) ?? g.agentId;
+              const iniciativa = iniciativaDoAgent.get(g.agentId);
+
+              return (
+                <div
+                  className="superficie flex flex-col justify-between gap-3 rounded-xl border p-4 transition-all hover:border-foreground/20"
+                  key={g.triggerId}
+                >
+                  <div className="flex items-start justify-between gap-2.5">
+                    <div className="flex flex-col gap-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="truncate text-sm font-medium">{nomeDoAgent.get(g.agentId) ?? g.agentId}</span>
-                        {iniciativaDoAgent.get(g.agentId) && (
+                        <span className="truncate font-semibold text-sm tracking-tight text-foreground">
+                          {nome}
+                        </span>
+                        {iniciativa && (
                           <span className="bg-muted text-muted-foreground truncate rounded px-1.5 py-0.5 text-[10px] font-medium">
-                            {iniciativaDoAgent.get(g.agentId)}
+                            {iniciativa}
                           </span>
                         )}
                       </div>
-                      <div className="text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
-                        {g.everyMinutes && (
-                          <span>{t("common.cadence", { minutes: g.everyMinutes, defaultValue: `a cada ${g.everyMinutes}m` })}</span>
-                        )}
-                        {ultima && (
-                          <>
-                            <span>·</span>
-                            <span>{t("home.today.next.last_checked", { when: ultima })}</span>
-                          </>
-                        )}
-                        <span className="inline-flex items-center gap-1 font-mono text-[11px] text-emerald-600 dark:text-emerald-400">
-                          <span className="size-1.5 rounded-full bg-emerald-500" />
-                          {t("home.today.next.active_synced", { defaultValue: "sincronizado" })}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex shrink-0 flex-col items-end gap-1">
-                      <span className="text-primary font-mono text-xs tabular-nums font-semibold">
-                        {quandoRoda(t, idioma, g.nextDueAt)}
-                      </span>
-                      <span className="text-muted-foreground/60 text-[10px]">
-                        {t("home.today.next.no_events")}
+                      <span className="text-muted-foreground text-xs font-mono">
+                        {g.kind} · {g.everyMinutes ? t("common.cadence", { minutes: g.everyMinutes, defaultValue: `cada ${g.everyMinutes}m` }) : "agendado"}
                       </span>
                     </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </section>
 
-        <section aria-labelledby="hoje-terminou" className="flex flex-col gap-3">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2 py-0.5 font-mono text-[11px] font-medium text-emerald-600 dark:text-emerald-400 shrink-0">
+                      <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      {t("home.today.next.active_synced", { defaultValue: "ouvindo" })}
+                    </span>
+                  </div>
+
+                  <div className="flex items-baseline justify-between border-t border-border/60 pt-2.5 text-xs text-muted-foreground">
+                    <span>
+                      {ultima ? t("home.today.next.last_checked", { when: ultima }) : "aguardando primeira batida"}
+                    </span>
+                    <span className="font-mono text-primary font-medium">
+                      próxima: {quandoRoda(t, idioma, g.nextDueAt)}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      <section aria-labelledby="hoje-terminou" className="flex flex-col gap-3">
+        <div className="flex items-center justify-between">
           <h2
-            className="text-muted-foreground font-semibold text-xs uppercase tracking-[0.06em]"
+            className="text-foreground font-semibold text-sm tracking-tight"
             id="hoje-terminou"
           >
-            {t("home.today.done.title")}
+            {t("home.today.done.title", { defaultValue: "Auditorias & Execuções Recentes" })}
           </h2>
-          {recentes.length === 0 ? (
-            <Vazio
-              icone={CheckCheck}
-              texto={terminadas.status === "loading" ? t("home.today.loading") : t("home.today.done.empty")}
-            />
-          ) : (
-            <ul className="divide-border border-border superficie divide-y overflow-hidden rounded-xl border">
-              {recentes.map((r) => (
-                <LinhaTerminada
-                  iniciativa={tituloDaIniciativa(r.initiativeId) ?? iniciativaDoAgent.get(r.agentId)}
-                  idioma={idioma}
-                  key={r.id}
-                  navegar={navegar}
-                  run={r}
-                />
-              ))}
-            </ul>
-          )}
-        </section>
-      </div>
+          <Button
+            className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+            onClick={() => navegar("runs")}
+            size="sm"
+            variant="ghost"
+          >
+            ver todas
+          </Button>
+        </div>
+        {recentes.length === 0 ? (
+          <Vazio
+            icone={CheckCheck}
+            texto={terminadas.status === "loading" ? t("home.today.loading") : t("home.today.done.empty")}
+          />
+        ) : (
+          <ul className="divide-border border-border superficie divide-y overflow-hidden rounded-xl border">
+            {recentes.map((r) => (
+              <LinhaTerminada
+                iniciativa={tituloDaIniciativa(r.initiativeId) ?? iniciativaDoAgent.get(r.agentId)}
+                idioma={idioma}
+                key={r.id}
+                navegar={navegar}
+                run={r}
+              />
+            ))}
+          </ul>
+        )}
+      </section>
     </div>
   );
 }

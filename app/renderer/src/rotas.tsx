@@ -37,27 +37,30 @@ export interface TelaProps {
  * vez e nenhum dos dois guarda uma cópia do texto.
  */
 export const ROTAS = [
-  { id: "today", rotulo: "nav.today", icone: Sun, Tela: Hoje },
-  { id: "inbox", rotulo: "nav.queue", icone: InboxIcon, Tela: Inbox },
-  { id: "initiatives", rotulo: "nav.initiatives", icone: Target, Tela: Initiatives },
-  { id: "automations", rotulo: "nav.automations", icone: Workflow, Tela: Automacoes },
-  // Agents: especialistas reutilizáveis (profiles) e o marketplace de agents
-  // prontos. Um agent entra em quantas automações quiser, como etapa; o
-  // gatilho é da automação, nunca do agent.
-  { id: "library", rotulo: "nav.library", icone: Bot, Tela: Biblioteca },
-  { id: "runs", rotulo: "nav.runs", icone: ListTree, Tela: Execucoes },
-  { id: "apps", rotulo: "nav.apps", icone: Blocks, Tela: Apps },
-  // Fora da barra: é o fluxo da automação visto como lista, com histórico de
-  // versões e orçamento. Abre pelo "Ver como lista" do canvas e por link antigo.
-  { id: "agents", rotulo: "nav.agents", icone: ListTree, Tela: Agents, naBarra: false },
-  { id: "sessions", rotulo: "nav.sessions", icone: TerminalSquare, Tela: Sessoes },
-  { id: "settings", rotulo: "nav.settings", icone: Settings, Tela: Configuracao },
+  // COCKPIT
+  { id: "today", rotulo: "nav.today", icone: Sun, Tela: Hoje, secao: "cockpit" },
+  { id: "inbox", rotulo: "nav.queue", icone: InboxIcon, Tela: Inbox, secao: "cockpit" },
+
+  // OPERAÇÕES & ENGENHARIA
+  { id: "automations", rotulo: "nav.automations", icone: Workflow, Tela: Automacoes, secao: "operacoes" },
+  { id: "runs", rotulo: "nav.runs", icone: ListTree, Tela: Execucoes, secao: "operacoes" },
+  { id: "sessions", rotulo: "nav.sessions", icone: TerminalSquare, Tela: Sessoes, secao: "operacoes" },
+
+  // RECURSOS & CONTEXTO
+  { id: "library", rotulo: "nav.library", icone: Bot, Tela: Biblioteca, secao: "recursos" },
+  { id: "initiatives", rotulo: "nav.initiatives", icone: Target, Tela: Initiatives, secao: "recursos" },
+  { id: "apps", rotulo: "nav.apps", icone: Blocks, Tela: Apps, secao: "recursos" },
+  { id: "settings", rotulo: "nav.settings", icone: Settings, Tela: Configuracao, secao: "recursos" },
+
+  // FORA DA BARRA
+  { id: "agents", rotulo: "nav.agents", icone: ListTree, Tela: Agents, naBarra: false, secao: "operacoes" },
 ] as const satisfies readonly {
   id: string;
   rotulo: string;
   icone: ComponentType<{ className?: string }>;
   Tela: ComponentType<TelaProps>;
   naBarra?: boolean;
+  secao: "cockpit" | "operacoes" | "recursos";
 }[];
 
 /** Os destinos que aparecem na barra lateral, na ordem dela. */
