@@ -42,7 +42,7 @@ test("feriado tira o dia inteiro, no fuso da janela", () => {
 
 test("ts do Slack em segundos epoch vale como instante", () => {
   const since = String(Date.parse("2026-10-08T13:00:00Z") / 1000) + ".123456";
-  assert.equal(horas(since, "2026-10-08T16:00:00Z"), 3);
+  assert.equal(horas(since, "2026-10-08T16:00:01Z"), 3);
 });
 
 test("since no futuro ou igual a now dá zero", () => {
@@ -62,10 +62,48 @@ test("faixa: ok abaixo de p1, p1 a partir de p1, p0 a partir de p0, e limites pr
   assert.deepEqual(faixa(2, { p1: 1, p0: 2 }), { id: "a", hours: 2, band: "p0" });
 });
 
-test("horas arredondadas a uma casa, faixa decidida pelo valor exato", () => {
-  // 3h59min = 3,983h: mostra 4, mas ainda é ok
+test("horas arredondam para baixo: 3h59 mostra 3,9 e nunca 4 com faixa ok", () => {
   const [r] = businessHours({ items: [{ id: "a", since: "2026-10-12T12:00:00Z" }], now: "2026-10-12T15:59:00Z" }).results;
-  assert.deepEqual(r, { id: "a", hours: 4, band: "ok" });
+  assert.deepEqual(r, { id: "a", hours: 3.9, band: "ok" });
+});
+
+test("since e id numéricos valem: since vira epoch em segundos e id vira texto", () => {
+  const since = Date.parse("2026-10-12T12:00:00Z") / 1000;
+  const { results } = businessHours({ items: [{ id: 7, since }], now: "2026-10-12T15:00:00Z" });
+  assert.deepEqual(results, [{ id: "7", hours: 3, band: "ok" }]);
+});
+
+test("item com id ou since de tipo errado vira erro do item, não do lote", () => {
+  const { results } = businessHours({
+    items: [{ id: "a", since: null }, { id: { x: 1 }, since: "2026-10-12T12:00:00Z" }, "solto", { id: "b", since: 1e30 }],
+    now: "2026-10-12T15:00:00Z",
+  });
+  assert.equal(results.length, 4);
+  assert.ok(results.every((r) => "error" in r));
+  assert.equal(results[0]!.id, "a");
+  assert.equal(results[3]!.id, "b");
+});
+
+test("data inexistente em since é recusada", () => {
+  const { results } = businessHours({ items: [{ id: "a", since: "2026-02-30T10:00:00Z" }], now: "2026-10-12T15:00:00Z" });
+  assert.ok("error" in results[0]!);
+});
+
+test("since a mais de 366 dias de now vira erro do item", () => {
+  const { results } = businessHours({
+    items: [{ id: "velho", since: "2025-09-01T12:00:00Z" }, { id: "limite", since: "2025-10-12T12:00:00Z" }],
+    now: "2026-10-12T15:00:00Z",
+  });
+  assert.ok("error" in results[0]! && /366/.test((results[0] as { error: string }).error));
+  assert.ok("hours" in results[1]!);
+});
+
+test("500 itens de um ano de intervalo respondem em menos de 1 s", () => {
+  const items = Array.from({ length: 500 }, (_, i) => ({ id: String(i), since: new Date(Date.parse("2025-10-20T12:00:00Z") + i * 3_600_000).toISOString() }));
+  const t0 = Date.now();
+  const { results } = businessHours({ items, now: "2026-10-12T15:00:00Z" });
+  assert.equal(results.length, 500);
+  assert.ok(Date.now() - t0 < 1000);
 });
 
 test("New York na virada de março e de novembro: a janela de 9h local segue 9h", () => {

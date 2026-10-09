@@ -68,12 +68,12 @@ test("só digest.deliver em aprovação sai do fluxo, e nenhum gatilho vem no ar
 });
 
 test("dia calmo: sem itens nada é entregue e ninguém falha", () => {
-  assert.deepEqual(ramos({ headline: "calmo", items: [], needsInvestigation: false }), ["has_items"]);
+  assert.deepEqual(ramos({ headline: "calmo", items: [], needsInvestigation: false }), ["no_items"]);
 });
 
 test("itens sem urgência vão direto para a entrega da triagem", () => {
   assert.deepEqual(ramos({ headline: "x", items: [item], needsInvestigation: false }), [
-    "has_items",
+    "no_items",
     "needs_look",
     "deliver_triage",
   ]);
@@ -81,7 +81,7 @@ test("itens sem urgência vão direto para a entrega da triagem", () => {
 
 test("itens que pedem olhar mais fundo passam pela investigação e saem só por ela", () => {
   assert.deepEqual(ramos({ headline: "x", items: [item], needsInvestigation: true }), [
-    "has_items",
+    "no_items",
     "needs_look",
     "investigate",
     "deliver_investigated",
@@ -94,4 +94,12 @@ test("importa pelo serviço, que é por onde o exemplo entra de verdade", async 
   const texto = readFileSync(fileURLToPath(new URL("../../examples/agents/support-desk.json", import.meta.url)), "utf8");
   const { created } = await new AgentService(bancoDeTeste()).importSpec(texto, "support-desk.json");
   assert.equal(created, true);
+});
+
+test("a triagem não põe resolvido nem waiting_requester em items, e fixa a janela de leitura", () => {
+  const triage = passo("triage");
+  assert.ok(triage.type === "model");
+  assert.equal(triage.maxSteps, 60);
+  assert.match(triage.prompt, /waiting_requester ou resolved não vira item/);
+  assert.match(triage.prompt, /3 dias corridos/);
 });
