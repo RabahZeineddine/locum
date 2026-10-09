@@ -115,9 +115,10 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
     if ((VEREDITOS as readonly unknown[]).includes(carga?.verdict)) {
       setVeredito(carga!.verdict as Veredito);
     }
-    if (typeof carga?.summary === "string") {
-      setComentarioCustom(carga.summary);
+    if (carga?.findings && Array.isArray(carga.findings) && carga.findings.length > 0) {
+      setComentarioCustom(typeof carga?.summary === "string" ? carga.summary : "");
     } else {
+      // Sem achados impeditivos: aprovação limpa e concisa, nunca encher linguiça
       setComentarioCustom("LGTM!");
     }
     setAchados(
