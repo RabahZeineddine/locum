@@ -65,8 +65,17 @@ export type Thresholds = z.infer<typeof ThresholdsSchema>;
 
 export const HolidaysSchema = z.array(z.string().refine(dataReal, "use uma data real no formato YYYY-MM-DD"));
 
-/** Frouxo de propósito: item de tipo errado vira erro do item, e não do lote. */
-export const ItemsSchema = z.array(z.unknown()).max(LIMITE_DE_ITENS);
+/** Frouxo de propósito: id ou since de tipo errado vira erro do item, e não do lote. */
+export const ItemsSchema = z
+  .array(
+    z
+      .object({
+        id: z.unknown().optional().describe("text or number that names the item, like a permalink"),
+        since: z.unknown().optional().describe("ISO 8601 with a zone, or a Slack ts in epoch seconds, as text or number"),
+      })
+      .passthrough(),
+  )
+  .max(LIMITE_DE_ITENS);
 
 export const PADRAO_JANELA: Window = {
   start: "09:00",
@@ -78,7 +87,7 @@ export const PADRAO_LIMITES: Thresholds = { p1: 4, p0: 8 };
 
 const EntradaSchema = z.object({
   items: ItemsSchema,
-  now: z.string().optional(),
+  now: z.union([z.string(), z.number()]).optional(),
   window: WindowSchema.optional(),
   thresholds: ThresholdsSchema.optional(),
   holidays: HolidaysSchema.optional(),
@@ -186,7 +195,7 @@ export function businessHours(entrada: unknown, agora: () => number = Date.now):
   let now = agora();
   if (lido.data.now !== undefined) {
     const lida = lerInstante(lido.data.now);
-    if (lida === null) throw new Error(`now ilegivel: "${lido.data.now}". Use ISO 8601 com zona (2026-10-08T15:00:00Z) ou ts do Slack.`);
+    if (lida === null) throw new Error(`now ilegivel: "${String(lido.data.now)}". Use ISO 8601 com zona (2026-10-08T15:00:00Z) ou ts do Slack.`);
     now = lida;
   }
   const feriados = new Set(holidays);

@@ -96,10 +96,14 @@ test("importa pelo serviço, que é por onde o exemplo entra de verdade", async 
   assert.equal(created, true);
 });
 
-test("a triagem não põe resolvido nem waiting_requester em items, e fixa a janela de leitura", () => {
+test("a triagem não põe fechado nem em espera em items, e o chamado aberto não some pela janela", () => {
   const triage = passo("triage");
   assert.ok(triage.type === "model");
   assert.equal(triage.maxSteps, 60);
-  assert.match(triage.prompt, /waiting_requester ou resolved não vira item/);
-  assert.match(triage.prompt, /3 dias corridos/);
+  assert.match(triage.prompt, /waiting_requester, other_team ou resolved não vira item/);
+  assert.match(triage.prompt, /14 dias corridos/);
+  assert.doesNotMatch(triage.prompt, /72/);
+  // O que está aberto não some por ser antigo, e thread do solicitante é sempre aberta.
+  assert.match(triage.prompt, /qualquer que seja a idade/);
+  assert.match(triage.prompt, /solicitante falou por último é sempre aberta/);
 });

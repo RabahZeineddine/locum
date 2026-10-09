@@ -75,13 +75,19 @@ test("since e id numéricos valem: since vira epoch em segundos e id vira texto"
 
 test("item com id ou since de tipo errado vira erro do item, não do lote", () => {
   const { results } = businessHours({
-    items: [{ id: "a", since: null }, { id: { x: 1 }, since: "2026-10-12T12:00:00Z" }, "solto", { id: "b", since: 1e30 }],
+    items: [{ id: "a", since: null }, { id: { x: 1 }, since: "2026-10-12T12:00:00Z" }, { id: "c" }, { id: "b", since: 1e30 }],
     now: "2026-10-12T15:00:00Z",
   });
   assert.equal(results.length, 4);
   assert.ok(results.every((r) => "error" in r));
   assert.equal(results[0]!.id, "a");
+  assert.equal(results[2]!.id, "c");
   assert.equal(results[3]!.id, "b");
+});
+
+test("now numérico vale como epoch em segundos", () => {
+  const now = Date.parse("2026-10-12T15:00:00Z") / 1000;
+  assert.deepEqual(businessHours({ items: [{ id: "a", since: "2026-10-12T12:00:00Z" }], now }).results, [{ id: "a", hours: 3, band: "ok" }]);
 });
 
 test("data inexistente em since é recusada", () => {
