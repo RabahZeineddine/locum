@@ -328,8 +328,11 @@ export function Hoje({ navegar }: TelaProps) {
 
               return (
                 <div
-                  className="superficie flex flex-col justify-between gap-3 rounded-xl border p-4 transition-all hover:border-foreground/20"
+                  className="superficie flex cursor-pointer flex-col justify-between gap-3 rounded-xl border p-4 transition-all hover:border-foreground/30 hover:shadow-sm"
                   key={g.triggerId}
+                  onClick={() => navegar("runs", g.agentId)}
+                  role="button"
+                  tabIndex={0}
                 >
                   <div className="flex items-start justify-between gap-2.5">
                     <div className="flex flex-col gap-1 min-w-0">
