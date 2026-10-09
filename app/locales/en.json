@@ -524,7 +524,7 @@
   },
   "runs": {
     "title": "Runs",
-    "lead": "History of everything the agents ran, with steps, costs and findings.",
+    "lead": "Every time an agent ran: step by step, what it found and what it cost.",
     "metrics": {
       "total": "Total runs",
       "executions": "runs",
@@ -532,7 +532,9 @@
       "failed": "failed",
       "cost": "Total cost",
       "avg_duration": "Avg duration",
-      "per_run": "per run"
+      "per_run": "per run",
+      "currency": "USD",
+      "seconds": "{{n}}s"
     },
     "loading": "reading runs...",
     "refused": "the bridge refused: {{message}}",
@@ -600,7 +602,6 @@
       "rejected": "rejected",
       "publish_conflict": "the target changed before this could be published"
     },
-    "lead": "Every time an agent ran: step by step, what it found and what it cost.",
     "tabs": {
       "executive": "Executive View",
       "technical": "Pipeline & JSON"
@@ -929,7 +930,9 @@
       "bridgeRefused": "the bridge refused: {{message}}",
       "refused": "the bridge refused: {{message}}",
       "howTo": "On Jira, the token comes from id.atlassian.com/manage-profile/security/api-tokens and travels with the account email, because the authentication is basic. On GitHub Issues, a token with write access to Issues on the target repository is enough, and it is deliberately separate from the token that reads pull requests. Registering opens no task: the action step does that, and it waits in the queue for your approval.",
-      "howToAtlassian": "Through the Atlassian connection there is no token to paste: the tracker uses the authorization made above. The address is the site, such as company.atlassian.net, and the default destination is the project key. If you prefer not to go through the connection, pick Jira with API token. Registering opens no task: the action step does that, and it waits in the queue for your approval."
+      "howToAtlassian": "Through the Atlassian connection there is no token to paste: the tracker uses the authorization made above. The address is the site, such as company.atlassian.net, and the default destination is the project key. If you prefer not to go through the connection, pick Jira with API token. Registering opens no task: the action step does that, and it waits in the queue for your approval.",
+      "projectLabel": "Project:",
+      "selectProject": "Select a project..."
     },
     "budgets": {
       "title": "Budget",
@@ -1012,7 +1015,8 @@
       "offHoursLabel": "Outside schedule:",
       "behaviorPause": "Pause triggers until next business window",
       "behaviorSlow": "Slow cadence (every 60 min)",
-      "behaviorUnrestricted": "Unrestricted (24/7 continuous)"
+      "behaviorUnrestricted": "Unrestricted (24/7 continuous)",
+      "saved": "Saved"
     },
     "initiativesRoot": {
       "title": "Initiatives root folder",
@@ -1337,7 +1341,8 @@
         "monitors": "monitors",
         "runs_today": "Runs (24h)",
         "failures": "failures",
-        "cost_24h": "Estimated cost (24h)"
+        "cost_24h": "Estimated cost (24h)",
+        "currency": "USD"
       },
       "waiting": {
         "title_zero": "Waiting for you · {{count}}",

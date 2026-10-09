@@ -174,7 +174,7 @@ function Lista({ navegar }: { navegar: TelaProps["navegar"] }) {
               <span className="font-mono text-2xl font-semibold text-foreground">
                 ${metricas.custoTotal.toFixed(2)}
               </span>
-              <span className="text-muted-foreground text-xs">USD</span>
+              <span className="text-muted-foreground text-xs">{t("runs.metrics.currency")}</span>
             </div>
           </div>
 
@@ -184,7 +184,7 @@ function Lista({ navegar }: { navegar: TelaProps["navegar"] }) {
             </span>
             <div className="flex items-baseline gap-2">
               <span className="font-mono text-2xl font-semibold text-foreground">
-                {metricas.tempoMedioS}s
+                {t("runs.metrics.seconds", { n: metricas.tempoMedioS })}
               </span>
               <span className="text-muted-foreground text-xs">{t("runs.metrics.per_run")}</span>
             </div>

@@ -194,6 +194,7 @@
       "modelFor": "modelo {{model}}:",
       "modelMissing": "fora do catálogo desta máquina",
       "open": "Abrir",
+      "steps_zero": "{{count}} passos",
       "steps_one": "{{count}} passo",
       "steps_other": "{{count}} passos"
     },
@@ -544,7 +545,7 @@
   },
   "runs": {
     "title": "Execuções",
-    "lead": "Histórico de tudo o que os agents rodaram, com passos, custos e achados.",
+    "lead": "Cada vez que um agent rodou: passo a passo, o que achou e quanto custou.",
     "metrics": {
       "total": "Total de execuções",
       "executions": "execuções",
@@ -552,7 +553,9 @@
       "failed": "falhas",
       "cost": "Investimento total",
       "avg_duration": "Tempo médio",
-      "per_run": "por execução"
+      "per_run": "por execução",
+      "currency": "USD",
+      "seconds": "{{n}}s"
     },
     "loading": "lendo execuções...",
     "refused": "a ponte recusou: {{message}}",
@@ -623,7 +626,6 @@
       "rejected": "rejeitado",
       "publish_conflict": "o alvo mudou antes disso poder ser publicado"
     },
-    "lead": "Cada vez que um agent rodou: passo a passo, o que achou e quanto custou.",
     "tabs": {
       "executive": "Visão Executiva",
       "technical": "Pipeline & JSON"
@@ -960,7 +962,9 @@
       "howTo": "No Jira, o token sai de id.atlassian.com/manage-profile/security/api-tokens e vai junto com o e-mail da conta, porque a autenticação é básica. No GitHub Issues, um token com escrita em Issues no repositório de destino basta, e ele é separado do token que lê pull request de propósito. Cadastrar não abre tarefa nenhuma: quem abre é o passo de ação, que para na fila até você aprovar.",
       "howToAtlassian": "Pela conexão Atlassian não há token para colar: o tracker usa a autorização feita acima. O endereço é o do site, como empresa.atlassian.net, e o destino padrão é a chave do projeto. Quem não quer passar pela conexão escolhe Jira com API token. Cadastrar não abre tarefa nenhuma: quem abre é o passo de ação, que para na fila até você aprovar.",
       "answered_zero": "respondeu {{count}} destinos visíveis",
-      "lastCheck_zero": "{{count}} destinos visíveis em {{when}}"
+      "lastCheck_zero": "{{count}} destinos visíveis em {{when}}",
+      "projectLabel": "Projeto:",
+      "selectProject": "Selecione um projeto..."
     },
     "budgets": {
       "title": "Orçamento",
@@ -1045,7 +1049,8 @@
       "offHoursLabel": "Fora do horário:",
       "behaviorPause": "Pausar vigias até o próximo expediente",
       "behaviorSlow": "Cadência lenta (a cada 60 min)",
-      "behaviorUnrestricted": "Sem restrição (24/7 ininterrupto)"
+      "behaviorUnrestricted": "Sem restrição (24/7 ininterrupto)",
+      "saved": "Salvo"
     },
     "initiativesRoot": {
       "title": "Pasta raiz das iniciativas",
@@ -1371,7 +1376,8 @@
         "monitors": "monitores",
         "runs_today": "Execuções (24h)",
         "failures": "falhas",
-        "cost_24h": "Custo estimado (24h)"
+        "cost_24h": "Custo estimado (24h)",
+        "currency": "USD"
       },
       "waiting": {
         "title_zero": "Espera você · {{count}}",
@@ -1394,6 +1400,7 @@
         "checking": "Verificando...",
         "last_checked": "última checagem {{when}}",
         "just_now": "agora mesmo",
+        "minutes_ago_zero": "há {{count}} min",
         "minutes_ago_one": "há {{count}} min",
         "minutes_ago_other": "há {{count}} min",
         "no_events": "sem novidades"
@@ -2053,6 +2060,7 @@
     "toolsetsCount_one": "{{count}} toolset",
     "toolsetsCount_other": "{{count}} toolsets",
     "toolsetsCount_zero": "sem toolset",
+    "coupled_zero": "acoplado a {{count}} automações",
     "coupled_one": "acoplado a {{count}} automação",
     "coupled_other": "acoplado a {{count}} automações",
     "usedBy_one": "em {{count}} automação",

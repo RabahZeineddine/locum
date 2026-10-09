@@ -760,7 +760,7 @@ function EscolhaDeWorkingHours() {
           />
           <span className="font-medium text-sm">{t("settings.workingHours.enableLabel")}</span>
         </label>
-        {salvo && <span className="text-emerald-500 font-medium text-xs">Salvo</span>}
+        {salvo && <span className="text-emerald-500 font-medium text-xs">{t("settings.workingHours.saved")}</span>}
       </div>
 
       {atual.enabled && (
@@ -3553,14 +3553,14 @@ function LinhaDoTracker({
 
         {tracker.stored && projetos && projetos.length > 0 ? (
           <div className="flex items-center gap-1.5 ml-2">
-            <span className="text-xs text-muted-foreground font-medium">Projeto:</span>
+            <span className="text-xs text-muted-foreground font-medium">{t("settings.trackers.projectLabel")}</span>
             <select
               className="border-border bg-background focus-visible:ring-ring rounded-md border px-2 py-1 text-xs outline-none focus-visible:ring-1"
               disabled={ocupado}
               onChange={(e) => selecionarProjeto(e.target.value)}
               value={tracker.project ?? ""}
             >
-              <option value="">Selecione um projeto...</option>
+              <option value="">{t("settings.trackers.selectProject")}</option>
               {projetos.map((p) => (
                 <option key={p.key} value={p.name}>
                   {p.name}
