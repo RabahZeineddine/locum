@@ -103,18 +103,30 @@ test("ask_agent roda o agent sem a própria consulta e registra o gasto no nome 
   }
 });
 
-test("o servidor expõe as três ferramentas, só de leitura", async () => {
+test("o servidor expõe as quatro ferramentas, só de leitura", async () => {
   const [cliente, servidor] = InMemoryTransport.createLinkedPair();
   await buildNativeToolsServer({ fetch: fetchQueResponde("oi", "text/plain"), consulta: depsDaConsulta([], [], []) }).connect(servidor);
   const client = new Client({ name: "teste", version: "0" });
   await client.connect(cliente);
 
   const { tools } = await client.listTools();
-  assert.deepEqual(tools.map((t) => t.name).sort(), ["ask_agent", "http_get", "json_query"]);
+  assert.deepEqual(tools.map((t) => t.name).sort(), ["ask_agent", "business_hours", "http_get", "json_query"]);
   assert.ok(tools.every((t) => t.annotations?.readOnlyHint === true));
 
   const res = await client.callTool({ name: "json_query", arguments: { json: { a: [1, 2] }, path: "a[1]" } });
   assert.equal((res.content as { text: string }[])[0]!.text, "2");
+
+  const horas = await client.callTool({
+    name: "business_hours",
+    arguments: { items: [{ id: "a", since: "2026-10-12T12:00:00Z" }], now: "2026-10-12T17:00:00Z" },
+  });
+  assert.deepEqual(JSON.parse((horas.content as { text: string }[])[0]!.text), { results: [{ id: "a", hours: 5, band: "p1" }] });
+
+  const recusa = await client.callTool({
+    name: "business_hours",
+    arguments: { items: [], window: { start: "09:00", end: "18:00", days: [1], timeZone: "Marte/Olimpo" } },
+  });
+  assert.equal(recusa.isError, true);
 });
 
 test("cadastro nasce ligado, segue o app quando muda de lugar e respeita quem desligou", async () => {

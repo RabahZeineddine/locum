@@ -2,6 +2,7 @@ import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { respond } from "../mcp-server/respond.js";
 import { consultarAgent, SERVIDOR_NATIVO, type ConsultaDeps } from "./ask.js";
+import { businessHours, HolidaysSchema, ItemsSchema, ThresholdsSchema, WindowSchema } from "./business-hours.js";
 import { httpGet, jsonQuery } from "./tools.js";
 
 export interface NativeToolsDeps {
@@ -61,6 +62,23 @@ export function buildNativeToolsServer(deps: NativeToolsDeps): McpServer {
       annotations: { readOnlyHint: true },
     },
     async ({ agent, question }) => respond(() => consultarAgent(agent, question, deps.consulta)),
+  );
+
+  server.registerTool(
+    "business_hours",
+    {
+      description:
+        'Counts business hours elapsed since a moment, per item, and says which band that falls in. Never count hours yourself: pass the moments here. Each item is {id, since} (id text or number), where since is ISO 8601 with a zone ("2026-10-08T15:00:00Z") or a Slack ts in epoch seconds ("1696771234.123456", text or number). A since more than 366 days before now is an error for that item. Returns {id, hours, band} per item, hours with one decimal, rounded down, and band "ok", "p1" or "p0"; an item that is malformed or has an unreadable since comes back as {id, error} and does not fail the others. now defaults to the current time. window defaults to 09:00-18:00, Monday to Friday (days 0=Sunday to 6=Saturday), America/Sao_Paulo; start must be before end, a window that crosses midnight is not supported, the window must not fall in the hour a zone skips at a daylight saving change, and the offset is computed per day so daylight saving is respected. thresholds default to {p1: 4, p0: 8} hours (band p1 from p1 on, p0 from p0 on). holidays are YYYY-MM-DD dates in the window time zone, counted as zero hours. A since at or after now gives 0.',
+      inputSchema: {
+        items: ItemsSchema,
+        now: z.union([z.string(), z.number()]).optional().describe("ISO 8601 with a zone, or a Slack ts in epoch seconds, as text or number"),
+        window: WindowSchema.optional(),
+        thresholds: ThresholdsSchema.optional(),
+        holidays: HolidaysSchema.optional(),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async (entrada) => respond(async () => businessHours(entrada)),
   );
 
   return server;
