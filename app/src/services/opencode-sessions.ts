@@ -92,13 +92,34 @@ export function lerConversasDoOpencode(caminho: string, desdeMs: number): Conver
       )
       .all(desdeMs) as LinhaDaSessao[];
 
-    const mensagens = banco.prepare(
-      "SELECT id, data FROM message WHERE session_id = ? ORDER BY time_created DESC, id DESC LIMIT 40",
-    );
     const pedidos = banco.prepare(
       "SELECT count(*) AS n FROM message WHERE session_id = ? AND json_extract(data, '$.role') = 'user'",
     );
-    const partes = banco.prepare("SELECT data FROM part WHERE message_id = ? ORDER BY id");
+
+    const ultimoUserMsg = banco.prepare(
+      `SELECT id FROM message 
+       WHERE session_id = ? AND json_extract(data, '$.role') = 'user'
+       ORDER BY time_created DESC, id DESC LIMIT 1`,
+    );
+
+    const partes = banco.prepare(
+      `SELECT data FROM part WHERE message_id = ? ORDER BY id`,
+    );
+
+    const ultimaAssistantPart = banco.prepare(
+      `SELECT p.data 
+       FROM message m 
+       JOIN part p ON p.message_id = m.id 
+       WHERE m.session_id = ? 
+         AND json_extract(m.data, '$.role') = 'assistant' 
+         AND json_extract(p.data, '$.type') = 'text' 
+         AND json_extract(p.data, '$.synthetic') IS NOT 1
+       ORDER BY m.time_created DESC, p.id DESC LIMIT 1`,
+    );
+
+    const ultimaMensagem = banco.prepare(
+      "SELECT data FROM message WHERE session_id = ? ORDER BY time_created DESC, id DESC LIMIT 1",
+    );
 
     const texto = (mensagemId: string): string | null => {
       const pedacos = (partes.all(mensagemId) as { data: string }[])
@@ -110,23 +131,22 @@ export function lerConversasDoOpencode(caminho: string, desdeMs: number): Conver
     };
 
     return sessoes.map((s) => {
-      const recentes = (mensagens.all(s.id) as { id: string; data: string }[]).map((m) => ({
-        id: m.id,
-        dados: ler<DadosDaMensagem>(m.data),
-      }));
-      const ultimoPedido = recentes.find((m) => m.dados.role === "user");
-      const ultimaResposta = recentes.find((m) => m.dados.role === "assistant");
-      const ultima = recentes[0];
+      const uUser = ultimoUserMsg.get(s.id) as { id: string } | undefined;
+      const uAssistPart = ultimaAssistantPart.get(s.id) as { data: string } | undefined;
+      const uMsg = ultimaMensagem.get(s.id) as { data: string } | undefined;
+      const dadosUltima = uMsg ? ler<DadosDaMensagem>(uMsg.data) : undefined;
+      const respostaTexto = uAssistPart ? (ler<DadosDaParte>(uAssistPart.data).text?.trim() ?? null) : null;
+
       return {
         id: s.id,
         title: s.title,
         cwd: s.directory,
         startedAt: Math.floor(s.time_created / 1000),
         lastActivityAt: Math.floor(s.time_updated / 1000),
-        lastPrompt: ultimoPedido === undefined ? null : texto(ultimoPedido.id),
-        lastReply: ultimaResposta === undefined ? null : texto(ultimaResposta.id),
-        respondeu: ultima?.dados.role === "assistant" && typeof ultima.dados.time?.completed === "number",
-        turns: (pedidos.get(s.id) as { n: number }).n,
+        lastPrompt: uUser ? texto(uUser.id) : null,
+        lastReply: respostaTexto && respostaTexto !== "" ? respostaTexto : null,
+        respondeu: dadosUltima?.role === "assistant" && typeof dadosUltima.time?.completed === "number",
+        turns: (pedidos.get(s.id) as { n: number } | undefined)?.n ?? 0,
       };
     });
   } catch {
