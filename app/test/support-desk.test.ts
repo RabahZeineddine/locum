@@ -113,3 +113,12 @@ test("a triagem não põe fechado nem em espera em items, acompanha o aberto den
   assert.match(triage.prompt, /no máximo 40 threads/);
   assert.match(triage.prompt, /solicitante falou por último é sempre aberta/);
 });
+
+test("fonte que não foi lida vira item, para o dia calmo não esconder a falha", () => {
+  const triage = passo("triage");
+  assert.ok(triage.type === "model");
+  // Sem isso, Slack e Teams fora do ar dão items vazio e o run termina em
+  // no_items sem entregar nada: parece dia sem chamado.
+  assert.match(triage.prompt, /nunca vira dia calmo/);
+  assert.match(triage.prompt, /state: source_error/);
+});
