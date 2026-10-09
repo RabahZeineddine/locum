@@ -322,16 +322,19 @@ const SEVERITY_MARK: Record<Finding["severity"], string> = {
   low: "baixo",
 };
 
-function renderBody(findings: Finding[]): string {
-  if (findings.length === 0) return `Revisao automatica: nenhum achado.\n\n${LOCUM_MARKER}`;
+function renderBody(findings: Finding[], summary?: string): string {
+  if (findings.length === 0) {
+    return summary && summary.trim() !== "" ? `${summary.trim()}\n\n${LOCUM_MARKER}` : `LGTM!\n\n${LOCUM_MARKER}`;
+  }
   const corpo = findings
     .map((f) => {
       const local = f.file ? `${f.file}${f.line ? `:${f.line}` : ""}` : "geral";
-      const fix = f.fix ? `\n\nSugestao: ${f.fix}` : "";
+      const fix = f.fix ? `\n\nSugestão: ${f.fix}` : "";
       return `**${local}** (${SEVERITY_MARK[f.severity]})\n\n${f.problem}${fix}`;
     })
     .join("\n\n---\n\n");
-  return `${corpo}\n\n${LOCUM_MARKER}`;
+  const prefixo = summary && summary.trim() !== "" ? `${summary.trim()}\n\n---\n\n` : "";
+  return `${prefixo}${corpo}\n\n${LOCUM_MARKER}`;
 }
 
 /**
@@ -379,41 +382,43 @@ export function githubReviewHandler(client: () => ReviewClient = octokit): Actio
       return ((payload as ReviewPayload).verdict ?? "COMMENT") !== "COMMENT";
     },
     async publish(payload, externalId) {
-      const p = payload as ReviewPayload & { slackChannel?: string; slackTs?: string };
+      const p = payload as ReviewPayload & { summary?: string; slackChannel?: string; slackTs?: string; channel?: string; ts?: string };
       if (await jaSaiu(p, externalId)) return;
       await client().rest.pulls.createReview({
         owner: p.owner,
         repo: p.repo,
         pull_number: p.pull,
         event: p.verdict ?? "COMMENT",
-        body: `${renderBody(p.findings)}\n${marca(externalId)}`,
+        body: `${renderBody(p.findings, p.summary)}\n${marca(externalId)}`,
         comments: comments(p.findings),
       });
 
       // Se este review veio de uma mensagem no Slack, sincroniza a reação
-      if (p.slackChannel && p.slackTs) {
+      const canalSlack = p.slackChannel ?? p.channel;
+      const tsSlack = p.slackTs ?? p.ts;
+      if (canalSlack && tsSlack) {
         try {
-          const emoji = p.verdict === "APPROVE" ? "approved-5788" : p.verdict === "REQUEST_CHANGES" ? "warning" : "speech_balloon";
+          const emoji = p.verdict === "APPROVE" ? "white_check_mark" : p.verdict === "REQUEST_CHANGES" ? "warning" : "speech_balloon";
           const { mcpService } = await import("../services/mcp-service.js");
           const { McpRegistry } = await import("../mcp/registry.js");
           const configs = await mcpService.enabledConfigs();
           if (configs.some((c) => c.name === "slack")) {
             const reg = McpRegistry.fromList(configs);
-            await reg.callTool("slack", "slack_remove_reaction", { channel_id: p.slackChannel, timestamp: p.slackTs, name: "eyes" }).catch(() => undefined);
-            await reg.callTool("slack", "slack_add_reaction", { channel_id: p.slackChannel, timestamp: p.slackTs, name: emoji }).catch(() => undefined);
+            await reg.callTool("slack", "slack_remove_reaction", { channel_id: canalSlack, timestamp: tsSlack, name: "eyes" }).catch(() => undefined);
+            await reg.callTool("slack", "slack_add_reaction", { channel_id: canalSlack, timestamp: tsSlack, name: emoji }).catch(() => undefined);
             await reg.closeAll();
           }
         } catch {}
       }
     },
     async draft(payload, externalId) {
-      const p = payload as ReviewPayload;
+      const p = payload as ReviewPayload & { summary?: string };
       if (await jaSaiu(p, externalId)) return;
       await client().rest.pulls.createReview({
         owner: p.owner,
         repo: p.repo,
         pull_number: p.pull,
-        body: `${renderBody(p.findings)}\n${marca(externalId)}`,
+        body: `${renderBody(p.findings, p.summary)}\n${marca(externalId)}`,
         comments: comments(p.findings),
       });
     },
