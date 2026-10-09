@@ -28,8 +28,10 @@ Quem é do time, quem é solicitante, as fontes a ler, a régua de faixas (`p1` 
 exemplo lê Slack pelo servidor `slack` e Teams pelo servidor `ms365`, e os
 nomes das ferramentas de leitura do Teams dependem do servidor que você usa:
 ajuste as ferramentas e `requiresServers` dos passos `triage` e `investigate`
-ao que existe na sua máquina, e tire o que não usa. Não vem ligado a nenhum
-gatilho.
+ao que existe na sua máquina, e tire o que não usa. Com o
+`@softeria/ms-365-mcp-server` no preset `teams`, dá para ler canal e thread de
+canal; mensagem de chat não tem ferramenta de listagem, então chat fica fora da
+triagem. Não vem ligado a nenhum gatilho.
 
 ## Importar
 

@@ -38,11 +38,6 @@
         },
         {
           "server": "ms365",
-          "tool": "list-chat-messages",
-          "class": "read"
-        },
-        {
-          "server": "ms365",
           "tool": "list-channel-messages",
           "class": "read"
         },
@@ -178,11 +173,6 @@
         {
           "server": "ms365",
           "tool": "list-chats",
-          "class": "read"
-        },
-        {
-          "server": "ms365",
-          "tool": "list-chat-messages",
           "class": "read"
         },
         {
