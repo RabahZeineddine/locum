@@ -107,6 +107,45 @@ export function Hoje({ navegar }: TelaProps) {
     [agenda.data],
   );
 
+  const mcp = useRead("mcp.list");
+
+  /**
+   * Saúde real de cada monitor: o servidor MCP de que o gatilho depende e a
+   * última conexão dele. Grafana caindo deixa o card vermelho, não verde:
+   * "ouvindo" só vale quando a última conexão foi boa ou nunca falhou.
+   */
+  const saudePorAgent = useMemo(() => {
+    const mapa = new Map<string, { saude: "ok" | "falha" | "desconhecido"; quando: string; erro?: string }>();
+    const servidores = mcp.data ?? [];
+    for (const g of agenda.data ?? []) {
+      const carga = (g.config ?? {}) as Record<string, unknown>;
+      const deps = Array.isArray(carga.requiresServers) ? (carga.requiresServers as string[]) : [];
+      if (deps.length === 0) {
+        mapa.set(g.agentId, { saude: "ok", quando: "" });
+        continue;
+      }
+      const nomeDoServidor = deps[0]!;
+      const entrada = servidores.find((s) => s.config.name === nomeDoServidor);
+      if (entrada === undefined) {
+        mapa.set(g.agentId, { saude: "desconhecido", quando: "" });
+        continue;
+      }
+      const saude = entrada.health;
+      if (saude.lastOkAt !== null && (saude.lastFailureAt === null || saude.lastOkAt > saude.lastFailureAt)) {
+        mapa.set(g.agentId, { saude: "ok", quando: tempoRelativoCurto(t, saude.lastOkAt / 1000) });
+      } else if (saude.lastFailureAt !== null) {
+        mapa.set(g.agentId, {
+          saude: "falha",
+          quando: tempoRelativoCurto(t, saude.lastFailureAt / 1000),
+          erro: saude.lastError ?? undefined,
+        });
+      } else {
+        mapa.set(g.agentId, { saude: "desconhecido", quando: "" });
+      }
+    }
+    return mapa;
+  }, [agenda.data, mcp.data, t]);
+
   const proximas = useMemo(
     () =>
       (agenda.data ?? [])
@@ -325,10 +364,18 @@ export function Hoje({ navegar }: TelaProps) {
               const ultima = g.lastFireAt ? tempoRelativoCurto(t, g.lastFireAt / 1000) : undefined;
               const nome = nomeDoAgent.get(g.agentId) ?? g.agentId;
               const iniciativa = iniciativaDoAgent.get(g.agentId);
+              const saude = saudePorAgent.get(g.agentId);
+
+              const falhou = saude?.saude === "falha";
 
               return (
                 <div
-                  className="superficie flex cursor-pointer flex-col justify-between gap-3 rounded-xl border p-4 transition-all hover:border-foreground/30 hover:shadow-sm"
+                  className={cn(
+                    "superficie flex cursor-pointer flex-col justify-between gap-3 rounded-xl border p-4 transition-all hover:shadow-sm",
+                    falhou
+                      ? "border-destructive/40 bg-destructive/[0.03] hover:border-destructive/60"
+                      : "hover:border-foreground/30",
+                  )}
                   key={g.triggerId}
                   onClick={() => navegar("runs", g.agentId)}
                   role="button"
@@ -351,11 +398,24 @@ export function Hoje({ navegar }: TelaProps) {
                       </span>
                     </div>
 
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2 py-0.5 font-mono text-[11px] font-medium text-emerald-600 dark:text-emerald-400 shrink-0">
-                      <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      {t("home.today.next.active_synced", { defaultValue: "ouvindo" })}
-                    </span>
+                    {falhou ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-destructive/10 px-2 py-0.5 font-mono text-[11px] font-medium text-destructive shrink-0">
+                        <span className="size-1.5 rounded-full bg-destructive animate-pulse" />
+                        {t("home.today.next.health_failed", { defaultValue: "conexão falhou" })}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2 py-0.5 font-mono text-[11px] font-medium text-emerald-600 dark:text-emerald-400 shrink-0">
+                        <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        {t("home.today.next.active_synced", { defaultValue: "ouvindo" })}
+                      </span>
+                    )}
                   </div>
+
+                  {falhou && saude?.erro && (
+                    <p className="text-destructive/90 line-clamp-2 text-[11px] leading-relaxed break-words" title={saude.erro}>
+                      {saude.erro}
+                    </p>
+                  )}
 
                   <div className="flex items-baseline justify-between border-t border-border/60 pt-2.5 text-xs text-muted-foreground">
                     <span>
