@@ -409,6 +409,15 @@ export type ReadState<T> =
   | { status: "ready"; data: T; error: undefined }
   | { status: "error"; data: undefined; error: BridgeError };
 
+type InvalidationListener = (channel: string) => void;
+const invalidationListeners = new Set<InvalidationListener>();
+
+export function invalidateReads(channel?: string): void {
+  for (const listener of invalidationListeners) {
+    listener(channel ?? "*");
+  }
+}
+
 /**
  * Le um canal ao montar e devolve o estado da leitura.
  *
@@ -425,12 +434,25 @@ export function useRead<C extends ReadChannel>(
     data: undefined,
     error: undefined,
   });
+  const [version, setVersion] = useState(0);
 
   const chave = JSON.stringify(args);
   // Sem a caixa, os argumentos entrariam na lista de dependencia do efeito e o
   // lint pediria o espalhamento, que traz a identidade de volta.
   const ultimos = useRef(args);
   ultimos.current = args;
+
+  useEffect(() => {
+    const onInvalidate: InvalidationListener = (invalidatedChannel) => {
+      if (invalidatedChannel === "*" || invalidatedChannel === channel) {
+        setVersion((v) => v + 1);
+      }
+    };
+    invalidationListeners.add(onInvalidate);
+    return () => {
+      invalidationListeners.delete(onInvalidate);
+    };
+  }, [channel]);
 
   useEffect(() => {
     let vivo = true;
@@ -455,7 +477,7 @@ export function useRead<C extends ReadChannel>(
     return () => {
       vivo = false;
     };
-  }, [channel, chave]);
+  }, [channel, chave, version]);
 
   return state;
 }

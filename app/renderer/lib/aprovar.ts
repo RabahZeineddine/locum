@@ -1,4 +1,5 @@
 import { BRIDGE_GLOBAL, type DecisionResult } from "../../electron/bridge-contract.js";
+import { invalidateReads } from "./bridge.js";
 
 /**
  * Acesso estreito a decisao de aprovacao.
@@ -31,7 +32,10 @@ function ponte(): PonteDeDecisao {
 }
 
 export async function decidir(approvalId: string, decisao: Decisao): Promise<DecisionResult> {
-  return ponte().approvals.decide(approvalId, decisao);
+  const res = await ponte().approvals.decide(approvalId, decisao);
+  invalidateReads("approvals.listPending");
+  invalidateReads("runs.list");
+  return res;
 }
 
 /**
