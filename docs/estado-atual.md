@@ -1312,7 +1312,10 @@ e vem sem gatilho: a cadência sugerida está no README dos exemplos. O freio
 de leitura (200 mensagens por fonte, 40 threads) está no prompt, porque o
 runtime `claude-code` não mede token nem aplica `maxSteps`, e o `budget` do
 exemplo só vale nos provedores por API. Chamado aberto antes da janela de
-retenção (padrão 14 dias) não é visto: aumenta-se a janela no contexto.
+retenção (padrão 14 dias) não é visto: aumenta-se a janela no contexto. Fonte que
+não pôde ser lida vira item `source_error`: no primeiro run real, Slack sem
+OAuth e ms365 sem login deram lista vazia, e o ramo de dia calmo encerrou o
+run sem entregar nada.
 
 **Automações, fatia 9: iniciativa com automações.** A aba Agents da iniciativa
 virou Automações: a mesma linha da lista (rodar, ligar, abrir no canvas),
