@@ -161,7 +161,7 @@ export function Configuracao({ detalhe, navegar }: TelaProps) {
 
   return (
     <div
-      className="mx-auto flex w-full max-w-6xl flex-col gap-6"
+      className="mx-auto flex w-full max-w-5xl flex-col gap-6"
       data-estado={estado}
       data-locum-cofre={credenciais.data?.available === true ? "legivel" : "fechado"}
       data-locum-fallbacks={fallbacks.data?.length ?? -1}
@@ -182,7 +182,7 @@ export function Configuracao({ detalhe, navegar }: TelaProps) {
       <div className="flex flex-col gap-8 md:flex-row md:items-start">
         <NavDaConfiguracao atual={secao} navegar={navegar} />
 
-        <div className="flex min-w-0 flex-1 flex-col gap-8">
+        <div className="flex min-w-0 max-w-2xl flex-1 flex-col gap-8">
           <TopoDaSecao secao={secao} />
 
           {secao === "general" ? (

@@ -68,29 +68,27 @@ const ALTURA_DA_LINHA = 76;
  * entrega o identificador em `detalhe`.
  */
 export function Execucoes({ detalhe, navegar }: TelaProps) {
-  return detalhe === null ? (
-    <Lista navegar={navegar} />
+  // Se detalhe for um runId (UUID), abre o detalhe daquele run.
+  // Se for um agentId ou slug de filtro (ex: "observability-watch"), abre a lista filtrada por ele.
+  const ehRunId = detalhe !== null && /^[0-9a-f-]{36}$/i.test(detalhe);
+
+  return ehRunId ? (
+    <Execucao navegar={navegar} runId={detalhe!} />
   ) : (
-    <Execucao navegar={navegar} runId={detalhe} />
+    <Lista filtroAgente={detalhe} navegar={navegar} />
   );
 }
 
 /* ------------------------------------------------------------------ lista */
 
-function Lista({ navegar }: { navegar: TelaProps["navegar"] }) {
+function Lista({ filtroAgente, navegar }: { filtroAgente?: string | null; navegar: TelaProps["navegar"] }) {
   const { t } = useTranslation();
   const { slug } = useCurrentInitiative();
-  // O chip so aparece quando ha iniciativa atual; filtrar a lista por ela e um
-  // clique a mais, nunca o padrao, porque quem entra em execucoes sem escolher
-  // iniciativa nenhuma espera ver todas.
   const [filtrando, setFiltrando] = useState(false);
   const iniciativas = useRead("initiatives.list");
   const iniciativaAtual = slug === null ? undefined : iniciativas.data?.find((i) => i.slug === slug);
   const aplicarFiltro = filtrando && iniciativaAtual !== undefined;
 
-  // O limite e alto de proposito: a janela virtual abaixo e quem sustenta a
-  // lista longa, e pedir de vinte em vinte traria paginacao para uma tela que
-  // ninguem pagina, ela rola.
   const [categoria, setCategoria] = useState<"all" | "review" | "failed" | "digest">("all");
 
   const runs = useRead(
@@ -99,12 +97,16 @@ function Lista({ navegar }: { navegar: TelaProps["navegar"] }) {
   );
   const todasLinhas = runs.data ?? [];
   const linhas = useMemo(() => {
-    if (categoria === "all") return todasLinhas;
-    if (categoria === "failed") return todasLinhas.filter((r) => r.status === "failed");
-    if (categoria === "review") return todasLinhas.filter((r) => r.agentId.includes("review") || r.target?.pull);
-    if (categoria === "digest") return todasLinhas.filter((r) => r.agentId.includes("triage") || r.agentId.includes("briefing") || r.agentId.includes("watch"));
-    return todasLinhas;
-  }, [todasLinhas, categoria]);
+    let base = todasLinhas;
+    if (filtroAgente) {
+      base = base.filter((r) => r.agentId === filtroAgente || r.agentId.includes(filtroAgente));
+    }
+    if (categoria === "all") return base;
+    if (categoria === "failed") return base.filter((r) => r.status === "failed");
+    if (categoria === "review") return base.filter((r) => r.agentId.includes("review") || r.target?.pull);
+    if (categoria === "digest") return base.filter((r) => r.agentId.includes("triage") || r.agentId.includes("briefing") || r.agentId.includes("watch"));
+    return base;
+  }, [todasLinhas, categoria, filtroAgente]);
 
   const janela = useJanela(linhas.length, ALTURA_DA_LINHA);
 
@@ -202,26 +204,42 @@ function Lista({ navegar }: { navegar: TelaProps["navegar"] }) {
         </div>
       )}
 
-      {iniciativaAtual !== undefined ? (
-        <div className="mb-1 flex items-center gap-1.5">
-          <button
-            aria-pressed={aplicarFiltro}
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs transition-colors",
-              aplicarFiltro
-                ? "bg-primary text-primary-foreground"
-                : "bg-accent text-accent-foreground hover:bg-accent/70",
-            )}
-            data-aplicado={aplicarFiltro}
-            data-locum-probe="execucoes-initiative"
-            data-slug={iniciativaAtual.slug}
-            onClick={() => setFiltrando((v) => !v)}
-            title={t("common.filterByInitiative")}
-            type="button"
-          >
-            {iniciativaAtual.title}
-            {aplicarFiltro ? <X className="size-3" /> : null}
-          </button>
+      {iniciativaAtual !== undefined || filtroAgente ? (
+        <div className="mb-1 flex flex-wrap items-center gap-1.5">
+          {iniciativaAtual !== undefined && (
+            <button
+              aria-pressed={aplicarFiltro}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs transition-colors",
+                aplicarFiltro
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-accent text-accent-foreground hover:bg-accent/70",
+              )}
+              data-aplicado={aplicarFiltro}
+              data-locum-probe="execucoes-initiative"
+              data-slug={iniciativaAtual.slug}
+              onClick={() => setFiltrando((v) => !v)}
+              title={t("common.filterByInitiative")}
+              type="button"
+            >
+              {iniciativaAtual.title}
+              {aplicarFiltro ? <X className="size-3" /> : null}
+            </button>
+          )}
+
+          {filtroAgente && (
+            <div className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 border border-primary/20 px-2.5 py-1 text-xs text-primary font-mono font-medium">
+              <span>monitor: {filtroAgente}</span>
+              <button
+                className="hover:text-foreground cursor-pointer"
+                onClick={() => navegar("runs")}
+                title="Limpar filtro do monitor"
+                type="button"
+              >
+                <X className="size-3" />
+              </button>
+            </div>
+          )}
         </div>
       ) : null}
 
