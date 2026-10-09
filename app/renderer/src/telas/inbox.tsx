@@ -220,11 +220,24 @@ function Fila({ navegar, aoMudarFila }: TelaProps & { aoMudarFila: () => void })
 
   const falhas = execucoes.status === "ready" ? execucoes.data : [];
 
+  const contagemSeveridades = useMemo(() => {
+    const cont: Record<Severidade, number> = {
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 0,
+    };
+    (itens ?? []).forEach((it) => {
+      cont[it.severidade] = (cont[it.severidade] || 0) + 1;
+    });
+    return cont;
+  }, [itens]);
+
   if (itens === null) return <Esqueleto />;
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 pt-4">
-      <Cabecalho quantidade={itens.length} />
+      <Cabecalho quantidade={itens.length} severidades={contagemSeveridades} />
       <PainelDeIniciativas navegar={navegar} />
       {falhas.length > 0 && <FaixaDeFalha quantidade={falhas.length} navegar={navegar} />}
       <Paradas aoMudarFila={aoMudarFila} />
@@ -332,27 +345,67 @@ function PainelDeIniciativas({ navegar }: { navegar: TelaProps["navegar"] }) {
   );
 }
 
-function Cabecalho({ quantidade }: { quantidade: number }) {
+function Cabecalho({
+  quantidade,
+  severidades,
+}: {
+  quantidade: number;
+  severidades: Record<Severidade, number>;
+}) {
   const { t } = useTranslation();
 
   return (
-    <div className="flex items-end justify-between gap-6">
-      <div className="flex flex-col gap-1.5">
-        <h1 className="font-semibold text-[32px] leading-tight tracking-[-0.02em]">{t("inbox.title")}</h1>
-        <p className="text-muted-foreground text-[15px]">{t("inbox.lead")}</p>
+    <div className="flex flex-col gap-3">
+      <div className="flex items-end justify-between gap-6">
+        <div className="flex flex-col gap-1.5">
+          <h1 className="font-semibold text-[32px] leading-tight tracking-[-0.02em]">{t("inbox.title")}</h1>
+          <p className="text-muted-foreground text-[15px]">{t("inbox.lead")}</p>
+        </div>
+        <p
+          className="text-muted-foreground text-sm tabular-nums"
+          data-locum-probe="inbox"
+          data-pendencias={quantidade}
+        >
+          {t("inbox.waiting", { count: quantidade })}
+        </p>
       </div>
-      {/*
-        O marcador existe para o smoke, que confere o texto contra o dicionario
-        nos dois idiomas: atributo com a contagem provaria que o estado chegou,
-        e nao que a frase trocou de idioma.
-      */}
-      <p
-        className="text-muted-foreground text-sm tabular-nums"
-        data-locum-probe="inbox"
-        data-pendencias={quantidade}
-      >
-        {t("inbox.waiting", { count: quantidade })}
-      </p>
+
+      {quantidade > 0 && (
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          {severidades.critical > 0 && (
+            <Badge
+              className="bg-sev-critical/10 text-sev-critical border-sev-critical/30 font-medium text-xs px-2.5 py-0.5"
+              variant="outline"
+            >
+              {severidades.critical} {t("inbox.severities.critical")}
+            </Badge>
+          )}
+          {severidades.high > 0 && (
+            <Badge
+              className="bg-sev-high/10 text-sev-high border-sev-high/30 font-medium text-xs px-2.5 py-0.5"
+              variant="outline"
+            >
+              {severidades.high} {t("inbox.severities.high")}
+            </Badge>
+          )}
+          {severidades.medium > 0 && (
+            <Badge
+              className="bg-sev-medium/10 text-sev-medium border-sev-medium/30 font-medium text-xs px-2.5 py-0.5"
+              variant="outline"
+            >
+              {severidades.medium} {t("inbox.severities.medium")}
+            </Badge>
+          )}
+          {severidades.low > 0 && (
+            <Badge
+              className="bg-muted text-muted-foreground border-border font-medium text-xs px-2.5 py-0.5"
+              variant="outline"
+            >
+              {severidades.low} {t("inbox.severities.low")}
+            </Badge>
+          )}
+        </div>
+      )}
     </div>
   );
 }
