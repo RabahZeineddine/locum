@@ -313,7 +313,11 @@ export function LinhaDeExecucao({
 
   return (
     <button
-      className="hover:bg-accent/40 focus-visible:ring-ring border-border relative w-full cursor-pointer border-b px-4 py-2.5 text-left transition-colors duration-200 last:border-b-0 focus-visible:ring-2 focus-visible:-outline-offset-2"
+      className={cn(
+        "hover:bg-accent/40 focus-visible:ring-ring border-border relative w-full cursor-pointer border-b px-4 py-2.5 text-left transition-colors duration-150 last:border-b-0 focus-visible:ring-2 focus-visible:-outline-offset-2",
+        run.status === "failed" && "bg-destructive/[0.03]",
+        run.status === "paused" && "bg-amber-500/[0.03]",
+      )}
       data-locum-run={run.id}
       onClick={() => navegar("runs", run.id)}
       style={{ height: ALTURA_DA_LINHA }}
@@ -322,8 +326,10 @@ export function LinhaDeExecucao({
       <div className="flex items-baseline gap-2.5">
         {alvo?.pull ? (
           <>
-            <span className="shrink-0 font-mono text-[13px] font-medium">{t("common.pull", { number: alvo.pull })}</span>
-            <span className="text-muted-foreground min-w-0 flex-1 truncate text-sm">
+            <span className="shrink-0 font-mono text-[13px] font-semibold text-foreground">
+              {t("common.pull", { number: alvo.pull })}
+            </span>
+            <span className="text-foreground/90 min-w-0 flex-1 truncate text-sm font-medium">
               {alvo.title ?? alvo.repo}
             </span>
           </>
@@ -335,27 +341,27 @@ export function LinhaDeExecucao({
         <span className="text-muted-foreground shrink-0 font-mono text-xs tabular-nums">
           {quando(t, run.createdAt)}
         </span>
-        <span className="w-24 shrink-0 text-right font-mono text-xs tabular-nums">
+        <span className="w-24 shrink-0 text-right font-mono text-xs tabular-nums text-foreground/80">
           {dinheiro(t, run)}
         </span>
       </div>
 
       <div className="text-muted-foreground mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
         <Estado status={run.status} />
-        <span className="font-mono">
-          {run.agentId} {t("common.version", { version: run.agentVersion })}
+        <span className="font-mono text-foreground/75">
+          {run.agentId} <span className="text-muted-foreground/60">{t("common.version", { version: run.agentVersion })}</span>
         </span>
-        <span className="tabular-nums">
+        <span className="tabular-nums font-mono text-[11px]">
           {t("runs.progress", { done: run.stepDone, total: run.stepTotal })}
         </span>
         {run.stepPending > 0 && (
-          <span className="text-sev-medium">{t("runs.waiting_steps", { count: run.stepPending })}</span>
+          <span className="text-sev-medium font-medium">{t("runs.waiting_steps", { count: run.stepPending })}</span>
         )}
         {run.stepFailed > 0 && (
-          <span className="text-sev-critical">{t("runs.failed_steps", { count: run.stepFailed })}</span>
+          <span className="text-sev-critical font-medium">{t("runs.failed_steps", { count: run.stepFailed })}</span>
         )}
         {run.findingCount > 0 && (
-          <span>{t("runs.findings", { count: run.findingCount })}</span>
+          <span className="text-sev-high font-medium">{t("runs.findings", { count: run.findingCount })}</span>
         )}
       </div>
     </button>
