@@ -322,10 +322,13 @@ function NavDaConfiguracao({ atual, navegar }: { atual: SecaoId; navegar: TelaPr
   return (
     <nav
       aria-label={t("nav.settings")}
-      className="flex shrink-0 gap-1 overflow-x-auto md:sticky md:top-4 md:w-52 md:flex-col"
+      className="flex shrink-0 gap-1 overflow-x-auto md:sticky md:top-4 md:w-56 md:flex-col"
       data-locum-probe="secoes"
       role="tablist"
     >
+      <div className="hidden md:block px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+        Configurações
+      </div>
       {SECOES.map((id) => {
         const Icone = ICONE_DA_SECAO[id];
         const ativo = id === atual;
@@ -333,8 +336,10 @@ function NavDaConfiguracao({ atual, navegar }: { atual: SecaoId; navegar: TelaPr
           <button
             aria-selected={ativo}
             className={cn(
-              "focus-visible:ring-ring flex shrink-0 cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm transition-colors duration-150 focus-visible:ring-2 focus-visible:outline-none",
-              ativo ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+              "focus-visible:ring-ring flex shrink-0 cursor-pointer items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm transition-all duration-150 focus-visible:ring-2 focus-visible:outline-none",
+              ativo
+                ? "bg-muted font-medium text-foreground shadow-sm"
+                : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
             )}
             data-locum-secao={id}
             key={id}
@@ -344,13 +349,13 @@ function NavDaConfiguracao({ atual, navegar }: { atual: SecaoId; navegar: TelaPr
           >
             <span
               className={cn(
-                "flex size-6 items-center justify-center rounded-md",
-                ativo ? (id === "assistant" ? "ia-gradiente text-primary-foreground" : "bg-foreground/10") : "",
+                "flex size-6 items-center justify-center rounded-lg transition-colors",
+                ativo ? (id === "assistant" ? "ia-gradiente text-primary-foreground" : "bg-primary/10 text-primary") : "text-muted-foreground",
               )}
             >
               <Icone aria-hidden className="size-3.5" />
             </span>
-            {t(`settings.sections.${id}`)}
+            <span>{t(`settings.sections.${id}`)}</span>
           </button>
         );
       })}
