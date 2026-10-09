@@ -202,11 +202,20 @@ function Estado({ conexao }: { conexao: Conexao }) {
   return (
     <Badge
       className={cn(
+        "font-mono text-[11px] font-medium tracking-tight px-2 py-0.5",
         conexao.state === "connected" && "border-emerald-500/30 bg-emerald-500/10 text-emerald-400",
         conexao.state === "attention" && "border-amber-500/30 bg-amber-500/10 text-amber-400",
       )}
       variant="outline"
     >
+      <span
+        aria-hidden
+        className={cn(
+          "mr-1.5 inline-block size-1.5 rounded-full",
+          conexao.state === "connected" && "bg-emerald-400",
+          conexao.state === "attention" && "bg-amber-400",
+        )}
+      />
       {t(`connections.state.${conexao.state}`)}
     </Badge>
   );
@@ -254,37 +263,42 @@ function Cartao({
   const { t } = useTranslation();
   return (
     <article
-      className="border-border superficie hover:border-foreground/25 group flex min-h-[132px] flex-col gap-3 rounded-lg border p-4 transition-colors"
+      className={cn(
+        "border-border superficie hover:border-foreground/30 group flex min-h-[140px] flex-col justify-between rounded-xl border p-4 transition-all duration-150",
+        conexao.state === "connected" && "border-emerald-500/20 bg-emerald-500/[0.02]",
+        conexao.state === "attention" && "border-amber-500/20 bg-amber-500/[0.02]",
+      )}
       data-locum-conexao={conexao.id}
       data-locum-conexao-estado={conexao.state}
     >
-      <button className="flex cursor-pointer items-start gap-3 text-left" onClick={onAbrir} type="button">
+      <button className="flex cursor-pointer items-start gap-3.5 text-left" onClick={onAbrir} type="button">
         <Logo conexao={conexao} />
-        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="truncate font-medium text-sm">{conexao.name}</span>
-          <span className="text-muted-foreground line-clamp-2 text-xs">
+        <span className="flex min-w-0 flex-1 flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <span className="truncate font-semibold text-sm tracking-tight text-foreground">{conexao.name}</span>
+          </div>
+          <span className="text-muted-foreground line-clamp-2 text-xs leading-relaxed">
             {conexao.custom ? (conexao.url ?? "") : t(`connections.catalog.${conexao.id}.tagline`)}
           </span>
         </span>
       </button>
-      {/* Quebra de linha antes de vazar: com o selo de atenção e o botão em
-          "conectando...", a linha passava da largura de um cartão estreito. */}
-      <div className="mt-auto flex flex-wrap items-center gap-2">
+
+      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border/40 pt-2.5">
         <Estado conexao={conexao} />
         {conexao.account === null ? null : (
-          <span className="text-muted-foreground min-w-0 truncate text-xs">{conexao.account}</span>
+          <span className="text-muted-foreground min-w-0 truncate font-mono text-[11px]">{conexao.account}</span>
         )}
         <div className="ml-auto shrink-0">
           {conexao.state === "soon" ? (
-            <Button disabled size="sm" variant="ghost">
+            <Button disabled size="sm" variant="ghost" className="h-7 text-xs">
               {t("connections.soon")}
             </Button>
           ) : ligaNoCartao(conexao) ? (
-            <Button className="cursor-pointer" disabled={ligando} onClick={onLigar} size="sm">
+            <Button className="h-7 cursor-pointer text-xs font-medium" disabled={ligando} onClick={onLigar} size="sm">
               {t(ligando ? "connections.connecting" : "connections.connect")}
             </Button>
           ) : (
-            <Button className="cursor-pointer" onClick={onAbrir} size="sm" variant="outline">
+            <Button className="h-7 cursor-pointer text-xs font-medium" onClick={onAbrir} size="sm" variant="outline">
               {t(conexao.state === "connected" ? "connections.manage" : "connections.setup")}
             </Button>
           )}
