@@ -232,6 +232,7 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
     title?: string;
     author?: string;
     url?: string;
+    summary?: string;
   } | null;
   const marcados = achados.filter((a) => a.incluido).length;
   // Aprovar sem achado é uma review que diz alguma coisa; comentar sem achado
@@ -263,6 +264,15 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
 
       {carga?.title && <h1 className="text-lg font-semibold tracking-tight">{carga.title}</h1>}
 
+      {carga?.summary && (
+        <div className="bg-card/70 border-border rounded-lg border p-4 text-sm leading-relaxed">
+          <span className="text-muted-foreground font-medium text-xs uppercase tracking-wider block mb-1">
+            {t("review.summary_label", { defaultValue: "Parecer da Auditoria" })}
+          </span>
+          <p className="text-foreground/90 whitespace-pre-wrap">{carga.summary}</p>
+        </div>
+      )}
+
       <label className="text-muted-foreground flex items-center gap-2 text-xs">
         {t("review.verdict.label")}
         <select
@@ -279,77 +289,91 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
         </select>
       </label>
 
-      <ul className="divide-border border-border superficie divide-y overflow-hidden rounded-lg border">
-        {achados.map((achado, i) => (
-          <li className={cn("relative", !achado.incluido && "opacity-45")} key={i}>
-            <span
-              aria-hidden
-              className={cn("absolute top-0 bottom-0 left-0 w-[3px]", REGUA[achado.severity])}
-            />
-            <div className="py-3 pr-4 pl-5">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-muted-foreground font-mono text-xs">
-                  {achado.file ?? ""}
-                  {achado.line ? `:${achado.line}` : ""}
-                </span>
-
-                <select
-                  aria-label={t("review.severity")}
-                  className="border-border bg-background cursor-pointer rounded border px-1.5 py-0.5 text-xs"
-                  onChange={(e) =>
-                    setAchados((atual) =>
-                      (atual ?? []).map((a, j) =>
-                        j === i ? { ...a, severity: e.target.value as Severidade } : a,
-                      ),
-                    )
-                  }
-                  value={achado.severity}
-                >
-                  {SEVERIDADES.map((s) => (
-                    <option key={s} value={s}>
-                      {rotuloDeSeveridade(t, s)}
-                    </option>
-                  ))}
-                </select>
-
-                {achado.confidence && (
-                  <span className="text-muted-foreground text-xs">
-                    {t(`review.confidence.${achado.confidence}`)}
+      {achados.length === 0 ? (
+        <div className="border-border/60 bg-muted/20 flex flex-col gap-1 rounded-lg border p-4 text-sm">
+          <p className="font-medium text-foreground">
+            {t("review.no_findings_title", { defaultValue: "Nenhum defeito impeditivo encontrado." })}
+          </p>
+          <p className="text-muted-foreground text-xs leading-relaxed">
+            {t("review.no_findings_hint", {
+              defaultValue:
+                "A auditoria não encontrou regressões funcionais, concorrência, quebra de contratos ou falhas de segurança no diff. Você pode aprovar o PR com o parecer positivo acima ou descartar esta revisão sem comentar.",
+            })}
+          </p>
+        </div>
+      ) : (
+        <ul className="divide-border border-border superficie divide-y overflow-hidden rounded-lg border">
+          {achados.map((achado, i) => (
+            <li className={cn("relative", !achado.incluido && "opacity-45")} key={i}>
+              <span
+                aria-hidden
+                className={cn("absolute top-0 bottom-0 left-0 w-[3px]", REGUA[achado.severity])}
+              />
+              <div className="py-3 pr-4 pl-5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-muted-foreground font-mono text-xs">
+                    {achado.file ?? ""}
+                    {achado.line ? `:${achado.line}` : ""}
                   </span>
-                )}
 
-                <label className="text-muted-foreground ml-auto flex cursor-pointer items-center gap-1.5 text-xs">
-                  <input
-                    checked={achado.incluido}
-                    className="accent-primary cursor-pointer"
+                  <select
+                    aria-label={t("review.severity")}
+                    className="border-border bg-background cursor-pointer rounded border px-1.5 py-0.5 text-xs"
                     onChange={(e) =>
                       setAchados((atual) =>
                         (atual ?? []).map((a, j) =>
-                          j === i ? { ...a, incluido: e.target.checked } : a,
+                          j === i ? { ...a, severity: e.target.value as Severidade } : a,
                         ),
                       )
                     }
-                    type="checkbox"
-                  />
-                  {t(achado.incluido ? "review.include" : "review.excluded")}
-                </label>
-              </div>
+                    value={achado.severity}
+                  >
+                    {SEVERIDADES.map((s) => (
+                      <option key={s} value={s}>
+                        {rotuloDeSeveridade(t, s)}
+                      </option>
+                    ))}
+                  </select>
 
-              <textarea
-                aria-label={t("review.body_label")}
-                className="focus:border-ring border-border bg-background mt-2 w-full resize-y rounded border px-2.5 py-2 text-sm leading-relaxed outline-none transition-colors duration-200"
-                onChange={(e) =>
-                  setAchados((atual) =>
-                    (atual ?? []).map((a, j) => (j === i ? { ...a, problem: e.target.value } : a)),
-                  )
-                }
-                rows={Math.min(8, Math.max(2, Math.ceil(achado.problem.length / 90)))}
-                value={achado.problem}
-              />
-            </div>
-          </li>
-        ))}
-      </ul>
+                  {achado.confidence && (
+                    <span className="text-muted-foreground text-xs">
+                      {t(`review.confidence.${achado.confidence}`)}
+                    </span>
+                  )}
+
+                  <label className="text-muted-foreground ml-auto flex cursor-pointer items-center gap-1.5 text-xs">
+                    <input
+                      checked={achado.incluido}
+                      className="accent-primary cursor-pointer"
+                      onChange={(e) =>
+                        setAchados((atual) =>
+                          (atual ?? []).map((a, j) =>
+                            j === i ? { ...a, incluido: e.target.checked } : a,
+                          ),
+                        )
+                      }
+                      type="checkbox"
+                    />
+                    {t(achado.incluido ? "review.include" : "review.excluded")}
+                  </label>
+                </div>
+
+                <textarea
+                  aria-label={t("review.body_label")}
+                  className="focus:border-ring border-border bg-background mt-2 w-full resize-y rounded border px-2.5 py-2 text-sm leading-relaxed outline-none transition-colors duration-200"
+                  onChange={(e) =>
+                    setAchados((atual) =>
+                      (atual ?? []).map((a, j) => (j === i ? { ...a, problem: e.target.value } : a)),
+                    )
+                  }
+                  rows={Math.min(8, Math.max(2, Math.ceil(achado.problem.length / 90)))}
+                  value={achado.problem}
+                />
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
 
       <div className="flex items-center gap-3">
         <Button
