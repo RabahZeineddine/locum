@@ -324,7 +324,10 @@ const SEVERITY_MARK: Record<Finding["severity"], string> = {
 
 function renderBody(findings: Finding[], summary?: string): string {
   if (findings.length === 0) {
-    return summary && summary.trim() !== "" ? `${summary.trim()}\n\n${LOCUM_MARKER}` : `LGTM!\n\n${LOCUM_MARKER}`;
+    // Quando limpo, publica estritamente texto curto e humano (LGTM), nunca parecer acadêmico de IA
+    return summary && summary.trim() !== "" && !summary.includes("A implementação adiciona") && !summary.includes("Nenhum defeito")
+      ? `${summary.trim()}\n\n${LOCUM_MARKER}`
+      : `LGTM!\n\n${LOCUM_MARKER}`;
   }
   const corpo = findings
     .map((f) => {

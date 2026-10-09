@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { gravarRevisao, gravarTexto, decidir } from "@/lib/aprovar";
+import { gravarRevisao, gravarTexto, decidir, criarTarefaDoTracker } from "@/lib/aprovar";
 import { BridgeError, read, useRead, type ReadResult, type ReadState } from "@/lib/bridge";
 import { comContexto, diffLinhas, type LinhaDoDiff } from "@/lib/diff";
 import {
@@ -103,6 +103,7 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
 
   const [achados, setAchados] = useState<AchadoEditavel[] | null>(null);
   const [veredito, setVeredito] = useState<Veredito>("COMMENT");
+  const [comentarioCustom, setComentarioCustom] = useState<string>("");
   const [gravando, setGravando] = useState(false);
   const [resolvendo, setResolvendo] = useState(false);
   const [conflito, setConflito] = useState(false);
@@ -110,9 +111,14 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
 
   useEffect(() => {
     if (!pendencia || contexto || mensagem || documento || achados !== null) return;
-    const carga = pendencia.payload as { findings?: unknown[]; verdict?: unknown } | null;
+    const carga = pendencia.payload as { findings?: unknown[]; verdict?: unknown; summary?: unknown } | null;
     if ((VEREDITOS as readonly unknown[]).includes(carga?.verdict)) {
       setVeredito(carga!.verdict as Veredito);
+    }
+    if (typeof carga?.summary === "string") {
+      setComentarioCustom(carga.summary);
+    } else {
+      setComentarioCustom("LGTM!");
     }
     setAchados(
       (carga?.findings ?? []).map((bruto) => {
@@ -149,10 +155,11 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
         pendencia.id,
         achados.filter((a) => a.incluido).map(({ incluido: _, ...resto }) => resto),
         veredito,
+        comentarioCustom,
       ).finally(() => setGravando(false));
     }, 700);
     return () => clearTimeout(id);
-  }, [achados, veredito, pendencia, contexto]);
+  }, [achados, veredito, comentarioCustom, pendencia, contexto]);
 
   if (aprovacao.status === "ready" && !pendencia) {
     return (
@@ -264,14 +271,21 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
 
       {carga?.title && <h1 className="text-lg font-semibold tracking-tight">{carga.title}</h1>}
 
-      {carga?.summary && (
-        <div className="bg-card/70 border-border rounded-lg border p-4 text-sm leading-relaxed">
-          <span className="text-muted-foreground font-medium text-xs uppercase tracking-wider block mb-1">
-            {t("review.summary_label", { defaultValue: "Parecer da Auditoria" })}
+      <div className="flex flex-col gap-1.5">
+        <label className="text-muted-foreground flex items-center justify-between text-xs font-medium">
+          <span>{t("review.comment_box_label", { defaultValue: "Comentário que será publicado no GitHub" })}</span>
+          <span className="text-[11px] font-normal text-muted-foreground/70">
+            {t("review.comment_box_hint", { defaultValue: "Edite livremente antes de clicar em Aprovar" })}
           </span>
-          <p className="text-foreground/90 whitespace-pre-wrap">{carga.summary}</p>
-        </div>
-      )}
+        </label>
+        <textarea
+          className="focus:border-ring border-border bg-background w-full resize-y rounded-lg border p-3 font-mono text-xs leading-relaxed outline-none transition-colors"
+          onChange={(e) => setComentarioCustom(e.target.value)}
+          placeholder="LGTM!"
+          rows={Math.min(6, Math.max(2, Math.ceil((comentarioCustom || "").length / 80)))}
+          value={comentarioCustom}
+        />
+      </div>
 
       <label className="text-muted-foreground flex items-center gap-2 text-xs">
         {t("review.verdict.label")}
