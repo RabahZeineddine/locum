@@ -171,7 +171,18 @@ export class ProviderService {
       const variavel = semSegredo[row.id]?.secretVar;
       if (!variavel) continue;
 
-      const secret = this.secrets.get(row.credentialRef) ?? process.env[variavel];
+      // Ordem de leitura da chave: cofre (keychain, só no app), env específica
+      // do Locum, e por último a env natural do provedor (AIHUB_TOKEN e
+      // equivalentes). A última existe fora do app — CLI e MCP — onde o cofre
+      // não abre, e sem ela os runs disparados por fora morrem de modelo
+      // indisponível mesmo com a chave na máquina.
+      const alternativas: Record<string, string[]> = {
+        aihub: ["AIHUB_TOKEN"],
+      };
+      const secret =
+        this.secrets.get(row.credentialRef) ??
+        process.env[variavel] ??
+        (alternativas[row.id] ?? []).map((nome) => process.env[nome]).find((v) => v !== undefined);
       if (secret === undefined) continue;
       secrets[variavel] = secret;
       carregados.push(row.id);
