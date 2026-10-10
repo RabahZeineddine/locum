@@ -24,10 +24,16 @@ export const DigestItem = z.object({
 });
 export type DigestItem = z.infer<typeof DigestItem>;
 
-/** O que o passo de modelo devolve. Sem isto não há digest para propor. */
+/** O que o passo de modelo devolve. Sem isto não há digest para propor.
+ *
+ * Lista vazia é dia calmo válido, e não erro: o monitor de observabilidade
+ * que não achou incidente nenhum tem resultado legível, e escondê-lo faria o
+ * silêncio parecer falha. A pendência entra na fila com a headline e sem
+ * assunto, e o clique de leitura vale como os outros.
+ */
 export const DigestReading = z.object({
   headline: z.string().trim().min(1),
-  items: z.array(DigestItem).min(1),
+  items: z.array(DigestItem),
 });
 export type DigestReading = z.infer<typeof DigestReading>;
 
@@ -71,8 +77,7 @@ export const DigestProposal = z.object({
         channel: z.string().min(1),
         items: z.array(DigestItem).min(1),
       }),
-    )
-    .min(1),
+    ),
   /** Quantos assuntos de cada classe, que é o que se olha antes de abrir. */
   counts: z.object({
     needs_reply: z.number().int().nonnegative(),
