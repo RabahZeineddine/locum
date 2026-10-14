@@ -373,7 +373,13 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "triggers.schedule": (at) => scheduler.schedule(at),
     "triggers.tick": () => scheduler.tick({ reason: "manual", wait: true }),
     "triggers.discards": (triggerId) => scheduler.descartes(triggerId),
-    "triggers.previewGithub": async (config) => (await import("../src/services/trigger-preview.js")).previaDoGatilho(config),
+    "triggers.previewGithub": async (config) => {
+      const { previaDoGatilho } = await import("../src/services/trigger-preview.js");
+      // Na fumaça e nas capturas não há token nem rede: responde o GitHub de exemplo.
+      if (process.env.LOCUM_GITHUB_FIXTURE !== "1") return previaDoGatilho(config);
+      const { clienteDeExemplo } = await import("../src/fixtures/github-previa.js");
+      return previaDoGatilho(config, { client: clienteDeExemplo(), viewer: async () => "ana" });
+    },
     "scheduler.getWorkingHours": () => settingsService.getWorkingHours(),
     "scheduler.setWorkingHours": (config) => settingsService.setWorkingHours(config),
 

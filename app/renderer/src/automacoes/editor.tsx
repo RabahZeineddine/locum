@@ -61,10 +61,13 @@ type Automacao = NonNullable<ReadResult<"automations.get">>;
  */
 export function EditorDeAutomacao({
   agentId,
+  abrirGatilho,
   voltar,
   navegar,
 }: {
   agentId: string;
+  /** `novo` acrescenta um gatilho do GitHub ao rascunho; outro valor escolhe o gatilho de mesmo id. */
+  abrirGatilho?: string;
   voltar: () => void;
   navegar: (id: RotaId, detalhe?: string) => void;
 }) {
@@ -84,7 +87,7 @@ export function EditorDeAutomacao({
       </div>
     );
   }
-  return <EditorCarregado automacao={lida.data} navegar={navegar} voltar={voltar} />;
+  return <EditorCarregado abrirGatilho={abrirGatilho} automacao={lida.data} navegar={navegar} voltar={voltar} />;
 }
 
 function paraRascunho(a: Automacao): Rascunho {
@@ -93,10 +96,12 @@ function paraRascunho(a: Automacao): Rascunho {
 
 function EditorCarregado({
   automacao,
+  abrirGatilho,
   voltar,
   navegar,
 }: {
   automacao: Automacao;
+  abrirGatilho?: string;
   voltar: () => void;
   navegar: (id: RotaId, detalhe?: string) => void;
 }) {
@@ -219,6 +224,20 @@ function EditorCarregado({
       return { ...r, gatilhos: [...r.gatilhos, { chave, config: componente.novo(), enabled: false }] };
     });
   };
+
+  // Vindo do resumo do agent: escolhe o gatilho pedido, ou acrescenta o novo.
+  // Uma vez só, porque o rascunho é de quem está editando.
+  const abriu = useRef(false);
+  useEffect(() => {
+    if (abriu.current || abrirGatilho === undefined) return;
+    abriu.current = true;
+    if (abrirGatilho === "novo") {
+      acrescentarGatilho("poll");
+      return;
+    }
+    const pedido = rascunho.gatilhos.find((g) => g.id === abrirGatilho);
+    if (pedido !== undefined) setSelecionado(pedido.chave);
+  });
 
   const acrescentarPasso = (id: string): void => {
     const componente = PASSOS.find((p) => p.id === id);

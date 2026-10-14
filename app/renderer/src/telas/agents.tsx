@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { call, useRead, type ReadResult } from "@/lib/bridge";
 import { duplicarAgent, exportarAgent, importarAgent } from "@/lib/editar-agent";
 import { EditorDeAgent } from "../editor-agent";
-import { LinhaDoOrcamento, Observados, Secao } from "./configuracao";
+import { LinhaDoOrcamento, Secao } from "./configuracao";
+import { GatilhosDoAgent } from "./gatilhos-do-agent";
 import { comContexto, diffJson, type LinhaDoDiff } from "@/lib/diff";
 import { rotuloDeEstado, rotuloDoModelo } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
@@ -490,7 +491,7 @@ function DetalheDoAgent({
       />
 
       <Secao descricao={t("settings.watched.description")} titulo={t("settings.watched.title")}>
-        <Observados agentId={agentId} />
+        <GatilhosDoAgent agentId={agentId} navegar={navegar} />
       </Secao>
 
       <OrcamentoDoAgent agentId={agentId} />

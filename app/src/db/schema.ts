@@ -90,7 +90,7 @@ export const toolsets = sqliteTable("toolsets", {
 export const triggers = sqliteTable("triggers", {
   id: text("id").primaryKey(),
   agentId: text("agent_id").notNull().references(() => agents.id),
-  /** schedule | webhook | poll | mcp-poll */
+  /** cron | schedule | manual | webhook | poll | mcp-poll | slack-channel | slack-inbox | teams-inbox */
   kind: text("kind").notNull(),
   config: text("config", { mode: "json" }).notNull(),
   enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),

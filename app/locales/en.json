@@ -848,22 +848,11 @@
     },
     "watched": {
       "title": "Watched repositories",
-      "description": "What this agent scans and how often. A trigger starts stopped: registering turns nothing on, and turning it on is the second click.",
-      "empty": "No repository watched. Until a trigger is on, Locum only runs when someone asks.",
-      "agent": "agent that will review",
-      "owner": "organization or account owner",
-      "ownerHint": "organization",
-      "repo": "repository name",
-      "repoHint": "my-service, api-*",
-      "authorship": "whose pull requests",
+      "description": "The GitHub triggers of this agent's automation, read only. Filters, preview and skipped pull requests are edited in the automation.",
+      "empty": "No automation watches repositories with this agent.",
       "authorshipAny": "anyone's",
       "authorshipMine": "mine",
       "authorshipOthers": "the team's",
-      "cadence": "cadence in minutes",
-      "add": "Watch",
-      "enable": "turn on",
-      "disable": "turn off",
-      "remove": "Remove",
       "on": "on",
       "off": "parked",
       "target": "{{owner}} · {{repo}}",
@@ -874,10 +863,11 @@
       "beats": "last scan {{last}} · next {{next}}",
       "never": "never",
       "parked": "none, the trigger is parked",
-      "howTo": "Type the repository name, several separated by commas, or use * to catch every one that starts the same (api-*). Scanning uses the GitHub token from Apps > GitHub. Nothing turns into a comment on its own: the finding stops in the queue and waits for your click.",
       "refused": "the bridge refused: {{message}}",
-      "advanced": "I want a regular expression",
-      "advancedHow": "If the text has ^, $, parentheses or |, it counts as a regular expression matched against the name, unchanged: \"^api-\" catches every repo starting with it. Filtering by authorship needs the token checked, because its account is what tells which pull requests are yours."
+      "create": "Create a GitHub trigger",
+      "edit": "Edit in the automation",
+      "filters_one": "{{count}} filter",
+      "filters_other": "{{count}} filters"
     },
     "slack": {
       "title": "Watched Slack",
@@ -1865,7 +1855,8 @@
         "authorship": "Whose",
         "any": "Everyone's",
         "mine": "Only mine",
-        "others": "Only the team's"
+        "others": "Only the team's",
+        "help": "Wakes the agent for each open pull request in the watched repositories that passes the filters below."
       },
       "webhook": {
         "title": "Webhook",
@@ -2019,6 +2010,77 @@
       "noUrl": "Fill in the API address, starting with http:// or https://.",
       "noValue": "Say what this step looks at, with a variable.",
       "noCases": "Add at least one case to the switch."
+    },
+    "github": {
+      "repos": {
+        "title": "Repositories",
+        "help": "Which repositories of the organization this trigger scans.",
+        "names": "Repository names",
+        "hint": "my-service, api-*",
+        "advanced": "I want a regular expression",
+        "advancedHow": "Names separated by commas, with * for anything (api-*). Text with ^, $, parentheses or | counts as a regular expression matched against the repository name, unchanged. Empty watches the whole organization."
+      },
+      "people": {
+        "title": "People and teams",
+        "help": "Whose pull requests wake the agent. Different filters combine with AND, and the items of one list with OR.",
+        "authorsInclude": "Only these authors",
+        "authorsHint": "@me, ana, bia",
+        "authorsExclude": "Never these authors",
+        "review": "Review requested from",
+        "reviewHint": "@me, ana, acme/backend",
+        "teamMembers": "Author is a member of the team",
+        "teamsHint": "acme/backend (needs read:org on the token)"
+      },
+      "labels": {
+        "title": "Labels",
+        "help": "Pull requests with any of the labels listed, and never one with a label in the second field.",
+        "include": "Has any of the labels",
+        "hint": "bug, help wanted",
+        "exclude": "Has none of the labels"
+      },
+      "base": {
+        "title": "Base branch",
+        "help": "Only pull requests that target these branches.",
+        "branches": "Branches",
+        "hint": "main, release/*"
+      },
+      "files": {
+        "title": "Files and size",
+        "help": "What the pull request changes: skips the ones that only touch what you exclude, or that are too big.",
+        "include": "Only files in",
+        "includeHint": "src/**, !**/*.md",
+        "exclude": "Ignore files in",
+        "excludeHint": "docs/**, **/*.md",
+        "maxLines": "Largest change (lines added plus removed)",
+        "noLimit": "no limit"
+      },
+      "drafts": {
+        "title": "Drafts",
+        "help": "A draft is a pull request its author has not asked to review yet.",
+        "include": "Include drafts"
+      },
+      "frequency": {
+        "title": "Frequency",
+        "help": "How often Locum looks at GitHub for this trigger."
+      },
+      "preview": {
+        "title": "Preview",
+        "help": "Asks GitHub which open pull requests would enter with what is on screen now. Nothing is saved or run.",
+        "button": "See which PRs would enter now",
+        "loading": "Looking at GitHub...",
+        "summary": "{{enter}} of {{total}} would enter.",
+        "cut": "Only the most recently updated are listed.",
+        "empty": "No open pull request in these repositories.",
+        "enters": "enters",
+        "skipped": "does not enter",
+        "failed": "could not read: {{message}}"
+      },
+      "discards": {
+        "title": "Latest skipped pull requests",
+        "help": "What the real scans saw and left out, with the reason. Saving a different filter does not run again what already ran.",
+        "empty": "Nothing skipped so far.",
+        "unsaved": "Save the automation and let the trigger run to see what it skips."
+      }
     }
   },
   "apps": {
