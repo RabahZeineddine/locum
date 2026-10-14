@@ -82,14 +82,22 @@ test("sem listagem prévia, ler lista pelo mesmo caminho e lê dali", async () =
   assert.equal((await fonte.ler("aa")).id, "aa");
 });
 
-test("listagem vencida é refeita ao instalar", async () => {
+test("instalar usa a listagem guardada, sem listar de novo", async () => {
   const { fetch, estado } = remoto({ "aa.json": spec("aa", { instructions: "v1" }) });
-  let agora = 0;
-  const fonte = new TemplateSource({ fetch, pastaLocal: await pastaLocal({}), agora: () => agora });
+  const fonte = new TemplateSource({ fetch, pastaLocal: await pastaLocal({}) });
   await fonte.listar();
+  const chamadas = estado.chamadas.length;
   estado.corpos["aa.json"] = spec("aa", { instructions: "v2" });
-  agora = 11 * 60 * 1000;
-  assert.equal((await fonte.ler("aa")).instructions, "v2");
+  assert.equal((await fonte.ler("aa")).instructions, "v1");
+  assert.equal(estado.chamadas.length, chamadas);
+});
+
+test("corpo que nunca termina cai para a cópia empacotada dentro do prazo", async () => {
+  const fetch: FetchLike = async () => new Response(new ReadableStream({ start() {} }));
+  const fonte = new TemplateSource({ fetch, pastaLocal: await pastaLocal({ "loc.json": spec("loc") }), prazoMs: 100 });
+  const inicio = Date.now();
+  assert.deepEqual((await fonte.listar()).map((t) => [t.id, t.origem]), [["loc", "local"]]);
+  assert.ok(Date.now() - inicio < 2000);
 });
 
 test("trocar o modelo do que ler não vaza para a leitura seguinte", async () => {

@@ -12,6 +12,14 @@ edite até virar o seu.
 | `teams-reply.json` | o mesmo para o Teams: escreve a resposta à mensagem e para na fila antes de mandar |
 | `support-desk.json` | central de chamados: lê as conversas das fontes da iniciativa, conta horas úteis pela ferramenta `business_hours`, classifica cada chamado e entrega o quadro na inbox, com investigação dos críticos |
 
+## Marketplace
+
+O marketplace do app lê esta pasta na branch `main` do repositório remoto, e usa
+a cópia empacotada no app só se o remoto não responder. Agent novo ou ajustado
+aqui chega a quem já tem o app instalado sem release. O contrapeso: app antigo
+ignora campo novo do spec que não conhece, então um template que dependa de
+campo recente pode instalar sem ele em versão velha.
+
 ## Central de chamados
 
 O `support-desk.json` precisa de uma iniciativa e de um gatilho de horário, que

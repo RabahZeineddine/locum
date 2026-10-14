@@ -21,7 +21,8 @@ import { agentService } from "../services/agent-service.js";
 
 const RUN_ID = "00000000-0000-4000-8000-00000000f1e0";
 const EVENT_ID = "fixture-event-pr-482";
-const APPROVAL_ID = "fixture-approval-post";
+// Derivado do run: banco que já tem a fixture antiga (`fixture-approval-post`) não colide.
+const APPROVAL_ID = `${RUN_ID}-approval-post`;
 
 /** Segundos desde a epoca. O fixture nasce no passado para nao parecer novo. */
 const CRIADO_EM = 1_789_870_000;
