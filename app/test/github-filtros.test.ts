@@ -258,3 +258,15 @@ test("PR já conhecido que o filtro novo recusa não volta para o gatilho", asyn
   assert.equal(filtrada.descartes?.[0]?.motivo, "só mexe em docs/**");
   assert.equal(chamadas.listFiles, arquivosAntes, "os arquivos saem do evento, sem nova ida ao GitHub");
 });
+
+test("o padrão que a tela monta pelo nome (api-*) casa com o repositório, sem o dono na frente", async () => {
+  const db = bancoDeTeste();
+  const { client } = githubFalso([{ number: 1, repo: "api-x" }, { number: 2, repo: "web" }]);
+  const varredura = await scanOpenPullRequests("o", /^api-.*$/, { client, db, now: agora, diffMaxChars: 100_000 });
+  assert.equal(varredura.eventIds.length, 1);
+  assert.equal((await db.query.events.findMany())[0]?.externalId, "pr:o/api-x#1:sha:sha1");
+
+  // O padrão antigo, escrito com o dono (`^o/api$`), continua valendo.
+  const comDono = await scanOpenPullRequests("o", /^o\/web$/, { client, db: bancoDeTeste(), now: agora, diffMaxChars: 100_000 });
+  assert.equal(comDono.eventIds.length, 1);
+});

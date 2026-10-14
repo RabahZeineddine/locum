@@ -319,6 +319,18 @@ export interface PullRequestScan {
   descartes?: Descarte[];
 }
 
+/**
+ * O padrão casa com o repositório.
+ *
+ * Vale o nome sozinho e o nome com o dono na frente: o padrão que a tela monta
+ * pelo nome (`^api-.*$`) é só do nome, e o que veio da linha de comando
+ * (`^dono/api$`) leva o dono. Testar só a forma com o dono deixava o primeiro
+ * sem casar com repositório nenhum.
+ */
+function casaRepo(filtro: RegExp, owner: string, repo: string): boolean {
+  return filtro.test(repo) || filtro.test(`${owner}/${repo}`);
+}
+
 /** Quantos descartes uma varredura devolve; o resto some para não inchar a batida. */
 const TETO_DE_DESCARTES = 200;
 
@@ -369,7 +381,7 @@ function contextoDoExame(owner: string, repoFilter: RegExp, deps: PollOptions) {
  */
 async function examinar(ctx: ContextoDoExame, item: ItemDaBusca & { repository_url: string }): Promise<Exame | null> {
   const repo = item.repository_url.split("/").pop()!;
-  if (!ctx.repoFilter.test(`${ctx.owner}/${repo}`)) return null;
+  if (!casaRepo(ctx.repoFilter, ctx.owner, repo)) return null;
 
   const ref = `${ctx.owner}/${repo}#${item.number}`;
   const autor = item.user?.login ?? undefined;
