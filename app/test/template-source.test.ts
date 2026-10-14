@@ -58,7 +58,7 @@ test("instalar devolve o mesmo conteúdo que a listagem mostrou", async () => {
   const [item] = await fonte.listar();
   assert.equal(item?.id, "aa");
   const bruto = await fonte.ler("aa");
-  assert.equal((bruto as { instructions: string }).instructions, "remoto");
+  assert.equal(bruto.instructions, "remoto");
 });
 
 test("instalar com remoto fora do ar lê da mesma cópia empacotada da listagem", async () => {
@@ -88,4 +88,19 @@ test("template que não existe em lugar nenhum dá erro claro", async () => {
   const { fetch } = remoto({});
   const fonte = new TemplateSource({ fetch, pastaLocal: await pastaLocal({}) });
   await assert.rejects(() => fonte.ler("nada-aqui"), /não encontrado/);
+});
+
+test("a listagem traz o nome de cada passo de modelo, com a chave de reserva", async () => {
+  const steps = [
+    { type: "action", key: "a", name: "Agir" },
+    { type: "model", key: "triagem", name: "Triagem", model: "claude-code/claude-sonnet-5" },
+    { type: "model", key: "sem-nome", model: "claude-code/claude-opus-5" },
+  ];
+  const { fetch } = remoto({ "aa.json": spec("aa", { steps }) });
+  const fonte = new TemplateSource({ fetch, pastaLocal: await pastaLocal({}) });
+  const [item] = await fonte.listar();
+  assert.deepEqual(item?.passosDeModelo, [
+    { indice: 1, nome: "Triagem", modelo: "claude-code/claude-sonnet-5" },
+    { indice: 2, nome: "sem-nome", modelo: "claude-code/claude-opus-5" },
+  ]);
 });

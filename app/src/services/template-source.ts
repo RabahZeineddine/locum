@@ -16,7 +16,7 @@ export interface TemplateResumo {
   name: string;
   modelo: string | null;
   passos: number;
-  passosDeModelo: { indice: number; modelo: string }[];
+  passosDeModelo: { indice: number; nome: string; modelo: string }[];
 }
 
 export const URL_LISTAGEM_TEMPLATES =
@@ -124,8 +124,11 @@ function aceitar(texto: string): TemplateBruto | null {
 
 function resumir(bruto: TemplateBruto): TemplateResumo {
   const passos = Array.isArray(bruto.steps) ? bruto.steps : [];
-  const passosDeModelo = passos
-    .map((p, indice) => ({ indice, modelo: (p as { model?: unknown }).model }))
-    .filter((p): p is { indice: number; modelo: string } => typeof p.modelo === "string");
+  const passosDeModelo = passos.flatMap((p, indice) => {
+    const passo = p as { model?: unknown; name?: unknown; key?: unknown };
+    if (typeof passo.model !== "string") return [];
+    const nome = typeof passo.name === "string" ? passo.name : typeof passo.key === "string" ? passo.key : `#${indice + 1}`;
+    return [{ indice, nome, modelo: passo.model }];
+  });
   return { id: bruto.id, name: bruto.name, modelo: passosDeModelo[0]?.modelo ?? null, passos: passos.length, passosDeModelo };
 }

@@ -99,13 +99,13 @@ interface ServiceApi {
   "agents.exportFile": (agentId: string) => Promise<string | null>;
   /**
    * Os agents prontos do marketplace: os specs de `examples/agents/` lidos do
-   * disco no processo principal, com o mesmo `AgentSpec` que valida a
+   * repositório remoto (ou da cópia empacotada, se ele falhar), com o mesmo `AgentSpec` que valida a
    * importação. Só leitura; instalar é o `agents.importTemplate`. Cada passo
-   * de modelo vem com o índice e o modelo pedido, para o seletor de
+   * de modelo vem com o índice, o nome e o modelo pedido, para o seletor de
    * instalação oferecer a troca.
    */
   "agents.templates": () => Promise<
-    { id: string; name: string; modelo: string | null; passos: number; passosDeModelo: { indice: number; modelo: string }[] }[]
+    { id: string; name: string; modelo: string | null; passos: number; passosDeModelo: { indice: number; nome: string; modelo: string }[] }[]
   >;
   /**
    * Instala um template do marketplace pelo id, como o importar de arquivo

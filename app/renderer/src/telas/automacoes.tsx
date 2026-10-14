@@ -3,14 +3,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MODELOS, rascunhoDoModelo, type ModeloId } from "@/lib/automacao";
 import { call, read, useRead, type ReadResult } from "@/lib/bridge";
-import { rotuloDeEstado, rotuloDoModelo } from "@/lib/rotulos";
+import { rotuloDeEstado } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
-import { Bot, Download, Loader2, Play, Plus } from "lucide-react";
+import { Bot, Loader2, Play, Plus } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { TriggerConfig } from "../../../src/config/types";
 import { EditorDeAutomacao } from "../automacoes/editor";
 import { appDoGatilho, resumoDoGatilho, Selo, tituloDoGatilho } from "../automacoes/visual";
+import { InstalacaoDeTemplate } from "../instalar-template";
 import { Biblioteca } from "./biblioteca";
 import type { TelaProps } from "../rotas";
 
@@ -82,22 +83,16 @@ function Marketplace({ navegar }: Pick<TelaProps, "navegar">) {
   const { t } = useTranslation();
   const templates = useRead("agents.templates");
   const instalados = useRead("agents.list");
-  const [instalando, setInstalando] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [recem, setRecem] = useState<string | null>(null);
   const idsInstalados = new Set((instalados.data ?? []).map((a) => a.id));
 
-  const instalar = (id: string): void => {
-    setInstalando(id);
+  const instalar = async (id: string, substituicoes: Record<number, string>): Promise<void> => {
     setErro(null);
-    call("agents.importTemplate", id)
-      .then((r) => {
-        setRecem(r.agentId);
-        // Recarrega a lista de instalados para o selo aparecer sem sair da aba.
-        read("agents.list").then(() => undefined, () => undefined);
-      })
-      .catch((e: unknown) => setErro(e instanceof Error ? e.message : String(e)))
-      .finally(() => setInstalando(null));
+    const r = await call("agents.importTemplate", id, substituicoes);
+    setRecem(r.agentId);
+    // Recarrega a lista de instalados para o selo aparecer sem sair da aba.
+    read("agents.list").then(() => undefined, () => undefined);
   };
 
   return (
@@ -112,8 +107,8 @@ function Marketplace({ navegar }: Pick<TelaProps, "navegar">) {
           {(templates.data ?? []).map((template) => (
             <CartaoDeTemplate
               instalado={idsInstalados.has(template.id) || recem === template.id}
-              instalando={instalando === template.id}
-              instalar={() => instalar(template.id)}
+              aoFalhar={setErro}
+              instalar={(substituicoes) => instalar(template.id, substituicoes)}
               key={template.id}
               template={template}
               ver={(id) => navegar("automations", id)}
@@ -127,14 +122,14 @@ function Marketplace({ navegar }: Pick<TelaProps, "navegar">) {
 
 function CartaoDeTemplate({
   instalado,
-  instalando,
+  aoFalhar,
   instalar,
   template,
   ver,
 }: {
   instalado: boolean;
-  instalando: boolean;
-  instalar: () => void;
+  aoFalhar: (mensagem: string) => void;
+  instalar: (substituicoes: Record<number, string>) => Promise<void>;
   template: Template;
   ver: (id: string) => void;
 }) {
@@ -153,22 +148,18 @@ function CartaoDeTemplate({
         ) : null}
       </div>
       <div className="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-        {template.modelo !== null ? <span>{rotuloDoModelo(template.modelo)}</span> : null}
         <span>{t("agents.marketplace.steps", { count: template.passos })}</span>
-        <span className="font-mono">{template.id}</span>
+        <span className="min-w-0 truncate font-mono">{template.id}</span>
       </div>
-      <div className="mt-auto flex items-center gap-2 pt-1">
-        {instalado ? (
+      {instalado ? (
+        <div className="mt-auto flex items-center gap-2 pt-1">
           <Button className="cursor-pointer" onClick={() => ver(template.id)} size="sm" variant="outline">
             {t("agents.marketplace.open")}
           </Button>
-        ) : (
-          <Button className="cursor-pointer" disabled={instalando} onClick={instalar} size="sm">
-            {instalando ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
-            {t("agents.marketplace.install")}
-          </Button>
-        )}
-      </div>
+        </div>
+      ) : (
+        <InstalacaoDeTemplate aoFalhar={aoFalhar} instalar={instalar} nome={template.name} passosDeModelo={template.passosDeModelo} />
+      )}
     </li>
   );
 }
