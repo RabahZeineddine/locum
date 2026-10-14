@@ -30,8 +30,9 @@ import type { StartupService } from "../src/services/startup-service.js";
 import type { UpdaterState } from "../src/update/state.js";
 import type { TrackerService } from "../src/services/tracker-service.js";
 import type { TriggerService } from "../src/services/trigger-service.js";
+import type { PreviaDoGatilho } from "../src/services/trigger-preview.js";
 import type { Scheduler, TickResult } from "../src/triggers/scheduler.js";
-import type { WorkingHoursConfig } from "../src/config/types.js";
+import type { TriggerConfigInput, WorkingHoursConfig } from "../src/config/types.js";
 
 /**
  * Contrato da ponte entre a janela e a camada de servico.
@@ -429,6 +430,17 @@ interface ServiceApi {
   "triggers.schedule": Scheduler["schedule"];
   /** Força uma verificação manual imediata de todos os gatilhos habilitados. */
   "triggers.tick": () => Promise<TickResult>;
+  /**
+   * Os últimos pull requests que o gatilho viu e não virou evento, com o
+   * motivo. Leitura do que a varredura já registrou.
+   */
+  "triggers.discards": Scheduler["descartes"];
+  /**
+   * O que a varredura do GitHub faria agora com esta configuração, que pode
+   * ainda não estar salva: cada pull request aberto com entra ou não entra e o
+   * motivo. Lê o GitHub e não grava cursor, evento nem descarte.
+   */
+  "triggers.previewGithub": (config: TriggerConfigInput) => Promise<PreviaDoGatilho>;
   "scheduler.getWorkingHours": () => Promise<WorkingHoursConfig | undefined>;
   "scheduler.setWorkingHours": (config: WorkingHoursConfig) => Promise<void>;
 
@@ -656,6 +668,8 @@ export const BRIDGE_CHANNELS = [
   "triggers.setEnabled",
   "triggers.schedule",
   "triggers.tick",
+  "triggers.discards",
+  "triggers.previewGithub",
   "scheduler.getWorkingHours",
   "scheduler.setWorkingHours",
   "automations.get",

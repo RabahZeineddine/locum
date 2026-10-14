@@ -372,6 +372,8 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "triggers.setEnabled": (id, enabled) => triggerService.setEnabled(id, enabled),
     "triggers.schedule": (at) => scheduler.schedule(at),
     "triggers.tick": () => scheduler.tick({ reason: "manual", wait: true }),
+    "triggers.discards": (triggerId) => scheduler.descartes(triggerId),
+    "triggers.previewGithub": async (config) => (await import("../src/services/trigger-preview.js")).previaDoGatilho(config),
     "scheduler.getWorkingHours": () => settingsService.getWorkingHours(),
     "scheduler.setWorkingHours": (config) => settingsService.setWorkingHours(config),
 

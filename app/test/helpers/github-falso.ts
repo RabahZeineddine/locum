@@ -28,11 +28,12 @@ export function githubFalso(prs: Pr[], membros: Membros = {}) {
 
   const rest = {
     search: {
-      issuesAndPullRequests: async (params: { q: string }) => {
+      issuesAndPullRequests: async (params: { q: string; per_page?: number }) => {
         chamadas.buscas.push(params.q);
         return {
           data: {
-            items: prs.map((p) => ({
+            total_count: prs.length,
+            items: prs.slice(0, params.per_page ?? prs.length).map((p) => ({
               number: p.number,
               title: `PR ${p.number}`,
               html_url: `https://example.invalid/pr/${p.number}`,
@@ -81,7 +82,7 @@ export function githubFalso(prs: Pr[], membros: Membros = {}) {
     }
     if (rota === rest.checks.listForRef) return [];
     if (rota === rest.search.issuesAndPullRequests) {
-      const { data } = await rest.search.issuesAndPullRequests(params as { q: string });
+      const { data } = await rest.search.issuesAndPullRequests(params as { q: string; per_page?: number });
       return data.items;
     }
     if (rota === rest.teams.listMembersInOrg) {

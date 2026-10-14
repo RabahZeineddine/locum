@@ -496,6 +496,73 @@ export async function scanOpenPullRequests(
   return { eventIds, created, descartes };
 }
 
+/** Quantos pull requests a prévia examina. */
+export const TETO_DA_PREVIA = 50;
+
+/** Um pull request da prévia: se a varredura o aceitaria agora, e por quê. */
+export type PreviaDoPr = {
+  /** `org/repo#123`. */
+  pr: string;
+  titulo: string;
+  autor?: string;
+  url?: string;
+  entra: boolean;
+  /** O motivo do descarte; para quem entra, a frase que diz isso. */
+  motivo: string;
+  /** Entra, mas este commit já é um evento: a varredura não grava de novo. */
+  jaVirouEvento?: boolean;
+};
+
+export type PreviaDaVarredura = { itens: PreviaDoPr[]; cortada: boolean };
+
+/**
+ * O que a varredura faria agora, sem fazer.
+ *
+ * Passa pelo mesmo `examinar` da varredura, então a resposta é a dela. Difere
+ * em três pontos de propósito: não tem janela de cursor (a prévia olha o que
+ * está aberto, e não só o que mudou desde a última batida), a busca vai sem os
+ * qualificadores dos filtros (quem não entra precisa aparecer com o motivo) e
+ * nada é gravado: nem cursor, nem evento, nem descarte.
+ */
+export async function previewOpenPullRequests(
+  owner: string,
+  repoFilter: RegExp,
+  deps: PollOptions = {},
+): Promise<PreviaDaVarredura> {
+  const ctx = contextoDoExame(owner, repoFilter, deps);
+  const exact = exactRepo(owner, repoFilter);
+  const query = ["is:pr", "is:open", exact ? `repo:${exact}` : `org:${owner}`].join(" ");
+  const { data } = await ctx.gh.rest.search.issuesAndPullRequests({
+    q: query,
+    sort: "updated",
+    order: "desc",
+    per_page: TETO_DA_PREVIA,
+  });
+
+  const itens: PreviaDoPr[] = [];
+  for (const item of data.items) {
+    const exame = await examinar(ctx, item);
+    if (exame === null) continue;
+    if (!exame.entra) {
+      const d = exame.descarte;
+      itens.push({ pr: d.pr, titulo: d.titulo ?? "", autor: d.autor, url: d.url, entra: false, motivo: d.motivo });
+      continue;
+    }
+    const conhecido = exame.conhecido !== undefined;
+    itens.push({
+      pr: `${owner}/${exame.repo}#${item.number}`,
+      titulo: exame.pr.title,
+      autor: exame.pr.user?.login,
+      url: exame.pr.html_url,
+      entra: true,
+      motivo: conhecido ? "passa nos filtros, mas este commit já virou evento" : "passa em todos os filtros",
+      ...(conhecido ? { jaVirouEvento: true } : {}),
+    });
+  }
+  const cortada = data.items.length >= TETO_DA_PREVIA && (data.total_count ?? 0) > data.items.length;
+  return { itens, cortada };
+}
+
 /**
  * Marca invisivel no corpo do que o Locum publica. O token e pessoal, entao a
  * review automatica sai assinada pela mesma conta que revisa a mao: sem a marca
