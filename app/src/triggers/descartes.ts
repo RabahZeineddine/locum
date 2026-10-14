@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
+import { comTrava } from "./trava.js";
 import type { Descarte } from "../sources/github-filtros.js";
 
 type Db = typeof defaultDb;
@@ -44,6 +45,11 @@ export async function registrarDescartes(
   at: number,
 ): Promise<void> {
   if (novos.length === 0) return;
+  // Ler e gravar dentro da trava: duas batidas do mesmo gatilho não perdem o que a outra gravou.
+  return comTrava(`descartes:${triggerId}`, () => gravar(db, triggerId, novos, at));
+}
+
+async function gravar(db: Db, triggerId: string, novos: Descarte[], at: number): Promise<void> {
   const chave = (d: Descarte) => `${d.pr}\n${d.motivo}`;
   const nossos = new Set(novos.map(chave));
   const antigos = (await lerDescartes(db, triggerId)).filter((d) => !nossos.has(chave(d)));
@@ -56,4 +62,11 @@ export async function registrarDescartes(
       target: [schema.cursors.source, schema.cursors.key],
       set: { value, updatedAt: Math.floor(at / 1000) },
     });
+}
+
+/** Apaga o registro de um gatilho removido. */
+export async function esquecerDescartes(db: Db, triggerId: string): Promise<void> {
+  await comTrava(`descartes:${triggerId}`, async () => {
+    await db.delete(schema.cursors).where(and(eq(schema.cursors.source, FONTE), eq(schema.cursors.key, triggerId)));
+  });
 }

@@ -2,7 +2,6 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { PollFilters } from "../src/config/types.js";
 import {
-  listaDeNomes,
   listaDoTexto,
   podarFiltros,
   revisaoComoTexto,
@@ -10,15 +9,12 @@ import {
   textoDaLista,
 } from "../renderer/lib/filtros-do-gatilho.js";
 
-test("a lista digitada separa por vírgula, espaço ou quebra de linha e some com vazios", () => {
-  assert.deepEqual(listaDoTexto("ana, bia  caio\nduda,,"), ["ana", "bia", "caio", "duda"]);
+test("a lista digitada separa por vírgula ou quebra de linha, e o espaço fica no nome", () => {
+  assert.deepEqual(listaDoTexto("ana, bia\ncaio,,"), ["ana", "bia", "caio"]);
+  assert.deepEqual(listaDoTexto("help wanted, bug\nneeds review"), ["help wanted", "bug", "needs review"]);
   assert.deepEqual(listaDoTexto("  "), []);
   assert.equal(textoDaLista(["a", "b"]), "a, b");
   assert.equal(textoDaLista(undefined), "");
-});
-
-test("nome com espaço, como a label help wanted, só se separa por vírgula", () => {
-  assert.deepEqual(listaDeNomes("help wanted, bug\nneeds review"), ["help wanted", "bug", "needs review"]);
 });
 
 test("o @me e o org/slug passam inteiros", () => {

@@ -3,15 +3,17 @@ import { Octokit } from "octokit";
 import { and, eq } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
 import type { ActionHandler } from "../approval/gate.js";
-import type { PollFilters, ReviewFinding, ReviewVerdict } from "../config/types.js";
+import type { Authorship, PollFilters, ReviewFinding, ReviewVerdict } from "../config/types.js";
 import type { EventPayload } from "../executor/executor.js";
 import { GITHUB_TOKEN_ENV, githubService, githubToken } from "../services/github-service.js";
 import { fetchCiStatus, type ChecksClient, type CiStatus } from "./ci-status.js";
 import { limitDiff, type OmittedFile } from "./diff-limit.js";
 import {
   avaliarArquivos,
+  avaliarAutoria,
   avaliarItem,
   avaliarPr,
+  avaliarReview,
   avaliarTimes,
   chaveDosFiltros,
   leitorDeTimes,
@@ -245,7 +247,8 @@ async function contextFromPr(
 export type PollClient = PrClient & {
   rest: PrClient["rest"] & {
     search: Pick<Octokit["rest"]["search"], "issuesAndPullRequests">;
-    teams: Pick<Octokit["rest"]["teams"], "listMembersInOrg">;
+    teams: Pick<Octokit["rest"]["teams"], "listMembersInOrg" | "getByName">;
+    users: Pick<Octokit["rest"]["users"], "getByUsername">;
   };
 };
 
@@ -254,6 +257,8 @@ export type PollOptions = {
   includeDrafts?: boolean;
   /** Filtros do gatilho além do repositório. Ausente, a varredura não filtra nada. */
   filters?: PollFilters;
+  /** Autoria do gatilho. Faz parte do mesmo exame que os filtros, para a prévia e a batida dizerem o mesmo. */
+  authorship?: Authorship;
   /** A conta do token, para trocar `@me`. Nulo é "nunca conferida". */
   viewer?: string | null;
   client?: PollClient;
@@ -322,13 +327,13 @@ export interface PullRequestScan {
 /**
  * O padrão casa com o repositório.
  *
- * Vale o nome sozinho e o nome com o dono na frente: o padrão que a tela monta
- * pelo nome (`^api-.*$`) é só do nome, e o que veio da linha de comando
- * (`^dono/api$`) leva o dono. Testar só a forma com o dono deixava o primeiro
- * sem casar com repositório nenhum.
+ * O padrão sem barra é só do nome (o que a tela monta, `^api-.*$`) e vale
+ * contra o nome sozinho; com barra leva o dono (`^dono/api$`,
+ * `^(?!acme/legacy-)`) e vale só contra `dono/repo`, como sempre valeu. Testar
+ * o nome sozinho num padrão com dono mudaria o que ele pega.
  */
 function casaRepo(filtro: RegExp, owner: string, repo: string): boolean {
-  return filtro.test(repo) || filtro.test(`${owner}/${repo}`);
+  return filtro.source.includes("/") ? filtro.test(`${owner}/${repo}`) : filtro.test(repo);
 }
 
 /** Quantos descartes uma varredura devolve; o resto some para não inchar a batida. */
@@ -354,6 +359,8 @@ type ContextoDoExame = {
   repoFilter: RegExp;
   includeDrafts: boolean;
   filtros: FiltrosResolvidos;
+  authorship: Authorship;
+  viewer: string | null;
   membrosDe: ReturnType<typeof leitorDeTimes>;
 };
 
@@ -367,6 +374,8 @@ function contextoDoExame(owner: string, repoFilter: RegExp, deps: PollOptions) {
     includeDrafts: deps.includeDrafts ?? false,
     // `@me` sem conta conferida estoura aqui, antes de qualquer chamada.
     filtros: resolverFiltros(deps.filters, deps.viewer ?? null),
+    authorship: deps.authorship ?? "any",
+    viewer: deps.viewer ?? null,
     membrosDe: leitorDeTimes(gh as unknown as ClienteDeTimes),
   } satisfies ContextoDoExame;
 }
@@ -391,6 +400,8 @@ async function examinar(ctx: ContextoDoExame, item: ItemDaBusca & { repository_u
   });
 
   if (item.draft && !ctx.includeDrafts) return fora("draft");
+  const daAutoria = avaliarAutoria(ctx.authorship, autor, ctx.viewer);
+  if (daAutoria !== null) return fora(daAutoria);
   const doItem = avaliarItem(ctx.filtros, item);
   if (doItem !== null) return fora(doItem);
   const dosTimes = await avaliarTimes(ctx.filtros, autor, ctx.membrosDe);
@@ -399,8 +410,10 @@ async function examinar(ctx: ContextoDoExame, item: ItemDaBusca & { repository_u
   const { data: pr } = await ctx.gh.rest.pulls.get({ owner: ctx.owner, repo, pull_number: item.number });
   // Virou rascunho entre a busca e a leitura: vale o estado mais novo.
   if (pr.draft && !ctx.includeDrafts) return fora("draft");
-  const doPr = avaliarPr(ctx.filtros, pr, ctx.owner);
+  const doPr = avaliarPr(ctx.filtros, pr);
   if (doPr !== null) return fora(doPr);
+  const doReview = await avaliarReview(ctx.filtros, pr, ctx.owner, ctx.membrosDe);
+  if (doReview !== null) return fora(doReview);
 
   const externalId = `pr:${ctx.owner}/${repo}#${item.number}:sha:${pr.head.sha}`;
   const [known] = await ctx.db
@@ -442,14 +455,19 @@ export async function scanOpenPullRequests(
   // a chave antiga para não perder a posição de quem já varria assim. O mesmo
   // vale para os filtros: sem eles a chave é a de sempre.
   const scope = repoFilter.source === ".*" ? "" : `:${repoFilter.source}`;
-  const key = `prs:${owner}${scope}${includeDrafts ? ":rascunhos" : ""}${chaveDosFiltros(deps.filters)}`;
+  const key = `prs:${owner}${scope}${includeDrafts ? ":rascunhos" : ""}${chaveDosFiltros(deps.filters, ctx.authorship)}`;
 
   const [cursor] = await db
     .select()
     .from(schema.cursors)
     .where(and(eq(schema.cursors.source, source), eq(schema.cursors.key, key)));
 
-  const since = searchTimestamp(cursor?.value ?? new Date((deps.now ?? Date.now()) - 24 * 3600 * 1000).toISOString());
+  // Cursor de filtro parado há dias não vale uma janela de dias: o gatilho
+  // retomado olha só as últimas 24h, como o Teams.
+  const agora = deps.now ?? Date.now();
+  const umDiaAtras = new Date(agora - 24 * 3600 * 1000).toISOString();
+  const doCursor = cursor?.value !== undefined && key.includes(":f") && cursor.value < umDiaAtras ? umDiaAtras : cursor?.value;
+  const since = searchTimestamp(doCursor ?? umDiaAtras);
   const query = montarConsulta(
     [
       "is:pr",
@@ -525,7 +543,43 @@ export type PreviaDoPr = {
   jaVirouEvento?: boolean;
 };
 
-export type PreviaDaVarredura = { itens: PreviaDoPr[]; cortada: boolean };
+export type PreviaDaVarredura = {
+  itens: PreviaDoPr[];
+  cortada: boolean;
+  /** Login ou time citado nos filtros que o GitHub não conhece ou não deixa ver. Não bloqueia. */
+  avisos: string[];
+};
+
+/**
+ * Confere os logins e os times que os filtros citam. O que o GitHub responde
+ * com 404 vira aviso: o filtro com ele nunca casaria, e quem edita precisa
+ * saber. Outra falha (limite, rede) não vira aviso, porque não diz nada sobre o nome.
+ */
+async function avisosDosCitados(ctx: ContextoDoExame, filters: PollFilters | undefined): Promise<string[]> {
+  const f = ctx.filtros;
+  const logins = [...new Set([...f.authorsInclude, ...f.authorsExclude, ...f.reviewUsers])].filter(
+    (l) => !l.endsWith("[bot]") && l.toLowerCase() !== ctx.viewer?.toLowerCase(),
+  );
+  const times = [...new Set([...f.reviewTeams, ...f.teamMembers, ...(filters?.reviewRequested?.teams ?? [])])];
+  const avisos: string[] = [];
+  const naoExiste = (err: unknown) => (err as { status?: number }).status === 404;
+  for (const login of logins) {
+    try {
+      await ctx.gh.rest.users.getByUsername({ username: login });
+    } catch (err) {
+      if (naoExiste(err)) avisos.push(`login ${login} não existe ou não está visível`);
+    }
+  }
+  for (const time of new Set(times)) {
+    const [org = "", slug = ""] = time.split("/");
+    try {
+      await ctx.gh.rest.teams.getByName({ org, team_slug: slug });
+    } catch (err) {
+      if (naoExiste(err)) avisos.push(`time ${time} não encontrado ou sem acesso`);
+    }
+  }
+  return avisos;
+}
 
 /**
  * O que a varredura faria agora, sem fazer.
@@ -572,7 +626,7 @@ export async function previewOpenPullRequests(
     });
   }
   const cortada = data.items.length >= TETO_DA_PREVIA && (data.total_count ?? 0) > data.items.length;
-  return { itens, cortada };
+  return { itens, cortada, avisos: await avisosDosCitados(ctx, deps.filters) };
 }
 
 /**

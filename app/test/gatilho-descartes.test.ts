@@ -8,6 +8,7 @@ import type { McpService } from "../src/services/mcp-service.js";
 import type { SlackService } from "../src/services/slack-service.js";
 import type { TriggerEntry, TriggerService } from "../src/services/trigger-service.js";
 import { scanOpenPullRequests } from "../src/sources/github.js";
+import { previaDoGatilho } from "../src/services/trigger-preview.js";
 import { Scheduler, type PollFn, type SweepFn } from "../src/triggers/scheduler.js";
 import { bancoDeTeste } from "./helpers/db.js";
 import { githubFalso, type Pr } from "./helpers/github-falso.js";
@@ -70,7 +71,7 @@ test("a batida entrega os filtros e a conta do token à varredura", async () => 
     viewer: "rabah",
   });
   await scheduler.tick({ at: T0 });
-  assert.deepEqual(recebido, [{ includeDrafts: false, filters, viewer: "rabah" }]);
+  assert.deepEqual(recebido, [{ includeDrafts: false, authorship: "any", filters, viewer: "rabah" }]);
 });
 
 test("o descarte da varredura fica guardado com o motivo e aparece no detail da batida", async () => {
@@ -110,23 +111,106 @@ test("o mesmo descarte repetido a cada batida vira uma linha só, e a lista guar
   assert.equal(guardados[0]?.em, T0 + 20 * MINUTO);
 });
 
-test("o PR que o filtro de autoria barra também vira descarte com o motivo", async () => {
-  const { db, scheduler } = montar({
-    gatilho: () => gatilho(undefined, "others"),
-    poll: async () => {
-      await db.insert(schema.events).values({
-        id: "e1",
-        source: "github",
-        externalId: "pr-1",
-        payload: { author: "eu", repo: "o/api", pull: 4, title: "Meu", url: "https://example.invalid/4" },
-      });
-      return { eventIds: ["e1"], created: ["e1"] };
-    },
+/** O que a prévia diz que entra e o que a batida de verdade manda executar, para o mesmo gatilho. */
+async function prevEBatida(prs: Pr[], filters: PollFilters | undefined, authorship: "any" | "mine" | "others", viewer: string) {
+  const { client } = githubFalso(prs);
+  const db = bancoDeTeste();
+  const previa = await previaDoGatilho(
+    { ...gatilho(filters, authorship).config } as never,
+    { client, db: bancoDeTeste(), viewer: async () => viewer },
+  );
+  const { scheduler, iniciados } = montar({
+    db,
+    viewer,
+    gatilho: () => gatilho(filters, authorship),
+    poll: (owner, repo, options) => scanOpenPullRequests(owner, repo, { ...options, client, db, now: T0, diffMaxChars: 100_000 }),
   });
   await scheduler.tick({ at: T0 });
+  const eventos = await db.query.events.findMany();
+  const rodaram = iniciados
+    .map((i) => eventos.find((e) => e.id === i.eventId)!.payload as { repo: string; pull: number })
+    .map((p) => `${p.repo}#${p.pull}`)
+    .sort();
+  const entram = previa.itens.filter((i) => i.entra).map((i) => i.pr).sort();
+  return { previa, rodaram, entram, scheduler };
+}
+
+test("others com PR próprio: a prévia e a batida dizem o mesmo, com o mesmo motivo", async () => {
+  const prs: Pr[] = [{ number: 1, author: "rabah" }, { number: 2, author: "ana" }];
+  const { previa, rodaram, entram, scheduler } = await prevEBatida(prs, undefined, "others", "rabah");
+  assert.deepEqual(entram, ["o/api#2"]);
+  assert.deepEqual(rodaram, entram);
+  const propria = previa.itens.find((i) => i.pr === "o/api#1");
+  assert.equal(propria?.entra, false);
   const [descarte] = await scheduler.descartes("g1");
-  assert.equal(descarte?.pr, "o/api#4");
+  assert.equal(descarte?.motivo, propria?.motivo);
   assert.match(descarte?.motivo ?? "", /autoria "others"/);
+});
+
+test("others com authors.include @me: nem a prévia nem a batida deixam passar ninguém", async () => {
+  const prs: Pr[] = [{ number: 1, author: "rabah" }, { number: 2, author: "ana" }];
+  const { entram, rodaram } = await prevEBatida(prs, { authors: { include: ["@me"] } }, "others", "rabah");
+  assert.deepEqual(entram, []);
+  assert.deepEqual(rodaram, []);
+});
+
+test("mine com filtro de label: prévia e batida coincidem", async () => {
+  const prs: Pr[] = [
+    { number: 1, author: "rabah", labels: ["bug"] },
+    { number: 2, author: "rabah", labels: ["docs"] },
+    { number: 3, author: "ana", labels: ["bug"] },
+  ];
+  const { entram, rodaram } = await prevEBatida(prs, { labels: { include: ["bug"] } }, "mine", "rabah");
+  assert.deepEqual(entram, ["o/api#1"]);
+  assert.deepEqual(rodaram, entram);
+});
+
+test("autoria sem conta conferida falha a batida em vez de acordar todo mundo", async () => {
+  const { client } = githubFalso([{ number: 1, author: "rabah" }]);
+  const db = bancoDeTeste();
+  const { scheduler, iniciados } = montar({
+    db,
+    viewer: null,
+    gatilho: () => gatilho(undefined, "mine"),
+    poll: (owner, repo, options) => scanOpenPullRequests(owner, repo, { ...options, client, db, now: T0, diffMaxChars: 100_000 }),
+  });
+  const batida = await scheduler.tick({ at: T0 });
+  assert.equal(batida.outcomes[0]?.status, "failed");
+  assert.match(batida.outcomes[0]?.detail ?? "", /conta do GitHub/);
+  assert.equal(iniciados.length, 0);
+});
+
+test("a batida manual espera a agendada do mesmo gatilho, e dois registros de descarte não se atropelam", async () => {
+  let emVoo = 0;
+  let maximo = 0;
+  const { scheduler } = montar({
+    gatilho: () => gatilho({ maxChangedLines: 1 }),
+    poll: async () => {
+      emVoo++;
+      maximo = Math.max(maximo, emVoo);
+      await new Promise((r) => setTimeout(r, 20));
+      emVoo--;
+      return { eventIds: [], created: [], descartes: [{ pr: `o/api#${Math.random()}`, motivo: "draft" }] };
+    },
+  });
+  await Promise.all([scheduler.tick({ at: T0 }), scheduler.tick({ at: T0 }), scheduler.tick({ at: T0 })]);
+  assert.equal(maximo, 1, "uma varredura por vez no mesmo gatilho");
+
+  const db = bancoDeTeste();
+  const { registrarDescartes, lerDescartes } = await import("../src/triggers/descartes.js");
+  await Promise.all(
+    Array.from({ length: 10 }, (_, i) => registrarDescartes(db, "g9", [{ pr: `o/api#${i}`, motivo: "draft" }], T0 + i)),
+  );
+  assert.equal((await lerDescartes(db, "g9")).length, 10);
+});
+
+test("remover o gatilho apaga o registro de descartes dele", async () => {
+  const db = bancoDeTeste();
+  const { registrarDescartes, lerDescartes } = await import("../src/triggers/descartes.js");
+  const { TriggerService } = await import("../src/services/trigger-service.js");
+  await registrarDescartes(db, "g1", [{ pr: "o/api#1", motivo: "draft" }], T0);
+  await new TriggerService(db).remove("g1");
+  assert.deepEqual(await lerDescartes(db, "g1"), []);
 });
 
 test("trocar o filtro do gatilho não abre run de novo para o PR que já rodou", async () => {

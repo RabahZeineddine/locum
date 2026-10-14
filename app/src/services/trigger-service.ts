@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
 import { TriggerConfig, type TriggerConfigInput } from "../config/types.js";
+import { esquecerDescartes } from "../triggers/descartes.js";
 import { isReserved } from "./agent-service.js";
 
 type Db = typeof defaultDb;
@@ -131,6 +132,7 @@ export class TriggerService {
       .delete(schema.triggers)
       .where(eq(schema.triggers.id, id))
       .returning();
+    await esquecerDescartes(this.db, id);
     return deleted.length > 0;
   }
 

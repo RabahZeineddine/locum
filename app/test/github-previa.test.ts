@@ -105,3 +105,13 @@ test("a prévia limita a 50 PRs e avisa quando cortou", async () => {
 test("a prévia recusa gatilho que não é de varredura do GitHub", async () => {
   await assert.rejects(previaDoGatilho({ kind: "cron", expression: "* * * * *" } as never, { db: bancoDeTeste() }), /varredura do GitHub/);
 });
+
+test("a prévia avisa do login e do time que o GitHub não conhece, sem bloquear", async () => {
+  const { client } = githubFalso(PRS);
+  const previa = await previaDoGatilho(
+    gatilho({ authors: { include: ["fantasma"] }, reviewRequested: { teams: ["o/sumiu"] } }),
+    { client, db: bancoDeTeste(), viewer: async () => null },
+  );
+  assert.deepEqual(previa.avisos.sort(), ["login fantasma não existe ou não está visível", "time o/sumiu não encontrado ou sem acesso"]);
+  assert.equal(previa.itens.length, PRS.length);
+});

@@ -32,7 +32,7 @@ export function clienteDeExemplo(owner = "acme"): PollClient {
   const achar = (n: number) => EXEMPLOS.find((e) => e.number === n)!;
   const rest = {
     search: {
-      issuesAndPullRequests: async (params: { per_page?: number }) => ({
+      issuesAndPullRequests: async (params: { per_page?: number; q?: string }) => ({
         data: {
           total_count: EXEMPLOS.length,
           items: EXEMPLOS.slice(0, params.per_page ?? EXEMPLOS.length).map((e) => ({
@@ -71,7 +71,14 @@ export function clienteDeExemplo(owner = "acme"): PollClient {
       listFiles: async () => ({}),
     },
     checks: { listForRef: async () => ({}) },
-    teams: { listMembersInOrg: async () => ({}) },
+    teams: { listMembersInOrg: async () => ({}), getByName: async () => ({ data: {} }) },
+    // Um login com "fantasma" não existe, para a prévia mostrar o aviso.
+    users: {
+      getByUsername: async ({ username }: { username: string }) => {
+        if (username.includes("fantasma")) throw Object.assign(new Error("Not Found"), { status: 404 });
+        return { data: {} };
+      },
+    },
   };
 
   const paginate = async (rota: unknown, params: Record<string, unknown>) => {
@@ -79,6 +86,7 @@ export function clienteDeExemplo(owner = "acme"): PollClient {
       return achar(params.pull_number as number).files.map((filename) => ({ filename, status: "modified", additions: 1, deletions: 0 }));
     }
     if (rota === rest.teams.listMembersInOrg) return [{ login: "ana" }, { login: "bia" }];
+    if (rota === rest.search.issuesAndPullRequests) return (await rest.search.issuesAndPullRequests(params)).data.items;
     return [];
   };
 

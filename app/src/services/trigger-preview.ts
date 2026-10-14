@@ -1,5 +1,6 @@
 import { PollTrigger, type TriggerConfigInput } from "../config/types.js";
 import type { PollClient, PreviaDaVarredura } from "../sources/github.js";
+import { precisaDaConta } from "../sources/github-filtros.js";
 import type { db as defaultDb } from "../db/index.js";
 
 type Db = typeof defaultDb;
@@ -25,14 +26,15 @@ export async function previaDoGatilho(
   const owner = parsed.owner ?? process.env.GITHUB_OWNER;
   if (!owner) throw new Error("gatilho sem dono e sem GITHUB_OWNER, a varredura precisa da org");
 
-  const viewer =
+  const conta =
     deps.viewer ??
     (async () => (await import("./github-service.js")).githubService.viewerLogin());
   const { previewOpenPullRequests } = await import("../sources/github.js");
   return previewOpenPullRequests(owner, new RegExp(parsed.repoMatch), {
     includeDrafts: parsed.includeDrafts,
     filters: parsed.filters,
-    viewer: JSON.stringify(parsed.filters ?? {}).includes('"@me"') ? await viewer() : null,
+    authorship: parsed.authorship,
+    viewer: precisaDaConta(parsed.filters, parsed.authorship) ? await conta() : null,
     client: deps.client,
     db: deps.db,
   });

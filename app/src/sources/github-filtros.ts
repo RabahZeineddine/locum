@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
-import type { PollFilters } from "../config/types.js";
+import picomatch from "picomatch";
+import type { Authorship, PollFilters } from "../config/types.js";
+import { matchesAuthorship } from "../services/github-service.js";
 
 /**
  * Os filtros do gatilho de varredura do GitHub.
@@ -115,9 +117,15 @@ export function temFiltroDeArquivos(f: FiltrosResolvidos): boolean {
  * perder a posição; com filtro, cada combinação tem o seu cursor, porque o
  * cursor de uma não vale para a outra (o que uma recusou a outra quer ver).
  */
-export function chaveDosFiltros(filters: PollFilters | undefined): string {
-  const limpo = limpar(filters);
+export function chaveDosFiltros(filters: PollFilters | undefined, authorship: Authorship = "any"): string {
+  // A autoria também decide o que vira evento, então entra na chave quando não é a padrão.
+  const limpo = limpar({ ...(filters ?? {}), ...(authorship === "any" ? {} : { authorship }) });
   return limpo === undefined ? "" : `:f${createHash("sha1").update(JSON.stringify(limpo)).digest("hex").slice(0, 10)}`;
+}
+
+/** Algum filtro precisa da conta do token: `@me` ou autoria diferente de `any`. */
+export function precisaDaConta(filters: PollFilters | undefined, authorship: Authorship): boolean {
+  return authorship !== "any" || JSON.stringify(filters ?? {}).includes('"@me"');
 }
 
 /** Tira o que está vazio, para `{}` e `{ labels: { include: [] } }` valerem como sem filtro. */
@@ -134,34 +142,22 @@ function limpar(valor: unknown): unknown {
 
 /* ------------------------------------------------------------------ glob */
 
-const CACHE_DE_GLOB = new Map<string, RegExp>();
+const CACHE_DE_GLOB = new Map<string, (texto: string) => boolean>();
 
-/** `**` atravessa pasta, `*` e `?` ficam dentro de um nome. */
-function globParaRegex(glob: string): RegExp {
-  const guardado = CACHE_DE_GLOB.get(glob);
-  if (guardado) return guardado;
-  let fonte = "";
-  for (let i = 0; i < glob.length; i++) {
-    const c = glob[i]!;
-    if (c === "*" && glob[i + 1] === "*") {
-      if (glob[i + 2] === "/") {
-        fonte += "(?:.*/)?";
-        i += 2;
-      } else {
-        fonte += ".*";
-        i += 1;
-      }
-    } else if (c === "*") fonte += "[^/]*";
-    else if (c === "?") fonte += "[^/]";
-    else fonte += c.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+/**
+ * Glob de caminho: sem barra casa em qualquer pasta, como no gitignore
+ * (`*.md`), e `**`, `[...]` e `{a,b}` valem. Branch não tem pasta de verdade,
+ * então o glob dela casa o nome inteiro.
+ */
+export function casaGlob(glob: string, texto: string, caminho = false): boolean {
+  let casa = CACHE_DE_GLOB.get(glob);
+  if (!casa) {
+    casa = picomatch(glob, { dot: true });
+    CACHE_DE_GLOB.set(glob, casa);
   }
-  const regex = new RegExp(`^${fonte}$`);
-  CACHE_DE_GLOB.set(glob, regex);
-  return regex;
-}
-
-export function casaGlob(glob: string, texto: string): boolean {
-  return globParaRegex(glob).test(texto);
+  if (casa(texto)) return true;
+  // Sem barra, o glob de caminho vale para o nome do arquivo em qualquer pasta.
+  return caminho && !glob.includes("/") && casa(texto.slice(texto.lastIndexOf("/") + 1));
 }
 
 const TEM_CORINGA = /[*?[\]{}]/;
@@ -179,17 +175,14 @@ const SIMPLES = /^[\w.@/-]+$/;
  * Os pedaços da consulta que dizem o mesmo que um filtro. Só entram os que
  * não mudam o sentido: lista de dois ou mais para o mesmo qualificador viraria
  * E, e glob não existe na busca.
+ *
+ * Login e time nunca vão para a consulta: o GitHub responde 422 à busca
+ * inteira quando o login não existe ou não é visível (`author:`,
+ * `review-requested:`) ou o time é inválido, e o gatilho morreria sem o
+ * cursor andar. Autor, review pedido e membro de time são conferidos em código.
  */
 export function qualificadores(f: FiltrosResolvidos): string[] {
   const q: string[] = [];
-  if (f.authorsInclude.length === 1 && SIMPLES.test(f.authorsInclude[0]!)) q.push(`author:${f.authorsInclude[0]}`);
-
-  const alvos = f.reviewUsers.length + f.reviewTeams.length;
-  if (alvos === 1) {
-    if (f.reviewUsers[0] !== undefined && SIMPLES.test(f.reviewUsers[0])) q.push(`review-requested:${f.reviewUsers[0]}`);
-    if (f.reviewTeams[0] !== undefined && SIMPLES.test(f.reviewTeams[0])) q.push(`team-review-requested:${f.reviewTeams[0]}`);
-  }
-
   const incluiLabels = f.labelsInclude.filter((l) => !/["\\]/.test(l));
   if (incluiLabels.length > 0 && incluiLabels.length === f.labelsInclude.length) {
     q.push(`label:${incluiLabels.map((l) => `"${l}"`).join(",")}`);
@@ -199,10 +192,7 @@ export function qualificadores(f: FiltrosResolvidos): string[] {
     q.push(`base:${f.baseBranches[0]}`);
   }
 
-  const negativos = [
-    ...f.authorsExclude.filter((a) => SIMPLES.test(a)).map((a) => `-author:${a}`),
-    ...f.labelsExclude.filter((l) => !/["\\]/.test(l)).map((l) => `-label:"${l}"`),
-  ];
+  const negativos = f.labelsExclude.filter((l) => !/["\\]/.test(l)).map((l) => `-label:"${l}"`);
   q.push(...negativos.slice(0, TETO_DE_NEGACOES));
   return q;
 }
@@ -236,20 +226,11 @@ export function avaliarItem(f: FiltrosResolvidos, item: ItemDaBusca): string | n
   return null;
 }
 
-/** O que o `pulls.get` mostra: branch, pedido de review e tamanho. */
-export function avaliarPr(f: FiltrosResolvidos, pr: FatosDoPr, owner: string): string | null {
+/** O que o `pulls.get` mostra de branch e tamanho. */
+export function avaliarPr(f: FiltrosResolvidos, pr: FatosDoPr): string | null {
   if (f.baseBranches.length > 0 && !f.baseBranches.some((g) => casaGlob(g, pr.base.ref))) {
     return `base ${pr.base.ref} fora de ${f.baseBranches.join(", ")}`;
   }
-
-  if (f.reviewUsers.length + f.reviewTeams.length > 0) {
-    const pessoas = new Set((pr.requested_reviewers ?? []).map((r) => minusculo(r.login ?? "")));
-    const times = new Set((pr.requested_teams ?? []).map((t) => minusculo(`${owner}/${t.slug ?? ""}`)));
-    const pedido =
-      f.reviewUsers.some((u) => pessoas.has(minusculo(u))) || f.reviewTeams.some((t) => times.has(minusculo(t)));
-    if (!pedido) return `sem review pedido para ${[...f.reviewUsers, ...f.reviewTeams].join(" ou ")}`;
-  }
-
   if (f.maxChangedLines !== null) {
     const linhas = pr.additions + pr.deletions;
     if (linhas > f.maxChangedLines) return `${linhas} linhas, teto ${f.maxChangedLines}`;
@@ -257,14 +238,59 @@ export function avaliarPr(f: FiltrosResolvidos, pr: FatosDoPr, owner: string): s
   return null;
 }
 
+/**
+ * Review pedido para as pessoas ou os times do filtro.
+ *
+ * Como na tela do GitHub, o pedido feito a um time de que a pessoa é membro
+ * conta como pedido à pessoa: `requested_teams` mais a membresia, lida pelo
+ * mesmo cache da batida. Se a membresia não puder ser lida, vale o erro do
+ * time, e o pull request não é descartado por isso.
+ */
+export async function avaliarReview(
+  f: FiltrosResolvidos,
+  pr: FatosDoPr,
+  owner: string,
+  membrosDe: LeitorDeTimes,
+): Promise<string | null> {
+  if (f.reviewUsers.length + f.reviewTeams.length === 0) return null;
+  const pessoas = new Set((pr.requested_reviewers ?? []).map((r) => minusculo(r.login ?? "")));
+  const times = (pr.requested_teams ?? []).map((t) => `${owner}/${t.slug ?? ""}`);
+  const timesMin = new Set(times.map(minusculo));
+
+  let pedido = f.reviewUsers.some((u) => pessoas.has(minusculo(u))) || f.reviewTeams.some((t) => timesMin.has(minusculo(t)));
+  for (const time of pedido || f.reviewUsers.length === 0 ? [] : times) {
+    const { membros } = await membrosDe(time);
+    if (f.reviewUsers.some((u) => membros.has(minusculo(u)))) {
+      pedido = true;
+      break;
+    }
+  }
+  return pedido ? null : `sem review pedido para ${[...f.reviewUsers, ...f.reviewTeams].join(" ou ")}`;
+}
+
+/** A autoria do gatilho (`mine` ou `others`) contra a conta do token, com o mesmo motivo de descarte em todo caminho. */
+export function avaliarAutoria(wanted: Authorship, autor: string | undefined, viewer: string | null): string | null {
+  if (wanted === "any") return null;
+  // Sem a conta conferida não dá para dizer de quem é o pull request, e deixar
+  // passar acordaria o gatilho de um com o do outro.
+  if (viewer === null) {
+    throw new Error("gatilho filtra por autoria e a conta do GitHub nunca foi conferida, confira o token na configuração");
+  }
+  if (matchesAuthorship(wanted, autor, viewer)) return null;
+  const nome = autor ?? "autor desconhecido";
+  return wanted === "others"
+    ? `PR de ${nome}, que é você (autoria "others")`
+    : `PR de ${nome}, que não é você (autoria "mine")`;
+}
+
 /** Os arquivos alterados contra `paths.include` e `paths.exclude`. */
 export function avaliarArquivos(f: FiltrosResolvidos, arquivos: string[]): string | null {
   if (!temFiltroDeArquivos(f)) return null;
   if (arquivos.length === 0) return "sem arquivos alterados";
   const dentro =
-    f.pathsInclude.length === 0 ? arquivos : arquivos.filter((a) => f.pathsInclude.some((g) => casaGlob(g, a)));
+    f.pathsInclude.length === 0 ? arquivos : arquivos.filter((a) => f.pathsInclude.some((g) => casaGlob(g, a, true)));
   if (dentro.length === 0) return `nenhum arquivo em ${f.pathsInclude.join(", ")}`;
-  const restantes = dentro.filter((a) => !f.pathsExclude.some((g) => casaGlob(g, a)));
+  const restantes = dentro.filter((a) => !f.pathsExclude.some((g) => casaGlob(g, a, true)));
   return restantes.length === 0 ? `só mexe em ${f.pathsExclude.join(", ")}` : null;
 }
 
@@ -276,17 +302,37 @@ export type ClienteDeTimes = {
   rest: { teams: { listMembersInOrg: unknown } };
 };
 
-type MembrosDoTime = { membros: Set<string> } | { erro: string };
+type MembrosDoTime = { membros: Set<string> };
+export type LeitorDeTimes = (time: string) => Promise<MembrosDoTime>;
+
+/** Falha de configuração ou de permissão ao ler um time: a batida para e o cursor não anda. */
+export class ErroDeTime extends Error {}
+
+type Falha = { status?: number; message?: string; response?: { headers?: Record<string, string | undefined> } };
 
 /**
- * Quem é membro de cada time, lido uma vez por batida.
+ * O que cada falha ao ler um time significa.
  *
- * `read:org` falta com 403 ou 404, e aí o time não pôde ser conferido: quem
- * pergunta recebe o erro e descarta o pull request, nunca deixa passar. Erro
- * de outro tipo (rede, 5xx) sobe, para a batida falhar e o cursor não andar
- * por cima de um pull request que ninguém conferiu.
+ * Limite de uso, 5xx e rede sobem como vieram. Permissão (`read:org`), SSO e
+ * time inexistente viram `ErroDeTime` com o motivo certo. Nenhuma delas
+ * descarta pull request: a batida falha, o cursor não anda, e com o token ou o
+ * cadastro corrigidos os pull requests voltam.
  */
-export function leitorDeTimes(gh: ClienteDeTimes): (time: string) => Promise<MembrosDoTime> {
+function falhaDoTime(err: unknown, time: string): unknown {
+  const { status, message = "", response } = err as Falha;
+  const h = response?.headers ?? {};
+  const limite = status === 429 || h["x-ratelimit-remaining"] === "0" || h["retry-after"] !== undefined || /rate limit|abuse/i.test(message);
+  if (limite) return err;
+  if (status === 403 && (h["x-github-sso"] !== undefined || /saml|sso/i.test(message))) {
+    return new ErroDeTime(`não deu para conferir o time ${time}: autorize o token no SSO da org`);
+  }
+  if (status === 403) return new ErroDeTime(`não deu para conferir o time ${time}: o token precisa de read:org`);
+  if (status === 404) return new ErroDeTime(`time ${time} não encontrado ou sem acesso`);
+  return err;
+}
+
+/** Quem é membro de cada time, lido uma vez por batida. */
+export function leitorDeTimes(gh: ClienteDeTimes): LeitorDeTimes {
   const cache = new Map<string, Promise<MembrosDoTime>>();
   return (time) => {
     const guardado = cache.get(time.toLowerCase());
@@ -301,11 +347,7 @@ export function leitorDeTimes(gh: ClienteDeTimes): (time: string) => Promise<Mem
         } as never)) as { login: string }[];
         return { membros: new Set(lista.map((m) => minusculo(m.login))) };
       } catch (err) {
-        const status = (err as { status?: number }).status;
-        if (status === 403 || status === 404) {
-          return { erro: `não deu para conferir o time ${time}: o token precisa de read:org` };
-        }
-        throw err;
+        throw falhaDoTime(err, time);
       }
     })();
     cache.set(time.toLowerCase(), lido);
@@ -313,24 +355,17 @@ export function leitorDeTimes(gh: ClienteDeTimes): (time: string) => Promise<Mem
   };
 }
 
-/** O autor é membro de algum dos times. Time que não deu para ler vale como falha. */
+/** O autor é membro de algum dos times. */
 export async function avaliarTimes(
   f: FiltrosResolvidos,
   autor: string | undefined,
-  membrosDe: (time: string) => Promise<MembrosDoTime>,
+  membrosDe: LeitorDeTimes,
 ): Promise<string | null> {
   if (f.teamMembers.length === 0) return null;
   const nome = autor ?? "";
-  let erro: string | null = null;
   for (const time of f.teamMembers) {
-    const lido = await membrosDe(time);
-    if ("erro" in lido) {
-      erro ??= lido.erro;
-    } else if (nome !== "" && lido.membros.has(minusculo(nome))) {
-      return null;
-    }
+    const { membros } = await membrosDe(time);
+    if (nome !== "" && membros.has(minusculo(nome))) return null;
   }
-  if (erro !== null) return erro;
-  const times = f.teamMembers.join(", ");
-  return `autor ${nome || "desconhecido"} fora ${f.teamMembers.length === 1 ? "do time" : "dos times"} ${times}`;
+  return `autor ${nome || "desconhecido"} fora ${f.teamMembers.length === 1 ? "do time" : "dos times"} ${f.teamMembers.join(", ")}`;
 }

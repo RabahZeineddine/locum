@@ -1,16 +1,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { scanOpenPullRequests, type PollClient } from "../src/sources/github.js";
-import type { PollFilters } from "../src/config/types.js";
+import type { Authorship, PollFilters } from "../src/config/types.js";
 import { bancoDeTeste } from "./helpers/db.js";
-import { githubFalso, type Membros, type Pr } from "./helpers/github-falso.js";
+import { githubFalso, type Membros, type Mundo, type Pr } from "./helpers/github-falso.js";
 
 const agora = Date.parse("2026-09-22T12:00:00Z");
 
 /** Roda a varredura e devolve os números dos PRs que entraram, mais os descartes. */
-async function varrer(prs: Pr[], filters: PollFilters | undefined, extra: { viewer?: string | null; membros?: Membros; includeDrafts?: boolean } = {}) {
+async function varrer(prs: Pr[], filters: PollFilters | undefined, extra: { viewer?: string | null; membros?: Membros; includeDrafts?: boolean; authorship?: Authorship; mundo?: Mundo } = {}) {
   const db = bancoDeTeste();
-  const { client, chamadas } = githubFalso(prs, extra.membros);
+  const { client, chamadas } = githubFalso(prs, extra.membros, extra.mundo);
   const varredura = await scanOpenPullRequests("o", /.*/, {
     client,
     db,
@@ -19,6 +19,7 @@ async function varrer(prs: Pr[], filters: PollFilters | undefined, extra: { view
     filters,
     viewer: extra.viewer ?? null,
     includeDrafts: extra.includeDrafts,
+    authorship: extra.authorship,
   });
   const linhas = await db.query.events.findMany();
   const entraram = linhas
@@ -44,7 +45,7 @@ test("authors.include aceita @me e resolve pela conta do token", async () => {
   const prs = [{ number: 1, author: "rabah" }, { number: 2, author: "bia" }];
   const r = await varrer(prs, { authors: { include: ["@me"] } }, { viewer: "Rabah" });
   assert.deepEqual(r.entraram, [1]);
-  assert.match(r.chamadas.buscas[0]!, /author:Rabah/);
+  assert.doesNotMatch(r.chamadas.buscas[0]!, /author:/);
 });
 
 test("@me sem conta conferida derruba a batida em vez de passar sem conferir", async () => {
@@ -70,7 +71,7 @@ test("reviewRequested aceita pessoa ou time, e basta um dos dois", async () => {
     { number: 3, reviewers: ["outra"], teams: ["web"] },
     { number: 4 },
   ];
-  const r = await varrer(prs, { reviewRequested: { users: ["@me"], teams: ["o/backend"] } }, { viewer: "rabah" });
+  const r = await varrer(prs, { reviewRequested: { users: ["@me"], teams: ["o/backend"] } }, { viewer: "rabah", membros: { "o/backend": [], "o/web": [] } });
   assert.deepEqual(r.entraram, [1, 2]);
   assert.equal(motivoDe(r, 3), "sem review pedido para rabah ou o/backend");
   assert.equal(motivoDe(r, 4), "sem review pedido para rabah ou o/backend");
@@ -78,10 +79,33 @@ test("reviewRequested aceita pessoa ou time, e basta um dos dois", async () => {
   assert.doesNotMatch(r.chamadas.buscas[0]!, /review-requested/);
 });
 
-test("reviewRequested com um alvo só vai também para a busca", async () => {
-  const r = await varrer([{ number: 1, teams: ["backend"] }], { reviewRequested: { teams: ["o/backend"] } });
+test("login e time nunca vão para a consulta: login que não existe não derruba a busca", async () => {
+  const prs: Pr[] = [{ number: 1, author: "ana", teams: ["backend"] }];
+  const r = await varrer(prs, {
+    authors: { include: ["fantasma"], exclude: ["outro-fantasma"] },
+    reviewRequested: { users: ["terceiro-fantasma"] },
+  });
+  assert.deepEqual(r.entraram, []);
+  assert.doesNotMatch(r.chamadas.buscas[0]!, /author:|review-requested:/);
+
+  const time = await varrer(prs, { reviewRequested: { teams: ["o/backend"] } });
+  assert.deepEqual(time.entraram, [1]);
+  assert.doesNotMatch(time.chamadas.buscas[0]!, /team-review-requested/);
+});
+
+test("review pedido a um time de que a pessoa é membro conta como pedido a ela", async () => {
+  const prs: Pr[] = [{ number: 1, teams: ["backend"] }, { number: 2, teams: ["web"] }, { number: 3 }];
+  const membros = { "o/backend": ["rabah"], "o/web": ["outra"] };
+  const r = await varrer(prs, { reviewRequested: { users: ["@me"] } }, { viewer: "Rabah", membros });
   assert.deepEqual(r.entraram, [1]);
-  assert.match(r.chamadas.buscas[0]!, /team-review-requested:o\/backend/);
+  assert.equal(motivoDe(r, 2), "sem review pedido para Rabah");
+});
+
+test("review pedido a um time cuja membresia não dá para ler derruba a batida, sem descartar", async () => {
+  await assert.rejects(
+    varrer([{ number: 1, teams: ["backend"] }], { reviewRequested: { users: ["rabah"] } }, { membros: { "o/backend": { status: 403 } } }),
+    /read:org/,
+  );
 });
 
 test("teamMembers deixa entrar o autor que é membro do time", async () => {
@@ -102,19 +126,35 @@ test("teamMembers consulta cada time uma vez por batida", async () => {
   assert.deepEqual(r.chamadas.membros, ["o/backend"]);
 });
 
-for (const status of [403, 404]) {
-  test(`teamMembers falha fechado quando o GitHub responde ${status}`, async () => {
-    const r = await varrer([{ number: 1, author: "ana" }], { teamMembers: ["o/backend"] }, { membros: { "o/backend": { status } } });
-    assert.deepEqual(r.entraram, []);
-    assert.equal(motivoDe(r, 1), "não deu para conferir o time o/backend: o token precisa de read:org");
-  });
+/** A batida falha com o motivo certo e o cursor não anda: corrigido o token, os PRs voltam. */
+async function falhaSemAndar(membro: Membros[string], erro: RegExp) {
+  const db = bancoDeTeste();
+  const { client } = githubFalso([{ number: 1, author: "ana" }], { "o/backend": membro });
+  await assert.rejects(
+    scanOpenPullRequests("o", /.*/, { client, db, now: agora, diffMaxChars: 100_000, filters: { teamMembers: ["o/backend"] } }),
+    erro,
+  );
+  assert.deepEqual(await db.query.cursors.findMany(), [], "o cursor não andou");
+  assert.deepEqual(await db.query.events.findMany(), []);
 }
 
-test("teamMembers com erro que não é de acesso derruba a batida, para o cursor não andar", async () => {
-  await assert.rejects(
-    varrer([{ number: 1 }], { teamMembers: ["o/backend"] }, { membros: { "o/backend": { status: 502 } } }),
-    /Not Found/,
-  );
+test("time sem read:org (403) falha a batida dizendo o que fazer, sem descartar nem andar o cursor", async () => {
+  await falhaSemAndar({ status: 403, message: "Resource not accessible by personal access token" }, /o token precisa de read:org/);
+});
+
+test("time atrás de SSO não autorizado pede para autorizar o token na org", async () => {
+  await falhaSemAndar({ status: 403, message: "Resource protected by organization SAML enforcement", headers: { "x-github-sso": "required" } }, /autorize o token no SSO da org/);
+});
+
+test("time inexistente ou invisível (404) é configuração inválida e também não anda o cursor", async () => {
+  await falhaSemAndar({ status: 404 }, /time o\/backend não encontrado ou sem acesso/);
+});
+
+test("limite de uso, 5xx e rede sobem como vieram, sem virar motivo de permissão", async () => {
+  await falhaSemAndar({ status: 403, message: "API rate limit exceeded", headers: { "x-ratelimit-remaining": "0" } }, /rate limit/);
+  await falhaSemAndar({ status: 403, message: "You have exceeded a secondary rate limit" }, /secondary rate limit/);
+  await falhaSemAndar({ status: 429, message: "Too Many Requests" }, /Too Many Requests/);
+  await falhaSemAndar({ status: 502, message: "Bad Gateway" }, /Bad Gateway/);
 });
 
 test("labels.include entra com qualquer uma e labels.exclude derruba", async () => {
@@ -269,4 +309,62 @@ test("o padrão que a tela monta pelo nome (api-*) casa com o repositório, sem 
   // O padrão antigo, escrito com o dono (`^o/api$`), continua valendo.
   const comDono = await scanOpenPullRequests("o", /^o\/web$/, { client, db: bancoDeTeste(), now: agora, diffMaxChars: 100_000 });
   assert.equal(comDono.eventIds.length, 1);
+});
+
+test("padrão de repositório com dono continua valendo só contra dono/repo", async () => {
+  const prs: Pr[] = [{ number: 1, repo: "legacy-a" }, { number: 2, repo: "novo" }];
+  const db = bancoDeTeste();
+  const { client } = githubFalso(prs);
+  const varredura = await scanOpenPullRequests("o", /^(?!o\/legacy-)/, { client, db, now: agora, diffMaxChars: 100_000 });
+  const eventos = await db.query.events.findMany();
+  assert.deepEqual(eventos.filter((e) => varredura.eventIds.includes(e.id)).map((e) => (e.payload as { pull: number }).pull), [2]);
+});
+
+test("glob de caminho sem barra casa em qualquer pasta, e aceita {a,b} e [..]", async () => {
+  const prs: Pr[] = [
+    { number: 1, files: ["docs/guia.md"] },
+    { number: 2, files: ["src/a.ts"] },
+    { number: 3, files: ["src/b.js", "lib/v1.json"] },
+  ];
+  const r = await varrer(prs, { paths: { exclude: ["*.md"] } });
+  assert.deepEqual(r.entraram, [2, 3]);
+  const chaves = await varrer(prs, { paths: { include: ["**/*.{ts,js}", "lib/v[0-9].json"] } });
+  assert.deepEqual(chaves.entraram, [2, 3]);
+});
+
+test("autoria others descarta o PR do dono do token, com o mesmo motivo de sempre", async () => {
+  const prs: Pr[] = [{ number: 1, author: "rabah" }, { number: 2, author: "ana" }];
+  const r = await varrer(prs, undefined, { viewer: "Rabah", authorship: "others" });
+  assert.deepEqual(r.entraram, [2]);
+  assert.equal(motivoDe(r, 1), 'PR de rabah, que é você (autoria "others")');
+  const mine = await varrer(prs, undefined, { viewer: "Rabah", authorship: "mine" });
+  assert.deepEqual(mine.entraram, [1]);
+  await assert.rejects(varrer(prs, undefined, { viewer: null, authorship: "others" }), /conta do GitHub/);
+});
+
+test("others com authors.include @me não deixa passar ninguém, na varredura e na prévia", async () => {
+  const prs: Pr[] = [{ number: 1, author: "rabah" }, { number: 2, author: "ana" }];
+  const r = await varrer(prs, { authors: { include: ["@me"] } }, { viewer: "rabah", authorship: "others" });
+  assert.deepEqual(r.entraram, []);
+});
+
+test("cursor de filtro parado há dias recomeça só nas últimas 24h", async () => {
+  const db = bancoDeTeste();
+  const { client, chamadas } = githubFalso([{ number: 1 }]);
+  const filters: PollFilters = { maxChangedLines: 500 };
+  const base = { client, db, now: agora, diffMaxChars: 100_000, filters };
+  await scanOpenPullRequests("o", /.*/, base);
+  const [cursor] = await db.query.cursors.findMany();
+  await db.update((await import("../src/db/index.js")).schema.cursors).set({ value: "2026-09-10T00:00:00Z" });
+  await scanOpenPullRequests("o", /.*/, { ...base, now: agora + 5 * 24 * 3600_000 });
+  assert.ok(cursor);
+  assert.match(chamadas.buscas.at(-1)!, /updated:>=2026-09-26T12:00:00Z/);
+
+  // Sem filtro o cursor antigo continua valendo, como antes.
+  const velho = bancoDeTeste();
+  const { client: c2, chamadas: ch2 } = githubFalso([{ number: 1 }]);
+  await scanOpenPullRequests("o", /.*/, { client: c2, db: velho, now: agora, diffMaxChars: 100_000 });
+  await velho.update((await import("../src/db/index.js")).schema.cursors).set({ value: "2026-09-10T00:00:00Z" });
+  await scanOpenPullRequests("o", /.*/, { client: c2, db: velho, now: agora, diffMaxChars: 100_000 });
+  assert.match(ch2.buscas.at(-1)!, /updated:>=2026-09-10T00:00:00Z/);
 });

@@ -2,12 +2,12 @@ import { and, eq } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
 import { type Authorship, type PollFilters, type TriggerConfig, type WorkingHoursConfig } from "../config/types.js";
 import { executionService, type ExecutionService } from "../services/execution-service.js";
-import { matchesAuthorship } from "../services/github-service.js";
 import { mcpService, type McpService } from "../services/mcp-service.js";
 import { pollMcpServer } from "../sources/mcp-poll.js";
 import { proximaOcorrencia } from "./cron.js";
+import { comTrava } from "./trava.js";
 import { lerDescartes, registrarDescartes, type DescarteGuardado } from "./descartes.js";
-import type { Descarte } from "../sources/github-filtros.js";
+import { precisaDaConta, type Descarte } from "../sources/github-filtros.js";
 import { pollSlack, slackWatchFor, type SlackPollOutcome } from "../sources/slack.js";
 import { pollSlackInbox, type SlackInboxOutcome } from "../sources/slack-inbox.js";
 import { pollTeamsInbox } from "../sources/teams-inbox.js";
@@ -85,7 +85,7 @@ export interface TickOptions {
 export type PollFn = (
   owner: string,
   repoFilter: RegExp,
-  options?: { includeDrafts?: boolean; filters?: PollFilters; viewer?: string | null },
+  options?: { includeDrafts?: boolean; filters?: PollFilters; authorship?: Authorship; viewer?: string | null },
 ) => Promise<PullRequestScan>;
 
 /** A conferencia de pull request fechado, trocavel pelo mesmo motivo. */
@@ -320,7 +320,17 @@ export class Scheduler {
     return times.length > 0 ? Math.min(...times) : null;
   }
 
-  private async runTrigger(
+  /** Uma batida por gatilho de cada vez: a manual espera a agendada, e vice-versa. */
+  private runTrigger(
+    trigger: TriggerEntry,
+    at: number,
+    wait: boolean,
+    globalHours?: WorkingHoursConfig,
+  ): Promise<TriggerOutcome> {
+    return comTrava(`gatilho:${trigger.id}`, () => this.runTriggerSemTrava(trigger, at, wait, globalHours));
+  }
+
+  private async runTriggerSemTrava(
     trigger: TriggerEntry,
     at: number,
     wait: boolean,
@@ -420,24 +430,23 @@ export class Scheduler {
         const filters = config.filters;
         const varredura = await this.poll(owner, new RegExp(config.repoMatch), {
           includeDrafts: config.includeDrafts,
-          // A conta do token só é lida quando algum filtro fala em `@me`.
+          // Filtros e autoria são decididos na varredura, pelo mesmo exame da
+          // prévia. A conta do token só é lida quando algum deles fala nela.
+          authorship: config.authorship,
           ...(filters === undefined ? {} : { filters }),
-          ...(JSON.stringify(filters ?? {}).includes('"@me"') ? { viewer: await this.viewer() } : {}),
+          ...(precisaDaConta(filters, config.authorship) ? { viewer: await this.viewer() } : {}),
         });
         // A varredura devolve a janela inteira, e o que este gatilho já rodou
-        // sai antes do filtro de autoria, senão o mesmo descarte seria contado
-        // de novo a cada batida em que o pull request continua na janela.
+        // não abre run de novo.
         const pendentes = await this.notYetRan(trigger.id, varredura.eventIds);
-        const porAutoria = await this.byAuthorship(config.authorship, pendentes);
-        const runs = await this.runsFor(trigger, porAutoria.eventIds, at, wait);
-        const created = varredura.created;
-        const descartes = [...(varredura.descartes ?? []), ...porAutoria.descartes];
+        const runs = await this.runsFor(trigger, pendentes, at, wait);
+        const descartes = varredura.descartes ?? [];
         await registrarDescartes(this.db, trigger.id, descartes, at);
         // A contagem de eventos continua sendo o que a varredura trouxe, e não
         // o que sobrou do filtro: quem lê a batida precisa ver que o pull
         // request chegou e foi descartado aqui, senão a única leitura possível
         // seria a de que a varredura não achou nada.
-        return { events: created.length, runs, detail: detailDaBatida(porAutoria.detail, varredura.descartes ?? []) };
+        return { events: varredura.created.length, runs, detail: detailDaBatida(descartes) };
       }
 
       case "mcp-poll": {
@@ -516,87 +525,6 @@ export class Scheduler {
         // que acordar o agent de um jeito que ninguem desenhou.
         throw new Error(`gatilho do tipo "${(config as TriggerConfig).kind}" nao tem disparo`);
     }
-  }
-
-  /**
-   * Só os eventos cuja autoria este gatilho quer acordar.
-   *
-   * Mora no agendador e não na varredura porque o evento é de todo mundo: dois
-   * gatilhos apontados para a mesma organização, um para os pull requests de
-   * quem usa o Locum e outro para os do time, leem a mesma tabela. Filtrar na
-   * ingestão faria o primeiro a varrer decidir o que o segundo enxerga.
-   *
-   * A conta do token é lida uma vez por batida, e não por evento, porque ela
-   * não muda no meio de uma varredura.
-   */
-  private async byAuthorship(
-    wanted: Authorship,
-    eventIds: string[],
-  ): Promise<{ eventIds: string[]; detail?: string; descartes: Descarte[] }> {
-    if (wanted === "any" || eventIds.length === 0) return { eventIds, descartes: [] };
-
-    const viewer = await this.viewer();
-    if (viewer === null) {
-      // Recusar a batida inteira, e não deixar passar: o gatilho de `mine`
-      // rodaria em cima de pull request do time e o de `others` no seu, que é
-      // o contrário do que a pessoa cadastrou. O erro sobe para o `detail` do
-      // gatilho, onde a tela mostra o que fazer.
-      throw new Error(
-        "gatilho filtra por autoria e a conta do GitHub nunca foi conferida, confira o token na configuração",
-      );
-    }
-
-    const escolhidos: string[] = [];
-    const descartes: Descarte[] = [];
-    let descartados = 0;
-    for (const eventId of eventIds) {
-      const evento = await this.payloadOf(eventId);
-      if (matchesAuthorship(wanted, evento.author, viewer)) {
-        escolhidos.push(eventId);
-      } else {
-        descartados += 1;
-        descartes.push({
-          pr: evento.repo !== undefined && evento.pull !== undefined ? `${evento.repo}#${evento.pull}` : eventId,
-          titulo: evento.title,
-          autor: evento.author,
-          url: evento.url,
-          motivo:
-            wanted === "others"
-              ? `PR de ${evento.author ?? "autor desconhecido"}, que é você (autoria "others")`
-              : `PR de ${evento.author ?? "autor desconhecido"}, que não é você (autoria "mine")`,
-        });
-      }
-    }
-
-    return {
-      eventIds: escolhidos,
-      descartes,
-      detail:
-        descartados === 0
-          ? undefined
-          : `${descartados} evento(s) fora do filtro de autoria "${wanted}"`,
-    };
-  }
-
-  /** O que a varredura gravou no evento sobre o pull request. */
-  private async payloadOf(
-    eventId: string,
-  ): Promise<{ author?: string; repo?: string; pull?: number; title?: string; url?: string }> {
-    const [row] = await this.db
-      .select({ payload: schema.events.payload })
-      .from(schema.events)
-      .where(eq(schema.events.id, eventId))
-      .limit(1);
-
-    const p = (row?.payload ?? {}) as Record<string, unknown>;
-    const texto = (v: unknown) => (typeof v === "string" ? v : undefined);
-    return {
-      author: texto(p.author),
-      repo: texto(p.repo),
-      pull: typeof p.pull === "number" ? p.pull : undefined,
-      title: texto(p.title),
-      url: texto(p.url),
-    };
   }
 
   /** Os últimos pull requests que este gatilho viu e deixou passar, com o motivo. */
@@ -792,16 +720,12 @@ function slackInboxDetail(
 /** Quantos descartes o detail da batida nomeia; o resto vira contagem. */
 const NOMEADOS_NO_DETAIL = 3;
 
-/** A frase da batida sobre o que ficou de fora, junto da do filtro de autoria. */
-function detailDaBatida(autoria: string | undefined, descartes: Descarte[]): string | undefined {
-  const partes: string[] = [];
-  if (autoria !== undefined) partes.push(autoria);
-  if (descartes.length > 0) {
-    const nomeados = descartes.slice(0, NOMEADOS_NO_DETAIL).map((d) => `${d.pr}: ${d.motivo}`);
-    const resto = descartes.length - nomeados.length;
-    partes.push(`${descartes.length} PR(s) descartado(s) (${nomeados.join("; ")}${resto > 0 ? `; e mais ${resto}` : ""})`);
-  }
-  return partes.length === 0 ? undefined : partes.join("; ");
+/** A frase da batida sobre o que ficou de fora. */
+function detailDaBatida(descartes: Descarte[]): string | undefined {
+  if (descartes.length === 0) return undefined;
+  const nomeados = descartes.slice(0, NOMEADOS_NO_DETAIL).map((d) => `${d.pr}: ${d.motivo}`);
+  const resto = descartes.length - nomeados.length;
+  return `${descartes.length} PR(s) descartado(s) (${nomeados.join("; ")}${resto > 0 ? `; e mais ${resto}` : ""})`;
 }
 
 /** Cadencia em milissegundos. Nulo e gatilho que nao anda pelo relogio. */
