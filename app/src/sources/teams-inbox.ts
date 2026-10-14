@@ -4,6 +4,7 @@ import { mcpOAuthService } from "../services/mcp-oauth-service.js";
 import { GRAPH_URL, TEAMS_SERVER } from "../services/teams-app.js";
 import { pollMcpServer, CURSOR_TOKEN, type McpCaller, type McpPollShape } from "./mcp-poll.js";
 import { clienteHttp } from "../net/http.js";
+import { alvoDaReacao, reagirNoTeams, REACAO_PEGOU } from "../teams/reaction.js";
 import { fetchPr as defaultFetchPr } from "./github.js";
 import { extractGithubPrLinks } from "./github-pr-link.js";
 import type { ParsedGithubPr } from "./slack.js";
@@ -187,6 +188,7 @@ async function enriquecerPrs(
           .update(schema.events)
           .set({ payload: { ...resto, ...contexto, teamsAuthor: payload.author } })
           .where(eq(schema.events.id, id));
+        await reagirAoPegar(payload, options);
       } catch (err) {
         const erro = err instanceof Error ? err.message : String(err);
         await db
@@ -200,6 +202,17 @@ async function enriquecerPrs(
     }
   }
   return erros;
+}
+
+/** O 👀 de "peguei". Recusa do Graph vira log: a revisão não depende da reação. */
+async function reagirAoPegar(payload: Record<string, unknown>, options: TeamsInboxOptions): Promise<void> {
+  const alvo = alvoDaReacao(payload);
+  if (alvo === null) return;
+  try {
+    await reagirNoTeams(alvo, "set", REACAO_PEGOU, options);
+  } catch (err) {
+    console.error(`reagir com ${REACAO_PEGOU} no Teams falhou: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 /**

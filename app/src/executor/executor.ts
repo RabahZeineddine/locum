@@ -612,6 +612,8 @@ export function alvoDoEvento(payload: EventPayload): Record<string, unknown> {
     "channel",
     "threadTs",
     "ts",
+    // A mensagem do Teams onde o review reage ao sair.
+    ...TEAMS_REACAO,
   ] as const;
   const alvo: Record<string, unknown> = {};
   for (const campo of campos) {
@@ -647,9 +649,11 @@ async function lerContextoDaIniciativa(initiativeId: string): Promise<string | n
 /** Quantos acontecimentos de um passo ficam guardados; os mais velhos saem. */
 const TETO_DE_ATIVIDADES = 300;
 
-const DESTINO = ["owner", "repo", "pull", "headSha"] as const;
+const TEAMS_REACAO = ["teamsChatId", "teamsTeamId", "teamsChannelId", "teamsMessageId", "teamsReplyToId"] as const;
 
-function destinoDoEvento(alvo: Record<string, unknown>): Record<string, unknown> {
+const DESTINO = ["owner", "repo", "pull", "headSha", ...TEAMS_REACAO] as const;
+
+export function destinoDoEvento(alvo: Record<string, unknown>): Record<string, unknown> {
   const destino: Record<string, unknown> = {};
   for (const campo of DESTINO) {
     if (alvo[campo] !== undefined) destino[campo] = alvo[campo];
