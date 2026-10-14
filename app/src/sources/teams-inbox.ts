@@ -1,4 +1,4 @@
-import { and, eq, gte } from "drizzle-orm";
+import { and, eq, gte, notInArray } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
 import { mcpOAuthService } from "../services/mcp-oauth-service.js";
 import { GRAPH_URL, TEAMS_SERVER } from "../services/teams-app.js";
@@ -100,6 +100,8 @@ export interface TeamsInboxOutcome {
   inWindow: string[];
   seen: number;
   errors: { kind: "inbox" | "channel"; channel?: string; error: string }[];
+  /** PR que a mensagem trouxe e não virou review, com o motivo, para o detail do gatilho. */
+  descartes: { pr: string; motivo: string }[];
 }
 
 /**
@@ -124,7 +126,8 @@ export async function pollTeamsInbox(
   if (token === null) throw new Error("o Teams não está conectado");
 
   const graph = graphGet(token, options.fetchFn ?? clienteHttp, options.graphUrl ?? GRAPH_URL);
-  const outcome: TeamsInboxOutcome = { eventIds: [], inWindow: [], seen: 0, errors: [] };
+  const outcome: TeamsInboxOutcome = { eventIds: [], inWindow: [], seen: 0, errors: [], descartes: [] };
+  const revisados = memoizar(() => carregarRevisados(db));
   const canais = watch.mentions || watch.prLinks ? (watch.channels ?? []) : [];
   if (!watch.mentions && !watch.dms && !watch.prLinks) return outcome;
 
@@ -145,7 +148,8 @@ export async function pollTeamsInbox(
     kind: "inbox" | "channel",
     channel?: string,
   ) => {
-    const { erros, fora } = await enriquecerPrs(varredura.inWindow, kind, channel, db, options);
+    const { erros, fora, descartes } = await enriquecerPrs(varredura.inWindow, kind, channel, db, options, revisados);
+    outcome.descartes.push(...descartes);
     outcome.eventIds.push(...varredura.eventIds.filter((id) => !fora.has(id)));
     for (const id of varredura.inWindow) {
       if (!fora.has(id) && !outcome.inWindow.includes(id)) outcome.inWindow.push(id);
@@ -195,6 +199,9 @@ export async function pollTeamsInbox(
   return outcome;
 }
 
+/** Idade máxima do cursor compartilhado para um gatilho herdá-lo. */
+const JANELA_DO_CURSOR_HERDADO_MS = 24 * 60 * 60 * 1000;
+
 /**
  * Garante o cursor do gatilho. Quem ainda não tem o próprio parte do
  * compartilhado de antes, se existir, para não reprocessar nem perder nada.
@@ -210,7 +217,11 @@ async function prepararCursor(db: Db, chave: string, antiga: string): Promise<bo
     )[0]?.value;
   if ((await ler(chave)) !== undefined) return false;
   const herdado = chave === antiga ? undefined : await ler(antiga);
-  if (herdado === undefined) return true;
+  // O cursor compartilhado deixou de andar quando os gatilhos ganharam o
+  // próprio. Um valor velho herdado reprocessaria semanas de conversa, então só
+  // vale o recente; o resto é primeira batida, com a janela de um dia.
+  const recente = herdado !== undefined && Date.now() - Date.parse(herdado) < JANELA_DO_CURSOR_HERDADO_MS;
+  if (herdado === undefined || !recente) return true;
   await db.insert(schema.cursors).values({ source: TEAMS_SOURCE, key: chave, value: herdado }).onConflictDoNothing();
   return false;
 }
@@ -235,8 +246,10 @@ async function enriquecerPrs(
   channel: string | undefined,
   db: Db,
   options: TeamsInboxOptions,
-): Promise<{ erros: TeamsInboxOutcome["errors"]; fora: Set<string> }> {
+  revisados: () => Promise<Set<string>>,
+): Promise<{ erros: TeamsInboxOutcome["errors"]; fora: Set<string>; descartes: TeamsInboxOutcome["descartes"] }> {
   const erros: TeamsInboxOutcome["errors"] = [];
+  const descartes: TeamsInboxOutcome["descartes"] = [];
   const fora = new Set<string>();
   const buscar = options.fetchPr ?? defaultFetchPr;
   const quemSouNoGithub = options.viewerLogin ?? (() => githubService.viewerLogin());
@@ -268,13 +281,15 @@ async function enriquecerPrs(
         continue;
       }
 
-      const motivo = await motivoDeDescarte(contexto, id, db, quemSouNoGithub);
+      const motivo = await motivoDeDescarte(contexto, quemSouNoGithub, revisados);
       if (motivo !== null) {
         const { prError: _resolvido, ...resto } = payload;
         await gravar(id, { ...resto, prDescartado: motivo });
         fora.add(id);
+        descartes.push({ pr: nome, motivo });
         continue;
       }
+      (await revisados()).add(chaveDoCommit(contexto));
 
       const { prError: _resolvido, ...resto } = payload;
       await gravar(id, { ...resto, ...contexto, teamsAuthor: payload.author });
@@ -283,18 +298,69 @@ async function enriquecerPrs(
       falha(err instanceof Error ? err.message : String(err));
     }
   }
-  return { erros, fora };
+  return { erros, fora, descartes };
 }
 
 /** Janela em que o mesmo PR no mesmo commit não é revisado de novo. */
 const JANELA_DO_MESMO_COMMIT_S = 24 * 60 * 60;
 
+const chaveDoCommit = (c: { owner: string; repoName: string; pull: number; headSha: string }) =>
+  `${c.owner}/${c.repoName}#${c.pull}@${c.headSha}`.toLowerCase();
+
+function memoizar<T>(fn: () => Promise<T>): () => Promise<T> {
+  let valor: Promise<T> | undefined;
+  return () => (valor ??= fn());
+}
+
+/**
+ * Os PRs e commits que já têm review, lidos uma vez por batida: a review da
+ * ação `github.review_comment` publicada ou ainda em andamento nas últimas 24h
+ * (rejeitada, falha ou em conflito não segura), e o evento do Teams que já
+ * pegou o PR naquele commit, que é o link colado de novo. O evento do poll do
+ * GitHub sozinho não conta: outro agent revisando não é este.
+ */
+async function carregarRevisados(db: Db): Promise<Set<string>> {
+  const desde = Math.floor(Date.now() / 1000) - JANELA_DO_MESMO_COMMIT_S;
+  const chave = (p: Record<string, unknown> | null | undefined, repo: unknown) =>
+    p?.headSha === undefined || p.owner === undefined
+      ? null
+      : chaveDoCommit({ owner: String(p.owner), repoName: String(repo), pull: Number(p.pull), headSha: String(p.headSha) });
+
+  const revisoes = await db
+    .select({ payload: schema.approvals.payload })
+    .from(schema.approvals)
+    .where(
+      and(
+        eq(schema.approvals.kind, "github.review_comment"),
+        gte(schema.approvals.createdAt, desde),
+        notInArray(schema.approvals.status, ["rejected", "failed", "conflict"]),
+      ),
+    );
+  const doTeams = await db
+    .select({ payload: schema.events.payload })
+    .from(schema.events)
+    .where(and(eq(schema.events.source, TEAMS_SOURCE), gte(schema.events.receivedAt, desde)));
+
+  const vistos = new Set<string>();
+  for (const { payload } of revisoes) {
+    const p = payload as Record<string, unknown> | null;
+    const k = chave(p, p?.repo);
+    if (k !== null) vistos.add(k);
+  }
+  for (const { payload } of doTeams) {
+    const p = payload as Record<string, unknown> | null;
+    if (p?.prDescartado !== undefined) continue;
+    const k = chave(p, p?.repoName);
+    if (k !== null) vistos.add(k);
+  }
+  return vistos;
+}
+
 /** Por que o PR não merece revisão agora, ou nulo se merece. */
 async function motivoDeDescarte(
   contexto: Awaited<ReturnType<typeof defaultFetchPr>>,
-  id: string,
-  db: Db,
   quemSouNoGithub: () => Promise<string | null>,
+  revisados: () => Promise<Set<string>>,
 ): Promise<string | null> {
   if (contexto.state !== undefined && contexto.state !== "open") return "fechado";
   if (contexto.merged === true) return "mergeado";
@@ -305,20 +371,7 @@ async function motivoDeDescarte(
   const eu = await quemSouNoGithub().catch(() => null);
   if (eu !== null && contexto.author.toLowerCase() === eu.toLowerCase()) return "proprio";
 
-  const desde = Math.floor(Date.now() / 1000) - JANELA_DO_MESMO_COMMIT_S;
-  const recentes = await db.select().from(schema.events).where(gte(schema.events.receivedAt, desde));
-  const repetido = recentes.some((outro) => {
-    const p = outro.payload as Record<string, unknown> | null;
-    return (
-      outro.id !== id &&
-      p?.prDescartado === undefined &&
-      p?.headSha === contexto.headSha &&
-      p?.pull === contexto.pull &&
-      String(p?.owner).toLowerCase() === contexto.owner.toLowerCase() &&
-      String(p?.repoName).toLowerCase() === contexto.repoName.toLowerCase()
-    );
-  });
-  return repetido ? "repetido" : null;
+  return (await revisados()).has(chaveDoCommit(contexto)) ? "repetido" : null;
 }
 
 /** O 👀 de "peguei". Recusa do Graph vira log: a revisão não depende da reação. */

@@ -46,18 +46,20 @@ próprio usuário também conta.
 
 Não acordam o agent, e não ganham 👀: o PR que não deu para buscar (o erro
 aparece no resultado do gatilho), o seu próprio PR, o PR fechado, mergeado ou
-em rascunho, e o PR no mesmo commit que um evento das últimas 24h já pegou, de
-qualquer mensagem. Commit novo gera revisão nova.
+em rascunho, e o PR no mesmo commit que já tem review publicada ou em andamento
+da ação `github.review_comment`, ou evento do Teams que já o pegou, nas últimas
+24h. Review rejeitada ou que falhou não segura, e o poll do GitHub sozinho também
+não. O motivo aparece no resultado do gatilho. Commit novo gera revisão nova.
 
 Cada gatilho tem o próprio cursor. Dois gatilhos sobre as mesmas conversas, como
 um `teams-reply` com conversas diretas e o `pr-review` com link, cada um vê a
 mensagem. Um gatilho que já varria antes continua de onde o cursor compartilhado
-antigo parou. Um gatilho novo, ou um canal novo nele, só olha link de PR de
+antigo parou, se ele tiver menos de 24h; mais velho que isso conta como gatilho novo. Um gatilho novo, ou um canal novo nele, só olha link de PR de
 mensagem criada depois de ligado: ligar não revisa o dia de ontem.
 
 O 👀 sai quando a review é publicada, trocado pelo veredito, e também quando ela
-não vai sair: rascunho vira 💬, e proposta rejeitada, run que falha ou sem
-orçamento só perdem o 👀. A reação do veredito sai quando a review é publicada,
+não vai sair: rascunho, proposta rejeitada, run que falha ou sem orçamento, e
+evento que desiste de abrir run só perdem o 👀. A reação do veredito sai quando a review é publicada,
 não quando o agent termina, e aprovar e pedir mudanças continuam parando na fila.
 O `repo` do evento é o do PR, então este fluxo não serve ao `teams-reply`, que
 recusa o evento de PR.

@@ -370,3 +370,43 @@ test("canal do Slack sem conexão falha com o caminho para ligar", async () => {
   assert.equal(batida.outcomes[0]?.status, "failed");
   assert.match(batida.outcomes[0]?.detail ?? "", /Apps/);
 });
+
+test("evento do Teams que desiste de abrir run depois do prazo solta o 👀 da mensagem", async () => {
+  const db = bancoDeTeste();
+  const soltos: unknown[] = [];
+  const executions = {
+    startForEvent: async () => {
+      throw new Error("teto do dia estourado");
+    },
+  } as unknown as ExecutionService;
+  const gatilhos = [
+    gatilho("g1", { kind: "poll", source: "github", owner: "org", repoMatch: ".", authorship: "any", includeDrafts: false, everyMinutes: 15 } as TriggerConfig),
+  ];
+  const origem = { teamsChatId: "19:c", teamsMessageId: "m1" };
+  let batidas = 0;
+  const scheduler = new Scheduler(
+    db,
+    { enabled: async () => gatilhos, list: async () => gatilhos } as unknown as TriggerService,
+    executions,
+    {} as McpService,
+    {} as SlackService,
+    async () => {
+      batidas += 1;
+      if (batidas > 1) return { eventIds: [], created: [] };
+      await db.insert(schema.events).values({ id: "e1", source: "teams", externalId: "t-1", payload: origem });
+      return { eventIds: ["e1"], created: ["e1"] };
+    },
+    async () => ({ checked: 0, settled: [], stillOpen: 0, unreadable: 0, failed: [] }) as never,
+    async () => "eu",
+    undefined,
+    undefined,
+    undefined,
+    async (payload) => void soltos.push(payload),
+  );
+
+  await scheduler.tick({ at: T0 });
+  await scheduler.tick({ at: T0 + 15 * MINUTO });
+  assert.deepEqual(soltos, [], "ainda dentro do prazo, o evento volta e o 👀 fica");
+  await scheduler.tick({ at: T0 + 24 * 60 * MINUTO });
+  assert.deepEqual(soltos, [origem]);
+});

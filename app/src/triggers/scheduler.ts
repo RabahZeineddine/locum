@@ -9,6 +9,7 @@ import { proximaOcorrencia } from "./cron.js";
 import { pollSlack, slackWatchFor, type SlackPollOutcome } from "../sources/slack.js";
 import { pollSlackInbox, type SlackInboxOutcome } from "../sources/slack-inbox.js";
 import { pollTeamsInbox } from "../sources/teams-inbox.js";
+import { soltarOPr } from "../teams/reaction.js";
 import { slackService, type SlackService } from "../services/slack-service.js";
 import { settingsService, type SettingsService } from "../services/settings-service.js";
 import { triggerService, type TriggerEntry, type TriggerService } from "../services/trigger-service.js";
@@ -201,6 +202,8 @@ export class Scheduler {
     private readonly slackInbox: typeof pollSlackInbox = pollSlackInbox,
     private readonly teamsInbox: typeof pollTeamsInbox = pollTeamsInbox,
     private readonly settings: SettingsService = settingsService,
+    /** Tira o 👀 do Teams do evento que desistiu de abrir run. Existe para o teste trocar. */
+    private readonly soltar: (payload: unknown) => Promise<void> = soltarOPr,
   ) {}
 
   /** Batida vinda do evento de acordar da maquina, que o M3 vai ligar. */
@@ -605,6 +608,7 @@ export class Scheduler {
         falhas.push(message(err));
         const since = antes.get(eventId) ?? agora;
         if (agora - since < RETRY_TTL_MS) pendentes.push({ eventId, since });
+        else await this.soltarDoEvento(eventId);
       }
     }
     if (antes.size > 0 || pendentes.length > 0) await this.writeRetry(trigger.id, pendentes);
@@ -613,6 +617,14 @@ export class Scheduler {
       throw new Error(`${falhas.length} evento(s) sem run${abertos}: ${falhas[0]}`);
     }
     return runs;
+  }
+
+  /** O evento desistiu de virar run: a mensagem do Teams não pode ficar com o 👀 de "peguei". */
+  private async soltarDoEvento(eventId: string): Promise<void> {
+    try {
+      const [evento] = await this.db.select().from(schema.events).where(eq(schema.events.id, eventId)).limit(1);
+      await this.soltar(evento?.payload);
+    } catch {}
   }
 
   private async notYetRan(triggerId: string, eventIds: string[]): Promise<string[]> {
@@ -728,11 +740,17 @@ function slackDetail(varredura: SlackPollOutcome): string | undefined {
 }
 
 /** O mesmo que `slackDetail`, para a caixa de mencoes e mensagens diretas do Slack e do Teams. */
-function slackInboxDetail(caixa: Pick<SlackInboxOutcome, "eventIds" | "seen"> & { errors: { kind: string; error: string }[] }): string | undefined {
+function slackInboxDetail(
+  caixa: Pick<SlackInboxOutcome, "eventIds" | "seen"> & {
+    errors: { kind: string; error: string }[];
+    descartes?: { pr: string; motivo: string }[];
+  },
+): string | undefined {
   const partes: string[] = [];
   const repetidos = caixa.seen - caixa.eventIds.length;
   if (repetidos > 0) partes.push(`${repetidos} mensagem(ns) ja conhecida(s)`);
   for (const falha of caixa.errors) partes.push(`${falha.kind}: ${falha.error}`);
+  for (const d of caixa.descartes ?? []) partes.push(`PR ${d.pr} sem review: ${d.motivo}`);
   return partes.length === 0 ? undefined : partes.join("; ");
 }
 

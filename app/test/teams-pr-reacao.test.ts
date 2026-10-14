@@ -5,6 +5,9 @@ import { McpRegistry } from "../src/mcp/registry.js";
 import { mcpService } from "../src/services/mcp-service.js";
 import { githubReviewHandler, type ReviewClient } from "../src/sources/github.js";
 import { pollTeamsInbox } from "../src/sources/teams-inbox.js";
+import { randomUUID } from "node:crypto";
+import { AgentSpec } from "../src/config/types.js";
+import { AgentService } from "../src/services/agent-service.js";
 import { destinoDe } from "../src/teams/action.js";
 import { alvoDaReacao, reagirNoTeams } from "../src/teams/reaction.js";
 import { bancoDeTeste as bancoVazio } from "./helpers/db.js";
@@ -280,7 +283,41 @@ test("o mesmo PR no mesmo commit só gera um evento, e commit novo gera outro", 
   assert.equal(novo.pedidos.length, 2);
 });
 
-test("evento recente do mesmo PR e commit, de outra fonte, também conta como já revisado", async () => {
+const revisarOutraVez = (db: ReturnType<typeof bancoDeTeste>) => {
+  const { fetchFn } = graphDaCaixa([mensagemComPr]);
+  return pollTeamsInbox(
+    { mentions: false, dms: false, prLinks: true },
+    { db, token, fetchFn, graphUrl: GRAPH, viewerLogin: async () => null, fetchPr: (async () => CONTEXTO) as never },
+  );
+};
+
+/** Review da ação na fila, com run e passo reais por causa das chaves estrangeiras. */
+async function semeiaReview(
+  db: ReturnType<typeof bancoDeTeste>,
+  status: string,
+  sobre: { headSha?: string; criadaHaS?: number } = {},
+) {
+  const agente = await new AgentService(db as never).upsert(
+    AgentSpec.parse({ id: `r-${randomUUID()}`, name: "R", steps: [{ type: "model", key: "a", name: "A", model: "ollama/m", prompt: "p" }] }),
+    undefined,
+    "human",
+  );
+  const runId = randomUUID();
+  const stepId = randomUUID();
+  await db.insert(schema.runs).values({ id: runId, agentVersionId: agente.id, status: "done" });
+  await db.insert(schema.steps).values({ id: stepId, runId, idx: 1, stepKey: "a", name: "A", status: "done" });
+  await db.insert(schema.approvals).values({
+    id: randomUUID(),
+    runId,
+    stepId,
+    kind: "github.review_comment",
+    payload: { owner: "acme", repo: "api", pull: 7, headSha: sobre.headSha ?? "sha1" },
+    status,
+    createdAt: Math.floor(Date.now() / 1000) - (sobre.criadaHaS ?? 60),
+  });
+}
+
+test("o poll do GitHub sozinho não segura a revisão do Teams", async () => {
   const db = bancoDeTeste();
   await db.insert(schema.events).values({
     id: "antigo",
@@ -288,12 +325,36 @@ test("evento recente do mesmo PR e commit, de outra fonte, também conta como j�
     externalId: "pr:7:sha:sha1",
     payload: { owner: "acme", repoName: "api", pull: 7, headSha: "sha1" },
   });
-  const { fetchFn } = graphDaCaixa([mensagemComPr]);
-  const resultado = await pollTeamsInbox(
-    { mentions: false, dms: false, prLinks: true },
-    { db, token, fetchFn, graphUrl: GRAPH, viewerLogin: async () => null, fetchPr: (async () => CONTEXTO) as never },
-  );
-  assert.deepEqual(resultado.inWindow, []);
+  const resultado = await revisarOutraVez(db);
+  assert.equal(resultado.inWindow.length, 1);
+  assert.deepEqual(resultado.descartes, []);
+});
+
+test("review publicada ou em andamento do mesmo PR e commit segura; rejeitada não", async () => {
+  for (const [status, segura] of [
+    ["approved", true],
+    ["pending", true],
+    ["publishing", true],
+    ["drafted", true],
+    ["rejected", false],
+    ["failed", false],
+  ] as const) {
+    const db = bancoDeTeste();
+    await semeiaReview(db, status);
+    const resultado = await revisarOutraVez(db);
+    assert.equal(resultado.inWindow.length, segura ? 0 : 1, status);
+    if (segura) assert.deepEqual(resultado.descartes, [{ pr: "acme/api#7", motivo: "repetido" }], status);
+  }
+});
+
+test("review de outro commit, ou de mais de 24h, não segura", async () => {
+  const velha = bancoDeTeste();
+  await semeiaReview(velha, "approved", { criadaHaS: 25 * 3600 });
+  assert.equal((await revisarOutraVez(velha)).inWindow.length, 1);
+
+  const outroCommit = bancoDeTeste();
+  await semeiaReview(outroCommit, "approved", { headSha: "sha0" });
+  assert.equal((await revisarOutraVez(outroCommit)).inWindow.length, 1);
 });
 
 test("evento sem os campos do Teams apaga o que a saída do modelo inventou", () => {

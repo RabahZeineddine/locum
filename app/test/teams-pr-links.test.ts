@@ -119,7 +119,7 @@ const CANAIS = [{ teamId: EQUIPE, channelId: CANAL, label: "Time / Geral" }];
 /** Banco de quem já varreu ontem: o cursor compartilhado antigo existe, e a primeira batida não é de hoje. */
 function bancoDeTeste() {
   const db = bancoVazio();
-  const ontem = new Date(Date.now() - 24 * 3600_000).toISOString();
+  const ontem = new Date(Date.now() - 23 * 3600_000).toISOString();
   for (const key of ["inbox", `channel:${EQUIPE}:${CANAL}`]) {
     db.insert(schema.cursors).values({ source: "teams", key, value: ontem }).run();
   }
@@ -376,4 +376,33 @@ test("canal novo, sem cursor, também só vê link a partir de agora", async () 
     { db, triggerId: "T", ...OPCOES, ...graphFalso({ threads }) },
   );
   assert.equal((await eventos(db)).length, 0);
+});
+
+test("cursor antigo de 2h é herdado; de 30 dias não é, e nenhum link anterior à ativação acorda", async () => {
+  const chats = [
+    {
+      id: "g",
+      chatType: "group",
+      mensagens: [mensagem("ha3h", 180, PR), mensagem("ha1h", 60, `${PR}/files`), mensagem("recente", 0.5, "oi")],
+    },
+  ];
+  const watch = { mentions: false, dms: false, prLinks: true };
+
+  const recente = bancoVazio();
+  recente.insert(schema.cursors).values({ source: "teams", key: "inbox", value: agoraMenos(120) }).run();
+  await pollTeamsInbox(watch, { db: recente, triggerId: "T", ...OPCOES, ...graphFalso({ chats }) });
+  // Herdou as 2h: só o que é posterior a elas conta, e a de 3h fica de fora.
+  assert.deepEqual((await eventos(recente)).map((e) => e.messageId), ["ha1h"]);
+
+  const velho = bancoVazio();
+  velho.insert(schema.cursors).values({ source: "teams", key: "inbox", value: agoraMenos(30 * 24 * 60) }).run();
+  await pollTeamsInbox(watch, { db: velho, triggerId: "T", ...OPCOES, ...graphFalso({ chats }) });
+  assert.deepEqual(await eventos(velho), []);
+
+  // O gatilho com dms ainda lê a janela de um dia, e só ela, não o mês.
+  const comDms = bancoVazio();
+  comDms.insert(schema.cursors).values({ source: "teams", key: "inbox", value: agoraMenos(30 * 24 * 60) }).run();
+  const antigas = [{ id: "g", chatType: "group", mensagens: [mensagem("mes", 30 * 24 * 60, "velha"), mensagem("hoje", 60, "oi")] }];
+  await pollTeamsInbox({ ...watch, dms: true }, { db: comDms, triggerId: "T", ...OPCOES, ...graphFalso({ chats: antigas }) });
+  assert.deepEqual((await eventos(comDms)).map((e) => e.messageId), ["hoje"]);
 });
