@@ -38,16 +38,29 @@ Teams, com reação na própria mensagem: 👀 quando o Locum pega o PR, e no fi
    `/files` e query). Chat de reunião só acorda com menção.
 
 Uma mensagem com vários links gera um evento por PR, até cinco, e editar a
-mensagem não gera evento repetido. O evento leva o contexto do PR nos mesmos
+mensagem não gera evento repetido. Link dentro de código (`<code>`, `<pre>`) é
+ignorado, e `www.github.com` vale. O evento leva o contexto do PR nos mesmos
 campos que o agent lê (`repo`, `title`, `description`, `diff`, `omittedSummary`,
-`ci.summary`), buscado com o token do GitHub da configuração; se a busca falhar
-o evento segue sem diff, com `prError`, e o erro aparece no resultado do
-gatilho. A mensagem do próprio usuário também conta.
+`ci.summary`), buscado com o token do GitHub da configuração. A mensagem do
+próprio usuário também conta.
 
-Aprovar e pedir mudanças continuam parando na fila: a reação do veredito sai
-quando a review é publicada, não quando o agent termina. O `repo` do evento é o
-do PR, então este fluxo não serve ao `teams-reply`, que acha a conversa pelo
-`repo`.
+Não acordam o agent, e não ganham 👀: o PR que não deu para buscar (o erro
+aparece no resultado do gatilho), o seu próprio PR, o PR fechado, mergeado ou
+em rascunho, e o PR no mesmo commit que um evento das últimas 24h já pegou, de
+qualquer mensagem. Commit novo gera revisão nova.
+
+Cada gatilho tem o próprio cursor. Dois gatilhos sobre as mesmas conversas, como
+um `teams-reply` com conversas diretas e o `pr-review` com link, cada um vê a
+mensagem. Um gatilho que já varria antes continua de onde o cursor compartilhado
+antigo parou. Um gatilho novo, ou um canal novo nele, só olha link de PR de
+mensagem criada depois de ligado: ligar não revisa o dia de ontem.
+
+O 👀 sai quando a review é publicada, trocado pelo veredito, e também quando ela
+não vai sair: rascunho vira 💬, e proposta rejeitada, run que falha ou sem
+orçamento só perdem o 👀. A reação do veredito sai quando a review é publicada,
+não quando o agent termina, e aprovar e pedir mudanças continuam parando na fila.
+O `repo` do evento é o do PR, então este fluxo não serve ao `teams-reply`, que
+recusa o evento de PR.
 
 ## Central de chamados
 

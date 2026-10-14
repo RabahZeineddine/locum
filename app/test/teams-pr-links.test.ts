@@ -22,6 +22,8 @@ test("extrai o link do PR com sufixo, query e âncora", () => {
     [`(${PR}).`, [{ owner: "acme", repo: "api", pull: 7 }]],
     [`<a href="${PR}">revisar isto</a>`, [{ owner: "acme", repo: "api", pull: 7 }]],
     ["http://github.com/a.b/c_d-e/pull/10", [{ owner: "a.b", repo: "c_d-e", pull: 10 }]],
+    ["https://www.github.com/acme/api/pull/7", [{ owner: "acme", repo: "api", pull: 7 }]],
+    [`<code>${PR}</code> mas veja <a href="${PR}/files">isto</a>`, [{ owner: "acme", repo: "api", pull: 7 }]],
   ];
   for (const [texto, esperado] of casos) assert.deepEqual(extractGithubPrLinks(texto), esperado, texto);
 });
@@ -39,6 +41,8 @@ test("não é link de PR: issue, compare, commit, outro host, número colado", (
     "https://notgithub.com/acme/api/pull/7",
     "github.com/acme/api/pull/7",
     "sem link nenhum",
+    `<code>${PR}</code>`,
+    `<pre>\n${PR}\n</pre>`,
   ]) {
     assert.deepEqual(extractGithubPrLinks(texto), [], texto);
   }

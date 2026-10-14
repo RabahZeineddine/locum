@@ -1777,7 +1777,13 @@ O evento é enriquecido com `fetchPr`, como o do Slack, e a mensagem de origem
 fica em `teamsChatId` ou `teamsTeamId` e `teamsChannelId`, `teamsMessageId` e
 `teamsReplyToId`. O 👀 sai ao enriquecer e é trocado por ✅, ⚠️ ou 💬 em
 `github.review_comment.publish` (`app/src/teams/reaction.ts`, `setReaction` e
-`unsetReaction` do Graph). Verificado com Graph de mentira; o formato do
+`unsetReaction` do Graph). O cursor é por gatilho (`inbox:<id>` e
+`channel:<equipe>:<canal>:<id>`), herdado do compartilhado antigo quando existe;
+sem cursor nenhum, link de PR anterior à ativação não conta. O evento só chega ao
+agent se o PR foi buscado e não é do próprio usuário, fechado, mergeado,
+rascunho ou repetido (mesmo `headSha` nas últimas 24h). Os outros cursores
+compartilhados entre gatilhos, `inbox:<tipo>` do Slack e `channel:<id>` do
+Slack, seguem como estavam. Verificado com Graph de mentira; o formato do
 emoji `⚠️` no `reactionType` e a permissão da reação em canal, contra o Teams
 de verdade, ainda não.
 

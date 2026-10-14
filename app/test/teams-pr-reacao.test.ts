@@ -5,6 +5,7 @@ import { McpRegistry } from "../src/mcp/registry.js";
 import { mcpService } from "../src/services/mcp-service.js";
 import { githubReviewHandler, type ReviewClient } from "../src/sources/github.js";
 import { pollTeamsInbox } from "../src/sources/teams-inbox.js";
+import { destinoDe } from "../src/teams/action.js";
 import { alvoDaReacao, reagirNoTeams } from "../src/teams/reaction.js";
 import { bancoDeTeste as bancoVazio } from "./helpers/db.js";
 import { schema } from "../src/db/index.js";
@@ -293,4 +294,27 @@ test("evento recente do mesmo PR e commit, de outra fonte, também conta como j�
     { db, token, fetchFn, graphUrl: GRAPH, viewerLogin: async () => null, fetchPr: (async () => CONTEXTO) as never },
   );
   assert.deepEqual(resultado.inWindow, []);
+});
+
+test("evento sem os campos do Teams apaga o que a saída do modelo inventou", () => {
+  const alvo = alvoDoEvento({ owner: "acme", repo: "acme/api", repoName: "api", pull: 7, headSha: "abc" } as never);
+  const daSaida = { teamsChatId: "outra-conversa", teamsMessageId: "9", teamsReplyToId: "8", findings: [] };
+  const payload = { ...alvo, ...daSaida, ...destinoDoEvento(alvo) } as Record<string, unknown>;
+  assert.equal(payload.teamsChatId, undefined);
+  assert.equal(payload.teamsMessageId, undefined);
+  assert.equal(payload.teamsReplyToId, undefined);
+  assert.deepEqual(payload.findings, []);
+
+  // Mensagem raiz: o replyToId da saída também não vale.
+  const raiz = alvoDoEvento({ ...CANAL } as never);
+  const p2 = { ...raiz, teamsReplyToId: "x", ...destinoDoEvento(raiz) } as Record<string, unknown>;
+  assert.equal(p2.teamsReplyToId, undefined);
+  assert.equal(p2.teamsMessageId, "300");
+});
+
+test("repo de PR que parece conversa não vira destino do teams.post", () => {
+  const prDeTeams = { repo: "teams/x", prOwner: "teams", prRepo: "x" };
+  assert.throws(() => destinoDe(prDeTeams), /evento de conversa/);
+  assert.throws(() => destinoDe({ repo: "teams-channel/a/b/c", prOwner: "teams-channel", prRepo: "a" }), /evento de conversa/);
+  assert.deepEqual(destinoDe({ repo: "teams/19:chat" }), { tipo: "chat", chatId: "19:chat" });
 });

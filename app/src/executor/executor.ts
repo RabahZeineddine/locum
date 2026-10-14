@@ -663,6 +663,11 @@ export function destinoDoEvento(alvo: Record<string, unknown>): Record<string, u
   for (const campo of DESTINO) {
     if (alvo[campo] !== undefined) destino[campo] = alvo[campo];
   }
+  // Os campos da reação entram mesmo ausentes, como `undefined`: ao serem
+  // espalhados por cima da saída do modelo, apagam o que ele inventou. Sem
+  // isso, evento de outra origem deixaria o modelo apontar a reação do review
+  // para uma conversa qualquer do Teams.
+  for (const campo of TEAMS_REACAO) destino[campo] = alvo[campo];
   return destino;
 }
 
