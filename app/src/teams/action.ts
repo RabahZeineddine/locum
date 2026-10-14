@@ -63,7 +63,17 @@ export type DestinoDoTeams =
   | { tipo: "chat"; chatId: string }
   | { tipo: "canal"; teamId: string; channelId: string; threadId: string };
 
+/**
+ * Evento de PR guarda `owner/repo` em `repo`, e um dono chamado `teams` ou
+ * `teams-channel` faria esse nome passar por conversa. Quem distingue é o
+ * `prOwner`, que só o evento de PR tem.
+ */
+function eventoDePr(payload: unknown): boolean {
+  return typeof (payload as { prOwner?: unknown } | null | undefined)?.prOwner === "string";
+}
+
 export function destinoDe(payload: unknown): DestinoDoTeams {
+  if (eventoDePr(payload)) throw new Error("o passo de resposta no Teams nao recebeu um evento de conversa");
   const repo = (payload as { repo?: unknown } | null | undefined)?.repo;
   if (typeof repo === "string" && repo.startsWith(TEAMS_CHANNEL_PREFIX)) {
     const partes = repo.slice(TEAMS_CHANNEL_PREFIX.length).split("/");
@@ -77,7 +87,7 @@ export function destinoDe(payload: unknown): DestinoDoTeams {
 /** De qual conversa o evento veio, pelo `repo`, como no Slack. */
 export function chatOf(payload: unknown): string {
   const repo = (payload as { repo?: unknown } | null | undefined)?.repo;
-  if (typeof repo !== "string" || !repo.startsWith(PREFIXO) || repo.length === PREFIXO.length) {
+  if (eventoDePr(payload) || typeof repo !== "string" || !repo.startsWith(PREFIXO) || repo.length === PREFIXO.length) {
     throw new Error("o passo de resposta no Teams nao recebeu um evento de conversa");
   }
   return repo.slice(PREFIXO.length);

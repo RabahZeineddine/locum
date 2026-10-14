@@ -1,3 +1,4 @@
+import { soltarOPr, type TeamsReactionOptions } from "../teams/reaction.js";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -38,6 +39,8 @@ type Deps = {
   machineId: string;
   /** Biblioteca de agents. Ausente usa a do banco do processo. */
   profiles?: Pick<LibraryService, "resolveProfile">;
+  /** Graph da reação do Teams. Ausente usa a conexão do Teams. Existe para o teste trocar. */
+  teams?: TeamsReactionOptions;
 };
 
 const nowSec = () => Math.floor(Date.now() / 1000);
@@ -306,6 +309,8 @@ export class Executor {
         .update(schema.runs)
         .set({ status, endedAt: status === "failed" ? nowSec() : null, error: message })
         .where(eq(schema.runs.id, runId));
+      // Run que não chegou ao review: o 👀 que anunciou o PR sai da mensagem.
+      await soltarOPr(payload, this.deps.teams);
       return status;
     } finally {
       // Servidor MCP não fecha aqui: o registro vive entre execuções e cada
@@ -612,6 +617,8 @@ export function alvoDoEvento(payload: EventPayload): Record<string, unknown> {
     "channel",
     "threadTs",
     "ts",
+    // A mensagem do Teams onde o review reage ao sair.
+    ...TEAMS_REACAO,
   ] as const;
   const alvo: Record<string, unknown> = {};
   for (const campo of campos) {
@@ -647,13 +654,20 @@ async function lerContextoDaIniciativa(initiativeId: string): Promise<string | n
 /** Quantos acontecimentos de um passo ficam guardados; os mais velhos saem. */
 const TETO_DE_ATIVIDADES = 300;
 
-const DESTINO = ["owner", "repo", "pull", "headSha"] as const;
+const TEAMS_REACAO = ["teamsChatId", "teamsTeamId", "teamsChannelId", "teamsMessageId", "teamsReplyToId"] as const;
 
-function destinoDoEvento(alvo: Record<string, unknown>): Record<string, unknown> {
+const DESTINO = ["owner", "repo", "pull", "headSha", ...TEAMS_REACAO] as const;
+
+export function destinoDoEvento(alvo: Record<string, unknown>): Record<string, unknown> {
   const destino: Record<string, unknown> = {};
   for (const campo of DESTINO) {
     if (alvo[campo] !== undefined) destino[campo] = alvo[campo];
   }
+  // Os campos da reação entram mesmo ausentes, como `undefined`: ao serem
+  // espalhados por cima da saída do modelo, apagam o que ele inventou. Sem
+  // isso, evento de outra origem deixaria o modelo apontar a reação do review
+  // para uma conversa qualquer do Teams.
+  for (const campo of TEAMS_REACAO) destino[campo] = alvo[campo];
   return destino;
 }
 

@@ -478,6 +478,12 @@ export const TeamsInboxTrigger = z.object({
   mentions: z.boolean().default(true),
   dms: z.boolean().default(true),
   /**
+   * Mensagem com link de pull request do GitHub acorda o agent, sem menção,
+   * nos canais da lista e nos chats em grupo e diretos. Nasce desligado para
+   * o gatilho já salvo seguir como estava.
+   */
+  prLinks: z.boolean().default(false),
+  /**
    * Canais de equipe onde menção também acorda o agent. Pede os escopos de
    * canal na conexão. Fica numa lista curta porque cada canal é uma chamada
    * ao Graph por batida.
