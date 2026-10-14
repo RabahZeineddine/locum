@@ -85,7 +85,7 @@ copyMigrations();
 /**
  * Os agents prontos do marketplace viajam como arquivo, ao lado do bundle.
  *
- * O processo principal os le do disco em runtime (`agents.templates`), sem
+ * O processo principal le esta copia quando o remoto falha (`TemplateSource`), sem
  * import estatico: agent novo no catalogo e dado, e nao codigo. Copiar para
  * `dist/` faz o caminho ser o mesmo rodando por `npx electron dist/main.cjs`
  * e dentro do `.app`, onde `dist/` inteiro entra como recurso.
