@@ -99,19 +99,20 @@ interface ServiceApi {
   "agents.exportFile": (agentId: string) => Promise<string | null>;
   /**
    * Os agents prontos do marketplace: os specs de `examples/agents/` lidos do
-   * disco no processo principal, com o mesmo `AgentSpec` que valida a
-   * importação. Só leitura; instalar é o `agents.importTemplate`. Cada passo
-   * de modelo vem com o índice e o modelo pedido, para o seletor de
-   * instalação oferecer a troca.
+   * repositório remoto, ou da cópia empacotada se ele falhar (`origem` diz de
+   * qual). A listagem só confere `id` e `name`; quem valida pelo `AgentSpec` é
+   * a instalação. Só leitura. Cada passo de modelo vem com índice e nome, para
+   * a escolha de instalação; o modelo do template não é exposto.
    */
   "agents.templates": () => Promise<
-    { id: string; name: string; modelo: string | null; passos: number; passosDeModelo: { indice: number; modelo: string }[] }[]
+    { id: string; name: string; origem: "remoto" | "local"; passos: number; passosDeModelo: { indice: number; nome: string }[] }[]
   >;
   /**
-   * Instala um template do marketplace pelo id, como o importar de arquivo
-   * faria. As substituições trocam o modelo dos passos de IA antes de gravar:
-   * índice do passo para o modelo escolhido, e o que não veier continua com o
-   * do template.
+   * Instala um template do marketplace pelo id, a partir do que a última
+   * listagem mostrou, como o importar de arquivo faria. As substituições
+   * trocam o modelo dos passos de IA antes de gravar: índice do passo para
+   * `provedor/modelo`, validado contra o catálogo desta máquina. Escolha
+   * inválida, ou índice que não é de um passo de modelo, é erro.
    */
   "agents.importTemplate": (
     id: string,

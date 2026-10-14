@@ -422,7 +422,7 @@ export function Hoje({ navegar }: TelaProps) {
                       {ultima ? t("home.today.next.last_checked", { when: ultima }) : "aguardando primeira batida"}
                     </span>
                     <span className="font-mono text-primary font-medium">
-                      próxima: {quandoRoda(t, idioma, g.nextDueAt)}
+                      {t("home.today.next.upcoming", { when: quandoRoda(t, idioma, g.nextDueAt) })}
                     </span>
                   </div>
                 </div>
@@ -446,7 +446,7 @@ export function Hoje({ navegar }: TelaProps) {
             size="sm"
             variant="ghost"
           >
-            ver todas
+            {t("home.today.seeAll")}
           </Button>
         </div>
         {recentes.length === 0 ? (

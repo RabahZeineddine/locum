@@ -327,7 +327,7 @@ function NavDaConfiguracao({ atual, navegar }: { atual: SecaoId; navegar: TelaPr
       role="tablist"
     >
       <div className="hidden md:block px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">
-        Configurações
+        {t("nav.settingsTitle")}
       </div>
       {SECOES.map((id) => {
         const Icone = ICONE_DA_SECAO[id];

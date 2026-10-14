@@ -182,13 +182,21 @@
       "empty": "No ready-made agents in this installation's catalog.",
       "installed": "installed",
       "install": "Install",
-      "installWith": "Install with chosen models",
-      "modelHint": "Pick the model each step uses on this machine. The original is pre-selected.",
-      "modelFor": "Model for {{model}}",
-      "modelMissing": "not in this machine's catalog",
+      "installWith": "Install",
+      "cancel": "Cancel",
+      "modelHint": "Choose the provider and model. The choice applies to every AI step of the agent.",
+      "provider": "Provider",
+      "model": "Model",
+      "noProvider": "No model provider is configured on this machine. Set one up under Providers to install this agent.",
       "open": "Open",
       "steps_one": "{{count}} step",
-      "steps_other": "{{count}} steps"
+      "steps_other": "{{count}} steps",
+      "chooseProvider": "Choose the provider",
+      "chooseModel": "Choose the model",
+      "perStep": "Choose per step",
+      "sameForAll": "Use the same choice for all",
+      "catalogFailed": "Could not read this machine's models: {{message}}",
+      "providerFailed": "Could not read the models of {{provider}}: {{message}}"
     },
     "lead": "Who works for you, what each one does and when it wakes up.",
     "new": {
@@ -262,7 +270,8 @@
     "pull": "PR #{{number}}",
     "open_github": "open on GitHub",
     "save": "Save",
-    "filterByInitiative": "Filter by this initiative"
+    "filterByInitiative": "Filter by this initiative",
+    "cadence": "every {{minutes}}m"
   },
   "findings": {
     "count_one": "{{count}} finding",
@@ -299,7 +308,9 @@
     },
     "empty": {
       "title": "Nothing waiting for you",
-      "body": "Your agents keep working. When something needs your decision, it shows up here and in the tray."
+      "body": "Your agents keep working. When something needs your decision, it shows up here and in the tray.",
+      "view_runs": "See run history",
+      "view_monitors": "Check the watch"
     },
     "shortcuts": {
       "move": "move",
@@ -500,7 +511,11 @@
     "sessions": "Sessions",
     "automations": "Automations",
     "apps": "Apps",
-    "library": "Agents"
+    "library": "Agents",
+    "sectionCockpit": "Cockpit",
+    "sectionOperations": "Operations",
+    "sectionResources": "Resources",
+    "settingsTitle": "Settings"
   },
   "notification": {
     "runFailed": {
@@ -615,7 +630,15 @@
       "COMMENT": "General comments",
       "REQUEST_CHANGES": "Changes requested"
     },
-    "fixSuggestion": "Fix suggestion"
+    "fixSuggestion": "Fix suggestion",
+    "monitorFilter": "monitor: {{agent}}",
+    "clearMonitorFilter": "Clear monitor filter",
+    "filter": {
+      "all": "All",
+      "review": "PR reviews",
+      "digest": "Watch and alerts",
+      "failed": "Failed"
+    }
   },
   "settings": {
     "refused": "the bridge refused {{channel}}: {{message}}",
@@ -1250,7 +1273,13 @@
         "digest": "Mark as read",
         "call": "Make the call"
       }
-    }
+    },
+    "customPlaceholder": "LGTM!",
+    "comment_box_label": "Comment that will be posted to GitHub",
+    "comment_box_hint": "Edit freely before clicking Approve",
+    "no_findings_title": "No blocking defects found.",
+    "no_findings_hint": "The audit found no functional regressions, concurrency issues, broken contracts or security flaws in the diff. You can approve the PR with the positive verdict above.",
+    "create_shortcut_issue": "Create Shortcut story"
   },
   "schema": {
     "created": "schema created from scratch, migrations applied: {{count}}",
@@ -1367,7 +1396,10 @@
         "just_now": "just now",
         "minutes_ago_one": "{{count}} min ago",
         "minutes_ago_other": "{{count}} min ago",
-        "no_events": "no updates"
+        "no_events": "no updates",
+        "upcoming": "next: {{when}}",
+        "health_failed": "connection failed",
+        "active_synced": "listening"
       },
       "done": {
         "title": "Finished",
@@ -1407,7 +1439,8 @@
         "title_one": "{{count}} MCP server needs to sign in again",
         "title_other": "{{count}} MCP servers need to sign in again",
         "detail": "{{names}}: credentials were refused on the last connection"
-      }
+      },
+      "seeAll": "see all"
     }
   },
   "session": {

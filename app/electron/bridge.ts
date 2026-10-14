@@ -2,7 +2,7 @@ import { listTeamsChannels } from "../src/teams/channels.js";
 import { claudeAccountService, SERVIDOR_CONTA } from "../src/runtimes/claude-account.js";
 import { claudeImportService } from "../src/services/claude-import.js";
 import { app, BrowserWindow, dialog, ipcMain, type WebContents } from "electron";
-import { readdir, readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { agentBuilder, criadorDisponivel } from "./agent-builder.js";
 import { chatSession } from "./chat.js";
@@ -44,6 +44,8 @@ import { updateService } from "../src/services/update-service.js";
 import { trackerService } from "../src/services/tracker-service.js";
 import { triggerService } from "../src/services/trigger-service.js";
 import { settingsService } from "../src/services/settings-service.js";
+import { validarSubstituicoes } from "../src/config/escolha-de-modelo.js";
+import { TemplateSource } from "../src/services/template-source.js";
 import { scheduler } from "../src/triggers/scheduler.js";
 import { refreshTray } from "./tray.js";
 
@@ -102,6 +104,19 @@ async function idiomaDaJanela(): Promise<WindowLanguage> {
   return { ...estado, strict: !app.isPackaged };
 }
 
+/**
+ * Uma fonte só, para a listagem e a instalação dividirem o que foi listado.
+ * Em dev, `getAppPath` é a raiz do repositório; empacotado, `dist/agents/`
+ * entra como recurso do app (copiada por `scripts/build-main.mjs`).
+ */
+let fonte: TemplateSource | undefined;
+function fonteDeTemplates(): TemplateSource {
+  fonte ??= new TemplateSource({
+    pastaLocal: app.isPackaged ? join(__dirname, "agents") : join(app.getAppPath(), "examples", "agents"),
+  });
+  return fonte;
+}
+
 function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
   return {
     "agents.list": () => agentService.list(),
@@ -133,66 +148,18 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
       await writeFile(escolha.filePath, texto);
       return escolha.filePath;
     },
-    // O marketplace lê os templates do disco, e não de import estático: agent
-    // pronto é dado, e agent novo no catálogo não é razão de release. Em dev,
-    // `getAppPath` é a raiz do repositório; empacotado, a pasta `dist/agents/`
-    // entra como recurso do app.asar (copiada por `scripts/build-main.mjs`).
-    "agents.templates": async () => {
-      const pasta = app.isPackaged
-        ? join(__dirname, "agents")
-        : join(app.getAppPath(), "examples", "agents");
-      let nomes: string[] = [];
-      try {
-        nomes = (await readdir(pasta)).filter((n) => n.endsWith(".json")).sort();
-      } catch {
-        return [];
-      }
-      const modelos = await Promise.all(
-        nomes.map(async (nome) => {
-          try {
-            const bruto = JSON.parse(await readFile(join(pasta, nome), "utf8")) as {
-              id?: unknown;
-              name?: unknown;
-              steps?: unknown[];
-            };
-            if (typeof bruto.id !== "string" || typeof bruto.name !== "string") return null;
-            const passos = Array.isArray(bruto.steps) ? bruto.steps : [];
-            const passosDeModelo = passos
-              .map((p, indice) => ({ indice, modelo: (p as { model?: unknown }).model }))
-              .filter(
-                (p): p is { indice: number; modelo: string } =>
-                  typeof p.modelo === "string",
-              );
-            return {
-              id: bruto.id,
-              name: bruto.name,
-              modelo: passosDeModelo[0]?.modelo ?? null,
-              passos: passos.length,
-              passosDeModelo,
-            };
-          } catch {
-            return null;
-          }
-        }),
-      );
-      return modelos.filter((m): m is NonNullable<typeof m> => m !== null);
-    },
+    // Listar e instalar leem da mesma fonte (`TemplateSource`): o repositório
+    // remoto, e a cópia empacotada se ele não responder.
+    "agents.templates": () => fonteDeTemplates().listar(),
     "agents.importTemplate": async (id, substituicoes) => {
-      if (!/^[a-z0-9][a-z0-9-]{1,62}$/.test(id)) throw new Error(`id de template inválido: "${id}"`);
-      const pasta = join(app.getAppPath(), "examples", "agents");
-      const bruto = JSON.parse(await readFile(join(pasta, `${id}.json`), "utf8")) as {
-        steps?: { model?: string }[];
-      };
-      // A troca de modelo acontece antes da validação do importar: quem escolhe
-      // no seletor só vê modelos disponíveis nesta máquina, e o spec gravado
-      // nasce já com a escolha — sem precisar editar o agent depois.
-      if (substituicoes && Array.isArray(bruto.steps)) {
-        for (const [indice, modelo] of Object.entries(substituicoes)) {
-          const passo = bruto.steps[Number(indice)];
-          if (passo && typeof passo.model === "string" && /^[a-z0-9][a-z0-9-]*\/[\w.@:-]+$/.test(modelo)) {
-            passo.model = modelo;
-          }
-        }
+      const bruto = (await fonteDeTemplates().ler(id)) as { steps?: { model?: string }[] };
+      // A troca de modelo acontece antes da validação do importar, e só vale
+      // para o que esta máquina oferece: escolha fora do catálogo é erro, não
+      // descarte, senão o agent nasceria com o modelo do template sem aviso.
+      if (substituicoes && Object.keys(substituicoes).length > 0) {
+        const passos = Array.isArray(bruto.steps) ? bruto.steps : [];
+        validarSubstituicoes(passos, substituicoes, await providerService.listAllModels({ assinatura: true }));
+        for (const [indice, modelo] of Object.entries(substituicoes)) passos[Number(indice)]!.model = modelo;
       }
       const { version, created } = await agentService.importSpec(
         JSON.stringify(bruto),

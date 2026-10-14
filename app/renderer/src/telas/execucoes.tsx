@@ -229,11 +229,11 @@ function Lista({ filtroAgente, navegar }: { filtroAgente?: string | null; navega
 
           {filtroAgente && (
             <div className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 border border-primary/20 px-2.5 py-1 text-xs text-primary font-mono font-medium">
-              <span>monitor: {filtroAgente}</span>
+              <span>{t("runs.monitorFilter", { agent: filtroAgente })}</span>
               <button
                 className="hover:text-foreground cursor-pointer"
                 onClick={() => navegar("runs")}
-                title="Limpar filtro do monitor"
+                title={t("runs.clearMonitorFilter")}
                 type="button"
               >
                 <X className="size-3" />

@@ -189,14 +189,22 @@
       "empty": "Nenhum agent pronto no catálogo desta instalação.",
       "installed": "instalado",
       "install": "Instalar",
-      "installWith": "Instalar com estes modelos",
-      "modelHint": "Escolha o modelo de cada passo de IA. A lista mostra o que esta máquina oferece.",
-      "modelFor": "modelo {{model}}:",
-      "modelMissing": "fora do catálogo desta máquina",
+      "installWith": "Instalar",
+      "cancel": "Cancelar",
+      "modelHint": "Escolha o provedor e o modelo. A escolha vale para todos os passos de IA do agent.",
+      "provider": "Provedor",
+      "model": "Modelo",
+      "noProvider": "Nenhum provedor de modelo está configurado nesta máquina. Configure um em Provedores para instalar este agent.",
       "open": "Abrir",
       "steps_zero": "{{count}} passos",
       "steps_one": "{{count}} passo",
-      "steps_other": "{{count}} passos"
+      "steps_other": "{{count}} passos",
+      "chooseProvider": "Escolha o provedor",
+      "chooseModel": "Escolha o modelo",
+      "perStep": "Escolher por passo",
+      "sameForAll": "Usar a mesma escolha para todos",
+      "catalogFailed": "Não consegui ler os modelos desta máquina: {{message}}",
+      "providerFailed": "Não consegui ler os modelos de {{provider}}: {{message}}"
     },
     "lead": "Quem trabalha por você, o que cada um faz e quando acorda.",
     "new": {
@@ -273,7 +281,8 @@
     "pull": "PR #{{number}}",
     "open_github": "abrir no GitHub",
     "save": "Salvar",
-    "filterByInitiative": "Filtrar por esta iniciativa"
+    "filterByInitiative": "Filtrar por esta iniciativa",
+    "cadence": "cada {{minutes}}m"
   },
   "findings": {
     "count_one": "{{count}} achado",
@@ -311,7 +320,9 @@
     },
     "empty": {
       "title": "Nada esperando você",
-      "body": "Os agents continuam trabalhando. Quando algo precisar da sua decisão, aparece aqui e na bandeja."
+      "body": "Os agents continuam trabalhando. Quando algo precisar da sua decisão, aparece aqui e na bandeja.",
+      "view_runs": "Ver histórico de execuções",
+      "view_monitors": "Conferir vigilância"
     },
     "shortcuts": {
       "move": "mover",
@@ -519,7 +530,11 @@
     "sessions": "Sessões",
     "automations": "Automações",
     "apps": "Apps",
-    "library": "Agents"
+    "library": "Agents",
+    "sectionCockpit": "Cockpit",
+    "sectionOperations": "Operações",
+    "sectionResources": "Recursos",
+    "settingsTitle": "Configurações"
   },
   "notification": {
     "runFailed": {
@@ -639,7 +654,15 @@
       "COMMENT": "Comentários gerais",
       "REQUEST_CHANGES": "Alterações necessárias"
     },
-    "fixSuggestion": "Sugestão de correção"
+    "fixSuggestion": "Sugestão de correção",
+    "monitorFilter": "monitor: {{agent}}",
+    "clearMonitorFilter": "Limpar filtro do monitor",
+    "filter": {
+      "all": "Todas",
+      "review": "PR Reviews",
+      "digest": "Vigilância & Alertas",
+      "failed": "Com Falha"
+    }
   },
   "settings": {
     "refused": "a ponte recusou {{channel}}: {{message}}",
@@ -1285,7 +1308,13 @@
         "digest": "Dar por lido",
         "call": "Fazer a chamada"
       }
-    }
+    },
+    "customPlaceholder": "LGTM!",
+    "comment_box_label": "Comentário que será publicado no GitHub",
+    "comment_box_hint": "Edite livremente antes de clicar em Aprovar",
+    "no_findings_title": "Nenhum defeito impeditivo encontrado.",
+    "no_findings_hint": "A auditoria não encontrou regressões funcionais, concorrência, quebra de contratos ou falhas de segurança no diff. Você pode aprovar o PR com o parecer positivo acima ou descartar esta revisão sem comentar.",
+    "create_shortcut_issue": "Criar história no Shortcut"
   },
   "schema": {
     "created": "esquema criado do zero, migrações aplicadas: {{count}}",
@@ -1403,7 +1432,10 @@
         "minutes_ago_zero": "há {{count}} min",
         "minutes_ago_one": "há {{count}} min",
         "minutes_ago_other": "há {{count}} min",
-        "no_events": "sem novidades"
+        "no_events": "sem novidades",
+        "upcoming": "próxima: {{when}}",
+        "health_failed": "conexão falhou",
+        "active_synced": "ouvindo"
       },
       "done": {
         "title": "Terminou",
@@ -1444,7 +1476,8 @@
         "title_one": "{{count}} servidor MCP precisa autenticar de novo",
         "title_other": "{{count}} servidores MCP precisam autenticar de novo",
         "detail": "{{names}}: a credencial foi recusada na última conexão"
-      }
+      },
+      "seeAll": "ver todas"
     }
   },
   "session": {
