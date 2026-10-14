@@ -265,7 +265,8 @@
     "pull": "PR #{{number}}",
     "open_github": "open on GitHub",
     "save": "Save",
-    "filterByInitiative": "Filter by this initiative"
+    "filterByInitiative": "Filter by this initiative",
+    "cadence": "every {{minutes}}m"
   },
   "findings": {
     "count_one": "{{count}} finding",
@@ -302,7 +303,9 @@
     },
     "empty": {
       "title": "Nothing waiting for you",
-      "body": "Your agents keep working. When something needs your decision, it shows up here and in the tray."
+      "body": "Your agents keep working. When something needs your decision, it shows up here and in the tray.",
+      "view_runs": "See run history",
+      "view_monitors": "Check the watch"
     },
     "shortcuts": {
       "move": "move",
@@ -624,7 +627,13 @@
     },
     "fixSuggestion": "Fix suggestion",
     "monitorFilter": "monitor: {{agent}}",
-    "clearMonitorFilter": "Clear monitor filter"
+    "clearMonitorFilter": "Clear monitor filter",
+    "filter": {
+      "all": "All",
+      "review": "PR reviews",
+      "digest": "Watch and alerts",
+      "failed": "Failed"
+    }
   },
   "settings": {
     "refused": "the bridge refused {{channel}}: {{message}}",
@@ -1260,7 +1269,12 @@
         "call": "Make the call"
       }
     },
-    "customPlaceholder": "LGTM!"
+    "customPlaceholder": "LGTM!",
+    "comment_box_label": "Comment that will be posted to GitHub",
+    "comment_box_hint": "Edit freely before clicking Approve",
+    "no_findings_title": "No blocking defects found.",
+    "no_findings_hint": "The audit found no functional regressions, concurrency issues, broken contracts or security flaws in the diff. You can approve the PR with the positive verdict above.",
+    "create_shortcut_issue": "Create Shortcut story"
   },
   "schema": {
     "created": "schema created from scratch, migrations applied: {{count}}",
@@ -1378,7 +1392,9 @@
         "minutes_ago_one": "{{count}} min ago",
         "minutes_ago_other": "{{count}} min ago",
         "no_events": "no updates",
-        "upcoming": "next: {{when}}"
+        "upcoming": "next: {{when}}",
+        "health_failed": "connection failed",
+        "active_synced": "listening"
       },
       "done": {
         "title": "Finished",

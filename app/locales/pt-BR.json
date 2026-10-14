@@ -276,7 +276,8 @@
     "pull": "PR #{{number}}",
     "open_github": "abrir no GitHub",
     "save": "Salvar",
-    "filterByInitiative": "Filtrar por esta iniciativa"
+    "filterByInitiative": "Filtrar por esta iniciativa",
+    "cadence": "cada {{minutes}}m"
   },
   "findings": {
     "count_one": "{{count}} achado",
@@ -314,7 +315,9 @@
     },
     "empty": {
       "title": "Nada esperando você",
-      "body": "Os agents continuam trabalhando. Quando algo precisar da sua decisão, aparece aqui e na bandeja."
+      "body": "Os agents continuam trabalhando. Quando algo precisar da sua decisão, aparece aqui e na bandeja.",
+      "view_runs": "Ver histórico de execuções",
+      "view_monitors": "Conferir vigilância"
     },
     "shortcuts": {
       "move": "mover",
@@ -648,7 +651,13 @@
     },
     "fixSuggestion": "Sugestão de correção",
     "monitorFilter": "monitor: {{agent}}",
-    "clearMonitorFilter": "Limpar filtro do monitor"
+    "clearMonitorFilter": "Limpar filtro do monitor",
+    "filter": {
+      "all": "Todas",
+      "review": "PR Reviews",
+      "digest": "Vigilância & Alertas",
+      "failed": "Com Falha"
+    }
   },
   "settings": {
     "refused": "a ponte recusou {{channel}}: {{message}}",
@@ -1295,7 +1304,12 @@
         "call": "Fazer a chamada"
       }
     },
-    "customPlaceholder": "LGTM!"
+    "customPlaceholder": "LGTM!",
+    "comment_box_label": "Comentário que será publicado no GitHub",
+    "comment_box_hint": "Edite livremente antes de clicar em Aprovar",
+    "no_findings_title": "Nenhum defeito impeditivo encontrado.",
+    "no_findings_hint": "A auditoria não encontrou regressões funcionais, concorrência, quebra de contratos ou falhas de segurança no diff. Você pode aprovar o PR com o parecer positivo acima ou descartar esta revisão sem comentar.",
+    "create_shortcut_issue": "Criar história no Shortcut"
   },
   "schema": {
     "created": "esquema criado do zero, migrações aplicadas: {{count}}",
@@ -1414,7 +1428,9 @@
         "minutes_ago_one": "há {{count}} min",
         "minutes_ago_other": "há {{count}} min",
         "no_events": "sem novidades",
-        "upcoming": "próxima: {{when}}"
+        "upcoming": "próxima: {{when}}",
+        "health_failed": "conexão falhou",
+        "active_synced": "ouvindo"
       },
       "done": {
         "title": "Terminou",
