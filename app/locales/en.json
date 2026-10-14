@@ -1174,7 +1174,7 @@
     "screens": "inbox reading \"{{inbox}}\", runs reading \"{{runs}}\", agents reading \"{{agents}}\" and settings reading \"{{budget}}\", all matching the dictionary in both languages",
     "picker": "settings switching the language by click, \"{{pt}}\" and \"{{en}}\" with no reload, and the tray following in the same beat: \"{{tray}}\"",
     "schema": "migrations applied: {{count}}",
-    "watched": "trigger for {{target}} registered parked, turned on with the next beat at {{next}}, and removed",
+    "watched": "observed: a GitHub trigger for {{target}} created in the editor with the preview answering, parked, turned on in the editor with the next beat at {{next}}, and removed in the editor",
     "trackers": "trackers: {{service}} on Jira through the service and {{window}} on GitHub through the window, credential from the vault, {{projects}} visible destinations, existing task found again by pull request, no channel that opens a task",
     "authorship": "the {{mine}} trigger woke only on {{viewer}}'s pull request, and the {{others}} one only on somebody else's",
     "mcpPoll": "querying {{fixture}} through the {{tool}} tool produced {{events}} normalized event(s), the second sweep reprocessed none, and the cursor did not move when the call failed",
@@ -2073,7 +2073,8 @@
         "empty": "No open pull request in these repositories.",
         "enters": "enters",
         "skipped": "does not enter",
-        "failed": "could not read: {{message}}"
+        "failed": "could not read: {{message}}",
+        "warning": "warning: {{message}}"
       },
       "discards": {
         "title": "Latest skipped pull requests",

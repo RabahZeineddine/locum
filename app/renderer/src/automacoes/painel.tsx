@@ -141,7 +141,7 @@ export function PainelDoNo({
         <ConfigDaAcao passo={passo as PassoDeAcao} rascunho={rascunho} setRascunho={setRascunho} trackers={trackers} />
       )}
 
-      <Button className="mt-auto cursor-pointer self-start" onClick={remover} size="sm" variant="ghost">
+      <Button className="mt-auto cursor-pointer self-start" data-locum-painel-remover="" onClick={remover} size="sm" variant="ghost">
         <Trash2 className="size-4" />
         {t("automations.panel.remove")}
       </Button>

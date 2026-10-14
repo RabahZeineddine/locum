@@ -1209,7 +1209,7 @@
     "screens": "inbox escrevendo \"{{inbox}}\", execuções escrevendo \"{{runs}}\", agents escrevendo \"{{agents}}\" e configuração escrevendo \"{{budget}}\", todas batendo com o dicionário nos dois idiomas",
     "picker": "configuração trocando o idioma por clique, \"{{pt}}\" e \"{{en}}\" sem recarregar, e a bandeja indo junto na mesma batida: \"{{tray}}\"",
     "schema": "migrações aplicadas: {{count}}",
-    "watched": "gatilho de {{target}} cadastrado parado, ligado com a próxima batida em {{next}}, e removido",
+    "watched": "observados: gatilho do GitHub de {{target}} criado no editor com a prévia respondendo, parado, ligado pelo editor com a próxima batida em {{next}}, e removido pelo editor",
     "trackers": "trackers: {{service}} no Jira pelo serviço e {{window}} no GitHub pela tela, credencial do cofre, {{projects}} destinos visíveis, tarefa existente reencontrada pelo pull request, nenhum canal que abra tarefa",
     "authorship": "gatilho de {{mine}} acordou só com o pull request de {{viewer}}, e o de {{others}} só com o de outra pessoa",
     "mcpPoll": "consulta ao {{fixture}} pela ferramenta {{tool}} virou {{events}} evento(s) normalizado(s), a segunda varredura não reprocessou nenhum, e o cursor não andou com a chamada falhando",
@@ -2118,7 +2118,8 @@
         "empty": "Nenhum pull request aberto nesses repositórios.",
         "enters": "entra",
         "skipped": "não entra",
-        "failed": "não deu para ler: {{message}}"
+        "failed": "não deu para ler: {{message}}",
+        "warning": "aviso: {{message}}"
       },
       "discards": {
         "title": "Últimos pull requests descartados",

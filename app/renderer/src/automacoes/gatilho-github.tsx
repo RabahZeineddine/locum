@@ -2,7 +2,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { call, useRead, type ReadResult } from "@/lib/bridge";
 import {
-  listaDeNomes,
   listaDoTexto,
   podarFiltros,
   revisaoComoTexto,
@@ -11,7 +10,7 @@ import {
 } from "@/lib/filtros-do-gatilho";
 import { nomeDoPadrao, padraoDoRepo } from "@/lib/padrao-do-repo";
 import { cn } from "@/lib/utils";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { PollFilters, TriggerConfig } from "../../../src/config/types";
 import { Alternador, Campo, CAMPO, Minutos } from "./campos";
@@ -123,13 +122,13 @@ export function GatilhoDoGithub({
           dica={t("automations.github.labels.hint")}
           marca="gh-labels"
           rotulo={t("automations.github.labels.include")}
-          trocar={(texto) => mudarFiltros({ ...filtros, labels: { ...filtros.labels, include: listaDeNomes(texto) } })}
+          trocar={(texto) => mudarFiltros({ ...filtros, labels: { ...filtros.labels, include: listaDoTexto(texto) } })}
           valor={textoDaLista(filtros.labels?.include)}
         />
         <CampoDeTexto
           marca="gh-labels-fora"
           rotulo={t("automations.github.labels.exclude")}
-          trocar={(texto) => mudarFiltros({ ...filtros, labels: { ...filtros.labels, exclude: listaDeNomes(texto) } })}
+          trocar={(texto) => mudarFiltros({ ...filtros, labels: { ...filtros.labels, exclude: listaDoTexto(texto) } })}
           valor={textoDaLista(filtros.labels?.exclude)}
         />
       </Secao>
@@ -258,14 +257,25 @@ function PreviaDoGatilho({ config }: { config: Poll }) {
 
   // A lista é do que estava na tela quando se clicou: mexer num filtro a deixaria
   // contando uma história que o formulário já não conta.
+  // Resposta que chega depois de o formulário mudar é ignorada: cada pedido
+  // tem um número, e mexer no formulário invalida o que está em voo.
+  const pedido = useRef(0);
   const chave = JSON.stringify(config);
-  useEffect(() => setEstado({ fase: "parada" }), [chave]);
+  useEffect(() => {
+    pedido.current += 1;
+    setEstado({ fase: "parada" });
+  }, [chave]);
 
   const ver = (): void => {
+    const meu = ++pedido.current;
     setEstado({ fase: "carregando" });
     call("triggers.previewGithub", config).then(
-      (previa) => setEstado({ fase: "pronta", previa }),
-      (e: unknown) => setEstado({ fase: "erro", mensagem: e instanceof Error ? e.message : String(e) }),
+      (previa) => {
+        if (meu === pedido.current) setEstado({ fase: "pronta", previa });
+      },
+      (e: unknown) => {
+        if (meu === pedido.current) setEstado({ fase: "erro", mensagem: e instanceof Error ? e.message : String(e) });
+      },
     );
   };
 
@@ -302,6 +312,11 @@ function PreviaDoGatilho({ config }: { config: Poll }) {
               })}
               {estado.previa.cortada ? ` ${t("automations.github.preview.cut")}` : ""}
             </p>
+            {estado.previa.avisos.map((aviso) => (
+              <p className="text-amber-500 text-xs" data-locum-previa-aviso="" key={aviso}>
+                {t("automations.github.preview.warning", { message: aviso })}
+              </p>
+            ))}
             <ul className="flex min-w-0 flex-col gap-1.5">
               {estado.previa.itens.map((item) => (
                 <LinhaDePr

@@ -6,16 +6,11 @@ import type { PollFilters } from "../../src/config/types";
  * volta ter teste: o texto é livre, e o filtro, não.
  */
 
-/** Vírgula, espaço ou quebra de linha separam; item vazio some. */
+/**
+ * Vírgula ou quebra de linha separam; item vazio some. Espaço não separa:
+ * label e glob podem ter (`help wanted`).
+ */
 export function listaDoTexto(texto: string): string[] {
-  return texto
-    .split(/[,\s]+/)
-    .map((item) => item.trim())
-    .filter((item) => item !== "");
-}
-
-/** Para o que pode ter espaço no nome, como a label `help wanted`: só vírgula e quebra de linha separam. */
-export function listaDeNomes(texto: string): string[] {
   return texto
     .split(/[,\n]+/)
     .map((item) => item.trim())

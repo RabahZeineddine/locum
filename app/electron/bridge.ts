@@ -376,7 +376,7 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "triggers.previewGithub": async (config) => {
       const { previaDoGatilho } = await import("../src/services/trigger-preview.js");
       // Na fumaça e nas capturas não há token nem rede: responde o GitHub de exemplo.
-      if (process.env.LOCUM_GITHUB_FIXTURE !== "1") return previaDoGatilho(config);
+      if (app.isPackaged || process.env.LOCUM_GITHUB_FIXTURE !== "1") return previaDoGatilho(config);
       const { clienteDeExemplo } = await import("../src/fixtures/github-previa.js");
       return previaDoGatilho(config, { client: clienteDeExemplo(), viewer: async () => "ana" });
     },
