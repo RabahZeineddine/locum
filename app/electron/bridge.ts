@@ -44,6 +44,7 @@ import { updateService } from "../src/services/update-service.js";
 import { trackerService } from "../src/services/tracker-service.js";
 import { triggerService } from "../src/services/trigger-service.js";
 import { settingsService } from "../src/services/settings-service.js";
+import { validarSubstituicoes } from "../src/config/escolha-de-modelo.js";
 import { TemplateSource } from "../src/services/template-source.js";
 import { scheduler } from "../src/triggers/scheduler.js";
 import { refreshTray } from "./tray.js";
@@ -104,12 +105,16 @@ async function idiomaDaJanela(): Promise<WindowLanguage> {
 }
 
 /**
+ * Uma fonte só, para a listagem e a instalação dividirem o que foi listado.
  * Em dev, `getAppPath` é a raiz do repositório; empacotado, `dist/agents/`
  * entra como recurso do app (copiada por `scripts/build-main.mjs`).
  */
+let fonte: TemplateSource | undefined;
 function fonteDeTemplates(): TemplateSource {
-  const pastaLocal = app.isPackaged ? join(__dirname, "agents") : join(app.getAppPath(), "examples", "agents");
-  return new TemplateSource({ pastaLocal });
+  fonte ??= new TemplateSource({
+    pastaLocal: app.isPackaged ? join(__dirname, "agents") : join(app.getAppPath(), "examples", "agents"),
+  });
+  return fonte;
 }
 
 function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
@@ -148,16 +153,13 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "agents.templates": () => fonteDeTemplates().listar(),
     "agents.importTemplate": async (id, substituicoes) => {
       const bruto = (await fonteDeTemplates().ler(id)) as { steps?: { model?: string }[] };
-      // A troca de modelo acontece antes da validação do importar: quem escolhe
-      // no seletor só vê modelos disponíveis nesta máquina, e o spec gravado
-      // nasce já com a escolha — sem precisar editar o agent depois.
-      if (substituicoes && Array.isArray(bruto.steps)) {
-        for (const [indice, modelo] of Object.entries(substituicoes)) {
-          const passo = bruto.steps[Number(indice)];
-          if (passo && typeof passo.model === "string" && /^[a-z0-9][a-z0-9-]*\/[\w.@:-]+$/.test(modelo)) {
-            passo.model = modelo;
-          }
-        }
+      // A troca de modelo acontece antes da validação do importar, e só vale
+      // para o que esta máquina oferece: escolha fora do catálogo é erro, não
+      // descarte, senão o agent nasceria com o modelo do template sem aviso.
+      if (substituicoes && Object.keys(substituicoes).length > 0) {
+        const passos = Array.isArray(bruto.steps) ? bruto.steps : [];
+        validarSubstituicoes(passos, substituicoes, await providerService.listAllModels({ assinatura: true }));
+        for (const [indice, modelo] of Object.entries(substituicoes)) passos[Number(indice)]!.model = modelo;
       }
       const { version, created } = await agentService.importSpec(
         JSON.stringify(bruto),
