@@ -503,7 +503,11 @@
     "sessions": "Sessions",
     "automations": "Automations",
     "apps": "Apps",
-    "library": "Agents"
+    "library": "Agents",
+    "sectionCockpit": "Cockpit",
+    "sectionOperations": "Operations",
+    "sectionResources": "Resources",
+    "settingsTitle": "Settings"
   },
   "notification": {
     "runFailed": {
@@ -618,7 +622,9 @@
       "COMMENT": "General comments",
       "REQUEST_CHANGES": "Changes requested"
     },
-    "fixSuggestion": "Fix suggestion"
+    "fixSuggestion": "Fix suggestion",
+    "monitorFilter": "monitor: {{agent}}",
+    "clearMonitorFilter": "Clear monitor filter"
   },
   "settings": {
     "refused": "the bridge refused {{channel}}: {{message}}",
@@ -1253,7 +1259,8 @@
         "digest": "Mark as read",
         "call": "Make the call"
       }
-    }
+    },
+    "customPlaceholder": "LGTM!"
   },
   "schema": {
     "created": "schema created from scratch, migrations applied: {{count}}",
@@ -1370,7 +1377,8 @@
         "just_now": "just now",
         "minutes_ago_one": "{{count}} min ago",
         "minutes_ago_other": "{{count}} min ago",
-        "no_events": "no updates"
+        "no_events": "no updates",
+        "upcoming": "next: {{when}}"
       },
       "done": {
         "title": "Finished",
@@ -1410,7 +1418,8 @@
         "title_one": "{{count}} MCP server needs to sign in again",
         "title_other": "{{count}} MCP servers need to sign in again",
         "detail": "{{names}}: credentials were refused on the last connection"
-      }
+      },
+      "seeAll": "see all"
     }
   },
   "session": {

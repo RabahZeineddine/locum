@@ -522,7 +522,11 @@
     "sessions": "Sessões",
     "automations": "Automações",
     "apps": "Apps",
-    "library": "Agents"
+    "library": "Agents",
+    "sectionCockpit": "Cockpit",
+    "sectionOperations": "Operações",
+    "sectionResources": "Recursos",
+    "settingsTitle": "Configurações"
   },
   "notification": {
     "runFailed": {
@@ -642,7 +646,9 @@
       "COMMENT": "Comentários gerais",
       "REQUEST_CHANGES": "Alterações necessárias"
     },
-    "fixSuggestion": "Sugestão de correção"
+    "fixSuggestion": "Sugestão de correção",
+    "monitorFilter": "monitor: {{agent}}",
+    "clearMonitorFilter": "Limpar filtro do monitor"
   },
   "settings": {
     "refused": "a ponte recusou {{channel}}: {{message}}",
@@ -1288,7 +1294,8 @@
         "digest": "Dar por lido",
         "call": "Fazer a chamada"
       }
-    }
+    },
+    "customPlaceholder": "LGTM!"
   },
   "schema": {
     "created": "esquema criado do zero, migrações aplicadas: {{count}}",
@@ -1406,7 +1413,8 @@
         "minutes_ago_zero": "há {{count}} min",
         "minutes_ago_one": "há {{count}} min",
         "minutes_ago_other": "há {{count}} min",
-        "no_events": "sem novidades"
+        "no_events": "sem novidades",
+        "upcoming": "próxima: {{when}}"
       },
       "done": {
         "title": "Terminou",
@@ -1447,7 +1455,8 @@
         "title_one": "{{count}} servidor MCP precisa autenticar de novo",
         "title_other": "{{count}} servidores MCP precisam autenticar de novo",
         "detail": "{{names}}: a credencial foi recusada na última conexão"
-      }
+      },
+      "seeAll": "ver todas"
     }
   },
   "session": {

@@ -134,7 +134,7 @@ export function Layout() {
           {/* Seção Cockpit */}
           <div className="space-y-0.5">
             <span className="px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
-              Cockpit
+              {t("nav.sectionCockpit")}
             </span>
             {ROTAS_DA_BARRA.filter((r) => r.secao === "cockpit" || !r.secao).slice(0, 2).map(({ id, rotulo, icone: Icone }) => (
               <button
@@ -167,7 +167,7 @@ export function Layout() {
           {/* Seção Operações */}
           <div className="space-y-0.5">
             <span className="px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
-              Operações
+              {t("nav.sectionOperations")}
             </span>
             {ROTAS_DA_BARRA.filter((r) => r.secao === "operacoes").map(({ id, rotulo, icone: Icone }) => (
               <button
@@ -195,7 +195,7 @@ export function Layout() {
           {/* Seção Recursos & Configurações */}
           <div className="space-y-0.5">
             <span className="px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
-              Recursos
+              {t("nav.sectionResources")}
             </span>
             {ROTAS_DA_BARRA.filter((r) => r.secao === "recursos").map(({ id, rotulo, icone: Icone }) => (
               <button

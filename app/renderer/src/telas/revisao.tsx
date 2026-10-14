@@ -282,7 +282,7 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
         <textarea
           className="focus:border-ring border-border bg-background w-full resize-y rounded-lg border p-3 font-mono text-xs leading-relaxed outline-none transition-colors"
           onChange={(e) => setComentarioCustom(e.target.value)}
-          placeholder="LGTM!"
+          placeholder={t("review.customPlaceholder")}
           rows={Math.min(6, Math.max(2, Math.ceil((comentarioCustom || "").length / 80)))}
           value={comentarioCustom}
         />
