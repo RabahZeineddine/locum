@@ -502,6 +502,7 @@ export function variaveis(r: Rascunho, chave: string): string[] {
         break;
       case "teams-inbox":
         for (const v of ["text", "author", "webUrl"]) doEvento.add(`event.${v}`);
+        if (g.config.prLinks) for (const v of ["title", "repo", "pull", "url", "diff"]) doEvento.add(`event.${v}`);
         break;
       case "poll":
         for (const v of ["title", "repo", "pull", "author", "url"]) doEvento.add(`event.${v}`);

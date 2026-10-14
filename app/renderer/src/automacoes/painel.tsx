@@ -180,7 +180,14 @@ function ConfigDoGatilho({ config, trocar }: { config: TriggerConfig; trocar: (c
             trocar={(dms) => trocar({ ...config, dms })}
           />
           {config.kind === "teams-inbox" ? (
-            <CanaisDoTeams canais={config.channels} trocar={(channels) => trocar({ ...config, channels })} />
+            <>
+              <Alternador
+                ligado={config.prLinks}
+                rotulo={t("automations.triggers.teams-inbox.prLinks")}
+                trocar={(prLinks) => trocar({ ...config, prLinks })}
+              />
+              <CanaisDoTeams canais={config.channels} trocar={(channels) => trocar({ ...config, channels })} />
+            </>
           ) : null}
           <Minutos rotulo={t("automations.panel.everyMinutes")} valor={config.everyMinutes} trocar={(everyMinutes) => trocar({ ...config, everyMinutes })} />
         </>

@@ -270,7 +270,7 @@ export function registerConfigTools(server: McpServer): void {
         config: z
           .record(z.string(), z.unknown())
           .describe(
-            'by kind: {"kind":"schedule","everyMinutes":30}, {"kind":"webhook","path":"..."}, {"kind":"poll","source":"github","owner":"...","repoMatch":"...","authorship":"any|mine|others","includeDrafts":false} {"kind":"mcp-poll","server":"...","tool":"..."} , {"kind":"slack-inbox","mentions":true,"dms":true}, only with Slack connected through the official server, or {"kind":"teams-inbox","mentions":true,"dms":true,"channels":[{"teamId":"...","channelId":"...","label":"..."}]}, only with Teams connected (channels needs the channel scopes)',
+            'by kind: {"kind":"schedule","everyMinutes":30}, {"kind":"webhook","path":"..."}, {"kind":"poll","source":"github","owner":"...","repoMatch":"...","authorship":"any|mine|others","includeDrafts":false} {"kind":"mcp-poll","server":"...","tool":"..."} , {"kind":"slack-inbox","mentions":true,"dms":true}, only with Slack connected through the official server, or {"kind":"teams-inbox","mentions":true,"dms":true,"prLinks":true,"channels":[{"teamId":"...","channelId":"...","label":"..."}]}, only with Teams connected (channels needs the channel scopes; prLinks wakes on a GitHub pull request link in the listed channels and in group and direct chats, one event per PR carrying the PR context, and reacts on the message with 👀, then ✅, ⚠️ or 💬 by the review verdict)',
           ),
         triggerId: z.string().optional().describe("when absent, registers a new one; when present, updates that one"),
         enabled: z.boolean().optional().describe("only false is accepted here"),

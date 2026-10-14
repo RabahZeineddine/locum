@@ -1851,7 +1851,8 @@
         "summary": "mentions and chats",
         "mentions": "Mentions of you",
         "dms": "Direct chats",
-        "channels": "Team channels (mention wakes it)",
+        "prLinks": "Message with a PR link",
+        "channels": "Team channels (mention or PR link wakes it)",
         "list": "List channels",
         "loading": "Reading channels...",
         "channelsHint": "Turn on channels in the Teams connection, under Apps. Each channel is one Graph call per beat."

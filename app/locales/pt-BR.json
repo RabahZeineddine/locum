@@ -1895,7 +1895,8 @@
         "summary": "menções e conversas",
         "mentions": "Menções a você",
         "dms": "Conversas diretas",
-        "channels": "Canais de equipe (menção acorda)",
+        "prLinks": "Mensagem com link de PR",
+        "channels": "Canais de equipe (menção ou link de PR acorda)",
         "list": "Listar canais",
         "loading": "Lendo canais...",
         "channelsHint": "Precisa ligar os canais na conexão do Teams, em Apps. Cada canal é uma chamada ao Graph por batida."

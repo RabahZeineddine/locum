@@ -1768,6 +1768,19 @@ Canal de equipe ficou de fora. Ler canal pede `ChannelMessage.Read.All`, que só
 o administrador libera, e pedir escopo que nada usa ainda seria pedir acesso a
 mais.
 
+Link de PR (`prLinks`, `app/src/sources/github-pr-link.ts`): com o campo
+ligado, mensagem com link `github.com/<dono>/<repo>/pull/<n>` acorda sem
+menção nos canais do gatilho e nos chats `group` e `oneOnOne`, inclusive a que
+a própria pessoa escreveu. Reunião segue só com menção. Cada PR da mensagem
+(até cinco) vira um evento, com a chave de deduplicação `<mensagem>:pr:<PR>`.
+O evento é enriquecido com `fetchPr`, como o do Slack, e a mensagem de origem
+fica em `teamsChatId` ou `teamsTeamId` e `teamsChannelId`, `teamsMessageId` e
+`teamsReplyToId`. O 👀 sai ao enriquecer e é trocado por ✅, ⚠️ ou 💬 em
+`github.review_comment.publish` (`app/src/teams/reaction.ts`, `setReaction` e
+`unsetReaction` do Graph). Verificado com Graph de mentira; o formato do
+emoji `⚠️` no `reactionType` e a permissão da reação em canal, contra o Teams
+de verdade, ainda não.
+
 Verificado contra um Graph de mentira. Falta ver com o Teams de verdade se o
 `$orderby` de `/me/chats` pela última mensagem vale em todos os tenants e se o
 `$filter` por `lastModifiedDateTime` nas mensagens do chat responde sem pedir

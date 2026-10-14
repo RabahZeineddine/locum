@@ -20,6 +20,35 @@ aqui chega a quem já tem o app instalado sem release. O contrapeso: app antigo
 ignora campo novo do spec que não conhece, então um template que dependa de
 campo recente pode instalar sem ele em versão velha.
 
+## PR review por link no Teams
+
+O `pr-review.json` também roda a partir de um link de pull request colado no
+Teams, com reação na própria mensagem: 👀 quando o Locum pega o PR, e no fim ✅
+(APPROVE), ⚠️ (REQUEST_CHANGES) ou 💬 (COMMENT). Para montar:
+
+1. Conecte o Teams em Apps com os **canais ligados**. Ler canal pede
+   `ChannelMessage.Read.All`, que só o administrador do tenant libera: o painel
+   abre o consentimento do administrador quando precisa. Sem canais, o link só
+   vale em chat em grupo e direto.
+2. Crie uma automação com o `pr-review` e um gatilho **Menção ou DM no Teams**.
+   Escolha os canais em **Listar canais** e ligue **Mensagem com link de PR**
+   (`"prLinks": true`). Menções e conversas diretas podem ficar desligadas se
+   só o link interessa.
+3. Cole um link como `https://github.com/<dono>/<repo>/pull/<n>` (vale
+   `/files` e query). Chat de reunião só acorda com menção.
+
+Uma mensagem com vários links gera um evento por PR, até cinco, e editar a
+mensagem não gera evento repetido. O evento leva o contexto do PR nos mesmos
+campos que o agent lê (`repo`, `title`, `description`, `diff`, `omittedSummary`,
+`ci.summary`), buscado com o token do GitHub da configuração; se a busca falhar
+o evento segue sem diff, com `prError`, e o erro aparece no resultado do
+gatilho. A mensagem do próprio usuário também conta.
+
+Aprovar e pedir mudanças continuam parando na fila: a reação do veredito sai
+quando a review é publicada, não quando o agent termina. O `repo` do evento é o
+do PR, então este fluxo não serve ao `teams-reply`, que acha a conversa pelo
+`repo`.
+
 ## Central de chamados
 
 O `support-desk.json` precisa de uma iniciativa e de um gatilho de horário, que
