@@ -317,7 +317,7 @@ export const GATILHOS: readonly ComponenteDeGatilho[] = [
   {
     id: "teams-inbox",
     app: "teams",
-    novo: () => ({ kind: "teams-inbox", mentions: true, dms: true, channels: [], everyMinutes: 5 }),
+    novo: () => ({ kind: "teams-inbox", mentions: true, dms: true, prLinks: false, channels: [], everyMinutes: 5 }),
   },
   {
     id: "poll",

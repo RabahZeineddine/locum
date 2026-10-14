@@ -3,6 +3,8 @@ import { mcpOAuthService } from "../services/mcp-oauth-service.js";
 import { GRAPH_URL, TEAMS_SERVER } from "../services/teams-app.js";
 import { pollMcpServer, CURSOR_TOKEN, type McpCaller, type McpPollShape } from "./mcp-poll.js";
 import { clienteHttp } from "../net/http.js";
+import { extractGithubPrLinks } from "./github-pr-link.js";
+import type { ParsedGithubPr } from "./slack.js";
 
 type Db = typeof defaultDb;
 
@@ -35,12 +37,22 @@ const PAGINAS = 4;
  * menção. Reunião não conta como conversa direta: o chat de reunião junta
  * todo convidado, e acordar o agent a cada "bom dia" ali é trabalho que
  * ninguém pediu. Menção dentro dele continua contando.
+ *
+ * "pr" é a mensagem que acordou por trazer link de pull request, com ou sem
+ * menção: o evento é do PR, e a mensagem de onde ele veio fica nos campos
+ * `teams*`.
  */
-export type TeamsInboxKind = "mention" | "dm";
+export type TeamsInboxKind = "mention" | "dm" | "pr";
 
 export interface TeamsInboxWatch {
   mentions: boolean;
   dms: boolean;
+  /**
+   * Link de pull request do GitHub acorda, sem menção, nos canais da lista e
+   * nos chats em grupo e diretos. Chat de reunião segue só com menção. Uma
+   * mensagem com vários links vira um evento por PR, até `MAX_PR_POR_MENSAGEM`.
+   */
+  prLinks?: boolean;
   /** Canais de equipe onde a menção também conta. */
   channels?: readonly TeamsChannelRef[];
 }
@@ -93,8 +105,8 @@ export async function pollTeamsInbox(
 
   const graph = graphGet(token, options.fetchFn ?? clienteHttp, options.graphUrl ?? GRAPH_URL);
   const outcome: TeamsInboxOutcome = { eventIds: [], inWindow: [], seen: 0, errors: [] };
-  const canais = watch.mentions ? (watch.channels ?? []) : [];
-  if (!watch.mentions && !watch.dms) return outcome;
+  const canais = watch.mentions || watch.prLinks ? (watch.channels ?? []) : [];
+  if (!watch.mentions && !watch.dms && !watch.prLinks) return outcome;
 
   let eu: string;
   try {
@@ -122,7 +134,7 @@ export async function pollTeamsInbox(
     try {
       const { eventIds, inWindow, seen } = await pollMcpServer(
         { server: TEAMS_SERVER, tool: "channel", args: { since: CURSOR_TOKEN } },
-        { db, call: doCanal(graph, canal), shape: canalShape(canal, eu) },
+        { db, call: doCanal(graph, canal), shape: canalShape(canal, eu, watch) },
       );
       outcome.eventIds.push(...eventIds);
     for (const id of inWindow) if (!outcome.inWindow.includes(id)) outcome.inWindow.push(id);
@@ -170,8 +182,16 @@ function doCanal(graph: GraphGet, canal: TeamsChannelRef): McpCaller {
   };
 }
 
-/** Mensagem de canal que pede atenção: alguém marcou a pessoa. */
-export function channelMessages(payload: unknown, eu: string): unknown[] {
+/**
+ * Mensagem de canal que pede atenção: alguém marcou a pessoa, ou ela traz
+ * link de PR com `prLinks` ligado. A mensagem da própria pessoa só conta
+ * pelo link, que ela pode ter colado.
+ */
+export function channelMessages(
+  payload: unknown,
+  eu: string,
+  watch: TeamsInboxWatch = { mentions: true, dms: false },
+): unknown[] {
   const lista = (payload as { messages?: unknown } | null | undefined)?.messages;
   if (!Array.isArray(lista)) return [];
   return lista.filter((item) => {
@@ -183,9 +203,11 @@ export function channelMessages(payload: unknown, eu: string): unknown[] {
       bruto.messageType === "message" &&
       (bruto.deletedDateTime === null || bruto.deletedDateTime === undefined) &&
       typeof autor?.id === "string" &&
-      autor.id !== eu &&
       carimbo(bruto.createdDateTime) !== null &&
-      kindOf({ ...bruto, chatType: "channel" }, eu, { mentions: true, dms: false }) === "mention"
+      (autor.id === eu
+        ? comLinkDePr(bruto, "channel", watch)
+        : kindOf({ ...bruto, chatType: "channel" }, eu, { ...watch, dms: false }) === "mention" ||
+          comLinkDePr(bruto, "channel", watch))
     );
   });
 }
@@ -198,26 +220,31 @@ export function channelRepo(teamId: string, channelId: string, threadId: string)
   return `${TEAMS_CHANNEL_PREFIX}${teamId}/${channelId}/${threadId}`;
 }
 
-function canalShape(canal: TeamsChannelRef, eu: string): McpPollShape {
+function canalShape(canal: TeamsChannelRef, eu: string, watch: TeamsInboxWatch): McpPollShape {
   const traduzir = (item: unknown) => {
     const bruto = (item ?? {}) as Record<string, unknown>;
-    const mensagem = normalizeInbox({ ...bruto, chatId: canal.channelId, chatType: "channel" }, "mention");
-    return { mensagem, threadId: String(bruto.threadId) };
+    const pr = prDoItem(item);
+    const mensagem = normalizeInbox(
+      { ...bruto, chatId: canal.channelId, chatType: "channel" },
+      pr === null ? "mention" : "pr",
+    );
+    return { mensagem, threadId: String(bruto.threadId), pr };
   };
   return {
     source: TEAMS_SOURCE,
     key: `channel:${canal.teamId}:${canal.channelId}`,
     initialCursor: inicial(),
-    items: (payload) => channelMessages(payload, eu),
-    externalId: (item) => `teams:channel:${canal.channelId}:${traduzir(item).mensagem.messageId}`,
+    items: (payload) => umEventoPorPr(channelMessages(payload, eu, watch), watch),
+    externalId: (item) =>
+      `teams:channel:${canal.channelId}:${traduzir(item).mensagem.messageId}${sufixoDoPr(prDoItem(item))}`,
     stamp: (item) => traduzir(item).mensagem.createdAt,
     payload: (item) => {
-      const { mensagem, threadId } = traduzir(item);
+      const { mensagem, threadId, pr } = traduzir(item);
       return {
         repo: channelRepo(canal.teamId, canal.channelId, threadId),
         changedFiles: [],
         server: TEAMS_SERVER,
-        kind: "mention",
+        kind: mensagem.kind,
         teamId: canal.teamId,
         channelId: canal.channelId,
         channel: canal.label ?? canal.channelId,
@@ -229,6 +256,16 @@ function canalShape(canal: TeamsChannelRef, eu: string): McpPollShape {
         messageId: mensagem.messageId,
         webUrl: mensagem.webUrl,
         item,
+        ...(pr === null
+          ? {}
+          : {
+              ...camposDoPr(pr),
+              teamsTeamId: canal.teamId,
+              teamsChannelId: canal.channelId,
+              teamsMessageId: mensagem.messageId,
+              // Resposta numa thread reage pelo caminho de reply.
+              ...(threadId !== mensagem.messageId ? { teamsReplyToId: threadId } : {}),
+            }),
       };
     },
   };
@@ -378,11 +415,54 @@ export function inboxMessages(payload: unknown, eu: string, watch: TeamsInboxWat
       bruto.messageType === "message" &&
       (bruto.deletedDateTime === null || bruto.deletedDateTime === undefined) &&
       typeof autor?.id === "string" &&
-      autor.id !== eu &&
       carimbo(bruto.createdDateTime) !== null &&
-      kindOf(item, eu, watch) !== null
+      (autor.id === eu
+        ? comLinkDePr(bruto, String(bruto.chatType ?? ""), watch)
+        : kindOf(item, eu, watch) !== null || comLinkDePr(bruto, String(bruto.chatType ?? ""), watch))
     );
   });
+}
+
+/** Os links de PR do corpo cru da mensagem, onde o `href` ainda existe. */
+function linksDe(bruto: Record<string, unknown>): ParsedGithubPr[] {
+  const corpo = (bruto.body ?? {}) as { content?: unknown };
+  return typeof corpo.content === "string" ? extractGithubPrLinks(corpo.content) : [];
+}
+
+/**
+ * A mensagem traz link de PR e o gatilho quer isso naquela conversa. Reunião
+ * fica de fora: só a menção acorda ali, pelo mesmo motivo de `dms`.
+ */
+function comLinkDePr(bruto: Record<string, unknown>, chatType: string, watch: TeamsInboxWatch): boolean {
+  if (!watch.prLinks) return false;
+  if (chatType !== "channel" && chatType !== "oneOnOne" && chatType !== "group") return false;
+  return linksDe(bruto).length > 0;
+}
+
+/**
+ * Com `prLinks`, a mensagem com link vira um item por PR, cada um com o seu
+ * `prLink`. O evento é do PR e não da mensagem, e a chave de deduplicação leva
+ * o PR junto: editar a mensagem não duplica, e acrescentar um segundo link
+ * gera só o evento novo.
+ */
+function umEventoPorPr(itens: unknown[], watch: TeamsInboxWatch): unknown[] {
+  if (!watch.prLinks) return itens;
+  return itens.flatMap((item) => {
+    const prs = linksDe((item ?? {}) as Record<string, unknown>);
+    return prs.length === 0 ? [item] : prs.map((prLink) => ({ ...(item as object), prLink }));
+  });
+}
+
+function prDoItem(item: unknown): ParsedGithubPr | null {
+  const pr = (item as { prLink?: ParsedGithubPr } | null)?.prLink;
+  return pr ?? null;
+}
+
+const sufixoDoPr = (pr: ParsedGithubPr | null): string =>
+  pr === null ? "" : `:pr:${pr.owner}/${pr.repo}#${pr.pull}`.toLowerCase();
+
+function camposDoPr(pr: ParsedGithubPr) {
+  return { repo: `${pr.owner}/${pr.repo}`, prOwner: pr.owner, prRepo: pr.repo, prNumber: pr.pull };
 }
 
 /** O item do Graph virando mensagem. */
@@ -433,19 +513,21 @@ export function semHtml(html: string): string {
 }
 
 function inboxShape(watch: TeamsInboxWatch, eu: string): McpPollShape {
-  const tipo = (item: unknown) => kindOf(item, eu, watch) ?? "dm";
+  const tipo = (item: unknown): TeamsInboxKind =>
+    prDoItem(item) !== null ? "pr" : (kindOf(item, eu, watch) ?? "dm");
   return {
     source: TEAMS_SOURCE,
     key: TEAMS_INBOX_CURSOR,
     initialCursor: inicial(),
-    items: (payload) => inboxMessages(payload, eu, watch),
+    items: (payload) => umEventoPorPr(inboxMessages(payload, eu, watch), watch),
     externalId: (item) => {
       const mensagem = normalizeInbox(item, tipo(item));
-      return `teams:${mensagem.chatId}:${mensagem.messageId}`;
+      return `teams:${mensagem.chatId}:${mensagem.messageId}${sufixoDoPr(prDoItem(item))}`;
     },
     stamp: (item) => normalizeInbox(item, tipo(item)).createdAt,
     payload: (item) => {
       const mensagem = normalizeInbox(item, tipo(item));
+      const pr = prDoItem(item);
       return {
         repo: `teams/${mensagem.chatId}`,
         changedFiles: [],
@@ -459,6 +541,7 @@ function inboxShape(watch: TeamsInboxWatch, eu: string): McpPollShape {
         messageId: mensagem.messageId,
         webUrl: mensagem.webUrl,
         item,
+        ...(pr === null ? {} : { ...camposDoPr(pr), teamsChatId: mensagem.chatId, teamsMessageId: mensagem.messageId }),
       };
     },
   };
