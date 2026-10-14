@@ -1,10 +1,11 @@
-import { eq } from "drizzle-orm";
+import { and, eq, gte } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
 import { mcpOAuthService } from "../services/mcp-oauth-service.js";
 import { GRAPH_URL, TEAMS_SERVER } from "../services/teams-app.js";
 import { pollMcpServer, CURSOR_TOKEN, type McpCaller, type McpPollShape } from "./mcp-poll.js";
 import { clienteHttp } from "../net/http.js";
 import { alvoDaReacao, reagirNoTeams, REACAO_PEGOU } from "../teams/reaction.js";
+import { githubService } from "../services/github-service.js";
 import { fetchPr as defaultFetchPr } from "./github.js";
 import { extractGithubPrLinks } from "./github-pr-link.js";
 import type { ParsedGithubPr } from "./slack.js";
@@ -56,6 +57,12 @@ export interface TeamsInboxWatch {
    * mensagem com vários links vira um evento por PR, até `MAX_PR_POR_MENSAGEM`.
    */
   prLinks?: boolean;
+  /**
+   * Só para a varredura: link de PR de mensagem criada antes disto não conta.
+   * Preenchido na primeira batida de um cursor, para ligar o gatilho não
+   * revisar a história que já estava lá.
+   */
+  prDesde?: string;
   /** Canais de equipe onde a menção também conta. */
   channels?: readonly TeamsChannelRef[];
 }
@@ -77,6 +84,14 @@ export interface TeamsInboxOptions {
   graphUrl?: string;
   /** Busca do contexto do PR. Existe para o teste trocar. */
   fetchPr?: typeof defaultFetchPr;
+  /**
+   * O gatilho que varre. O cursor é dele: dois gatilhos com configuração
+   * diferente sobre a mesma conversa leriam a mesma janela e o segundo a
+   * encontraria já consumida. Ausente é o cursor compartilhado de antes.
+   */
+  triggerId?: string;
+  /** Login do GitHub de quem usa o Locum. Existe para o teste trocar. */
+  viewerLogin?: () => Promise<string | null>;
 }
 
 export interface TeamsInboxOutcome {
@@ -121,15 +136,35 @@ export async function pollTeamsInbox(
     return outcome;
   }
 
+  const sufixo = options.triggerId === undefined ? "" : `:${options.triggerId}`;
+
+  // O que cada resposta traz entra no resultado só depois de enriquecida: o
+  // evento descartado (PR meu, fechado, repetido, sem contexto) não acorda o agent.
+  const acolher = async (
+    varredura: { eventIds: string[]; inWindow: string[]; seen: number },
+    kind: "inbox" | "channel",
+    channel?: string,
+  ) => {
+    const { erros, fora } = await enriquecerPrs(varredura.inWindow, kind, channel, db, options);
+    outcome.eventIds.push(...varredura.eventIds.filter((id) => !fora.has(id)));
+    for (const id of varredura.inWindow) {
+      if (!fora.has(id) && !outcome.inWindow.includes(id)) outcome.inWindow.push(id);
+    }
+    outcome.seen += varredura.seen;
+    outcome.errors.push(...erros);
+  };
+
   try {
-    const { eventIds, inWindow, seen } = await pollMcpServer(
-      { server: TEAMS_SERVER, tool: "inbox", args: { since: CURSOR_TOKEN } },
-      { db, call: caixa(graph), shape: inboxShape(watch, eu) },
+    const chave = `${TEAMS_INBOX_CURSOR}${sufixo}`;
+    const primeira = await prepararCursor(db, chave, TEAMS_INBOX_CURSOR);
+    const vigia = primeira ? { ...watch, prDesde: new Date().toISOString() } : watch;
+    await acolher(
+      await pollMcpServer(
+        { server: TEAMS_SERVER, tool: "inbox", args: { since: CURSOR_TOKEN } },
+        { db, call: caixa(graph), shape: inboxShape(vigia, eu, chave) },
+      ),
+      "inbox",
     );
-    outcome.eventIds.push(...eventIds);
-    for (const id of inWindow) if (!outcome.inWindow.includes(id)) outcome.inWindow.push(id);
-    outcome.seen += seen;
-    outcome.errors.push(...(await enriquecerPrs(inWindow, "inbox", undefined, db, options)));
   } catch (err) {
     outcome.errors.push({ kind: "inbox", error: err instanceof Error ? err.message : String(err) });
   }
@@ -138,14 +173,17 @@ export async function pollTeamsInbox(
   // cursor dos outros, e o que entrou depois começa do próprio dia.
   for (const canal of canais) {
     try {
-      const { eventIds, inWindow, seen } = await pollMcpServer(
-        { server: TEAMS_SERVER, tool: "channel", args: { since: CURSOR_TOKEN } },
-        { db, call: doCanal(graph, canal), shape: canalShape(canal, eu, watch) },
+      const antiga = `channel:${canal.teamId}:${canal.channelId}`;
+      const primeira = await prepararCursor(db, `${antiga}${sufixo}`, antiga);
+      const vigia = primeira ? { ...watch, prDesde: new Date().toISOString() } : watch;
+      await acolher(
+        await pollMcpServer(
+          { server: TEAMS_SERVER, tool: "channel", args: { since: CURSOR_TOKEN } },
+          { db, call: doCanal(graph, canal), shape: canalShape(canal, eu, vigia, `${antiga}${sufixo}`) },
+        ),
+        "channel",
+        canal.label ?? canal.channelId,
       );
-      outcome.eventIds.push(...eventIds);
-      for (const id of inWindow) if (!outcome.inWindow.includes(id)) outcome.inWindow.push(id);
-      outcome.seen += seen;
-      outcome.errors.push(...(await enriquecerPrs(inWindow, "channel", canal.label ?? canal.channelId, db, options)));
     } catch (err) {
       outcome.errors.push({
         kind: "channel",
@@ -158,11 +196,35 @@ export async function pollTeamsInbox(
 }
 
 /**
+ * Garante o cursor do gatilho. Quem ainda não tem o próprio parte do
+ * compartilhado de antes, se existir, para não reprocessar nem perder nada.
+ * Devolve verdadeiro quando não havia cursor nenhum: a primeira batida.
+ */
+async function prepararCursor(db: Db, chave: string, antiga: string): Promise<boolean> {
+  const ler = async (key: string) =>
+    (
+      await db
+        .select({ value: schema.cursors.value })
+        .from(schema.cursors)
+        .where(and(eq(schema.cursors.source, TEAMS_SOURCE), eq(schema.cursors.key, key)))
+    )[0]?.value;
+  if ((await ler(chave)) !== undefined) return false;
+  const herdado = chave === antiga ? undefined : await ler(antiga);
+  if (herdado === undefined) return true;
+  await db.insert(schema.cursors).values({ source: TEAMS_SOURCE, key: chave, value: herdado }).onConflictDoNothing();
+  return false;
+}
+
+/**
  * Põe no evento com link de PR o contexto que o agent de revisão lê: título,
  * diff, CI e o dono e número que a ação de review precisa, como o Slack faz.
  *
- * Falha ao buscar o PR não derruba a varredura nem o evento: ele segue sem o
- * diff, com `prError` dizendo por quê, e a falha sobe no `detail` do gatilho.
+ * O que não deve acordar o agent sai do resultado (`fora`) em vez de virar
+ * run: PR que não deu para buscar (o erro sobe em `erros`, sem 👀), PR da
+ * própria pessoa, PR fechado, já mergeado ou em rascunho, e PR no mesmo commit
+ * que um evento das últimas 24h já pegou. O evento fica gravado com
+ * `prDescartado` ou `prError`, para a mensagem não voltar como novidade.
+ *
  * O `author` passa a ser o do PR, que é o que o bloqueio de auto-review
  * compara, e o do Teams fica em `teamsAuthor`. O `repo` também vira o do PR, o
  * que tira o evento do `teams.post`, que acha a conversa por ele.
@@ -173,35 +235,90 @@ async function enriquecerPrs(
   channel: string | undefined,
   db: Db,
   options: TeamsInboxOptions,
-): Promise<TeamsInboxOutcome["errors"]> {
+): Promise<{ erros: TeamsInboxOutcome["errors"]; fora: Set<string> }> {
   const erros: TeamsInboxOutcome["errors"] = [];
+  const fora = new Set<string>();
   const buscar = options.fetchPr ?? defaultFetchPr;
+  const quemSouNoGithub = options.viewerLogin ?? (() => githubService.viewerLogin());
+  const falha = (error: string) =>
+    erros.push({ kind, ...(channel === undefined ? {} : { channel }), error });
+  const gravar = (id: string, payload: Record<string, unknown>) =>
+    db.update(schema.events).set({ payload }).where(eq(schema.events.id, id));
+
   for (const id of ids) {
     try {
       const [evento] = await db.select().from(schema.events).where(eq(schema.events.id, id)).limit(1);
       const payload = evento?.payload as Record<string, unknown> | null | undefined;
-      if (!payload?.prOwner || !payload.prRepo || !payload.prNumber || payload.diff !== undefined) continue;
+      if (!payload?.prOwner || !payload.prRepo || !payload.prNumber) continue;
+      if (payload.prDescartado !== undefined) {
+        fora.add(id);
+        continue;
+      }
+      if (payload.diff !== undefined) continue;
+
+      const nome = `${payload.prOwner}/${payload.prRepo}#${payload.prNumber}`;
+      let contexto: Awaited<ReturnType<typeof defaultFetchPr>>;
       try {
-        const contexto = await buscar(String(payload.prOwner), String(payload.prRepo), Number(payload.prNumber));
-        const { prError: _resolvido, ...resto } = payload;
-        await db
-          .update(schema.events)
-          .set({ payload: { ...resto, ...contexto, teamsAuthor: payload.author } })
-          .where(eq(schema.events.id, id));
-        await reagirAoPegar(payload, options);
+        contexto = await buscar(String(payload.prOwner), String(payload.prRepo), Number(payload.prNumber));
       } catch (err) {
         const erro = err instanceof Error ? err.message : String(err);
-        await db
-          .update(schema.events)
-          .set({ payload: { ...payload, prError: erro } })
-          .where(eq(schema.events.id, id));
-        erros.push({ kind, ...(channel === undefined ? {} : { channel }), error: `PR ${payload.prOwner}/${payload.prRepo}#${payload.prNumber}: ${erro}` });
+        await gravar(id, { ...payload, prError: erro });
+        fora.add(id);
+        falha(`PR ${nome}: ${erro}`);
+        continue;
       }
+
+      const motivo = await motivoDeDescarte(contexto, id, db, quemSouNoGithub);
+      if (motivo !== null) {
+        const { prError: _resolvido, ...resto } = payload;
+        await gravar(id, { ...resto, prDescartado: motivo });
+        fora.add(id);
+        continue;
+      }
+
+      const { prError: _resolvido, ...resto } = payload;
+      await gravar(id, { ...resto, ...contexto, teamsAuthor: payload.author });
+      await reagirAoPegar(payload, options);
     } catch (err) {
-      erros.push({ kind, ...(channel === undefined ? {} : { channel }), error: err instanceof Error ? err.message : String(err) });
+      falha(err instanceof Error ? err.message : String(err));
     }
   }
-  return erros;
+  return { erros, fora };
+}
+
+/** Janela em que o mesmo PR no mesmo commit não é revisado de novo. */
+const JANELA_DO_MESMO_COMMIT_S = 24 * 60 * 60;
+
+/** Por que o PR não merece revisão agora, ou nulo se merece. */
+async function motivoDeDescarte(
+  contexto: Awaited<ReturnType<typeof defaultFetchPr>>,
+  id: string,
+  db: Db,
+  quemSouNoGithub: () => Promise<string | null>,
+): Promise<string | null> {
+  if (contexto.state !== undefined && contexto.state !== "open") return "fechado";
+  if (contexto.merged === true) return "mergeado";
+  if (contexto.draft === true) return "rascunho";
+
+  // Sem saber quem sou (token ausente, rede), segue: o `propose` da ação
+  // ainda barra a review no próprio PR.
+  const eu = await quemSouNoGithub().catch(() => null);
+  if (eu !== null && contexto.author.toLowerCase() === eu.toLowerCase()) return "proprio";
+
+  const desde = Math.floor(Date.now() / 1000) - JANELA_DO_MESMO_COMMIT_S;
+  const recentes = await db.select().from(schema.events).where(gte(schema.events.receivedAt, desde));
+  const repetido = recentes.some((outro) => {
+    const p = outro.payload as Record<string, unknown> | null;
+    return (
+      outro.id !== id &&
+      p?.prDescartado === undefined &&
+      p?.headSha === contexto.headSha &&
+      p?.pull === contexto.pull &&
+      String(p?.owner).toLowerCase() === contexto.owner.toLowerCase() &&
+      String(p?.repoName).toLowerCase() === contexto.repoName.toLowerCase()
+    );
+  });
+  return repetido ? "repetido" : null;
 }
 
 /** O 👀 de "peguei". Recusa do Graph vira log: a revisão não depende da reação. */
@@ -285,7 +402,7 @@ export function channelRepo(teamId: string, channelId: string, threadId: string)
   return `${TEAMS_CHANNEL_PREFIX}${teamId}/${channelId}/${threadId}`;
 }
 
-function canalShape(canal: TeamsChannelRef, eu: string, watch: TeamsInboxWatch): McpPollShape {
+function canalShape(canal: TeamsChannelRef, eu: string, watch: TeamsInboxWatch, chave: string): McpPollShape {
   const traduzir = (item: unknown) => {
     const bruto = (item ?? {}) as Record<string, unknown>;
     const pr = prDoItem(item);
@@ -297,7 +414,7 @@ function canalShape(canal: TeamsChannelRef, eu: string, watch: TeamsInboxWatch):
   };
   return {
     source: TEAMS_SOURCE,
-    key: `channel:${canal.teamId}:${canal.channelId}`,
+    key: chave,
     initialCursor: inicial(),
     items: (payload) => umEventoPorPr(channelMessages(payload, eu, watch), watch),
     externalId: (item) =>
@@ -500,6 +617,7 @@ function linksDe(bruto: Record<string, unknown>): ParsedGithubPr[] {
  */
 function comLinkDePr(bruto: Record<string, unknown>, chatType: string, watch: TeamsInboxWatch): boolean {
   if (!watch.prLinks) return false;
+  if (antesDaAtivacao(bruto, watch)) return false;
   if (chatType !== "channel" && chatType !== "oneOnOne" && chatType !== "group") return false;
   return linksDe(bruto).length > 0;
 }
@@ -513,9 +631,17 @@ function comLinkDePr(bruto: Record<string, unknown>, chatType: string, watch: Te
 function umEventoPorPr(itens: unknown[], watch: TeamsInboxWatch): unknown[] {
   if (!watch.prLinks) return itens;
   return itens.flatMap((item) => {
+    if (antesDaAtivacao((item ?? {}) as Record<string, unknown>, watch)) return [item];
     const prs = linksDe((item ?? {}) as Record<string, unknown>);
     return prs.length === 0 ? [item] : prs.map((prLink) => ({ ...(item as object), prLink }));
   });
+}
+
+/** Mensagem criada antes de o gatilho começar a olhar link de PR. */
+function antesDaAtivacao(bruto: Record<string, unknown>, watch: TeamsInboxWatch): boolean {
+  if (watch.prDesde === undefined) return false;
+  const criada = carimbo(bruto.createdDateTime);
+  return criada === null || criada < watch.prDesde;
 }
 
 function prDoItem(item: unknown): ParsedGithubPr | null {
@@ -577,12 +703,12 @@ export function semHtml(html: string): string {
     .trim();
 }
 
-function inboxShape(watch: TeamsInboxWatch, eu: string): McpPollShape {
+function inboxShape(watch: TeamsInboxWatch, eu: string, chave: string): McpPollShape {
   const tipo = (item: unknown): TeamsInboxKind =>
     prDoItem(item) !== null ? "pr" : (kindOf(item, eu, watch) ?? "dm");
   return {
     source: TEAMS_SOURCE,
-    key: TEAMS_INBOX_CURSOR,
+    key: chave,
     initialCursor: inicial(),
     items: (payload) => umEventoPorPr(inboxMessages(payload, eu, watch), watch),
     externalId: (item) => {

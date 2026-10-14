@@ -137,6 +137,9 @@ export type PrContext = EventPayload & {
   deletions: number;
   fileCount: number;
   draft: boolean;
+  /** `open` ou `closed`, como o GitHub devolve. */
+  state?: string;
+  merged?: boolean;
 };
 
 /** O pedaço do cliente que a ingestão usa. Existe para o teste trocar. */
@@ -203,6 +206,8 @@ async function contextFromPr(
     deletions: pr.deletions,
     fileCount: files.length,
     draft: pr.draft ?? false,
+    state: pr.state,
+    merged: pr.merged,
   };
 }
 

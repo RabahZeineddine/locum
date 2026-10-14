@@ -494,7 +494,7 @@ export class Scheduler {
       }
 
       case "teams-inbox": {
-        const caixa = await this.teamsInbox(config, { db: this.db });
+        const caixa = await this.teamsInbox(config, { db: this.db, triggerId: trigger.id });
         const runs = await this.runsFor(trigger, caixa.inWindow, at, wait);
         return { events: caixa.eventIds.length, runs, detail: slackInboxDetail(caixa) };
       }

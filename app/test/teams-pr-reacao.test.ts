@@ -6,7 +6,17 @@ import { mcpService } from "../src/services/mcp-service.js";
 import { githubReviewHandler, type ReviewClient } from "../src/sources/github.js";
 import { pollTeamsInbox } from "../src/sources/teams-inbox.js";
 import { alvoDaReacao, reagirNoTeams } from "../src/teams/reaction.js";
-import { bancoDeTeste } from "./helpers/db.js";
+import { bancoDeTeste as bancoVazio } from "./helpers/db.js";
+import { schema } from "../src/db/index.js";
+
+/** Banco de quem já varreu ontem, para a primeira batida não descartar o link. */
+function bancoDeTeste() {
+  const db = bancoVazio();
+  db.insert(schema.cursors)
+    .values({ source: "teams", key: "inbox", value: new Date(Date.now() - 24 * 3600_000).toISOString() })
+    .run();
+  return db;
+}
 
 const token = async () => "token-graph";
 const GRAPH = "https://graph.test/v1.0";
@@ -64,7 +74,7 @@ test("o Graph recusar a reação estoura para quem chama decidir", async () => {
   await assert.rejects(reagirNoTeams(alvoDaReacao(CHAT)!, "set", "👀", g.opcoes), /403: Forbidden/);
 });
 
-const CONTEXTO = { repo: "acme/api", owner: "acme", repoName: "api", pull: 7, diff: "d", title: "t" };
+const CONTEXTO = { repo: "acme/api", owner: "acme", repoName: "api", pull: 7, diff: "d", title: "t", author: "autor-do-pr", headSha: "sha1", state: "open", merged: false, draft: false };
 
 function graphDaCaixa(chats: unknown[]) {
   const reacoes = graphDeReacoes();
@@ -96,7 +106,7 @@ test("ao pegar o PR o Locum reage com 👀 na mensagem", async () => {
   const { fetchFn, pedidos } = graphDaCaixa([mensagemComPr]);
   await pollTeamsInbox(
     { mentions: false, dms: false, prLinks: true },
-    { db: bancoDeTeste(), token, fetchFn, graphUrl: GRAPH, fetchPr: (async () => CONTEXTO) as never },
+    { db: bancoDeTeste(), token, fetchFn, graphUrl: GRAPH, viewerLogin: async () => null, fetchPr: (async () => CONTEXTO) as never },
   );
   assert.deepEqual(
     pedidos.map((p) => [p.url, p.corpo]),
@@ -127,7 +137,7 @@ test("PR que não deu para buscar não ganha 👀, e erro na reação não derru
   const db = bancoDeTeste();
   const resultado = await pollTeamsInbox(
     { mentions: false, dms: false, prLinks: true },
-    { db, token, fetchFn, graphUrl: GRAPH, fetchPr: (async () => CONTEXTO) as never },
+    { db, token, fetchFn, graphUrl: GRAPH, viewerLogin: async () => null, fetchPr: (async () => CONTEXTO) as never },
   );
   assert.equal(resultado.eventIds.length, 1);
   assert.deepEqual(resultado.errors, []);
@@ -217,4 +227,70 @@ test("o destino da reação sai do evento e a saída do modelo não troca", () =
   const destino = destinoDoEvento(alvo);
   assert.equal(destino.teamsChannelId, CANAL.teamsChannelId);
   assert.equal(destino.teamsMessageId, CANAL.teamsMessageId);
+});
+
+/** Uma varredura de link de PR com o contexto dado, devolvendo o resultado e o que foi ao Graph. */
+async function varrer(contextos: Record<string, unknown>[], opcoes: { eu?: string | null; mensagens?: unknown[] } = {}) {
+  const { fetchFn, pedidos } = graphDaCaixa(opcoes.mensagens ?? [mensagemComPr]);
+  let n = 0;
+  const db = bancoDeTeste();
+  const resultado = await pollTeamsInbox(
+    { mentions: false, dms: false, prLinks: true },
+    {
+      db,
+      token,
+      fetchFn,
+      graphUrl: GRAPH,
+      viewerLogin: async () => opcoes.eu ?? null,
+      fetchPr: (async () => ({ ...CONTEXTO, ...contextos[n++] })) as never,
+    },
+  );
+  return { resultado, pedidos, db };
+}
+
+test("PR do próprio usuário não gera evento, não reage e não acorda o agent", async () => {
+  const { resultado, pedidos, db } = await varrer([{}], { eu: "Autor-do-PR" });
+  assert.deepEqual([resultado.eventIds, resultado.inWindow, pedidos], [[], [], []]);
+  const [evento] = await db.select().from(schema.events);
+  assert.equal((evento?.payload as { prDescartado?: string }).prDescartado, "proprio");
+});
+
+test("PR fechado, mergeado ou em rascunho não acorda nem recebe 👀", async () => {
+  for (const [sobre, motivo] of [
+    [{ state: "closed" }, "fechado"],
+    [{ merged: true }, "mergeado"],
+    [{ draft: true }, "rascunho"],
+  ] as const) {
+    const { resultado, pedidos, db } = await varrer([sobre]);
+    assert.deepEqual([resultado.inWindow, pedidos], [[], []], motivo);
+    const [evento] = await db.select().from(schema.events);
+    assert.equal((evento?.payload as { prDescartado?: string }).prDescartado, motivo);
+  }
+});
+
+test("o mesmo PR no mesmo commit só gera um evento, e commit novo gera outro", async () => {
+  const outra = { ...mensagemComPr, id: "m2", createdDateTime: agoraMenos(1) };
+  const repetido = await varrer([{}, {}], { mensagens: [mensagemComPr, outra] });
+  assert.equal(repetido.resultado.inWindow.length, 1);
+  assert.equal(repetido.pedidos.length, 1);
+
+  const novo = await varrer([{}, { headSha: "sha2" }], { mensagens: [mensagemComPr, outra] });
+  assert.equal(novo.resultado.inWindow.length, 2);
+  assert.equal(novo.pedidos.length, 2);
+});
+
+test("evento recente do mesmo PR e commit, de outra fonte, também conta como já revisado", async () => {
+  const db = bancoDeTeste();
+  await db.insert(schema.events).values({
+    id: "antigo",
+    source: "github",
+    externalId: "pr:7:sha:sha1",
+    payload: { owner: "acme", repoName: "api", pull: 7, headSha: "sha1" },
+  });
+  const { fetchFn } = graphDaCaixa([mensagemComPr]);
+  const resultado = await pollTeamsInbox(
+    { mentions: false, dms: false, prLinks: true },
+    { db, token, fetchFn, graphUrl: GRAPH, viewerLogin: async () => null, fetchPr: (async () => CONTEXTO) as never },
+  );
+  assert.deepEqual(resultado.inWindow, []);
 });

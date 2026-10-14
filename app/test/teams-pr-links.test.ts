@@ -5,7 +5,7 @@ import { schema } from "../src/db/index.js";
 import { TriggerConfig } from "../src/config/types.js";
 import { extractGithubPrLinks } from "../src/sources/github-pr-link.js";
 import { pollTeamsInbox } from "../src/sources/teams-inbox.js";
-import { bancoDeTeste } from "./helpers/db.js";
+import { bancoDeTeste as bancoVazio } from "./helpers/db.js";
 
 const token = async () => "token-graph";
 const agoraMenos = (minutos: number) => new Date(Date.now() - minutos * 60_000).toISOString();
@@ -84,7 +84,7 @@ function graphFalso(opcoes: { chats?: { id: string; chatType: string; mensagens:
     const caminho = decodeURIComponent(url.pathname.replace(/^\/v1\.0/, ""));
     if (caminho === "/me") return json({ id: "EU" });
     if (caminho === "/me/chats") {
-      return json({ value: chats.map((c) => ({ id: c.id, chatType: c.chatType, lastMessagePreview: { createdDateTime: agoraMenos(1) } })) });
+      return json({ value: chats.map((c) => ({ id: c.id, chatType: c.chatType, lastMessagePreview: { createdDateTime: agoraMenos(-1) } })) });
     }
     const chat = chats.find((c) => caminho === `/chats/${c.id}/messages`);
     if (chat) return json({ value: chat.mensagens.map((m) => ({ ...(m as object), chatId: chat.id })) });
@@ -95,9 +95,32 @@ function graphFalso(opcoes: { chats?: { id: string; chatType: string; mensagens:
 }
 
 /** PR já enriquecido, para os testes de detecção não esbarrarem no GitHub. */
-const semGithub = { fetchPr: (async () => ({})) as never };
+const semGithub = {
+  fetchPr: (async (owner: string, repo: string, pull: number) => ({
+    repo: `${owner}/${repo}`,
+    owner,
+    repoName: repo,
+    pull,
+    headSha: `sha-${owner}-${repo}-${pull}`,
+    author: "autor-do-pr",
+    draft: false,
+    state: "open",
+    diff: "d",
+  })) as never,
+  viewerLogin: async () => null,
+};
 
 const CANAIS = [{ teamId: EQUIPE, channelId: CANAL, label: "Time / Geral" }];
+
+/** Banco de quem já varreu ontem: o cursor compartilhado antigo existe, e a primeira batida não é de hoje. */
+function bancoDeTeste() {
+  const db = bancoVazio();
+  const ontem = new Date(Date.now() - 24 * 3600_000).toISOString();
+  for (const key of ["inbox", `channel:${EQUIPE}:${CANAL}`]) {
+    db.insert(schema.cursors).values({ source: "teams", key, value: ontem }).run();
+  }
+  return db;
+}
 
 async function eventos(db: ReturnType<typeof bancoDeTeste>) {
   const linhas = await db.select().from(schema.events).where(eq(schema.events.source, "teams"));
@@ -205,7 +228,7 @@ test("o evento com PR é enriquecido com o contexto do PR e guarda onde reagir",
   }) as never;
   const chats = [{ id: "g", chatType: "group", mensagens: [mensagem("m1", 2, PR)] }];
 
-  await pollTeamsInbox({ mentions: false, dms: false, prLinks: true }, { db, token, fetchPr, ...graphFalso({ chats }) });
+  await pollTeamsInbox({ mentions: false, dms: false, prLinks: true }, { db, token, fetchPr, viewerLogin: async () => null, ...graphFalso({ chats }) });
 
   assert.deepEqual(pedidos, [["acme", "api", 7]]);
   const [evento] = await eventos(db);
@@ -227,7 +250,7 @@ test("canal e resposta em thread guardam equipe, canal, mensagem e a thread", as
 
   await pollTeamsInbox(
     { mentions: false, dms: false, prLinks: true, channels: CANAIS },
-    { db, token, fetchPr, ...graphFalso({ threads }) },
+    { db, token, fetchPr, viewerLogin: async () => null, ...graphFalso({ threads }) },
   );
 
   const porMensagem = new Map((await eventos(db)).map((e) => [e.teamsMessageId, e]));
@@ -247,10 +270,12 @@ test("falha ao buscar o PR não derruba a varredura nem o evento", async () => {
 
   const resultado = await pollTeamsInbox(
     { mentions: false, dms: true, prLinks: true },
-    { db, token, fetchPr, ...graphFalso({ chats }) },
+    { db, token, fetchPr, viewerLogin: async () => null, ...graphFalso({ chats }) },
   );
 
-  assert.equal(resultado.eventIds.length, 2);
+  // O PR que não deu para buscar não acorda o agent; a conversa comum acorda.
+  assert.equal(resultado.eventIds.length, 1);
+  assert.equal(resultado.inWindow.length, 1);
   assert.equal(resultado.errors.length, 1);
   assert.match(resultado.errors[0]!.error, /GitHub fora/);
   const evento = (await eventos(db)).find((e) => e.messageId === "m1")!;
@@ -267,7 +292,84 @@ test("mensagem sem prLinks não busca PR", async () => {
     return CONTEXTO_DO_PR;
   }) as never;
   const chats = [{ id: "g", chatType: "group", mensagens: [mensagem("m1", 2, PR)] }];
-  await pollTeamsInbox({ mentions: false, dms: true }, { db, token, fetchPr, ...graphFalso({ chats }) });
+  await pollTeamsInbox({ mentions: false, dms: true }, { db, token, fetchPr, viewerLogin: async () => null, ...graphFalso({ chats }) });
   assert.equal(buscas, 0);
   assert.equal((await eventos(db))[0]?.diff, undefined);
+});
+
+const OPCOES = { token, ...semGithub };
+
+test("dois gatilhos sobre a mesma mensagem, nas duas ordens, cada um vê o seu evento", async () => {
+  const chats = [{ id: "g", chatType: "group", mensagens: [mensagem("m1", 2, PR)] }];
+  const resposta = { mentions: false, dms: true };
+  const revisao = { mentions: false, dms: false, prLinks: true };
+
+  for (const ordem of [["resposta", "revisao"], ["revisao", "resposta"]]) {
+    const db = bancoDeTeste();
+    const achados: Record<string, string[]> = {};
+    for (const quem of ordem) {
+      const r = await pollTeamsInbox(quem === "resposta" ? resposta : revisao, {
+        db,
+        triggerId: quem,
+        ...OPCOES,
+        ...graphFalso({ chats }),
+      });
+      const linhas = await db.select().from(schema.events);
+      achados[quem] = linhas.filter((e) => r.inWindow.includes(e.id)).map((e) => String((e.payload as { kind: string }).kind));
+    }
+    assert.deepEqual(achados, { resposta: ["dm"], revisao: ["pr"] }, ordem.join(" > "));
+  }
+});
+
+test("o gatilho sem cursor próprio parte do compartilhado de antes, sem reprocessar", async () => {
+  const db = bancoVazio();
+  db.insert(schema.cursors)
+    .values({ source: "teams", key: "inbox", value: agoraMenos(60) })
+    .run();
+  const chats = [
+    { id: "g", chatType: "group", mensagens: [mensagem("velha", 180, "antiga"), mensagem("nova", 30, "recente")] },
+  ];
+  await pollTeamsInbox({ mentions: false, dms: true }, { db, triggerId: "T", ...OPCOES, ...graphFalso({ chats }) });
+  const ids = (await eventos(db)).map((e) => e.messageId);
+  assert.deepEqual(ids, ["nova"]);
+
+  const cursores = await db.select().from(schema.cursors);
+  assert.deepEqual(cursores.map((c) => c.key).sort(), ["inbox", "inbox:T"]);
+  assert.equal(cursores.find((c) => c.key === "inbox")?.value.slice(0, 13), agoraMenos(60).slice(0, 13));
+});
+
+test("primeira batida sem cursor nenhum não puxa link de PR anterior à ativação", async () => {
+  const db = bancoVazio();
+  const chats = [
+    {
+      id: "g",
+      chatType: "group",
+      mensagens: [mensagem("ontem", 120, PR), mensagem("conversa", 90, "bom dia")],
+    },
+  ];
+  const watch = { mentions: false, dms: false, prLinks: true };
+  await pollTeamsInbox(watch, { db, triggerId: "T", ...OPCOES, ...graphFalso({ chats }) });
+  assert.deepEqual(await eventos(db), []);
+
+  // Com dms ligado a mensagem antiga ainda acorda como conversa, mas sem virar evento de PR.
+  const comDms = bancoVazio();
+  await pollTeamsInbox({ ...watch, dms: true }, { db: comDms, triggerId: "T", ...OPCOES, ...graphFalso({ chats }) });
+  assert.deepEqual(
+    (await eventos(comDms)).map((e) => [e.messageId, e.kind, e.prOwner]).sort(),
+    [["conversa", "dm", undefined], ["ontem", "dm", undefined]],
+  );
+
+  const depois = [...chats, { id: "h", chatType: "group", mensagens: [mensagem("agora", 0, PR)] }];
+  await pollTeamsInbox(watch, { db, triggerId: "T", ...OPCOES, ...graphFalso({ chats: depois }) });
+  assert.ok((await eventos(db)).some((e) => e.messageId === "agora" && e.kind === "pr"));
+});
+
+test("canal novo, sem cursor, também só vê link a partir de agora", async () => {
+  const db = bancoVazio();
+  const threads = [mensagem("antigo", 120, PR)];
+  await pollTeamsInbox(
+    { mentions: false, dms: false, prLinks: true, channels: CANAIS },
+    { db, triggerId: "T", ...OPCOES, ...graphFalso({ threads }) },
+  );
+  assert.equal((await eventos(db)).length, 0);
 });
