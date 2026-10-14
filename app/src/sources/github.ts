@@ -8,7 +8,14 @@ import type { EventPayload } from "../executor/executor.js";
 import { GITHUB_TOKEN_ENV, githubService, githubToken } from "../services/github-service.js";
 import { fetchCiStatus, type ChecksClient, type CiStatus } from "./ci-status.js";
 import { limitDiff, type OmittedFile } from "./diff-limit.js";
-import { alvoDaReacao, reagirNoTeams, REACAO_DO_VEREDITO, REACAO_PEGOU, type TeamsReactionOptions } from "../teams/reaction.js";
+import {
+  alvoDaReacao,
+  reagirNoTeams,
+  soltarOPr,
+  REACAO_DO_VEREDITO,
+  REACAO_PEGOU,
+  type TeamsReactionOptions,
+} from "../teams/reaction.js";
 
 export type Finding = ReviewFinding;
 
@@ -43,11 +50,17 @@ async function avisarOrigem(
   await reagirNoTeamsAoSair(p, deps.teams);
 }
 
-/** Troca 👀 pelo veredito na mensagem do Teams, com cada chamada tentada sozinha. */
-async function reagirNoTeamsAoSair(p: ReviewPayload, options?: TeamsReactionOptions): Promise<void> {
+/**
+ * Troca 👀 pela reação na mensagem do Teams, com cada chamada tentada sozinha.
+ * Review que saiu pendente (rascunho) fecha com 💬, porque ainda não é veredito.
+ */
+async function reagirNoTeamsAoSair(
+  p: ReviewPayload,
+  options?: TeamsReactionOptions,
+  emoji: string = REACAO_DO_VEREDITO[p.verdict ?? "COMMENT"],
+): Promise<void> {
   const alvo = alvoDaReacao(p);
   if (alvo === null) return;
-  const emoji = REACAO_DO_VEREDITO[p.verdict ?? "COMMENT"];
   for (const [acao, reacao] of [["unset", REACAO_PEGOU], ["set", emoji]] as const) {
     try {
       await reagirNoTeams(alvo, acao, reacao, options);
@@ -491,6 +504,11 @@ export function githubReviewHandler(
         body: `${renderBody(p.findings, p.summary)}\n${marca(externalId)}`,
         comments: comments(p.findings),
       });
+      await reagirNoTeamsAoSair(p, deps.teams, REACAO_DO_VEREDITO.COMMENT);
+    },
+    // Proposta que não vai sair: o 👀 do "peguei" não pode ficar para sempre.
+    async discard(payload) {
+      await soltarOPr(payload, deps.teams);
     },
   };
 }

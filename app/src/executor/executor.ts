@@ -1,3 +1,4 @@
+import { soltarOPr, type TeamsReactionOptions } from "../teams/reaction.js";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -38,6 +39,8 @@ type Deps = {
   machineId: string;
   /** Biblioteca de agents. Ausente usa a do banco do processo. */
   profiles?: Pick<LibraryService, "resolveProfile">;
+  /** Graph da reação do Teams. Ausente usa a conexão do Teams. Existe para o teste trocar. */
+  teams?: TeamsReactionOptions;
 };
 
 const nowSec = () => Math.floor(Date.now() / 1000);
@@ -306,6 +309,8 @@ export class Executor {
         .update(schema.runs)
         .set({ status, endedAt: status === "failed" ? nowSec() : null, error: message })
         .where(eq(schema.runs.id, runId));
+      // Run que não chegou ao review: o 👀 que anunciou o PR sai da mensagem.
+      await soltarOPr(payload, this.deps.teams);
       return status;
     } finally {
       // Servidor MCP não fecha aqui: o registro vive entre execuções e cada

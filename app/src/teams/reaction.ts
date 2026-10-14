@@ -53,6 +53,21 @@ function caminhoDe(alvo: AlvoDaReacao): string {
     : `${canal}/${enc(alvo.replyToId)}/replies/${enc(alvo.messageId)}`;
 }
 
+/**
+ * Tira o 👀 da mensagem do evento, se ele veio do Teams com PR, e não põe nada.
+ * É o fim de quem pegou o PR e não vai publicar review: fila rejeitada, run
+ * falho ou sem orçamento. Recusa do Graph vira log.
+ */
+export async function soltarOPr(payload: unknown, options: TeamsReactionOptions = {}): Promise<void> {
+  const alvo = alvoDaReacao(payload);
+  if (alvo === null) return;
+  try {
+    await reagirNoTeams(alvo, "unset", REACAO_PEGOU, options);
+  } catch (err) {
+    console.error(`tirar ${REACAO_PEGOU} no Teams falhou: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
 /** Põe ou tira uma reação. Estoura se o Graph recusar: quem chama decide se engole. */
 export async function reagirNoTeams(
   alvo: AlvoDaReacao,

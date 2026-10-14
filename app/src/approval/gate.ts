@@ -64,6 +64,12 @@ export type ActionHandler = {
   publish(payload: unknown, externalId: string): Promise<void>;
   /** Prepara sem publicar. No GitHub, review em estado pendente. */
   draft?(payload: unknown, externalId: string): Promise<void>;
+  /**
+   * A proposta não vai sair: rejeitada na fila, em conflito, ou recusada pelo
+   * `propose`. Para o handler desfazer o que anunciou ao pegar o trabalho.
+   * Falha aqui é engolida: a decisão já foi tomada.
+   */
+  discard?(payload: unknown): Promise<void>;
 };
 
 /**
@@ -118,6 +124,7 @@ export class ApprovalGate {
     }
 
     const prepared = handler?.propose ? await handler.propose(payload, target) : payload;
+    if (prepared === null || prepared === undefined) await handler?.discard?.(payload).catch(() => undefined);
     const finalMode = mode === "auto" && handler?.holdForApproval?.(prepared) ? "approve" : mode;
     return { payload: prepared, mode: finalMode };
   }
@@ -232,6 +239,9 @@ export class ApprovalGate {
     }
     await this.close(approvalId, status);
     await settleStep(row.stepId, status);
+    if (status !== "approved") {
+      await this.handlers.get(row.kind)?.discard?.(row.payload).catch(() => undefined);
+    }
     return { runId: row.runId, status };
   }
 
