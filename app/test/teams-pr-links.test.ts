@@ -94,6 +94,9 @@ function graphFalso(opcoes: { chats?: { id: string; chatType: string; mensagens:
   return { fetchFn };
 }
 
+/** PR já enriquecido, para os testes de detecção não esbarrarem no GitHub. */
+const semGithub = { fetchPr: (async () => ({})) as never };
+
 const CANAIS = [{ teamId: EQUIPE, channelId: CANAL, label: "Time / Geral" }];
 
 async function eventos(db: ReturnType<typeof bancoDeTeste>) {
@@ -105,13 +108,13 @@ test("canal sem menção com link de PR só acorda com prLinks", async () => {
   const threads = [mensagem("300", 3, `<p>revisa? <a href="${PR}">PR</a></p>`)];
 
   const sem = bancoDeTeste();
-  await pollTeamsInbox({ mentions: true, dms: true, channels: CANAIS }, { db: sem, token, ...graphFalso({ threads }) });
+  await pollTeamsInbox({ mentions: true, dms: true, channels: CANAIS }, { db: sem, token, ...semGithub, ...graphFalso({ threads }) });
   assert.equal((await eventos(sem)).length, 0);
 
   const com = bancoDeTeste();
   const resultado = await pollTeamsInbox(
     { mentions: false, dms: false, prLinks: true, channels: CANAIS },
-    { db: com, token, ...graphFalso({ threads }) },
+    { db: com, token, ...semGithub, ...graphFalso({ threads }) },
   );
   assert.deepEqual(resultado.errors, []);
   const [evento, ...resto] = await eventos(com);
@@ -125,7 +128,7 @@ test("mensagem de canal sem link de PR continua sem acordar, mesmo com prLinks",
   const db = bancoDeTeste();
   await pollTeamsInbox(
     { mentions: false, dms: false, prLinks: true, channels: CANAIS },
-    { db, token, ...graphFalso({ threads: [mensagem("1", 2, "<p>bom dia https://github.com/acme/api/issues/3</p>")] }) },
+    { db, token, ...semGithub, ...graphFalso({ threads: [mensagem("1", 2, "<p>bom dia https://github.com/acme/api/issues/3</p>")] }) },
   );
   assert.equal((await eventos(db)).length, 0);
 });
@@ -138,12 +141,12 @@ test("chat em grupo e direto acordam com link; reunião só com menção", async
     { id: "r", chatType: "meeting", mensagens: [mensagem("m3", 2, PR)] },
     { id: "r2", chatType: "meeting", mensagens: [mensagem("m4", 2, PR, { mentions: [{ mentioned: { user: { id: "EU" } } }] })] },
   ];
-  await pollTeamsInbox({ mentions: false, dms: false, prLinks: true }, { db, token, ...graphFalso({ chats }) });
+  await pollTeamsInbox({ mentions: false, dms: false, prLinks: true }, { db, token, ...semGithub, ...graphFalso({ chats }) });
   const ids = (await eventos(db)).map((e) => e.messageId).sort();
   assert.deepEqual(ids, ["m1", "m2"]);
 
   const so = bancoDeTeste();
-  await pollTeamsInbox({ mentions: true, dms: false, prLinks: true }, { db: so, token, ...graphFalso({ chats }) });
+  await pollTeamsInbox({ mentions: true, dms: false, prLinks: true }, { db: so, token, ...semGithub, ...graphFalso({ chats }) });
   assert.deepEqual((await eventos(so)).map((e) => e.messageId).sort(), ["m1", "m2", "m4"]);
 });
 
@@ -153,11 +156,11 @@ test("mensagem do próprio usuário com link conta; sem link, não", async () =>
   const chats = [
     { id: "g", chatType: "group", mensagens: [mensagem("m1", 2, PR, eu), mensagem("m2", 2, "só conversa", eu)] },
   ];
-  await pollTeamsInbox({ mentions: true, dms: true, prLinks: true }, { db, token, ...graphFalso({ chats }) });
+  await pollTeamsInbox({ mentions: true, dms: true, prLinks: true }, { db, token, ...semGithub, ...graphFalso({ chats }) });
   assert.deepEqual((await eventos(db)).map((e) => e.messageId), ["m1"]);
 
   const sem = bancoDeTeste();
-  await pollTeamsInbox({ mentions: true, dms: true }, { db: sem, token, ...graphFalso({ chats }) });
+  await pollTeamsInbox({ mentions: true, dms: true }, { db: sem, token, ...semGithub, ...graphFalso({ chats }) });
   assert.equal((await eventos(sem)).length, 0);
 });
 
@@ -167,11 +170,104 @@ test("dois links na mesma mensagem viram um evento por PR, sem duplicar na batid
     { id: "g", chatType: "group", mensagens: [mensagem("m1", 2, `${PR} e https://github.com/acme/web/pull/9`)] },
   ];
   const watch = { mentions: false, dms: false, prLinks: true };
-  const primeira = await pollTeamsInbox(watch, { db, token, ...graphFalso({ chats }) });
+  const primeira = await pollTeamsInbox(watch, { db, token, ...semGithub, ...graphFalso({ chats }) });
   assert.equal(primeira.eventIds.length, 2);
   const prs = (await eventos(db)).map((e) => e.repo).sort();
   assert.deepEqual(prs, ["acme/api", "acme/web"]);
 
-  const segunda = await pollTeamsInbox(watch, { db, token, ...graphFalso({ chats }) });
+  const segunda = await pollTeamsInbox(watch, { db, token, ...semGithub, ...graphFalso({ chats }) });
   assert.equal(segunda.eventIds.length, 0);
+});
+
+const CONTEXTO_DO_PR = {
+  repo: "acme/api",
+  owner: "acme",
+  repoName: "api",
+  pull: 7,
+  title: "Corrige o pedido",
+  description: "descrição",
+  headSha: "abc123",
+  changedFiles: ["src/a.ts"],
+  diff: "diff --git a/src/a.ts b/src/a.ts",
+  omittedFiles: [],
+  omittedSummary: "nenhum",
+  ci: { summary: "verde" },
+  author: "autor-do-pr",
+  url: "https://github.com/acme/api/pull/7",
+};
+
+test("o evento com PR é enriquecido com o contexto do PR e guarda onde reagir", async () => {
+  const db = bancoDeTeste();
+  const pedidos: unknown[][] = [];
+  const fetchPr = (async (...args: unknown[]) => {
+    pedidos.push(args);
+    return CONTEXTO_DO_PR;
+  }) as never;
+  const chats = [{ id: "g", chatType: "group", mensagens: [mensagem("m1", 2, PR)] }];
+
+  await pollTeamsInbox({ mentions: false, dms: false, prLinks: true }, { db, token, fetchPr, ...graphFalso({ chats }) });
+
+  assert.deepEqual(pedidos, [["acme", "api", 7]]);
+  const [evento] = await eventos(db);
+  for (const campo of ["repo", "title", "description", "diff", "omittedSummary", "owner", "repoName", "pull", "headSha"]) {
+    assert.deepEqual(evento?.[campo], (CONTEXTO_DO_PR as Record<string, unknown>)[campo], campo);
+  }
+  assert.deepEqual(evento?.ci, { summary: "verde" });
+  assert.equal(evento?.author, "autor-do-pr");
+  assert.equal(evento?.teamsAuthor, "Outra Pessoa");
+  assert.equal(evento?.teamsChatId, "g");
+  assert.equal(evento?.teamsMessageId, "m1");
+  assert.equal(evento?.prError, undefined);
+});
+
+test("canal e resposta em thread guardam equipe, canal, mensagem e a thread", async () => {
+  const db = bancoDeTeste();
+  const fetchPr = (async () => CONTEXTO_DO_PR) as never;
+  const threads = [{ ...mensagem("200", 30, "<p>raiz</p>"), replies: [mensagem("201", 2, PR)] }, mensagem("300", 2, PR)];
+
+  await pollTeamsInbox(
+    { mentions: false, dms: false, prLinks: true, channels: CANAIS },
+    { db, token, fetchPr, ...graphFalso({ threads }) },
+  );
+
+  const porMensagem = new Map((await eventos(db)).map((e) => [e.teamsMessageId, e]));
+  const raiz = porMensagem.get("300")!;
+  assert.deepEqual([raiz.teamsTeamId, raiz.teamsChannelId, raiz.teamsReplyToId], [EQUIPE, CANAL, undefined]);
+  const resposta = porMensagem.get("201")!;
+  assert.deepEqual([resposta.teamsTeamId, resposta.teamsChannelId, resposta.teamsReplyToId], [EQUIPE, CANAL, "200"]);
+  assert.equal(resposta.diff, CONTEXTO_DO_PR.diff);
+});
+
+test("falha ao buscar o PR não derruba a varredura nem o evento", async () => {
+  const db = bancoDeTeste();
+  const fetchPr = (async () => {
+    throw new Error("GitHub fora");
+  }) as never;
+  const chats = [{ id: "g", chatType: "group", mensagens: [mensagem("m1", 2, PR), mensagem("m2", 1, "oi")] }];
+
+  const resultado = await pollTeamsInbox(
+    { mentions: false, dms: true, prLinks: true },
+    { db, token, fetchPr, ...graphFalso({ chats }) },
+  );
+
+  assert.equal(resultado.eventIds.length, 2);
+  assert.equal(resultado.errors.length, 1);
+  assert.match(resultado.errors[0]!.error, /GitHub fora/);
+  const evento = (await eventos(db)).find((e) => e.messageId === "m1")!;
+  assert.equal(evento.diff, undefined);
+  assert.equal(evento.prNumber, 7);
+  assert.match(String(evento.prError), /GitHub fora/);
+});
+
+test("mensagem sem prLinks não busca PR", async () => {
+  const db = bancoDeTeste();
+  let buscas = 0;
+  const fetchPr = (async () => {
+    buscas++;
+    return CONTEXTO_DO_PR;
+  }) as never;
+  const chats = [{ id: "g", chatType: "group", mensagens: [mensagem("m1", 2, PR)] }];
+  await pollTeamsInbox({ mentions: false, dms: true }, { db, token, fetchPr, ...graphFalso({ chats }) });
+  assert.equal(buscas, 0);
+  assert.equal((await eventos(db))[0]?.diff, undefined);
 });

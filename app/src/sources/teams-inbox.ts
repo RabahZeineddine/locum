@@ -1,8 +1,10 @@
-import { db as defaultDb } from "../db/index.js";
+import { eq } from "drizzle-orm";
+import { db as defaultDb, schema } from "../db/index.js";
 import { mcpOAuthService } from "../services/mcp-oauth-service.js";
 import { GRAPH_URL, TEAMS_SERVER } from "../services/teams-app.js";
 import { pollMcpServer, CURSOR_TOKEN, type McpCaller, type McpPollShape } from "./mcp-poll.js";
 import { clienteHttp } from "../net/http.js";
+import { fetchPr as defaultFetchPr } from "./github.js";
 import { extractGithubPrLinks } from "./github-pr-link.js";
 import type { ParsedGithubPr } from "./slack.js";
 
@@ -72,6 +74,8 @@ export interface TeamsInboxOptions {
   token?: () => Promise<string | null>;
   fetchFn?: typeof fetch;
   graphUrl?: string;
+  /** Busca do contexto do PR. Existe para o teste trocar. */
+  fetchPr?: typeof defaultFetchPr;
 }
 
 export interface TeamsInboxOutcome {
@@ -124,6 +128,7 @@ export async function pollTeamsInbox(
     outcome.eventIds.push(...eventIds);
     for (const id of inWindow) if (!outcome.inWindow.includes(id)) outcome.inWindow.push(id);
     outcome.seen += seen;
+    outcome.errors.push(...(await enriquecerPrs(inWindow, "inbox", undefined, db, options)));
   } catch (err) {
     outcome.errors.push({ kind: "inbox", error: err instanceof Error ? err.message : String(err) });
   }
@@ -137,8 +142,9 @@ export async function pollTeamsInbox(
         { db, call: doCanal(graph, canal), shape: canalShape(canal, eu, watch) },
       );
       outcome.eventIds.push(...eventIds);
-    for (const id of inWindow) if (!outcome.inWindow.includes(id)) outcome.inWindow.push(id);
+      for (const id of inWindow) if (!outcome.inWindow.includes(id)) outcome.inWindow.push(id);
       outcome.seen += seen;
+      outcome.errors.push(...(await enriquecerPrs(inWindow, "channel", canal.label ?? canal.channelId, db, options)));
     } catch (err) {
       outcome.errors.push({
         kind: "channel",
@@ -148,6 +154,52 @@ export async function pollTeamsInbox(
     }
   }
   return outcome;
+}
+
+/**
+ * Põe no evento com link de PR o contexto que o agent de revisão lê: título,
+ * diff, CI e o dono e número que a ação de review precisa, como o Slack faz.
+ *
+ * Falha ao buscar o PR não derruba a varredura nem o evento: ele segue sem o
+ * diff, com `prError` dizendo por quê, e a falha sobe no `detail` do gatilho.
+ * O `author` passa a ser o do PR, que é o que o bloqueio de auto-review
+ * compara, e o do Teams fica em `teamsAuthor`. O `repo` também vira o do PR, o
+ * que tira o evento do `teams.post`, que acha a conversa por ele.
+ */
+async function enriquecerPrs(
+  ids: string[],
+  kind: "inbox" | "channel",
+  channel: string | undefined,
+  db: Db,
+  options: TeamsInboxOptions,
+): Promise<TeamsInboxOutcome["errors"]> {
+  const erros: TeamsInboxOutcome["errors"] = [];
+  const buscar = options.fetchPr ?? defaultFetchPr;
+  for (const id of ids) {
+    try {
+      const [evento] = await db.select().from(schema.events).where(eq(schema.events.id, id)).limit(1);
+      const payload = evento?.payload as Record<string, unknown> | null | undefined;
+      if (!payload?.prOwner || !payload.prRepo || !payload.prNumber || payload.diff !== undefined) continue;
+      try {
+        const contexto = await buscar(String(payload.prOwner), String(payload.prRepo), Number(payload.prNumber));
+        const { prError: _resolvido, ...resto } = payload;
+        await db
+          .update(schema.events)
+          .set({ payload: { ...resto, ...contexto, teamsAuthor: payload.author } })
+          .where(eq(schema.events.id, id));
+      } catch (err) {
+        const erro = err instanceof Error ? err.message : String(err);
+        await db
+          .update(schema.events)
+          .set({ payload: { ...payload, prError: erro } })
+          .where(eq(schema.events.id, id));
+        erros.push({ kind, ...(channel === undefined ? {} : { channel }), error: `PR ${payload.prOwner}/${payload.prRepo}#${payload.prNumber}: ${erro}` });
+      }
+    } catch (err) {
+      erros.push({ kind, ...(channel === undefined ? {} : { channel }), error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+  return erros;
 }
 
 /**
