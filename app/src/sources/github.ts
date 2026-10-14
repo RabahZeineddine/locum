@@ -3,11 +3,26 @@ import { Octokit } from "octokit";
 import { and, eq } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
 import type { ActionHandler } from "../approval/gate.js";
-import type { ReviewFinding, ReviewVerdict } from "../config/types.js";
+import type { PollFilters, ReviewFinding, ReviewVerdict } from "../config/types.js";
 import type { EventPayload } from "../executor/executor.js";
 import { GITHUB_TOKEN_ENV, githubService, githubToken } from "../services/github-service.js";
 import { fetchCiStatus, type ChecksClient, type CiStatus } from "./ci-status.js";
 import { limitDiff, type OmittedFile } from "./diff-limit.js";
+import {
+  avaliarArquivos,
+  avaliarItem,
+  avaliarPr,
+  avaliarTimes,
+  chaveDosFiltros,
+  leitorDeTimes,
+  montarConsulta,
+  resolverFiltros,
+  temFiltroDeArquivos,
+  type ClienteDeTimes,
+  type Descarte,
+  type FiltrosResolvidos,
+  type ItemDaBusca,
+} from "./github-filtros.js";
 import {
   alvoDaReacao,
   reagirNoTeams,
@@ -154,6 +169,13 @@ export type PrClient = ChecksClient & {
   rest: ChecksClient["rest"] & { pulls: Pick<Octokit["rest"]["pulls"], "get" | "listFiles"> };
 };
 
+/** Um arquivo como o GitHub devolve no `pulls.listFiles`. */
+type ArquivoDoPr = Awaited<ReturnType<Octokit["rest"]["pulls"]["listFiles"]>>["data"][number];
+
+function listarArquivos(gh: PrClient, owner: string, repo: string, pull: number): Promise<ArquivoDoPr[]> {
+  return gh.paginate(gh.rest.pulls.listFiles, { owner, repo, pull_number: pull, per_page: 100 });
+}
+
 /** O pull request como o GitHub devolve no `pulls.get`. */
 type PullData = Awaited<ReturnType<Octokit["rest"]["pulls"]["get"]>>["data"];
 
@@ -182,9 +204,10 @@ async function contextFromPr(
   repo: string,
   pr: PullData,
   diffMaxChars?: number,
+  lidos?: ArquivoDoPr[],
 ): Promise<PrContext> {
   const pull = pr.number;
-  const files = await gh.paginate(gh.rest.pulls.listFiles, { owner, repo, pull_number: pull, per_page: 100 });
+  const files = lidos ?? (await listarArquivos(gh, owner, repo, pull));
   const ci = await fetchCiStatus(gh, owner, repo, pr.head.sha);
 
   const { diff, omittedFiles, omittedSummary } = limitDiff(
@@ -220,12 +243,19 @@ async function contextFromPr(
 
 /** O pedaço do cliente que a varredura usa. Existe para o teste trocar. */
 export type PollClient = PrClient & {
-  rest: PrClient["rest"] & { search: Pick<Octokit["rest"]["search"], "issuesAndPullRequests"> };
+  rest: PrClient["rest"] & {
+    search: Pick<Octokit["rest"]["search"], "issuesAndPullRequests">;
+    teams: Pick<Octokit["rest"]["teams"], "listMembersInOrg">;
+  };
 };
 
 export type PollOptions = {
   /** Rascunho fica fora por padrão: revisar o que o autor ainda não pediu é gasto sem leitor. */
   includeDrafts?: boolean;
+  /** Filtros do gatilho além do repositório. Ausente, a varredura não filtra nada. */
+  filters?: PollFilters;
+  /** A conta do token, para trocar `@me`. Nulo é "nunca conferida". */
+  viewer?: string | null;
   client?: PollClient;
   db?: typeof defaultDb;
   /** Relógio da janela inicial, para teste. */
@@ -285,6 +315,103 @@ export interface PullRequestScan {
   eventIds: string[];
   /** Só os que esta varredura gravou. */
   created: string[];
+  /** O que a varredura viu e não virou evento, cada um com o motivo. */
+  descartes?: Descarte[];
+}
+
+/** Quantos descartes uma varredura devolve; o resto some para não inchar a batida. */
+const TETO_DE_DESCARTES = 200;
+
+/** O que `examinar` decidiu sobre um pull request da busca. */
+type Exame =
+  | {
+      entra: true;
+      pr: PullData;
+      repo: string;
+      /** Arquivos já lidos para os filtros, para a ingestão não paginar de novo. */
+      arquivos?: ArquivoDoPr[];
+      /** O evento que este commit já tem, se tem. */
+      conhecido?: string;
+    }
+  | { entra: false; descarte: Descarte };
+
+type ContextoDoExame = {
+  gh: PollClient;
+  db: typeof defaultDb;
+  owner: string;
+  repoFilter: RegExp;
+  includeDrafts: boolean;
+  filtros: FiltrosResolvidos;
+  membrosDe: ReturnType<typeof leitorDeTimes>;
+};
+
+function contextoDoExame(owner: string, repoFilter: RegExp, deps: PollOptions) {
+  const gh = deps.client ?? octokit();
+  return {
+    gh,
+    db: deps.db ?? defaultDb,
+    owner,
+    repoFilter,
+    includeDrafts: deps.includeDrafts ?? false,
+    // `@me` sem conta conferida estoura aqui, antes de qualquer chamada.
+    filtros: resolverFiltros(deps.filters, deps.viewer ?? null),
+    membrosDe: leitorDeTimes(gh as unknown as ClienteDeTimes),
+  } satisfies ContextoDoExame;
+}
+
+/**
+ * Decide se um pull request da busca entra, do filtro mais barato ao mais caro.
+ *
+ * É o único lugar onde os filtros são aplicados: a varredura grava evento com
+ * o que entra e a prévia só lê, e as duas passam por aqui para dizerem a mesma
+ * coisa. Nulo é pull request de outro repositório, que não é descarte e sim
+ * fora do que o gatilho observa.
+ */
+async function examinar(ctx: ContextoDoExame, item: ItemDaBusca & { repository_url: string }): Promise<Exame | null> {
+  const repo = item.repository_url.split("/").pop()!;
+  if (!ctx.repoFilter.test(`${ctx.owner}/${repo}`)) return null;
+
+  const ref = `${ctx.owner}/${repo}#${item.number}`;
+  const autor = item.user?.login ?? undefined;
+  const fora = (motivo: string): Exame => ({
+    entra: false,
+    descarte: { pr: ref, titulo: item.title, autor, url: item.html_url, motivo },
+  });
+
+  if (item.draft && !ctx.includeDrafts) return fora("draft");
+  const doItem = avaliarItem(ctx.filtros, item);
+  if (doItem !== null) return fora(doItem);
+  const dosTimes = await avaliarTimes(ctx.filtros, autor, ctx.membrosDe);
+  if (dosTimes !== null) return fora(dosTimes);
+
+  const { data: pr } = await ctx.gh.rest.pulls.get({ owner: ctx.owner, repo, pull_number: item.number });
+  // Virou rascunho entre a busca e a leitura: vale o estado mais novo.
+  if (pr.draft && !ctx.includeDrafts) return fora("draft");
+  const doPr = avaliarPr(ctx.filtros, pr, ctx.owner);
+  if (doPr !== null) return fora(doPr);
+
+  const externalId = `pr:${ctx.owner}/${repo}#${item.number}:sha:${pr.head.sha}`;
+  const [known] = await ctx.db
+    .select({ id: schema.events.id, payload: schema.events.payload })
+    .from(schema.events)
+    .where(and(eq(schema.events.source, "github"), eq(schema.events.externalId, externalId)));
+
+  let arquivos: ArquivoDoPr[] | undefined;
+  let nomes: string[] | undefined;
+  if (temFiltroDeArquivos(ctx.filtros)) {
+    // O evento já guarda a lista do commit: não vale uma ida ao GitHub por batida.
+    const guardados = (known?.payload as { changedFiles?: unknown } | undefined)?.changedFiles;
+    if (Array.isArray(guardados) && guardados.every((a) => typeof a === "string")) {
+      nomes = guardados as string[];
+    } else {
+      arquivos = await listarArquivos(ctx.gh, ctx.owner, repo, item.number);
+      nomes = arquivos.map((a) => a.filename);
+    }
+    const dosArquivos = avaliarArquivos(ctx.filtros, nomes);
+    if (dosArquivos !== null) return fora(dosArquivos);
+  }
+
+  return { entra: true, pr, repo, arquivos, conhecido: known?.id };
 }
 
 export async function scanOpenPullRequests(
@@ -292,18 +419,18 @@ export async function scanOpenPullRequests(
   repoFilter: RegExp,
   deps: PollOptions = {},
 ): Promise<PullRequestScan> {
-  const gh = deps.client ?? octokit();
-  const db = deps.db ?? defaultDb;
-  const includeDrafts = deps.includeDrafts ?? false;
+  const ctx = contextoDoExame(owner, repoFilter, deps);
+  const { gh, db, includeDrafts } = ctx;
   const source = "github";
   const exact = exactRepo(owner, repoFilter);
 
   // Cada escopo de consulta tem o próprio cursor. Com o repositório dentro da
   // consulta, um cursor dividido entre dois gatilhos avançaria pelo que um viu
   // e faria o outro pular o que ainda não tinha visto. O escopo aberto guarda
-  // a chave antiga para não perder a posição de quem já varria assim.
+  // a chave antiga para não perder a posição de quem já varria assim. O mesmo
+  // vale para os filtros: sem eles a chave é a de sempre.
   const scope = repoFilter.source === ".*" ? "" : `:${repoFilter.source}`;
-  const key = `prs:${owner}${scope}${includeDrafts ? ":rascunhos" : ""}`;
+  const key = `prs:${owner}${scope}${includeDrafts ? ":rascunhos" : ""}${chaveDosFiltros(deps.filters)}`;
 
   const [cursor] = await db
     .select()
@@ -311,46 +438,43 @@ export async function scanOpenPullRequests(
     .where(and(eq(schema.cursors.source, source), eq(schema.cursors.key, key)));
 
   const since = searchTimestamp(cursor?.value ?? new Date((deps.now ?? Date.now()) - 24 * 3600 * 1000).toISOString());
-  const query = [
-    "is:pr",
-    "is:open",
-    exact ? `repo:${exact}` : `org:${owner}`,
-    includeDrafts ? null : "draft:false",
-    `updated:>=${since}`,
-  ]
-    .filter(Boolean)
-    .join(" ");
+  const query = montarConsulta(
+    [
+      "is:pr",
+      "is:open",
+      exact ? `repo:${exact}` : `org:${owner}`,
+      includeDrafts ? null : "draft:false",
+      `updated:>=${since}`,
+    ].filter((p): p is string => p !== null),
+    ctx.filtros,
+  );
   const items = await gh.paginate(gh.rest.search.issuesAndPullRequests, { q: query, per_page: 100 });
 
   const created: string[] = [];
   const eventIds: string[] = [];
+  const descartes: Descarte[] = [];
   let newest = since;
 
   for (const item of items) {
     if (item.updated_at > newest) newest = item.updated_at;
-    const repo = item.repository_url.split("/").pop()!;
-    if (!repoFilter.test(`${owner}/${repo}`)) continue;
-    if (item.draft && !includeDrafts) continue;
-
-    const { data: pr } = await gh.rest.pulls.get({ owner, repo, pull_number: item.number });
-    // Virou rascunho entre a busca e a leitura: vale o estado mais novo.
-    if (pr.draft && !includeDrafts) continue;
-
-    const externalId = `pr:${owner}/${repo}#${item.number}:sha:${pr.head.sha}`;
-    const [known] = await db
-      .select({ id: schema.events.id })
-      .from(schema.events)
-      .where(and(eq(schema.events.source, source), eq(schema.events.externalId, externalId)));
-    if (known) {
-      eventIds.push(known.id);
+    const exame = await examinar(ctx, item);
+    if (exame === null) continue;
+    if (!exame.entra) {
+      if (descartes.length < TETO_DE_DESCARTES) descartes.push(exame.descarte);
+      continue;
+    }
+    if (exame.conhecido !== undefined) {
+      eventIds.push(exame.conhecido);
       continue;
     }
 
-    const ctx = await contextFromPr(gh, owner, repo, pr, deps.diffMaxChars);
+    const { pr, repo } = exame;
+    const externalId = `pr:${owner}/${repo}#${item.number}:sha:${pr.head.sha}`;
+    const context = await contextFromPr(gh, owner, repo, pr, deps.diffMaxChars, exame.arquivos);
     const id = randomUUID();
     const inserted = await db
       .insert(schema.events)
-      .values({ id, source, externalId, payload: ctx as object })
+      .values({ id, source, externalId, payload: context as object })
       .onConflictDoNothing()
       .returning({ id: schema.events.id });
 
@@ -369,7 +493,7 @@ export async function scanOpenPullRequests(
       set: { value: newest, updatedAt: Math.floor(Date.now() / 1000) },
     });
 
-  return { eventIds, created };
+  return { eventIds, created, descartes };
 }
 
 /**
