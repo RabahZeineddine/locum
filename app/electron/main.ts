@@ -1182,7 +1182,7 @@ async function irPara(window: BrowserWindow, id: string, detalhe?: string): Prom
  * so a exigencia da story, que sao estes quatro destinos.
  */
 async function checkRoutes(window: BrowserWindow): Promise<string> {
-  const esperados = ["today", "inbox", "initiatives", "automations", "library", "runs", "apps", "sessions", "settings"];
+  const esperados = ["today", "inbox", "automations", "runs", "sessions", "library", "initiatives", "apps", "settings"];
 
   const barra = (await window.webContents.executeJavaScript(
     `Array.from(document.querySelectorAll("[data-locum-rota]")).map((b) => ({
@@ -3660,19 +3660,22 @@ async function checkDigest(): Promise<string> {
       if (!recusou) throw new Error(`a gate aceitou entregar o digest em modo "${modo}"`);
     }
 
-    const recusouVazio = await gate
-      .submit(
-        { runId, stepId: acao.id, kind: "digest.deliver", payload: { headline: leitura.headline, items: [] } },
-        "approve",
-      )
-      .then(
-        () => false,
-        () => true,
-      );
-    if (!recusouVazio) throw new Error("a gate propos digest sem assunto nenhum");
-
+    // Dia calmo é pendência válida: sem assunto, a leitura entra na fila só
+    // com a headline, e a proposta sai sem canal nenhum.
+    const diaCalmo = await gate.submit(
+      { runId, stepId: acao.id, kind: "digest.deliver", payload: { headline: leitura.headline, items: [] } },
+      "approve",
+    );
+    if (diaCalmo !== "pending") throw new Error(`o dia calmo saiu como "${diaCalmo}", e nao pendente`);
     const depois = await db.select().from(schema.approvals).where(eq(schema.approvals.runId, runId));
-    if (depois.length !== 1) throw new Error(`as recusas deixaram ${depois.length} pendencia(s)`);
+    if (depois.length !== 2) throw new Error(`o dia calmo deixou ${depois.length} pendencia(s) em vez de 2`);
+    const calma = depois.find((p) => p.id !== pendencia.id);
+    if (calma === undefined || calma.kind !== "digest.deliver" || calma.status !== "pending") {
+      throw new Error("o digest de dia calmo nao entrou na fila como pendencia");
+    }
+    if (DigestProposal.parse(calma.payload).channels.length !== 0) {
+      throw new Error("a proposta de dia calmo trouxe assunto que nao existe");
+    }
 
     return t("smoke.digest", {
       channels: pacote.channels.length,

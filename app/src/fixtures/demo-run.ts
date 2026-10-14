@@ -19,7 +19,7 @@ import { agentService } from "../services/agent-service.js";
  * nada mais precisa saber que ele foi plantado.
  */
 
-const RUN_ID = "fixture-run-pr-review";
+const RUN_ID = "00000000-0000-4000-8000-00000000f1e0";
 const EVENT_ID = "fixture-event-pr-482";
 const APPROVAL_ID = "fixture-approval-post";
 
