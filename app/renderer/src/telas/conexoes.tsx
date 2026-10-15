@@ -1,14 +1,20 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Input } from "@/components/ui/input";
+import { Kbd } from "@/components/ui/kbd";
+import { ListGroup, ListRow } from "@/components/ui/list-row";
+import { StatusDot, type Estado as EstadoDoPonto } from "@/components/ui/status-dot";
 import { CabecalhoDaTela } from "@/components/cabecalho-da-tela";
 import { call, invalidateReads, useRead, type ReadResult, type ReadState } from "@/lib/bridge";
+import { useAcaoDaTela } from "@/lib/acao-da-tela";
 import { acaoDeLigar, destinoDeConexaoAntiga } from "@/lib/conexao-acao";
 import { MarcaLogo } from "@/components/marca-logo";
 import { buscarConexoes, type ItemDeBusca } from "@/lib/busca-conexoes";
 import { liberaDaConexao } from "@/lib/conexao-libera";
 import { agruparPorOrigem, origemLegivel, pareceProducao } from "@/lib/importacao-origem";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, Download, Plus, Search, Server, X } from "lucide-react";
+import { ArrowLeft, Blocks, Download, Plus, Search, Server, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { TelaProps } from "../rotas";
@@ -119,6 +125,9 @@ function SuasConexoes({ navegar }: { navegar: TelaProps["navegar"] }) {
   const [busca, setBusca] = useState("");
   const campoDeBusca = useRef<HTMLInputElement>(null);
 
+  // "Adicionar conexão" pedido pela paleta, com a tela já aberta ou ainda por abrir.
+  useAcaoDaTela("adicionar-conexao", () => setAdicionando({ passo: "escolher", busca: "" }));
+
   // `/` e ⌘F levam para a busca da tela, a não ser que a pessoa já esteja
   // digitando em outro campo ou com um painel aberto por cima.
   useEffect(() => {
@@ -147,7 +156,7 @@ function SuasConexoes({ navegar }: { navegar: TelaProps["navegar"] }) {
 
   return (
     <div
-      className="mx-auto flex w-full max-w-6xl flex-col gap-8"
+      className="mx-auto flex w-full max-w-5xl flex-col gap-5"
       data-locum-carregada={lista.status === "ready" ? "sim" : "nao"}
       data-locum-ligadas={suas.map((c) => c.id).join(",")}
       data-locum-servidores={suas.flatMap((c) => c.servers).join(",")}
@@ -156,7 +165,7 @@ function SuasConexoes({ navegar }: { navegar: TelaProps["navegar"] }) {
       <CabecalhoDaTela
         acoes={
           <Button className="cursor-pointer" data-locum-adicionar-conexao="" onClick={() => setAdicionando({ passo: "escolher", busca: "" })}>
-            <Plus aria-hidden className="size-4" />
+            <Plus aria-hidden />
             {t("connections.add.open")}
           </Button>
         }
@@ -165,148 +174,149 @@ function SuasConexoes({ navegar }: { navegar: TelaProps["navegar"] }) {
       />
 
       {claudeCode.status === "ready" && claudeCode.data.desatualizado !== null ? (
-        <div className="flex flex-col gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2.5 text-xs" data-locum-claude-code-desatualizado="">
-          <p className="font-medium text-amber-400">{t("connections.claudeCodeStale.title")}</p>
-          <p className="text-muted-foreground">{t("connections.claudeCodeStale.body", { motivo: t(`connections.claudeCodeStale.motivo.${claudeCode.data.desatualizado}`) })}</p>
-          <div>
-            <Button
-              className="cursor-pointer"
-              disabled={corrigindo}
-              onClick={() => {
-                setCorrigindo(true);
-                setErroAoCorrigir(null);
-                call("claudeCode.connect")
-                  .then(
-                    () => setCorrigindo(false),
-                    (falha: unknown) => {
-                      setCorrigindo(false);
-                      setErroAoCorrigir(falha instanceof Error ? falha.message : String(falha));
-                    },
-                  )
-                  .finally(() => invalidateReads("claudeCode.status"));
-              }}
-              size="sm"
-            >
-              {t(corrigindo ? "connections.claudeCodeStale.fixing" : "connections.claudeCodeStale.fix")}
-            </Button>
+        <div className="border-border bg-card flex items-center gap-3 rounded-lg border px-3 py-2 text-xs" data-locum-claude-code-desatualizado="">
+          <StatusDot estado="aviso" />
+          <div className="flex min-w-0 flex-1 flex-col">
+            <p className="font-medium">{t("connections.claudeCodeStale.title")}</p>
+            <p className="text-muted-foreground">{t("connections.claudeCodeStale.body", { motivo: t(`connections.claudeCodeStale.motivo.${claudeCode.data.desatualizado}`) })}</p>
+            {erroAoCorrigir === null ? null : <p className="text-destructive">{erroAoCorrigir}</p>}
           </div>
-          {erroAoCorrigir === null ? null : <p className="text-destructive">{erroAoCorrigir}</p>}
+          <Button
+            className="cursor-pointer"
+            disabled={corrigindo}
+            onClick={() => {
+              setCorrigindo(true);
+              setErroAoCorrigir(null);
+              call("claudeCode.connect")
+                .then(
+                  () => setCorrigindo(false),
+                  (falha: unknown) => {
+                    setCorrigindo(false);
+                    setErroAoCorrigir(falha instanceof Error ? falha.message : String(falha));
+                  },
+                )
+                .finally(() => invalidateReads("claudeCode.status"));
+            }}
+            size="sm"
+            variant="outline"
+          >
+            {t(corrigindo ? "connections.claudeCodeStale.fixing" : "connections.claudeCodeStale.fix")}
+          </Button>
         </div>
       ) : null}
 
-      <section className="flex flex-col gap-4" data-locum-probe="suas-conexoes">
-        <header className="flex flex-col gap-1">
-          <h2 className="font-medium text-[15px] tracking-tight">{t("connections.yours.title")}</h2>
-          <p className="text-muted-foreground max-w-[68ch] text-xs">
-            {precisam > 0
-              ? t("connections.yours.needAttention", { count: precisam })
-              : t("connections.yours.description")}
-          </p>
+      <section className="flex flex-col gap-3" data-locum-probe="suas-conexoes">
+        <header className="flex items-center justify-between gap-4">
+          <div className="flex min-w-0 items-baseline gap-2">
+            <h2 className="text-[13px] font-medium">{t("connections.yours.title")}</h2>
+            <span className="text-muted-foreground num truncate text-xs">
+              {precisam > 0 ? t("connections.yours.needAttention", { count: precisam }) : suas.length}
+            </span>
+          </div>
+          <label className="relative flex w-64 items-center">
+            <Search aria-hidden className="text-muted-foreground pointer-events-none absolute left-2.5 size-3.5" />
+            <Input
+              aria-label={t("connections.yours.search")}
+              className="pr-8 pl-8"
+              data-locum-conexoes-busca=""
+              onChange={(e) => setBusca(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  setBusca("");
+                  e.currentTarget.blur();
+                }
+              }}
+              placeholder={t("connections.yours.search")}
+              ref={campoDeBusca}
+              value={busca}
+            />
+            {busca === "" ? (
+              <Kbd className="absolute right-2">/</Kbd>
+            ) : (
+              <button
+                aria-label={t("connections.yours.clearSearch")}
+                className="text-muted-foreground hover:text-foreground absolute right-2 cursor-pointer"
+                onClick={() => {
+                  setBusca("");
+                  campoDeBusca.current?.focus();
+                }}
+                type="button"
+              >
+                <X aria-hidden className="size-3.5" />
+              </button>
+            )}
+          </label>
         </header>
 
-        <label className="border-border bg-card focus-within:ring-ring flex h-9 max-w-md items-center gap-2 rounded-md border px-2.5 focus-within:ring-2">
-          <Search aria-hidden className="text-muted-foreground size-3.5" />
-          <input
-            aria-label={t("connections.yours.search")}
-            className="placeholder:text-muted-foreground w-full bg-transparent text-sm outline-none"
-            data-locum-conexoes-busca=""
-            onChange={(e) => setBusca(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") {
-                setBusca("");
-                e.currentTarget.blur();
-              }
-            }}
-            placeholder={t("connections.yours.search")}
-            ref={campoDeBusca}
-            value={busca}
-          />
-          {busca === "" ? (
-            <kbd className="text-muted-foreground border-border rounded border px-1.5 text-[10px] leading-4">/</kbd>
-          ) : (
-            <button
-              aria-label={t("connections.yours.clearSearch")}
-              className="text-muted-foreground hover:text-foreground cursor-pointer"
-              onClick={() => {
-                setBusca("");
-                campoDeBusca.current?.focus();
-              }}
-              type="button"
-            >
-              <X aria-hidden className="size-3.5" />
-            </button>
-          )}
-        </label>
-
         {lista.status === "loading" ? (
-          <p className="text-muted-foreground text-sm">{t("connections.loading")}</p>
+          <p className="text-muted-foreground text-xs">{t("connections.loading")}</p>
         ) : suas.length === 0 && termo === "" ? (
-          <div className="border-border text-muted-foreground flex flex-col items-start gap-3 rounded-xl border border-dashed p-6 text-sm">
-            <p className="max-w-[60ch]">{t("connections.yours.empty")}</p>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                className="cursor-pointer"
-                data-locum-importar-vazio=""
-                onClick={() => setAdicionando({ passo: "importar", busca: "" })}
-                size="sm"
-              >
-                <Download aria-hidden className="size-3.5" />
-                {t("connections.yours.importFromClaude")}
-              </Button>
-              <Button className="cursor-pointer" onClick={() => setAdicionando({ passo: "escolher", busca: "" })} size="sm" variant="outline">
-                <Plus aria-hidden className="size-3.5" />
-                {t("connections.add.open")}
-              </Button>
-            </div>
-          </div>
+          <EmptyState
+            acao={
+              <div className="flex flex-wrap justify-center gap-2">
+                <Button
+                  className="cursor-pointer"
+                  data-locum-importar-vazio=""
+                  onClick={() => setAdicionando({ passo: "importar", busca: "" })}
+                  size="sm"
+                >
+                  <Download aria-hidden />
+                  {t("connections.yours.importFromClaude")}
+                </Button>
+                <Button className="cursor-pointer" onClick={() => setAdicionando({ passo: "escolher", busca: "" })} size="sm" variant="outline">
+                  <Plus aria-hidden />
+                  {t("connections.add.open")}
+                </Button>
+              </div>
+            }
+            icone={<Blocks aria-hidden />}
+            titulo={t("connections.yours.empty")}
+          />
         ) : (
           <>
             {suasVisiveis.length === 0 ? null : (
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-3" data-locum-busca-suas={termo === "" ? "" : suasVisiveis.map((c) => c.id).join(",")}>
+              <ListGroup data-locum-busca-suas={termo === "" ? "" : suasVisiveis.map((c) => c.id).join(",")}>
                 {suasVisiveis.map((c) => (
                   <ConexaoNaLista conexao={c} key={c.id} onAbrir={() => navegar("connections", c.id)} vinculos={vinculos.data ?? {}} />
                 ))}
-              </div>
+              </ListGroup>
             )}
             {termo !== "" && doCatalogo.length > 0 ? (
-              <div className="flex flex-col gap-2" data-locum-busca-catalogo={doCatalogo.map((c) => c.id).join(",")}>
-                <h3 className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">{t("connections.yours.fromCatalog")}</h3>
-                <ul className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-1.5" data-locum-busca-catalogo={doCatalogo.map((c) => c.id).join(",")}>
+                <h3 className="text-muted-foreground text-[11px] font-medium">{t("connections.yours.fromCatalog")}</h3>
+                <ListGroup>
                   {doCatalogo.map((c) => (
-                    <li key={c.id}>
-                      <button
-                        className="border-border hover:bg-muted/40 flex w-full max-w-xl cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors"
-                        data-locum-catalogo={c.id}
-                        disabled={c.state === "soon"}
-                        onClick={() => navegar("connections", c.id)}
-                        type="button"
-                      >
-                        <Logo conexao={c} />
-                        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                          <span className="text-sm font-medium">{c.name}</span>
-                          <span className="text-muted-foreground line-clamp-1 text-xs">{t(`connections.catalog.${c.id}.tagline`)}</span>
-                        </span>
-                        <span className="text-muted-foreground text-xs">{t(c.state === "soon" ? "connections.soon" : "connections.yours.addFromCatalog")}</span>
-                      </button>
-                    </li>
+                    <ListRow data-locum-catalogo={c.id} key={c.id} onClick={c.state === "soon" ? undefined : () => navegar("connections", c.id)}>
+                      <Logo conexao={c} />
+                      <span className="flex min-w-0 flex-1 items-baseline gap-2">
+                        <span className="font-medium">{c.name}</span>
+                        <span className="text-muted-foreground truncate text-xs">{t(`connections.catalog.${c.id}.tagline`)}</span>
+                      </span>
+                      <span className="text-muted-foreground text-xs">{t(c.state === "soon" ? "connections.soon" : "connections.yours.addFromCatalog")}</span>
+                    </ListRow>
                   ))}
-                </ul>
+                </ListGroup>
               </div>
             ) : null}
             {termo !== "" && suasVisiveis.length === 0 && doCatalogo.length === 0 ? (
-              <div className="border-border text-muted-foreground flex flex-col items-start gap-3 rounded-xl border border-dashed p-6 text-sm" data-locum-busca-vazia="">
-                <p className="max-w-[60ch]">{t("connections.yours.noResults", { termo })}</p>
-                <p className="max-w-[60ch] text-xs">{t("connections.yours.noResultsHint")}</p>
-                <div className="flex flex-wrap gap-2">
-                  <Button className="cursor-pointer" onClick={() => setAdicionando({ passo: "propria", busca: termo })} size="sm" variant="outline">
-                    <Server aria-hidden className="size-3.5" />
-                    {t("connections.custom.title")}
-                  </Button>
-                  <Button className="cursor-pointer" onClick={() => setAdicionando({ passo: "importar", busca: termo })} size="sm" variant="outline">
-                    <Download aria-hidden className="size-3.5" />
-                    {t("connections.import.title")}
-                  </Button>
-                </div>
+              <div data-locum-busca-vazia="">
+                <EmptyState
+                  acao={
+                    <div className="flex flex-wrap justify-center gap-2">
+                      <Button className="cursor-pointer" onClick={() => setAdicionando({ passo: "propria", busca: termo })} size="sm" variant="outline">
+                        <Server aria-hidden />
+                        {t("connections.custom.title")}
+                      </Button>
+                      <Button className="cursor-pointer" onClick={() => setAdicionando({ passo: "importar", busca: termo })} size="sm" variant="outline">
+                        <Download aria-hidden />
+                        {t("connections.import.title")}
+                      </Button>
+                    </div>
+                  }
+                  descricao={t("connections.yours.noResultsHint")}
+                  icone={<Search aria-hidden />}
+                  titulo={t("connections.yours.noResults", { termo })}
+                />
               </div>
             ) : null}
           </>
@@ -329,7 +339,7 @@ function SuasConexoes({ navegar }: { navegar: TelaProps["navegar"] }) {
   );
 }
 
-function Logo({ conexao, tamanho = "md" }: { conexao: Conexao; tamanho?: "md" | "lg" }) {
+function Logo({ conexao, tamanho = "md" }: { conexao: Conexao; tamanho?: "sm" | "md" | "lg" }) {
   return <MarcaLogo fonte={{ name: conexao.id, url: conexao.url }} tamanho={tamanho} />;
 }
 
@@ -343,39 +353,23 @@ function desligada(c: Conexao): boolean {
   return c.state === "off";
 }
 
+/** O ponto do estado: a cor mora nele, e o texto ao lado é neutro. */
+function pontoDoEstado(c: Conexao): EstadoDoPonto {
+  if (naoTestada(c) || desligada(c)) return "ocioso";
+  if (c.state === "connected") return "ok";
+  if (c.state === "attention") return "aviso";
+  return "erro";
+}
+
 function Estado({ conexao }: { conexao: Conexao }) {
   const { t } = useTranslation();
   if (conexao.state === "available") return null;
-  // Ligada, mas ninguém perguntou ao servidor: verde só depois de um teste ok.
-  if (naoTestada(conexao) || desligada(conexao)) {
-    return (
-      <Badge className="text-muted-foreground px-2 py-0.5 text-[11px] font-medium" data-locum-estado-neutro="" variant="outline">
-        <span aria-hidden className="bg-muted-foreground/50 mr-1.5 inline-block size-1.5 rounded-full" />
-        {t(desligada(conexao) ? "connections.state.off" : "connections.state.untested")}
-      </Badge>
-    );
-  }
+  const neutro = naoTestada(conexao) || desligada(conexao);
   return (
-    <Badge
-      className={cn(
-        "px-2 py-0.5 text-[11px] font-medium",
-        conexao.state === "connected" && "border-emerald-500/30 bg-emerald-500/10 text-emerald-400",
-        conexao.state === "attention" && "border-amber-500/30 bg-amber-500/10 text-amber-400",
-        conexao.state === "error" && "border-destructive/40 bg-destructive/10 text-destructive",
-      )}
-      variant="outline"
-    >
-      <span
-        aria-hidden
-        className={cn(
-          "mr-1.5 inline-block size-1.5 rounded-full",
-          conexao.state === "connected" && "bg-emerald-400",
-          conexao.state === "attention" && "bg-amber-400",
-          conexao.state === "error" && "bg-destructive",
-        )}
-      />
-      {t(`connections.state.${conexao.state}`)}
-    </Badge>
+    <span className="text-muted-foreground inline-flex items-center gap-1.5 text-xs whitespace-nowrap" data-locum-estado-neutro={neutro ? "" : undefined}>
+      <StatusDot estado={pontoDoEstado(conexao)} />
+      {t(neutro ? (desligada(conexao) ? "connections.state.off" : "connections.state.untested") : `connections.state.${conexao.state}`)}
+    </span>
   );
 }
 
@@ -386,137 +380,102 @@ function textoDoEstado(c: Conexao, t: (chave: string, opcoes?: Record<string, un
   return t(`connections.reason.${c.reason}`);
 }
 
-/** "2 gatilhos, 1 ação, 12 ferramentas": o que a conexão libera, na língua da automação. */
-function Resumo({ conexao }: { conexao: Conexao }) {
-  const { t } = useTranslation();
-  const libera = liberaDaConexao(conexao.id, { servidor: conexao.servers.length > 0 });
-  // A ação genérica de chamar ferramenta é cada ferramenta do servidor, contadas abaixo: "1 ação" não diz nada.
-  const acoes = libera.acoes.filter((a) => a !== "mcp.call");
-  const partes = [
-    libera.gatilhos.length > 0 ? t("connections.offers.triggers", { count: libera.gatilhos.length }) : null,
-    acoes.length > 0 ? t("connections.offers.actions", { count: acoes.length }) : null,
-    conexao.toolCount !== null
-      ? t("connections.offers.tools", { count: conexao.toolCount })
-      : conexao.servers.length > 0
-        ? t("connections.offers.testToList")
-        : null,
-  ].filter((p): p is string => p !== null);
-  return (
-    <span className="text-muted-foreground text-xs leading-relaxed">
-      {partes.length > 0 ? partes.join(" · ") : t("connections.offers.none")}
-    </span>
-  );
-}
-
+/** A linha da conexão: ícone, nome e origem, estado com ponto, ferramentas e a ação. */
 function ConexaoNaLista({ conexao, onAbrir, vinculos }: { conexao: Conexao; onAbrir: () => void; vinculos: Record<string, Vinculo> }) {
   const { t } = useTranslation();
   const vinculado = conexao.servers.map((nome) => vinculos[nome]).find((v) => v !== undefined);
   const mudou = conexao.servers.some((nome) => vinculos[nome]?.estado === "mudou" && vinculos[nome]?.mantida === false);
   const sumiu = conexao.servers.some((nome) => vinculos[nome]?.estado === "sumiu" || vinculos[nome]?.estado === "indisponivel");
   const porque = naoTestada(conexao) || desligada(conexao) ? null : textoDoEstado(conexao, t);
+  const [erroAoLigar, setErroAoLigar] = useState<string | null>(null);
+  const subtitulo = mudou || sumiu ? t(mudou ? "settings.servers.link.changed.title" : "settings.servers.link.gone.title") : (porque ?? conexao.account);
   return (
-    <div className="relative flex flex-col">
-    <button
-      className={cn(
-        "border-border superficie hover:border-foreground/30 flex min-h-[132px] flex-1 cursor-pointer flex-col gap-3 rounded-xl border p-4 text-left transition-all duration-150",
-        conexao.state === "attention" && "border-amber-500/30",
-        conexao.state === "error" && "border-destructive/40",
-      )}
+    <ListRow
+      className="min-h-11"
       data-locum-conexao={conexao.id}
       data-locum-conexao-estado={conexao.state}
       onClick={onAbrir}
-      type="button"
     >
-      <span className="flex items-start gap-3.5">
-        <Logo conexao={conexao} />
-        <span className="flex min-w-0 flex-1 flex-col gap-1">
-          <span className="flex items-center gap-2">
-            <span className="truncate font-semibold text-sm tracking-tight text-foreground">{conexao.name}</span>
-            {conexao.custom && vinculado === undefined ? (
-              <span className="border-border text-muted-foreground rounded border px-1.5 py-px text-[10px] leading-4">
-                {t("connections.custom.badge")}
-              </span>
-            ) : null}
-          </span>
-          {vinculado === undefined ? null : (
-            <span>
-              <SeloVinculado vinculo={vinculado} />
-            </span>
-          )}
-          <Resumo conexao={conexao} />
+      <Logo conexao={conexao} tamanho="sm" />
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="flex items-center gap-2">
+          <span className="truncate font-medium">{conexao.name}</span>
+          {conexao.custom && vinculado === undefined ? (
+            <Badge variant="secondary">{t("connections.custom.badge")}</Badge>
+          ) : null}
+          {vinculado === undefined ? null : <SeloVinculado vinculo={vinculado} />}
         </span>
-      </span>
-      <span className="border-border/40 mt-auto flex flex-col gap-1.5 border-t pt-2.5">
-        <span className="flex flex-wrap items-center gap-2">
-          <Estado conexao={conexao} />
-          {conexao.account === null ? null : (
-            <span className="text-muted-foreground min-w-0 truncate text-[11px]">{conexao.account}</span>
-          )}
-        </span>
-        {porque === null || mudou || sumiu ? null : (
-          <span className={cn("line-clamp-2 text-xs", conexao.state === "error" ? "text-destructive" : "text-amber-400")} title={porque}>
-            {porque}
+        {subtitulo === null || subtitulo === undefined ? null : (
+          <span
+            className="text-muted-foreground truncate text-xs"
+            data-locum-origem-aviso={mudou ? "mudou" : sumiu ? "sumiu" : undefined}
+            title={subtitulo}
+          >
+            {subtitulo}
           </span>
         )}
-        {mudou || sumiu ? (
-          <span className="line-clamp-2 text-xs text-amber-400" data-locum-origem-aviso={mudou ? "mudou" : "sumiu"}>
-            {t(mudou ? "settings.servers.link.changed.title" : "settings.servers.link.gone.title")}
+        {erroAoLigar === null ? null : (
+          <span className="text-destructive truncate text-xs" data-locum-ligar-na-lista-erro="">
+            {t("settings.servers.turnOnFailed", { message: erroAoLigar })}
           </span>
-        ) : null}
+        )}
       </span>
-    </button>
-    {naoTestada(conexao) && conexao.servers.length > 0 ? <TestarNaLista servidores={conexao.servers} /> : null}
-    {desligada(conexao) && conexao.servers.length > 0 ? <LigarNaLista servidores={conexao.servers} /> : null}
-    </div>
+      <span className="w-28 shrink-0">
+        <Estado conexao={conexao} />
+      </span>
+      <span className="text-muted-foreground num w-28 shrink-0 text-right text-xs" title={undefined}>
+        {conexao.toolCount !== null
+          ? t("connections.offers.tools", { count: conexao.toolCount })
+          : conexao.servers.length > 0
+            ? t("connections.offers.testToList")
+            : ""}
+      </span>
+      <span className="flex w-16 shrink-0 justify-end" onClick={(e) => e.stopPropagation()}>
+        {naoTestada(conexao) && conexao.servers.length > 0 ? <TestarNaLista servidores={conexao.servers} /> : null}
+        {desligada(conexao) && conexao.servers.length > 0 ? <LigarNaLista aoFalhar={setErroAoLigar} servidores={conexao.servers} /> : null}
+      </span>
+    </ListRow>
   );
 }
 
-/** "Ligar" direto no cartão da conexão desligada: o servidor passa a valer, e o teste vem em seguida. */
-function LigarNaLista({ servidores }: { servidores: string[] }) {
+/** "Ligar" direto na linha da conexão desligada: o servidor passa a valer, e o teste vem em seguida. */
+function LigarNaLista({ aoFalhar, servidores }: { aoFalhar: (mensagem: string | null) => void; servidores: string[] }) {
   const { t } = useTranslation();
   const [ligando, setLigando] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
   return (
-    <>
-      {erro === null ? null : (
-        <p className="text-destructive absolute right-3 bottom-10 left-3 text-xs" data-locum-ligar-na-lista-erro="">
-          {t("settings.servers.turnOnFailed", { message: erro })}
-        </p>
-      )}
-      <Button
-        className="absolute right-3 bottom-2.5 cursor-pointer"
-        data-locum-ligar-na-lista={servidores[0]}
-        disabled={ligando}
-        onClick={() => {
-          setLigando(true);
-          setErro(null);
-          void Promise.allSettled(servidores.map((s) => call("mcp.setEnabled", s, true)))
-            .then((resultados) => {
-              const falha = resultados.find((r): r is PromiseRejectedResult => r.status === "rejected");
-              if (falha !== undefined) setErro(falha.reason instanceof Error ? falha.reason.message : String(falha.reason));
-            })
-            .finally(() => {
-              setLigando(false);
-              invalidateReads("connections.list");
-              invalidateReads("mcp.list");
-            });
-        }}
-        size="sm"
-        variant="outline"
-      >
-        {t("settings.servers.turnOn")}
-      </Button>
-    </>
+    <Button
+      className="cursor-pointer"
+      data-locum-ligar-na-lista={servidores[0]}
+      disabled={ligando}
+      onClick={() => {
+        setLigando(true);
+        aoFalhar(null);
+        void Promise.allSettled(servidores.map((s) => call("mcp.setEnabled", s, true)))
+          .then((resultados) => {
+            const falha = resultados.find((r): r is PromiseRejectedResult => r.status === "rejected");
+            if (falha !== undefined) aoFalhar(falha.reason instanceof Error ? falha.reason.message : String(falha.reason));
+          })
+          .finally(() => {
+            setLigando(false);
+            invalidateReads("connections.list");
+            invalidateReads("mcp.list");
+          });
+      }}
+      size="xs"
+      variant="outline"
+    >
+      {t("settings.servers.turnOn")}
+    </Button>
   );
 }
 
-/** "Testar" direto no cartão: sobe o servidor, e o estado verde só vem se ele responder. */
+/** "Testar" direto na linha: sobe o servidor, e o ponto verde só vem se ele responder. */
 function TestarNaLista({ servidores }: { servidores: string[] }) {
   const { t } = useTranslation();
   const [testando, setTestando] = useState(false);
   return (
     <Button
-      className="absolute right-3 bottom-2.5 cursor-pointer"
+      className="cursor-pointer"
       data-locum-testar-na-lista={servidores[0]}
       disabled={testando}
       onClick={() => {
@@ -527,7 +486,7 @@ function TestarNaLista({ servidores }: { servidores: string[] }) {
           invalidateReads("mcp.list");
         });
       }}
-      size="sm"
+      size="xs"
       variant="outline"
     >
       {t(testando ? "connections.testing" : "connections.test")}
@@ -596,15 +555,15 @@ function AdicionarConexao({
           />
         </div>
       ) : (
-        <div className="flex flex-col gap-4" data-locum-probe="adicionar-conexao">
+        <div className="flex flex-col gap-3" data-locum-probe="adicionar-conexao">
           <p className="text-muted-foreground text-xs">{t("connections.add.description")}</p>
 
-          <label className="border-border bg-card focus-within:ring-ring flex h-9 items-center gap-2 rounded-md border px-2.5 focus-within:ring-2">
-            <Search aria-hidden className="text-muted-foreground size-3.5" />
-            <input
+          <label className="relative flex items-center">
+            <Search aria-hidden className="text-muted-foreground pointer-events-none absolute left-2.5 size-3.5" />
+            <Input
               aria-label={t("connections.search")}
               autoFocus
-              className="placeholder:text-muted-foreground w-full bg-transparent text-sm outline-none"
+              className="pl-8"
               data-locum-adicionar-busca=""
               onChange={(e) => setBusca(e.target.value)}
               placeholder={t("connections.search")}
@@ -623,58 +582,45 @@ function AdicionarConexao({
             ))}
           </div>
 
-          <ul className="flex flex-col gap-1.5">
-            {visiveis.map((c) => (
-              <li key={c.id}>
-                <button
-                  className="border-border hover:bg-muted/40 flex w-full cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors"
-                  data-locum-catalogo={c.id}
-                  disabled={c.state === "soon"}
-                  onClick={() => onAbrir(c.id)}
-                  type="button"
-                >
-                  <Logo conexao={c} />
-                  <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <span className="text-sm font-medium">{c.name}</span>
-                    <span className="text-muted-foreground line-clamp-1 text-xs">{t(`connections.catalog.${c.id}.tagline`)}</span>
+          {visiveis.length === 0 ? (
+            <p className="text-muted-foreground text-xs">{t("connections.none")}</p>
+          ) : (
+            <ListGroup>
+              {visiveis.map((c) => (
+                <ListRow data-locum-catalogo={c.id} key={c.id} onClick={c.state === "soon" ? undefined : () => onAbrir(c.id)}>
+                  <Logo conexao={c} tamanho="sm" />
+                  <span className="flex min-w-0 flex-1 items-baseline gap-2">
+                    <span className="font-medium">{c.name}</span>
+                    <span className="text-muted-foreground truncate text-xs">{t(`connections.catalog.${c.id}.tagline`)}</span>
                   </span>
-                  {c.state === "soon" ? <span className="text-muted-foreground text-xs">{t("connections.soon")}</span> : null}
-                </button>
-              </li>
-            ))}
-          </ul>
-          {visiveis.length === 0 ? <p className="text-muted-foreground text-sm">{t("connections.none")}</p> : null}
+                  {c.state === "soon" ? <Badge variant="secondary">{t("connections.soon")}</Badge> : null}
+                </ListRow>
+              ))}
+            </ListGroup>
+          )}
 
-          <div className="border-border flex flex-col gap-2 border-t pt-4">
-            <h3 className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">{t("connections.add.others")}</h3>
-            <button
-              className="border-border hover:bg-muted/40 flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors"
-              data-locum-vitrine-propria=""
-              onClick={() => setPasso("propria")}
-              type="button"
-            >
-              <span className="bg-muted text-muted-foreground flex size-9 shrink-0 items-center justify-center rounded-md">
-                <Server aria-hidden className="size-[18px]" />
-              </span>
-              <span className="flex flex-col gap-0.5">
-                <span className="text-sm font-medium">{t("connections.custom.title")}</span>
-                <span className="text-muted-foreground text-xs">{t("connections.add.customHint")}</span>
-              </span>
-            </button>
-            <button
-              className="border-border hover:bg-muted/40 flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors"
-              data-locum-vitrine-importar=""
-              onClick={() => setPasso("importar")}
-              type="button"
-            >
-              <span className="bg-muted text-muted-foreground flex size-9 shrink-0 items-center justify-center rounded-md">
-                <Download aria-hidden className="size-[18px]" />
-              </span>
-              <span className="flex flex-col gap-0.5">
-                <span className="text-sm font-medium">{t("connections.import.title")}</span>
-                <span className="text-muted-foreground text-xs">{t("connections.add.importHint")}</span>
-              </span>
-            </button>
+          <div className="flex flex-col gap-1.5 pt-2">
+            <h3 className="text-muted-foreground text-[11px] font-medium">{t("connections.add.others")}</h3>
+            <ListGroup>
+              <ListRow data-locum-vitrine-propria="" onClick={() => setPasso("propria")}>
+                <span className="bg-muted text-muted-foreground flex size-6 shrink-0 items-center justify-center rounded">
+                  <Server aria-hidden className="size-3.5" />
+                </span>
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="font-medium">{t("connections.custom.title")}</span>
+                  <span className="text-muted-foreground truncate text-xs">{t("connections.add.customHint")}</span>
+                </span>
+              </ListRow>
+              <ListRow data-locum-vitrine-importar="" onClick={() => setPasso("importar")}>
+                <span className="bg-muted text-muted-foreground flex size-6 shrink-0 items-center justify-center rounded">
+                  <Download aria-hidden className="size-3.5" />
+                </span>
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="font-medium">{t("connections.import.title")}</span>
+                  <span className="text-muted-foreground truncate text-xs">{t("connections.add.importHint")}</span>
+                </span>
+              </ListRow>
+            </ListGroup>
           </div>
         </div>
       )}
@@ -697,8 +643,8 @@ function Filtro({ ativo, children, onClick }: { ativo: boolean; children: ReactN
     <button
       aria-pressed={ativo}
       className={cn(
-        "h-8 cursor-pointer rounded-md px-3 text-xs transition-colors",
-        ativo ? "bg-foreground text-background" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+        "h-6 cursor-pointer rounded-md px-2 text-xs transition-colors",
+        ativo ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground",
       )}
       onClick={onClick}
       type="button"
@@ -733,22 +679,22 @@ export function Painel({
   }, [onFechar]);
 
   return (
-    <div className="sem-arrasto fixed inset-0 z-50 flex justify-end bg-black/50" onClick={onFechar}>
+    <div className="sem-arrasto fixed inset-0 z-50 flex justify-end bg-black/60" onClick={onFechar}>
       <aside
         aria-label={titulo}
         aria-modal
-        className="border-border bg-background flex h-full w-full max-w-[520px] flex-col border-l shadow-2xl"
+        className="border-border bg-background flex h-full w-full max-w-[480px] flex-col border-l"
         data-locum-painel-conexao={id}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
       >
-        <header className="border-border flex items-center gap-3 border-b px-5 py-4">
-          <h2 className="flex-1 truncate font-medium text-base">{titulo}</h2>
-          <Button aria-label={t("connections.close")} className="cursor-pointer" onClick={onFechar} size="icon" variant="ghost">
-            <X className="size-4" />
+        <header className="border-border flex items-center gap-3 border-b px-4 py-2.5">
+          <h2 className="flex-1 truncate font-medium text-[13px]">{titulo}</h2>
+          <Button aria-label={t("connections.close")} className="cursor-pointer" onClick={onFechar} size="icon-sm" variant="ghost">
+            <X />
           </Button>
         </header>
-        <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
+        <div className="flex-1 overflow-y-auto px-4 py-3">{children}</div>
       </aside>
     </div>
   );
@@ -756,11 +702,11 @@ export function Painel({
 
 /* ------------------------------------------------------------------ detalhe */
 
-const TITULO_DO_BLOCO = "text-muted-foreground text-xs font-medium uppercase tracking-wide";
+const TITULO_DO_BLOCO = "text-muted-foreground text-[11px] font-medium";
 
 function Bloco({ children, dica, titulo }: { children: ReactNode; dica?: string; titulo: string }) {
   return (
-    <section className="flex flex-col gap-2">
+    <section className="flex flex-col gap-1.5">
       <div className="flex flex-col gap-0.5">
         <h3 className={TITULO_DO_BLOCO}>{titulo}</h3>
         {dica === undefined ? null : <p className="text-muted-foreground max-w-[68ch] text-xs">{dica}</p>}
@@ -857,26 +803,20 @@ function DetalheDaConexao({ id, navegar }: { id: string; navegar: TelaProps["nav
   );
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-7 pt-4" data-locum-conexao-id={conexao.id} data-locum-probe="conexao">
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 pt-2" data-locum-conexao-id={conexao.id} data-locum-probe="conexao">
       <BotaoVoltar onClick={voltar} />
 
-      <header className="flex items-center gap-4">
+      <header className="flex items-center gap-3">
         <Logo conexao={conexao} tamanho="lg" />
-        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-          <h1 className="truncate text-2xl font-semibold tracking-[-0.01em]">{conexao.name}</h1>
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <h1 className="truncate text-[20px] leading-7 font-semibold tracking-[-0.015em]">{conexao.name}</h1>
           <div className="flex flex-wrap items-center gap-2">
-            <Estado conexao={conexao} />
             {conexao.custom ? (
               doServidor.some((s) => doVinculo[s.config.name] !== undefined) ? null : (
-                <span className="border-border text-muted-foreground rounded border px-1.5 py-px text-[10px] leading-4">
-                  {t("connections.custom.badge")}
-                </span>
+                <Badge variant="secondary">{t("connections.custom.badge")}</Badge>
               )
             ) : (
               <span className="text-muted-foreground text-xs">{t(`connections.categories.${conexao.category}`)}</span>
-            )}
-            {conexao.account === null ? null : (
-              <span className="text-muted-foreground text-xs">{t("connections.detail.account", { account: conexao.account })}</span>
             )}
             {doServidor.map((servidor) => {
               const v = doVinculo[servidor.config.name];
@@ -886,7 +826,9 @@ function DetalheDaConexao({ id, navegar }: { id: string; navegar: TelaProps["nav
         </div>
       </header>
 
-      <p className="max-w-[68ch] text-sm leading-relaxed">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
+        <div className="flex min-w-0 flex-col gap-5" data-locum-detalhe-conteudo="">
+      <p className="max-w-[68ch] text-[13px] leading-relaxed">
         {conexao.custom
           ? vinculoDoDetalhe === undefined
             ? t("connections.detail.customDescription")
@@ -898,17 +840,11 @@ function DetalheDaConexao({ id, navegar }: { id: string; navegar: TelaProps["nav
 
       {porque === null || (conexao.reason === "disabled" && doServidor.length > 0) ? null : (
         <p
-          className={cn(
-            "rounded-md border px-3 py-2 text-xs break-words",
-            conexao.state === "error"
-              ? "border-destructive/30 bg-destructive/5 text-destructive"
-              : conexao.reason === "untested"
-                ? "border-border text-muted-foreground"
-                : "border-amber-500/30 bg-amber-500/5 text-amber-400",
-          )}
+          className="border-border bg-card text-muted-foreground flex items-start gap-2 rounded-lg border px-3 py-2 text-xs break-words"
           data-locum-conexao-motivo={conexao.reason ?? ""}
         >
-          {porque}
+          <StatusDot className="mt-1" estado={conexao.state === "error" ? "erro" : conexao.reason === "untested" ? "ocioso" : "aviso"} />
+          <span>{porque}</span>
         </p>
       )}
 
@@ -922,14 +858,115 @@ function DetalheDaConexao({ id, navegar }: { id: string; navegar: TelaProps["nav
         />
       )}
 
-      {semDesligar && conexao.desligar !== null ? (
-        <p className="text-muted-foreground text-xs" data-locum-sem-desligar="">
-          {t(conexao.desligar.keep.length > 0 ? "connections.disconnectPlan.onlyLinked" : "connections.disconnectPlan.onlyLiteral", {
-            names: [...conexao.desligar.keep, ...conexao.desligar.literal].join(", "),
-          })}
-        </p>
+      {conexao.state === "soon" ? (
+        <p className="border-border text-muted-foreground rounded-lg border border-dashed px-3 py-2 text-xs">{t(`${chave}.soon`)}</p>
       ) : null}
 
+      {doServidor.map((servidor) => {
+        const v = doVinculo[servidor.config.name];
+        return v === undefined ? null : (
+          <AvisoDaOrigem
+            key={servidor.config.name}
+            nome={servidor.config.name}
+            onMudou={() => {
+              invalidateReads("connections.list");
+              invalidateReads("mcp.list");
+              invalidateReads("mcp.vinculos");
+            }}
+            vinculo={v}
+          />
+        );
+      })}
+
+      {(conexao.partes !== null ? [] : doServidor).map((servidor) => (
+        <EstadoDoServidor
+          autorizavel={conexao.custom && servidor.config.transport === "http"}
+          emUso={quemUsa.length > 0 || iniciativas.length > 0}
+          key={servidor.config.name}
+          onMudou={() => {
+            invalidateReads("connections.list");
+            invalidateReads("mcp.list");
+            invalidateReads("mcp.vinculos");
+          }}
+          servidor={servidor}
+        />
+      ))}
+
+      {doServidor.length === 0 ? null : (
+        <Bloco dica={t("connections.detail.toolsHint")} titulo={t("connections.detail.tools")}>
+          {doServidor.map((servidor) => (
+            <FerramentasDoServidor key={servidor.config.name} servidor={servidor} />
+          ))}
+        </Bloco>
+      )}
+
+      <Bloco dica={t("connections.detail.usedByHint")} titulo={t("connections.detail.usedBy")}>
+        {quemUsa.length === 0 && iniciativas.length === 0 ? (
+          <p className="text-muted-foreground text-xs">{t("connections.detail.unused")}</p>
+        ) : (
+          <ListGroup data-locum-quem-usa="">
+            {quemUsa.map((u) => (
+              <ListRow key={`${u.tipo}:${u.id}`} onClick={() => navegar(u.tipo === "automation" ? "automations" : "agents", u.id)}>
+                <Badge variant="secondary">{t(`connections.detail.kind.${u.tipo}`)}</Badge>
+                <span className="flex-1 truncate">{u.nome}</span>
+                <span className="text-muted-foreground text-xs">{u.como.map((c) => t(`connections.detail.how.${c}`)).join(", ")}</span>
+              </ListRow>
+            ))}
+            {iniciativas.map((titulo) => (
+              <ListRow key={`iniciativa:${titulo}`}>
+                <Badge variant="secondary">{t("connections.detail.kind.initiative")}</Badge>
+                <span className="truncate">{titulo}</span>
+              </ListRow>
+            ))}
+          </ListGroup>
+        )}
+      </Bloco>
+
+      {painel === undefined ? null : (
+        <div data-locum-conexao-config="">
+          <Bloco titulo={t("connections.detail.settings")}>
+            <div className="divide-border border-border superficie divide-y overflow-hidden rounded-lg border">{painel()}</div>
+          </Bloco>
+        </div>
+      )}
+
+      {erro === null ? null : <p className="text-sev-critical text-xs break-words">{erro}</p>}
+
+      {doServidor.length === 0 ? null : (
+        <details className="border-border rounded-lg border" data-locum-tecnico="">
+          <summary className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-2.5 text-xs font-medium select-none">
+            {t("connections.detail.technical")}
+          </summary>
+          <div className="border-border border-t px-4 py-4">
+            {doServidor.map((servidor) => (
+              <DetalhesTecnicos
+                credencial={credencial}
+                key={servidor.config.name}
+                onMudou={() => {
+                  invalidateReads("connections.list");
+                  invalidateReads("mcp.list");
+                  invalidateReads("mcp.vinculos");
+                  invalidateReads("credentials.overview");
+                }}
+                origem={origem}
+                servidor={servidor}
+                vinculo={doVinculo[servidor.config.name]}
+              />
+            ))}
+          </div>
+        </details>
+      )}
+        </div>
+
+        <aside className="flex min-w-0 flex-col gap-5" data-locum-detalhe-lateral="">
+          <Bloco titulo={t("connections.detail.status")}>
+            <div className="flex flex-col gap-1.5">
+              <Estado conexao={conexao} />
+              {conexao.account === null ? null : (
+                <span className="text-muted-foreground truncate text-xs">{t("connections.detail.account", { account: conexao.account })}</span>
+              )}
+            </div>
+          </Bloco>
       {acao === null ? null : (
         <div className="flex flex-col gap-2">
           <div className="flex flex-wrap gap-2">
@@ -977,39 +1014,13 @@ function DetalheDaConexao({ id, navegar }: { id: string; navegar: TelaProps["nav
         </div>
       )}
 
-      {conexao.state === "soon" ? (
-        <p className="border-border text-muted-foreground rounded-md border border-dashed px-3 py-2 text-xs">{t(`${chave}.soon`)}</p>
+      {semDesligar && conexao.desligar !== null ? (
+        <p className="text-muted-foreground text-xs" data-locum-sem-desligar="">
+          {t(conexao.desligar.keep.length > 0 ? "connections.disconnectPlan.onlyLinked" : "connections.disconnectPlan.onlyLiteral", {
+            names: [...conexao.desligar.keep, ...conexao.desligar.literal].join(", "),
+          })}
+        </p>
       ) : null}
-
-      {doServidor.map((servidor) => {
-        const v = doVinculo[servidor.config.name];
-        return v === undefined ? null : (
-          <AvisoDaOrigem
-            key={servidor.config.name}
-            nome={servidor.config.name}
-            onMudou={() => {
-              invalidateReads("connections.list");
-              invalidateReads("mcp.list");
-              invalidateReads("mcp.vinculos");
-            }}
-            vinculo={v}
-          />
-        );
-      })}
-
-      {(conexao.partes !== null ? [] : doServidor).map((servidor) => (
-        <EstadoDoServidor
-          autorizavel={conexao.custom && servidor.config.transport === "http"}
-          emUso={quemUsa.length > 0 || iniciativas.length > 0}
-          key={servidor.config.name}
-          onMudou={() => {
-            invalidateReads("connections.list");
-            invalidateReads("mcp.list");
-            invalidateReads("mcp.vinculos");
-          }}
-          servidor={servidor}
-        />
-      ))}
 
       {conexao.partes !== null
         ? null
@@ -1018,50 +1029,6 @@ function DetalheDaConexao({ id, navegar }: { id: string; navegar: TelaProps["nav
       <Bloco dica={t("connections.detail.offersHint")} titulo={t("connections.offers.title")}>
         <Libera conexao={conexao} libera={libera} />
       </Bloco>
-
-      {doServidor.length === 0 ? null : (
-        <Bloco dica={t("connections.detail.toolsHint")} titulo={t("connections.detail.tools")}>
-          {doServidor.map((servidor) => (
-            <FerramentasDoServidor key={servidor.config.name} servidor={servidor} />
-          ))}
-        </Bloco>
-      )}
-
-      <Bloco dica={t("connections.detail.usedByHint")} titulo={t("connections.detail.usedBy")}>
-        {quemUsa.length === 0 && iniciativas.length === 0 ? (
-          <p className="text-muted-foreground text-xs">{t("connections.detail.unused")}</p>
-        ) : (
-          <ul className="flex flex-col gap-1.5" data-locum-quem-usa="">
-            {quemUsa.map((u) => (
-              <li key={`${u.tipo}:${u.id}`}>
-                <button
-                  className="border-border hover:bg-muted/40 flex w-full cursor-pointer items-center gap-2 rounded-md border px-3 py-1.5 text-left text-sm"
-                  onClick={() => navegar(u.tipo === "automation" ? "automations" : "agents", u.id)}
-                  type="button"
-                >
-                  <Badge variant="outline">{t(`connections.detail.kind.${u.tipo}`)}</Badge>
-                  <span className="flex-1 truncate">{u.nome}</span>
-                  <span className="text-muted-foreground text-xs">{u.como.map((c) => t(`connections.detail.how.${c}`)).join(", ")}</span>
-                </button>
-              </li>
-            ))}
-            {iniciativas.map((titulo) => (
-              <li className="border-border flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm" key={`iniciativa:${titulo}`}>
-                <Badge variant="outline">{t("connections.detail.kind.initiative")}</Badge>
-                <span className="truncate">{titulo}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Bloco>
-
-      {painel === undefined ? null : (
-        <div data-locum-conexao-config="">
-          <Bloco titulo={t("connections.detail.settings")}>
-            <div className="divide-border border-border superficie divide-y overflow-hidden rounded-lg border">{painel()}</div>
-          </Bloco>
-        </div>
-      )}
 
       {conexao.custom ? (
         <Bloco titulo={t("connections.detail.remove")}>
@@ -1079,32 +1046,8 @@ function DetalheDaConexao({ id, navegar }: { id: string; navegar: TelaProps["nav
         </Bloco>
       ) : null}
 
-      {erro === null ? null : <p className="text-sev-critical text-xs break-words">{erro}</p>}
-
-      {doServidor.length === 0 ? null : (
-        <details className="border-border rounded-lg border" data-locum-tecnico="">
-          <summary className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-2.5 text-xs font-medium select-none">
-            {t("connections.detail.technical")}
-          </summary>
-          <div className="border-border border-t px-4 py-4">
-            {doServidor.map((servidor) => (
-              <DetalhesTecnicos
-                credencial={credencial}
-                key={servidor.config.name}
-                onMudou={() => {
-                  invalidateReads("connections.list");
-                  invalidateReads("mcp.list");
-                  invalidateReads("mcp.vinculos");
-                  invalidateReads("credentials.overview");
-                }}
-                origem={origem}
-                servidor={servidor}
-                vinculo={doVinculo[servidor.config.name]}
-              />
-            ))}
-          </div>
-        </details>
-      )}
+        </aside>
+      </div>
     </div>
   );
 }
@@ -1135,10 +1078,11 @@ function PartesDoGithub({
       <div className="flex flex-col gap-2" data-locum-github-partes="">
         <div className={linha} data-locum-parte="token" data-locum-parte-estado={partes.token}>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-medium">{t("connections.parts.token.title")}</span>
-            <Badge className={cn(partes.token === "ok" ? "text-emerald-400" : "text-amber-400")} variant="outline">
+            <span className="text-[13px] font-medium">{t("connections.parts.token.title")}</span>
+            <span className="text-muted-foreground inline-flex items-center gap-1.5 text-xs">
+              <StatusDot estado={partes.token === "ok" ? "ok" : "aviso"} />
               {t(`connections.parts.token.${partes.token}`)}
-            </Badge>
+            </span>
           </div>
           <p className="text-muted-foreground text-xs">{t("connections.parts.token.offers")}</p>
           <Github embutido />
@@ -1204,11 +1148,12 @@ function ParteDoServidor({
       data-locum-parte-servidor={nome ?? ""}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm font-medium">{titulo}</span>
+        <span className="text-[13px] font-medium">{titulo}</span>
         {estado === null ? null : (
-          <Badge className={cn(ruim ? "text-amber-400" : estado === "untested" ? "text-muted-foreground" : "text-emerald-400")} variant="outline">
+          <span className="text-muted-foreground inline-flex items-center gap-1.5 text-xs">
+            <StatusDot estado={ruim ? "aviso" : estado === "untested" ? "ocioso" : "ok"} />
             {t(`connections.parts.server.state.${estado}`)}
-          </Badge>
+          </span>
         )}
         {servidor === undefined || nome === null ? null : (
           <Button
@@ -1259,12 +1204,12 @@ function BotaoVoltar({ onClick }: { onClick: () => void }) {
   const { t } = useTranslation();
   return (
     <button
-      className="text-muted-foreground hover:text-foreground flex w-fit cursor-pointer items-center gap-1.5 text-sm"
+      className="text-muted-foreground hover:text-foreground flex w-fit cursor-pointer items-center gap-1.5 text-xs"
       data-locum-voltar-conexoes=""
       onClick={onClick}
       type="button"
     >
-      <ArrowLeft aria-hidden className="size-4" />
+      <ArrowLeft aria-hidden className="size-3.5" />
       {t("connections.title")}
     </button>
   );
@@ -1288,21 +1233,21 @@ function Libera({ conexao, libera }: { conexao: Conexao; libera: ReturnType<type
         </li>
       )}
       {libera.gatilhos.map((g) => (
-        <li className="flex items-center gap-2 text-sm" key={g}>
-          <Badge variant="outline">{t("connections.offers.trigger")}</Badge>
+        <li className="flex items-center gap-2 text-[13px]" key={g}>
+          <Badge variant="secondary">{t("connections.offers.trigger")}</Badge>
           {t(`automations.triggers.${g}.title`)}
         </li>
       ))}
       {acoes.map((a) => (
-        <li className="flex items-center gap-2 text-sm" key={a}>
-          <Badge variant="outline">{t("connections.offers.action")}</Badge>
+        <li className="flex items-center gap-2 text-[13px]" key={a}>
+          <Badge variant="secondary">{t("connections.offers.action")}</Badge>
           {t(`automations.steps.${a}.title`)}
         </li>
       ))}
       {semLista ? <li className="text-muted-foreground text-xs">{t("connections.offers.none")}</li> : null}
       {conexao.toolCount === null ? null : (
-        <li className="flex items-center gap-2 text-sm">
-          <Badge variant="outline">{t("connections.offers.tool")}</Badge>
+        <li className="flex items-center gap-2 text-[13px]">
+          <Badge variant="secondary">{t("connections.offers.tool")}</Badge>
           {t("connections.offers.tools", { count: conexao.toolCount })}
           {conexao.toolCount > 0 ? (
             <span className="text-muted-foreground text-xs" data-locum-ferramentas-classe="">
