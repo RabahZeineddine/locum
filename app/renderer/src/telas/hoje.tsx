@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { call, read, useRead, type ReadResult } from "@/lib/bridge";
 import { cn } from "@/lib/utils";
 import type { TelaProps } from "../rotas";
+import { passosDoComeco, type PassoDoComeco } from "../../lib/comece-aqui";
 import { alvoDaPendencia, idade } from "./inbox";
 
 type Pendencia = ReadResult<"approvals.listPending">[number];
@@ -219,7 +220,9 @@ export function Hoje({ navegar }: TelaProps) {
             {t("home.today.kpi.active_watch")}
           </span>
           <div className="flex items-baseline gap-2">
-            <span className="text-emerald-500 font-mono text-2xl font-semibold">
+            <span
+              className={cn("font-mono text-2xl font-semibold", ativos.length > 0 ? "text-emerald-500" : "text-foreground")}
+            >
               {ativos.length}
             </span>
             <span className="text-muted-foreground text-xs">{t("home.today.kpi.monitors")}</span>
@@ -331,7 +334,7 @@ export function Hoje({ navegar }: TelaProps) {
                 className="text-foreground font-semibold text-sm tracking-tight"
                 id="hoje-proximas"
               >
-                {t("home.today.next.watch_title", { defaultValue: "Monitores em Tempo Real" })}
+                {t("home.today.next.watch_title")}
               </h2>
               {ativos.length > 0 && (
                 <span className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-mono text-[11px] font-semibold px-2 py-0.5 rounded-full border border-emerald-500/20">
@@ -827,13 +830,13 @@ function quandoTerminou(t: TFunction, idioma: string, segundos: number): string 
   return t("home.today.done.when", { day: dia, time: hora(idioma, data) });
 }
 
-type Passo = { id: "model" | "connection" | "trigger"; feito: boolean; ir: () => void };
+type Passo = PassoDoComeco & { ir: () => void };
 
 /**
  * O caminho até o primeiro agent rodar sozinho, enquanto falta alguma parte.
  *
- * São três coisas, nesta ordem: um modelo que responda, uma conexão de onde
- * vem o trabalho e um agent com gatilho ligado. Sem as três a Hoje fica vazia
+ * São quatro coisas, nesta ordem: um modelo que responda, uma conexão de onde
+ * vem o trabalho, um agent e uma automação com gatilho ligado. Sem as três a Hoje fica vazia
  * e não diz por quê, então cada passo leva à tela que o resolve. O bloco some
  * quando tudo está feito, e não aparece enquanto alguma leitura não voltou,
  * para não piscar um passo pendente que já estava feito.
@@ -844,6 +847,7 @@ function ComeceAqui({ agenda, navegar }: { agenda: Agenda[] | undefined; navegar
   const { t } = useTranslation();
   const provedores = useRead("providers.list");
   const conexoes = useRead("connections.list");
+  const perfis = useRead("library.profiles");
   // Quem já usa o Locum e só não ligou gatilho ainda pode tirar o guia da frente.
   const [oculto, setOculto] = useState(() => {
     try {
@@ -853,25 +857,20 @@ function ComeceAqui({ agenda, navegar }: { agenda: Agenda[] | undefined; navegar
     }
   });
 
-  if (oculto || agenda === undefined || provedores.data === undefined || conexoes.data === undefined) return null;
+  if (oculto || agenda === undefined || provedores.data === undefined || conexoes.data === undefined || perfis.data === undefined) return null;
 
-  const passos: Passo[] = [
-    {
-      id: "model",
-      feito: provedores.data.some((p) => p.available),
-      ir: () => navegar("models"),
-    },
-    {
-      id: "connection",
-      feito: conexoes.data.some((c) => c.state === "connected"),
-      ir: () => navegar("connections"),
-    },
-    {
-      id: "trigger",
-      feito: agenda.some((g) => g.enabled),
-      ir: () => navegar("automations"),
-    },
-  ];
+  const destino: Record<Passo["id"], () => void> = {
+    model: () => navegar("models"),
+    connection: () => navegar("connections"),
+    agent: () => navegar("agents"),
+    trigger: () => navegar("automations"),
+  };
+  const passos: Passo[] = passosDoComeco({
+    modelo: provedores.data.some((p) => p.available),
+    conexoes: conexoes.data,
+    agents: perfis.data.length,
+    gatilho: agenda.some((g) => g.enabled),
+  }).map((p) => ({ ...p, ir: destino[p.id] }));
   if (passos.every((p) => p.feito)) return null;
   const proximo = passos.find((p) => !p.feito)!;
 
@@ -917,7 +916,7 @@ function ComeceAqui({ agenda, navegar }: { agenda: Agenda[] | undefined; navegar
           style={{ width: `${(feitos / passos.length) * 100}%` }}
         />
       </div>
-      <ol className="grid grid-cols-1 items-start gap-3 md:grid-cols-3">
+      <ol className="grid grid-cols-1 items-start gap-3 md:grid-cols-4">
         {passos.map((passo, indice) => (
           <li
             className={cn(

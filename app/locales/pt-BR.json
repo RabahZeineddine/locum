@@ -1477,8 +1477,8 @@
         "waiting": "Espera você",
         "item": "item",
         "items": "itens",
-        "active_watch": "Vigilância ativa",
-        "monitors": "monitores",
+        "active_watch": "Gatilhos ligados",
+        "monitors": "gatilhos",
         "runs_today": "Execuções (24h)",
         "failures": "falhas",
         "cost_24h": "Custo estimado (24h)",
@@ -1499,7 +1499,7 @@
         "empty": "Nenhum agent com hora marcada.",
         "due": "agora",
         "when": "{{day}} {{time}}",
-        "watch_title": "Vigilância Ativa",
+        "watch_title": "Gatilhos ligados",
         "watch_badge": "{{count}} ativos",
         "check_now": "Verificar agora",
         "checking": "Verificando...",
@@ -1521,7 +1521,7 @@
       },
       "start": {
         "title": "Comece por aqui",
-        "lead": "Três passos até um agent trabalhar sozinho. A saída de cada um sempre para na fila para você aprovar.",
+        "lead": "Quatro passos até um agent trabalhar sozinho. Você escolhe onde a automação para para pedir sua aprovação.",
         "model": {
           "title": "Escolher um modelo",
           "hint": "Claude Code já instalado serve, ou uma chave de API.",
@@ -1531,6 +1531,11 @@
           "title": "Conectar de onde vem o trabalho",
           "hint": "GitHub, Slack, Teams, Jira: o que o agent vai ler.",
           "go": "Conexões"
+        },
+        "agent": {
+          "title": "Criar um agent",
+          "hint": "Instruções, modelo e as ferramentas que ele pode usar.",
+          "go": "Agents"
         },
         "trigger": {
           "title": "Ligar uma automação",

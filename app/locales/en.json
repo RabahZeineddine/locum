@@ -1441,8 +1441,8 @@
         "waiting": "Waiting for you",
         "item": "item",
         "items": "items",
-        "active_watch": "Active watch",
-        "monitors": "monitors",
+        "active_watch": "Triggers on",
+        "monitors": "triggers",
         "runs_today": "Runs (24h)",
         "failures": "failures",
         "cost_24h": "Estimated cost (24h)",
@@ -1463,7 +1463,7 @@
         "empty": "No agent scheduled.",
         "due": "now",
         "when": "{{day}} {{time}}",
-        "watch_title": "Active Watch",
+        "watch_title": "Triggers on",
         "watch_badge": "{{count}} active",
         "check_now": "Check now",
         "checking": "Checking...",
@@ -1484,7 +1484,7 @@
       },
       "start": {
         "title": "Start here",
-        "lead": "Three steps until an agent works on its own. Whatever it produces always stops in the queue for you to approve.",
+        "lead": "Four steps until an agent works on its own. You choose where the automation stops to ask for your approval.",
         "model": {
           "title": "Pick a model",
           "hint": "An installed Claude Code works, or an API key.",
@@ -1494,6 +1494,11 @@
           "title": "Connect where the work comes from",
           "hint": "GitHub, Slack, Teams, Jira: what the agent will read.",
           "go": "Connections"
+        },
+        "agent": {
+          "title": "Create an agent",
+          "hint": "Instructions, model and the tools it may use.",
+          "go": "Agents"
         },
         "trigger": {
           "title": "Turn on an automation",
