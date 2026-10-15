@@ -101,3 +101,36 @@ test("conversa devolve o id e avisa quando o processo sai sem responder", async 
   assert.equal(caiu.sessao, "velha");
   assert.equal(eventos[0]?.tipo, "erro");
 });
+
+test("chat de agent: a escrita vai para a ferramenta de permissão, e o modo deixa de negar tudo sozinho", () => {
+  const args = argsDoChat({
+    ...base,
+    internas: [],
+    permitidas: ["mcp__painel__pid"],
+    aprovacaoPor: "mcp__locum-aprovacao__aprovar",
+  });
+  assert.equal(valor(args, "--permission-prompt-tool"), "mcp__locum-aprovacao__aprovar");
+  assert.equal(valor(args, "--permission-mode"), "default");
+  assert.equal(valor(args, "--allowedTools"), "mcp__painel__pid");
+  assert.equal(valor(args, "--tools"), "");
+  assert.ok(args.includes("--strict-mcp-config"));
+
+  // Com a conta, o modo também sai do "dontAsk", senão a ferramenta de permissão nunca é chamada.
+  const comConta = argsDoChat({ ...base, internas: [], conta: true, aprovacaoPor: "mcp__locum-aprovacao__aprovar" });
+  assert.equal(valor(comConta, "--permission-mode"), "default");
+  assert.ok(!comConta.includes("dontAsk"));
+  assert.equal(valor(comConta, "--tools"), "ToolSearch");
+});
+
+test("o resultado do fluxo traz o gasto da volta", () => {
+  const lido = lerLinha(
+    JSON.stringify({
+      type: "result",
+      subtype: "success",
+      session_id: "s1",
+      total_cost_usd: 0.25,
+      usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 1000 },
+    }),
+  );
+  assert.deepEqual(lido.gasto, { usd: 0.25, tokens: 15 });
+});
