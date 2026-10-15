@@ -383,13 +383,6 @@ export const McpServerConfig = z
      */
     scope: z.enum(["read", "write"]).default("read"),
     idleTimeoutMs: z.number().int().positive().default(300_000),
-    /**
-     * Só o `connectable` do cadastro preenche, nunca o que se grava: a mensagem
-     * de quem recusa subir o servidor porque a credencial referenciada não
-     * existe. Sem ela o servidor subiria sem o cabeçalho e o erro seria o do
-     * servidor ("missing Authorization header"), que não diz o que fazer.
-     */
-    credencialFaltando: z.string().optional(),
   })
   .superRefine((cfg, ctx) => {
     if (cfg.transport === "stdio" && !cfg.command) {
@@ -400,6 +393,14 @@ export const McpServerConfig = z
     }
   });
 export type McpServerConfig = z.infer<typeof McpServerConfig>;
+/**
+ * O cadastro pronto para conectar: só o `connectable` do serviço o produz, e
+ * `credencialFaltando` é a mensagem de quem recusa subir o servidor porque a
+ * credencial referenciada não existe. Sem ela o servidor subiria sem o
+ * cabeçalho e o erro seria o dele ("missing Authorization header"), que não
+ * diz o que fazer. Não faz parte do que se cadastra.
+ */
+export type McpServerPronto = McpServerConfig & { credencialFaltando?: string };
 /** O que se passa para cadastrar, antes dos defaults do zod. */
 export type McpServerInput = z.input<typeof McpServerConfig>;
 

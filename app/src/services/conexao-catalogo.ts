@@ -104,6 +104,17 @@ export function conexaoDoServidor(config: { name: string; url?: string; command?
   return undefined;
 }
 
+/**
+ * O item cujo servidor remoto é este endereço, só pelo host. Quem entrega
+ * credencial de uma conexão a um servidor usa isto, e não `conexaoDoServidor`:
+ * o nome `github` sozinho não prova que o endereço é do GitHub.
+ */
+export function itemDoHost(url: string | undefined): CatalogEntry | undefined {
+  const host = hostDe(url);
+  if (host === null || new URL(url!).protocol !== "https:") return undefined;
+  return CATALOG.find((c) => hostDe(c.url) === host || (HOSTS_EXTRAS[c.id] ?? []).includes(host));
+}
+
 function hostDe(url: string | undefined): string | null {
   if (url === undefined) return null;
   try {

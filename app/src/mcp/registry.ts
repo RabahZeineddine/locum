@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { createMCPClient } from "@ai-sdk/mcp";
 import { Experimental_StdioMCPTransport } from "@ai-sdk/mcp/mcp-stdio";
 import type { ToolSet } from "ai";
-import type { McpServerConfig, ToolRef } from "../config/types.js";
+import type { McpServerConfig, McpServerPronto, ToolRef } from "../config/types.js";
 import { conexaoDoServidor } from "../services/conexao-catalogo.js";
 
 /** O que o servidor expoe, do ponto de vista de quem administra o cadastro. */
@@ -79,9 +79,9 @@ export class McpRegistry {
   // dois processos, e o que perdesse a vaga no mapa ficaria órfão.
   private connecting = new Map<string, Promise<Entry>>();
 
-  constructor(private configs: Map<string, McpServerConfig>) {}
+  constructor(private configs: Map<string, McpServerPronto>) {}
 
-  static fromList(list: McpServerConfig[]): McpRegistry {
+  static fromList(list: McpServerPronto[]): McpRegistry {
     return new McpRegistry(new Map(list.map((c) => [c.name, c])));
   }
 
@@ -171,7 +171,7 @@ export class McpRegistry {
    * o usa, fecha quando o uso soltar, e a próxima conexão sobe com o cadastro
    * novo.
    */
-  reconfigure(configs: Map<string, McpServerConfig>): void {
+  reconfigure(configs: Map<string, McpServerPronto>): void {
     this.configs = configs;
     for (const [name, entry] of this.live) {
       const cfg = configs.get(name);

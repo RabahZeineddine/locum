@@ -135,3 +135,36 @@ test("a recusa de credencial manda para Conexões, e não para Configuração", 
     await registro.closeAll();
   }
 });
+
+test("servidor com o nome github em outro host não recebe o token da conexão, nem o do ambiente", async () => {
+  const { mcp, secrets } = montar();
+  secrets.set("source/github", "ghp_abc");
+  const antes = process.env["GITHUB_TOKEN"];
+  process.env["GITHUB_TOKEN"] = "ghp_do_ambiente";
+  await mcp.register({ name: "github", transport: "http", url: "https://mcp.gateway.example/mcp", headers: { Authorization: "${credential}" } });
+  try {
+    const [config] = await mcp.enabledConfigs();
+    assert.equal(config?.headers?.["Authorization"], undefined);
+    assert.match(config?.credencialFaltando ?? "", /falta a credencial/);
+    await mcp.register({ name: "github", transport: "http", url: "https://mcp.gateway.example/mcp" });
+    const [semCabecalho] = await mcp.enabledConfigs();
+    assert.deepEqual(semCabecalho?.headers ?? {}, {});
+    assert.equal(await mcp.credencialDoServidor("github"), "dispensa");
+  } finally {
+    if (antes === undefined) delete process.env["GITHUB_TOKEN"];
+    else process.env["GITHUB_TOKEN"] = antes;
+    await mcp.remove("github");
+  }
+});
+
+test("o token da conexão só vai por https", async () => {
+  const { mcp, secrets } = montar();
+  secrets.set("source/github", "ghp_abc");
+  await mcp.register({ name: "gh", transport: "http", url: "http://api.githubcopilot.com/mcp/", headers: { Authorization: "${credential}" } });
+  try {
+    const [config] = await mcp.enabledConfigs();
+    assert.equal(config?.headers?.["Authorization"], undefined);
+  } finally {
+    await mcp.remove("gh");
+  }
+});

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
 import { isAuthError, McpRegistry, type McpConnectOutcome, type McpToolInfo } from "../mcp/registry.js";
-import { McpServerConfig, McpSource, type McpServerInput } from "../config/types.js";
+import { McpServerConfig, McpSource, type McpServerInput, type McpServerPronto } from "../config/types.js";
 import {
   cobrirPelaCopia,
   configMascarada,
@@ -18,7 +18,7 @@ import {
   type Mudanca,
   type Resolvido,
 } from "./mcp-origem.js";
-import { conexaoDoServidor } from "./conexao-catalogo.js";
+import { conexaoDoServidor, itemDoHost } from "./conexao-catalogo.js";
 import { githubToken } from "./github-service.js";
 import { CREDENTIAL_PLACEHOLDER, fillCredential, secretService, type SecretService } from "./secret-service.js";
 
@@ -155,7 +155,7 @@ export class McpService {
    * So o que o executor deve enxergar. Servidor desabilitado some do registro
    * em vez de virar erro de conexao no meio de um passo.
    */
-  async enabledConfigs(): Promise<McpServerConfig[]> {
+  async enabledConfigs(): Promise<McpServerPronto[]> {
     const rows = await this.db
       .select()
       .from(schema.mcpServers)
@@ -571,7 +571,7 @@ export class McpService {
    * Servidor vinculado conecta com a configuração da origem, lida agora, e não
    * com a cópia que ficou no banco.
    */
-  private async connectable(row: McpServerRow): Promise<McpServerConfig> {
+  private async connectable(row: McpServerRow): Promise<McpServerPronto> {
     const d = await this.decidir(row);
     const config = d === null ? toEntry(row).config : d.config;
     // O segredo que a origem traz literal vale enquanto a origem é a aceita; o
@@ -618,7 +618,8 @@ export class McpService {
     const config = await this.connectable(row);
     const original = toEntry(row).config;
     const referencia = temMarcador(original) || ehDoGithub(original);
-    if (!referencia) return "dispensa";
+    // Cabeçalho de credencial escrito à mão também é credencial.
+    if (!referencia) return temAuthorization(original.headers) ? "ok" : "dispensa";
     return config.credencialFaltando === undefined ? "ok" : "falta";
   }
 
@@ -758,9 +759,12 @@ McpRegistry.observe((name, outcome) => {
   });
 });
 
-/** O servidor remoto do GitHub, pelo nome do catálogo ou pelo endereço. */
-function ehDoGithub(config: { name: string; url?: string; command?: string[]; transport?: string }): boolean {
-  return config.transport !== "stdio" && conexaoDoServidor(config)?.id === "github";
+/**
+ * O servidor remoto do GitHub, e só pelo endereço: o token pessoal não vai para
+ * um host que apenas se chama `github`.
+ */
+function ehDoGithub(config: { url?: string; transport?: string }): boolean {
+  return config.transport !== "stdio" && itemDoHost(config.url)?.id === "github";
 }
 
 function temMarcador(config: { env?: Record<string, string>; headers?: Record<string, string> }): boolean {
