@@ -1,6 +1,4 @@
-@import "@fontsource/ibm-plex-sans/400.css";
-@import "@fontsource/ibm-plex-sans/500.css";
-@import "@fontsource/ibm-plex-sans/600.css";
+@import "@fontsource-variable/inter";
 @import "@fontsource/ibm-plex-mono/400.css";
 @import "@fontsource/ibm-plex-mono/500.css";
 @import "tailwindcss";
@@ -47,7 +45,7 @@
   --chart-3: oklch(0.442 0.017 285.786);
   --chart-4: oklch(0.37 0.013 285.805);
   --chart-5: oklch(0.274 0.006 286.033);
-  --radius: 0.625rem;
+  --radius: 0.5rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.141 0.005 285.823);
   --sidebar-primary: oklch(0.21 0.006 285.885);
@@ -59,65 +57,56 @@
 }
 
 /*
- * Escuro do macOS, nao preto.
+ * Escuro denso e calmo, na linha do Linear e do Raycast.
  *
- * O padrao do shadcn poe o fundo em 0.141 de luminancia, que na tela vira um
- * retangulo preto colado no material da janela: some a profundidade e a
- * interface parece um terminal, nao um aplicativo do sistema.
- *
- * O sistema separa as camadas por luminancia, e nao por borda forte: janela
- * mais escura, superficie elevada mais clara, e a divisa e branco com pouca
- * opacidade. A escala abaixo segue isso, com o azul de realce do sistema no
- * foco e no destaque.
+ * Três camadas de quase preto separadas por luminância e por uma borda de 1px
+ * de baixo contraste: fundo (`--background`), painel (`--card`) e elevado
+ * (`--popover`). Um acento só, o violeta de `--primary`. Cor de estado vive só
+ * no ponto (`--estado-*`), nunca no texto. As regras estão em docs/design.md.
  */
 .dark {
-  /*
-   * Tinta de meia-noite com aurora.
-   *
-   * A base é um anil quase preto, e não cinza: é o fundo que deixa a luz do
-   * gradiente aparecer sem gritar. O gradiente azul para violeta é a marca do
-   * que o modelo faz, e mora só onde há IA agindo: a ação principal, o item
-   * ativo, o que está trabalhando. Fora dele, a tela é tinta sobre papel.
-   *
-   * As superfícies se separam por luminância e por um fio de luz no topo, como
-   * vidro sobre o fundo, e não por borda forte.
-   */
-  --background: oklch(0.195 0.014 275);
-  --foreground: oklch(0.94 0.006 275);
-  --card: oklch(0.228 0.016 275);
-  --card-foreground: oklch(0.94 0.006 275);
-  --popover: oklch(0.25 0.018 275);
-  --popover-foreground: oklch(0.95 0.006 275);
-  --primary: oklch(0.72 0.14 278);
-  --primary-foreground: oklch(0.16 0.02 275);
-  --secondary: oklch(0.28 0.018 275);
-  --secondary-foreground: oklch(0.94 0.006 275);
-  --muted: oklch(0.27 0.016 275);
-  --muted-foreground: oklch(0.7 0.022 275);
-  --accent: oklch(0.29 0.02 275);
-  --accent-foreground: oklch(0.96 0.006 275);
+  --background: oklch(0.155 0.004 275);
+  --foreground: oklch(0.93 0.004 275);
+  --card: oklch(0.185 0.005 275);
+  --card-foreground: oklch(0.93 0.004 275);
+  --popover: oklch(0.22 0.006 275);
+  --popover-foreground: oklch(0.95 0.004 275);
+  --primary: oklch(0.6 0.19 285);
+  --primary-foreground: oklch(0.985 0.005 285);
+  --secondary: oklch(0.235 0.006 275);
+  --secondary-foreground: oklch(0.93 0.004 275);
+  --muted: oklch(0.215 0.005 275);
+  --muted-foreground: oklch(0.67 0.01 275);
+  --accent: oklch(1 0 0 / 6%);
+  --accent-foreground: oklch(0.96 0.004 275);
   --destructive: oklch(0.65 0.19 22);
-  --border: oklch(1 0 0 / 9%);
-  --input: oklch(1 0 0 / 13%);
-  --ring: oklch(0.72 0.14 278);
+  --border: oklch(1 0 0 / 8%);
+  --input: oklch(1 0 0 / 11%);
+  --ring: oklch(0.6 0.19 285 / 70%);
   --chart-1: oklch(0.72 0.14 278);
   --chart-2: oklch(0.76 0.12 170);
   --chart-3: oklch(0.8 0.12 85);
   --chart-4: oklch(0.72 0.15 40);
   --chart-5: oklch(0.72 0.15 310);
-  --sidebar: oklch(0.168 0.014 275);
-  --sidebar-foreground: oklch(0.86 0.01 275);
-  --sidebar-primary: oklch(0.72 0.14 278);
-  --sidebar-primary-foreground: oklch(0.16 0.02 275);
-  --sidebar-accent: oklch(1 0 0 / 6%);
-  --sidebar-accent-foreground: oklch(0.97 0.006 275);
+  --sidebar: oklch(0.135 0.004 275);
+  --sidebar-foreground: oklch(0.8 0.008 275);
+  --sidebar-primary: oklch(0.6 0.19 285);
+  --sidebar-primary-foreground: oklch(0.985 0.005 285);
+  --sidebar-accent: oklch(1 0 0 / 7%);
+  --sidebar-accent-foreground: oklch(0.97 0.004 275);
   --sidebar-border: oklch(1 0 0 / 7%);
-  --sidebar-ring: oklch(0.72 0.14 278);
+  --sidebar-ring: oklch(0.6 0.19 285 / 70%);
 
-  /* O gradiente da IA: azul, anil, violeta. */
-  --ia-1: oklch(0.74 0.13 250);
-  --ia-2: oklch(0.7 0.16 285);
-  --ia-3: oklch(0.72 0.17 320);
+  /* Pontos de estado. A cor mora só no ponto; o texto ao lado é neutro. */
+  --estado-ok: oklch(0.74 0.15 160);
+  --estado-aviso: oklch(0.8 0.14 80);
+  --estado-erro: oklch(0.68 0.19 22);
+  --estado-ocioso: oklch(0.5 0.01 275);
+
+  /* Herdado das telas antigas: agora planos, sem gradiente. */
+  --ia-1: var(--primary);
+  --ia-2: var(--primary);
+  --ia-3: var(--primary);
 
   /* Severidade: régua na borda do registro, nunca só bolinha. */
   --sev-critical: oklch(0.66 0.2 22);
@@ -126,8 +115,29 @@
   --sev-low: oklch(0.62 0.02 275);
 }
 
+/*
+ * Escala de texto e de raio da densidade nova. Sobrescrever a escala do
+ * Tailwind faz as telas que não foram tocadas herdarem o corpo menor.
+ */
+@theme {
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1rem;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 0.875rem;
+  --text-base--line-height: 1.375rem;
+  --text-lg: 1rem;
+  --text-lg--line-height: 1.5rem;
+  --text-xl: 1.125rem;
+  --text-xl--line-height: 1.5rem;
+  --text-2xl: 1.25rem;
+  --text-2xl--line-height: 1.75rem;
+  --text-3xl: 1.5rem;
+  --text-3xl--line-height: 2rem;
+}
+
 @theme inline {
-  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
   --color-sev-critical: var(--sev-critical);
   --color-sev-high: var(--sev-high);
@@ -136,6 +146,10 @@
   --color-ia-1: var(--ia-1);
   --color-ia-2: var(--ia-2);
   --color-ia-3: var(--ia-3);
+  --color-estado-ok: var(--estado-ok);
+  --color-estado-aviso: var(--estado-aviso);
+  --color-estado-erro: var(--estado-erro);
+  --color-estado-ocioso: var(--estado-ocioso);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -180,7 +194,9 @@
 
   body {
     @apply text-foreground;
-    font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    font-family: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+    font-size: 13px;
+    font-feature-settings: "cv11", "ss03";
     /* Transparente para o material da janela aparecer. A area de conteudo
        pinta o proprio fundo; a barra lateral deixa o material passar. */
     background: transparent;
@@ -215,53 +231,37 @@
 }
 
 /*
- * A linguagem da IA, em quatro peças pequenas. Cada uma marca onde o modelo
- * está presente; usar em decoração tira o sentido de todas.
+ * Peças herdadas da fase do gradiente. Os nomes ficam porque dezenas de telas
+ * ainda os usam; o desenho agora é plano, com o acento único.
  */
 @layer components {
-  /* Preenchimento da ação principal e do item que a IA está tocando. */
   .ia-gradiente {
-    background-image: linear-gradient(120deg, var(--ia-1), var(--ia-2) 55%, var(--ia-3));
+    background-color: var(--primary);
   }
 
-  /* Texto em gradiente, para a marca e para números que importam. */
   .ia-texto {
-    background-image: linear-gradient(100deg, var(--ia-1), var(--ia-2) 50%, var(--ia-3));
-    background-clip: text;
-    -webkit-background-clip: text;
-    color: transparent;
+    color: var(--foreground);
   }
 
-  /*
-   * Superfície de vidro: um fio de luz no topo e sombra funda embaixo. É o
-   * que separa o cartão do fundo sem borda pesada.
-   */
+  /* Cartão: painel com borda de 1px, sem sombra. */
   .superficie {
     background-color: var(--card);
     border: 1px solid var(--border);
-    box-shadow:
-      inset 0 1px 0 0 oklch(1 0 0 / 5%),
-      0 1px 2px 0 oklch(0 0 0 / 30%),
-      0 8px 24px -12px oklch(0 0 0 / 45%);
   }
 
-  /*
-   * A luz atrás do conteúdo: duas manchas desfocadas no alto da área
-   * principal. Fixa, para a rolagem não arrastar a aurora junto.
-   */
   .ia-aurora {
-    background-image:
-      radial-gradient(60rem 26rem at 18% -8rem, oklch(0.7 0.16 285 / 13%), transparent 70%),
-      radial-gradient(40rem 22rem at 92% -6rem, oklch(0.74 0.13 250 / 10%), transparent 70%);
-    background-attachment: fixed;
-    background-repeat: no-repeat;
+    background-image: none;
   }
 
-  /* Borda em gradiente para destacar o cartão em que a IA espera você. */
+  /* Destaque do cartão em que o modelo espera você: borda no acento. */
   .ia-borda {
-    border: 1px solid transparent;
-    background:
-      linear-gradient(var(--card), var(--card)) padding-box,
-      linear-gradient(120deg, oklch(0.74 0.13 250 / 55%), oklch(0.7 0.16 285 / 35%) 50%, oklch(0.72 0.17 320 / 55%)) border-box;
+    background-color: var(--card);
+    border: 1px solid color-mix(in oklch, var(--primary) 45%, transparent);
+  }
+
+  /* Números alinhados em coluna, onde há contagem, hora ou custo. */
+  .num {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum", "cv11";
   }
 }
