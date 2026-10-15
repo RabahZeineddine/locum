@@ -286,7 +286,7 @@ function SuasConexoes({ navegar }: { navegar: TelaProps["navegar"] }) {
                 <h3 className="text-muted-foreground text-[11px] font-medium">{t("connections.yours.fromCatalog")}</h3>
                 <ListGroup>
                   {doCatalogo.map((c) => (
-                    <ListRow data-locum-catalogo={c.id} key={c.id} onClick={c.state === "soon" ? undefined : () => navegar("connections", c.id)}>
+                    <ListRow data-locum-catalogo={c.id} key={c.id} rotulo={c.name} onClick={c.state === "soon" ? undefined : () => navegar("connections", c.id)}>
                       <Logo conexao={c} />
                       <span className="flex min-w-0 flex-1 items-baseline gap-2">
                         <span className="font-medium">{c.name}</span>
@@ -395,6 +395,7 @@ function ConexaoNaLista({ conexao, onAbrir, vinculos }: { conexao: Conexao; onAb
       data-locum-conexao={conexao.id}
       data-locum-conexao-estado={conexao.state}
       onClick={onAbrir}
+      rotulo={conexao.name}
     >
       <Logo conexao={conexao} tamanho="sm" />
       <span className="flex min-w-0 flex-1 flex-col">
@@ -587,7 +588,7 @@ function AdicionarConexao({
           ) : (
             <ListGroup>
               {visiveis.map((c) => (
-                <ListRow data-locum-catalogo={c.id} key={c.id} onClick={c.state === "soon" ? undefined : () => onAbrir(c.id)}>
+                <ListRow data-locum-catalogo={c.id} key={c.id} rotulo={c.name} onClick={c.state === "soon" ? undefined : () => onAbrir(c.id)}>
                   <Logo conexao={c} tamanho="sm" />
                   <span className="flex min-w-0 flex-1 items-baseline gap-2">
                     <span className="font-medium">{c.name}</span>
@@ -602,7 +603,7 @@ function AdicionarConexao({
           <div className="flex flex-col gap-1.5 pt-2">
             <h3 className="text-muted-foreground text-[11px] font-medium">{t("connections.add.others")}</h3>
             <ListGroup>
-              <ListRow data-locum-vitrine-propria="" onClick={() => setPasso("propria")}>
+              <ListRow data-locum-vitrine-propria="" rotulo={t("connections.custom.title")} onClick={() => setPasso("propria")}>
                 <span className="bg-muted text-muted-foreground flex size-6 shrink-0 items-center justify-center rounded">
                   <Server aria-hidden className="size-3.5" />
                 </span>
@@ -611,7 +612,7 @@ function AdicionarConexao({
                   <span className="text-muted-foreground truncate text-xs">{t("connections.add.customHint")}</span>
                 </span>
               </ListRow>
-              <ListRow data-locum-vitrine-importar="" onClick={() => setPasso("importar")}>
+              <ListRow data-locum-vitrine-importar="" rotulo={t("connections.import.title")} onClick={() => setPasso("importar")}>
                 <span className="bg-muted text-muted-foreground flex size-6 shrink-0 items-center justify-center rounded">
                   <Download aria-hidden className="size-3.5" />
                 </span>
@@ -906,7 +907,7 @@ function DetalheDaConexao({ id, navegar }: { id: string; navegar: TelaProps["nav
         ) : (
           <ListGroup data-locum-quem-usa="">
             {quemUsa.map((u) => (
-              <ListRow key={`${u.tipo}:${u.id}`} onClick={() => navegar(u.tipo === "automation" ? "automations" : "agents", u.id)}>
+              <ListRow key={`${u.tipo}:${u.id}`} rotulo={u.nome} onClick={() => navegar(u.tipo === "automation" ? "automations" : "agents", u.id)}>
                 <Badge variant="secondary">{t(`connections.detail.kind.${u.tipo}`)}</Badge>
                 <span className="flex-1 truncate">{u.nome}</span>
                 <span className="text-muted-foreground text-xs">{u.como.map((c) => t(`connections.detail.how.${c}`)).join(", ")}</span>
@@ -1151,7 +1152,7 @@ function ParteDoServidor({
         <span className="text-[13px] font-medium">{titulo}</span>
         {estado === null ? null : (
           <span className="text-muted-foreground inline-flex items-center gap-1.5 text-xs">
-            <StatusDot estado={ruim ? "aviso" : estado === "untested" ? "ocioso" : "ok"} />
+            <StatusDot estado={estado === "failing" ? "erro" : estado === "disabled" || estado === "untested" ? "ocioso" : ruim ? "aviso" : "ok"} />
             {t(`connections.parts.server.state.${estado}`)}
           </span>
         )}
