@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Streamdown } from "streamdown";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ListGroup } from "@/components/ui/list-row";
 import { call, read, useRead, type ReadResult } from "@/lib/bridge";
 import { Conversa } from "../assistente";
 import type { TelaProps } from "../rotas";
@@ -507,7 +508,7 @@ function AbaAutomacoes({ iniciativa, navegar }: { iniciativa: IniciativaDetalhad
       {daIniciativa.length === 0 ? (
         <p className="text-muted-foreground text-sm">{t("initiatives.detail.agents.empty")}</p>
       ) : (
-        <ul className="divide-border border-border superficie divide-y overflow-hidden rounded-lg border">
+        <ListGroup>
           {daIniciativa.map((linha) => (
             <LinhaDaAutomacao
               abrir={() => navegar("automations", linha.id)}
@@ -528,7 +529,7 @@ function AbaAutomacoes({ iniciativa, navegar }: { iniciativa: IniciativaDetalhad
               linha={linha}
             />
           ))}
-        </ul>
+        </ListGroup>
       )}
 
       {disponiveis.length > 0 && (

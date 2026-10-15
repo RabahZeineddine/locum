@@ -1,12 +1,19 @@
 import { CabecalhoDaTela } from "@/components/cabecalho-da-tela";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Input } from "@/components/ui/input";
+import { ListGroup, ListRow } from "@/components/ui/list-row";
+import { StatusDot } from "@/components/ui/status-dot";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { pontoDoEstado } from "@/lib/estado-do-ponto";
 import { MODELOS, rascunhoDoModelo, type ModeloId } from "@/lib/automacao";
 import { call, read, useRead, type ReadResult } from "@/lib/bridge";
 import { semPrefixoDoIpc } from "@/lib/erro-da-ponte";
 import { rotuloDeEstado } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
-import { Bot, Loader2, Play, Plus, Upload } from "lucide-react";
+import { Loader2, Play, Plus, Upload } from "lucide-react";
 import { useState, type DragEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { TriggerConfig } from "../../../src/config/types";
@@ -67,37 +74,25 @@ function TelaDeAgents({ navegar }: Pick<TelaProps, "navegar">) {
   const [aba, setAba] = useState<Aba>("agents");
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
-      <div className="border-border flex gap-1 border-b">
+    <Tabs className="mx-auto w-full max-w-6xl gap-5" onValueChange={(v) => setAba(v as Aba)} value={aba}>
+      <TabsList>
         {ABAS.map((candidata) => (
-          <button
-            aria-pressed={aba === candidata}
-            className={cn(
-              "-mb-px cursor-pointer border-b-2 px-3 py-2 text-sm transition-colors",
-              aba === candidata
-                ? "border-primary text-foreground"
-                : "text-muted-foreground hover:text-foreground border-transparent",
-            )}
-            data-locum-agents-aba={candidata}
-            key={candidata}
-            onClick={() => setAba(candidata)}
-            type="button"
-          >
+          <TabsTrigger data-locum-agents-aba={candidata} key={candidata} value={candidata}>
             {t(`agents.tabs.${candidata}`)}
-          </button>
+          </TabsTrigger>
         ))}
         <button
-          className="text-muted-foreground hover:text-foreground -mb-px ml-auto cursor-pointer px-3 py-2 text-sm transition-colors"
+          className="text-muted-foreground hover:text-foreground -mb-px ml-auto cursor-pointer px-2 text-xs transition-colors"
           data-locum-automacoes-legado=""
           onClick={() => navegar("automations", LEGADO)}
           type="button"
         >
           {t("automations.legacy.link")}
         </button>
-      </div>
+      </TabsList>
       {aba === "agents" ? <ListaDeAutomacoes navegar={navegar} /> : null}
       {aba === "marketplace" ? <Marketplace navegar={navegar} /> : null}
-    </div>
+    </Tabs>
   );
 }
 
@@ -123,16 +118,16 @@ function Marketplace({ navegar }: Pick<TelaProps, "navegar">) {
   };
 
   return (
-    <div className="flex flex-col gap-4" data-locum-probe="agents-marketplace">
+    <div className="flex flex-col gap-3" data-locum-probe="agents-marketplace">
       {erro === null ? null : <p className="text-destructive text-xs">{erro}</p>}
       {templates.status === "loading" ? (
-        <p className="text-muted-foreground text-sm">{t("agents.marketplace.loading")}</p>
+        <p className="text-muted-foreground text-[13px]">{t("agents.marketplace.loading")}</p>
       ) : (templates.data ?? []).length === 0 ? (
-        <p className="text-muted-foreground text-sm">{t("agents.marketplace.empty")}</p>
+        <EmptyState titulo={t("agents.marketplace.empty")} />
       ) : (
-        <ul className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3">
+        <ListGroup>
           {(templates.data ?? []).map((template) => (
-            <CartaoDeTemplate
+            <LinhaDeTemplate
               instalado={idsInstalados.has(template.id) || recem === template.id}
               aoFalhar={setErro}
               instalar={(substituicoes) => instalar(template.id, substituicoes)}
@@ -141,13 +136,13 @@ function Marketplace({ navegar }: Pick<TelaProps, "navegar">) {
               ver={(id) => navegar("automations", id)}
             />
           ))}
-        </ul>
+        </ListGroup>
       )}
     </div>
   );
 }
 
-function CartaoDeTemplate({
+function LinhaDeTemplate({
   instalado,
   aoFalhar,
   instalar,
@@ -162,32 +157,23 @@ function CartaoDeTemplate({
 }) {
   const { t } = useTranslation();
   return (
-    <li className="border-border superficie flex flex-col gap-2 rounded-lg border p-4">
-      <div className="flex items-center gap-2.5">
-        <span aria-hidden className="ia-gradiente text-primary-foreground flex size-8 shrink-0 items-center justify-center rounded-md">
-          <Bot className="size-4" />
-        </span>
-        <span className="truncate font-medium text-sm">{template.name}</span>
+    <ListRow className="min-h-11" data-locum-template={template.id}>
+      <span className="flex min-w-0 flex-1 items-center gap-2">
+        <span className="truncate font-medium">{template.name}</span>
+        {instalado ? <Badge variant="secondary">{t("agents.marketplace.installed")}</Badge> : null}
+      </span>
+      <span className="text-muted-foreground num shrink-0 text-xs">{t("agents.marketplace.steps", { count: template.passos })}</span>
+      <span className="text-muted-foreground hidden w-48 shrink-0 truncate font-mono text-xs md:block">{template.id}</span>
+      <span className="flex w-24 shrink-0 justify-end">
         {instalado ? (
-          <Badge className="ml-auto shrink-0" variant="outline">
-            {t("agents.marketplace.installed")}
-          </Badge>
-        ) : null}
-      </div>
-      <div className="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-        <span>{t("agents.marketplace.steps", { count: template.passos })}</span>
-        <span className="min-w-0 truncate font-mono">{template.id}</span>
-      </div>
-      {instalado ? (
-        <div className="mt-auto flex items-center gap-2 pt-1">
           <Button className="cursor-pointer" onClick={() => ver(template.id)} size="sm" variant="outline">
             {t("agents.marketplace.open")}
           </Button>
-        </div>
-      ) : (
-        <InstalacaoDeTemplate aoFalhar={aoFalhar} instalar={instalar} nome={template.name} passosDeModelo={template.passosDeModelo} />
-      )}
-    </li>
+        ) : (
+          <InstalacaoDeTemplate aoFalhar={aoFalhar} instalar={instalar} nome={template.name} passosDeModelo={template.passosDeModelo} />
+        )}
+      </span>
+    </ListRow>
   );
 }
 
@@ -226,7 +212,7 @@ function ListaDeAutomacoes({ navegar }: Pick<TelaProps, "navegar">) {
 
   return (
     <div
-      className="mx-auto flex w-full max-w-6xl flex-col gap-6"
+      className="flex flex-col gap-5"
       data-locum-probe="automacoes"
       data-total={lista.length}
       onDragOver={(e) => e.preventDefault()}
@@ -236,11 +222,11 @@ function ListaDeAutomacoes({ navegar }: Pick<TelaProps, "navegar">) {
         acoes={
           <>
             <Button className="cursor-pointer" data-locum-automacao-importar="" onClick={escolherArquivo} variant="outline">
-              <Upload className="size-4" />
+              <Upload />
               {t("pacote.import.button")}
             </Button>
             <Button className="cursor-pointer" data-locum-automacao-nova="" onClick={() => setCriando(true)}>
-              <Plus className="size-4" />
+              <Plus />
               {t("automations.list.new")}
             </Button>
           </>
@@ -249,7 +235,7 @@ function ListaDeAutomacoes({ navegar }: Pick<TelaProps, "navegar">) {
         titulo={t("automations.title")}
       />
 
-      {erroDoArquivo === null ? null : <p className="text-sev-critical text-xs">{erroDoArquivo}</p>}
+      {erroDoArquivo === null ? null : <p className="text-destructive text-xs">{erroDoArquivo}</p>}
       {pacote === null ? null : (
         <ImportarPacote
           arquivo={pacote}
@@ -272,20 +258,22 @@ function ListaDeAutomacoes({ navegar }: Pick<TelaProps, "navegar">) {
       ) : null}
 
       {inicial.status === "loading" && relida === null ? (
-        <p className="text-muted-foreground text-sm">{t("automations.editor.loading")}</p>
+        <p className="text-muted-foreground text-[13px]">{t("automations.editor.loading")}</p>
       ) : lista.length === 0 && !criando ? (
-        <div className="border-border text-muted-foreground flex flex-col items-start gap-3 rounded-lg border border-dashed p-6 text-sm">
-          {t("automations.list.empty")}
-          <Button className="cursor-pointer" onClick={() => setCriando(true)} size="sm" variant="outline">
-            {t("automations.list.new")}
-          </Button>
-        </div>
-      ) : (
-        <ul className="divide-border border-border superficie divide-y overflow-hidden rounded-lg border">
+        <EmptyState
+          acao={
+            <Button className="cursor-pointer" onClick={() => setCriando(true)} size="sm" variant="outline">
+              {t("automations.list.new")}
+            </Button>
+          }
+          titulo={t("automations.list.empty")}
+        />
+      ) : lista.length === 0 ? null : (
+        <ListGroup>
           {lista.map((linha) => (
             <LinhaDaAutomacao key={linha.id} linha={linha} abrir={() => navegar("automations", linha.id)} aoMudar={reler} />
           ))}
-        </ul>
+        </ListGroup>
       )}
     </div>
   );
@@ -340,30 +328,69 @@ export function LinhaDaAutomacao({
   };
 
   return (
-    <li className="flex flex-col gap-2 px-4 py-3" data-locum-automacao={linha.id} data-locum-ligada={ligada ? "sim" : "nao"}>
-      <div className="flex items-center gap-3">
-        <button className="flex min-w-0 flex-1 cursor-pointer flex-col items-start gap-1 text-left" onClick={abrir} type="button">
-          <span className="truncate font-medium text-sm">{linha.name}</span>
-          <span className="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-            {gatilhos.length === 0 ? (
-              <span>{t("automations.list.noTrigger")}</span>
-            ) : (
-              gatilhos.map((g, i) => (
-                <span className="flex items-center gap-1.5" key={`${g.kind}-${i}`}>
-                  <Selo app={appDoGatilho(g.config.kind)} id={g.config.kind} tamanho="sm" />
-                  {tituloDoGatilho(t, g.config)} · {resumoDoGatilho(t, g.config, i18n.language)}
-                </span>
-              ))
-            )}
-            <span>{t("automations.list.steps", { count: linha.stepCount })}</span>
-            <span>
-              {linha.lastRun === null
-                ? t("automations.list.never")
-                : t("automations.list.lastRun", { status: rotuloDeEstado(t, linha.lastRun.status) })}
-            </span>
-          </span>
-        </button>
+    <ListRow
+      className="min-h-11"
+      data-locum-automacao={linha.id}
+      data-locum-ligada={ligada ? "sim" : "nao"}
+      onClick={abrir}
+      rotulo={linha.name}
+    >
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="truncate font-medium">{linha.name}</span>
+        {aviso === null ? null : <span className="text-muted-foreground truncate text-xs">{aviso}</span>}
+      </span>
 
+      <span className="flex w-64 shrink-0 items-center gap-2 overflow-hidden">
+        {gatilhos.length === 0 ? (
+          <span className="text-muted-foreground text-xs">{t("automations.list.noTrigger")}</span>
+        ) : (
+          gatilhos.map((g, i) => (
+            <Tooltip key={`${g.kind}-${i}`}>
+              <TooltipTrigger asChild>
+                <span className="flex shrink-0 items-center gap-1.5" data-locum-gatilho-ligado={g.enabled ? "sim" : "nao"}>
+                  <Selo app={appDoGatilho(g.config.kind)} id={g.config.kind} tamanho="sm" />
+                  <StatusDot estado={g.enabled ? "ok" : "ocioso"} />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                {tituloDoGatilho(t, g.config)} · {resumoDoGatilho(t, g.config, i18n.language)}
+              </TooltipContent>
+            </Tooltip>
+          ))
+        )}
+      </span>
+
+      <span className="text-muted-foreground num w-20 shrink-0 text-xs">{t("automations.list.steps", { count: linha.stepCount })}</span>
+
+      <span className="text-muted-foreground flex w-32 shrink-0 items-center gap-1.5 text-xs">
+        {linha.lastRun === null ? (
+          <>
+            <StatusDot estado="ocioso" />
+            {t("automations.list.never")}
+          </>
+        ) : (
+          <>
+            <StatusDot estado={pontoDoEstado(linha.lastRun.status)} />
+            {rotuloDeEstado(t, linha.lastRun.status)}
+          </>
+        )}
+      </span>
+
+      <span className="flex shrink-0 items-center gap-1" onClick={(e) => e.stopPropagation()}>
+        {temRelogio ? (
+          <button
+            aria-label={t("automations.list.toggle")}
+            aria-pressed={ligada}
+            className="text-muted-foreground hover:text-foreground hover:bg-accent flex h-7 cursor-pointer items-center gap-1.5 rounded-md px-2 text-xs transition-colors disabled:opacity-50"
+            data-locum-automacao-interruptor={linha.id}
+            disabled={agindo !== null}
+            onClick={alternar}
+            type="button"
+          >
+            <StatusDot estado={ligada ? "ok" : "ocioso"} />
+            {t(ligada ? "automations.list.on" : "automations.list.off")}
+          </button>
+        ) : null}
         <Button
           className="cursor-pointer"
           disabled={agindo !== null}
@@ -372,32 +399,15 @@ export function LinhaDaAutomacao({
           title={t("automations.list.runNow")}
           variant="ghost"
         >
-          {agindo === "rodar" ? <Loader2 className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}
+          {agindo === "rodar" ? <Loader2 className="animate-spin" /> : <Play />}
           {t("automations.list.runNow")}
         </Button>
-        {temRelogio ? (
-          <button
-            aria-label={t("automations.list.toggle")}
-            aria-pressed={ligada}
-            className={cn(
-              "cursor-pointer rounded-full px-3 py-1 text-xs transition-colors",
-              ligada ? "bg-emerald-500/15 text-emerald-400" : "bg-muted text-muted-foreground",
-            )}
-            data-locum-automacao-interruptor={linha.id}
-            disabled={agindo !== null}
-            onClick={alternar}
-            type="button"
-          >
-            {t(ligada ? "automations.list.on" : "automations.list.off")}
-          </button>
-        ) : null}
         <Button className="cursor-pointer" onClick={abrir} size="sm" variant="outline">
           {t("automations.list.open")}
         </Button>
         {extra}
-      </div>
-      {aviso === null ? null : <p className="text-muted-foreground text-xs">{aviso}</p>}
-    </li>
+      </span>
+    </ListRow>
   );
 }
 
@@ -447,37 +457,31 @@ export function NovaAutomacao({
   };
 
   return (
-    <section className="border-border superficie flex flex-col gap-4 rounded-lg border p-5" data-locum-probe="automacao-nova">
-      <h2 className="font-medium text-[15px]">{t("automations.new.title")}</h2>
+    <section className="border-border bg-card flex flex-col gap-4 rounded-lg border p-4" data-locum-probe="automacao-nova">
+      <h2 className="text-[13px] font-medium">{t("automations.new.title")}</h2>
 
       <label className="flex max-w-md flex-col gap-1.5 text-xs">
         <span className="text-muted-foreground">{t("automations.new.name")}</span>
-        <input
-          autoFocus
-          className="border-border bg-background focus-visible:ring-ring rounded-md border px-3 py-1.5 text-sm outline-none focus-visible:ring-1"
-          onChange={(e) => setNome(e.target.value)}
-          placeholder={t("automations.new.namePlaceholder")}
-          value={nome}
-        />
+        <Input autoFocus onChange={(e) => setNome(e.target.value)} placeholder={t("automations.new.namePlaceholder")} value={nome} />
       </label>
 
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-1.5">
         <span className="text-muted-foreground text-xs">{t("automations.new.template")}</span>
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-2">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-1.5">
           {MODELOS.map((m) => (
             <button
               aria-pressed={modelo === m}
               className={cn(
-                "border-border flex cursor-pointer flex-col gap-1 rounded-lg border p-3 text-left transition-colors",
-                modelo === m ? "border-primary bg-primary/5" : "hover:border-foreground/30",
+                "border-border flex min-h-14 cursor-pointer flex-col gap-0.5 rounded-md border px-3 py-2 text-left transition-colors",
+                modelo === m ? "border-primary bg-primary/5" : "hover:bg-accent",
               )}
               data-locum-modelo={m}
               key={m}
               onClick={() => setModelo(m)}
               type="button"
             >
-              <span className="font-medium text-sm">{t(`automations.templates.${m}.title`)}</span>
-              <span className="text-muted-foreground text-xs">{t(`automations.templates.${m}.description`)}</span>
+              <span className="text-[13px] font-medium">{t(`automations.templates.${m}.title`)}</span>
+              <span className="text-muted-foreground line-clamp-2 text-xs">{t(`automations.templates.${m}.description`)}</span>
             </button>
           ))}
         </div>
@@ -490,7 +494,7 @@ export function NovaAutomacao({
             <span className="text-muted-foreground">{t("automations.new.trackerNone")}</span>
           ) : (
             <select
-              className="border-border bg-background rounded-md border px-2 py-1.5 text-sm"
+              className="border-input h-8 rounded-md border bg-transparent px-2 text-[13px] outline-none"
               onChange={(e) => setTracker(e.target.value)}
               value={tracker === "" ? (listaDeTrackers[0]?.id ?? "") : tracker}
             >
@@ -511,7 +515,7 @@ export function NovaAutomacao({
         <Button className="cursor-pointer" onClick={aoCancelar} variant="ghost">
           {t("automations.new.cancel")}
         </Button>
-        {erro === null ? null : <Badge variant="destructive">{erro}</Badge>}
+        {erro === null ? null : <span className="text-destructive text-xs">{erro}</span>}
       </div>
     </section>
   );
