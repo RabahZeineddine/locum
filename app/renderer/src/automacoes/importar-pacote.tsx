@@ -1,15 +1,29 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ListGroup, ListRow } from "@/components/ui/list-row";
+import { StatusDot, type Estado } from "@/components/ui/status-dot";
 import { call, invalidateReads } from "@/lib/bridge";
 import { semPrefixoDoIpc } from "@/lib/erro-da-ponte";
 import { cn } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { EscolhasDaImportacao, PreviaDoPacote } from "../../../src/services/pacote-service";
 import type { RotaId } from "../rotas";
 
 type Dependencia = PreviaDoPacote["dependencias"][number];
+
+const ESTADO_DA_DEPENDENCIA: Record<Dependencia["estado"], Estado> = { ok: "ok", "falta-conectar": "aviso", ausente: "erro" };
+
+/** Aviso em texto neutro com o ponto de cor, como pede o design. */
+function Aviso({ children }: { children: ReactNode }) {
+  return (
+    <span className="text-muted-foreground flex items-center gap-2 text-xs">
+      <StatusDot estado="aviso" />
+      {children}
+    </span>
+  );
+}
 
 /** O que a pessoa vê enquanto decide: prévia do pacote, dependência por dependência. */
 export function ImportarPacote({
@@ -87,7 +101,7 @@ export function ImportarPacote({
   };
 
   return (
-    <section className="border-border superficie flex flex-col gap-4 rounded-lg border p-4" data-locum-probe="pacote-previa">
+    <section className="border-border bg-card flex flex-col gap-4 rounded-lg border p-4 text-[13px]" data-locum-probe="pacote-previa">
       <div className="flex items-center gap-2">
         <span className="flex-1 truncate font-medium text-sm">{t("pacote.import.title", { arquivo: arquivo.nome })}</span>
         <Button className="cursor-pointer" data-locum-pacote-fechar="" onClick={() => { invalidateReads(); fechar(); }} size="sm" variant="ghost">
@@ -96,7 +110,8 @@ export function ImportarPacote({
       </div>
 
       {erro === null ? null : (
-        <p className="text-sev-critical text-xs" data-locum-pacote-erro="">
+        <p className="text-muted-foreground flex items-center gap-2 text-xs" data-locum-pacote-erro="">
+          <StatusDot estado="erro" />
           {erro}
         </p>
       )}
@@ -126,26 +141,26 @@ export function ImportarPacote({
             </span>
             <span className="text-muted-foreground text-xs">{t("pacote.import.triggersOff", { count: previa.gatilhos.length })}</span>
             {previa.gatilhos.some((g) => g.precisaCanal) || previa.omitidos.some((o) => o.codigo === "canais") ? (
-              <span className="text-xs text-amber-500">{t("pacote.import.chooseChannels")}</span>
+              <Aviso>{t("pacote.import.chooseChannels")}</Aviso>
             ) : null}
             {previa.acoesRebaixadas.length > 0 ? (
-              <span className="text-xs text-amber-500">{t("pacote.import.downgraded")}</span>
+              <Aviso>{t("pacote.import.downgraded")}</Aviso>
             ) : null}
           </div>
 
           {previa.agents.length > 0 ? (
-            <ul className="divide-border border-border divide-y rounded-md border" data-locum-pacote-agents="">
+            <ListGroup data-locum-pacote-agents="">
               {previa.agents.map((a) => (
-                <li className="flex flex-col gap-2 px-3 py-2 text-sm" data-locum-pacote-agent={a.id} key={a.id}>
+                <ListRow className="flex-col items-stretch" data-locum-pacote-agent={a.id} key={a.id}>
                   <div className="flex items-center gap-2">
                     <span className="flex-1 truncate">{a.nome}</span>
                     <Badge variant="outline">{t(`pacote.import.agentState.${a.situacao}`, { version: a.versaoAtual })}</Badge>
                   </div>
                   {a.situacao === "nome-igual" || a.situacao === "mesmo-id" ? (
                     <div className="flex flex-col gap-1 text-xs">
-                      <span className="text-amber-500">
+                      <Aviso>
                         {a.situacao === "nome-igual" ? t("pacote.import.sameName", { nome: a.existente?.nome }) : t("pacote.import.sameId", { version: a.versaoAtual })}
-                      </span>
+                      </Aviso>
                       {(a.situacao === "mesmo-id" ? (["criar-novo", "atualizar", "usar-existente"] as const) : (["usar-existente", "criar-novo"] as const)).map((acao) => (
                         <label className="flex items-center gap-1.5" key={acao}>
                           <input checked={escolhaDo(a) === acao} data-locum-pacote-escolha={`${a.id}:${acao}`} name={`agent-${a.id}`} onChange={() => setAgents((x) => ({ ...x, [a.id]: acao }))} type="radio" />
@@ -167,15 +182,16 @@ export function ImportarPacote({
                         </details>
                       ) : null}
                       {a.situacao === "mesmo-id" && escolhaDo(a) === "atualizar" ? (
-                        <span className="text-sev-critical" data-locum-pacote-afetadas={a.id}>
+                        <span className="text-foreground flex items-center gap-2" data-locum-pacote-afetadas={a.id}>
+                          <StatusDot estado="aviso" />
                           {a.usadoPor.length === 0 ? t("pacote.import.updateNoOne") : t("pacote.import.updateAffects", { lista: a.usadoPor.join(", ") })}
                         </span>
                       ) : null}
                     </div>
                   ) : null}
-                </li>
+                </ListRow>
               ))}
-            </ul>
+            </ListGroup>
           ) : null}
 
           {todosModelos.length > 0 ? (
@@ -190,7 +206,7 @@ export function ImportarPacote({
                     sugerido={m.sugerido}
                     valor={modelos[m.chave] ?? m.padrao ?? ""}
                   />
-                  {m.disponivel ? null : <span className="text-xs text-amber-500">{t("pacote.import.modelMissing")}</span>}
+                  {m.disponivel ? null : <Aviso>{t("pacote.import.modelMissing")}</Aviso>}
                 </label>
               ))}
             </div>
@@ -199,10 +215,11 @@ export function ImportarPacote({
           {previa.ferramentas.length > 0 ? (
             <div className="flex flex-col gap-1" data-locum-pacote-ferramentas="">
               <span className="text-muted-foreground text-xs">{t("pacote.import.tools")}</span>
-              {escritas.length > 0 ? <span className="text-xs text-amber-500">{t("pacote.import.toolsWrite", { count: escritas.length })}</span> : null}
+              {escritas.length > 0 ? <Aviso>{t("pacote.import.toolsWrite", { count: escritas.length })}</Aviso> : null}
               <ul className="flex flex-col gap-0.5 text-xs">
                 {previa.ferramentas.map((f, i) => (
-                  <li className={cn("flex items-center gap-2", f.classe === "escrita" && "text-amber-500")} data-classe={f.classe} key={i}>
+                  <li className="flex items-center gap-2" data-classe={f.classe} key={i}>
+                    <StatusDot estado={f.classe === "escrita" ? "aviso" : "ok"} />
                     <span className="min-w-32 truncate">{f.dono}</span>
                     <span className="font-mono">{f.servidor === null ? f.ferramenta : `${f.servidor}/${f.ferramenta}`}</span>
                     <Badge variant="outline">{t(`pacote.import.toolClass.${f.classe}`)}</Badge>
@@ -214,26 +231,30 @@ export function ImportarPacote({
           ) : null}
 
           {previa.urlsAPreencher.length > 0 ? (
-            <ul className="flex flex-col gap-0.5 text-xs text-amber-500" data-locum-pacote-urls="">
+            <ul className="flex flex-col gap-0.5 text-xs" data-locum-pacote-urls="">
               {previa.urlsAPreencher.map((u) => (
-                <li key={u.passo}>{u.origem === undefined ? t("pacote.import.urlFill", { passo: u.passo }) : t("pacote.import.urlFillHost", { passo: u.passo, host: u.origem })}</li>
+                <li className="flex items-center gap-2" key={u.passo}>
+                  <StatusDot estado="aviso" />
+                  {u.origem === undefined ? t("pacote.import.urlFill", { passo: u.passo }) : t("pacote.import.urlFillHost", { passo: u.passo, host: u.origem })}
+                </li>
               ))}
             </ul>
           ) : null}
 
           <div className="flex flex-col gap-2" data-locum-pacote-dependencias="">
             <span className="text-muted-foreground text-xs">{t("pacote.import.needs")}</span>
-            <ul className="divide-border border-border divide-y rounded-md border">
+            <ListGroup>
               {previa.dependencias.map((d) => (
-                <li className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm" data-locum-pacote-dependencia={`${d.tipo}:${d.chave}`} data-estado={d.estado} key={`${d.tipo}:${d.chave}`}>
+                <ListRow className="flex-wrap" data-locum-pacote-dependencia={`${d.tipo}:${d.chave}`} data-estado={d.estado} key={`${d.tipo}:${d.chave}`}>
                   <span className="flex-1 truncate">
                     <span className="text-muted-foreground text-xs">{t(`pacote.import.kind.${d.tipo}`)} </span>
                     {d.nome}
                     {d.detalhe === undefined ? "" : <span className="text-muted-foreground font-mono text-xs"> · {d.detalhe}</span>}
                   </span>
-                  <Badge className={cn(d.estado !== "ok" && "text-amber-500")} variant="outline">
+                  <span className="text-muted-foreground flex items-center gap-1.5 text-xs">
+                    <StatusDot estado={ESTADO_DA_DEPENDENCIA[d.estado]} />
                     {t(`pacote.import.state.${d.estado}`)}
-                  </Badge>
+                  </span>
                   {d.estado !== "ok" && (d.tipo === "servidor" || d.tipo === "conexao") && d.candidatos.length > 0 ? (
                     <select
                       aria-label={t("pacote.import.link", { nome: d.nome })}
@@ -254,9 +275,9 @@ export function ImportarPacote({
                       {t(`pacote.import.shortcut.${d.atalho}`)}
                     </Button>
                   )}
-                </li>
+                </ListRow>
               ))}
-            </ul>
+            </ListGroup>
             <Button className="w-fit cursor-pointer" onClick={ler} size="sm" variant="ghost">
               {t("pacote.import.recheck")}
             </Button>
