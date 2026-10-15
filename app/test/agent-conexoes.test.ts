@@ -249,3 +249,21 @@ test("a contagem de escrita ligada segue a anotação do servidor, e o nome só 
   const [resumo] = await biblioteca.listProfiles();
   assert.equal(resumo?.writes, 3);
 });
+
+test("servidor com mais de 30 leituras começa sem nenhuma, e a escolha da pessoa liga", async () => {
+  const leituras = Array.from({ length: 31 }, (_, i) => `list-coisa-${i}`);
+  const grande = catalogoCom({ ms365: ["ms365"] }, { ms365: [...leituras, "send-mail"] });
+  const biblioteca = new LibraryService(bancoDeTeste(), grande);
+  await biblioteca.saveProfile({
+    spec: { id: "teams-agent", name: "Teams", model: modelo, connections: [{ connectionId: "ms365", tools: { "ms365/list-coisa-3": true } }] },
+  });
+  const resolvido = await biblioteca.resolveProfile("teams-agent");
+  assert.deepEqual(nomes(resolvido.tools), ["ms365.list-coisa-3"]);
+});
+
+test("servidor com 30 leituras liga todas por padrão", async () => {
+  const leituras = Array.from({ length: 30 }, (_, i) => `list-coisa-${i}`);
+  const biblioteca = new LibraryService(bancoDeTeste(), catalogoCom({ ms365: ["ms365"] }, { ms365: leituras }));
+  await biblioteca.saveProfile({ spec: { id: "t30", name: "T", model: modelo, connections: [{ connectionId: "ms365" }] } });
+  assert.equal((await biblioteca.resolveProfile("t30")).tools.length, 30);
+});

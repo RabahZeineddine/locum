@@ -2486,6 +2486,19 @@
       "load": "Ver ferramentas",
       "reload": "Atualizar",
       "notListed": "As ferramentas ainda não foram listadas. Use \"Ver ferramentas\" para escolher uma a uma; enquanto isso vale o padrão.",
+      "ligadas": "{{on}} de {{total}} ligadas",
+      "enableReads": "Ligar todas de leitura",
+      "disableAll": "Desligar todas",
+      "pickThem": "Escolha as que este agent precisa: o servidor tem muitas ferramentas de leitura e nenhuma vem ligada sozinha.",
+      "search": "Buscar ferramenta por nome ou descrição",
+      "noMatch": "Nenhuma ferramenta com \"{{termo}}\".",
+      "areas": {
+          "teams": "Teams (chats, canais, times)",
+          "mail": "E-mail",
+          "calendar": "Agenda",
+          "files": "Arquivos",
+          "other": "Outras"
+      },
       "counts": "{{read}} de leitura, {{write}} de escrita",
       "writeNote": "Escrita ligada não roda sozinha: só passa pelo chat do agent, com a sua confirmação (chega na próxima versão). Numa automação, escrever é um nó de ação com aprovação.",
       "declareRead": "é leitura",
@@ -2493,6 +2506,7 @@
     },
     "skills": {
       "none": "Nenhuma skill escolhida.",
+      "noMatch": "Nenhuma skill com esse nome.",
       "noneToAdd": "Nenhuma outra skill encontrada neste computador.",
       "add": "Adicionar skill",
       "remove": "Tirar {{name}}",

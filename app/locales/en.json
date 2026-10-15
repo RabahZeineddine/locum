@@ -2432,6 +2432,19 @@
       "load": "Show tools",
       "reload": "Refresh",
       "notListed": "Tools have not been listed yet. Use \"Show tools\" to pick one by one; until then the default applies.",
+      "ligadas": "{{on}} of {{total}} on",
+      "enableReads": "Turn on all read tools",
+      "disableAll": "Turn off all",
+      "pickThem": "Pick the ones this agent needs: the server has many read tools and none comes on by itself.",
+      "search": "Search tools by name or description",
+      "noMatch": "No tool matches \"{{termo}}\".",
+      "areas": {
+          "teams": "Teams (chats, channels, teams)",
+          "mail": "Email",
+          "calendar": "Calendar",
+          "files": "Files",
+          "other": "Other"
+      },
       "counts": "{{read}} read, {{write}} write",
       "writeNote": "A write that is on does not run by itself: it only goes through the agent's chat, with your confirmation (coming in the next version). In an automation, writing is an action node with approval.",
       "declareRead": "is a read",
@@ -2439,6 +2452,7 @@
     },
     "skills": {
       "none": "No skill chosen.",
+      "noMatch": "No skill with that name.",
       "noneToAdd": "No other skill found on this computer.",
       "add": "Add skill",
       "remove": "Remove {{name}}",

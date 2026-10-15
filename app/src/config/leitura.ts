@@ -54,6 +54,18 @@ export function ehLeituraDa(f: FerramentaClassificavel): boolean {
   return ehLeitura(f.name);
 }
 
+/** Servidor com mais leituras que isto não liga todas por padrão: a pessoa escolhe as que o agent precisa. */
+export const LIMITE_DE_LEITURA_PADRAO = 30;
+
+/**
+ * Se a ferramenta vem ligada quando a pessoa não escolheu nada. Leitura liga
+ * sozinha, a não ser em servidor grande (ms365 tem mais de cem), onde ligar
+ * tudo gasta contexto e dá ao agent o que ele não pediu.
+ */
+export function ligadaPorPadrao(f: FerramentaClassificavel, leiturasDoServidor: number): boolean {
+  return leiturasDoServidor <= LIMITE_DE_LEITURA_PADRAO && ehLeituraDa(f);
+}
+
 /** Valor de `AgentConnection.tools`: liga, desliga, ou liga declarando que a ferramenta lê. */
 export type EscolhaDeFerramenta = boolean | "read";
 

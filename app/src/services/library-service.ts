@@ -10,7 +10,7 @@ import {
   type ToolRef,
   type ToolsetInput,
 } from "../config/types.js";
-import { ehLeitura, ehLeituraDa, escolhaDe } from "../config/leitura.js";
+import { ehLeitura, ehLeituraDa, escolhaDe, ligadaPorPadrao } from "../config/leitura.js";
 
 type Db = typeof defaultDb;
 
@@ -144,8 +144,9 @@ export interface ConexoesExpandidas {
 
 /**
  * Cada conexão vira as ferramentas que os servidores ligados dela oferecem
- * agora: leitura liberada, escrita só a marcada, e a escolha por ferramenta
- * manda nos dois lados. A classe vem da anotação do servidor, e do nome quando
+ * agora: leitura liberada (menos em servidor com mais de
+ * `LIMITE_DE_LEITURA_PADRAO` leituras, que começa sem nenhuma), escrita só a
+ * marcada, e a escolha por ferramenta manda nos dois lados. A classe vem da anotação do servidor, e do nome quando
  * ele não anotou. "read" na escolha manda a ferramenta para a leitura mesmo
  * classificada como escrita. Ferramenta que o servidor não oferece mais fica
  * de fora, mesmo escolhida.
@@ -176,10 +177,11 @@ export async function expandirConexoes(
         continue;
       }
       usaveis.push(server);
+      const leiturasDoServidor = oferecidas.filter(ehLeituraDa).length;
       for (const f of oferecidas) {
         const escolha = escolhaDe(conexao.tools, server, f.name);
         const leitura = ehLeituraDa(f);
-        if (!(escolha === undefined ? leitura : escolha !== false)) continue;
+        if (!(escolha === undefined ? ligadaPorPadrao(f, leiturasDoServidor) : escolha !== false)) continue;
         if (leitura || escolha === "read") saida.leitura.push({ server, tool: f.name, class: "read" });
         else saida.escrita.push({ server, tool: f.name, class: "external_write" });
       }
