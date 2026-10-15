@@ -1,10 +1,14 @@
 import { Badge } from "@/components/ui/badge";
+import { CabecalhoDaTela } from "@/components/cabecalho-da-tela";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Kbd } from "@/components/ui/kbd";
+import { StatusDot, type Estado as EstadoDoPonto } from "@/components/ui/status-dot";
 import { decidir, resolverParada } from "@/lib/aprovar";
 import { read, useRead, type ReadResult } from "@/lib/bridge";
 import { rotuloDeSeveridade, SEVERIDADES, type Severidade } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
-import { AlertTriangle, Check, ChevronRight, Inbox as InboxIcon, Pencil, X } from "lucide-react";
+import { ChevronRight, Inbox as InboxIcon } from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
@@ -16,29 +20,14 @@ type Execucao = ReadResult<"runs.list">[number];
 type Achado = ReadResult<"runs.findings">[number];
 
 /**
- * Palavra junto da cor, sempre. Cor sozinha nao chega para quem nao distingue
- * vermelho de verde, e tambem nao chega para quem esta de relance.
+ * A severidade é um ponto ao lado do alvo, com a palavra por escrito na linha:
+ * cor sozinha não chega para quem não distingue vermelho de verde.
  */
-/**
- * A severidade é uma régua na borda esquerda do registro, de altura inteira,
- * como a aba de uma pasta num arquivo.
- *
- * É o único lugar da tela onde há ousadia visual. Bolinha colorida se perde
- * quando a lista cresce, e obriga o olho a procurar; a régua dá a leitura da
- * pilha inteira de relance, ainda de longe.
- */
-const REGUA: Record<Severidade, string> = {
-  critical: "bg-sev-critical",
-  high: "bg-sev-high",
-  medium: "bg-sev-medium",
-  low: "bg-sev-low",
-};
-
-const TINTA: Record<Severidade, string> = {
-  critical: "text-sev-critical",
-  high: "text-sev-high",
-  medium: "text-sev-medium",
-  low: "text-muted-foreground",
+const PONTO: Record<Severidade, EstadoDoPonto> = {
+  critical: "erro",
+  high: "erro",
+  medium: "aviso",
+  low: "ocioso",
 };
 
 function pior(achados: Achado[]): Severidade {
@@ -236,7 +225,7 @@ function Fila({ navegar, aoMudarFila }: TelaProps & { aoMudarFila: () => void })
   if (itens === null) return <Esqueleto />;
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 pt-4">
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
       <Cabecalho quantidade={itens.length} severidades={contagemSeveridades} />
       <PainelDeIniciativas navegar={navegar} />
       {falhas.length > 0 && <FaixaDeFalha quantidade={falhas.length} navegar={navegar} />}
@@ -246,13 +235,13 @@ function Fila({ navegar, aoMudarFila }: TelaProps & { aoMudarFila: () => void })
         <Vazio navegar={navegar} />
       ) : (
         <ul
-          className="divide-border superficie divide-y overflow-hidden rounded-xl"
+          className="border-border bg-card overflow-hidden rounded-lg border"
           ref={listaRef}
         >
           {itens.map((item, i) => (
             <Fragment key={item.pendencia.id}>
               {(i === 0 || itens[i - 1]!.grupo !== item.grupo) && (
-                <li className="bg-background/40 text-muted-foreground px-5 py-2 font-medium text-[11px] uppercase tracking-[0.08em]">
+                <li className="border-border bg-muted/30 text-muted-foreground border-b px-3 py-1.5 text-[11px] font-medium">
                   {rotuloDoGrupo(t, item.grupo)}
                 </li>
               )}
@@ -327,12 +316,13 @@ function PainelDeIniciativas({ navegar }: { navegar: TelaProps["navegar"] }) {
           key={f.slug}
           type="button"
           onClick={() => navegar("initiatives", f.slug)}
-          className="superficie hover:border-foreground/20 focus-visible:ring-ring flex min-h-8 cursor-pointer items-center gap-2 rounded-full px-3 py-1 text-left text-xs transition-colors duration-200 focus-visible:ring-2 focus-visible:outline-none"
+          className="border-border hover:bg-accent focus-visible:ring-ring flex h-7 cursor-pointer items-center gap-2 rounded-md border px-2.5 text-left text-xs transition-colors focus-visible:ring-2 focus-visible:outline-none"
         >
           <span className="font-medium">{f.title}</span>
           <span className="text-muted-foreground">{t(`initiatives.status.${f.status}`)}</span>
           {f.stale && (
-            <Badge className="text-sev-medium border-sev-medium/40" variant="outline">
+            <Badge variant="outline">
+              <StatusDot estado="aviso" />
               {t("home.overview.stale")}
             </Badge>
           )}
@@ -354,55 +344,29 @@ function Cabecalho({
 }) {
   const { t } = useTranslation();
 
+  const ordem: Severidade[] = ["critical", "high", "medium", "low"];
+
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-end justify-between gap-6">
-        <div className="flex flex-col gap-1.5">
-          <h1 className="font-semibold text-[32px] leading-tight tracking-[-0.02em]">{t("inbox.title")}</h1>
-          <p className="text-muted-foreground text-[15px]">{t("inbox.lead")}</p>
-        </div>
-        <p
-          className="text-muted-foreground text-sm tabular-nums"
-          data-locum-probe="inbox"
-          data-pendencias={quantidade}
-        >
-          {t("inbox.waiting", { count: quantidade })}
-        </p>
-      </div>
+      <CabecalhoDaTela
+        acoes={
+          <p className="text-muted-foreground num text-[13px]" data-locum-probe="inbox" data-pendencias={quantidade}>
+            {t("inbox.waiting", { count: quantidade })}
+          </p>
+        }
+        descricao={t("inbox.lead")}
+        titulo={t("inbox.title")}
+      />
 
       {quantidade > 0 && (
-        <div className="flex flex-wrap items-center gap-2 pt-1">
-          {severidades.critical > 0 && (
-            <Badge
-              className="bg-sev-critical/10 text-sev-critical border-sev-critical/30 font-medium text-xs px-2.5 py-0.5"
-              variant="outline"
-            >
-              {severidades.critical} {t("inbox.severities.critical")}
-            </Badge>
-          )}
-          {severidades.high > 0 && (
-            <Badge
-              className="bg-sev-high/10 text-sev-high border-sev-high/30 font-medium text-xs px-2.5 py-0.5"
-              variant="outline"
-            >
-              {severidades.high} {t("inbox.severities.high")}
-            </Badge>
-          )}
-          {severidades.medium > 0 && (
-            <Badge
-              className="bg-sev-medium/10 text-sev-medium border-sev-medium/30 font-medium text-xs px-2.5 py-0.5"
-              variant="outline"
-            >
-              {severidades.medium} {t("inbox.severities.medium")}
-            </Badge>
-          )}
-          {severidades.low > 0 && (
-            <Badge
-              className="bg-muted text-muted-foreground border-border font-medium text-xs px-2.5 py-0.5"
-              variant="outline"
-            >
-              {severidades.low} {t("inbox.severities.low")}
-            </Badge>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {ordem.map((sev) =>
+            severidades[sev] > 0 ? (
+              <Badge className="num gap-1.5" key={sev} variant="secondary">
+                <StatusDot estado={PONTO[sev]} />
+                {severidades[sev]} {t(`inbox.severities.${sev}`)}
+              </Badge>
+            ) : null,
           )}
         </div>
       )}
@@ -427,9 +391,9 @@ function FaixaDeFalha({
     <button
       type="button"
       onClick={() => navegar("runs")}
-      className="border-border/60 bg-muted/40 hover:bg-muted focus-visible:ring-ring flex min-h-11 cursor-pointer items-center gap-2 rounded-md border px-3 text-left text-sm transition-colors duration-200 focus-visible:ring-2 focus-visible:outline-none"
+      className="border-border bg-card hover:bg-accent focus-visible:ring-ring flex min-h-10 cursor-pointer items-center gap-2 rounded-lg border px-3 text-left text-[13px] transition-colors focus-visible:ring-2 focus-visible:outline-none"
     >
-      <AlertTriangle className="size-4 shrink-0 text-amber-500" aria-hidden />
+      <StatusDot estado="erro" />
       <span className="text-muted-foreground">{t("inbox.failures", { count: quantidade })}</span>
       <ChevronRight className="text-muted-foreground ml-auto size-4" aria-hidden />
     </button>
@@ -469,17 +433,17 @@ function Paradas({ aoMudarFila }: { aoMudarFila: () => void }) {
   };
 
   return (
-    <section className="flex flex-col gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 px-4 py-3">
-      <div className="flex items-center gap-2 text-sm font-medium">
-        <AlertTriangle className="size-4 shrink-0 text-amber-500" aria-hidden />
+    <section className="border-border bg-card flex flex-col gap-2 rounded-lg border px-3 py-2.5">
+      <div className="flex items-center gap-2 text-[13px] font-medium">
+        <StatusDot estado="aviso" />
         {t("inbox.stuckTitle")}
       </div>
-      <p className="text-muted-foreground text-sm">{t("inbox.stuckHint")}</p>
+      <p className="text-muted-foreground text-[13px]">{t("inbox.stuckHint")}</p>
       <ul className="flex flex-col gap-2">
         {visiveis.map((p) => {
           const alvo = alvoDaPendencia(p, t);
           return (
-            <li className="flex flex-wrap items-center gap-2 text-sm" key={p.id}>
+            <li className="flex flex-wrap items-center gap-2 text-[13px]" key={p.id}>
               <span className="min-w-0 flex-1 truncate">
                 {alvo.principal}
                 {alvo.titulo ? `: ${alvo.titulo}` : ""}
@@ -506,7 +470,7 @@ function Paradas({ aoMudarFila }: { aoMudarFila: () => void }) {
           );
         })}
       </ul>
-      {erro !== null && <p className="text-destructive text-sm">{erro}</p>}
+      {erro !== null && <p className="text-destructive text-[13px]">{erro}</p>}
     </section>
   );
 }
@@ -546,119 +510,58 @@ function Linha({
     <li
       data-item
       className={cn(
-        "group relative transition-colors duration-200",
-        focada && "bg-accent/40",
+        "border-border group relative border-b transition-colors last:border-b-0",
+        focada && "bg-accent",
         ocupada && "opacity-50",
       )}
       onMouseEnter={aoFocar}
     >
-      <span
-        aria-hidden
-        className={cn(
-          "absolute top-0 bottom-0 left-0 w-[3px]",
-          alvo.semSeveridade ? "bg-border" : REGUA[severidade],
-        )}
-      />
+      <div className="flex items-start gap-3 px-3 py-2.5">
+        <StatusDot className="mt-1.5" estado={alvo.semSeveridade ? "ocioso" : PONTO[severidade]} />
 
-      <div className="py-3 pr-4 pl-5">
-        <div className="flex items-baseline gap-2.5">
-          <span className="shrink-0 font-medium text-[15px] tracking-tight">{alvo.principal}</span>
-          {alvo.detalhe && (
-            <span className="text-muted-foreground truncate font-mono text-xs">{alvo.detalhe}</span>
-          )}
-          {alvo.repo && (
-            <span className="text-muted-foreground truncate font-mono text-xs">{alvo.repo}</span>
-          )}
-          {alvo.rascunho && (
-            <span className="text-muted-foreground border-border shrink-0 rounded border px-1 text-[10px]">
-              {t("inbox.draft")}
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <div className="flex items-baseline gap-2">
+            <span className="shrink-0 text-[13px] font-medium">{alvo.principal}</span>
+            {alvo.detalhe && <span className="text-muted-foreground truncate font-mono text-xs">{alvo.detalhe}</span>}
+            {alvo.repo && <span className="text-muted-foreground truncate font-mono text-xs">{alvo.repo}</span>}
+            {alvo.rascunho && <Badge variant="outline">{t("inbox.draft")}</Badge>}
+            <span className="num text-muted-foreground ml-auto flex shrink-0 items-center gap-1.5 text-xs">
+              {velho ? <StatusDot estado="aviso" /> : null}
+              {quando}
             </span>
-          )}
-          <span
-            className={cn(
-              "text-muted-foreground ml-auto shrink-0 text-xs tabular-nums",
-              velho && "text-sev-medium",
-            )}
-          >
-            {quando}
-          </span>
-        </div>
-
-        {alvo.titulo && (
-          <p className="mt-0.5 max-w-[68ch] truncate text-[15px] font-medium tracking-tight">
-            {alvo.titulo}
-          </p>
-        )}
-
-        <div className="text-muted-foreground mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs">
-          {alvo.autor && <span>{alvo.autor}</span>}
-          {alvo.ramos && <span className="font-mono">{alvo.ramos}</span>}
-          {alvo.tamanho && <span className="font-mono tabular-nums">{alvo.tamanho}</span>}
-        </div>
-
-        {alvo.resumo && (
-          <p className="text-muted-foreground mt-1 line-clamp-2 max-w-[68ch] text-sm leading-relaxed">
-            {alvo.resumo}
-          </p>
-        )}
-
-        {alvo.origem && <p className="text-muted-foreground/80 mt-1 text-xs">{alvo.origem}</p>}
-
-        {!alvo.semSeveridade && (
-          <div className="mt-1.5 flex items-baseline gap-2 text-sm">
-            <span className={cn("shrink-0 font-medium", TINTA[severidade])}>
-              {rotuloDeSeveridade(t, severidade)}
-            </span>
-            {achados.length > 0 && (
-              <span className="text-muted-foreground shrink-0">
-                {t("inbox.findings", { count: achados.length })}
-              </span>
-            )}
           </div>
-        )}
 
-        {principal && (
-          <p className="text-muted-foreground mt-1.5 line-clamp-2 max-w-[68ch] text-sm leading-relaxed">
-            {principal.problem}
-          </p>
-        )}
+          {alvo.titulo && <p className="max-w-[72ch] truncate text-[13px] font-medium">{alvo.titulo}</p>}
 
-        {emConflito && (
-          <p className="border-sev-medium/40 bg-sev-medium/10 text-sev-medium mt-1.5 max-w-[68ch] rounded border px-2 py-1 text-xs">
-            {t("inbox.conflict")}
-          </p>
-        )}
+          <div className="text-muted-foreground flex flex-wrap items-baseline gap-x-3 text-xs">
+            {alvo.autor && <span>{alvo.autor}</span>}
+            {alvo.ramos && <span className="font-mono">{alvo.ramos}</span>}
+            {alvo.tamanho && <span className="num font-mono">{alvo.tamanho}</span>}
+            {!alvo.semSeveridade && <span>{rotuloDeSeveridade(t, severidade)}</span>}
+            {!alvo.semSeveridade && achados.length > 0 && <span className="num">{t("inbox.findings", { count: achados.length })}</span>}
+          </div>
 
-        <div className="mt-2.5 flex items-center gap-1">
-          {!emConflito && (
-            <Button className="h-7 cursor-pointer px-2.5" disabled={ocupada} onClick={aoAprovar} size="sm">
-              {t("inbox.approve")}
-            </Button>
+          {alvo.resumo && (
+            <p className="text-muted-foreground mt-1 line-clamp-2 max-w-[72ch] text-xs leading-relaxed">{alvo.resumo}</p>
           )}
-          <Button
-            className="text-muted-foreground hover:text-foreground h-7 cursor-pointer px-2.5"
-            disabled={ocupada}
-            onClick={aoEditar}
-            size="sm"
-            variant="ghost"
-          >
-            {alvo.somenteLeitura ? t("inbox.review") : t("inbox.edit")}
-          </Button>
-          {!emConflito && (
-            <Button
-              className="text-muted-foreground hover:text-foreground h-7 cursor-pointer px-2.5"
-              disabled={ocupada}
-              onClick={aoDescartar}
-              size="sm"
-              variant="ghost"
-            >
-              {t("inbox.discard")}
-            </Button>
+
+          {alvo.origem && <p className="text-muted-foreground mt-0.5 text-xs">{alvo.origem}</p>}
+
+          {principal && (
+            <p className="text-muted-foreground mt-1 line-clamp-2 max-w-[72ch] text-xs leading-relaxed">{principal.problem}</p>
           )}
+
+          {emConflito && (
+            <p className="border-border bg-muted/40 mt-1.5 flex max-w-[72ch] items-center gap-1.5 rounded-md border px-2 py-1 text-xs">
+              <StatusDot estado="aviso" />
+              {t("inbox.conflict")}
+            </p>
+          )}
+
           {achados.length > 1 && (
             <button
               aria-expanded={aberta}
-              className="text-muted-foreground hover:text-foreground focus-visible:ring-ring ml-auto cursor-pointer rounded px-2 py-1 text-xs transition-colors duration-200 focus-visible:ring-2 focus-visible:outline-none"
+              className="text-muted-foreground hover:text-foreground focus-visible:ring-ring mt-0.5 w-fit cursor-pointer rounded text-xs transition-colors focus-visible:ring-2 focus-visible:outline-none"
               onClick={aoAlternar}
               type="button"
             >
@@ -666,20 +569,33 @@ function Linha({
             </button>
           )}
         </div>
+
+        <div className="flex shrink-0 items-center gap-1">
+          {!emConflito && (
+            <Button className="cursor-pointer" disabled={ocupada} onClick={aoAprovar} size="sm">
+              {t("inbox.approve")}
+              <Kbd className="border-primary-foreground/30 bg-transparent text-primary-foreground/80">a</Kbd>
+            </Button>
+          )}
+          <Button className="cursor-pointer" disabled={ocupada} onClick={aoEditar} size="sm" variant="outline">
+            {alvo.somenteLeitura ? t("inbox.review") : t("inbox.edit")}
+            <Kbd>e</Kbd>
+          </Button>
+          {!emConflito && (
+            <Button className="cursor-pointer" disabled={ocupada} onClick={aoDescartar} size="sm" variant="ghost">
+              {t("inbox.discard")}
+              <Kbd>x</Kbd>
+            </Button>
+          )}
+        </div>
       </div>
 
       {aberta && achados.length > 0 && (
-        <ul className="border-border bg-background/40 border-t">
+        <ul className="border-border bg-muted/30 border-t">
           {achados.map((a, i) => (
-            <li className="flex gap-3 py-2 pr-4 pl-5 text-sm" key={i}>
-              <span
-                aria-hidden
-                className={cn(
-                  "mt-[7px] h-[3px] w-3 shrink-0 rounded-full",
-                  REGUA[(a.severity as Severidade) ?? "low"],
-                )}
-              />
-              <div className="min-w-0 max-w-[68ch]">
+            <li className="flex gap-3 py-2 pr-3 pl-8 text-[13px]" key={i}>
+              <StatusDot className="mt-1.5" estado={PONTO[(a.severity as Severidade) ?? "low"]} />
+              <div className="min-w-0 max-w-[72ch]">
                 <span className="text-muted-foreground font-mono text-xs">
                   {a.file ?? ""}
                   {a.line ? `:${a.line}` : ""}
@@ -951,37 +867,23 @@ function Vazio({ navegar }: { navegar?: TelaProps["navegar"] }) {
   const { t } = useTranslation();
 
   return (
-    <div className="border-border flex flex-col items-center gap-3 rounded-xl border border-dashed px-6 py-12 text-center">
-      <div className="flex size-10 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-        <InboxIcon className="size-5" aria-hidden />
-      </div>
-      <div className="flex flex-col gap-1">
-        <p className="text-sm font-semibold text-foreground">{t("inbox.empty.title")}</p>
-        <p className="text-muted-foreground max-w-md text-xs leading-relaxed">
-          {t("inbox.empty.body")}
-        </p>
-      </div>
-      {navegar && (
-        <div className="mt-2 flex items-center gap-2">
-          <Button
-            className="h-7 cursor-pointer text-xs"
-            onClick={() => navegar("runs")}
-            size="sm"
-            variant="outline"
-          >
-            {t("inbox.empty.view_runs", { defaultValue: "Ver histórico de execuções" })}
-          </Button>
-          <Button
-            className="h-7 cursor-pointer text-xs"
-            onClick={() => navegar("automations")}
-            size="sm"
-            variant="ghost"
-          >
-            {t("inbox.empty.view_monitors", { defaultValue: "Conferir vigilância" })}
-          </Button>
-        </div>
-      )}
-    </div>
+    <EmptyState
+      acao={
+        navegar && (
+          <div className="flex items-center gap-2">
+            <Button className="cursor-pointer" onClick={() => navegar("runs")} size="sm" variant="outline">
+              {t("inbox.empty.view_runs", { defaultValue: "Ver histórico de execuções" })}
+            </Button>
+            <Button className="cursor-pointer" onClick={() => navegar("automations")} size="sm" variant="ghost">
+              {t("inbox.empty.view_monitors", { defaultValue: "Conferir vigilância" })}
+            </Button>
+          </div>
+        )
+      }
+      descricao={t("inbox.empty.body")}
+      icone={<InboxIcon aria-hidden />}
+      titulo={t("inbox.empty.title")}
+    />
   );
 }
 
@@ -997,10 +899,13 @@ function Atalhos() {
     ["x", t("inbox.shortcuts.discard")],
   ];
   return (
-    <p className="text-muted-foreground/70 mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs">
+    <p className="text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1 text-xs" data-locum-atalhos="">
       {teclas.map(([k, o]) => (
-        <span key={k}>
-          <kbd className="bg-muted rounded px-1 py-0.5 font-mono text-[10px]">{k}</kbd> {o}
+        <span className="flex items-center gap-1.5" key={k}>
+          {k.split(" / ").map((tecla) => (
+            <Kbd key={tecla}>{tecla}</Kbd>
+          ))}
+          {o}
         </span>
       ))}
     </p>
@@ -1009,9 +914,9 @@ function Atalhos() {
 
 function Esqueleto() {
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-1.5 pt-4">
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-1.5">
       {[0, 1, 2].map((i) => (
-        <div key={i} className="border-border/60 bg-card h-24 animate-pulse rounded-md border" />
+        <div key={i} className="border-border bg-card h-14 animate-pulse rounded-lg border" />
       ))}
     </div>
   );
