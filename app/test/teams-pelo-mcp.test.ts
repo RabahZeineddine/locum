@@ -427,6 +427,19 @@ test("ms365 com mais de uma conta: a conta da leitura vai em toda chamada, no ev
   assert.deepEqual(depois.chamadas.map((c) => c.args.account), ["eu@empresa.com", "eu@empresa.com"]);
 });
 
+test("a lista de chats da tela sai pela conta gravada do gatilho", async () => {
+  const db = bancoDeTeste();
+  await db.insert(schema.settings).values({ key: "teams.account.inbox:g1", value: "eu@empresa.com" });
+  const { call, chamadas } = servidorFalso({ chats: [{ id: "g", chatType: "group", mensagens: [] }] });
+  const mcp = cadastro("ms365", true, MULTICONTA);
+  const { listTeamsChats } = await import("../src/teams/chats.js");
+
+  await listTeamsChats({ token: semLogin, mcp, call, db, triggerId: "g1" });
+
+  assert.ok(chamadas.length > 0);
+  for (const c of chamadas) assert.equal(c.args.account, "eu@empresa.com", c.tool);
+});
+
 test("servidor de uma conta só não recebe account, e o evento não leva conta", async () => {
   const db = bancoDeTeste();
   const { call, chamadas } = servidorFalso({

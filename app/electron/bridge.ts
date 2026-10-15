@@ -1,4 +1,5 @@
 import { listTeamsChannels } from "../src/teams/channels.js";
+import { listTeamsChats } from "../src/teams/chats.js";
 import { claudeAccountService, SERVIDOR_CONTA } from "../src/runtimes/claude-account.js";
 import { claudeImportService } from "../src/services/claude-import.js";
 import { app, BrowserWindow, dialog, ipcMain, shell, type WebContents } from "electron";
@@ -414,6 +415,7 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "connections.teamsAdminConsent": (tenantId, clientId) => connectionService.teamsAdminConsent(tenantId, clientId),
     "connections.setTeamsChannels": (ligado) => connectionService.setTeamsChannels(ligado),
     "connections.teamsChannels": () => listTeamsChannels(),
+    "connections.teamsChats": (triggerId) => listTeamsChats({ triggerId }),
 
     "trackers.list": () => trackerService.list(),
     "trackers.register": (cadastro) => trackerService.register(cadastro),

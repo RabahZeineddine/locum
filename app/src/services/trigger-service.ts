@@ -8,6 +8,10 @@ import { isReserved } from "./agent-service.js";
 
 type Db = typeof defaultDb;
 
+/** Gatilho de pacote restrito a chats cujos chats ninguém escolheu: vazio valeria para todos. */
+export const MOTIVO_CHATS = "este gatilho era restrito a chats; escolha os chats antes de ligar";
+export const esperaChats = (c: TriggerConfig): boolean => c.kind === "teams-inbox" && c.chatsPendentes > 0 && c.chats.length === 0;
+
 export type TriggerRow = typeof schema.triggers.$inferSelect;
 
 /** Gatilho cadastrado, com a configuracao ja validada. */
@@ -81,6 +85,7 @@ export class TriggerService {
     const existing = options.id
       ? await this.requireRow(options.id, agentId)
       : await this.sameConfigRow(agentId, parsed);
+    if (esperaChats(parsed) && (options.enabled ?? existing?.enabled ?? false)) throw new Error(MOTIVO_CHATS);
 
     if (existing) {
       const [updated] = await this.db
@@ -119,6 +124,7 @@ export class TriggerService {
     if (isReserved(existing.agentId)) {
       throw new Error(`"${existing.agentId}" e um agent do sistema e nao aceita escrita`);
     }
+    if (enabled && esperaChats(toEntry(existing).config)) throw new Error(MOTIVO_CHATS);
     const [updated] = await this.db
       .update(schema.triggers)
       .set({ enabled })

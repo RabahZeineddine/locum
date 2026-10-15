@@ -18,6 +18,7 @@ import {
 } from "@/lib/automacao";
 import { call, useRead, type ReadResult } from "@/lib/bridge";
 import { organizarCanais } from "@/lib/canais-do-teams";
+import { organizarChats } from "@/lib/chats-do-teams";
 import { cn } from "@/lib/utils";
 import { Search, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -205,6 +206,13 @@ function ConfigDoGatilho({
                 ligado={config.prLinks}
                 rotulo={t("automations.triggers.teams-inbox.prLinks")}
                 trocar={(prLinks) => trocar({ ...config, prLinks })}
+              />
+              <ChatsDoTeams
+                chats={config.chats}
+                pendentes={config.chatsPendentes > 0}
+                trocar={(chats) => trocar({ ...config, chats })}
+                triggerId={triggerId}
+                valeParaTodos={() => trocar({ ...config, chatsPendentes: 0 })}
               />
               <CanaisDoTeams canais={config.channels} trocar={(channels) => trocar({ ...config, channels })} />
             </>
@@ -428,6 +436,131 @@ function CanaisDoTeams({ canais, trocar }: { canais: readonly CanalDoTeams[]; tr
           ? t("automations.triggers.teams-inbox.channelsHint")
           : t("automations.triggers.teams-inbox.channelsHintVia", { server: viaDoTeams })}
       </p>
+      {erro === null ? null : <p className="text-destructive text-xs">{erro}</p>}
+    </Campo>
+  );
+}
+
+/** O teto de `chats` no gatilho, o mesmo do esquema. */
+const MAX_CHATS = 20;
+
+type ChatDoTeams = Extract<TriggerConfig, { kind: "teams-inbox" }>["chats"][number];
+
+/**
+ * "Só nestes chats": restringe o gatilho a chats em grupo e diretos. Vazio é
+ * todos. A lista vem do Graph e só chega por clique, como a de canais.
+ */
+function ChatsDoTeams({
+  chats,
+  trocar,
+  triggerId,
+  pendentes,
+  valeParaTodos,
+}: {
+  chats: readonly ChatDoTeams[];
+  trocar: (c: ChatDoTeams[]) => void;
+  triggerId?: string;
+  pendentes: boolean;
+  valeParaTodos: () => void;
+}) {
+  const { t } = useTranslation();
+  const [opcoes, setOpcoes] = useState<ReadResult<"connections.teamsChats"> | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [lendo, setLendo] = useState(false);
+  const [busca, setBusca] = useState("");
+  const cheio = chats.length >= MAX_CHATS;
+  const lista = organizarChats(opcoes ?? [], new Set(chats.map((c) => c.chatId)), busca);
+
+  const listar = (): void => {
+    setLendo(true);
+    setErro(null);
+    call("connections.teamsChats", triggerId).then(
+      (achados) => {
+        setOpcoes(achados);
+        setLendo(false);
+      },
+      (e: unknown) => {
+        setErro(e instanceof Error ? e.message : String(e));
+        setLendo(false);
+      },
+    );
+  };
+
+  return (
+    <Campo rotulo={t("automations.triggers.teams-inbox.chats")}>
+      {chats.length === 0 ? null : (
+        <div className="flex flex-wrap gap-1.5">
+          {chats.map((c) => (
+            <span className="bg-muted flex items-center gap-1 rounded-full py-0.5 pr-1 pl-2.5 text-xs" key={c.chatId}>
+              {c.label ?? c.chatId}
+              <button
+                aria-label={t("automations.triggers.slack-channel.remove", { channel: c.label ?? c.chatId })}
+                className="hover:text-foreground text-muted-foreground cursor-pointer rounded-full p-0.5"
+                onClick={() => trocar(chats.filter((x) => x.chatId !== c.chatId))}
+                type="button"
+              >
+                <X className="size-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      {pendentes && chats.length === 0 ? (
+        <div className="flex flex-col items-start gap-1.5">
+          <p className="text-xs text-amber-600 dark:text-amber-400">{t("automations.triggers.teams-inbox.chatsPending")}</p>
+          <Button className="cursor-pointer" onClick={valeParaTodos} size="sm" variant="outline">
+            {t("automations.triggers.teams-inbox.chatsAll")}
+          </Button>
+        </div>
+      ) : null}
+      {opcoes === null ? (
+        <Button className="cursor-pointer self-start" disabled={lendo} onClick={listar} size="sm" variant="outline">
+          {t(lendo ? "automations.triggers.teams-inbox.loadingChats" : "automations.triggers.teams-inbox.listChats")}
+        </Button>
+      ) : (
+        <div className="flex flex-col gap-2" data-locum-teams-chats={opcoes.length}>
+          <Button className="cursor-pointer self-start" disabled={lendo} onClick={listar} size="sm" variant="ghost">
+            {t(lendo ? "automations.triggers.teams-inbox.loadingChats" : "automations.triggers.teams-inbox.reloadChats")}
+          </Button>
+          {cheio ? <p className="text-xs text-amber-600 dark:text-amber-400">{t("automations.triggers.teams-inbox.chatsMax", { max: MAX_CHATS })}</p> : null}
+          <label className="border-border bg-card focus-within:ring-ring flex h-8 max-w-sm items-center gap-2 rounded-md border px-2 focus-within:ring-2">
+            <Search aria-hidden className="text-muted-foreground size-3.5" />
+            <input
+              aria-label={t("automations.triggers.teams-inbox.searchChats")}
+              className="placeholder:text-muted-foreground w-full bg-transparent text-xs outline-none"
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder={t("automations.triggers.teams-inbox.searchChats")}
+              value={busca}
+            />
+          </label>
+          <ul className="flex max-h-72 flex-col gap-1 overflow-y-auto text-xs">
+            {lista.length === 0 ? (
+              <li className="text-muted-foreground">{t("automations.triggers.teams-inbox.noMatchChats", { termo: busca.trim() })}</li>
+            ) : (
+              lista.map((o) => (
+                <li key={o.chatId}>
+                  <label className="flex cursor-pointer items-center gap-2">
+                    <input
+                      checked={chats.some((c) => c.chatId === o.chatId)}
+                      disabled={cheio && !chats.some((c) => c.chatId === o.chatId)}
+                      className="accent-primary cursor-pointer"
+                      onChange={(e) =>
+                        trocar(e.target.checked ? [...chats, { chatId: o.chatId, label: o.label }] : chats.filter((x) => x.chatId !== o.chatId))
+                      }
+                      type="checkbox"
+                    />
+                    {o.label}
+                    <span className="text-muted-foreground text-[11px]">
+                      {t(`automations.triggers.teams-inbox.chatType.${o.chatType}`)}
+                    </span>
+                  </label>
+                </li>
+              ))
+            )}
+          </ul>
+        </div>
+      )}
+      <p className="text-muted-foreground text-[11px]">{t("automations.triggers.teams-inbox.chatsHint")}</p>
       {erro === null ? null : <p className="text-destructive text-xs">{erro}</p>}
     </Campo>
   );

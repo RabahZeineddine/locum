@@ -2097,7 +2097,22 @@
         "list": "List channels",
         "loading": "Reading channels...",
         "channelsHintVia": "Teams comes through {{server}}, which already brings channels. Each channel is one call per beat.",
-        "channelsHint": "Turn on channels in the Teams connection, under Connections. Each channel is one Graph call per beat."
+        "channelsHint": "Turn on channels in the Teams connection, under Connections. Each channel is one Graph call per beat.",
+        "chats": "Only these chats (empty = all chats)",
+        "searchChats": "Search chat or person",
+        "noMatchChats": "No chat with \"{{termo}}\".",
+        "listChats": "List chats",
+        "loadingChats": "Reading chats...",
+        "chatsHint": "Empty means every group and direct chat. With chats picked, direct messages, PR links and mentions only count in them, the others are not even read, and mentions in meeting chats stop counting.",
+        "summaryChats": "mentions and chats · {{count}} chats",
+        "reloadChats": "Reload list",
+        "chatsMax": "The maximum is {{max}} chats. Untick one to pick another.",
+        "chatsPending": "This trigger was limited to chats in the package. Pick the chats before turning it on: empty would mean all of them.",
+        "chatsAll": "Apply to all chats",
+        "chatType": {
+          "oneOnOne": "1:1",
+          "group": "group"
+        }
       },
       "poll": {
         "title": "GitHub pull request",
@@ -2547,6 +2562,7 @@
       "triggersOff_one": "{{count}} trigger, off until you turn it on",
       "triggersOff_other": "{{count}} triggers, off until you turn them on",
       "chooseChannels": "Channels and chats are not in the package: pick them in the automation after importing.",
+      "chooseChats": "This trigger was limited to chats. Pick the chats in the trigger before turning it on.",
       "downgraded": "An action that posted on its own comes in with approval.",
       "agentState": {
         "novo": "new",

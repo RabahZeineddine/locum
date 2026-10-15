@@ -2146,7 +2146,22 @@
         "list": "Listar canais",
         "loading": "Lendo canais...",
         "channelsHintVia": "O Teams vem pelo {{server}}, que já traz os canais. Cada canal é uma chamada por batida.",
-        "channelsHint": "Precisa ligar os canais na conexão do Teams, em Conexões. Cada canal é uma chamada ao Graph por batida."
+        "channelsHint": "Precisa ligar os canais na conexão do Teams, em Conexões. Cada canal é uma chamada ao Graph por batida.",
+        "chats": "Só nestes chats (vazio = todos os chats)",
+        "searchChats": "Buscar chat ou pessoa",
+        "noMatchChats": "Nenhum chat com \"{{termo}}\".",
+        "listChats": "Listar chats",
+        "loadingChats": "Lendo chats...",
+        "chatsHint": "Vazio vale para todos os chats em grupo e diretos. Com chats marcados, mensagem direta, link de PR e menção só contam neles, os outros nem são lidos, e menção em chat de reunião deixa de contar.",
+        "summaryChats": "menções e conversas · {{count}} chats",
+        "reloadChats": "Recarregar lista",
+        "chatsMax": "O máximo é {{max}} chats. Desmarque um para escolher outro.",
+        "chatsPending": "Este gatilho era restrito a chats no pacote. Escolha os chats antes de ligar: vazio valeria para todos.",
+        "chatsAll": "Valer para todos os chats",
+        "chatType": {
+          "oneOnOne": "1:1",
+          "group": "grupo"
+        }
       },
       "poll": {
         "title": "Pull request no GitHub",
@@ -2603,6 +2618,7 @@
       "triggersOff_zero": "Nenhum gatilho",
       "triggersOff_other": "{{count}} gatilhos, desligados até você ligar",
       "chooseChannels": "Canais e chats não vêm no pacote: escolha na automação depois de importar.",
+      "chooseChats": "Este gatilho era restrito a chats. Escolha os chats no gatilho antes de ligar.",
       "downgraded": "Ação que publicava sozinha entra com aprovação.",
       "agentState": {
         "novo": "novo",

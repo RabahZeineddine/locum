@@ -91,7 +91,10 @@ const GatilhoDoPacote = z.discriminatedUnion("kind", [
   ManualTrigger.strict(),
   SlackInboxTrigger.strict(),
   SlackChannelTrigger.omit({ channels: true }).strict(),
-  TeamsInboxTrigger.omit({ channels: true }).strict(),
+  TeamsInboxTrigger.omit({ channels: true, chats: true, chatsPendentes: true })
+    // Quantos chats restringiam o gatilho, sem os ids. Ausente é gatilho em todos os chats.
+    .extend({ chatsRestritos: z.number().int().positive().optional() })
+    .strict(),
   PollTrigger.omit({ owner: true, filters: true })
     .extend({ filters: PollFilters.omit({ authors: true, reviewRequested: true, teamMembers: true }).strict().optional() })
     .strict(),
@@ -144,7 +147,7 @@ const SkillRequerida = z.object({ nome: z.string().min(1) }).strict();
 const ProvedorRequerido = z.object({ provedor: z.string().min(1), modelos: z.array(z.string().min(1)) }).strict();
 
 /** O que a exportação deixou de fora de propósito, para a prévia pedir à pessoa. */
-export const CodigoOmitido = z.enum(["canais", "gatilho-sem-canal", "filtros-de-pessoa", "dono-do-github", "tracker", "argumentos", "texto-limpo", "url-a-preencher", "escrita-removida"]);
+export const CodigoOmitido = z.enum(["canais", "gatilho-sem-canal", "filtros-de-pessoa", "dono-do-github", "tracker", "argumentos", "texto-limpo", "url-a-preencher", "escrita-removida", "chats-a-escolher"]);
 export type CodigoOmitido = z.infer<typeof CodigoOmitido>;
 const Omitido = z.object({ codigo: CodigoOmitido, onde: z.string().min(1), quantos: z.number().int().positive().optional() }).strict();
 

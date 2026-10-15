@@ -593,6 +593,27 @@ export const TeamsInboxTrigger = z.object({
     )
     .max(20)
     .default([]),
+  /**
+   * Chats em grupo e diretos onde o gatilho olha. Vazia é todos os chats, como
+   * sempre foi, para o gatilho já salvo seguir igual. Com itens, mensagem
+   * direta, link de PR e menção em chat só contam nestes, e a varredura nem lê
+   * os outros. Canal de equipe segue pela lista `channels`.
+   */
+  chats: z
+    .array(
+      z.object({
+        chatId: z.string().min(1),
+        label: z.string().optional(),
+      }),
+    )
+    .max(20)
+    .default([]),
+  /**
+   * Quantos chats restringiam o gatilho no pacote de onde veio, ou 0. Os ids são da conta de
+   * quem exportou, então a lista chega vazia, e vazio é todos: enquanto a
+   * pessoa não escolhe os chats, o gatilho não liga.
+   */
+  chatsPendentes: z.number().int().min(0).default(0),
   everyMinutes: z.number().int().min(1).default(5),
   workingHours: WorkingHoursConfig.optional(),
 });

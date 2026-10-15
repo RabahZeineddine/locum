@@ -124,6 +124,7 @@ async function montarAutomacao(m: Maquina, id = "revisao-de-pr"): Promise<void> 
         config: {
           kind: "teams-inbox", prLinks: true, mentions: false, dms: false,
           channels: [{ teamId: EQUIPE_DO_TEAMS, channelId: CANAL_DO_TEAMS, label: "Pagamentos" }],
+          chats: [{ chatId: CHAT_DO_TEAMS, label: "Revisões" }],
         },
         enabled: true,
       },
@@ -199,7 +200,7 @@ test("o pacote exportado não carrega segredo, id de canal, conta, e-mail nem ca
     for (const [rotulo, valor] of proibidos) assert.ok(!texto.includes(valor), `o pacote vazou: ${rotulo}`);
     assert.doesNotMatch(texto, /[\w.+-]+@[\w-]+\.[a-z]{2,}/i, "sobrou algo com cara de e-mail");
     assert.doesNotMatch(texto, /\/(?:Users|home)\//, "sobrou caminho de home");
-    for (const chave of ["credentialRef", "cursor", "headers", "env", "lastError", "channelId", "teamId"]) {
+    for (const chave of ["credentialRef", "cursor", "headers", "env", "lastError", "channelId", "teamId", "chatId"]) {
       assert.ok(!texto.includes(`"${chave}"`), `o pacote tem o campo ${chave}`);
     }
 
@@ -271,7 +272,7 @@ test("a prévia mostra o que será criado e cada dependência com o estado dela"
   assert.deepEqual(previa.agents.map((a) => [a.id, a.situacao]), [["revisor", "novo"]]);
   assert.deepEqual(previa.dependencias.find((d) => d.tipo === "skill"), { tipo: "skill", chave: "review-pr", nome: "review-pr", estado: "ok", usadoPor: ["agent:revisor"], atalho: null, candidatos: [] });
   assert.equal(previa.agents[0]!.modelo.disponivel, true);
-  assert.deepEqual(previa.gatilhos.find((g) => g.tipo === "slack-channel"), { tipo: "slack-channel", precisaCanal: true });
+  assert.deepEqual(previa.gatilhos.find((g) => g.tipo === "slack-channel"), { tipo: "slack-channel", precisaCanal: true, precisaChats: false });
   assert.deepEqual(previa.acoesRebaixadas, ["avisar"]);
 
   const estado = (tipo: string, chave: string) => previa.dependencias.find((d) => d.tipo === tipo && d.chave === chave);
@@ -306,6 +307,46 @@ test("provedor ausente pede modelo: o padrão é um do mesmo provedor, ou nada",
 
 /* -------------------------------------------------------------- importar */
 
+test("gatilho restrito a chats: o pacote só diz quantos, e a importação não liga até escolher os chats", async () => {
+  const dono = maquina();
+  await montarAutomacao(dono);
+  const { pacote, texto } = await dono.pacotes.exportar("revisao-de-pr");
+  const teamsDoPacote = pacote.automacao.gatilhos.find((g) => g.kind === "teams-inbox");
+  assert.equal(teamsDoPacote?.kind === "teams-inbox" && teamsDoPacote.chatsRestritos, 1);
+  assert.ok(!texto.includes(CHAT_DO_TEAMS), "o id do chat vazou");
+
+  const bruno = maquina();
+  const previa = await bruno.pacotes.previa(texto);
+  assert.ok(previa.gatilhos.some((g) => g.tipo === "teams-inbox" && g.precisaChats));
+  const r = await bruno.pacotes.importar(texto);
+  assert.ok(r.pendencias.some((p) => p.codigo === "chats-a-escolher" && p.onde === "teams-inbox"));
+
+  const gatilho = (await bruno.automations.get("revisao-de-pr"))!.triggers.find((g) => g.config.kind === "teams-inbox")!;
+  assert.equal(gatilho.config.kind === "teams-inbox" && gatilho.config.chatsPendentes, 1);
+  await assert.rejects(bruno.triggers.setEnabled(gatilho.id, true), /restrito a chats/);
+  await assert.rejects(bruno.triggers.set("revisao-de-pr", gatilho.config, { id: gatilho.id, enabled: true }), /restrito a chats/);
+  await assert.rejects(bruno.automations.setEnabled("revisao-de-pr", true), /restrito a chats/);
+  assert.ok((await bruno.triggers.list("revisao-de-pr")).every((g) => !g.enabled), "ligar a automação deixou parte dos gatilhos ligada");
+
+  // Escolhidos os chats, liga.
+  const escolhido = { ...gatilho.config, chats: [{ chatId: CHAT_DO_TEAMS }] };
+  await bruno.triggers.set("revisao-de-pr", escolhido, { id: gatilho.id });
+  assert.equal((await bruno.triggers.setEnabled(gatilho.id, true)).enabled, true);
+});
+
+test("pacote antigo, sem chatsRestritos, segue válido e o gatilho liga", async () => {
+  const dono = maquina();
+  await montarAutomacao(dono);
+  const { pacote } = await dono.pacotes.exportar("revisao-de-pr");
+  for (const g of pacote.automacao.gatilhos) if (g.kind === "teams-inbox") delete (g as { chatsRestritos?: number }).chatsRestritos;
+  const bruno = maquina();
+  const r = await bruno.pacotes.importar(JSON.stringify(pacote));
+  assert.ok(!r.pendencias.some((p) => p.codigo === "chats-a-escolher"));
+  const gatilho = (await bruno.automations.get("revisao-de-pr"))!.triggers.find((g) => g.config.kind === "teams-inbox")!;
+  assert.equal((await bruno.triggers.setEnabled(gatilho.id, true)).enabled, true);
+});
+
+
 test("importar cria a automação com gatilhos desligados e sem canal, e o agent novo", async () => {
   const texto = await pacoteDoDono();
   const bruno = maquina();
@@ -320,6 +361,7 @@ test("importar cria a automação com gatilhos desligados e sem canal, e o agent
   assert.ok(automacao.triggers.every((g) => !g.enabled), "todo gatilho entra desligado");
   const teams = automacao.triggers.find((g) => g.config.kind === "teams-inbox");
   assert.deepEqual(teams?.config.kind === "teams-inbox" && teams.config.channels, []);
+  assert.deepEqual(teams?.config.kind === "teams-inbox" && teams.config.chats, []);
   assert.ok(r.pendencias.some((p) => p.codigo === "gatilho-sem-canal" && p.onde === "slack-channel"));
   assert.ok(r.pendencias.some((p) => p.codigo === "dono-do-github"));
   // Ação em `auto` entra em aprovação: ninguém disse que podia sair sozinha.
@@ -535,6 +577,7 @@ test("campo estranho, dentro ou fora, é recusado com o lugar dele", async () =>
   recusa((p) => { p.requisitos.servidores[0].env = { A: "b" }; }, /campo desconhecido "env"/);
   recusa((p) => { p.automacao.spec.steps[0].extra = 1; }, /campo desconhecido "extra"/);
   recusa((p) => { p.automacao.gatilhos[0].channels = []; }, /campo desconhecido "channels"/);
+  recusa((p) => { p.automacao.gatilhos[0].chats = []; }, /campo desconhecido "chats"/);
   recusa((p) => { p.automacao.id = "Maiúscula"; }, /automacao\.id/);
   recusa((p) => { p.automacao.spec.steps[0].profile = "fantasma"; }, /usa o agent "fantasma", que não está no pacote/);
   recusa((p) => { p.agents.push(structuredClone(p.agents[0])); }, /aparece duas vezes/);

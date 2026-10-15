@@ -180,7 +180,7 @@ export interface PreviaDoPacote {
   /** Os modelos que esta máquina oferece, como `provedor/modelo`, para ligar cada agent. */
   modelosAqui: string[];
   /** Todos entram desligados; `precisaCanal` fica de fora até a pessoa escolher. */
-  gatilhos: { tipo: string; precisaCanal: boolean }[];
+  gatilhos: { tipo: string; precisaCanal: boolean; precisaChats: boolean }[];
   /** O que o pacote deixou de fora de propósito, para a pessoa escolher aqui. */
   omitidos: Pacote["omitidos"];
   /** Passos de ação que o pacote trazia em modo `auto` e entram em `approve`. */
@@ -429,9 +429,10 @@ export class PacoteService {
   ): GatilhoDoPacote {
     switch (config.kind) {
       case "teams-inbox": {
-        const { channels, ...resto } = config;
-        if (channels.length > 0) omitir("canais", "teams-inbox", channels.length);
-        return resto;
+        const { channels, chats, chatsPendentes, ...resto } = config;
+        if (channels.length + chats.length > 0) omitir("canais", "teams-inbox", channels.length + chats.length);
+        const restritos = chats.length > 0 ? chats.length : chatsPendentes;
+        return restritos === 0 ? resto : { ...resto, chatsRestritos: restritos };
       }
       case "slack-channel": {
         const { channels, ...resto } = config;
@@ -597,7 +598,11 @@ export class PacoteService {
         p.type === "action" && p.action === "http.request" ? [{ passo: p.key, ...(p.params?.origem === undefined ? {} : { origem: p.params.origem }) }] : [],
       ),
       modelosAqui: [...disponiveis].sort(),
-      gatilhos: pacote.automacao.gatilhos.map((g) => ({ tipo: g.kind, precisaCanal: g.kind === "slack-channel" })),
+      gatilhos: pacote.automacao.gatilhos.map((g) => ({
+        tipo: g.kind,
+        precisaCanal: g.kind === "slack-channel",
+        precisaChats: g.kind === "teams-inbox" && g.chatsRestritos !== undefined,
+      })),
       omitidos: pacote.omitidos,
       acoesRebaixadas: pacote.automacao.spec.steps.flatMap((p) => (p.type === "action" && p.mode === "auto" ? [p.key] : [])),
     };
@@ -863,6 +868,9 @@ export class PacoteService {
         continue;
       }
       TriggerConfig.parse(config);
+      if (g.kind === "teams-inbox" && g.chatsRestritos !== undefined) {
+        pendencias.push({ codigo: "chats-a-escolher", onde: g.kind });
+      }
       gatilhos.push({ config, enabled: false });
     }
 
@@ -1013,8 +1021,10 @@ function gatilhoParaCadastro(g: GatilhoDoPacote, servidor: (nome: string) => str
     // Sem canal o cadastro recusa: a automação nasce sem este gatilho, e a pessoa o acrescenta.
     case "slack-channel":
       return null;
-    case "teams-inbox":
-      return { ...g, channels: [] };
+    case "teams-inbox": {
+      const { chatsRestritos, ...resto } = g;
+      return { ...resto, channels: [], chats: [], chatsPendentes: chatsRestritos ?? 0 };
+    }
     case "mcp-poll":
       return { ...g, server: servidor(g.server), args: {} };
     default:
