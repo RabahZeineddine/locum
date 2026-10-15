@@ -4,6 +4,10 @@ Projeto renomeado de Agent Watchers para Locum em 19 de setembro de 2026.
 
 Atualizado em 15 de outubro de 2026.
 
+## Redesign, fatia 1: base, esqueleto, ⌘K, Conexões e Hoje (15/10/2026)
+
+Tokens densos (quase preto, Inter, um acento violeta, sem gradiente), componentes base novos em `renderer/components/ui`, barra lateral estreita, paleta ⌘K com navegação e ações, Conexões em linhas com detalhe em duas colunas e Hoje compacta; as regras estão em `docs/design.md`.
+
 ## Atritos da jornada: Hoje, Conexões, Agent e Automações (15/10/2026)
 
 Lote de uma jornada real no app empacotado.
