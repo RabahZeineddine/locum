@@ -1715,6 +1715,12 @@
     "lead": "Tudo que o Locum alcança fora desta máquina: serviços, servidores MCP e trackers de tarefas. Conecte uma vez aqui; canal, filtro e destino ficam em cada automação.",
     "yours": {
       "title": "Suas conexões",
+      "search": "Buscar por nome, origem ou ferramenta",
+      "clearSearch": "Limpar a busca",
+      "fromCatalog": "No catálogo, ainda não ligadas",
+      "addFromCatalog": "Adicionar",
+      "noResults": "Nada com \"{{termo}}\" nas suas conexões nem no catálogo.",
+      "noResultsHint": "Cadastre um servidor MCP pelo endereço ou importe os que você já usa em outra ferramenta.",
       "description": "O que está conectado ou cadastrado, com o estado de cada uma e o que ela libera nas automações.",
       "needAttention_one": "{{count}} conexão pede atenção. Abra para ver o que fazer.",
       "needAttention_other": "{{count}} conexões pedem atenção. Abra para ver o que fazer.",
@@ -1732,9 +1738,35 @@
     },
     "reason": {
       "needs-auth": "Falta autorizar, ou a autorização venceu. Reconecte.",
+      "no-credential": "Falta a credencial deste servidor. Cole o token na conexão para ele subir.",
       "disabled": "Desligada: nenhuma automação usa esta conexão enquanto estiver assim.",
       "failing": "A última tentativa de conexão falhou.",
       "untested": "Ligada e autorizada, mas ainda sem teste. Use Testar para conferir."
+    },
+    "parts": {
+      "title": "Partes desta conexão",
+      "hint": "O GitHub tem duas partes: o token, que o Locum usa direto, e o servidor MCP, que dá ferramentas aos agents. O servidor usa o token guardado, a não ser que tenha credencial própria.",
+      "token": {
+        "title": "Token do GitHub",
+        "offers": "Libera os gatilhos de pull request e a prévia do diff nas automações.",
+        "ok": "guardado",
+        "missing": "não guardado",
+        "save": "Guardar token"
+      },
+      "server": {
+        "title": "Servidor MCP do GitHub",
+        "offers": "Libera as ferramentas de pull request, issue e código para os agents.",
+        "none": "Nenhum servidor MCP do GitHub cadastrado. Os agents ainda não têm essas ferramentas.",
+        "turnOn": "Ligar servidor",
+        "state": {
+          "ok": "respondeu",
+          "untested": "ligado, ainda sem teste",
+          "disabled": "desligado",
+          "no-credential": "falta o token",
+          "needs-auth": "credencial recusada",
+          "failing": "falhou na última conexão"
+        }
+      }
     },
     "offers": {
       "title": "O que libera",

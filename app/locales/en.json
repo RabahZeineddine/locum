@@ -1677,6 +1677,12 @@
     "lead": "Everything Locum reaches outside this machine: services, MCP servers and task trackers. Connect once here; channel, filter and destination live in each automation.",
     "yours": {
       "title": "Your connections",
+      "search": "Search by name, origin or tool",
+      "clearSearch": "Clear search",
+      "fromCatalog": "In the catalog, not connected yet",
+      "addFromCatalog": "Add",
+      "noResults": "Nothing for \"{{termo}}\" in your connections or the catalog.",
+      "noResultsHint": "Register an MCP server by its address, or import the ones you already use in another tool.",
       "description": "What is connected or registered, with the state of each one and what it unlocks in automations.",
       "needAttention_one": "{{count}} connection needs attention. Open it to see what to do.",
       "needAttention_other": "{{count}} connections need attention. Open them to see what to do.",
@@ -1693,9 +1699,35 @@
     },
     "reason": {
       "needs-auth": "Needs authorization, or the authorization expired. Reconnect.",
+      "no-credential": "This server is missing its credential. Paste the token in the connection so it can start.",
       "disabled": "Turned off: no automation uses this connection while it stays like this.",
       "failing": "The last connection attempt failed.",
       "untested": "On and authorized, but not tested yet. Use Test to check."
+    },
+    "parts": {
+      "title": "Parts of this connection",
+      "hint": "GitHub has two parts: the token, which Locum uses directly, and the MCP server, which gives agents tools. The server uses the stored token unless it has a credential of its own.",
+      "token": {
+        "title": "GitHub token",
+        "offers": "Unlocks the pull request triggers and the diff preview in automations.",
+        "ok": "stored",
+        "missing": "not stored",
+        "save": "Save token"
+      },
+      "server": {
+        "title": "GitHub MCP server",
+        "offers": "Unlocks the pull request, issue and code tools for agents.",
+        "none": "No GitHub MCP server registered. Agents do not have those tools yet.",
+        "turnOn": "Turn on server",
+        "state": {
+          "ok": "responded",
+          "untested": "on, not tested yet",
+          "disabled": "off",
+          "no-credential": "token missing",
+          "needs-auth": "credential refused",
+          "failing": "failed on the last connection"
+        }
+      }
     },
     "offers": {
       "title": "What it unlocks",

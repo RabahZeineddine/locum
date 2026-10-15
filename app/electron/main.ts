@@ -2206,19 +2206,98 @@ async function checkConfig(window: BrowserWindow): Promise<string> {
     "lista de conexões",
     `(() => {
       const lista = document.querySelector("[data-locum-probe=connections]");
-      return lista === null || lista.dataset.locumCarregada !== "sim" ? null : lista.dataset.locumLigadas;
+      return lista === null || lista.dataset.locumCarregada !== "sim" ? null : lista.dataset.locumLigadas + "|" + lista.dataset.locumServidores;
     })()`,
   );
+  // O servidor que é de um item do catálogo mora na conexão dele, e por isso
+  // basta aparecer como servidor de alguma conexão da lista.
+  const [conexoesLigadas = "", servidoresLigados = ""] = ligadas.split("|");
   const servidores = (await mcpService.list()).filter(
     (s) => !(s.config.transport === "stdio" && (s.config.command ?? []).includes(IMAGEM_DO_GRAFANA)),
   );
   for (const servidor of servidores) {
-    if (!ligadas.split(",").includes(servidor.config.name)) {
-      throw new Error(`a lista de conexões nao mostrou o servidor ${servidor.config.name}: ${ligadas}`);
+    if (!servidoresLigados.split(",").includes(servidor.config.name)) {
+      throw new Error(`a lista de conexões nao mostrou o servidor ${servidor.config.name}: ${servidoresLigados}`);
     }
   }
-  if (!ligadas.split(",").includes(FIXTURE_SERVER)) {
+  if (!conexoesLigadas.split(",").includes(FIXTURE_SERVER)) {
     throw new Error(`o servidor de brinquedo ${FIXTURE_SERVER} nao apareceu nas conexões`);
+  }
+
+  // O servidor MCP do GitHub desligado é a conexão GitHub, e não some: aparece
+  // em "Suas conexões" como atenção, a busca o acha, e o detalhe mostra o token
+  // e o servidor como partes separadas.
+  if ((await mcpService.get("github")) === undefined) {
+    await mcpService.register({
+      name: "github",
+      transport: "http",
+      url: "https://api.githubcopilot.com/mcp/",
+      headers: { Authorization: "${credential}" },
+    });
+    await mcpService.setEnabled("github", false);
+    try {
+      await irPara(window, "today");
+      await irPara(window, "connections");
+      const estadoDoGithub = await esperarProbe<string>(
+        window,
+        "conexão GitHub com o servidor desligado",
+        `document.querySelector('[data-locum-conexao="github"]')?.dataset.locumConexaoEstado ?? null`,
+      );
+      if (estadoDoGithub !== "attention") {
+        throw new Error(`o GitHub com o servidor desligado mostrou "${estadoDoGithub}" e nao "attention"`);
+      }
+
+      const digitar = (texto: string): Promise<unknown> =>
+        window.webContents.executeJavaScript(`(() => {
+          const campo = document.querySelector("[data-locum-conexoes-busca]");
+          Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(campo, ${JSON.stringify(texto)});
+          campo.dispatchEvent(new Event("input", { bubbles: true }));
+          return null;
+        })()`);
+
+      // A barra leva o foco para a busca.
+      await window.webContents.executeJavaScript(`(window.dispatchEvent(new KeyboardEvent("keydown", { key: "/", cancelable: true })), null)`);
+      const focada = await esperarProbe<boolean>(
+        window,
+        "foco na busca",
+        `document.activeElement === document.querySelector("[data-locum-conexoes-busca]") ? true : null`,
+      );
+      if (!focada) throw new Error("a barra nao levou o foco para a busca de conexoes");
+
+      await digitar("github");
+      await esperarProbe<true>(
+        window,
+        "busca por github",
+        `document.querySelector("[data-locum-busca-suas]")?.dataset.locumBuscaSuas === "github" ? true : null`,
+      );
+      await digitar("zzz-nada");
+      await esperarProbe<true>(window, "busca sem resultado", `document.querySelector("[data-locum-busca-vazia]") === null ? null : true`);
+      await digitar("slack");
+      await esperarProbe<true>(
+        window,
+        "busca no catálogo",
+        `document.querySelector('[data-locum-busca-catalogo] [data-locum-catalogo="slack"]') === null ? null : true`,
+      );
+      await digitar("");
+
+      await abrirConexao(window, "github");
+      const partes = await esperarProbe<string>(
+        window,
+        "partes do GitHub",
+        `(() => {
+          const token = document.querySelector('[data-locum-parte="token"]');
+          const servidor = document.querySelector('[data-locum-parte="servidor"]');
+          return token === null || servidor === null ? null : token.dataset.locumParteEstado + "|" + servidor.dataset.locumParteEstado;
+        })()`,
+      );
+      if (!partes.endsWith("|disabled")) throw new Error(`o detalhe do GitHub mostrou a parte do servidor como "${partes}" e nao "disabled"`);
+      const ligarServidor = await window.webContents.executeJavaScript(`document.querySelector('[data-locum-ligar-parte="github"]') !== null`);
+      if (ligarServidor !== true) throw new Error("o detalhe do GitHub nao ofereceu ligar o servidor desligado");
+      console.log("conexões: GitHub com o servidor desligado aparece como atenção, a barra foca a busca, a busca acha o GitHub e o catálogo, e o detalhe separa token e servidor");
+    } finally {
+      await mcpService.remove("github");
+    }
+    await irPara(window, "connections");
   }
 
   // O orçamento saiu da Configuração e mora no detalhe de cada agent: cada um
@@ -6567,6 +6646,53 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
     `(window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })), null)`,
   );
 
+  // Ícones de marca na lista, a busca e o GitHub com token e servidor. Os
+  // servidores são de mentira e saem no fim, porque o banco é o da fumaça.
+  {
+    const { mcpService } = await import("../src/services/mcp-service.js");
+    const { githubService } = await import("../src/services/github-service.js");
+    const emprestados = ["github", "slack", "figma-da-casa", "argocd", "context7", "datagrip"];
+    await mcpService.register({ name: "github", transport: "http", url: "https://api.githubcopilot.com/mcp/", headers: { Authorization: "${credential}" } });
+    await mcpService.setEnabled("github", false);
+    await mcpService.register({ name: "slack", transport: "http", url: "https://mcp.slack.com/mcp" });
+    await mcpService.register({ name: "figma-da-casa", transport: "http", url: "https://mcp.figma.com/mcp" });
+    await mcpService.register({ name: "argocd", transport: "http", url: "http://localhost:8080/mcp" });
+    await mcpService.register({ name: "context7", transport: "http", url: "https://mcp.context7.com/mcp" });
+    await mcpService.register({ name: "datagrip", transport: "http", url: "http://127.0.0.1:64342/sse" });
+    try {
+      await githubService.setToken("ghp_exemplo_de_captura").catch(() => undefined);
+      const pausa = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+      const digitar = (texto: string): Promise<unknown> =>
+        janela.webContents.executeJavaScript(`(() => {
+          const campo = document.querySelector("[data-locum-conexoes-busca]");
+          Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(campo, ${JSON.stringify(texto)});
+          campo.dispatchEvent(new Event("input", { bubbles: true }));
+          return null;
+        })()`);
+      await irPara(janela, "today");
+      await irPara(janela, "connections");
+      await pausa(1800);
+      writeFileSync(join(destino, "conexoes-icones-lista.png"), (await janela.webContents.capturePage()).toPNG());
+      await digitar("github");
+      await pausa(500);
+      writeFileSync(join(destino, "conexoes-busca-github.png"), (await janela.webContents.capturePage()).toPNG());
+      await digitar("notion");
+      await pausa(500);
+      writeFileSync(join(destino, "conexoes-busca-catalogo.png"), (await janela.webContents.capturePage()).toPNG());
+      await digitar("zzz-nada");
+      await pausa(500);
+      writeFileSync(join(destino, "conexoes-busca-vazia.png"), (await janela.webContents.capturePage()).toPNG());
+      await irPara(janela, "connections", "github");
+      await pausa(2000);
+      await janela.webContents.executeJavaScript(`(document.querySelector("[data-locum-github-partes]")?.scrollIntoView({ block: "center" }), null)`);
+      await pausa(400);
+      writeFileSync(join(destino, "conexoes-github-detalhe.png"), (await janela.webContents.capturePage()).toPNG());
+    } finally {
+      for (const nome of emprestados) await mcpService.remove(nome);
+      await githubService.clearToken().catch(() => undefined);
+    }
+  }
+
   // O servidor MCP próprio, com os detalhes técnicos abertos.
   if (primeiroServidor !== undefined) {
     await irPara(janela, "connections", primeiroServidor);
@@ -6598,7 +6724,7 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
       await irPara(janela, "connections");
       await new Promise((resolve) => setTimeout(resolve, 1500));
       writeFileSync(join(destino, "connections-vinculada-lista.png"), (await janela.webContents.capturePage()).toPNG());
-      await irPara(janela, "connections", "ms365");
+      await irPara(janela, "connections", "teams");
       await new Promise((resolve) => setTimeout(resolve, 2000));
       await janela.webContents.executeJavaScript(
         `(document.querySelector("[data-locum-tecnico]")?.setAttribute("open", ""), document.querySelector("[data-locum-vinculo-detalhe]")?.scrollIntoView({ block: "center" }), null)`,
@@ -6614,7 +6740,7 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
       await irPara(janela, "connections");
       await new Promise((resolve) => setTimeout(resolve, 1500));
       writeFileSync(join(destino, "connections-origem-mudou-lista.png"), (await janela.webContents.capturePage()).toPNG());
-      await irPara(janela, "connections", "ms365");
+      await irPara(janela, "connections", "teams");
       await new Promise((resolve) => setTimeout(resolve, 2000));
       await janela.webContents.executeJavaScript(`(document.querySelector("[data-locum-origem-de]")?.scrollIntoView({ block: "center" }), null)`);
       await new Promise((resolve) => setTimeout(resolve, 400));

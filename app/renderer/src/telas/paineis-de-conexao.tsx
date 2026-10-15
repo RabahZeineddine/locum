@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { call, read, useRead, type ReadResult } from "@/lib/bridge";
+import { call, invalidateReads, read, useRead, type ReadResult } from "@/lib/bridge";
 import { cn } from "@/lib/utils";
 import { quando } from "./sessoes";
 import { useState } from "react";
@@ -177,6 +177,9 @@ export function Github() {
       .then(recarregar, () => undefined)
       .finally(() => {
         setSalvando(false);
+        // O estado da conexão e o do servidor que usa o token dependem dele.
+        invalidateReads("connections.list");
+        invalidateReads("mcp.list");
         // A conferência anterior era do token antigo, e o serviço já a apagou.
         setConferencia({ fase: "parado" });
       });
@@ -185,7 +188,11 @@ export function Github() {
   const esquecer = (): void => {
     call("github.forget")
       .then(recarregar, () => undefined)
-      .finally(() => setConferencia({ fase: "parado" }));
+      .finally(() => {
+        setConferencia({ fase: "parado" });
+        invalidateReads("connections.list");
+        invalidateReads("mcp.list");
+      });
   };
 
   const conferir = (): void => {

@@ -98,6 +98,8 @@ export interface Connection extends CatalogEntry {
   detail: string | null;
   /** Ferramentas da última lista guardada, sem subir o servidor. Nulo quando nunca listou. */
   toolCount: number | null;
+  /** Os nomes das ferramentas da última lista guardada, para a busca da tela. */
+  toolNames: string[];
   /**
    * Os servidores MCP cadastrados que esta conexão realmente usa: um para o
    * serviço do catálogo, um para o próprio, todas as instâncias do Grafana, e
@@ -193,6 +195,7 @@ export class ConnectionService {
           custom: true,
           account: null,
           toolCount: await this.toolCount(s.config.name),
+          toolNames: await this.toolNames([s.config.name]),
           servers: [s.config.name],
           trackers: 0,
           partes: null,
@@ -230,6 +233,11 @@ export class ConnectionService {
       );
     }
     return [...porId.values()];
+  }
+
+  private async toolNames(servidores: string[]): Promise<string[]> {
+    const listas = await Promise.all(servidores.map((nome) => this.deps.mcp.cachedTools(nome)));
+    return listas.flatMap((l) => l?.tools.map((t) => t.name) ?? []);
   }
 
   private async toolCount(nome: string): Promise<number | null> {
@@ -465,6 +473,7 @@ export class ConnectionService {
       reason: null,
       detail: null,
       toolCount: principal === undefined ? null : await this.toolCount(principal.config.name),
+      toolNames: await this.toolNames(doItem.map((s) => s.config.name)),
       partes: null,
     };
     switch (entry.kind) {
@@ -515,7 +524,7 @@ export class ConnectionService {
             origem === undefined
               ? { state: "connected" as const, reason: null, detail: null }
               : estadoDoServidor(origem, true);
-          return { ...base, servers, toolCount: servers[0] === undefined ? null : await this.toolCount(servers[0]), ...estado };
+          return { ...base, servers, toolNames: await this.toolNames(servers), toolCount: servers[0] === undefined ? null : await this.toolCount(servers[0]), ...estado };
         }
         if (entry.id === "grafana") {
           const instancias = [...porNome.values()].filter((s) => ehDoGrafana(s.config));

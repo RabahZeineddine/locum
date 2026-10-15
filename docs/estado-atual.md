@@ -4,6 +4,49 @@ Projeto renomeado de Agent Watchers para Locum em 19 de setembro de 2026.
 
 Atualizado em 15 de outubro de 2026.
 
+## Conexões: busca, GitHub numa conexão só e ícones de marca (15/10/2026)
+
+Atritos de uso real da tela de Conexões.
+
+- **Busca** em "Suas conexões" (`renderer/lib/busca-conexoes.ts`): nome, origem,
+  descrição e ferramentas da última lista guardada (`Connection.toolNames`).
+  `/` ou ⌘F focam o campo, Esc limpa. Cobre o catálogo: o que não está ligado
+  aparece em "No catálogo, ainda não ligadas"; sem resultado, a tela manda
+  cadastrar um servidor por endereço ou importar.
+- **Servidor de item do catálogo mora na conexão dele**
+  (`services/conexao-catalogo.ts`, `conexaoDoServidor`): casa pelo id, por
+  apelido (`ms365` é Teams), pelo host da URL (`api.githubcopilot.com` é GitHub,
+  `mcp.slack.com` é Slack) ou pelo pacote do comando. Entra em `servers` da
+  conexão em vez de virar cartão próprio. O `github` desligado sumia porque o
+  cartão só olhava o token e ficava "disponível".
+- **GitHub: duas partes, um cartão.** `Connection.partes` traz o estado do
+  token e do servidor MCP, e a conexão não diz "conectado" com uma parte
+  falhando (`desligado`, `falta o token`, `recusado`, `falhou`). O detalhe tem
+  Guardar token, Ligar servidor e Testar.
+- **O token do GitHub alimenta o servidor MCP** do GitHub (`McpService.connectable`):
+  vai como `Bearer <token>`, sem duplicar o prefixo, e a credencial própria do
+  servidor vence. O cofre dos servidores já guarda o valor com esquema; só o token
+  pessoal, guardado puro, ganha o `Bearer`.
+- **Credencial referenciada que não existe** não vira "missing Authorization
+  header": o registro recusa antes com "falta a credencial de X; cole o token em
+  Conexões > X" (`McpServerConfig.credencialFaltando`, preenchido só por
+  `connectable`). A recusa de credencial agora aponta para Conexões, não mais
+  para Configuração.
+- **Ícones**: `renderer/lib/marca.ts` (`marcaDoServidor`) mapeia por catálogo,
+  host, pacote ou nome e cai na inicial com cor estável.
+  `renderer/components/marca-logo.tsx` desenha em Conexões, Agents (cartão e
+  lista) e no cartão de escrita do chat. Logos do Simple Icons (CC0 1.0),
+  copiadas para `renderer/src/marcas.ts` (só as usadas, 19 KB no arquivo; o pacote
+  inteiro passa de 5 MB). Slack, Microsoft, Canva e Amplitude não existem no
+  pacote: glifo (Slack, Teams) ou inicial, com a cor da marca.
+- Fica de fora: ícone em Modelos (provedores de modelo não são conexões), o
+  seletor nativo de "adicionar conexão" do agent (um `<select>` não tem ícone) e
+  a marca de servidor stdio próprio por pacote (a conexão não expõe o comando,
+  que pode ter segredo nos argumentos; vale o nome e o host).
+- Testes: `conexao-catalogo`, `marca`, `busca-conexoes`, `mcp-credencial-github` e
+  os casos de fusão em `connection-service`. A fumaça cobre a busca e o GitHub
+  com o servidor desligado; `--capturas` gera as fotos.
+
 ## Agent do conceito v3, fatia B: o chat do agent (15/10/2026)
 
 A aba Conversar do agent conversa com o que `resolveProfile` entrega: system,
