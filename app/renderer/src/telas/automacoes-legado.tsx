@@ -3,6 +3,10 @@ import { CodeBlock, CodeBlockCopyButton } from "@/components/ai-elements/code-bl
 import { Badge } from "@/components/ui/badge";
 import { CabecalhoDaTela } from "@/components/cabecalho-da-tela";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ListGroup, ListRow } from "@/components/ui/list-row";
+import { StatusDot } from "@/components/ui/status-dot";
+import { pontoDoEstado } from "@/lib/estado-do-ponto";
 import { call, useRead, type ReadResult } from "@/lib/bridge";
 import { exportarAgent } from "@/lib/editar-agent";
 import { Secao } from "./blocos";
@@ -104,15 +108,13 @@ function Lista({ navegar }: { navegar: TelaProps["navegar"] }) {
       </div>
 
       {agents.status === "ready" && linhas.length === 0 ? (
-        <p className="text-muted-foreground text-sm">
-          {t("automations.legacy.empty")}
-        </p>
+        <EmptyState titulo={t("automations.legacy.empty")} />
       ) : (
-        <ul className="divide-border superficie divide-y overflow-hidden rounded-xl">
+        <ListGroup>
           {linhas.map((agent) => (
             <LinhaDoAgent agent={agent} key={agent.id} navegar={navegar} />
           ))}
-        </ul>
+        </ListGroup>
       )}
     </div>
   );
@@ -139,50 +141,36 @@ function LinhaDoAgent({
   const gatilho = agent.triggers[0];
 
   return (
-    <li>
-      <button
-        className="hover:bg-accent/40 focus-visible:ring-ring w-full cursor-pointer px-4 py-3 text-left transition-colors duration-200 focus-visible:ring-2 focus-visible:-outline-offset-2"
-        data-locum-agent={agent.id}
-        onClick={() => navegar("agents", agent.id)}
-        type="button"
-      >
-        <div className="flex items-baseline gap-2.5">
-          <span className="font-medium text-[15px] tracking-tight">{agent.name}</span>
-          {agent.enabled ? null : (
-            <span className="ml-auto shrink-0">
-              <Badge variant="outline">{t("agents.disabled")}</Badge>
-            </span>
-          )}
-        </div>
-
-        {agent.models.length > 0 && (
-          <div className="mt-1.5 flex flex-wrap gap-1">
-            {agent.models.map((modelo) => (
-              <span
-                className="border-border text-muted-foreground rounded border px-1.5 py-0.5 text-[11px]"
-                key={modelo}
-                title={modelo}
-              >
-                {rotuloDoModelo(modelo)}
-              </span>
-            ))}
-          </div>
-        )}
-
-        <div className="text-muted-foreground mt-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs">
+    <ListRow className="min-h-11" data-locum-agent={agent.id} onClick={() => navegar("agents", agent.id)} rotulo={agent.name}>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="flex items-center gap-2">
+          <span className="truncate font-medium">{agent.name}</span>
+          {agent.enabled ? null : <Badge variant="outline">{t("agents.disabled")}</Badge>}
+        </span>
+        <span className="text-muted-foreground num flex flex-wrap items-baseline gap-x-3 text-xs">
           <span>{t("agents.steps", { count: agent.stepCount })}</span>
           {agent.toolCount > 0 && <span>{t("agents.tools", { count: agent.toolCount })}</span>}
           {agent.skillCount > 0 && <span>{t("agents.skills", { count: agent.skillCount })}</span>}
           <span>{cadencia(t, gatilho)}</span>
           {agent.budget.perRunUsd !== undefined && (
-            <span className="tabular-nums">
-              {t("agents.budget", { perRun: agent.budget.perRunUsd.toFixed(2) })}
-            </span>
+            <span>{t("agents.budget", { perRun: agent.budget.perRunUsd.toFixed(2) })}</span>
           )}
-          <span className="ml-auto">{ultima(t, agent.lastRun)}</span>
-        </div>
-      </button>
-    </li>
+        </span>
+      </span>
+      {agent.models.length > 0 && (
+        <span className="hidden shrink-0 gap-1 md:flex">
+          {agent.models.map((modelo) => (
+            <Badge key={modelo} title={modelo} variant="secondary">
+              {rotuloDoModelo(modelo)}
+            </Badge>
+          ))}
+        </span>
+      )}
+      <span className="text-muted-foreground num flex w-64 shrink-0 items-center gap-1.5 text-xs">
+        <StatusDot estado={agent.lastRun ? pontoDoEstado(agent.lastRun.status) : "ocioso"} />
+        <span className="truncate">{ultima(t, agent.lastRun)}</span>
+      </span>
+    </ListRow>
   );
 }
 
