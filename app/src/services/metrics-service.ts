@@ -36,8 +36,8 @@ export interface DailyUsage {
   agentId: string;
   /**
    * `agent` é a linha `biblioteca:<id>`, o gasto de um agent da biblioteca.
-   * Ela repete o que as automações que o usam já contam, então não se soma
-   * com as de `automation`.
+   * O passo de automação com agent conta na linha da automação e nesta; o
+   * `ask_agent` conta só nesta. Por isso as duas origens não se somam.
    */
   kind: "automation" | "agent";
   costUsd: number;

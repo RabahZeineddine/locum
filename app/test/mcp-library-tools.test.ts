@@ -193,3 +193,23 @@ test("pelo MCP, declarar que uma ferramenta de escrita é leitura também é rec
   });
   assert.equal(recusa.isError, true);
 });
+
+test("pelo MCP, escolha \"read\" nova é recusada mesmo em nome de leitura, e a que já existia fica", async () => {
+  const client = await ligarCliente();
+  const id = `read-${randomUUID().slice(0, 8)}`;
+  const base = { id, name: "R", model: "a/b" };
+  const recusa = await client.callTool({
+    name: "upsert_library_agent",
+    arguments: { spec: { ...base, connections: [{ connectionId: "github", tools: { "github/get_report": "read" } }] } },
+  });
+  assert.equal(recusa.isError, true);
+  assert.match(texto(recusa), /get_report/);
+
+  await libraryService.saveProfile({ spec: { ...base, connections: [{ connectionId: "github", tools: { "github/get_report": "read" } }] } });
+  resultado(
+    await client.callTool({
+      name: "upsert_library_agent",
+      arguments: { spec: { ...base, instructions: "x", connections: [{ connectionId: "github", tools: { "github/get_report": "read" } }] } },
+    }),
+  );
+});

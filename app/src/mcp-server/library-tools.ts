@@ -126,7 +126,8 @@ const nomeDaChave = (chave: string): string => chave.slice(chave.lastIndexOf("/"
 
 /**
  * Liberar escrita numa conexão só pela tela. Pelo MCP, recusa:
- * - ligar, ou declarar "read", uma ferramenta que o nome marca como escrita;
+ * - ligar uma ferramenta que o nome marca como escrita, e gravar uma escolha
+ *   "read" nova, seja qual for o nome;
  * - conexão nova cujo servidor tem escopo write, e qualquer escolha que
  *   libere ferramenta de conexão assim (ligar uma, ou tirar o desligar).
  * O que a versão anterior já tinha continua valendo.
@@ -139,7 +140,9 @@ async function recusarEscritaDeConexao(novo: AgentProfile, anterior: AgentProfil
     const antiga = antes.get(c.connectionId);
     for (const [chave, escolha] of Object.entries(c.tools)) {
       if (escolha === false || antiga?.tools[chave] === escolha) continue;
-      if (!ehLeitura(nomeDaChave(chave))) barradas.push(`${c.connectionId}.${chave}`);
+      // "read" é a pessoa dizendo que a ferramenta só lê, e vale mesmo para nome
+      // de leitura: o servidor pode ter anotado escrita, e o MCP não consulta.
+      if (escolha === "read" || !ehLeitura(nomeDaChave(chave))) barradas.push(`${c.connectionId}.${chave}`);
     }
   }
 

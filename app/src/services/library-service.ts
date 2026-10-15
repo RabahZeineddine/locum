@@ -105,6 +105,8 @@ const catalogoPadrao: CatalogoDeConexoes = {
     const nomes = (await connectionService.list()).find((c) => c.id === id)?.servers ?? [];
     return Promise.all(nomes.map(async (nome) => ({ nome, ligado: (await mcpService.get(nome))?.enabled === true })));
   },
+  // A lista vem do cache da última leitura boa, e só sobe o servidor sem cache:
+  // ferramenta nova ou anotação mudada entra quando alguém usa "Atualizar" na tela.
   ferramentasDe: async (servidor) => {
     const { mcpService } = await import("./mcp-service.js");
     const guardada = await mcpService.cachedTools(servidor);

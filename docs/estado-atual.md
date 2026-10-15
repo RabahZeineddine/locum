@@ -31,7 +31,7 @@ migração: o spec é JSON versionado e os campos novos têm padrão).
 - O executor e o `ask_agent` aplicam o teto do agent na chave `biblioteca:<id>`
   e põem as skills dele no system. O executor grava o gasto do passo nessa
   chave além da do fluxo, então a linha `biblioteca:<id>` de `usage_daily`
-  repete o que o fluxo já contou; `get_metrics` e `locum metrics` marcam essas
+  repete o que o fluxo já contou (o `ask_agent` conta só nela); `get_metrics` e `locum metrics` marcam essas
   linhas com `kind: "agent"`. O teto por execução soma o que os passos do run
   já gastaram, inclusive depois de voltar da fila, e a mensagem de estouro diz
   que o teto é do agent e onde mudar.
