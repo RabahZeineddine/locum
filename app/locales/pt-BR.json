@@ -831,6 +831,7 @@
       "order": "ordem {{order}}"
     },
     "servers": {
+      "turnOnFailed": "Não consegui ligar: {{message}}",
       "turnOn": "Ligar",
       "turnOff": "Desligar",
       "test": "Testar",

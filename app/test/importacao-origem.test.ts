@@ -8,6 +8,11 @@ test("a origem de plugin vira o nome do plugin, sem o marketplace", () => {
   assert.deepEqual(origemLegivel("Cursor"), { tipo: "ferramenta", nome: "Cursor" });
 });
 
+test("prd também parece produção", () => {
+  assert.equal(pareceProducao({ name: "db-prd", destino: "https://x.example.com/mcp" }), true);
+  assert.equal(pareceProducao({ name: "api", destino: "npx x --host prd.db.internal" }), true);
+});
+
 test("nome ou endereço com prod ou production parece produção", () => {
   assert.equal(pareceProducao({ name: "grafana-prod", destino: "https://g.example.com/mcp" }), true);
   assert.equal(pareceProducao({ name: "db", destino: "https://production.example.com/mcp" }), true);

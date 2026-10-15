@@ -803,6 +803,7 @@
       "order": "order {{order}}"
     },
     "servers": {
+      "turnOnFailed": "Could not turn it on: {{message}}",
       "turnOn": "Turn on",
       "turnOff": "Turn off",
       "test": "Test",

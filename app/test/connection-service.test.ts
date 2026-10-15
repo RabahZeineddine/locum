@@ -4,7 +4,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
-import { AgentProfile } from "../src/config/types.js";
+import { AgentProfile, SERVIDOR_NATIVO } from "../src/config/types.js";
 import { db, schema } from "../src/db/index.js";
 import { migrateDb } from "../src/db/migrate.js";
 import { CATALOG, ConnectionService } from "../src/services/connection-service.js";
@@ -86,6 +86,18 @@ test("conectar servidor do catálogo cadastra pelo id e autoriza", async () => {
     assert.equal(await mcp.get(id), undefined);
   } finally {
     await mcp.remove(id);
+  }
+});
+
+test("o servidor interno some da lista da tela mas segue resolvido para o agent salvo", async () => {
+  const { servico, mcp } = montar({ oauth: false, registration: false });
+  await mcp.register({ name: SERVIDOR_NATIVO, transport: "stdio", command: ["node", "x"] });
+  try {
+    assert.equal((await servico.list()).some((c) => c.id === SERVIDOR_NATIVO), false);
+    const interno = (await servico.list({ incluirInternos: true })).find((c) => c.id === SERVIDOR_NATIVO);
+    assert.deepEqual(interno?.servers, [SERVIDOR_NATIVO]);
+  } finally {
+    await mcp.remove(SERVIDOR_NATIVO);
   }
 });
 

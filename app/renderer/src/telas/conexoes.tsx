@@ -475,24 +475,38 @@ function ConexaoNaLista({ conexao, onAbrir, vinculos }: { conexao: Conexao; onAb
 function LigarNaLista({ servidores }: { servidores: string[] }) {
   const { t } = useTranslation();
   const [ligando, setLigando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
   return (
-    <Button
-      className="absolute right-3 bottom-2.5 cursor-pointer"
-      data-locum-ligar-na-lista={servidores[0]}
-      disabled={ligando}
-      onClick={() => {
-        setLigando(true);
-        void Promise.all(servidores.map((s) => call("mcp.setEnabled", s, true).catch(() => undefined))).finally(() => {
-          setLigando(false);
-          invalidateReads("connections.list");
-          invalidateReads("mcp.list");
-        });
-      }}
-      size="sm"
-      variant="outline"
-    >
-      {t("settings.servers.turnOn")}
-    </Button>
+    <>
+      {erro === null ? null : (
+        <p className="text-destructive absolute right-3 bottom-10 left-3 text-xs" data-locum-ligar-na-lista-erro="">
+          {t("settings.servers.turnOnFailed", { message: erro })}
+        </p>
+      )}
+      <Button
+        className="absolute right-3 bottom-2.5 cursor-pointer"
+        data-locum-ligar-na-lista={servidores[0]}
+        disabled={ligando}
+        onClick={() => {
+          setLigando(true);
+          setErro(null);
+          void Promise.allSettled(servidores.map((s) => call("mcp.setEnabled", s, true)))
+            .then((resultados) => {
+              const falha = resultados.find((r): r is PromiseRejectedResult => r.status === "rejected");
+              if (falha !== undefined) setErro(falha.reason instanceof Error ? falha.reason.message : String(falha.reason));
+            })
+            .finally(() => {
+              setLigando(false);
+              invalidateReads("connections.list");
+              invalidateReads("mcp.list");
+            });
+        }}
+        size="sm"
+        variant="outline"
+      >
+        {t("settings.servers.turnOn")}
+      </Button>
+    </>
   );
 }
 

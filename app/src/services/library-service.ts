@@ -104,7 +104,7 @@ const catalogoPadrao: CatalogoDeConexoes = {
   servidoresDe: async (id) => {
     const { connectionService } = await import("./connection-service.js");
     const { mcpService } = await import("./mcp-service.js");
-    const nomes = (await connectionService.list()).find((c) => c.id === id)?.servers ?? [];
+    const nomes = (await connectionService.list({ incluirInternos: true })).find((c) => c.id === id)?.servers ?? [];
     return Promise.all(nomes.map(async (nome) => ({ nome, ligado: (await mcpService.get(nome))?.enabled === true })));
   },
   // A lista vem do cache da última leitura boa, e só sobe o servidor sem cache:

@@ -187,7 +187,8 @@ export class ConnectionService {
     };
   }
 
-  async list(): Promise<Connection[]> {
+  /** `incluirInternos` traz o servidor interno do Locum, que a tela não mostra mas o agent salvo ainda cita. */
+  async list(opcoes: { incluirInternos?: boolean } = {}): Promise<Connection[]> {
     const servidores = await this.deps.mcp.list();
     const porNome = new Map(servidores.map((s) => [s.config.name, s]));
 
@@ -225,7 +226,7 @@ export class ConnectionService {
       servidores
         .filter((s) => conexaoDoServidor(s.config) === undefined)
         // O servidor interno do Locum funciona por baixo e não é uma conexão da pessoa.
-        .filter((s) => s.config.name !== SERVIDOR_NATIVO)
+        .filter((s) => opcoes.incluirInternos === true || s.config.name !== SERVIDOR_NATIVO)
         // As instâncias do Grafana moram no cartão dele, e não cada uma no seu.
         .filter((s) => !ehDoGrafana(s.config))
         .map(async (s) => ({

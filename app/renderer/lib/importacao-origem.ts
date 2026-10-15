@@ -10,7 +10,7 @@ export function origemLegivel(origem: string): OrigemLegivel {
   return { tipo: "ferramenta", nome: origem };
 }
 
-const PRODUCAO = /(^|[^a-z0-9])(prod|production|producao|produção)([^a-z0-9]|$)/i;
+const PRODUCAO = /(^|[^a-z0-9])(prod|prd|production|producao|produção)([^a-z0-9]|$)/i;
 
 /** O nome ou o endereço indica produção: nunca vem marcado para importar. */
 export function pareceProducao(c: { name: string; destino: string }): boolean {
