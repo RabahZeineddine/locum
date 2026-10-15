@@ -486,6 +486,8 @@ interface ServiceApi {
   "updates.check": () => Promise<UpdaterState>;
   /** Fecha, troca e reabre. Devolve `false` quando não há versão baixada. */
   "updates.apply": () => Promise<boolean>;
+  /** Lembra, até o app fechar, que a pessoa disse "Depois" para esta versão; `null` desfaz. */
+  "updates.dismiss": (version: string | null) => Promise<void>;
 
   /**
    * Em que idioma a janela fala.
@@ -702,6 +704,7 @@ export const BRIDGE_CHANNELS = [
   "updates.setEnabled",
   "updates.check",
   "updates.apply",
+  "updates.dismiss",
   "i18n.state",
   "i18n.setPreference",
   "window.inboxTarget",
@@ -777,6 +780,9 @@ export const CHAT_EVENT_CHANNEL = "chat:event";
 
 /** Saída e fim dos terminais embutidos, no mesmo esquema do chat. */
 export const TERMINAL_EVENT_CHANNEL = "terminal:event";
+
+/** O `UpdaterState` inteiro, empurrado a cada mudança de fase ou de porcentagem. */
+export const UPDATES_EVENT_CHANNEL = "updates:event";
 
 /** O nome sob o qual o preload pendura a ponte na janela. */
 export const BRIDGE_GLOBAL = "locum";

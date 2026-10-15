@@ -401,6 +401,7 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
       await updateService.setEnabled(enabled);
       if (enabled) await updater.setupUpdater();
       else updater.teardownUpdater();
+      updater.avisarJanelas();
       return updater.updaterState();
     },
     "updates.check": async () => {
@@ -410,6 +411,7 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
       return updater.updaterState();
     },
     "updates.apply": async () => (await import("./updater.js")).aplicarAgora(),
+    "updates.dismiss": async (version) => (await import("./updater.js")).dispensarVersao(version),
 
     "i18n.state": () => idiomaDaJanela(),
     "i18n.setPreference": async (language) => {

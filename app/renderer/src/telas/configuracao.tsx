@@ -2,6 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { CabecalhoDaTela } from "@/components/cabecalho-da-tela";
 import { Button } from "@/components/ui/button";
 import { call, useRead, type ReadResult } from "@/lib/bridge";
+import { useAtualizacao } from "@/lib/atualizacao";
 import { cn } from "@/lib/utils";
 import { EscolhaDoModelo } from "../assistente-modelo";
 import { Grupo, Preferencia, Secao, Vazio } from "./blocos";
@@ -11,7 +12,6 @@ import { useIdioma } from "../idioma";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { Language } from "../../../src/services/i18n-service.js";
-import type { UpdaterState } from "../../../src/update/state.js";
 import type { WorkingHoursConfig } from "../../../src/config/types.js";
 import type { TelaProps } from "../rotas";
 
@@ -316,10 +316,8 @@ function EscolhaDoIdioma() {
  */
 function Atualizacao() {
   const { t } = useTranslation();
-  const lido = useRead("updates.state");
-  const [recarregado, setRecarregado] = useState<UpdaterState | null>(null);
+  const [estado, setRecarregado] = useAtualizacao();
   const [ocupado, setOcupado] = useState(false);
-  const estado = recarregado ?? lido.data;
 
   if (estado === undefined) return <Vazio>{t("settings.updates.loading")}</Vazio>;
 

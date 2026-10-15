@@ -28,6 +28,10 @@ export interface UpdaterState {
   /** O porquê em palavras, quando o motivo é o bundle. */
   detail: string | null;
   phase: FaseDaAtualizacao;
+  /** A versão cujo modal a pessoa dispensou com "Depois" nesta sessão do app. */
+  dismissedVersion: string | null;
+  /** Porcentagem do download em curso, de 0 a 100; `null` fora dele ou sem total. */
+  progress: number | null;
   lastCheckAt: number | null;
   /** A versão baixada e esperando, ou a que está baixando. */
   available: { version: string; notes: string } | null;

@@ -1,10 +1,11 @@
-import { app, net, Notification } from "electron";
+import { app, BrowserWindow, net, Notification } from "electron";
 import { spawn } from "node:child_process";
 import http from "node:http";
 import https from "node:https";
 import { mkdir, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { UPDATES_EVENT_CHANNEL } from "./bridge-contract.js";
 import { t } from "./i18n.js";
 import { VERSAO } from "./versao.js";
 import { criarClienteHttp, tipoDaFalha } from "../src/net/http.js";
@@ -19,14 +20,15 @@ import {
   procurarVersaoNova,
   scriptDeTroca,
 } from "../src/update/release.js";
+import { progressoDoDownload } from "../src/update/rodape.js";
 import type { FaseDaAtualizacao, UpdaterState } from "../src/update/state.js";
 
 export type { UpdaterState } from "../src/update/state.js";
 
 /** De quanto em quanto tempo o aplicativo aberto pergunta de novo. */
 const CADENCIA_MS = 6 * 60 * 60_000;
-/** A primeira pergunta espera a subida assentar. */
-const PRIMEIRA_MS = 10_000;
+/** A primeira pergunta espera só a janela assentar. */
+const PRIMEIRA_MS = 2_000;
 /** Depois de uma queda de rede, a próxima pergunta não espera as seis horas. */
 const DE_NOVO_SEM_REDE_MS = 5 * 60_000;
 
@@ -37,6 +39,11 @@ let conferidaEm: number | null = null;
 let erro: string | null = null;
 let tipoDoErro: UpdaterState["errorKind"] = null;
 let deNovo: ReturnType<typeof setTimeout> | null = null;
+let progresso: number | null = null;
+/** Guardada aqui e não na janela: fechar e reabrir a janela não reabre o modal. */
+let dispensada: string | null = null;
+/** Só o smoke define: o estado que a janela vê no lugar do real. */
+let deExemplo: Partial<UpdaterState> | null = null;
 let disponivel: { version: string; notes: string } | null = null;
 /** O bundle novo extraído, esperando o processo sair. */
 let preparado: string | null = null;
@@ -60,6 +67,11 @@ const pastaDeTrabalho = (): string => join(homedir(), "Library", "Caches", "Locu
  * é lido sem que a leitura dispare a pergunta ao GitHub.
  */
 export async function planUpdater(): Promise<UpdaterState> {
+  const real = await planoReal();
+  return deExemplo === null ? real : { ...real, ...deExemplo };
+}
+
+async function planoReal(): Promise<UpdaterState> {
   const { preference, enabled } = await updateService.state();
   const base = {
     current: VERSAO,
@@ -68,6 +80,8 @@ export async function planUpdater(): Promise<UpdaterState> {
     armed: armado,
     detail: null,
     phase: fase,
+    progress: progresso,
+    dismissedVersion: dispensada,
     lastCheckAt: conferidaEm,
     available: disponivel,
     error: erro,
@@ -90,7 +104,7 @@ export async function planUpdater(): Promise<UpdaterState> {
  * conta a saída pelo `http`, pelo `https` e pelo `net` para provar isso.
  */
 export async function setupUpdater(): Promise<UpdaterState> {
-  const plano = await planUpdater();
+  const plano = await planoReal();
   if (plano.reason !== null || armado) return plano;
 
   armado = true;
@@ -128,41 +142,55 @@ export function updaterState(): Promise<UpdaterState> {
  * arquivo corromperiam os dois.
  */
 export const conferir = umaDeCadaVez(async (): Promise<void> => {
-  const plano = await planUpdater();
+  // O real, e não o de exemplo: o smoke nunca pode sair para a rede.
+  const plano = await planoReal();
   if (plano.reason !== null) return;
   // Já baixado: perguntar de novo só gastaria rede até a pessoa reiniciar.
   if (preparado !== null) return;
 
   fase = "checking";
+  progresso = null;
   erro = null;
   tipoDoErro = null;
+  avisarJanelas();
   try {
     const nova = await procurarVersaoNova({ atual: VERSAO, arch: process.arch, buscar });
     conferidaEm = Date.now();
     if (nova === null) {
       fase = "uptodate";
+      avisarJanelas();
       return;
     }
 
     fase = "downloading";
     disponivel = { version: nova.version, notes: nova.notes };
+    avisarJanelas();
     const pasta = join(pastaDeTrabalho(), nova.version);
     await apagar(pasta);
     await mkdir(pasta, { recursive: true });
     const zip = join(pasta, "pacote.zip");
-    await baixarConferindo(nova.zipUrl, zip, nova.sha512, buscar);
+    await baixarConferindo(nova.zipUrl, zip, nova.sha512, buscar, (recebidos, total) => {
+      const novo = progressoDoDownload(recebidos, total, nova.size);
+      if (novo === progresso) return;
+      progresso = novo;
+      avisarJanelas();
+    });
     preparado = await extrairBundle(zip, join(pasta, "bundle"), nova.version);
     await rm(zip, { force: true });
 
     fase = "ready";
+    progresso = null;
+    avisarJanelas();
     console.log(`atualização: ${nova.version} baixada, entra quando o Locum fechar`);
     avisar(nova.version);
   } catch (err) {
     fase = "failed";
+    progresso = null;
     disponivel = preparado === null ? null : disponivel;
     erro = err instanceof Error ? err.message : String(err);
     tipoDoErro = tipoDaFalha(err);
     conferidaEm = Date.now();
+    avisarJanelas();
     // Sem rede, esperar seis horas deixaria a versão nova parada à toa. Uma
     // pergunta só, alguns minutos depois; se a rede seguir fora, o relógio
     // normal continua de pé.
@@ -176,6 +204,37 @@ export const conferir = umaDeCadaVez(async (): Promise<void> => {
     throw err;
   }
 });
+
+/**
+ * Empurra o estado para as janelas abertas. É o que deixa o rodapé andar sem
+ * que a pessoa navegue nem que a janela fique perguntando.
+ */
+export function avisarJanelas(): void {
+  planUpdater().then(
+    (estado) => {
+      for (const janela of BrowserWindow.getAllWindows()) {
+        if (!janela.isDestroyed()) janela.webContents.send(UPDATES_EVENT_CHANNEL, estado);
+      }
+    },
+    (err: unknown) => console.error("atualização: não deu para avisar a janela", err),
+  );
+}
+
+/** "Depois" no modal (`null` desfaz, que é o link do rodapé). */
+export function dispensarVersao(versao: string | null): void {
+  dispensada = versao;
+  avisarJanelas();
+}
+
+/**
+ * Faz a janela ver este estado no lugar do real, e a avisa. `null` desfaz.
+ * Existe para o smoke e as capturas: sem rede e sem release de verdade, é o
+ * único jeito de o rodapé passar por baixando e pronta.
+ */
+export function usarEstadoDeExemplo(estado: Partial<UpdaterState> | null): void {
+  deExemplo = estado;
+  avisarJanelas();
+}
 
 /** Fecha o Locum, troca e abre a versão nova. */
 export function aplicarAgora(): boolean {

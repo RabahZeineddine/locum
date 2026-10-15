@@ -145,19 +145,30 @@ export async function procurarVersaoNova(opcoes: {
  * Baixa para `destino` calculando o sha512 no caminho, e apaga o arquivo se o
  * hash não bater. Arquivo com hash errado não pode sobrar em disco, nem que
  * seja para a próxima tentativa achar que já baixou.
+ *
+ * `aoProgredir` recebe os bytes já chegados e o total declarado pelo servidor
+ * (`null` quando ele não declara).
  */
 export async function baixarConferindo(
   url: string,
   destino: string,
   sha512: string,
   buscar: Buscar = clienteHttp,
+  aoProgredir?: (recebidos: number, total: number | null) => void,
 ): Promise<void> {
   const resposta = await buscar(url, { headers: { "user-agent": "locum-updater" } });
   if (!resposta.ok || resposta.body === null) throw new Error(`download respondeu ${resposta.status}`);
 
   const hash = createHash("sha512");
   const corpo = Readable.fromWeb(resposta.body as import("node:stream/web").ReadableStream);
-  corpo.on("data", (pedaco: Buffer) => hash.update(pedaco));
+  const declarado = Number(resposta.headers.get("content-length"));
+  const total = Number.isFinite(declarado) && declarado > 0 ? declarado : null;
+  let recebidos = 0;
+  corpo.on("data", (pedaco: Buffer) => {
+    hash.update(pedaco);
+    recebidos += pedaco.length;
+    aoProgredir?.(recebidos, total);
+  });
   await pipeline(corpo, createWriteStream(destino));
 
   const obtido = hash.digest("base64");

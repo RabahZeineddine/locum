@@ -1040,6 +1040,7 @@ async function checkRenderer(): Promise<string> {
     const ponte = await esperarPonte(window);
     // Por ultimo de proposito: o exame recarrega a janela, e recarregar antes
     // jogaria fora o destino em que os outros exames deixaram a pagina.
+    const atualizacao = await checkAtualizacaoNaTela(window);
     const idioma = await checkI18n(window);
 
     const agentes = (await agentService.list()).map((a) => a.id).join(",");
@@ -1069,6 +1070,7 @@ async function checkRenderer(): Promise<string> {
       spans: destacado,
       windowRuns: ponte.runs,
       windowPending: ponte.pendencias,
+      update: atualizacao,
       language: idioma,
     });
   } finally {
@@ -5451,6 +5453,106 @@ async function recarregar(window: BrowserWindow): Promise<void> {
   });
   window.webContents.reload();
   await carregou;
+}
+
+/**
+ * O rodapé da barra lateral e o modal da atualização, sem rede.
+ *
+ * Não há release de verdade para baixar na fumaça, e sair para o GitHub é
+ * justamente o que ela proíbe. O verificador empurra então um estado de
+ * exemplo pelo mesmo canal que o real usa, e a janela passa por procurando,
+ * baixando e pronta como passaria numa atualização de verdade.
+ */
+async function checkAtualizacaoNaTela(window: BrowserWindow): Promise<string> {
+  const { usarEstadoDeExemplo, dispensarVersao } = await import("./updater.js");
+  const { espiarRede } = await import("./updater.js");
+  const espia = espiarRede();
+  const destino = capturas ? (flagValue("--capturas-em") ?? join(process.cwd(), "capturas")) : null;
+  if (destino !== null) mkdirSync(destino, { recursive: true });
+  const foto = async (nome: string): Promise<void> => {
+    if (destino === null) return;
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    writeFileSync(join(destino, `${nome}.png`), (await window.webContents.capturePage()).toPNG());
+  };
+
+  const rodape = (): string =>
+    `(() => {
+      const r = document.querySelector("[data-locum-probe=atualizacao-rodape]");
+      const barra = r?.querySelector("[data-locum-barra]");
+      return {
+        tipo: r?.dataset.locumRodape ?? null,
+        barra: barra?.dataset.locumBarra ?? null,
+        percent: barra?.dataset.locumPercent ?? null,
+        texto: r?.querySelector("[data-locum-rodape-texto]")?.textContent ?? "",
+        link: r?.querySelector("[data-locum-rodape-pronta]")?.textContent ?? "",
+        modal: document.querySelector("[data-locum-probe=atualizacao-modal]")?.dataset.locumModalVersao ?? null,
+        notas: document.querySelector("[data-locum-modal-notas]")?.textContent ?? "",
+      };
+    })()`;
+  type Visto = { tipo: string | null; barra: string | null; percent: string | null; texto: string; link: string; modal: string | null; notas: string };
+  const esperar = (nome: string, ok: string): Promise<Visto> =>
+    esperarProbe<Visto>(window, nome, `(() => { const v = ${rodape()}; return (${ok}) ? v : null; })()`);
+  const clicar = (seletor: string): Promise<unknown> =>
+    window.webContents.executeJavaScript(`(document.querySelector(${JSON.stringify(seletor)})?.click(), null)`);
+
+  const notas = "## Novidades\n\n- o rodapé mostra o download\n- o modal traz as notas";
+  const nova = { version: "9.9.9", notes: notas };
+  try {
+    await irPara(window, "today");
+
+    usarEstadoDeExemplo({ reason: null, phase: "checking", progress: null, available: null });
+    const procurando = await esperar("rodape-procurando", `v.tipo === "procurando" && v.barra === "indeterminada"`);
+    if (procurando.texto !== t("update.footer.checking")) throw new Error(`o rodapé procurando disse "${procurando.texto}"`);
+
+    usarEstadoDeExemplo({ reason: null, phase: "downloading", progress: 42, available: nova });
+    const baixando = await esperar("rodape-baixando", `v.tipo === "baixando" && v.percent === "42"`);
+    if (baixando.barra !== "determinada") throw new Error("a barra do download não ficou determinada");
+    if (baixando.texto !== t("update.footer.downloading", { version: nova.version, percent: 42 })) {
+      throw new Error(`o rodapé baixando disse "${baixando.texto}"`);
+    }
+    if (baixando.modal !== null) throw new Error("o modal abriu antes de a versão ficar pronta");
+    await foto("rodape-baixando");
+
+    usarEstadoDeExemplo({ reason: null, phase: "ready", progress: null, available: nova });
+    const aberto = await esperar("modal", `v.modal === "9.9.9"`);
+    if (!aberto.notas.includes("o modal traz as notas")) throw new Error(`o modal não trouxe as notas: "${aberto.notas}"`);
+    await foto("modal");
+
+    // "Depois" fecha, deixa o link e não reabre sozinho para a mesma versão.
+    await clicar("[data-locum-modal-depois]");
+    const fechado = await esperar("link", `v.modal === null && v.tipo === "pronta"`);
+    if (fechado.link !== t("update.footer.ready", { version: nova.version })) throw new Error(`o link disse "${fechado.link}"`);
+    if (fechado.barra !== null) throw new Error("a versão pronta ainda mostrou barra");
+    usarEstadoDeExemplo({ reason: null, phase: "ready", progress: null, available: nova });
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const aindaFechado = (await window.webContents.executeJavaScript(rodape())) as Visto;
+    if (aindaFechado.modal !== null) throw new Error("o modal reabriu sozinho para a versão dispensada");
+    await foto("rodape-pronta");
+
+    // Recarregar a janela (o mesmo que fechar e reabrir, ou Cmd+R) não pode
+    // reabrir o modal: a dispensa mora no processo principal.
+    window.webContents.reload();
+    await esperar("rodape-depois-de-recarregar", `v.tipo === "pronta"`);
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    const recarregada = (await window.webContents.executeJavaScript(rodape())) as Visto;
+    if (recarregada.modal !== null) throw new Error("recarregar a janela reabriu o modal da versão dispensada");
+
+    await clicar("[data-locum-rodape-pronta]");
+    await esperar("modal-reaberto", `v.modal === "9.9.9"`);
+    await clicar("[data-locum-modal-depois]");
+    await esperar("modal-fechado", `v.modal === null`);
+
+    const saidas = espia.vistas();
+    if (saidas.length > 0) {
+      throw new Error(`o rodapé da atualização saiu para a rede: ${saidas.map((v) => `${v.via} ${v.destino}`).join(", ")}`);
+    }
+
+    return t("smoke.updateScreen");
+  } finally {
+    espia.parar();
+    dispensarVersao(null);
+    usarEstadoDeExemplo(null);
+  }
 }
 
 /**

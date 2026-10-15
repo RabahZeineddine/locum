@@ -5,6 +5,7 @@ import { useRota } from "@/lib/router";
 import { cn } from "@/lib/utils";
 import { assinarEventosDoTerminal } from "@/lib/terminal";
 import { Assistente } from "./assistente";
+import { AtualizacaoNoRodape } from "./atualizacao";
 import { CurrentInitiativeProvider } from "./current-initiative";
 import { Paleta } from "./paleta";
 import { ROTA_IDS, ROTA_PADRAO, ROTAS, ROTAS_ANTIGAS, ROTAS_DA_BARRA, type TelaProps } from "./rotas";
@@ -229,15 +230,18 @@ export function Layout() {
           naFila={naFila}
         />
         {versao.data === undefined ? null : (
-          <button
-            className="px-3 pb-3 text-left text-[11px] text-muted-foreground/70 hover:text-muted-foreground"
-            data-locum-probe="versao"
-            onClick={() => navegar("settings")}
-            title={t("nav.versionHint")}
-            type="button"
-          >
-            {t("nav.version", { version: versao.data })}
-          </button>
+          <div className="flex flex-col gap-1.5 pb-3">
+            <button
+              className="px-3 text-left text-[11px] text-muted-foreground/70 hover:text-muted-foreground"
+              data-locum-probe="versao"
+              onClick={() => navegar("settings")}
+              title={t("nav.versionHint")}
+              type="button"
+            >
+              {t("nav.version", { version: versao.data })}
+            </button>
+            <AtualizacaoNoRodape />
+          </div>
         )}
       </nav>
 

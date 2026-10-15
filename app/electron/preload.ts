@@ -4,6 +4,7 @@ import {
   BRIDGE_GLOBAL,
   CHAT_EVENT_CHANNEL,
   TERMINAL_EVENT_CHANNEL,
+  UPDATES_EVENT_CHANNEL,
   type LocumBridge,
 } from "./bridge-contract.js";
 
@@ -42,6 +43,14 @@ bridge["terminal"]["onEvent"] = (ouvinte: (evento: unknown) => void) => {
   const encaminha = (_e: unknown, evento: unknown) => ouvinte(evento);
   ipcRenderer.on(TERMINAL_EVENT_CHANNEL, encaminha);
   return () => ipcRenderer.removeListener(TERMINAL_EVENT_CHANNEL, encaminha);
+};
+
+// Fase e progresso da atualização, para o rodapé acompanhar sem sondar.
+bridge["updates"] ??= {};
+bridge["updates"]["onEvent"] = (ouvinte: (evento: unknown) => void) => {
+  const encaminha = (_e: unknown, evento: unknown) => ouvinte(evento);
+  ipcRenderer.on(UPDATES_EVENT_CHANNEL, encaminha);
+  return () => ipcRenderer.removeListener(UPDATES_EVENT_CHANNEL, encaminha);
 };
 
 contextBridge.exposeInMainWorld(BRIDGE_GLOBAL, bridge as unknown as LocumBridge);
