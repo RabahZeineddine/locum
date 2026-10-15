@@ -4,11 +4,13 @@ import { db as defaultDb, schema } from "../db/index.js";
 import {
   AgentProfile,
   AgentSpec,
+  type AgentConnection,
   Toolset,
   type AgentProfileInput,
   type ToolRef,
   type ToolsetInput,
 } from "../config/types.js";
+import { ehLeitura, ehLeituraDa, escolhaDe } from "../config/leitura.js";
 
 type Db = typeof defaultDb;
 
@@ -28,6 +30,11 @@ export interface ProfileSummary {
   model: string;
   version: number;
   toolsets: string[];
+  /** Ids das conexões que o agent alcança. */
+  connections: string[];
+  /** Quantas ferramentas de escrita estão ligadas nas conexões. */
+  writes: number;
+  skills: number;
   /** Fluxos que referenciam este agent na versão mais recente deles. */
   usedBy: string[];
 }
@@ -40,8 +47,22 @@ export interface ToolsetSummary extends Toolset {
 /** O que o executor precisa para rodar um passo com agent da biblioteca. */
 export interface ResolvedProfile {
   version: ProfileVersion;
-  /** Ferramentas dos toolsets mais as avulsas, sem repetição. */
+  /**
+   * O que o agent chama sozinho: ferramentas dos toolsets, avulsas e a leitura
+   * das conexões, sem repetição.
+   */
   tools: ToolRef[];
+  /**
+   * Escrita que o agent recebeu numa conexão. Não entra em `tools`: escrita
+   * externa não roda sem alguém ver, e quem confirma é o chat do agent.
+   */
+  confirmar: ToolRef[];
+  /** Conexões do agent sem servidor utilizável agora (não ligado, desligado ou que não listou). */
+  semServidor: ConexaoIndisponivel[];
+  /** Só o que vem de toolsets e ferramentas avulsas: o que o agent exige, ao contrário das conexões. */
+  fixas: ToolRef[];
+  /** Os servidores utilizáveis de cada conexão, para quem filtra por iniciativa. */
+  grupos: { connectionId: string; servers: string[] }[];
   /** Contexto e instruções juntos, prontos para o system. */
   system: string;
 }
@@ -61,6 +82,110 @@ function recusarEscrita(tools: readonly ToolRef[], onde: string): void {
   }
 }
 
+/** Uma ferramenta que o servidor oferece, com o que ele anotou dela. */
+export interface FerramentaDoServidor {
+  name: string;
+  readOnlyHint?: boolean;
+  destructiveHint?: boolean;
+}
+
+/** Onde a biblioteca descobre o que uma conexão alcança. */
+export interface CatalogoDeConexoes {
+  /** Servidores MCP da conexão, ligados ou não; vazio quando não há nenhum cadastrado. */
+  servidoresDe(connectionId: string): Promise<{ nome: string; ligado: boolean }[]>;
+  /** Ferramentas que o servidor oferece agora. Lança quando não dá para listar. */
+  ferramentasDe(servidor: string): Promise<FerramentaDoServidor[]>;
+}
+
+/** As conexões e ferramentas de verdade, carregadas só na primeira vez que alguém pede. */
+const catalogoPadrao: CatalogoDeConexoes = {
+  servidoresDe: async (id) => {
+    const { connectionService } = await import("./connection-service.js");
+    const { mcpService } = await import("./mcp-service.js");
+    const nomes = (await connectionService.list()).find((c) => c.id === id)?.servers ?? [];
+    return Promise.all(nomes.map(async (nome) => ({ nome, ligado: (await mcpService.get(nome))?.enabled === true })));
+  },
+  // A lista vem do cache da última leitura boa, e só sobe o servidor sem cache:
+  // ferramenta nova ou anotação mudada entra quando alguém usa "Atualizar" na tela.
+  ferramentasDe: async (servidor) => {
+    const { mcpService } = await import("./mcp-service.js");
+    const guardada = await mcpService.cachedTools(servidor);
+    return (guardada?.tools ?? (await mcpService.listTools(servidor))).map(
+      ({ name, readOnlyHint, destructiveHint }) => ({ name, readOnlyHint, destructiveHint }),
+    );
+  },
+};
+
+/** Conexão do agent que não tem servidor utilizável agora, e por quê. */
+export interface ConexaoIndisponivel {
+  connectionId: string;
+  motivo: string;
+}
+
+/** A frase de quem recusa rodar o agent com conexão sem servidor. */
+export function conexoesIndisponiveis(agentId: string, lista: readonly ConexaoIndisponivel[]): string {
+  return lista.map((c) => `o agent "${agentId}" usa a conexão "${c.connectionId}", ${c.motivo}`).join("; ");
+}
+
+export interface ConexoesExpandidas {
+  leitura: ToolRef[];
+  escrita: ToolRef[];
+  /** Os servidores utilizáveis de cada conexão. */
+  grupos: { connectionId: string; servers: string[] }[];
+  semServidor: ConexaoIndisponivel[];
+}
+
+/**
+ * Cada conexão vira as ferramentas que os servidores ligados dela oferecem
+ * agora: leitura liberada, escrita só a marcada, e a escolha por ferramenta
+ * manda nos dois lados. A classe vem da anotação do servidor, e do nome quando
+ * ele não anotou. "read" na escolha manda a ferramenta para a leitura mesmo
+ * classificada como escrita. Ferramenta que o servidor não oferece mais fica
+ * de fora, mesmo escolhida.
+ */
+export async function expandirConexoes(
+  conexoes: readonly AgentConnection[],
+  catalogo: CatalogoDeConexoes,
+): Promise<ConexoesExpandidas> {
+  const saida: ConexoesExpandidas = { leitura: [], escrita: [], grupos: [], semServidor: [] };
+  for (const conexao of conexoes) {
+    const cadastrados = await catalogo.servidoresDe(conexao.connectionId);
+    const ligados = cadastrados.filter((s) => s.ligado);
+    if (ligados.length === 0) {
+      saida.semServidor.push({
+        connectionId: conexao.connectionId,
+        motivo: cadastrados.length === 0 ? "sem servidor ligado nesta máquina" : "o servidor dela está desligado",
+      });
+      continue;
+    }
+    const usaveis: string[] = [];
+    const falhas: string[] = [];
+    for (const { nome: server } of ligados) {
+      let oferecidas: FerramentaDoServidor[];
+      try {
+        oferecidas = await catalogo.ferramentasDe(server);
+      } catch (erro) {
+        falhas.push(`${server}: ${erro instanceof Error ? erro.message : String(erro)}`);
+        continue;
+      }
+      usaveis.push(server);
+      for (const f of oferecidas) {
+        const escolha = escolhaDe(conexao.tools, server, f.name);
+        const leitura = ehLeituraDa(f);
+        if (!(escolha === undefined ? leitura : escolha !== false)) continue;
+        if (leitura || escolha === "read") saida.leitura.push({ server, tool: f.name, class: "read" });
+        else saida.escrita.push({ server, tool: f.name, class: "external_write" });
+      }
+    }
+    if (usaveis.length === 0) {
+      saida.semServidor.push({ connectionId: conexao.connectionId, motivo: `não consegui listar as ferramentas (${falhas.join("; ")})` });
+      continue;
+    }
+    saida.grupos.push({ connectionId: conexao.connectionId, servers: usaveis });
+  }
+  return saida;
+}
+
 function semRepetir(tools: readonly ToolRef[]): ToolRef[] {
   const vistos = new Map<string, ToolRef>();
   for (const t of tools) vistos.set(`${t.server}\u0000${t.tool}`, t);
@@ -75,7 +200,10 @@ function semRepetir(tools: readonly ToolRef[]): ToolRef[] {
  * rodou. Toolset não tem, e editar vale para a próxima execução de todos.
  */
 export class LibraryService {
-  constructor(private readonly db: Db = defaultDb) {}
+  constructor(
+    private readonly db: Db = defaultDb,
+    private readonly conexoes: CatalogoDeConexoes = catalogoPadrao,
+  ) {}
 
   /* --------------------------------------------------------------- agents */
 
@@ -93,6 +221,13 @@ export class LibraryService {
         model: ultima.spec.model,
         version: ultima.version,
         toolsets: ultima.spec.toolsets,
+        connections: ultima.spec.connections.map((c) => c.connectionId),
+        writes: ultima.spec.connections.reduce(
+          (n, c) =>
+            n + Object.entries(c.tools).filter(([chave, escolha]) => escolha === true && !ehLeitura(chave.split("/").pop()!)).length,
+          0,
+        ),
+        skills: ultima.spec.skills.length,
         usedBy: usos.get(perfil.id) ?? [],
       });
     }
@@ -167,7 +302,7 @@ export class LibraryService {
 
   /**
    * O agent pronto para rodar: versão mais recente, ferramentas dos toolsets
-   * somadas às avulsas, e o system montado. Toolset apagado depois de gravado
+   * somadas às avulsas e às das conexões, e o system montado. Toolset apagado depois de gravado
    * falha aqui, com nome, em vez de rodar com menos ferramenta sem avisar.
    */
   async resolveProfile(id: string): Promise<ResolvedProfile> {
@@ -180,11 +315,14 @@ export class LibraryService {
       tools.push(...toolset.tools);
     }
     tools.push(...version.spec.tools);
+    const fixas = semRepetir(tools);
+    const { leitura, escrita, grupos, semServidor } = await expandirConexoes(version.spec.connections, this.conexoes);
+    tools.push(...leitura);
     const partes = [
       version.spec.context.trim() === "" ? "" : `# Contexto\n\n${version.spec.context.trim()}`,
       version.spec.instructions.trim() === "" ? "" : `# Como trabalhar\n\n${version.spec.instructions.trim()}`,
     ].filter((p) => p !== "");
-    return { version, tools: semRepetir(tools), system: partes.join("\n\n") };
+    return { version, tools: semRepetir(tools), confirmar: semRepetir(escrita), semServidor, fixas, grupos, system: partes.join("\n\n") };
   }
 
   /** Id livre a partir do nome, como o da automação. */

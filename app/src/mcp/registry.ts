@@ -16,6 +16,9 @@ export interface McpToolInfo {
   estimatedTokens: number;
   /** JSON Schema dos argumentos, para a tela montar o formulário da ação. */
   inputSchema?: Record<string, unknown>;
+  /** O que o servidor anotou: só lê, ou destrói. Ausente quando não anotou. */
+  readOnlyHint?: boolean;
+  destructiveHint?: boolean;
 }
 
 type Entry = {
@@ -28,6 +31,15 @@ type Entry = {
   /** Saiu do pool por cadastro trocado, e fecha quando o último uso soltar. */
   retired: boolean;
 };
+
+/** As dicas de leitura e destruição que o servidor anotou na ferramenta. */
+function anotacoes(tool: unknown): Pick<McpToolInfo, "readOnlyHint" | "destructiveHint"> {
+  const a = (tool as { metadata?: { annotations?: { readOnlyHint?: unknown; destructiveHint?: unknown } } }).metadata?.annotations;
+  return {
+    ...(typeof a?.readOnlyHint === "boolean" ? { readOnlyHint: a.readOnlyHint } : {}),
+    ...(typeof a?.destructiveHint === "boolean" ? { destructiveHint: a.destructiveHint } : {}),
+  };
+}
 
 /**
  * Sobe servidor MCP sob demanda e encerra depois de ocioso.
@@ -263,6 +275,7 @@ export class McpRegistry {
         description: tool.description ?? "",
         estimatedTokens: estimateTokens(toolName, tool.description, tool.inputSchema),
         inputSchema: esquemaCru(tool.inputSchema),
+        ...anotacoes(tool),
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }

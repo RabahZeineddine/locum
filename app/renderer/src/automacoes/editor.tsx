@@ -306,7 +306,7 @@ function EditorCarregado({
         />
         <span className="text-muted-foreground text-xs">{t("automations.editor.version", { version: versao })}</span>
         {mudou ? <Badge variant="outline">{t("automations.editor.unsaved")}</Badge> : null}
-        <Button className="cursor-pointer" onClick={() => navegar("agents", agentId)} size="sm" variant="ghost">
+        <Button className="cursor-pointer" onClick={() => navegar("automations", `legacy/${agentId}`)} size="sm" variant="ghost">
           <List className="size-4" />
           {t("automations.editor.asList")}
         </Button>
@@ -388,7 +388,7 @@ function EditorCarregado({
           aoLogica={acrescentarLogica}
           aoPasso={acrescentarPasso}
           appsLigados={appsLigados}
-          criarAgent={() => navegar("library", "novo")}
+          criarAgent={() => navegar("agents", "novo")}
         />
         <div className="border-border min-w-0 flex-1 overflow-hidden rounded-lg border" data-locum-probe="automacao-canvas">
           <CanvasDaAutomacao

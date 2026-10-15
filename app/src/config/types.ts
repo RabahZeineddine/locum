@@ -201,6 +201,25 @@ export type AgentBudgetPatch = z.infer<typeof AgentBudgetPatch>;
 const IdDaBiblioteca = z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/, "use letras minúsculas, números e hífen");
 
 /**
+ * O que o agent usa de uma conexão. Sem sobrescrita, as ferramentas de
+ * leitura valem e as de escrita ficam de fora. `tools` troca isso por
+ * ferramenta, na chave `servidor/ferramenta` (ou só `ferramenta`, como era):
+ * true liga, false desliga, e "read" liga declarando que a ferramenta só lê,
+ * para a que o nome ou o servidor classificam como escrita sem ser.
+ */
+export const AgentConnection = z.object({
+  connectionId: z.string().min(1),
+  tools: z.record(z.string(), z.union([z.boolean(), z.literal("read")])).default({}),
+});
+export type AgentConnection = z.infer<typeof AgentConnection>;
+
+/** Skill do agent: a regra completa ou só o nome, que vale sempre. */
+export const AgentSkill = z.union([
+  SkillRule,
+  z.string().min(1).transform((skill): SkillRule => ({ skill, when: { always: true } })),
+]);
+
+/**
  * Agent da biblioteca: uma especialidade reutilizável. Não tem gatilho nem
  * passo; quem decide quando ele roda e com que tarefa é o fluxo que o usa.
  */
@@ -219,6 +238,11 @@ export const AgentProfile = z.object({
   toolsets: z.array(IdDaBiblioteca).default([]),
   /** Ferramentas avulsas, além das dos toolsets. */
   tools: z.array(ToolRef).default([]),
+  /** Conexões que o agent alcança, com o que vale em cada uma. */
+  connections: z.array(AgentConnection).default([]),
+  skills: z.array(AgentSkill).default([]),
+  /** Teto de gasto do agent, valendo em qualquer fluxo e no `ask_agent`. */
+  budget: AgentBudget.default({}),
   maxSteps: z.number().int().positive().default(12),
 });
 export type AgentProfile = z.infer<typeof AgentProfile>;

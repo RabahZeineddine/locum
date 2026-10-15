@@ -531,7 +531,7 @@ function ConfigDoAgent({
         {atual === undefined ? null : (
           <button
             className="text-primary w-fit cursor-pointer text-xs hover:underline"
-            onClick={() => navegar("library", atual.id)}
+            onClick={() => navegar("agents", atual.id)}
             type="button"
           >
             {t("automations.steps.agent.open")}

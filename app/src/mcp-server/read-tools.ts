@@ -76,7 +76,8 @@ export function registerReadTools(server: McpServer): void {
   server.registerTool(
     "get_metrics",
     {
-      description: "Metrics per agent version and the recorded daily spend.",
+      description:
+        "Metrics per agent version and the recorded daily spend. Spend rows with kind \"agent\" (id biblioteca:<id>) are library agents. An automation step that uses a library agent counts in both its own row and the agent row, so do not add the two kinds; ask_agent counts only in the agent row.",
       inputSchema: {
         agentId: z.string().optional(),
         days: z

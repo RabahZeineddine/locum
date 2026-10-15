@@ -213,7 +213,7 @@ export function Hoje({ navegar }: TelaProps) {
 
         <div
           className="superficie flex cursor-pointer flex-col gap-1 rounded-xl p-3.5 transition-colors hover:border-foreground/20"
-          onClick={() => navegar("agents")}
+          onClick={() => navegar("automations")}
         >
           <span className="text-muted-foreground text-[11px] font-medium uppercase tracking-[0.06em]">
             {t("home.today.kpi.active_watch")}

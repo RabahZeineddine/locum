@@ -18,9 +18,9 @@ import { McpRegistry } from "../mcp/registry.js";
 import { resolveModel, type FallbackRow } from "../providers/registry.js";
 import { providerService } from "../services/provider-service.js";
 import type { Atividade, Runtime } from "../runtimes/types.js";
-import { libraryService, type LibraryService } from "../services/library-service.js";
+import { conexoesIndisponiveis, libraryService, type LibraryService } from "../services/library-service.js";
 import { runLogic } from "./logic.js";
-import { selectSkills, skillsPreamble, type SkillContext } from "../skills/loader.js";
+import { selectSkills, skillsPreamble, type LoadedSkill, type SkillContext } from "../skills/loader.js";
 import { ApprovalGate, settleStep } from "../approval/gate.js";
 import { BudgetExceeded, assertWithinBudget, recordSpend, type Spend } from "./budget.js";
 import { SUBSCRIPTION_RUNTIMES } from "../runtimes/types.js";
@@ -39,6 +39,8 @@ type Deps = {
   machineId: string;
   /** Biblioteca de agents. Ausente usa a do banco do processo. */
   profiles?: Pick<LibraryService, "resolveProfile">;
+  /** Skills disponíveis. Ausente varre o disco, como sempre. Existe para o teste trocar. */
+  skills?: Map<string, LoadedSkill>;
   /** Graph da reação do Teams. Ausente usa a conexão do Teams. Existe para o teste trocar. */
   teams?: TeamsReactionOptions;
 };
@@ -194,6 +196,18 @@ export class Executor {
     let runCost = run.costUsd;
     let runTokens = run.tokens;
     let runEstimate = run.estimateUsd;
+    // O que cada agent da biblioteca gastou neste trecho, para o teto por run dele.
+    // Retomado depois da fila, parte do que os passos já feitos gastaram.
+    const gastoDosAgents = new Map<string, Spend>();
+    for (const feito of await db.select().from(schema.steps).where(and(eq(schema.steps.runId, runId), eq(schema.steps.billable, true)))) {
+      const id = (feito.input as { profile?: { id?: string } } | null)?.profile?.id;
+      if (id === undefined) continue;
+      const antes = gastoDosAgents.get(id) ?? { usd: 0, tokens: 0 };
+      gastoDosAgents.set(id, {
+        usd: antes.usd + (feito.costUsd ?? 0),
+        tokens: antes.tokens + (feito.promptTokens ?? 0) + (feito.completionTokens ?? 0),
+      });
+    }
     // O que este trecho gastou. Vai para o dia em qualquer saída, e não só em
     // `done`: o review para na fila antes de terminar, e gravar só no fim
     // deixava o teto diário sem ver gasto nenhum.
@@ -270,6 +284,7 @@ export class Executor {
                 contextoDaIniciativa,
                 fallbacks,
                 run: { usd: runCost, tokens: runTokens },
+                gastoDosAgents,
                 initiativeServers,
               })
             : await this.runActionStep({ runId, stepId, step, outputs, payload });
@@ -287,6 +302,12 @@ export class Executor {
           // um gatilho que acha vinte PRs abre vinte runs juntos, e cada um
           // precisa ver o que os outros já gastaram antes do próximo passo.
           await recordSpend(spec.id, { usd: outcome.costUsd, tokens: outcome.tokens }, false);
+          if (step.type === "model" && step.profile !== undefined) {
+            const gasto = { usd: outcome.costUsd, tokens: outcome.tokens };
+            const antes = gastoDosAgents.get(step.profile) ?? { usd: 0, tokens: 0 };
+            gastoDosAgents.set(step.profile, { usd: antes.usd + gasto.usd, tokens: antes.tokens + gasto.tokens });
+            await recordSpend(`biblioteca:${step.profile}`, gasto, false);
+          }
         }
         runEstimate += outcome.costUsd;
         outputs.set(step.key, outcome.output);
@@ -342,6 +363,7 @@ export class Executor {
     outputs: Map<string, unknown>;
     fallbacks: FallbackRow[];
     run: Spend;
+    gastoDosAgents: Map<string, Spend>;
     initiativeServers: Set<string> | null;
     contextoDaIniciativa: string | null;
   }): Promise<StepOutcome | { kind: "skipped" }> {
@@ -353,15 +375,57 @@ export class Executor {
     // o prompt do passo é só a tarefa. Resolvido a cada execução, para a
     // versão nova do agent valer no próximo run de todo fluxo que o usa.
     const perfil = step.profile === undefined ? null : await (this.deps.profiles ?? libraryService).resolveProfile(step.profile);
-    const toolRefs = perfil === null ? resolveTools(spec, step) : perfil.tools;
+    // O teto do próprio agent vale em todo fluxo que o usa, além do do fluxo.
+    if (perfil !== null) {
+      await assertWithinBudget(
+        `biblioteca:${perfil.version.profileId}`,
+        args.gastoDosAgents.get(perfil.version.profileId) ?? { usd: 0, tokens: 0 },
+        perfil.version.spec.budget,
+        perfil.version.spec.name,
+      );
+    }
+    let toolRefs = perfil === null ? resolveTools(spec, step) : perfil.tools;
     const modelo = perfil === null ? step.model : perfil.version.spec.model;
     const maxSteps = perfil === null ? step.maxSteps : perfil.version.spec.maxSteps;
+
+    // Conexão do agent sem servidor utilizável nesta máquina: o passo para com
+    // o nome dela, e o opcional é pulado com o mesmo motivo.
+    if (perfil !== null && perfil.semServidor.length > 0) {
+      const motivo = conexoesIndisponiveis(perfil.version.profileId, perfil.semServidor);
+      if (!step.optional) {
+        await db
+          .update(schema.steps)
+          .set({ status: "failed", endedAt: nowSec(), error: motivo })
+          .where(eq(schema.steps.id, stepId));
+        throw new Error(`passo "${step.key}": ${motivo}`);
+      }
+      await db
+        .update(schema.steps)
+        .set({
+          status: "skipped",
+          error: motivo,
+          endedAt: nowSec(),
+          activity: [{ at: Date.now(), tipo: "texto", detalhe: motivo, erro: true }],
+        })
+        .where(eq(schema.steps.id, stepId));
+      return { kind: "skipped" };
+    }
 
     // Antes do `missing()`: servidor fora da iniciativa conta como ausente,
     // mesmo que esteja instalado nesta maquina. Agent sem iniciativa
     // (`initiativeServers` nulo) nao passa por aqui, e ve tudo como hoje.
     if (initiativeServers) {
-      const exigidos = new Set([...toolRefs.map((t) => t.server), ...step.requiresServers]);
+      const dentro = (servidor: string): boolean =>
+        servidor === SERVIDOR_NATIVO || servidor === SERVIDOR_CONTA || initiativeServers.has(servidor);
+      // O que o agent exige é o que veio de toolset e de ferramenta avulsa. Das
+      // conexões basta uma instância dentro da iniciativa; as de fora saem das
+      // ferramentas em vez de serem exigidas.
+      const exigidos = new Set([...(perfil === null ? toolRefs : perfil.fixas).map((t) => t.server), ...step.requiresServers]);
+      if (perfil !== null) {
+        for (const grupo of perfil.grupos) if (!grupo.servers.some(dentro)) grupo.servers.forEach((x) => exigidos.add(x));
+        const fixos = new Set(perfil.fixas.map((t) => t.server));
+        toolRefs = toolRefs.filter((t) => dentro(t.server) || fixos.has(t.server));
+      }
       // As ferramentas nativas são do próprio Locum e só leem: valem em toda
       // iniciativa sem precisar estar na aba Integrações.
       const fora = [...exigidos].filter(
@@ -401,7 +465,7 @@ export class Executor {
     if (!runtime) throw new Error(`runtime indisponivel para "${resolution.provider}"`);
 
     const ctx: SkillContext = { repo: payload.repo, changedFiles: payload.changedFiles };
-    const skills = selectSkills(spec.skills, ctx);
+    const skills = selectSkills([...spec.skills, ...(perfil?.version.spec.skills ?? [])], ctx, this.deps.skills);
     const { doLocum, daConta } = separarDaConta(toolRefs, runtime.id);
     const { tools, release } =
       runtime.id === "claude-code" ? this.deps.mcp.nomesPara(doLocum) : await this.deps.mcp.toolsFor(doLocum);

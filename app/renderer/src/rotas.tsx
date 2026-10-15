@@ -3,7 +3,6 @@ import type { ComponentType } from "react";
 import type { Antigos } from "@/lib/router";
 import { Agents } from "./telas/agents";
 import { Automacoes } from "./telas/automacoes";
-import { Biblioteca } from "./telas/biblioteca";
 import { Conexoes } from "./telas/conexoes";
 import { Configuracao } from "./telas/configuracao";
 import { Execucoes } from "./telas/execucoes";
@@ -48,14 +47,11 @@ export const ROTAS = [
   { id: "sessions", rotulo: "nav.sessions", icone: TerminalSquare, Tela: Sessoes, secao: "operacoes" },
 
   // RECURSOS & CONTEXTO
-  { id: "library", rotulo: "nav.library", icone: Bot, Tela: Biblioteca, secao: "recursos" },
+  { id: "agents", rotulo: "nav.agents", icone: Bot, Tela: Agents, secao: "recursos" },
   { id: "initiatives", rotulo: "nav.initiatives", icone: Target, Tela: Initiatives, secao: "recursos" },
   { id: "connections", rotulo: "nav.connections", icone: Blocks, Tela: Conexoes, secao: "recursos" },
   { id: "models", rotulo: "nav.models", icone: Cpu, Tela: Modelos, secao: "recursos" },
   { id: "settings", rotulo: "nav.settings", icone: Settings, Tela: Configuracao, secao: "recursos" },
-
-  // FORA DA BARRA
-  { id: "agents", rotulo: "nav.agents", icone: ListTree, Tela: Agents, naBarra: false, secao: "operacoes" },
 ] as const satisfies readonly {
   id: string;
   rotulo: string;
@@ -105,4 +101,8 @@ export const ROTAS_ANTIGAS: Antigos = [
   ["execucoes", "runs"],
   ["sessoes", "sessions"],
   ["hoje", "today"],
+  // A Biblioteca virou a tela Agents (ADR 0005). Os toolsets moram dentro dela;
+  // o marketplace de agents é o de Automações. O detalhe de um agent segue igual.
+  ["library/marketplace", "automations"],
+  ["library", "agents"],
 ];

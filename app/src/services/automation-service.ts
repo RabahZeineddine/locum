@@ -131,7 +131,8 @@ export class AutomationService {
     const raiz = base.length < 2 ? `${base}-automacao` : base;
     for (let n = 1; n < 1000; n++) {
       const id = n === 1 ? raiz : `${raiz}-${n}`;
-      if (!isReserved(id) && (await this.agents.get(id)) === undefined) return id;
+      // `legacy` é a rota das automações do modelo antigo (`automations/legacy`).
+      if (id !== "legacy" && !isReserved(id) && (await this.agents.get(id)) === undefined) return id;
     }
     throw new Error("não achei identificador livre para esse nome");
   }

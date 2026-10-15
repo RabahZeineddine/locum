@@ -1038,6 +1038,7 @@ async function checkRenderer(): Promise<string> {
     // Antes das execucoes de proposito: o `checkRuns` deixa a janela no detalhe
     // de um run, que e onde a verificacao do destaque procura o bloco de codigo.
     const agents = await checkAgents(window);
+    await checkAgentsDoConceito(window);
     const configuracao = await checkConfig(window);
     const revisao = await checkReviewVerdict(window);
     const sessoes = await checkClaudeSessions(window);
@@ -1186,7 +1187,7 @@ async function irPara(window: BrowserWindow, id: string, detalhe?: string): Prom
  * so a exigencia da story, que sao estes quatro destinos.
  */
 async function checkRoutes(window: BrowserWindow): Promise<string> {
-  const esperados = ["today", "inbox", "automations", "runs", "sessions", "library", "initiatives", "connections", "models", "settings"];
+  const esperados = ["today", "inbox", "automations", "runs", "sessions", "agents", "initiatives", "connections", "models", "settings"];
 
   const barra = (await window.webContents.executeJavaScript(
     `Array.from(document.querySelectorAll("[data-locum-rota]")).map((b) => ({
@@ -1516,6 +1517,185 @@ async function checkSessionWiring(): Promise<void> {
 }
 
 /**
+ * Pede um destino pelo hash cru, como um deep link antigo faria, e espera a
+ * janela chegar no destino que o alias aponta. `irPara` não serve: ele confere
+ * o mesmo hash que pediu, e o alias é justamente trocar o hash.
+ */
+async function irParaPeloAlias(window: BrowserWindow, hash: string, esperado: string): Promise<void> {
+  await window.webContents.executeJavaScript(`(location.hash = "#/${hash}", null)`);
+  const limite = Date.now() + 10_000;
+  let ultimo = "sem marcador";
+  while (Date.now() < limite) {
+    const onde = (await window.webContents.executeJavaScript(
+      `(() => {
+        const probe = document.querySelector("[data-locum-probe=rota]");
+        return probe === null ? null : probe.dataset.ativo + "|" + probe.dataset.detalhe;
+      })()`,
+    )) as string | null;
+    if (onde === esperado) return;
+    if (onde !== null) ultimo = onde;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(`o alias ${hash} levou a "${ultimo}" e nao a "${esperado}"`);
+}
+
+/**
+ * Confere o Agent do conceito v3: a tela `agents` lista os agents da
+ * biblioteca, os aliases de `library` chegam nela, um agent salvo com conexão
+ * mostra as ferramentas com a classe de cada uma, e criar, duplicar e remover
+ * andam pela própria tela. As automações do modelo antigo seguem em
+ * `automations/legacy`.
+ *
+ * Tudo que a janela mostra é conferido contra o serviço. O agent de teste usa
+ * o servidor de brinquedo como conexão, e sai no fim.
+ */
+async function checkAgentsDoConceito(window: BrowserWindow): Promise<void> {
+  const { libraryService } = await import("../src/services/library-service.js");
+  const { agentService } = await import("../src/services/agent-service.js");
+  const { FIXTURE_SERVER } = await import("../src/fixtures/mcp-fixture.js");
+  const id = "smoke-conexao";
+  const criados = new Set<string>([id]);
+
+  const total = async (): Promise<number> =>
+    (
+      await esperarProbe<{ total: number }>(
+        window,
+        "agents-v3",
+        `(() => {
+          const probe = document.querySelector("[data-locum-probe=agents-v3]");
+          const lista = document.querySelector("[data-locum-biblioteca-total]");
+          return probe === null ? null : { total: lista === null ? 0 : Number(lista.dataset.locumBibliotecaTotal) };
+        })()`,
+      )
+    ).total;
+  const clicar = (seletor: string): Promise<unknown> =>
+    window.webContents.executeJavaScript(`(document.querySelector(${JSON.stringify(seletor)})?.click(), null)`);
+
+  try {
+    await libraryService.saveProfile({
+      spec: {
+        id,
+        name: "Smoke conexao",
+        model: "claude-code/claude-sonnet-5",
+        connections: [{ connectionId: FIXTURE_SERVER, tools: { echo: true } }],
+      },
+    });
+
+    // A rota agents é a tela nova, e a lista bate com a biblioteca.
+    await irPara(window, "agents");
+    const esperadosNaLista = (await libraryService.listProfiles()).length;
+    const naLista = await total();
+    if (naLista !== esperadosNaLista) throw new Error(`a tela Agents listou ${naLista} e a biblioteca tem ${esperadosNaLista}`);
+    const legado = (await window.webContents.executeJavaScript(
+      `document.querySelector("[data-locum-probe=agents]") !== null`,
+    )) as boolean;
+    if (legado) throw new Error("a rota agents ainda mostra a lista das automações antigas");
+
+    // O cartão diz o que o agent alcança, em palavras.
+    const alcance = (await window.webContents.executeJavaScript(
+      `document.querySelector("[data-locum-agent-alcance=${id}]")?.textContent ?? ""`,
+    )) as string;
+    if (!alcance.includes(FIXTURE_SERVER)) throw new Error(`o cartao nao citou a conexao ${FIXTURE_SERVER}: "${alcance}"`);
+
+    // Os aliases da Biblioteca chegam na tela nova.
+    await irParaPeloAlias(window, "library", "agents|");
+    await irParaPeloAlias(window, "library/toolsets", "agents|toolsets");
+    await irParaPeloAlias(window, "library/novo", "agents|novo");
+    await irParaPeloAlias(window, `library/${id}`, `agents|${id}`);
+
+    // O editor mostra a conexão, e as ferramentas dela com a classe de cada uma.
+    await clicar("[data-locum-agent-aba=tools]");
+    // O botão só existe depois que a lista de conexões chega com o servidor dela.
+    await esperarProbe(window, "conexao", `document.querySelector('[data-locum-agent-carregar="${FIXTURE_SERVER}"]') !== null ? true : null`);
+    await clicar(`[data-locum-agent-carregar="${FIXTURE_SERVER}"]`);
+    const caixas = await esperarProbe<Record<string, boolean>>(
+      window,
+      "ferramentas",
+      `(() => {
+        const caixas = [...document.querySelectorAll('[data-locum-agent-ferramenta^="${FIXTURE_SERVER}/"]')];
+        if (caixas.length === 0) return null;
+        return Object.fromEntries(caixas.map((c) => [c.dataset.locumAgentFerramenta.split("/")[1], c.checked]));
+      })()`,
+    );
+    // `echo` é escrita pelo nome e foi ligada; `slack_history` é leitura e vem ligada; `sum` é escrita e vem desligada.
+    // `pid` só é leitura pela anotação do servidor; `get_pull_request` e companhia, pelo nome mesmo com `request` e `run`.
+    const leituraDeNome = ["get_pull_request", "pull_request_read", "get_workflow_run", "list_pull_requests"];
+    if (
+      caixas.pid !== true ||
+      caixas.create_pull_request !== false ||
+      leituraDeNome.some((n) => caixas[n] !== true) ||
+      caixas.echo !== true ||
+      caixas.slack_history !== true ||
+      caixas.sum !== false
+    ) {
+      throw new Error(`as ferramentas do servidor de brinquedo vieram ${JSON.stringify(caixas)}`);
+    }
+    const resolvido = await libraryService.resolveProfile(id);
+    if (!resolvido.tools.some((t) => t.server === FIXTURE_SERVER && t.tool === "slack_history")) {
+      throw new Error("a leitura da conexao nao entrou nas ferramentas do agent");
+    }
+    if (!resolvido.confirmar.some((t) => t.server === FIXTURE_SERVER && t.tool === "echo")) {
+      throw new Error("a escrita ligada nao ficou em confirmar");
+    }
+    if (resolvido.tools.some((t) => t.tool === "echo")) throw new Error("a escrita ligada entrou nas ferramentas que rodam sozinhas");
+
+    // O lugar do chat existe e está desabilitado.
+    await clicar("[data-locum-agent-aba=chat]");
+    const chat = (await window.webContents.executeJavaScript(
+      `document.querySelector("[data-locum-agent-chat] textarea")?.disabled ?? null`,
+    )) as boolean | null;
+    if (chat !== true) throw new Error("o espaco reservado do chat nao esta desabilitado");
+
+    // Duplicar pela lista e remover pelo editor da cópia.
+    await irPara(window, "agents");
+    await total();
+    await clicar(`[data-locum-agent-duplicar="${id}"]`);
+    const copia = await esperarProbe<string>(
+      window,
+      "copia",
+      `(() => {
+        const probe = document.querySelector("[data-locum-probe=rota]");
+        return probe !== null && probe.dataset.ativo === "agents" && probe.dataset.detalhe.startsWith("${id}-") ? probe.dataset.detalhe : null;
+      })()`,
+    );
+    criados.add(copia);
+    if ((await libraryService.getProfile(copia))?.spec.connections[0]?.connectionId !== FIXTURE_SERVER) {
+      throw new Error("a copia nao levou as conexoes do original");
+    }
+    await clicar("[data-locum-agent-aba=usage]");
+    await esperarProbe(window, "remover", `document.querySelector("[data-locum-agent-remover]") !== null ? true : null`);
+    await clicar("[data-locum-agent-remover]");
+    await irParaPeloAlias(window, "agents", "agents|");
+    await esperarProbe(window, "sem-copia", `document.querySelector('[data-locum-agent-da-biblioteca="${copia}"]') === null ? true : null`);
+    if ((await libraryService.getProfile(copia)) !== null) throw new Error("remover pela tela nao apagou o agent");
+    criados.delete(copia);
+
+    // Criar pela tela: nome, salvar, e o agent existe na biblioteca.
+    await irPara(window, "agents", "novo");
+    await window.webContents.executeJavaScript(`(() => {
+      const campo = document.querySelector("[data-locum-agent-nome]");
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(campo, "Criado pela tela");
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+      return null;
+    })()`);
+    await clicar("[data-locum-agent-salvar]");
+    await esperarProbe(window, "criado", `document.querySelector("[data-locum-probe=rota]")?.dataset.detalhe === "criado-pela-tela" ? true : null`);
+    criados.add("criado-pela-tela");
+    if ((await libraryService.getProfile("criado-pela-tela")) === null) throw new Error("criar pela tela nao gravou o agent");
+
+    // O link velho `agents/<automação>` leva à automação do modelo antigo.
+    const antiga = (await agentService.list())[0]?.id;
+    if (antiga !== undefined) await irParaPeloAlias(window, `agents/${antiga}`, `automations|legacy/${antiga}`);
+
+    // As automações antigas seguem acessíveis em Automações.
+    await irPara(window, "automations", "legacy");
+    await esperarProbe(window, "legado", `document.querySelector("[data-locum-probe=agents]") !== null ? true : null`);
+  } finally {
+    for (const criado of criados) await libraryService.removeProfile(criado).catch(() => undefined);
+  }
+}
+
+/**
  * Confere a tela de agents: a lista, o historico e a comparacao de versoes.
  *
  * Tudo que a janela mostra e conferido contra os mesmos servicos, e nao contra
@@ -1533,7 +1713,7 @@ async function checkAgents(window: BrowserWindow): Promise<string> {
   const { machineId } = await import("../src/services/machine-service.js");
   const { providerService } = await import("../src/services/provider-service.js");
 
-  await irPara(window, "agents");
+  await irPara(window, "automations", "legacy");
   const lista = await esperarProbe<{ agents: string; total: number }>(
     window,
     "agents",
@@ -1556,47 +1736,11 @@ async function checkAgents(window: BrowserWindow): Promise<string> {
     throw new Error(`a lista desenhou ${desenhadas} linha(s) para ${doServico.length} agent(s)`);
   }
 
-  // Agent novo pela lista parte de um existente: o botão abre a escolha da
-  // base já com o primeiro agent e o formulário da duplicação embaixo.
-  const novo = (await window.webContents.executeJavaScript(
-    `(async () => {
-      document.querySelector("[data-locum-agent-novo]")?.click();
-      for (let i = 0; i < 50; i++) {
-        const painel = document.querySelector("[data-locum-probe=agent-novo]");
-        if (painel !== null) return painel.querySelectorAll("option").length;
-        await new Promise((r) => setTimeout(r, 50));
-      }
-      return -1;
-    })()`,
+  // A tela legada é só leitura: não oferece criar, importar nem duplicar.
+  const criacao = (await window.webContents.executeJavaScript(
+    `document.querySelectorAll("[data-locum-agent-novo], [data-locum-agent-ia], [data-locum-importar]").length`,
   )) as number;
-  if (novo !== doServico.length) {
-    throw new Error(`o agent novo ofereceu ${novo} base(s) para ${doServico.length} agent(s)`);
-  }
-
-  // Criar com IA só aparece quando há quem escreva o rascunho. O smoke abre o
-  // painel e não pede rascunho: isso chamaria modelo.
-  const { criadorDisponivel } = await import("./agent-builder.js");
-  const criador = await criadorDisponivel();
-  const painelDaIa = (await window.webContents.executeJavaScript(
-    `(async () => {
-      for (let i = 0; i < 50; i++) {
-        const botao = document.querySelector("[data-locum-agent-ia]");
-        if (botao !== null) {
-          botao.click();
-          for (let j = 0; j < 50; j++) {
-            if (document.querySelector("[data-locum-probe=agent-ia] textarea") !== null) return "aberto";
-            await new Promise((r) => setTimeout(r, 50));
-          }
-          return "sem painel";
-        }
-        await new Promise((r) => setTimeout(r, 50));
-      }
-      return "sem botao";
-    })()`,
-  )) as string;
-  if (painelDaIa !== (criador.disponivel ? "aberto" : "sem botao")) {
-    throw new Error(`criar com IA: ${painelDaIa} com criador ${criador.disponivel ? "disponível" : "indisponível"}`);
-  }
+  if (criacao !== 0) throw new Error(`a tela legada oferece ${criacao} controle(s) de criação`);
 
   // O alvo e quem tem historico: comparar versao exige duas, e um agent de uma
   // versao so provaria a tela de lista mais uma vez.
@@ -1609,7 +1753,7 @@ async function checkAgents(window: BrowserWindow): Promise<string> {
   }
   if (alvo === undefined) throw new Error("nenhum agent tem duas versoes para comparar");
 
-  await irPara(window, "agents", alvo);
+  await irPara(window, "automations", `legacy/${alvo}`);
   const detalhe = await esperarProbe<{
     versoes: string;
     versao: number;
@@ -1896,7 +2040,7 @@ async function checkConfig(window: BrowserWindow): Promise<string> {
   // tem de mostrar a linha dele lá.
   const orcamentos = await agentService.budgets();
   for (const orcamento of orcamentos) {
-    await irPara(window, "agents", orcamento.agentId);
+    await irPara(window, "automations", `legacy/${orcamento.agentId}`);
     await esperarProbe<true>(
       window,
       `orçamento de ${orcamento.agentId}`,
@@ -4374,7 +4518,7 @@ async function checkWatched(window: BrowserWindow): Promise<string> {
   const [agent] = await agentService.list();
   if (agent === undefined) throw new Error("nenhum agent cadastrado para observar repositorio");
   // O resumo do que o agent observa mora no detalhe dele.
-  await irPara(window, "agents", agent.id);
+  await irPara(window, "automations", `legacy/${agent.id}`);
 
   const dono = `locum-smoke-${randomUUID().slice(0, 8)}`;
   const nome = `locum-smoke-${randomUUID().slice(0, 8)}`;
@@ -4489,7 +4633,7 @@ async function checkWatched(window: BrowserWindow): Promise<string> {
     // De volta ao resumo do agent: a linha le o cadastro, e e so leitura.
     const abrirResumo = async (): Promise<void> => {
       await irPara(window, "automations");
-      await irPara(window, "agents", agent.id);
+      await irPara(window, "automations", `legacy/${agent.id}`);
     };
     await abrirResumo();
     const lerLinha = (): Promise<{ habilitado: string; alvo: string; autoria: string; filtros: string; proxima: string } | null> =>
@@ -5413,7 +5557,7 @@ async function lerTelas(window: BrowserWindow): Promise<TelasVistas> {
     })()`,
   );
 
-  await irPara(window, "agents");
+  await irPara(window, "automations", "legacy");
   const agents = await esperarProbe<{ texto: string; total: number }>(
     window,
     "agents",
@@ -5428,7 +5572,7 @@ async function lerTelas(window: BrowserWindow): Promise<TelasVistas> {
   const { agentService: agentsDoOrcamento } = await import("../src/services/agent-service.js");
   const [comOrcamento] = await agentsDoOrcamento.budgets();
   if (comOrcamento === undefined) throw new Error("nenhum agent com orçamento para ler o texto");
-  await irPara(window, "agents", comOrcamento.agentId);
+  await irPara(window, "automations", `legacy/${comOrcamento.agentId}`);
   const orcamento = await esperarProbe<{ texto: string; runs: number; gasto: string }>(
     window,
     "orcamento",
@@ -6183,14 +6327,12 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
   const primeiraConexao = (conexoes.find((c) => c.state !== "available" && c.state !== "soon") ?? conexoes.find((c) => c.id === "github"))?.id;
   const primeiroServidor = conexoes.find((c) => c.custom)?.id ?? primeiraConexao;
 
-  const destinos: [string, string | undefined][] = [
+  const destinos: [string, string | undefined, string?][] = [
     ["today", undefined],
     ["inbox", undefined],
     ["inbox", primeiraPendencia],
     ["runs", undefined],
     ["runs", primeiroRun],
-    ["agents", undefined],
-    ["agents", primeiroAgent],
     ["initiatives", undefined],
     ["initiatives", primeiraIniciativa],
     ["initiatives", primeiraIniciativa === undefined ? undefined : `${primeiraIniciativa}/agents`],
@@ -6205,12 +6347,13 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
     ["models", undefined],
     ["automations", undefined],
     ["automations", primeiroAgent],
-    ["library", undefined],
-    ["library", "toolsets"],
-    ["library", "novo"],
+    ["automations", "legacy", "agents-legado"],
+    ["automations", primeiroAgent === undefined ? undefined : `legacy/${primeiroAgent}`, "agents-legado-detalhe"],
+    ["agents", "toolsets", "agents-toolsets"],
+    ["agents", "novo", "agents-novo"],
   ];
 
-  for (const [id, detalhe] of destinos) {
+  for (const [id, detalhe, nome] of destinos) {
     await irPara(janela, id, detalhe);
     // A tela pede dado pela ponte ao montar, e fotografar antes da resposta
     // registraria o esqueleto em vez do conteúdo.
@@ -6219,14 +6362,14 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
     const sufixo =
       detalhe === undefined
         ? ""
-        : id === "settings" || id === "library"
+        : id === "settings"
           ? `-${detalhe}`
           : detalhe.endsWith("/agents")
             ? "-automacoes"
             : detalhe.endsWith("/chat")
               ? "-chat"
               : "-detalhe";
-    writeFileSync(join(destino, `${id}${sufixo}.png`), imagem.toPNG());
+    writeFileSync(join(destino, `${nome ?? `${id}${sufixo}`}.png`), imagem.toPNG());
   }
 
   // O seletor de "Adicionar conexão" abre por clique, e fecha com Esc.
@@ -6252,16 +6395,17 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
 
   // O editor do agent separa em abas; uma foto das instruções e uma das ferramentas.
   for (const aba of ["instructions", "tools"]) {
-    await irPara(janela, "library", "novo");
+    await irPara(janela, "agents", "novo");
     await new Promise((resolve) => setTimeout(resolve, 1000));
     await janela.webContents.executeJavaScript(
       `(document.querySelector('[data-locum-agent-aba="${aba}"]')?.click(), null)`,
     );
     await new Promise((resolve) => setTimeout(resolve, 600));
-    writeFileSync(join(destino, `library-novo-${aba}.png`), (await janela.webContents.capturePage()).toPNG());
+    writeFileSync(join(destino, `agents-novo-${aba}.png`), (await janela.webContents.capturePage()).toPNG());
   }
-  // A busca abre os servidores e deixa só o que casa.
+  // A busca abre os servidores e deixa só o que casa, dentro dos atalhos.
   await janela.webContents.executeJavaScript(`(() => {
+    document.querySelector("[data-locum-agent-secao=tools] details")?.setAttribute("open", "");
     const campo = document.querySelector("[data-locum-busca-ferramentas]");
     if (campo === null) return null;
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(campo, "e");
@@ -6269,12 +6413,57 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
     return null;
   })()`);
   await new Promise((resolve) => setTimeout(resolve, 2500));
-  writeFileSync(join(destino, "library-novo-tools-busca.png"), (await janela.webContents.capturePage()).toPNG());
+  writeFileSync(join(destino, "agents-novo-tools-busca.png"), (await janela.webContents.capturePage()).toPNG());
   await janela.webContents.executeJavaScript(
     `(document.querySelector("[data-locum-servidor-ferramentas]:last-of-type")?.scrollIntoView({ block: "end" }), null)`,
   );
   await new Promise((resolve) => setTimeout(resolve, 300));
-  writeFileSync(join(destino, "library-novo-tools-rolado.png"), (await janela.webContents.capturePage()).toPNG());
+  writeFileSync(join(destino, "agents-novo-tools-rolado.png"), (await janela.webContents.capturePage()).toPNG());
+
+  // O agent do conceito v3: a lista com o que cada um alcança, o editor com a
+  // seção de conexões aberta e as ferramentas à vista, e o lugar do chat.
+  {
+    const { libraryService } = await import("../src/services/library-service.js");
+    const { FIXTURE_SERVER } = await import("../src/fixtures/mcp-fixture.js");
+    const id = "captura-agent";
+    const clicar = (seletor: string): Promise<unknown> =>
+      janela.webContents.executeJavaScript(`(document.querySelector(${JSON.stringify(seletor)})?.click(), null)`);
+    await libraryService.saveProfile({
+      spec: {
+        id,
+        name: "Triagem de chamados",
+        description: "Lê os chamados abertos e resume o que mudou desde ontem.",
+        model: "claude-code/claude-sonnet-5",
+        instructions: "Resuma em cinco linhas. Cite o número do chamado. Nunca invente prazo.",
+        connections: [{ connectionId: FIXTURE_SERVER, tools: { echo: true } }],
+        skills: [],
+        budget: { perDayUsd: 2 },
+      },
+    });
+    try {
+      await irPara(janela, "agents");
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      writeFileSync(join(destino, "agents-lista.png"), (await janela.webContents.capturePage()).toPNG());
+
+      await irPara(janela, "agents", id);
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await clicar("[data-locum-agent-aba=tools]");
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      await clicar(`[data-locum-agent-carregar="${FIXTURE_SERVER}"]`);
+      await new Promise((resolve) => setTimeout(resolve, 3500));
+      writeFileSync(join(destino, "agents-editor-conexoes.png"), (await janela.webContents.capturePage()).toPNG());
+
+      await clicar("[data-locum-agent-aba=budget]");
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      writeFileSync(join(destino, "agents-editor-orcamento.png"), (await janela.webContents.capturePage()).toPNG());
+
+      await clicar("[data-locum-agent-aba=chat]");
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      writeFileSync(join(destino, "agents-chat-reservado.png"), (await janela.webContents.capturePage()).toPNG());
+    } finally {
+      await libraryService.removeProfile(id).catch(() => undefined);
+    }
+  }
 
   // O que vigia e quanto gasta ficam abaixo dos passos, fora da primeira foto.
   // Primeiro sem gatilho, com o convite para criar, e depois com um gatilho do
@@ -6283,7 +6472,7 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
     const rolarParaObservados = async (arquivo: string): Promise<void> => {
       // Sai e volta: o resumo le o cadastro ao montar.
       await irPara(janela, "automations");
-      await irPara(janela, "agents", primeiroAgent);
+      await irPara(janela, "automations", `legacy/${primeiroAgent}`);
       await new Promise((resolve) => setTimeout(resolve, 1200));
       await janela.webContents.executeJavaScript(
         `(document.querySelector("[data-locum-probe=observados]")?.scrollIntoView({ block: "start" }), null)`,
@@ -6361,16 +6550,6 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
     );
     await new Promise((resolve) => setTimeout(resolve, 800));
     writeFileSync(join(destino, "automations-logica.png"), (await janela.webContents.capturePage()).toPNG());
-  }
-
-  // O editor abre por clique, então a captura clica.
-  if (primeiroAgent) {
-    await irPara(janela, "agents", primeiroAgent);
-    await janela.webContents.executeJavaScript(
-      `(document.querySelector("[data-locum-editar]")?.click(), null)`,
-    );
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    writeFileSync(join(destino, "agents-editor.png"), (await janela.webContents.capturePage()).toPNG());
   }
 
   // Resposta de Slack ou Teams não existe no exemplo; uma do Teams entra só

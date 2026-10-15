@@ -1,12 +1,13 @@
 import { SERVIDOR_NATIVO } from "../config/types.js";
-import { recordSpend } from "../executor/budget.js";
+import { assertWithinBudget, recordSpend } from "../executor/budget.js";
 import type { McpRegistry } from "../mcp/registry.js";
 import { separarDaConta } from "../runtimes/claude-account.js";
 import { resolveModel } from "../providers/registry.js";
 import type { Runtime } from "../runtimes/types.js";
 import { SUBSCRIPTION_RUNTIMES } from "../runtimes/types.js";
-import { libraryService, type LibraryService } from "../services/library-service.js";
+import { conexoesIndisponiveis, libraryService, type LibraryService } from "../services/library-service.js";
 import { machineId } from "../services/machine-service.js";
+import { selectSkills, skillsPreamble, type LoadedSkill } from "../skills/loader.js";
 import { providerService } from "../services/provider-service.js";
 
 export { SERVIDOR_NATIVO };
@@ -16,6 +17,9 @@ export interface ConsultaDeps {
   build: () => Promise<{ mcp: Pick<McpRegistry, "toolsFor">; runtimes: Map<string, Runtime> }>;
   fallbacks?: () => Promise<Parameters<typeof resolveModel>[1]>;
   spend?: typeof recordSpend;
+  budget?: typeof assertWithinBudget;
+  /** Skills disponíveis. Ausente varre o disco. */
+  skills?: Map<string, LoadedSkill>;
 }
 
 export interface Resposta {
@@ -38,6 +42,10 @@ export async function consultarAgent(id: string, pergunta: string, deps: Consult
   if (pergunta.trim() === "") throw new Error("diga o que perguntar ao agent");
   const perfil = await (deps.library ?? libraryService).resolveProfile(id);
   const spec = perfil.version.spec;
+  if (perfil.semServidor.length > 0) throw new Error(conexoesIndisponiveis(spec.id, perfil.semServidor));
+
+  const chave = `biblioteca:${spec.id}`;
+  await (deps.budget ?? assertWithinBudget)(chave, { usd: 0, tokens: 0 }, spec.budget, spec.name);
 
   const fallbacks = deps.fallbacks ? await deps.fallbacks() : await providerService.getFallbacks(machineId);
   const { mcp, runtimes } = await deps.build();
@@ -48,11 +56,14 @@ export async function consultarAgent(id: string, pergunta: string, deps: Consult
   const refs = perfil.tools.filter((t) => !(t.server === SERVIDOR_NATIVO && t.tool === "ask_agent"));
   const { doLocum, daConta } = separarDaConta(refs, runtime.id);
   const { tools, release } = await mcp.toolsFor(doLocum);
+  // Sem evento por trás, só valem as skills de regra "sempre".
+  const skills = selectSkills(spec.skills, { repo: "", changedFiles: [] }, deps.skills);
+  const system = [perfil.system, skillsPreamble(skills, true)].filter((p) => p.length > 0).join("\n\n");
   try {
     const resultado = await runtime.run({
       provider: resolucao.provider,
       model: resolucao.model,
-      system: perfil.system.length > 0 ? perfil.system : undefined,
+      system: system.length > 0 ? system : undefined,
       prompt: pergunta,
       tools,
       mcpServers: [...new Set(doLocum.map((t) => t.server))],
@@ -61,7 +72,7 @@ export async function consultarAgent(id: string, pergunta: string, deps: Consult
       ...(spec.temperature === undefined ? {} : { temperature: spec.temperature }),
     });
     const tokens = resultado.promptTokens + resultado.completionTokens;
-    await (deps.spend ?? recordSpend)(`biblioteca:${spec.id}`, { usd: resultado.costUsd, tokens }, true);
+    await (deps.spend ?? recordSpend)(chave, { usd: resultado.costUsd, tokens }, true);
     return { agent: spec.id, version: perfil.version.version, answer: resultado.text, costUsd: resultado.costUsd, tokens };
   } finally {
     release();

@@ -699,7 +699,7 @@ function DetalheDaConexao({ id, navegar }: { id: string; navegar: TelaProps["nav
               <li key={`${u.tipo}:${u.id}`}>
                 <button
                   className="border-border hover:bg-muted/40 flex w-full cursor-pointer items-center gap-2 rounded-md border px-3 py-1.5 text-left text-sm"
-                  onClick={() => navegar(u.tipo === "automation" ? "automations" : "library", u.id)}
+                  onClick={() => navegar(u.tipo === "automation" ? "automations" : "agents", u.id)}
                   type="button"
                 >
                   <Badge variant="outline">{t(`connections.detail.kind.${u.tipo}`)}</Badge>

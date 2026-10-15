@@ -469,6 +469,8 @@ interface ServiceApi {
   "library.saveToolset": LibraryService["saveToolset"];
   "library.removeToolset": LibraryService["removeToolset"];
   "library.suggestId": LibraryService["suggestId"];
+  /** Skills que o Locum acha no disco (do usuário, de plugins e do projeto), para o agent escolher. */
+  "skills.list": () => Promise<{ name: string; description: string }[]>;
 
   /** A versão instalada, para o rodapé da barra lateral. */
   "app.version": () => Promise<string>;
@@ -697,6 +699,7 @@ export const BRIDGE_CHANNELS = [
   "library.saveToolset",
   "library.removeToolset",
   "library.suggestId",
+  "skills.list",
   "app.version",
   "startup.get",
   "startup.set",

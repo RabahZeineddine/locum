@@ -1,0 +1,228 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { AgentProfile } from "../src/config/types.js";
+import * as schema from "../src/db/schema.js";
+import { LibraryService, type CatalogoDeConexoes } from "../src/services/library-service.js";
+import { bancoDeTeste } from "./helpers/db.js";
+
+/** O agent escolhe conexões; a biblioteca expande cada uma nas ferramentas dos servidores dela. */
+
+const modelo = "anthropic/claude-sonnet-5";
+
+type Oferecida = string | { name: string; readOnlyHint?: boolean };
+
+/** Catálogo de mentira: servidores por conexão (ligados salvo `desligados`) e ferramentas por servidor. */
+function catalogoCom(
+  servidores: Record<string, string[]>,
+  ferramentas: Record<string, Oferecida[] | Error>,
+  desligados: string[] = [],
+): CatalogoDeConexoes {
+  return {
+    servidoresDe: async (id) => (servidores[id] ?? []).map((nome) => ({ nome, ligado: !desligados.includes(nome) })),
+    ferramentasDe: async (servidor) => {
+      const lista = ferramentas[servidor];
+      if (lista === undefined) throw new Error("não listou");
+      if (lista instanceof Error) throw lista;
+      return lista.map((f) => (typeof f === "string" ? { name: f } : f));
+    },
+  };
+}
+
+const github = catalogoCom(
+  { github: ["github"] },
+  { github: ["get_issue", "list_commits", "create_comment", "merge_branch", "get_pull_request", "pull_request_read"] },
+);
+
+const nomes = (tools: readonly { server: string; tool: string }[]) => tools.map((t) => `${t.server}.${t.tool}`).sort();
+
+test("a conexão libera só a leitura por padrão, e a escrita fica à espera de confirmação", async () => {
+  const biblioteca = new LibraryService(bancoDeTeste(), github);
+  await biblioteca.saveProfile({
+    spec: { id: "revisor", name: "Revisor", model: modelo, connections: [{ connectionId: "github" }] },
+  });
+  const resolvido = await biblioteca.resolveProfile("revisor");
+  assert.deepEqual(nomes(resolvido.tools), [
+    "github.get_issue",
+    "github.get_pull_request",
+    "github.list_commits",
+    "github.pull_request_read",
+  ]);
+  assert.ok(resolvido.tools.every((t) => t.class === "read"));
+  assert.deepEqual(resolvido.confirmar, []);
+});
+
+test("a escrita marcada sai de tools e vem em confirmar, como escrita externa", async () => {
+  const biblioteca = new LibraryService(bancoDeTeste(), github);
+  await biblioteca.saveProfile({
+    spec: {
+      id: "revisor",
+      name: "Revisor",
+      model: modelo,
+      connections: [{ connectionId: "github", tools: { create_comment: true, list_commits: false } }],
+    },
+  });
+  const resolvido = await biblioteca.resolveProfile("revisor");
+  assert.deepEqual(nomes(resolvido.tools), ["github.get_issue", "github.get_pull_request", "github.pull_request_read"]);
+  assert.deepEqual(resolvido.confirmar, [{ server: "github", tool: "create_comment", class: "external_write" }]);
+});
+
+test("conexão com várias instâncias libera as ferramentas de cada uma", async () => {
+  const grafana = catalogoCom(
+    { grafana: ["grafana-prod", "grafana-hml"] },
+    { "grafana-prod": ["query_metrics"], "grafana-hml": ["query_metrics", "create_dashboard"] },
+  );
+  const biblioteca = new LibraryService(bancoDeTeste(), grafana);
+  await biblioteca.saveProfile({ spec: { id: "sre", name: "SRE", model: modelo, connections: [{ connectionId: "grafana" }] } });
+  const resolvido = await biblioteca.resolveProfile("sre");
+  assert.deepEqual(nomes(resolvido.tools), ["grafana-hml.query_metrics", "grafana-prod.query_metrics"]);
+});
+
+test("conexão sem servidor não entra e é apontada, sem derrubar o agent", async () => {
+  const biblioteca = new LibraryService(bancoDeTeste(), catalogoCom({}, {}));
+  await biblioteca.saveProfile({ spec: { id: "x", name: "X", model: modelo, connections: [{ connectionId: "jira" }] } });
+  const resolvido = await biblioteca.resolveProfile("x");
+  assert.deepEqual(resolvido.tools, []);
+  assert.deepEqual(resolvido.semServidor, [{ connectionId: "jira", motivo: "sem servidor ligado nesta máquina" }]);
+});
+
+test("servidor que não consegue listar as ferramentas deixa a conexão indisponível, com o motivo", async () => {
+  const jira = catalogoCom({ jira: ["jira"] }, { jira: new Error("conexão recusada") });
+  const biblioteca = new LibraryService(bancoDeTeste(), jira);
+  await biblioteca.saveProfile({
+    spec: { id: "x", name: "X", model: modelo, connections: [{ connectionId: "jira", tools: { search_issues: true } }] },
+  });
+  const resolvido = await biblioteca.resolveProfile("x");
+  assert.deepEqual(resolvido.tools, []);
+  assert.match(resolvido.semServidor[0]!.motivo, /não consegui listar.*conexão recusada/);
+});
+
+test("servidor desligado não entra, e a conexão só com ele fica indisponível", async () => {
+  const catalogo = catalogoCom(
+    { grafana: ["grafana-prod", "grafana-hml"], jira: ["jira"] },
+    { "grafana-prod": ["query_metrics"], "grafana-hml": ["query_metrics"], jira: ["search_issues"] },
+    ["grafana-hml", "jira"],
+  );
+  const biblioteca = new LibraryService(bancoDeTeste(), catalogo);
+  await biblioteca.saveProfile({
+    spec: { id: "x", name: "X", model: modelo, connections: [{ connectionId: "grafana" }, { connectionId: "jira" }] },
+  });
+  const resolvido = await biblioteca.resolveProfile("x");
+  assert.deepEqual(nomes(resolvido.tools), ["grafana-prod.query_metrics"]);
+  assert.deepEqual(resolvido.semServidor, [{ connectionId: "jira", motivo: "o servidor dela está desligado" }]);
+  assert.deepEqual(resolvido.grupos, [{ connectionId: "grafana", servers: ["grafana-prod"] }]);
+});
+
+test("ferramenta que o servidor deixou de oferecer sai, mesmo escolhida", async () => {
+  const biblioteca = new LibraryService(bancoDeTeste(), catalogoCom({ github: ["github"] }, { github: ["get_issue"] }));
+  await biblioteca.saveProfile({
+    spec: { id: "x", name: "X", model: modelo, connections: [{ connectionId: "github", tools: { sumiu: true, "github/outra": "read" } }] },
+  });
+  const resolvido = await biblioteca.resolveProfile("x");
+  assert.deepEqual(nomes(resolvido.tools), ["github.get_issue"]);
+  assert.deepEqual(resolvido.confirmar, []);
+});
+
+test("instância nova da conexão entra na próxima resolução, sem regravar o agent", async () => {
+  const servidores = { grafana: ["grafana-prod"] };
+  const ferramentas = { "grafana-prod": ["query_metrics"], "grafana-dev": ["query_metrics"] };
+  const biblioteca = new LibraryService(bancoDeTeste(), catalogoCom(servidores, ferramentas));
+  await biblioteca.saveProfile({ spec: { id: "x", name: "X", model: modelo, connections: [{ connectionId: "grafana" }] } });
+  assert.deepEqual(nomes((await biblioteca.resolveProfile("x")).tools), ["grafana-prod.query_metrics"]);
+  servidores.grafana.push("grafana-dev");
+  assert.deepEqual(nomes((await biblioteca.resolveProfile("x")).tools), ["grafana-dev.query_metrics", "grafana-prod.query_metrics"]);
+});
+
+test("a anotação do servidor classifica, e a pessoa pode declarar que uma escrita só lê", async () => {
+  const catalogo = catalogoCom(
+    { fx: ["fx"] },
+    { fx: [{ name: "pid", readOnlyHint: true }, { name: "mystery_tool", readOnlyHint: false }, "sum", "echo"] },
+  );
+  const biblioteca = new LibraryService(bancoDeTeste(), catalogo);
+  await biblioteca.saveProfile({
+    spec: { id: "x", name: "X", model: modelo, connections: [{ connectionId: "fx", tools: { "fx/sum": "read", "fx/echo": true } }] },
+  });
+  const resolvido = await biblioteca.resolveProfile("x");
+  assert.deepEqual(nomes(resolvido.tools), ["fx.pid", "fx.sum"]);
+  assert.deepEqual(nomes(resolvido.confirmar), ["fx.echo"]);
+});
+
+test("a escolha por servidor e ferramenta separa instâncias que a chave antiga, só pelo nome, não separa", async () => {
+  const catalogo = catalogoCom(
+    { grafana: ["grafana-prod", "grafana-hml"] },
+    { "grafana-prod": ["create_dashboard"], "grafana-hml": ["create_dashboard"] },
+  );
+  const biblioteca = new LibraryService(bancoDeTeste(), catalogo);
+  await biblioteca.saveProfile({
+    spec: { id: "x", name: "X", model: modelo, connections: [{ connectionId: "grafana", tools: { "grafana-hml/create_dashboard": true } }] },
+  });
+  assert.deepEqual(nomes((await biblioteca.resolveProfile("x")).confirmar), ["grafana-hml.create_dashboard"]);
+});
+
+test("toolset e conexão que alcançam a mesma ferramenta não a repetem", async () => {
+  const biblioteca = new LibraryService(bancoDeTeste(), github);
+  await biblioteca.saveToolset({
+    toolset: { id: "pr", name: "PR", tools: [{ server: "github", tool: "get_issue", class: "read" }] },
+  });
+  await biblioteca.saveProfile({
+    spec: {
+      id: "revisor",
+      name: "Revisor",
+      model: modelo,
+      toolsets: ["pr"],
+      tools: [{ server: "github", tool: "list_commits", class: "read" }],
+      connections: [{ connectionId: "github" }],
+    },
+  });
+  const { tools } = await biblioteca.resolveProfile("revisor");
+  assert.equal(tools.filter((t) => t.tool === "get_issue").length, 1);
+  assert.equal(tools.filter((t) => t.tool === "list_commits").length, 1);
+});
+
+test("versão gravada antes das conexões, das skills e do orçamento continua abrindo", async () => {
+  const banco = bancoDeTeste();
+  const antigo = { id: "legado", name: "Legado", description: "", context: "", instructions: "Faça.", model: modelo, toolsets: [], tools: [], maxSteps: 7 };
+  banco.insert(schema.agentProfiles).values({ id: "legado", name: "Legado" }).run();
+  banco
+    .insert(schema.agentProfileVersions)
+    .values({ id: "v1", profileId: "legado", version: 1, spec: antigo as unknown as object })
+    .run();
+  const biblioteca = new LibraryService(banco, github);
+  const lido = await biblioteca.getProfile("legado");
+  assert.deepEqual(lido?.spec.connections, []);
+  assert.deepEqual(lido?.spec.skills, []);
+  assert.deepEqual(lido?.spec.budget, {});
+  assert.equal(lido?.spec.maxSteps, 7);
+  assert.equal((await biblioteca.resolveProfile("legado")).tools.length, 0);
+  // Gravar o mesmo conteúdo de novo não vira versão nova.
+  assert.equal((await biblioteca.saveProfile({ spec: antigo })).version, 1);
+});
+
+test("skill aceita o nome puro ou a regra completa", () => {
+  const spec = AgentProfile.parse({
+    id: "a",
+    name: "A",
+    model: modelo,
+    skills: ["revisao", { skill: "ts", when: { filesMatch: ["**/*.ts"] } }],
+  });
+  assert.deepEqual(spec.skills, [
+    { skill: "revisao", when: { always: true } },
+    { skill: "ts", when: { filesMatch: ["**/*.ts"] } },
+  ]);
+});
+
+test("a lista resume o que cada agent alcança, com a escrita ligada contada à parte", async () => {
+  const biblioteca = new LibraryService(bancoDeTeste(), github);
+  await biblioteca.saveProfile({
+    spec: {
+      id: "revisor",
+      name: "Revisor",
+      model: modelo,
+      skills: ["revisao"],
+      connections: [{ connectionId: "github", tools: { create_comment: true, merge_branch: true, get_issue: true, list_commits: false } }],
+    },
+  });
+  const [resumo] = await biblioteca.listProfiles();
+  assert.deepEqual(resumo?.connections, ["github"]);
+  assert.equal(resumo?.writes, 2);
+  assert.equal(resumo?.skills, 1);
+});

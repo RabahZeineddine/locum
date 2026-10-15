@@ -181,8 +181,7 @@
     },
     "tabs": {
       "agents": "Meus Agents",
-      "marketplace": "Marketplace",
-      "specialties": "Especialidades"
+      "marketplace": "Marketplace"
     },
     "marketplace": {
       "loading": "lendo o marketplace...",
@@ -523,13 +522,12 @@
     "queue": "Fila",
     "initiatives": "Iniciativas",
     "runs": "Execuções",
-    "agents": "Fluxo em lista",
+    "agents": "Agents",
     "settings": "Configuração",
     "version": "versão {{version}}",
     "versionHint": "Atualização, em Configuração",
     "sessions": "Sessões",
     "automations": "Automações",
-    "library": "Agents",
     "sectionCockpit": "Cockpit",
     "sectionOperations": "Operações",
     "sectionResources": "Recursos",
@@ -2191,11 +2189,17 @@
         "configuracao": "erro de configuração, {{when}}:",
         "batida": "a última varredura falhou, {{when}}:"
       }
+    },
+    "legacy": {
+      "title": "Automações do modelo antigo",
+      "link": "Legado (só leitura)",
+      "lead": "As automações do modelo anterior ao conceito novo, só para consulta. Para criar, abra Automações; os agents moram em Agents.",
+      "empty": "Nenhuma automação do modelo antigo."
     }
   },
   "library": {
     "title": "Agents",
-    "lead": "Especialidades reutilizáveis. Cada agent sabe um assunto e tem as ferramentas dele; a automação diz quando ele trabalha e em quê.",
+    "lead": "Quem trabalha: instruções, modelo, o que pode usar em cada conexão, skills e orçamento. A automação diz quando ele trabalha e o que fazer com a saída.",
     "newAgent": "Novo agent",
     "loading": "Carregando...",
     "notFound": "Agent não encontrado.",
@@ -2203,15 +2207,11 @@
     "empty": "Nenhum agent na biblioteca ainda. Crie um por assunto: chamados, parcerias, revisão de PR.",
     "tabs": {
       "agents": "Agents",
-      "marketplace": "Marketplace",
-      "toolsets": "Toolsets"
+      "toolsets": "Toolsets (atalhos)"
     },
     "toolsetsCount_one": "{{count}} toolset",
     "toolsetsCount_other": "{{count}} toolsets",
     "toolsetsCount_zero": "sem toolset",
-    "coupled_zero": "acoplado a {{count}} automações",
-    "coupled_one": "acoplado a {{count}} automação",
-    "coupled_other": "acoplado a {{count}} automações",
     "usedBy_one": "em {{count}} automação",
     "usedBy_other": "em {{count}} automações",
     "usedBy_zero": "sem uso",
@@ -2250,10 +2250,13 @@
       "untitled": "Agent sem nome",
       "maxStepsHint": "Quantas vezes ele pode chamar ferramenta numa tarefa antes de parar.",
       "tabs": {
-        "general": "Geral",
         "instructions": "Instruções",
-        "tools": "Ferramentas",
-        "usage": "Onde é usado"
+        "tools": "Conexões e ferramentas",
+        "usage": "Onde é usado",
+        "model": "Modelo",
+        "skills": "Skills",
+        "budget": "Orçamento",
+        "chat": "Conversar"
       },
       "chosenTools": "Ferramentas que ele já pode usar",
       "chosenNone": "Nenhuma ferramenta avulsa ainda. Escolha abaixo, por servidor.",
@@ -2265,7 +2268,18 @@
       "usageHint": "O agent é quem trabalha; a automação diz quando e com que tarefa.",
       "usageNone": "Nenhuma automação usa este agent ainda.",
       "openAutomation": "Abrir automação",
-      "removeHint": "Remover apaga o agent da biblioteca, com todas as versões."
+      "removeHint": "Remover apaga o agent da biblioteca, com todas as versões.",
+      "leads": {
+        "instructions": "Quem é este agent e como ele trabalha? O contexto e as instruções vão no início de toda tarefa que ele recebe.",
+        "model": "Qual modelo roda este agent e com que liberdade? A automação não escolhe: o modelo vem daqui.",
+        "tools": "O que ele pode usar fora do Locum? Escolha as conexões; em cada uma a leitura vem ligada e a escrita desligada, e dá para ajustar ferramenta por ferramenta.",
+        "skills": "Que conhecimento extra ele carrega? Cada skill escolhida entra no texto de instruções, como nas automações.",
+        "budget": "Quanto ele pode gastar? O teto vale em toda automação que o usa e quando outro agent o consulta. Em branco, sem teto.",
+        "chat": "Como testar fora de uma automação? Uma conversa direta com este agent, com confirmação antes de qualquer escrita.",
+        "usage": "Onde ele trabalha hoje? As automações que o chamam, e a remoção, que só vale sem uso."
+      },
+      "shortcuts": "Atalhos: toolsets e ferramentas avulsas",
+      "shortcutsHint": "Jeito antigo de dar ferramentas, que continua valendo e se soma às conexões. Só leitura: o que escreve fora é nó de ação na automação."
     },
     "toolsets": {
       "lead": "Um toolset junta ferramentas de um ou mais apps. O agent que inclui o toolset ganha todas elas.",
@@ -2281,6 +2295,59 @@
       "usedBy_one": "em {{count}} agent",
       "usedBy_other": "em {{count}} agents",
       "usedBy_zero": "sem uso"
+    },
+    "copySuffix": "(cópia)",
+    "duplicate": "Duplicar",
+    "card": {
+      "noConnections": "Sem conexões: só usa as ferramentas do Locum.",
+      "uses": "Usa {{list}}",
+      "readOnly": "Só leitura",
+      "writes_one": "{{count}} ferramenta de escrita ligada",
+      "writes_other": "{{count}} ferramentas de escrita ligadas",
+      "skills_one": "{{count}} skill",
+      "skills_other": "{{count}} skills",
+      "skills_zero": "sem skill",
+      "writes_zero": "nenhuma ferramenta de escrita ligada"
+    },
+    "connections": {
+      "none": "Nenhuma conexão escolhida. Sem elas o agent só usa as ferramentas do Locum.",
+      "noneToAdd": "Todas as conexões com servidor já estão aqui. Conecte outras na tela Conexões.",
+      "add": "Adicionar conexão",
+      "remove": "Tirar {{name}}",
+      "default": "leitura ligada, escrita desligada",
+      "noServer": "Esta conexão não tem servidor nesta máquina. Conecte na tela Conexões.",
+      "load": "Ver ferramentas",
+      "reload": "Atualizar",
+      "notListed": "As ferramentas ainda não foram listadas. Use \"Ver ferramentas\" para escolher uma a uma; enquanto isso vale o padrão.",
+      "counts": "{{read}} de leitura, {{write}} de escrita",
+      "writeNote": "Escrita ligada não roda sozinha: só passa pelo chat do agent, com a sua confirmação (chega na próxima versão). Numa automação, escrever é um nó de ação com aprovação.",
+      "declareRead": "é leitura",
+      "declareReadHint": "Marque quando o nome ou o servidor classificam a ferramenta como escrita, mas ela só lê. Ela passa a rodar sozinha."
+    },
+    "skills": {
+      "none": "Nenhuma skill escolhida.",
+      "noneToAdd": "Nenhuma outra skill encontrada neste computador.",
+      "add": "Adicionar skill",
+      "remove": "Tirar {{name}}",
+      "missing": "não encontrada"
+    },
+    "budget": {
+      "perRunUsd": "Por execução (USD)",
+      "perRunUsdHint": "Para o passo seguinte quando o agent já gastou isto nesta execução.",
+      "perDayUsd": "Por dia (USD)",
+      "perDayUsdHint": "Soma o dia inteiro, em todas as automações e consultas.",
+      "perRunTokens": "Por execução (tokens)",
+      "perRunTokensHint": "Protege modelo sem preço cadastrado, que não aparece em dólar.",
+      "perDayTokens": "Por dia (tokens)",
+      "perDayTokensHint": "O mesmo teto, em tokens, para o dia.",
+      "noLimit": "sem teto"
+    },
+    "chat": {
+      "title": "Conversar",
+      "soon": "chega na próxima versão",
+      "placeholder": "Pergunte ou peça uma tarefa a este agent",
+      "send": "Enviar",
+      "note": "A conversa usa o modelo, as conexões e as skills desta página. Escrita em conexão pede a sua confirmação antes de sair."
     }
   },
   "digest": {

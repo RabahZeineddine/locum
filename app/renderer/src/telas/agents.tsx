@@ -1,196 +1,1009 @@
-import type { TFunction } from "i18next";
-import { CodeBlock, CodeBlockCopyButton } from "@/components/ai-elements/code-block";
-import { Badge } from "@/components/ui/badge";
 import { CabecalhoDaTela } from "@/components/cabecalho-da-tela";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { call, useRead, type ReadResult } from "@/lib/bridge";
-import { duplicarAgent, exportarAgent, importarAgent } from "@/lib/editar-agent";
-import { EditorDeAgent } from "../editor-agent";
-import { Secao } from "./blocos";
-import { LinhaDoOrcamento } from "./configuracao";
-import { GatilhosDoAgent } from "./gatilhos-do-agent";
-import { comContexto, diffJson, type LinhaDoDiff } from "@/lib/diff";
-import { rotuloDeEstado, rotuloDoModelo } from "@/lib/rotulos";
+import { call, read, useRead, type ReadResult } from "@/lib/bridge";
+import { rotuloDoModelo } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, Plus, Sparkles, Workflow, X } from "lucide-react";
-import { useMemo, useState } from "react";
-import { Trans, useTranslation } from "react-i18next";
-import { useCurrentInitiative } from "../current-initiative";
+import { ArrowLeft, Bot, Copy, Loader2, MessageSquare, Plus, RefreshCw, Trash2, Workflow, Wrench, X } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
+import { ehLeitura, ehLeituraDa, escolhaDe, type EscolhaDeFerramenta } from "../../../src/config/leitura.js";
+import type { AgentBudget, AgentConnection, AgentProfile, ToolRef, Toolset } from "../../../src/config/types";
+import { SeletorDeModelo, ServidoresComBusca, servidoresDoModelo, useCatalogo } from "../editor-agent";
 import type { TelaProps } from "../rotas";
 
-type Versao = ReadResult<"agents.versions">[number];
-type Spec = Versao["spec"];
-type Passo = Spec["steps"][number];
-type Previa = ReadResult<"providers.preview">[number];
-type Ferramenta = ReadResult<"mcp.tools">[number];
+type ResumoDoAgent = ReadResult<"library.profiles">[number];
+type ResumoDoToolset = ReadResult<"library.toolsets">[number];
+type Conexao = ReadResult<"connections.list">[number];
+
+const CAMPO =
+  "border-border bg-background focus-visible:ring-ring w-full rounded-md border px-3 py-1.5 text-sm outline-none focus-visible:ring-1";
+
+/** O detalhe que abre a aba de toolsets, e não um agent. */
+const ABA_TOOLSETS = "toolsets";
+/** O detalhe do agent novo, ainda sem id. */
+const NOVO = "novo";
+
+const SECOES = ["instructions", "model", "tools", "skills", "budget", "chat", "usage"] as const;
+type Secao = (typeof SECOES)[number];
+
+const LIMITES = ["perRunUsd", "perDayUsd", "perRunTokens", "perDayTokens"] as const;
+
+const AGENT_EM_BRANCO: AgentProfile = {
+  id: "",
+  name: "",
+  description: "",
+  context: "",
+  instructions: "",
+  model: "claude-code/claude-sonnet-5",
+  toolsets: [],
+  tools: [],
+  connections: [],
+  skills: [],
+  budget: {},
+  maxSteps: 12,
+};
 
 /**
- * A tela de agents, somente leitura.
- *
- * Ela responde tres perguntas: quais agents existem, como cada um mudou ao
- * longo do tempo, e o que cada passo vira nesta maquina. Editar spec nao entra
- * aqui: o editor e outra story, e a gravacao tem regra propria no
- * `AgentService`, que rebaixa passo de acao conforme quem escreve.
+ * Agents: quem trabalha. Instruções, modelo, o que pode usar em cada conexão,
+ * skills e orçamento. Não tem gatilho nem ação: a automação decide quando ele
+ * trabalha e o que fazer com a saída. Os toolsets, atalhos de ferramentas que
+ * vários agents compartilham, ficam numa aba à parte.
  */
 export function Agents({ detalhe, navegar }: TelaProps) {
-  return detalhe === null ? (
-    <Lista navegar={navegar} />
-  ) : (
-    <Agent agentId={detalhe} navegar={navegar} />
+  const { t } = useTranslation();
+  const aba = detalhe === ABA_TOOLSETS ? "toolsets" : "agents";
+
+  if (detalhe !== null && detalhe !== ABA_TOOLSETS) {
+    return (
+      <EditorDoAgent
+        abrir={(id) => navegar("agents", id)}
+        id={detalhe === NOVO ? null : detalhe}
+        navegar={navegar}
+        voltar={() => navegar("agents")}
+      />
+    );
+  }
+
+  return (
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6" data-locum-probe="agents-v3">
+      <CabecalhoDaTela
+        acoes={
+          aba === "agents" ? (
+            <Button className="cursor-pointer" data-locum-agent-novo="" onClick={() => navegar("agents", NOVO)}>
+              <Plus className="size-4" />
+              {t("library.newAgent")}
+            </Button>
+          ) : null
+        }
+        descricao={t("library.lead")}
+        titulo={t("library.title")}
+      />
+      <div className="border-border flex gap-1 border-b">
+        {(["agents", "toolsets"] as const).map((a) => (
+          <button
+            aria-pressed={aba === a}
+            className={cn(
+              "-mb-px cursor-pointer border-b-2 px-3 py-2 text-sm transition-colors",
+              aba === a ? "border-primary text-foreground" : "text-muted-foreground hover:text-foreground border-transparent",
+            )}
+            data-locum-agents-aba={a}
+            key={a}
+            onClick={() => (a === "agents" ? navegar("agents") : navegar("agents", ABA_TOOLSETS))}
+            type="button"
+          >
+            {t(`library.tabs.${a}`)}
+          </button>
+        ))}
+      </div>
+      {aba === "agents" ? <ListaDeAgents abrir={(id) => navegar("agents", id)} /> : <ListaDeToolsets />}
+    </div>
   );
 }
 
-/* ------------------------------------------------------------------ lista */
+/** Copia o agent com nome novo, como versão 1 de outro id, e devolve o id. */
+async function duplicar(spec: AgentProfile, sufixo: string): Promise<string> {
+  const nome = `${spec.name} ${sufixo}`;
+  const id = await call("library.suggestId", nome, "profile");
+  const gravado = await call("library.saveProfile", { spec: { ...spec, id, name: nome }, create: true, note: sufixo });
+  return gravado.profileId;
+}
 
-function Lista({ navegar }: { navegar: TelaProps["navegar"] }) {
+/* ------------------------------------------------------------------ agents */
+
+function ListaDeAgents({ abrir }: { abrir: (id: string) => void }) {
   const { t } = useTranslation();
-  const agents = useRead("agents.overview");
-  const todasAsLinhas = agents.data ?? [];
-  const [erroDeImportar, setErroDeImportar] = useState<string | null>(null);
-  const [criando, setCriando] = useState(false);
-  const criador = useRead("agents.aiStatus");
-  const [criandoComIa, setCriandoComIa] = useState(false);
+  const lista = useRead("library.profiles");
+  const conexoes = useRead("connections.list");
+  const [erro, setErro] = useState<string | null>(null);
+  if (lista.status === "loading") return <p className="text-muted-foreground text-sm">{t("library.loading")}</p>;
+  const agents = lista.data ?? [];
+  const nomes = new Map((conexoes.data ?? []).map((c) => [c.id, c.name]));
 
-  // O chip so aparece quando ha iniciativa atual; filtrar por ela e um clique
-  // a mais, nunca o padrao, porque quem entra em agents sem escolher iniciativa
-  // nenhuma espera ver todos.
-  const { slug } = useCurrentInitiative();
-  const iniciativas = useRead("initiatives.list");
-  const iniciativaAtual = slug === null ? undefined : iniciativas.data?.find((i) => i.slug === slug);
-  const [filtrando, setFiltrando] = useState(false);
-  const aplicarFiltro = filtrando && iniciativaAtual !== undefined;
-  const linhas = aplicarFiltro
-    ? todasAsLinhas.filter((a) => a.initiativeId === iniciativaAtual.id)
-    : todasAsLinhas;
+  const copiar = (id: string): void => {
+    setErro(null);
+    (async () => {
+      const original = await read("library.profile", id);
+      if (original === null) return;
+      abrir(await duplicar(original.spec, t("library.copySuffix")));
+    })().catch((e: unknown) => setErro(e instanceof Error ? e.message : String(e)));
+  };
 
-  /*
-   * O Locum não traz agent de fábrica: importar é a porta de entrada. Agent
-   * que já existe ganha versão nova, e a tela abre nele para quem importou ver
-   * o que chegou.
-   */
-  const importar = (): void => {
-    setErroDeImportar(null);
-    importarAgent().then(
-      (feito) => {
-        if (feito !== null) navegar("agents", feito.agentId);
+  if (agents.length === 0) {
+    return (
+      <div className="border-border text-muted-foreground flex flex-col items-start gap-3 rounded-lg border border-dashed p-6 text-sm">
+        {t("library.empty")}
+        <Button className="cursor-pointer" onClick={() => abrir(NOVO)} size="sm" variant="outline">
+          {t("library.newAgent")}
+        </Button>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-3">
+      {erro === null ? null : <p className="text-destructive text-xs">{erro}</p>}
+      <ul className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-3" data-locum-biblioteca-total={agents.length}>
+        {agents.map((a) => (
+          <CartaoDoAgent agent={a} abrir={() => abrir(a.id)} copiar={() => copiar(a.id)} key={a.id} nomes={nomes} />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function CartaoDoAgent({
+  agent,
+  abrir,
+  copiar,
+  nomes,
+}: {
+  agent: ResumoDoAgent;
+  abrir: () => void;
+  copiar: () => void;
+  nomes: Map<string, string>;
+}) {
+  const { t } = useTranslation();
+  return (
+    <li className="relative">
+      <button
+        className="border-border superficie hover:border-foreground/30 flex h-full w-full cursor-pointer flex-col gap-2 rounded-lg border p-4 text-left transition-colors"
+        data-locum-agent-da-biblioteca={agent.id}
+        onClick={abrir}
+        type="button"
+      >
+        <span className="flex items-center gap-2.5 pr-8">
+          <span aria-hidden className="ia-gradiente text-primary-foreground flex size-8 shrink-0 items-center justify-center rounded-md">
+            <Bot className="size-4" />
+          </span>
+          <span className="flex min-w-0 flex-col">
+            <span className="truncate font-medium text-sm">{agent.name}</span>
+            <span className="text-muted-foreground truncate text-xs">{rotuloDoModelo(agent.model)}</span>
+          </span>
+        </span>
+        {agent.description === "" ? null : <span className="text-muted-foreground line-clamp-2 text-xs">{agent.description}</span>}
+        {/* O que ele alcança, em palavras: as conexões e o que cada uma deixa fazer. */}
+        <span className="flex flex-col gap-0.5 text-xs" data-locum-agent-alcance={agent.id}>
+          <span>
+            {agent.connections.length === 0
+              ? t("library.card.noConnections")
+              : t("library.card.uses", { list: agent.connections.map((id) => nomes.get(id) ?? id).join(", ") })}
+          </span>
+          {agent.connections.length === 0 ? null : (
+            <span className={agent.writes > 0 ? "text-amber-400" : "text-muted-foreground"}>
+              {agent.writes > 0 ? t("library.card.writes", { count: agent.writes }) : t("library.card.readOnly")}
+            </span>
+          )}
+        </span>
+        <span className="text-muted-foreground mt-auto flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
+          <span>{t("library.toolsetsCount", { count: agent.toolsets.length })}</span>
+          <span>{t("library.card.skills", { count: agent.skills })}</span>
+          <span>{t("library.usedBy", { count: agent.usedBy.length })}</span>
+          <span>{t("library.version", { version: agent.version })}</span>
+        </span>
+      </button>
+      <button
+        aria-label={t("library.duplicate")}
+        className="text-muted-foreground hover:text-foreground hover:bg-accent absolute top-3 right-3 cursor-pointer rounded-md p-1.5"
+        data-locum-agent-duplicar={agent.id}
+        onClick={copiar}
+        title={t("library.duplicate")}
+        type="button"
+      >
+        <Copy className="size-3.5" />
+      </button>
+    </li>
+  );
+}
+
+function EditorDoAgent({
+  id,
+  voltar,
+  abrir,
+  navegar,
+}: {
+  id: string | null;
+  voltar: () => void;
+  abrir: (id: string) => void;
+  navegar: TelaProps["navegar"];
+}) {
+  const { t } = useTranslation();
+  const lido = useRead("library.profile", id ?? "");
+  const automacoes = useRead("agents.list");
+  // `agents/<id>` já foi o detalhe de uma automação: sem agent com esse id e
+  // com automação do modelo antigo, o link velho vai para onde ela mora agora.
+  const deAutomacao = id !== null && lido.status === "ready" && lido.data === null && (automacoes.data ?? []).some((a) => a.id === id);
+  useEffect(() => {
+    if (deAutomacao) navegar("automations", `legacy/${id}`);
+  }, [deAutomacao, id, navegar]);
+  if (deAutomacao) return null;
+  if (id !== null && (lido.status === "loading" || (lido.data === null && automacoes.status === "loading"))) return <p className="text-muted-foreground pt-6 text-sm">{t("library.loading")}</p>;
+  if (id !== null && (lido.status === "error" || lido.data === null)) {
+    return (
+      <div className="flex flex-col items-start gap-3 pt-6">
+        <p className="text-sm">{lido.error?.message ?? t("library.notFound")}</p>
+        <Button className="cursor-pointer" onClick={voltar} size="sm" variant="outline">
+          {t("library.back")}
+        </Button>
+      </div>
+    );
+  }
+  return <FormularioDoAgent abrir={abrir} inicial={id === null ? null : (lido.data ?? null)} key={id ?? NOVO} navegar={navegar} voltar={voltar} />;
+}
+
+function FormularioDoAgent({
+  inicial,
+  voltar,
+  abrir,
+  navegar,
+}: {
+  inicial: ReadResult<"library.profile">;
+  voltar: () => void;
+  abrir: (id: string) => void;
+  navegar: TelaProps["navegar"];
+}) {
+  const { t } = useTranslation();
+  const catalogo = useCatalogo();
+  const toolsets = useRead("library.toolsets");
+  const usos = useRead("library.profiles");
+  const [spec, setSpec] = useState<AgentProfile>(() => inicial?.spec ?? AGENT_EM_BRANCO);
+  const [salvo, setSalvo] = useState(inicial);
+  const [nota, setNota] = useState("");
+  const [ocupado, setOcupado] = useState(false);
+  const [aviso, setAviso] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
+  const [secao, setSecao] = useState<Secao>("instructions");
+  const novo = salvo === null;
+  const mudou = salvo === null || JSON.stringify(salvo.spec) !== JSON.stringify(spec);
+  const usadoPor = (usos.data ?? []).find((u) => u.id === spec.id)?.usedBy ?? [];
+  const trocar = <K extends keyof AgentProfile>(campo: K, valor: AgentProfile[K]): void => setSpec((s) => ({ ...s, [campo]: valor }));
+
+  const salvar = async (): Promise<void> => {
+    setOcupado(true);
+    setAviso(null);
+    try {
+      const id = novo ? await call("library.suggestId", spec.name, "profile") : spec.id;
+      const gravado = await call("library.saveProfile", {
+        spec: { ...spec, id },
+        note: nota.trim() || (novo ? t("library.editor.created") : t("library.editor.edited")),
+        create: novo,
+      });
+      setSalvo(gravado);
+      setSpec(gravado.spec);
+      setNota("");
+      setAviso({ tipo: "ok", texto: t("library.editor.saved", { version: gravado.version }) });
+      if (novo) abrir(gravado.profileId);
+    } catch (e) {
+      setAviso({ tipo: "erro", texto: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setOcupado(false);
+    }
+  };
+
+  const copiar = (): void => {
+    setOcupado(true);
+    setAviso(null);
+    duplicar(spec, t("library.copySuffix")).then(abrir, (e: unknown) => {
+      setOcupado(false);
+      setAviso({ tipo: "erro", texto: e instanceof Error ? e.message : String(e) });
+    });
+  };
+
+  const remover = (): void => {
+    setOcupado(true);
+    call("library.removeProfile", spec.id).then(voltar, (e: unknown) => {
+      setOcupado(false);
+      setAviso({ tipo: "erro", texto: e instanceof Error ? e.message : String(e) });
+    });
+  };
+
+  const ferramentasNoTotal =
+    spec.tools.length +
+    (toolsets.data ?? []).filter((ts) => spec.toolsets.includes(ts.id)).reduce((n, ts) => n + ts.tools.length, 0);
+  const contagem: Partial<Record<Secao, number>> = {
+    tools: spec.connections.length + ferramentasNoTotal,
+    skills: spec.skills.length,
+    usage: usadoPor.length,
+  };
+
+  // As seções ficam todas montadas e só a escolhida aparece: o que se digitou
+  // numa não some ao trocar, e o salvar vale para o agent inteiro.
+  return (
+    <div className="flex max-w-4xl flex-col gap-5 pt-2" data-locum-probe="agent-da-biblioteca">
+      <div className="flex flex-wrap items-center gap-2">
+        <Button className="cursor-pointer" onClick={voltar} size="sm" variant="ghost">
+          <ArrowLeft className="size-4" />
+          {t("library.back")}
+        </Button>
+      </div>
+
+      {/* Título, salvar e seções ficam presos no topo: a lista de ferramentas do ms365 é longa. */}
+      <div className="bg-background/95 sticky top-0 z-10 -mx-2 flex flex-col gap-4 px-2 pt-2 backdrop-blur">
+        <div className="flex flex-wrap items-start gap-4">
+          <span aria-hidden className="ia-gradiente text-primary-foreground flex size-11 shrink-0 items-center justify-center rounded-lg">
+            <Bot className="size-5" />
+          </span>
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <h1 className="truncate text-xl font-semibold">{spec.name.trim() === "" ? t("library.editor.untitled") : spec.name}</h1>
+            <p className="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+              <span>{rotuloDoModelo(spec.model)}</span>
+              {salvo === null ? null : <span>{t("library.version", { version: salvo.version })}</span>}
+              {!novo && mudou ? <Badge variant="outline">{t("library.editor.unsaved")}</Badge> : null}
+            </p>
+            {spec.description === "" ? null : <p className="text-muted-foreground text-sm">{spec.description}</p>}
+          </div>
+          {novo ? null : (
+            <Button className="cursor-pointer" data-locum-agent-duplicar-aqui="" disabled={ocupado || mudou} onClick={copiar} variant="outline">
+              <Copy className="size-4" />
+              {t("library.duplicate")}
+            </Button>
+          )}
+          <Button
+            className="cursor-pointer"
+            data-locum-agent-salvar=""
+            disabled={ocupado || !mudou || spec.name.trim() === ""}
+            onClick={() => void salvar()}
+          >
+            {t(novo ? "library.editor.create" : "library.editor.save")}
+          </Button>
+        </div>
+
+        <div className="border-border flex flex-wrap gap-1 border-b" role="tablist">
+          {SECOES.map((a) => (
+            <button
+              aria-selected={secao === a}
+              className={cn(
+                "-mb-px flex cursor-pointer items-center gap-1.5 border-b-2 px-3 py-2 text-sm transition-colors",
+                secao === a ? "border-primary text-foreground" : "text-muted-foreground hover:text-foreground border-transparent",
+              )}
+              data-locum-agent-aba={a}
+              key={a}
+              onClick={() => setSecao(a)}
+              role="tab"
+              type="button"
+            >
+              {t(`library.editor.tabs.${a}`)}
+              {contagem[a] === undefined || contagem[a] === 0 ? null : (
+                <span className="bg-muted text-muted-foreground rounded-full px-1.5 text-[11px] tabular-nums">{contagem[a]}</span>
+              )}
+            </button>
+          ))}
+        </div>
+        {aviso === null ? null : (
+          <p className={cn("-mt-2 text-xs", aviso.tipo === "erro" ? "text-sev-critical" : "text-emerald-400")}>{aviso.texto}</p>
+        )}
+      </div>
+
+      <section className="flex flex-col gap-5" hidden={secao !== "instructions"} role="tabpanel">
+        <Pergunta texto={t("library.editor.leads.instructions")} />
+        <Campo rotulo={t("library.editor.name")}>
+          <input
+            className={cn(CAMPO, "font-medium")}
+            data-locum-agent-nome=""
+            onChange={(e) => trocar("name", e.target.value)}
+            placeholder={t("library.editor.namePlaceholder")}
+            value={spec.name}
+          />
+        </Campo>
+        <Campo rotulo={t("library.editor.description")}>
+          <input
+            className={CAMPO}
+            onChange={(e) => trocar("description", e.target.value)}
+            placeholder={t("library.editor.descriptionPlaceholder")}
+            value={spec.description}
+          />
+        </Campo>
+        <Campo dica={t("library.editor.contextHint")} rotulo={t("library.editor.context")}>
+          <textarea
+            className={cn(CAMPO, "min-h-40 resize-y font-mono text-[12.5px] leading-relaxed")}
+            onChange={(e) => trocar("context", e.target.value)}
+            value={spec.context}
+          />
+        </Campo>
+        <Campo dica={t("library.editor.instructionsHint")} rotulo={t("library.editor.instructions")}>
+          <textarea
+            className={cn(CAMPO, "min-h-[22rem] resize-y font-mono text-[12.5px] leading-relaxed")}
+            data-locum-agent-instrucoes=""
+            onChange={(e) => trocar("instructions", e.target.value)}
+            value={spec.instructions}
+          />
+        </Campo>
+      </section>
+
+      <section className="flex flex-col gap-5" hidden={secao !== "model"} role="tabpanel">
+        <Pergunta texto={t("library.editor.leads.model")} />
+        <div className="grid gap-5 sm:grid-cols-2">
+          <Campo rotulo={t("library.editor.model")}>
+            <SeletorDeModelo catalogo={catalogo} trocar={(v) => trocar("model", v)} valor={spec.model} />
+          </Campo>
+          <Campo dica={t("library.editor.temperatureHint")} rotulo={t("library.editor.temperature")}>
+            <div className="flex items-center gap-3">
+              <input
+                aria-label={t("library.editor.temperature")}
+                className="accent-primary flex-1 cursor-pointer"
+                disabled={spec.temperature === undefined}
+                max={1}
+                min={0}
+                onChange={(e) => trocar("temperature", Number(e.target.value))}
+                step={0.1}
+                type="range"
+                value={spec.temperature ?? 0.7}
+              />
+              <span className="w-8 text-right font-mono text-xs tabular-nums">
+                {spec.temperature === undefined ? "" : spec.temperature.toFixed(1)}
+              </span>
+              <label className="flex cursor-pointer items-center gap-1.5 text-xs">
+                <input
+                  checked={spec.temperature === undefined}
+                  className="accent-primary cursor-pointer"
+                  onChange={(e) =>
+                    setSpec((s) => {
+                      const { temperature: _antiga, ...resto } = s;
+                      return e.target.checked ? resto : { ...resto, temperature: 0.7 };
+                    })
+                  }
+                  type="checkbox"
+                />
+                {t("library.editor.temperatureDefault")}
+              </label>
+            </div>
+          </Campo>
+        </div>
+        <Campo dica={t("library.editor.maxStepsHint")} rotulo={t("library.editor.maxSteps")}>
+          <input
+            className={cn(CAMPO, "w-28")}
+            min={1}
+            onChange={(e) => {
+              const n = Number.parseInt(e.target.value, 10);
+              if (Number.isFinite(n) && n >= 1) trocar("maxSteps", n);
+            }}
+            type="number"
+            value={spec.maxSteps}
+          />
+        </Campo>
+      </section>
+
+      <section className="flex flex-col gap-6" data-locum-agent-secao="tools" hidden={secao !== "tools"} role="tabpanel">
+        <Pergunta texto={t("library.editor.leads.tools")} />
+        <ConexoesDoAgent conexoes={spec.connections} trocar={(v) => trocar("connections", v)} />
+        <details className="border-border rounded-md border p-3" open={spec.toolsets.length + spec.tools.length > 0}>
+          <summary className="cursor-pointer text-sm font-medium">{t("library.editor.shortcuts")}</summary>
+          <div className="mt-4 flex flex-col gap-6">
+            <p className="text-muted-foreground text-xs">{t("library.editor.shortcutsHint")}</p>
+            <FerramentasEscolhidas
+              remover={(r) => trocar("tools", spec.tools.filter((x) => x.server !== r.server || x.tool !== r.tool))}
+              tools={spec.tools}
+            />
+            <Campo dica={t("library.editor.toolsetsHint")} rotulo={t("library.editor.toolsets")}>
+              {(toolsets.data ?? []).length === 0 ? (
+                <p className="text-muted-foreground text-xs">{t("library.editor.toolsetsNone")}</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {(toolsets.data ?? []).map((ts) => {
+                    const marcado = spec.toolsets.includes(ts.id);
+                    return (
+                      <button
+                        aria-pressed={marcado}
+                        className={cn(
+                          "border-border flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors",
+                          marcado ? "border-primary bg-primary/10" : "hover:border-foreground/30",
+                        )}
+                        data-locum-agent-toolset={ts.id}
+                        key={ts.id}
+                        onClick={() => trocar("toolsets", marcado ? spec.toolsets.filter((x) => x !== ts.id) : [...spec.toolsets, ts.id])}
+                        title={ts.description}
+                        type="button"
+                      >
+                        <Wrench className="size-3" />
+                        {ts.name}
+                        <span className="text-muted-foreground">{t("library.toolsCount", { count: ts.tools.length })}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </Campo>
+            <Campo dica={t("library.editor.extraToolsHint")} rotulo={t("library.editor.addTools")}>
+              <EscolhaDeFerramentas trocar={(v) => trocar("tools", v)} valor={spec.tools} />
+            </Campo>
+          </div>
+        </details>
+      </section>
+
+      <section className="flex flex-col gap-5" hidden={secao !== "skills"} role="tabpanel">
+        <Pergunta texto={t("library.editor.leads.skills")} />
+        <SkillsDoAgent skills={spec.skills} trocar={(v) => trocar("skills", v)} />
+      </section>
+
+      <section className="flex flex-col gap-5" hidden={secao !== "budget"} role="tabpanel">
+        <Pergunta texto={t("library.editor.leads.budget")} />
+        <OrcamentoDoAgent orcamento={spec.budget} trocar={(v) => trocar("budget", v)} />
+      </section>
+
+      <section className="flex flex-col gap-5" data-locum-agent-secao="chat" hidden={secao !== "chat"} role="tabpanel">
+        <Pergunta texto={t("library.editor.leads.chat")} />
+        <div className="border-border flex flex-col gap-3 rounded-lg border border-dashed p-4 opacity-70" data-locum-agent-chat="">
+          <span className="flex items-center gap-2 text-sm font-medium">
+            <MessageSquare className="size-4" />
+            {t("library.chat.title")}
+            <Badge variant="outline">{t("library.chat.soon")}</Badge>
+          </span>
+          <textarea
+            aria-label={t("library.chat.title")}
+            className={cn(CAMPO, "min-h-24 resize-none")}
+            disabled
+            placeholder={t("library.chat.placeholder")}
+          />
+          <div>
+            <Button disabled size="sm">
+              {t("library.chat.send")}
+            </Button>
+          </div>
+          <p className="text-muted-foreground text-xs">{t("library.chat.note")}</p>
+        </div>
+      </section>
+
+      <section className="flex flex-col gap-5" hidden={secao !== "usage"} role="tabpanel">
+        <Pergunta texto={t("library.editor.leads.usage")} />
+        <Campo dica={t("library.editor.usageHint")} rotulo={t("library.editor.usage")}>
+          {usadoPor.length === 0 ? (
+            <p className="text-muted-foreground text-sm">{t("library.editor.usageNone")}</p>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {usadoPor.map((id) => (
+                <li key={id}>
+                  <button
+                    className="border-border superficie hover:border-foreground/30 flex w-full cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors"
+                    onClick={() => navegar("automations", id)}
+                    type="button"
+                  >
+                    <Workflow className="text-muted-foreground size-4" />
+                    <span className="font-mono text-xs">{id}</span>
+                    <span className="text-muted-foreground ml-auto text-xs">{t("library.editor.openAutomation")}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Campo>
+        {novo ? null : (
+          <div className="border-sev-critical/30 flex flex-wrap items-center gap-3 rounded-md border p-3">
+            <span className="text-muted-foreground flex-1 text-xs">
+              {usadoPor.length > 0 ? t("library.editor.inUse", { list: usadoPor.join(", ") }) : t("library.editor.removeHint")}
+            </span>
+            <Button
+              className="cursor-pointer"
+              data-locum-agent-remover=""
+              disabled={ocupado || usadoPor.length > 0}
+              onClick={remover}
+              size="sm"
+              variant="ghost"
+            >
+              <Trash2 className="size-4" />
+              {t("library.editor.remove")}
+            </Button>
+          </div>
+        )}
+      </section>
+
+      {novo ? null : (
+        <div className="border-border flex flex-wrap items-center gap-2 border-t pt-4">
+          <input
+            className={cn(CAMPO, "min-w-56 flex-1")}
+            onChange={(e) => setNota(e.target.value)}
+            placeholder={t("library.editor.note")}
+            value={nota}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** A frase que abre cada seção: a pergunta que ela responde. */
+function Pergunta({ texto }: { texto: string }) {
+  return <p className="text-muted-foreground text-sm">{texto}</p>;
+}
+
+/* ------------------------------------------------------------- conexões */
+
+/**
+ * O que o agent usa de cada conexão. Dentro de cada uma, a leitura vem ligada e
+ * a escrita desligada; o interruptor de cada ferramenta só guarda o que foge do
+ * padrão.
+ */
+function ConexoesDoAgent({ conexoes, trocar }: { conexoes: AgentConnection[]; trocar: (v: AgentConnection[]) => void }) {
+  const { t } = useTranslation();
+  const lista = useRead("connections.list");
+  const todas = lista.data ?? [];
+  const livres = todas.filter((c) => c.servers.length > 0 && !conexoes.some((x) => x.connectionId === c.id));
+
+  const mudar = (id: string, depois: AgentConnection | null): void =>
+    trocar(conexoes.flatMap((c) => (c.connectionId !== id ? [c] : depois === null ? [] : [depois])));
+
+  return (
+    <div className="flex flex-col gap-3" data-locum-agent-conexoes={conexoes.length}>
+      {conexoes.length === 0 ? (
+        <p className="border-border text-muted-foreground rounded-md border border-dashed p-3 text-sm">{t("library.connections.none")}</p>
+      ) : (
+        <ul className="flex flex-col gap-3">
+          {conexoes.map((c) => (
+            <li key={c.connectionId}>
+              <CartaoDaConexao
+                conexao={todas.find((x) => x.id === c.connectionId)}
+                escolha={c}
+                mudar={(depois) => mudar(c.connectionId, depois)}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex flex-wrap items-center gap-2">
+        {livres.length === 0 ? (
+          <span className="text-muted-foreground text-xs">{t("library.connections.noneToAdd")}</span>
+        ) : (
+          <select
+            aria-label={t("library.connections.add")}
+            className={cn(CAMPO, "w-auto min-w-56 cursor-pointer")}
+            data-locum-agent-conexao-adicionar=""
+            onChange={(e) => {
+              if (e.target.value !== "") trocar([...conexoes, { connectionId: e.target.value, tools: {} }]);
+            }}
+            value=""
+          >
+            <option value="">{t("library.connections.add")}</option>
+            {livres.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CartaoDaConexao({
+  conexao,
+  escolha,
+  mudar,
+}: {
+  conexao: Conexao | undefined;
+  escolha: AgentConnection;
+  mudar: (depois: AgentConnection | null) => void;
+}) {
+  const { t } = useTranslation();
+  const servidores = conexao?.servers ?? [];
+  const ligadas = Object.entries(escolha.tools).filter(([chave, e]) => e === true && !ehLeitura(chave.slice(chave.lastIndexOf("/") + 1))).length;
+  return (
+    <div className="border-border superficie flex flex-col gap-3 rounded-lg border p-3" data-locum-agent-conexao={escolha.connectionId}>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm font-medium">{conexao?.name ?? escolha.connectionId}</span>
+        {conexao === undefined ? null : <Badge variant="outline">{t(`connections.state.${conexao.state}`)}</Badge>}
+        <span className="text-muted-foreground text-xs">{t("library.connections.default")}</span>
+        {ligadas === 0 ? null : (
+          <Badge className="text-amber-400" variant="outline">
+            {t("library.card.writes", { count: ligadas })}
+          </Badge>
+        )}
+        <button
+          aria-label={t("library.connections.remove", { name: conexao?.name ?? escolha.connectionId })}
+          className="hover:bg-accent ml-auto cursor-pointer rounded-md p-1"
+          onClick={() => mudar(null)}
+          type="button"
+        >
+          <X className="size-4" />
+        </button>
+      </div>
+      {servidores.length === 0 ? (
+        <p className="text-muted-foreground text-xs">{t("library.connections.noServer")}</p>
+      ) : (
+        servidores.map((servidor) => <FerramentasDoServidor escolha={escolha} key={servidor} mudar={mudar} servidor={servidor} />)
+      )}
+    </div>
+  );
+}
+
+function FerramentasDoServidor({
+  servidor,
+  escolha: escolha_,
+  mudar,
+}: {
+  servidor: string;
+  escolha: AgentConnection;
+  mudar: (depois: AgentConnection) => void;
+}) {
+  const { t } = useTranslation();
+  const guardadas = useRead("mcp.toolsCached", servidor);
+  const [vindas, setVindas] = useState<ReadResult<"mcp.tools"> | null>(null);
+  const [lendo, setLendo] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const ferramentas = vindas ?? guardadas.data?.tools ?? null;
+
+  const carregar = (): void => {
+    setLendo(true);
+    setErro(null);
+    call("mcp.tools", servidor).then(
+      (f) => {
+        setVindas(f);
+        setLendo(false);
       },
-      (err: unknown) => setErroDeImportar(err instanceof Error ? err.message : String(err)),
+      (e: unknown) => {
+        setErro(e instanceof Error ? e.message : String(e));
+        setLendo(false);
+      },
     );
   };
 
+  type Ferramenta = ReadResult<"mcp.tools">[number];
+  const efetiva = (f: Ferramenta): { ligada: boolean; leitura: boolean; declarada: boolean } => {
+    const escolha = escolhaDe(escolha_.tools, servidor, f.name);
+    const classe = ehLeituraDa(f);
+    return {
+      ligada: escolha === undefined ? classe : escolha !== false,
+      leitura: classe || escolha === "read",
+      declarada: escolha === "read",
+    };
+  };
+  // Grava a escolha na chave `servidor/ferramenta`, e só quando ela difere do
+  // que a chave antiga, só pelo nome, ou o padrão já dariam.
+  const definir = (f: Ferramenta, valor: EscolhaDeFerramenta): void => {
+    const chave = `${servidor}/${f.name}`;
+    const { [chave]: _antes, ...resto } = escolha_.tools;
+    const base = escolhaDe(resto, servidor, f.name);
+    const normal = (x: EscolhaDeFerramenta | undefined): EscolhaDeFerramenta => {
+      const v = x === undefined ? ehLeituraDa(f) : x;
+      return v === "read" && ehLeituraDa(f) ? true : v;
+    };
+    mudar({ ...escolha_, tools: normal(valor) === normal(base) ? resto : { ...resto, [chave]: valor } });
+  };
+
+  const leituras = (ferramentas ?? []).filter((f) => ehLeituraDa(f));
+  const escritas = (ferramentas ?? []).filter((f) => !ehLeituraDa(f));
+
   return (
-    <div className="flex flex-col gap-4">
-      <CabecalhoDaTela
-        acoes={
-          <>
-            <Button className="cursor-pointer" data-locum-importar="" onClick={importar} variant="secondary">
-              {t("agents.io.import")}
-            </Button>
-            {criador.data?.disponivel === true ? (
-              <Button
-                className="ia-gradiente cursor-pointer border-0 text-white hover:opacity-90"
-                data-locum-agent-ia=""
-                onClick={() => {
-                  setCriando(false);
-                  setCriandoComIa((v) => !v);
-                }}
-              >
-                <Sparkles aria-hidden className="size-4" />
-                {t("agents.ai.button")}
-              </Button>
-            ) : null}
-            {todasAsLinhas.length === 0 ? null : (
-              <Button
-                className="cursor-pointer"
-                data-locum-agent-novo=""
-                onClick={() => {
-                  setCriandoComIa(false);
-                  setCriando((v) => !v);
-                }}
-                variant={criador.data?.disponivel === true ? "secondary" : "default"}
-              >
-                <Plus aria-hidden className="size-4" />
-                {t("agents.new.button")}
-              </Button>
-            )}
-          </>
-        }
-        descricao={t("agents.lead")}
-        titulo={t("nav.agents")}
-      />
-      {iniciativaAtual !== undefined ? (
-        <div className="flex items-center gap-1.5">
-          <button
-            aria-pressed={aplicarFiltro}
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs transition-colors",
-              aplicarFiltro
-                ? "bg-primary text-primary-foreground"
-                : "bg-accent text-accent-foreground hover:bg-accent/70",
-            )}
-            data-aplicado={aplicarFiltro}
-            data-locum-probe="agents-initiative"
-            data-slug={iniciativaAtual.slug}
-            onClick={() => setFiltrando((v) => !v)}
-            title={t("common.filterByInitiative")}
-            type="button"
-          >
-            {iniciativaAtual.title}
-            {aplicarFiltro ? <X className="size-3" /> : null}
-          </button>
-        </div>
-      ) : null}
-
-      <div className="flex items-center gap-3">
-        <div
-          className="text-muted-foreground text-xs"
-          data-agents={linhas.map((a) => a.id).join(",")}
-          data-estado={agents.status}
-          data-locum-probe="agents"
-          data-total={linhas.length}
+    <div className="flex flex-col gap-2" data-locum-agent-servidor={servidor}>
+      <div className="flex items-center gap-2">
+        <span className="font-mono text-xs">{servidor}</span>
+        {ferramentas === null ? null : (
+          <span className="text-muted-foreground text-xs">
+            {t("library.connections.counts", { read: leituras.length, write: escritas.length })}
+          </span>
+        )}
+        <Button
+          className="ml-auto cursor-pointer"
+          data-locum-agent-carregar={servidor}
+          disabled={lendo}
+          onClick={carregar}
+          size="sm"
+          variant="ghost"
         >
-          {agents.status === "error"
-            ? t("agents.refused", { message: agents.error.message })
-            : agents.status === "loading"
-              ? t("agents.loading")
-              : t("agents.count", { count: linhas.length })}
-        </div>
+          {lendo ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+          {t(ferramentas === null ? "library.connections.load" : "library.connections.reload")}
+        </Button>
       </div>
-
-      {criandoComIa && criador.data?.disponivel === true && (
-        <CriarComIa
-          aoCancelar={() => setCriandoComIa(false)}
-          aoCriar={(novo) => {
-            editarAoAbrir = novo;
-            navegar("agents", novo);
-          }}
-          modelo={criador.data.modelo}
-        />
-      )}
-
-      {criando && todasAsLinhas.length > 0 && (
-        <NovoAgent
-          aoCancelar={() => setCriando(false)}
-          aoCriar={(novo) => {
-            editarAoAbrir = novo;
-            navegar("agents", novo);
-          }}
-          bases={todasAsLinhas.map((a) => ({ id: a.id, nome: a.name }))}
-        />
-      )}
-
-      {erroDeImportar === null ? null : (
-        <p className="text-destructive text-xs">{t("agents.io.importRefused", { message: erroDeImportar })}</p>
-      )}
-
-      {agents.status === "ready" && linhas.length === 0 ? (
-        <p className="text-muted-foreground text-sm">
-          <Trans components={{ code: <code /> }} i18nKey="agents.empty" />
-        </p>
+      {erro === null ? null : <p className="text-destructive text-xs">{erro}</p>}
+      {ferramentas === null ? (
+        <p className="text-muted-foreground text-xs">{t("library.connections.notListed")}</p>
       ) : (
-        <ul className="divide-border superficie divide-y overflow-hidden rounded-xl">
-          {linhas.map((agent) => (
-            <LinhaDoAgent agent={agent} key={agent.id} navegar={navegar} />
+        <ul className="flex flex-col gap-0.5">
+          {[...leituras, ...escritas].map((f) => {
+            const { ligada, leitura, declarada } = efetiva(f);
+            return (
+              <li className="hover:bg-muted/40 flex items-center gap-2 rounded-md px-2 py-1" key={f.name}>
+                <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
+                  <input
+                    checked={ligada}
+                    className="accent-primary cursor-pointer"
+                    data-locum-agent-ferramenta={`${servidor}/${f.name}`}
+                    onChange={(e) => definir(f, e.target.checked ? (declarada ? "read" : true) : false)}
+                    type="checkbox"
+                  />
+                  <span className="font-mono text-xs">{f.name}</span>
+                  <span
+                    className={cn(
+                      "rounded border px-1.5 text-[10px] leading-4",
+                      leitura ? "border-border text-muted-foreground" : "border-sev-medium/40 text-sev-medium",
+                    )}
+                  >
+                    {t(leitura ? "library.editor.read" : "library.editor.write")}
+                  </span>
+                  {f.description === "" ? null : (
+                    <span className="text-muted-foreground line-clamp-1 min-w-0 flex-1 text-xs">{f.description}</span>
+                  )}
+                </label>
+                {ehLeituraDa(f) || !ligada ? null : (
+                  <label className="text-muted-foreground flex shrink-0 cursor-pointer items-center gap-1 text-[11px]" title={t("library.connections.declareReadHint")}>
+                    <input
+                      checked={declarada}
+                      className="accent-primary cursor-pointer"
+                      data-locum-agent-declarar-leitura={`${servidor}/${f.name}`}
+                      onChange={(e) => definir(f, e.target.checked ? "read" : true)}
+                      type="checkbox"
+                    />
+                    {t("library.connections.declareRead")}
+                  </label>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {escritas.some((f) => efetiva(f).ligada && !efetiva(f).leitura) ? (
+        <p className="text-amber-400 text-xs">{t("library.connections.writeNote")}</p>
+      ) : null}
+    </div>
+  );
+}
+
+/* --------------------------------------------------------------- skills */
+
+function SkillsDoAgent({ skills, trocar }: { skills: AgentProfile["skills"]; trocar: (v: AgentProfile["skills"]) => void }) {
+  const { t } = useTranslation();
+  const achadas = useRead("skills.list");
+  const nomes = new Set(skills.map((s) => s.skill));
+  const livres = (achadas.data ?? []).filter((s) => !nomes.has(s.name));
+  const noDisco = new Set((achadas.data ?? []).map((s) => s.name));
+  return (
+    <div className="flex flex-col gap-3" data-locum-agent-skills={skills.length}>
+      {skills.length === 0 ? (
+        <p className="border-border text-muted-foreground rounded-md border border-dashed p-3 text-sm">{t("library.skills.none")}</p>
+      ) : (
+        <ul className="flex flex-wrap gap-1.5">
+          {skills.map((s) => (
+            <li className="border-border flex items-center gap-1.5 rounded-full border py-0.5 pr-1 pl-2.5 text-xs" key={s.skill}>
+              <span className="font-mono">{s.skill}</span>
+              {achadas.status === "ready" && !noDisco.has(s.skill) ? (
+                <span className="text-amber-400 text-[10px]">{t("library.skills.missing")}</span>
+              ) : null}
+              <button
+                aria-label={t("library.skills.remove", { name: s.skill })}
+                className="hover:bg-accent cursor-pointer rounded-full p-0.5"
+                onClick={() => trocar(skills.filter((x) => x.skill !== s.skill))}
+                type="button"
+              >
+                <X className="size-3" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {livres.length === 0 ? (
+        <span className="text-muted-foreground text-xs">{t("library.skills.noneToAdd")}</span>
+      ) : (
+        <select
+          aria-label={t("library.skills.add")}
+          className={cn(CAMPO, "w-auto min-w-56 cursor-pointer")}
+          onChange={(e) => {
+            if (e.target.value !== "") trocar([...skills, { skill: e.target.value, when: { always: true } }]);
+          }}
+          value=""
+        >
+          <option value="">{t("library.skills.add")}</option>
+          {livres.map((s) => (
+            <option key={s.name} title={s.description} value={s.name}>
+              {s.name}
+            </option>
+          ))}
+        </select>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------ orçamento */
+
+function OrcamentoDoAgent({ orcamento, trocar }: { orcamento: AgentBudget; trocar: (v: AgentBudget) => void }) {
+  return (
+    <div className="grid gap-5 sm:grid-cols-2" data-locum-agent-orcamento="">
+      {LIMITES.map((campo) => (
+        <LimiteDoOrcamento campo={campo} key={campo} orcamento={orcamento} trocar={trocar} />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Um teto. O que se digita fica como texto ("0." e "0,25" a meio caminho não
+ * somem), e só o número válido e positivo vai para o spec; o resto tira o teto.
+ */
+function LimiteDoOrcamento({
+  campo,
+  orcamento,
+  trocar,
+}: {
+  campo: (typeof LIMITES)[number];
+  orcamento: AgentBudget;
+  trocar: (v: AgentBudget) => void;
+}) {
+  const { t } = useTranslation();
+  const dinheiro = campo.endsWith("Usd");
+  const [texto, setTexto] = useState(() => (orcamento[campo] === undefined ? "" : String(orcamento[campo])));
+  const mudar = (digitado: string): void => {
+    setTexto(digitado);
+    const { [campo]: _antes, ...resto } = orcamento;
+    const normal = digitado.trim().replace(",", ".");
+    const n = Number(normal);
+    const valido = normal !== "" && Number.isFinite(n) && n > 0 && (dinheiro || Number.isInteger(n));
+    trocar(valido ? { ...resto, [campo]: n } : resto);
+  };
+  return (
+    <Campo dica={t(`library.budget.${campo}Hint`)} rotulo={t(`library.budget.${campo}`)}>
+      <input
+        className={cn(CAMPO, "w-40")}
+        data-locum-agent-limite={campo}
+        inputMode={dinheiro ? "decimal" : "numeric"}
+        onChange={(e) => mudar(e.target.value)}
+        placeholder={t("library.budget.noLimit")}
+        type="text"
+        value={texto}
+      />
+    </Campo>
+  );
+}
+
+/**
+ * O que o agent já pode usar por fora das conexões: as ferramentas avulsas por
+ * servidor, cada uma dizendo se só lê ou se escreve, e um x para tirar.
+ */
+function FerramentasEscolhidas({ tools, remover }: { tools: ToolRef[]; remover: (r: ToolRef) => void }) {
+  const { t } = useTranslation();
+  const porServidor = new Map<string, ToolRef[]>();
+  for (const r of tools) porServidor.set(r.server, [...(porServidor.get(r.server) ?? []), r]);
+  return (
+    <div className="flex flex-col gap-2">
+      <span className="text-muted-foreground text-xs">{t("library.editor.chosenTools")}</span>
+      {tools.length === 0 ? (
+        <p className="border-border text-muted-foreground rounded-md border border-dashed p-3 text-sm">{t("library.editor.chosenNone")}</p>
+      ) : (
+        <ul className="flex flex-col gap-2" data-locum-agent-escolhidas={tools.length}>
+          {[...porServidor].map(([servidor, refs]) => (
+            <li className="border-border superficie flex flex-col gap-2 rounded-md border p-3" key={servidor}>
+              <span className="font-mono text-xs">{servidor}</span>
+              <span className="flex flex-wrap gap-1.5">
+                {refs.map((r) => {
+                  const leitura = ehLeitura(r.tool);
+                  return (
+                    <span
+                      className="border-border flex items-center gap-1.5 rounded-full border py-0.5 pr-1 pl-2.5 text-xs"
+                      key={r.tool}
+                    >
+                      <span className="font-mono">{r.tool}</span>
+                      <span className={cn("text-[10px]", leitura ? "text-muted-foreground" : "text-amber-400")}>
+                        {t(leitura ? "library.editor.read" : "library.editor.write")}
+                      </span>
+                      <button
+                        aria-label={t("library.editor.removeTool", { tool: r.tool })}
+                        className="hover:bg-accent cursor-pointer rounded-full p-0.5"
+                        onClick={() => remover(r)}
+                        type="button"
+                      >
+                        <X className="size-3" />
+                      </button>
+                    </span>
+                  );
+                })}
+              </span>
+            </li>
           ))}
         </ul>
       )}
@@ -198,1076 +1011,182 @@ function Lista({ navegar }: { navegar: TelaProps["navegar"] }) {
   );
 }
 
-type Resumo = ReadResult<"agents.overview">[number];
+/* ---------------------------------------------------------------- toolsets */
 
-/**
- * A linha responde, sem abrir nada: em que modelo roda, de quanto em quanto
- * tempo acorda, quanto custa por execução, e como terminou a última.
- *
- * Identificador, versão e "habilitado" ficam de fora: não respondem pergunta
- * nenhuma de quem olha a lista. Só o agent desligado ganha selo, porque é a
- * exceção, e o identificador fica no detalhe.
- */
-function LinhaDoAgent({
-  agent,
-  navegar,
-}: {
-  agent: Resumo;
-  navegar: TelaProps["navegar"];
-}) {
+function ListaDeToolsets() {
   const { t } = useTranslation();
-  const gatilho = agent.triggers[0];
-
-  return (
-    <li>
-      <button
-        className="hover:bg-accent/40 focus-visible:ring-ring w-full cursor-pointer px-4 py-3 text-left transition-colors duration-200 focus-visible:ring-2 focus-visible:-outline-offset-2"
-        data-locum-agent={agent.id}
-        onClick={() => navegar("agents", agent.id)}
-        type="button"
-      >
-        <div className="flex items-baseline gap-2.5">
-          <span className="font-medium text-[15px] tracking-tight">{agent.name}</span>
-          {agent.enabled ? null : (
-            <span className="ml-auto shrink-0">
-              <Badge variant="outline">{t("agents.disabled")}</Badge>
-            </span>
-          )}
-        </div>
-
-        {agent.models.length > 0 && (
-          <div className="mt-1.5 flex flex-wrap gap-1">
-            {agent.models.map((modelo) => (
-              <span
-                className="border-border text-muted-foreground rounded border px-1.5 py-0.5 text-[11px]"
-                key={modelo}
-                title={modelo}
-              >
-                {rotuloDoModelo(modelo)}
-              </span>
-            ))}
-          </div>
-        )}
-
-        <div className="text-muted-foreground mt-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs">
-          <span>{t("agents.steps", { count: agent.stepCount })}</span>
-          {agent.toolCount > 0 && <span>{t("agents.tools", { count: agent.toolCount })}</span>}
-          {agent.skillCount > 0 && <span>{t("agents.skills", { count: agent.skillCount })}</span>}
-          <span>{cadencia(t, gatilho)}</span>
-          {agent.budget.perRunUsd !== undefined && (
-            <span className="tabular-nums">
-              {t("agents.budget", { perRun: agent.budget.perRunUsd.toFixed(2) })}
-            </span>
-          )}
-          <span className="ml-auto">{ultima(t, agent.lastRun)}</span>
-        </div>
-      </button>
-    </li>
-  );
-}
-
-/** De quanto em quanto tempo o agent acorda, em palavra e não em milissegundo. */
-function cadencia(t: TFunction, gatilho: Resumo["triggers"][number] | undefined): string {
-  if (!gatilho) return t("agents.no_trigger");
-  if (!gatilho.enabled) return t("agents.trigger_off");
-
-  const config = gatilho.config as { intervalMinutes?: number; minutes?: number } | null;
-  const minutos = config?.intervalMinutes ?? config?.minutes;
-  if (minutos === undefined) return t("agents.on_event");
-  return minutos >= 120
-    ? t("agents.cadence_hours", { hours: Math.round(minutos / 60) })
-    : t("agents.cadence", { minutes: minutos });
-}
-
-/** Como terminou a última execução, que é o que diz se o agent está vivo. */
-function ultima(t: TFunction, run: Resumo["lastRun"]): string {
-  if (!run) return t("agents.never_ran");
-  const quando = new Date((run.endedAt ?? run.createdAt) * 1000).toLocaleDateString(undefined, {
-    day: "2-digit",
-    month: "2-digit",
-  });
-  const gasto =
-    run.costUsd > 0
-      ? t("agents.spend", { amount: run.costUsd.toFixed(2) })
-      : run.estimateUsd > 0
-        ? t("agents.subscription_spend", { amount: run.estimateUsd.toFixed(2) })
-        : "";
-  return `${t("agents.last_run", { when: quando, status: rotuloDeEstado(t, run.status) })}${gasto ? `, ${gasto}` : ""}`;
-}
-
-/* ----------------------------------------------------------------- detalhe */
-
-/**
- * Um agent: o historico de versoes, o spec da versao escolhida e a comparacao
- * com outra.
- *
- * As versoes chegam da mais nova para a mais velha, que e a ordem do servico, e
- * e a ordem em que se procura: o que mudou por ultimo e o que se quer ver
- * primeiro.
- */
-/**
- * Pedido de abrir direto em edição, deixado por quem acabou de duplicar.
- *
- * Passado em memória e lido uma vez, em vez de ir na rota: "criar e editar"
- * promete abrir o agent novo já editando, e um parâmetro na rota continuaria lá
- * depois de salvar, reabrindo o editor a cada visita.
- */
-let editarAoAbrir: string | null = null;
-
-function Agent({ agentId, navegar }: { agentId: string; navegar: TelaProps["navegar"] }) {
-  const [editando, setEditando] = useState(() => {
-    const pedido = editarAoAbrir === agentId;
-    if (pedido) editarAoAbrir = null;
-    return pedido;
-  });
-  // Salvar grava versão nova; remontar o detalhe relê o histórico inteiro.
-  const [recarga, setRecarga] = useState(0);
-
-  return (
-    <DetalheDoAgent
-      agentId={agentId}
-      editando={editando}
-      key={recarga}
-      navegar={navegar}
-      setEditando={setEditando}
-      aoSalvar={() => {
-        setEditando(false);
-        setRecarga((r) => r + 1);
-      }}
-    />
-  );
-}
-
-function DetalheDoAgent({
-  agentId,
-  editando,
-  navegar,
-  setEditando,
-  aoSalvar,
-}: {
-  agentId: string;
-  editando: boolean;
-  navegar: TelaProps["navegar"];
-  setEditando: (v: boolean) => void;
-  aoSalvar: () => void;
-}) {
-  const { t } = useTranslation();
-  const [duplicando, setDuplicando] = useState(false);
-  const [rodando, setRodando] = useState(false);
-  const [exportado, setExportado] = useState<string | null>(null);
-  const versoes = useRead("agents.versions", agentId);
-  const maquina = useRead("machine.profile");
-  const [escolhida, setEscolhida] = useState<number | null>(null);
-  const [contra, setContra] = useState<number | null>(null);
-
-  if (versoes.status === "error") {
-    return <Aviso probe="agent">{t("agents.refused", { message: versoes.error.message })}</Aviso>;
-  }
-  if (versoes.status === "loading") {
-    return <Aviso probe="agent">{t("agents.detail.loading")}</Aviso>;
-  }
-  if (versoes.data.length === 0) {
-    return <Aviso probe="agent">{t("agents.detail.missing", { agentId })}</Aviso>;
-  }
-
-  const lista = versoes.data;
-  // Sem escolha, a versao do topo e a que vale, e a comparacao e contra a
-  // anterior: e o par que responde "o que mudou da ultima vez".
-  const atual = lista.find((v) => v.version === escolhida) ?? lista[0]!;
-  const anterior = lista.find((v) => v.version === contra) ?? lista[1];
-
-  return (
-    <div
-      className="flex flex-col gap-4"
-      data-agent={agentId}
-      data-comparando={anterior === undefined ? "" : `${anterior.version}:${atual.version}`}
-      data-locum-probe="agent"
-      data-versao={atual.version}
-      data-versoes={lista.map((v) => v.version).join(",")}
-    >
-      <div className="flex items-center gap-3">
-        {/* A lista de agents saiu da barra; voltar leva às automações, de onde se chega aqui. */}
-        <Button onClick={() => navegar("automations")} size="sm" variant="ghost">
-          <ArrowLeft className="size-4" />
-          {t("nav.automations")}
-        </Button>
-        <span className="font-medium text-sm">{atual.spec.name}</span>
-        <span className="text-muted-foreground text-xs">{agentId}</span>
-        <span className="ml-auto" />
-        {!editando && (
-          <>
-            <Button
-              className="cursor-pointer"
-              data-locum-ver-fluxo=""
-              onClick={() => navegar("automations", agentId)}
-              size="sm"
-              variant="ghost"
-            >
-              <Workflow className="size-4" />
-              {t("agents.detail.asFlow")}
-            </Button>
-            <Button
-              className="cursor-pointer"
-              onClick={() => {
-                setExportado(null);
-                exportarAgent(agentId).then(
-                  (caminho) => setExportado(caminho === null ? null : t("agents.io.exported", { path: caminho })),
-                  (err: unknown) =>
-                    setExportado(t("agents.io.exportRefused", { message: err instanceof Error ? err.message : String(err) })),
-                );
-              }}
-              size="sm"
-              variant="ghost"
-            >
-              {t("agents.io.export")}
-            </Button>
-            <Button className="cursor-pointer" onClick={() => setDuplicando(true)} size="sm" variant="ghost">
-              {t("agents.editor.duplicate")}
-            </Button>
-            <Button
-              className="cursor-pointer"
-              data-locum-editar=""
-              onClick={() => setEditando(true)}
-              size="sm"
-              variant="secondary"
-            >
-              {t("agents.editor.edit")}
-            </Button>
-            {/* Rodar é o que se veio fazer aqui na maior parte das vezes, então é o botão cheio. */}
-            <Button
-              className="cursor-pointer"
-              data-locum-rodar=""
-              onClick={() => setRodando(true)}
-              size="sm"
-            >
-              {t("agents.run.open")}
-            </Button>
-          </>
-        )}
-      </div>
-
-      {exportado === null ? null : (
-        <p className="text-muted-foreground text-xs">{exportado}</p>
-      )}
-
-      {rodando && !editando && (
-        <RodarAgora
-          agentId={agentId}
-          aoCancelar={() => setRodando(false)}
-          aoRodar={(runId) => navegar("runs", runId)}
-        />
-      )}
-
-      {duplicando && (
-        <Duplicar
-          aoCancelar={() => setDuplicando(false)}
-          aoCriar={(novo) => {
-            editarAoAbrir = novo;
-            navegar("agents", novo);
-          }}
-          de={agentId}
-          nome={lista[0]!.spec.name}
-        />
-      )}
-
-      {editando ? (
-        <EditorDeAgent
-          agentId={agentId}
-          aoSair={() => setEditando(false)}
-          aoSalvar={aoSalvar}
-          spec={lista[0]!.spec}
-          versao={lista[0]!.version}
-        />
-      ) : (
-        <>
-      {/*
-        O que o agent faz vem primeiro, depois quando acorda e quanto gasta. O
-        histórico é pergunta de quem investiga uma mudança, então fica recolhido
-        no fim, e some de vez enquanto só existe uma versão.
-      */}
-      <Passos
-        maquina={maquina.data?.machineId ?? null}
-        spec={atual.spec}
-        versao={atual.version}
-      />
-
-      <Secao descricao={t("settings.watched.description")} titulo={t("settings.watched.title")}>
-        <GatilhosDoAgent agentId={agentId} navegar={navegar} />
-      </Secao>
-
-      <OrcamentoDoAgent agentId={agentId} />
-
-      {lista.length < 2 ? null : (
-        <details className="group flex flex-col gap-4" open={escolhida !== null || contra !== null}>
-          <summary className="text-muted-foreground hover:text-foreground w-fit cursor-pointer text-sm">
-            {t("agents.detail.history", { count: lista.length, version: atual.version })}
-          </summary>
-          <div className="flex flex-col gap-4 pt-3">
-            <Historico
-              atual={atual.version}
-              contra={anterior?.version ?? null}
-              escolher={setEscolhida}
-              lista={lista}
-              marcar={setContra}
-            />
-            <Comparacao anterior={anterior} atual={atual} />
-          </div>
-        </details>
-      )}
-        </>
-      )}
-    </div>
-  );
-}
-
-/**
- * Quanto este agent pode gastar e quanto gastou hoje.
- *
- * Morava na Configuração, numa lista com todos os agents, e é pergunta sobre
- * um agent só: quem abre o agent quer saber o teto dele ali mesmo.
- */
-function OrcamentoDoAgent({ agentId }: { agentId: string }) {
-  const { t } = useTranslation();
-  const orcamentos = useRead("agents.budgets");
-  const deste = (orcamentos.data ?? []).find((o) => o.agentId === agentId);
-  if (deste === undefined) return null;
-  return (
-    <Secao descricao={t("settings.budgets.description")} titulo={t("settings.budgets.title")}>
-      <LinhaDoOrcamento orcamento={deste} />
-    </Secao>
-  );
-}
-
-/**
- * Rodar este agent agora, sobre um pull request colado.
- *
- * É o caminho de quem acabou de instalar: nada de terminal nem de sessão do
- * Claude Code, só o link do PR. A execução sai sem esperar e a tela vai para
- * ela, onde o andamento já aparece; o que o agent quiser publicar continua
- * parando na fila, que é a regra de qualquer execução.
- */
-function RodarAgora({
-  agentId,
-  aoCancelar,
-  aoRodar,
-}: {
-  agentId: string;
-  aoCancelar: () => void;
-  aoRodar: (runId: string) => void;
-}) {
-  const { t } = useTranslation();
-  const [alvo, setAlvo] = useState("");
-  const [enviando, setEnviando] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
-
-  async function rodar() {
-    setEnviando(true);
-    setErro(null);
-    try {
-      const { runId } = await call("runs.start", { target: alvo, agentId, wait: false });
-      aoRodar(runId);
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : String(e));
-      setEnviando(false);
-    }
-  }
-
-  return (
-    <form
-      className="border-border superficie flex max-w-xl flex-col gap-3 rounded-lg border px-4 py-3"
-      data-locum-probe="rodar-agora"
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (alvo.trim() !== "") void rodar();
-      }}
-    >
-      <div>
-        <p className="text-sm font-medium">{t("agents.run.title")}</p>
-        <p className="text-muted-foreground text-xs">{t("agents.run.hint")}</p>
-      </div>
-      <input
-        aria-label={t("agents.run.title")}
-        autoFocus
-        className="border-border bg-background focus-visible:ring-ring rounded-md border px-2 py-1 font-mono text-xs outline-none focus-visible:ring-1"
-        onChange={(e) => setAlvo(e.target.value)}
-        placeholder={t("agents.run.placeholder")}
-        spellCheck={false}
-        value={alvo}
-      />
-      {erro && <p className="text-sev-critical text-xs">{erro}</p>}
-      <div className="flex gap-2">
-        <Button className="cursor-pointer" disabled={enviando || alvo.trim() === ""} size="sm" type="submit">
-          {enviando ? t("agents.run.starting") : t("agents.run.start")}
-        </Button>
-        <Button className="cursor-pointer" onClick={aoCancelar} size="sm" type="button" variant="ghost">
-          {t("agents.editor.cancel")}
-        </Button>
-      </div>
-    </form>
-  );
-}
-
-/**
- * Agent novo pela lista: escolhe de qual partir e segue como a duplicação.
- *
- * Não existe agent em branco porque um agent sem passo nenhum não roda, e o
- * editor não cria passo do zero. Partir de um que funciona é o caminho que dá
- * certo na primeira vez.
- */
-function NovoAgent({
-  aoCancelar,
-  aoCriar,
-  bases,
-}: {
-  aoCancelar: () => void;
-  aoCriar: (id: string) => void;
-  bases: { id: string; nome: string }[];
-}) {
-  const { t } = useTranslation();
-  const [base, setBase] = useState(bases[0]!.id);
-  const escolhida = bases.find((b) => b.id === base) ?? bases[0]!;
-
-  return (
-    <div className="flex max-w-xl flex-col gap-2" data-locum-probe="agent-novo">
-      <label className="flex flex-col gap-1 text-xs">
-        <span className="text-muted-foreground">{t("agents.new.from")}</span>
-        <select
-          className="border-border bg-background focus-visible:ring-ring rounded-md border px-2 py-1.5 text-sm outline-none focus-visible:ring-1"
-          onChange={(e) => setBase(e.target.value)}
-          value={base}
-        >
-          {bases.map((b) => (
-            <option key={b.id} value={b.id}>
-              {b.nome}
-            </option>
-          ))}
-        </select>
-      </label>
-      <Duplicar aoCancelar={aoCancelar} aoCriar={aoCriar} de={escolhida.id} key={escolhida.id} nome={escolhida.nome} />
-    </div>
-  );
-}
-
-/**
- * Agent novo a partir de uma descrição.
- *
- * O modelo escreve o rascunho e a tela mostra o que saiu antes de gravar. O
- * rascunho nasce sem gatilho e com toda ação em aprovação: salvo, ele abre em
- * edição e só roda quando a pessoa disser quando.
- */
-function CriarComIa({
-  aoCancelar,
-  aoCriar,
-  modelo,
-}: {
-  aoCancelar: () => void;
-  aoCriar: (id: string) => void;
-  modelo: string | null;
-}) {
-  const { t } = useTranslation();
-  const [descricao, setDescricao] = useState("");
-  const [estado, setEstado] = useState<"editando" | "montando" | "salvando">("editando");
-  const [erro, setErro] = useState<string | null>(null);
-  const [rascunho, setRascunho] = useState<ReadResult<"agents.aiDraft"> | null>(null);
-  const curta = descricao.trim().length < 10;
-
-  async function montar() {
-    setEstado("montando");
-    setErro(null);
-    try {
-      setRascunho(await call("agents.aiDraft", descricao));
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : String(e));
-    }
-    setEstado("editando");
-  }
-
-  async function salvar() {
-    if (rascunho === null) return;
-    setEstado("salvando");
-    setErro(null);
-    try {
-      await call("agents.aiSave", rascunho.spec, descricao);
-      aoCriar(rascunho.spec.id);
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : String(e));
-      setEstado("editando");
-    }
-  }
-
-  return (
-    <div className="superficie ia-aurora flex max-w-2xl flex-col gap-3 rounded-xl px-4 py-4" data-locum-probe="agent-ia">
-      <div className="flex items-start gap-3">
-        <span className="ia-gradiente flex size-8 shrink-0 items-center justify-center rounded-lg text-white">
-          <Sparkles aria-hidden className="size-4" />
-        </span>
-        <div>
-          <p className="text-sm font-medium">{t("agents.ai.title")}</p>
-          <p className="text-muted-foreground text-xs">
-            {t("agents.ai.hint", { model: modelo === null ? "" : rotuloDoModelo(modelo) })}
-          </p>
-        </div>
-      </div>
-
-      <label className="flex flex-col gap-1 text-xs">
-        <span className="text-muted-foreground">{t("agents.ai.describe")}</span>
-        <textarea
-          className="border-border bg-background focus-visible:border-primary/50 min-h-24 resize-y rounded-lg border px-3 py-2 text-sm leading-relaxed outline-none focus-visible:shadow-[0_0_0_3px_color-mix(in_oklab,var(--primary)_15%,transparent)]"
-          disabled={estado !== "editando"}
-          onChange={(e) => setDescricao(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !curta) void montar();
-          }}
-          placeholder={t("agents.ai.placeholder")}
-          value={descricao}
-        />
-      </label>
-
-      {estado === "montando" ? (
-        <p className="ia-texto animate-pulse text-xs font-medium">{t("agents.ai.drafting")}</p>
-      ) : null}
-      {erro === null ? null : <p className="text-sev-critical text-xs">{erro}</p>}
-
-      {rascunho === null || estado === "montando" ? null : (
-        <div className="border-border bg-background/60 flex flex-col gap-2 rounded-lg border px-3 py-3" data-locum-agent-rascunho="">
-          <div className="flex flex-wrap items-baseline gap-x-2">
-            <p className="text-sm font-medium">{rascunho.spec.name}</p>
-            <code className="text-muted-foreground text-xs">{rascunho.spec.id}</code>
-          </div>
-          <ol className="flex flex-col gap-1.5">
-            {rascunho.spec.steps.map((passo, i) => (
-              <li className="flex items-center gap-2 text-xs" key={passo.key}>
-                <span className="bg-accent text-muted-foreground flex size-5 shrink-0 items-center justify-center rounded-full text-[10px]">
-                  {i + 1}
-                </span>
-                <span className="font-medium">{passo.name}</span>
-                <Badge className="font-mono text-[10px]" variant="secondary">
-                  {passo.type === "model" ? rotuloDoModelo(passo.model) : passo.type === "logic" ? passo.op : passo.action}
-                </Badge>
-              </li>
-            ))}
-          </ol>
-          <p className="text-muted-foreground text-xs">
-            {t("agents.ai.review", { model: rotuloDoModelo(rascunho.modelo) })}
-          </p>
-        </div>
-      )}
-
-      <div className="flex flex-wrap gap-2">
-        {rascunho === null || estado === "montando" ? (
-          <Button
-            className="cursor-pointer"
-            disabled={curta || estado !== "editando"}
-            onClick={() => void montar()}
-            size="sm"
-          >
-            {t("agents.ai.draft")}
-          </Button>
-        ) : (
-          <>
-            <Button className="cursor-pointer" disabled={estado !== "editando"} onClick={() => void salvar()} size="sm">
-              {estado === "salvando" ? t("agents.ai.saving") : t("agents.ai.save")}
-            </Button>
-            <Button
-              className="cursor-pointer"
-              disabled={estado !== "editando" || curta}
-              onClick={() => void montar()}
-              size="sm"
-              variant="secondary"
-            >
-              {t("agents.ai.again")}
-            </Button>
-          </>
-        )}
-        <Button className="cursor-pointer" onClick={aoCancelar} size="sm" variant="ghost">
-          {t("agents.editor.cancel")}
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-/**
- * Agent novo a partir deste.
- *
- * O jeito real de criar agent: partir de um que funciona e mudar o que for
- * diferente. Criado, ele abre direto em edição.
- */
-function Duplicar({
-  aoCancelar,
-  aoCriar,
-  de,
-  nome,
-}: {
-  aoCancelar: () => void;
-  aoCriar: (id: string) => void;
-  de: string;
-  nome: string;
-}) {
-  const { t } = useTranslation();
-  const [novoId, setNovoId] = useState(`${de}-copia`);
-  const [novoNome, setNovoNome] = useState(() => t("agents.editor.dup.copyName", { name: nome }));
-  const [criando, setCriando] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
-
-  async function criar() {
-    setCriando(true);
-    setErro(null);
-    try {
-      aoCriar(await duplicarAgent(de, novoId, novoNome));
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : String(e));
-      setCriando(false);
-    }
-  }
-
-  return (
-    <div className="superficie flex max-w-xl flex-col gap-3 rounded-xl px-4 py-3">
-      <div>
-        <p className="text-sm font-medium">{t("agents.editor.dup.title", { name: nome })}</p>
-        <p className="text-muted-foreground text-xs">{t("agents.editor.dup.hint")}</p>
-      </div>
-      <label className="flex flex-col gap-1 text-xs">
-        <span className="text-muted-foreground">{t("agents.editor.dup.newId")}</span>
-        <input
-          className="border-border bg-background focus-visible:ring-ring rounded-md border px-2 py-1 font-mono outline-none focus-visible:ring-1"
-          onChange={(e) => setNovoId(e.target.value)}
-          spellCheck={false}
-          value={novoId}
-        />
-      </label>
-      <label className="flex flex-col gap-1 text-xs">
-        <span className="text-muted-foreground">{t("agents.editor.dup.newName")}</span>
-        <input
-          className="border-border bg-background focus-visible:ring-ring rounded-md border px-2 py-1 outline-none focus-visible:ring-1"
-          onChange={(e) => setNovoNome(e.target.value)}
-          value={novoNome}
-        />
-      </label>
-      {erro && <p className="text-sev-critical text-xs">{erro}</p>}
-      <div className="flex gap-2">
-        <Button className="cursor-pointer" disabled={criando} onClick={() => void criar()} size="sm">
-          {criando ? t("agents.editor.dup.creating") : t("agents.editor.dup.create")}
-        </Button>
-        <Button className="cursor-pointer" onClick={aoCancelar} size="sm" variant="ghost">
-          {t("agents.editor.cancel")}
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-/**
- * O historico, uma linha por versao.
- *
- * Cada linha tem dois alvos de clique: o corpo escolhe a versao que a tela
- * mostra, e o botao da direita escolhe contra quem comparar. Sao duas escolhas
- * diferentes sobre a mesma lista, e junta-las num clique so faria a comparacao
- * mudar de par toda vez que alguem quisesse so olhar um spec.
- */
-function Historico({
-  atual,
-  contra,
-  escolher,
-  lista,
-  marcar,
-}: {
-  atual: number;
-  contra: number | null;
-  escolher: (v: number) => void;
-  lista: Versao[];
-  marcar: (v: number) => void;
-}) {
-  const { t } = useTranslation();
-
-  return (
-    <div className="overflow-hidden rounded-lg border border-border">
-      {lista.map((versao) => {
-        const acao = versao.spec.steps.find((p) => p.type === "action");
-        return (
-          <div
-            className={cn(
-              "flex items-center gap-3 border-border border-b px-4 py-2 text-sm last:border-b-0",
-              versao.version === atual && "bg-accent/40",
-            )}
-            data-locum-versao={versao.version}
-            key={versao.id}
-          >
-            <button
-              className="flex min-w-0 flex-1 items-center gap-3 text-left"
-              onClick={() => escolher(versao.version)}
-              type="button"
-            >
-              <span className="w-12 shrink-0 tabular-nums">
-                {t("common.version", { version: versao.version })}
-              </span>
-              <span className="shrink-0 text-muted-foreground text-xs">
-                {quando(versao.createdAt)}
-              </span>
-              <span className="min-w-0 flex-1 truncate text-muted-foreground text-xs">
-                {versao.note ?? t("agents.history.noNote")}
-              </span>
-              {acao === undefined ? null : (
-                <Badge
-                  data-locum-modo={versao.version}
-                  variant={acao.mode === "approve" ? "secondary" : "destructive"}
-                >
-                  {acao.mode}
-                </Badge>
-              )}
-            </button>
-            <Button
-              data-locum-comparar={versao.version}
-              disabled={versao.version === atual}
-              onClick={() => marcar(versao.version)}
-              size="sm"
-              variant={versao.version === contra ? "secondary" : "ghost"}
-            >
-              {t("agents.history.compare")}
-            </Button>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ passos */
-
-/**
- * Os passos do spec: o que a definicao pede e o que esta maquina faz com isso.
- *
- * O modelo pedido e do spec e nunca muda; o resolvido sai da tabela de
- * substituicao desta maquina. Mostrar os dois lado a lado e o ponto da tela:
- * um spec que diz `claude-opus-5` e uma maquina sem assinatura rodam coisas
- * diferentes, e so aqui da para ver isso sem disparar um run.
- */
-function Passos({
-  maquina,
-  spec,
-  versao,
-}: {
-  maquina: string | null;
-  spec: Spec;
-  versao: number;
-}) {
-  // Os modelos entram deduplicados: spec com dois passos no mesmo modelo faria
-  // a mesma pergunta duas vezes e o resultado seria o mesmo.
-  const modelos = useMemo(
-    () => [...new Set(spec.steps.filter((p) => p.type === "model").map((p) => p.model))],
-    [spec],
-  );
-
-  // A leitura so faz sentido com a maquina conhecida, e ela chega por outra
-  // leitura. Lista vazia enquanto isso: o canal responde `[]` sem tocar no
-  // banco, e a tela repinta quando o identificador chegar.
-  const previas = useRead("providers.preview", maquina === null ? [] : modelos, maquina ?? "");
-  const porModelo = new Map<string, Previa>();
-  for (const previa of previas.data ?? []) {
-    porModelo.set(previa.ok ? previa.resolution.requested : previa.requested, previa);
-  }
-
-  return (
-    <ol
-      className="flex flex-col gap-3"
-      data-locum-maquina={maquina ?? ""}
-      data-locum-passos={spec.steps.length}
-      data-locum-previas={previas.status}
-      data-versao={versao}
-    >
-      {spec.steps.map((passo, i) => (
-        <li key={passo.key}>
-          <PassoDoSpec
-            indice={i}
-            passo={passo}
-            previa={passo.type === "model" ? porModelo.get(passo.model) : undefined}
-            spec={spec}
-          />
-        </li>
-      ))}
-    </ol>
-  );
-}
-
-function PassoDoSpec({
-  indice,
-  passo,
-  previa,
-  spec,
-}: {
-  indice: number;
-  passo: Passo;
-  previa: Previa | undefined;
-  spec: Spec;
-}) {
-  const { t } = useTranslation();
-  const ferramentas = passo.type === "model" ? (passo.tools ?? spec.defaultTools) : [];
-  // A chave do passo é identificador de spec; quem lê o cartão conhece o nome.
-  const nomeDoPasso = (chave: string) => spec.steps.find((p) => p.key === chave)?.name ?? chave;
-
-  return (
-    <div className="rounded-lg border border-border px-4 py-3" data-locum-passo={passo.key}>
-      <div className="flex flex-wrap items-center gap-2 text-sm">
-        <span className="text-muted-foreground tabular-nums">{indice + 1}</span>
-        <span className="font-medium">{passo.name}</span>
-        {passo.optional ? <Badge variant="outline">{t("agents.step.optional")}</Badge> : null}
-        {passo.type === "action" ? (
-          <Badge
-            data-locum-modo={passo.mode}
-            variant={passo.mode === "approve" ? "secondary" : "destructive"}
-          >
-            {t(`agents.step.mode.${passo.mode}`)}
-          </Badge>
-        ) : null}
-        {passo.needs.length === 0 ? null : (
-          <span className="ml-auto text-muted-foreground text-xs">
-            {t("agents.step.dependsOn", { steps: passo.needs.map(nomeDoPasso).join(", ") })}
-          </span>
-        )}
-      </div>
-
-      {passo.type === "model" ? (
-        <Resolucao pedido={passo.model} previa={previa} />
-      ) : passo.type === "logic" ? (
-        <p className="mt-2 text-muted-foreground font-mono text-xs">{passo.op}</p>
-      ) : (
-        <p className="mt-2 text-muted-foreground text-xs">
-          <Trans
-            i18nKey="agents.step.action"
-            values={{
-              action: t(`agents.step.actionKind.${passo.action}`, { defaultValue: passo.action }),
-              input: passo.input === undefined ? t("agents.step.noInput") : nomeDoPasso(passo.input),
-            }}
-          />
-        </p>
-      )}
-
-      {passo.type === "model" && passo.requiresServers.length > 0 ? (
-        <p className="mt-1 text-muted-foreground text-xs">
-          {t("agents.step.requires", { servers: passo.requiresServers.join(", ") })}
-        </p>
-      ) : null}
-
-      {ferramentas.length > 0 ? <Ferramentas refs={ferramentas} /> : null}
-    </div>
-  );
-}
-
-/** Pedido contra resolvido, com o motivo da troca quando houver. */
-function Resolucao({ pedido, previa }: { pedido: string; previa: Previa | undefined }) {
-  const { t } = useTranslation();
-
-  if (previa === undefined) {
-    return (
-      <p className="mt-2 text-muted-foreground text-xs" data-locum-modelo={pedido}>
-        <Trans
-          components={{ code: <code /> }}
-          i18nKey="agents.step.resolving"
-          values={{ model: pedido }}
-        />
-      </p>
-    );
-  }
-
-  if (!previa.ok) {
-    return (
-      <p className="mt-2 text-destructive text-xs" data-locum-modelo={pedido}>
-        <Trans
-          components={{ code: <code /> }}
-          i18nKey="agents.step.unresolved"
-          values={{ error: previa.error, model: pedido }}
-        />
-      </p>
-    );
-  }
-
-  const { used, substitutionReason } = previa.resolution;
-  return (
-    <p
-      className="mt-2 text-muted-foreground text-xs"
-      data-locum-modelo={pedido}
-      data-locum-resolvido={used}
-    >
-      {used === pedido ? (
-        <span title={pedido}>{t("agents.step.runsOn", { model: rotuloDoModelo(pedido) })}</span>
-      ) : (
-        <Trans
-          components={{ code: <code /> }}
-          i18nKey="agents.step.resolved"
-          values={{ model: pedido, used }}
-        />
-      )}
-      {substitutionReason === undefined
-        ? ""
-        : t("agents.step.substitution", { reason: substitutionReason })}
-    </p>
-  );
-}
-
-/**
- * As ferramentas do passo, com o peso de cada uma no contexto.
- *
- * A contagem nao vem junto: ela exige falar com o servidor que expoe a
- * ferramenta, e subir todo servidor citado por um spec so porque alguem abriu
- * a tela seria caro e barulhento. Por isso o botao: sobe o que foi pedido, e
- * so quando foi pedido.
- */
-function Ferramentas({ refs }: { refs: { server: string; tool: string; class: string }[] }) {
-  const { t } = useTranslation();
-  const [pesos, setPesos] = useState<Map<string, number>>(new Map());
-  const [estado, setEstado] = useState<"parado" | "contando" | "erro">("parado");
-  const servidores = [...new Set(refs.map((r) => r.server))];
-  // Servidor de escrita é o que só uma pessoa liga num passo: o agent que se
-  // edita pelo MCP tem a ferramenta nova recusada. O selo diz de onde vem a
-  // regra para quem estranhar a recusa.
-  const cadastro = useRead("mcp.list");
-  const deEscrita = new Set(
-    (cadastro.data ?? []).filter((s) => s.config.scope === "write").map((s) => s.config.name),
-  );
-
-  const contar = () => {
-    setEstado("contando");
-    Promise.all(
-      servidores.map((nome) =>
-        call("mcp.tools", nome).then((tools: Ferramenta[]) =>
-          tools.map((t) => [`${nome}/${t.name}`, t.estimatedTokens] as const),
-        ),
-      ),
-    ).then(
-      (listas) => {
-        setPesos(new Map(listas.flat()));
-        setEstado("parado");
-      },
-      () => setEstado("erro"),
-    );
+  const inicial = useRead("library.toolsets");
+  const [relida, setRelida] = useState<ResumoDoToolset[] | null>(null);
+  const [aberto, setAberto] = useState<string | null>(null);
+  const lista = relida ?? inicial.data ?? [];
+  const reler = (): void => {
+    read("library.toolsets").then(setRelida, () => undefined);
   };
 
   return (
-    <div className="mt-2 flex flex-wrap items-center gap-1" data-locum-ferramentas={refs.length}>
-      {refs.map((ref) => {
-        const peso = pesos.get(`${ref.server}/${ref.tool}`);
-        return (
-          <Badge
-            data-locum-escrita={deEscrita.has(ref.server) ? "sim" : undefined}
-            key={`${ref.server}/${ref.tool}`}
-            title={deEscrita.has(ref.server) ? t("agents.tools.writeScopeHint") : undefined}
-            variant={ref.class === "external_write" ? "destructive" : "outline"}
-          >
-            {ref.server}/{ref.tool}
-            {deEscrita.has(ref.server) ? ` · ${t("agents.tools.writeScope")}` : ""}
-            {peso === undefined ? "" : ` · ${t("agents.tools.tokens", { tokens: peso })}`}
-          </Badge>
-        );
-      })}
-      <Button
-        data-locum-contar={servidores.join(",")}
-        disabled={estado === "contando"}
-        onClick={contar}
-        size="sm"
-        variant="ghost"
-      >
-        {estado === "erro"
-          ? t("agents.tools.failed")
-          : estado === "contando"
-            ? t("agents.tools.counting")
-            : t("agents.tools.count")}
-      </Button>
-    </div>
-  );
-}
-
-/* -------------------------------------------------------------- comparacao */
-
-/**
- * O que mudou entre duas versoes do spec.
- *
- * Linha igual entra so como contexto em volta do que mudou: spec tem centenas
- * de linhas e quase todas sobrevivem de uma versao para a outra, entao mostrar
- * tudo esconderia a diferenca no meio do resto.
- */
-function Comparacao({ anterior, atual }: { anterior: Versao | undefined; atual: Versao }) {
-  const { t } = useTranslation();
-  const linhas = useMemo(
-    () => (anterior === undefined ? [] : comContexto(diffJson(anterior.spec, atual.spec))),
-    [anterior, atual],
-  );
-
-  if (anterior === undefined) {
-    return (
-      <div data-locum-diff="0" data-locum-probe="diff">
-        <p className="text-muted-foreground text-sm">
-          {t("agents.diff.alone", { version: atual.version })}
-        </p>
-        <div className="mt-2">
-          <CodeBlock code={JSON.stringify(atual.spec, null, 2)} language="json">
-            <CodeBlockCopyButton />
-          </CodeBlock>
-        </div>
+    <div className="flex flex-col gap-3" data-locum-probe="toolsets" data-total={lista.length}>
+      <div className="flex items-center gap-3">
+        <p className="text-muted-foreground flex-1 text-sm">{t("library.toolsets.lead")}</p>
+        <Button className="cursor-pointer" data-locum-toolset-novo="" onClick={() => setAberto(NOVO)} size="sm" variant="outline">
+          <Plus className="size-4" />
+          {t("library.toolsets.new")}
+        </Button>
       </div>
-    );
-  }
-
-  const mudadas = linhas.filter((l) => l.tipo !== "igual");
-
-  return (
-    <div
-      data-locum-diff={mudadas.length}
-      data-locum-probe="diff"
-      data-locum-saiu={mudadas.filter((l) => l.tipo === "saiu").map((l) => l.texto.trim()).join("|")}
-      data-locum-entrou={mudadas.filter((l) => l.tipo === "entrou").map((l) => l.texto.trim()).join("|")}
-    >
-      <p className="mb-2 text-muted-foreground text-xs">
-        {t("agents.diff.summary", {
-          count: mudadas.length,
-          from: anterior.version,
-          to: atual.version,
-        })}
-      </p>
-
-      {mudadas.length === 0 ? (
-        <p className="text-muted-foreground text-sm">{t("agents.diff.identical")}</p>
+      {aberto === NOVO ? (
+        <EditorDoToolset
+          fechar={() => setAberto(null)}
+          inicial={null}
+          aoGravar={() => {
+            setAberto(null);
+            reler();
+          }}
+        />
+      ) : null}
+      {lista.length === 0 && aberto !== NOVO ? (
+        <p className="border-border text-muted-foreground rounded-lg border border-dashed p-6 text-sm">{t("library.toolsets.empty")}</p>
       ) : (
-        <div className="overflow-auto rounded-lg border border-border font-mono text-xs">
-          {linhas.map((linha, i) => (
-            <LinhaDaComparacao key={`${linha.antes ?? "-"}:${linha.depois ?? "-"}:${i}`} linha={linha} />
-          ))}
-        </div>
+        <ul className="flex flex-col gap-2">
+          {lista.map((ts) =>
+            aberto === ts.id ? (
+              <li key={ts.id}>
+                <EditorDoToolset
+                  fechar={() => setAberto(null)}
+                  inicial={ts}
+                  aoGravar={() => {
+                    setAberto(null);
+                    reler();
+                  }}
+                />
+              </li>
+            ) : (
+              <li key={ts.id}>
+                <button
+                  className="border-border superficie hover:border-foreground/30 flex w-full cursor-pointer items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors"
+                  data-locum-toolset={ts.id}
+                  onClick={() => setAberto(ts.id)}
+                  type="button"
+                >
+                  <Wrench className="text-muted-foreground size-4 shrink-0" />
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate font-medium text-sm">{ts.name}</span>
+                    {ts.description === "" ? null : <span className="text-muted-foreground truncate text-xs">{ts.description}</span>}
+                  </span>
+                  <span className="text-muted-foreground text-xs">{t("library.toolsCount", { count: ts.tools.length })}</span>
+                  <span className="text-muted-foreground text-xs">{t("library.toolsets.usedBy", { count: ts.usedBy.length })}</span>
+                </button>
+              </li>
+            ),
+          )}
+        </ul>
       )}
     </div>
   );
 }
 
-const SINAL: Record<LinhaDoDiff["tipo"], string> = { igual: " ", saiu: "-", entrou: "+" };
+function EditorDoToolset({
+  inicial,
+  fechar,
+  aoGravar,
+}: {
+  inicial: ResumoDoToolset | null;
+  fechar: () => void;
+  aoGravar: () => void;
+}) {
+  const { t } = useTranslation();
+  const [toolset, setToolset] = useState<Toolset>(
+    () => (inicial === null ? { id: "", name: "", description: "", tools: [] } : { id: inicial.id, name: inicial.name, description: inicial.description, tools: inicial.tools }),
+  );
+  const [ocupado, setOcupado] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
 
-function LinhaDaComparacao({ linha }: { linha: LinhaDoDiff }) {
+  const salvar = async (): Promise<void> => {
+    setOcupado(true);
+    setErro(null);
+    try {
+      const id = inicial === null ? await call("library.suggestId", toolset.name, "toolset") : toolset.id;
+      await call("library.saveToolset", { toolset: { ...toolset, id }, create: inicial === null });
+      aoGravar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : String(e));
+      setOcupado(false);
+    }
+  };
+
+  const remover = (): void => {
+    setOcupado(true);
+    call("library.removeToolset", toolset.id).then(aoGravar, (e: unknown) => {
+      setErro(e instanceof Error ? e.message : String(e));
+      setOcupado(false);
+    });
+  };
+
   return (
-    <div
-      className={cn(
-        "flex gap-3 whitespace-pre px-3 py-0.5",
-        linha.tipo === "saiu" && "bg-destructive/15 text-destructive-foreground",
-        linha.tipo === "entrou" && "bg-primary/15",
-        linha.tipo === "igual" && "text-muted-foreground",
-      )}
-      data-locum-linha={linha.tipo}
-    >
-      <span className="w-10 shrink-0 text-right tabular-nums opacity-60">{linha.antes ?? ""}</span>
-      <span className="w-10 shrink-0 text-right tabular-nums opacity-60">{linha.depois ?? ""}</span>
-      <span className="w-3 shrink-0">{SINAL[linha.tipo]}</span>
-      <span className="min-w-0">{linha.texto}</span>
+    <section className="border-primary/40 superficie flex flex-col gap-4 rounded-lg border p-4" data-locum-probe="toolset-editor">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Campo rotulo={t("library.toolsets.name")}>
+          <input
+            autoFocus
+            className={CAMPO}
+            data-locum-toolset-nome=""
+            onChange={(e) => setToolset((s) => ({ ...s, name: e.target.value }))}
+            value={toolset.name}
+          />
+        </Campo>
+        <Campo rotulo={t("library.toolsets.description")}>
+          <input className={CAMPO} onChange={(e) => setToolset((s) => ({ ...s, description: e.target.value }))} value={toolset.description} />
+        </Campo>
+      </div>
+      <Campo dica={t("library.toolsets.toolsHint")} rotulo={t("library.toolsets.tools")}>
+        <EscolhaDeFerramentas trocar={(tools) => setToolset((s) => ({ ...s, tools }))} valor={toolset.tools} />
+      </Campo>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button className="cursor-pointer" data-locum-toolset-salvar="" disabled={ocupado || toolset.name.trim() === ""} onClick={() => void salvar()} size="sm">
+          {t(inicial === null ? "library.toolsets.create" : "library.toolsets.save")}
+        </Button>
+        <Button className="cursor-pointer" onClick={fechar} size="sm" variant="ghost">
+          {t("library.toolsets.cancel")}
+        </Button>
+        <span className="flex-1" />
+        {inicial === null ? null : (
+          <Button
+            className="cursor-pointer"
+            disabled={ocupado || inicial.usedBy.length > 0}
+            onClick={remover}
+            size="sm"
+            title={inicial.usedBy.length > 0 ? t("library.editor.inUse", { list: inicial.usedBy.join(", ") }) : undefined}
+            variant="ghost"
+          >
+            <Trash2 className="size-4" />
+            {t("library.editor.remove")}
+          </Button>
+        )}
+      </div>
+      {erro === null ? null : <p className="text-sev-critical text-xs">{erro}</p>}
+    </section>
+  );
+}
+
+/* ------------------------------------------------------------------ campos */
+
+/** Ferramentas por servidor MCP ligado, cada lista aberta só quando pedida. */
+function EscolhaDeFerramentas({ valor, trocar }: { valor: ToolRef[]; trocar: (v: ToolRef[]) => void }) {
+  const { t } = useTranslation();
+  const servidores = useRead("mcp.list");
+  const nomes = servidoresDoModelo(servidores.data);
+  return (
+    <div className="flex flex-col gap-2">
+      {nomes.length === 1 && <p className="text-muted-foreground text-xs">{t("agents.editor.tools.noServers")}</p>}
+      <ServidoresComBusca nomes={nomes} trocar={trocar} valor={valor} />
     </div>
   );
 }
 
-/* ----------------------------------------------------------------- pedacos */
-
-function Aviso({ children, probe }: { children: React.ReactNode; probe: string }) {
+function Campo({ rotulo, dica, children }: { rotulo: string; dica?: string; children: ReactNode }) {
   return (
-    <p className="text-muted-foreground text-sm" data-locum-probe={probe} data-versoes="">
+    <div className="flex flex-col gap-1.5">
+      <span className="text-muted-foreground text-xs">{rotulo}</span>
       {children}
-    </p>
+      {dica === undefined ? null : <span className="text-muted-foreground text-[11px]">{dica}</span>}
+    </div>
   );
-}
-
-function quando(segundos: number): string {
-  return new Date(segundos * 1000).toISOString().slice(0, 16).replace("T", " ");
 }

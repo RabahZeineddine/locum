@@ -41,11 +41,23 @@ server.registerTool(
 
 // Quem pergunta é o teste do pool: o mesmo pid em duas execuções é a prova de
 // que o processo foi reaproveitado, e não subido de novo.
+// Nomes que servidores reais usam, sem anotação: a tela do agent tem de
+// separar leitura de escrita só pelo nome, e `request` e `run` não mudam isso.
+for (const nome of ["get_pull_request", "pull_request_read", "get_workflow_run", "list_pull_requests", "create_pull_request"]) {
+  server.registerTool(
+    nome,
+    { description: `Ferramenta de exemplo com o nome de ${nome}, para a classificação por nome.`, inputSchema: {} },
+    async () => ({ content: [{ type: "text", text: nome }] }),
+  );
+}
+
 server.registerTool(
   "pid",
   {
     description: "Devolve o pid do processo do servidor.",
     inputSchema: {},
+    // Anotada como leitura de propósito: o nome não diz, e a classificação do Locum tem que seguir o servidor.
+    annotations: { readOnlyHint: true },
   },
   async () => ({ content: [{ type: "text", text: String(process.pid) }] }),
 );
@@ -67,6 +79,7 @@ server.registerTool(
   {
     description: "Falha de propósito, para exercitar tratamento de erro.",
     inputSchema: { reason: z.string().default("falha proposital") },
+    annotations: { readOnlyHint: false, destructiveHint: true },
   },
   async ({ reason }) => ({ content: [{ type: "text", text: reason }], isError: true }),
 );

@@ -11,6 +11,7 @@ import {
   type ToolRef,
   type ToolsetInput,
 } from "../config/types.js";
+import { ehLeitura } from "../config/leitura.js";
 import { buildGate } from "../executor/build.js";
 import { libraryService } from "../services/library-service.js";
 import { respond } from "./respond.js";
@@ -67,7 +68,7 @@ export function registerLibraryTools(server: McpServer): void {
     "upsert_library_agent",
     {
       description:
-        "Records a library agent as a new version. A spec identical to the latest records nothing. Fields: id (lowercase, digits and dashes), name, description, context, instructions, model (provider/model), temperature (0 to 2, optional), toolsets (ids), tools ([{server, tool, class}]), maxSteps. Tools that write externally are refused: writing goes in an action step. A tool from a write-scope server that the latest version did not already have is refused: only a person adds it, in the app.",
+        "Records a library agent as a new version. A spec identical to the latest records nothing. Fields: id (lowercase, digits and dashes), name, description, context, instructions, model (provider/model), temperature (0 to 2, optional), toolsets (ids), tools ([{server, tool, class}]), connections ([{connectionId, tools: {toolName: true|false}}]: reads are on by default, writes off, and `tools` overrides per tool), skills (names or {skill, when}), budget ({perRunUsd, perDayUsd, perRunTokens, perDayTokens}), maxSteps. Tools that write externally are refused: writing goes in an action step. A tool from a write-scope server that the latest version did not already have is refused, and so is turning on a write tool of a connection that the latest version did not already have on: only a person adds it, in the app.",
       inputSchema: {
         spec: z.record(z.string(), z.unknown()).describe("full agent spec, as get_library_agent returns it in `spec`"),
         note: z.string().optional().describe("reason for the change, stored with the version"),
@@ -79,6 +80,7 @@ export function registerLibraryTools(server: McpServer): void {
         const novo = AgentProfile.parse(spec);
         const anterior = await libraryService.getProfile(novo.id);
         await recusarEscritaNova(await ferramentasDoAgent(novo), anterior === null ? [] : await ferramentasDoAgent(anterior.spec));
+        await recusarEscritaDeConexao(novo, anterior?.spec);
         const versao = await libraryService.saveProfile({ spec: novo as AgentProfileInput, note, create });
         return { id: versao.profileId, version: versao.version, note: versao.note };
       }),
@@ -117,6 +119,62 @@ export function registerLibraryTools(server: McpServer): void {
 async function ferramentasDoAgent(spec: AgentProfile): Promise<ToolRef[]> {
   const dosToolsets = await Promise.all(spec.toolsets.map((id) => libraryService.getToolset(id)));
   return [...spec.tools, ...dosToolsets.flatMap((t) => t?.tools ?? [])];
+}
+
+/** O nome da ferramenta numa chave de escolha, que pode ser `servidor/ferramenta` ou só `ferramenta`. */
+const nomeDaChave = (chave: string): string => chave.slice(chave.lastIndexOf("/") + 1);
+
+/**
+ * Liberar escrita numa conexão só pela tela. Pelo MCP, recusa:
+ * - ligar uma ferramenta que o nome marca como escrita, e gravar uma escolha
+ *   "read" nova, seja qual for o nome;
+ * - conexão nova cujo servidor tem escopo write, e qualquer escolha que
+ *   libere ferramenta de conexão assim (ligar uma, ou tirar o desligar).
+ * O que a versão anterior já tinha continua valendo.
+ */
+async function recusarEscritaDeConexao(novo: AgentProfile, anterior: AgentProfile | undefined): Promise<void> {
+  const barradas: string[] = [];
+  const antes = new Map((anterior?.connections ?? []).map((c) => [c.connectionId, c]));
+
+  for (const c of novo.connections) {
+    const antiga = antes.get(c.connectionId);
+    for (const [chave, escolha] of Object.entries(c.tools)) {
+      if (escolha === false || antiga?.tools[chave] === escolha) continue;
+      // "read" é a pessoa dizendo que a ferramenta só lê, e vale mesmo para nome
+      // de leitura: o servidor pode ter anotado escrita, e o MCP não consulta.
+      if (escolha === "read" || !ehLeitura(nomeDaChave(chave))) barradas.push(`${c.connectionId}.${chave}`);
+    }
+  }
+
+  const escopoWrite = new Set(
+    (await db.select({ name: schema.mcpServers.name, scope: schema.mcpServers.scope }).from(schema.mcpServers))
+      .filter((s) => s.scope === "write")
+      .map((s) => s.name),
+  );
+  if (escopoWrite.size > 0) {
+    const { connectionService } = await import("../services/connection-service.js");
+    const conexoes = await connectionService.list();
+    for (const c of novo.connections) {
+      if (!(conexoes.find((x) => x.id === c.connectionId)?.servers ?? []).some((s) => escopoWrite.has(s))) continue;
+      const antiga = antes.get(c.connectionId);
+      if (antiga === undefined) {
+        barradas.push(`${c.connectionId} (conexão nova)`);
+        continue;
+      }
+      for (const [chave, escolha] of Object.entries(c.tools)) {
+        if (escolha !== false && antiga.tools[chave] !== escolha) barradas.push(`${c.connectionId}.${chave}`);
+      }
+      for (const [chave, escolha] of Object.entries(antiga.tools)) {
+        if (escolha === false && c.tools[chave] !== false) barradas.push(`${c.connectionId}.${chave}`);
+      }
+    }
+  }
+
+  if (barradas.length > 0) {
+    throw new Error(
+      `${[...new Set(barradas)].join(", ")}: liberar escrita, ou abrir conexão de servidor com escopo write, só pela tela do Locum, onde a pessoa decide.`,
+    );
+  }
 }
 
 async function recusarEscritaNova(novas: readonly ToolRef[], jaEstavam: readonly ToolRef[]): Promise<void> {
