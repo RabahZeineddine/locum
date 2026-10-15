@@ -56,11 +56,11 @@ export interface Entrada {
 }
 
 /** Radicais que dizem que o valor é segredo: a palavra inteira ou o fim dela (`PGPASSWORD`, `APIKEY`). */
-const RADICAIS_DE_SEGREDO = ["password", "passwd", "token", "secret", "apikey", "accesskey", "secretkey", "privatekey", "bearer", "cookie", "credential", "credentials", "authorization"];
+const RADICAIS_DE_SEGREDO = ["password", "passwd", "token", "secret", "apikey", "accesskey", "secretkey", "privatekey", "passphrase", "bearer", "cookie", "credential", "credentials", "authorization"];
 /** Palavras soltas de segredo: `key` e `auth` só valem inteiras, senão pegariam `KEYCLOAK`. */
-const PALAVRAS_SOLTAS_DE_SEGREDO = new Set(["key", "pwd", "auth"]);
-/** Última palavra que diz que o valor é um endereço, um nome ou uma lista, mesmo ao lado de "token" ou "auth". */
-const ULTIMA_PALAVRA_DE_CONFIGURACAO = new Set(["url", "uri", "host", "endpoint", "scope", "scopes", "file", "path", "dir", "name", "region", "port", "domain", "realm", "authority", "issuer", "server", "mode", "type"]);
+const PALAVRAS_SOLTAS_DE_SEGREDO = new Set(["key", "pwd", "pass", "auth"]);
+/** Última palavra que diz, sem dúvida, que o valor é um endereço, um caminho ou uma lista. */
+const ULTIMA_PALAVRA_FORTE_DE_CONFIGURACAO = new Set(["url", "uri", "host", "endpoint", "scope", "scopes", "file", "path", "dir", "region", "port", "domain", "issuer", "authority", "realm"]);
 /** `TOKEN_ID` é segredo; `CLIENT_ID` e `TENANT_ID` são identificadores. */
 const SEGREDO_ANTES_DO_ID = new Set(["token", "secret", "password", "passwd", "pwd", "cookie", "bearer", "credential", "credentials", "authorization"]);
 
@@ -80,8 +80,11 @@ export function ehChaveDeSegredo(chave: string): boolean {
   const ultima = palavras[palavras.length - 1];
   if (ultima === undefined) return false;
   if (ultima === "id") return SEGREDO_ANTES_DO_ID.has(palavras[palavras.length - 2] ?? "");
-  if (ULTIMA_PALAVRA_DE_CONFIGURACAO.has(ultima)) return false;
-  return palavras.some((p) => PALAVRAS_SOLTAS_DE_SEGREDO.has(p) || RADICAIS_DE_SEGREDO.some((r) => p.endsWith(r)));
+  if (ULTIMA_PALAVRA_FORTE_DE_CONFIGURACAO.has(ultima)) return false;
+  const temSegredo = palavras.some((p) => PALAVRAS_SOLTAS_DE_SEGREDO.has(p) || RADICAIS_DE_SEGREDO.some((r) => p.endsWith(r)));
+  // `server`, `name`, `type` e `mode` no fim só sugerem configuração: sem palavra de segredo o nome já é
+  // configuração (`DB_NAME`), e com ela é segredo (`SECRET_NAME`, `API_TOKEN_SERVER`).
+  return temSegredo;
 }
 
 /** Parâmetro de query ou userinfo que carrega segredo dentro de um endereço. */
