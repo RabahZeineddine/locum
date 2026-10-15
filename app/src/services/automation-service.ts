@@ -1,7 +1,7 @@
 import { TriggerConfig, type AgentSpec, type TriggerConfigInput } from "../config/types.js";
 import { agentService, ID_DE_AGENT, isReserved, type AgentService, type AgentVersion } from "./agent-service.js";
 import { executionService, type ExecutionService } from "./execution-service.js";
-import { triggerService, type TriggerEntry, type TriggerService } from "./trigger-service.js";
+import { esperaChats, MOTIVO_CHATS, triggerService, type TriggerEntry, type TriggerService } from "./trigger-service.js";
 
 /** Um gatilho como o canvas manda: com `id` quando já existia. */
 export interface AutomationTriggerInput {
@@ -92,7 +92,10 @@ export class AutomationService {
    * se ela acorda sozinha, que é a pergunta que a pessoa faz ao olhar a lista.
    */
   async setEnabled(agentId: string, enabled: boolean): Promise<TriggerEntry[]> {
-    for (const gatilho of await this.triggers.list(agentId)) {
+    const gatilhos = await this.triggers.list(agentId);
+    // Confere antes de ligar o primeiro: um gatilho barrado no meio deixaria a automação meio ligada.
+    if (enabled && gatilhos.some((g) => !g.enabled && esperaChats(g.config))) throw new Error(MOTIVO_CHATS);
+    for (const gatilho of gatilhos) {
       if (gatilho.enabled !== enabled) await this.triggers.setEnabled(gatilho.id, enabled);
     }
     return this.triggers.list(agentId);

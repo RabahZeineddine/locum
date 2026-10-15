@@ -9,8 +9,8 @@ import { isReserved } from "./agent-service.js";
 type Db = typeof defaultDb;
 
 /** Gatilho de pacote restrito a chats cujos chats ninguém escolheu: vazio valeria para todos. */
-const MOTIVO_CHATS = "este gatilho era restrito a chats; escolha os chats antes de ligar";
-const esperaChats = (c: TriggerConfig): boolean => c.kind === "teams-inbox" && c.chatsPendentes > 0 && c.chats.length === 0;
+export const MOTIVO_CHATS = "este gatilho era restrito a chats; escolha os chats antes de ligar";
+export const esperaChats = (c: TriggerConfig): boolean => c.kind === "teams-inbox" && c.chatsPendentes > 0 && c.chats.length === 0;
 
 export type TriggerRow = typeof schema.triggers.$inferSelect;
 

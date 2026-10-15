@@ -325,6 +325,8 @@ test("gatilho restrito a chats: o pacote só diz quantos, e a importação não 
   assert.equal(gatilho.config.kind === "teams-inbox" && gatilho.config.chatsPendentes, 1);
   await assert.rejects(bruno.triggers.setEnabled(gatilho.id, true), /restrito a chats/);
   await assert.rejects(bruno.triggers.set("revisao-de-pr", gatilho.config, { id: gatilho.id, enabled: true }), /restrito a chats/);
+  await assert.rejects(bruno.automations.setEnabled("revisao-de-pr", true), /restrito a chats/);
+  assert.ok((await bruno.triggers.list("revisao-de-pr")).every((g) => !g.enabled), "ligar a automação deixou parte dos gatilhos ligada");
 
   // Escolhidos os chats, liga.
   const escolhido = { ...gatilho.config, chats: [{ chatId: CHAT_DO_TEAMS }] };
