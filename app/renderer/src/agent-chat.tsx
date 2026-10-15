@@ -1,12 +1,15 @@
 import { Conversation, ConversationContent, ConversationEmptyState } from "@/components/ai-elements/conversation";
 import { Message, MessageContent } from "@/components/ai-elements/message";
+import { MarcaLogo } from "@/components/marca-logo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { MarcaLogo } from "@/components/marca-logo";
+import { EmptyState } from "@/components/ui/empty-state";
+import { StatusDot, type Estado } from "@/components/ui/status-dot";
 import { useRead } from "@/lib/bridge";
 import { chatDoAgent } from "@/lib/agent-chat";
+import { argumentosLegiveis } from "@/lib/argumentos-legiveis";
 import { cn } from "@/lib/utils";
-import { AlertTriangle, ArrowUp, Bot, Check, RotateCcw, Square, Wrench, X } from "lucide-react";
+import { ArrowUp, Bot, Check, RotateCcw, Square, Wrench, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Streamdown } from "streamdown";
@@ -122,74 +125,66 @@ export function ChatDoAgent({ id, modelo, versao, naoSalvo }: { id: string; mode
   }
 
   return (
-    <div className="border-border flex h-[calc(100dvh-26rem)] min-h-[420px] flex-col rounded-lg border" data-locum-agent-chat="">
-      <div className="border-border flex items-center gap-2 border-b px-3 py-2">
-        <Bot className="text-muted-foreground size-4" aria-hidden />
-        <span className="text-sm font-medium">{t("agentChat.title")}</span>
-        <span className="text-muted-foreground truncate font-mono text-[11px]">{modelo}</span>
-        <Badge variant="outline">{t("agentChat.version", { version: versao })}</Badge>
+    <div className="flex h-[calc(100dvh-16rem)] min-h-[420px] flex-col rounded-lg border border-border bg-card" data-locum-agent-chat="">
+      <div className="flex min-h-10 items-center gap-2 border-b border-border px-3 py-1.5">
+        <Bot aria-hidden className="size-4 text-muted-foreground" />
+        <span className="text-[13px] font-medium">{t("agentChat.title")}</span>
+        <span className="truncate font-mono text-[11px] text-muted-foreground">{modelo}</span>
+        <Badge variant="secondary">{t("agentChat.version", { version: versao })}</Badge>
         {falas.length > 0 && !respondendo ? (
-          <button
-            className="text-muted-foreground hover:text-foreground ml-auto flex cursor-pointer items-center gap-1 text-xs"
-            data-locum-agent-chat-limpar=""
-            onClick={() => void recomecar()}
-            type="button"
-          >
-            <RotateCcw className="size-3" aria-hidden />
+          <Button className="ml-auto cursor-pointer" data-locum-agent-chat-limpar="" onClick={() => void recomecar()} size="xs" variant="ghost">
+            <RotateCcw aria-hidden />
             {t("agentChat.reset")}
-          </button>
+          </Button>
         ) : null}
       </div>
 
       {semServidor.length === 0 && !naoSalvo && contaIgnorada === 0 ? null : (
-        <div className="border-border flex flex-col gap-1 border-b px-3 py-2 text-xs" data-locum-agent-chat-avisos="">
+        <div className="flex flex-col gap-1 border-b border-border px-3 py-2 text-xs text-muted-foreground" data-locum-agent-chat-avisos="">
           {semServidor.map((c) => (
-            <p className="flex items-start gap-1.5 text-amber-400" key={c.connectionId}>
-              <AlertTriangle className="mt-0.5 size-3 shrink-0" aria-hidden />
+            <p className="flex items-start gap-1.5" key={c.connectionId}>
+              <StatusDot className="mt-[5px]" estado="aviso" />
               {t("agentChat.noServer", { connection: nomes.get(c.connectionId) ?? c.connectionId, reason: c.motivo })}
             </p>
           ))}
           {contaIgnorada === 0 ? null : (
-            <p className="flex items-start gap-1.5 text-amber-400" data-locum-agent-chat-conta="">
-              <AlertTriangle className="mt-0.5 size-3 shrink-0" aria-hidden />
+            <p className="flex items-start gap-1.5" data-locum-agent-chat-conta="">
+              <StatusDot className="mt-[5px]" estado="aviso" />
               {t("agentChat.accountIgnored", { count: contaIgnorada })}
             </p>
           )}
-          {naoSalvo ? <p className="text-muted-foreground">{t("agentChat.unsaved")}</p> : null}
+          {naoSalvo ? <p>{t("agentChat.unsaved")}</p> : null}
         </div>
       )}
 
       <Conversation className="min-h-0 flex-1">
-        <ConversationContent className={cn("flex min-h-full flex-col gap-3 p-4", falas.length === 0 && "justify-center")}>
+        <ConversationContent className={cn("flex min-h-full flex-col gap-3 p-3", falas.length === 0 && "justify-center")}>
           {falas.length === 0 && carregado ? (
             <ConversationEmptyState>
-              <div className="space-y-1.5">
-                <h3 className="text-base font-semibold">{t("agentChat.empty.title")}</h3>
-                <p className="text-muted-foreground mx-auto max-w-80 text-sm">{t("agentChat.empty.body")}</p>
-              </div>
+              <EmptyState className="border-0" descricao={t("agentChat.empty.body")} icone={<Bot aria-hidden />} titulo={t("agentChat.empty.title")} />
             </ConversationEmptyState>
           ) : null}
           {resumido ? (
-            <p className="text-muted-foreground/80 border-border rounded-md border border-dashed px-3 py-2 text-xs">{t("assistant.summarized")}</p>
+            <p className="rounded-md border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">{t("assistant.summarized")}</p>
           ) : null}
           {falas.map((fala, i) => (
             <Message from={fala.de} key={i}>
-              <MessageContent>
+              <MessageContent className="gap-1.5 text-[13px] group-[.is-user]:rounded-md group-[.is-user]:px-3 group-[.is-user]:py-2">
                 {fala.ferramentas.length > 0 ? (
-                  <p className="text-muted-foreground mb-1.5 flex flex-wrap items-center gap-1 text-xs">
-                    <Wrench className="size-3" aria-hidden />
-                    {fala.ferramentas.map(nomeCurto).join(", ")}
+                  <p className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                    <Wrench aria-hidden className="size-3" />
+                    <span className="font-mono">{fala.ferramentas.map(nomeCurto).join(", ")}</span>
                   </p>
                 ) : null}
                 {fala.de === "assistant" ? (
-                  <div className="text-sm [&_pre]:text-xs" data-locum-agent-chat-resposta="">
+                  <div className="text-[13px] [&_pre]:text-xs" data-locum-agent-chat-resposta="">
                     <Streamdown>{fala.texto}</Streamdown>
                     {respondendo && i === falas.length - 1 && fala.cartoes.every((c) => c.estado !== "pendente") ? (
-                      <span className="bg-foreground/70 ml-0.5 inline-block h-3.5 w-1.5 animate-pulse align-middle" />
+                      <span className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse bg-foreground/70 align-middle" />
                     ) : null}
                   </div>
                 ) : (
-                  <p className="whitespace-pre-wrap text-sm">{fala.texto}</p>
+                  <p className="whitespace-pre-wrap text-[13px]">{fala.texto}</p>
                 )}
                 {fala.cartoes.map((cartao) => (
                   <CartaoDeEscrita
@@ -207,15 +202,16 @@ export function ChatDoAgent({ id, modelo, versao, naoSalvo }: { id: string; mode
       </Conversation>
 
       {falha === null ? null : (
-        <p className="text-sev-critical border-border border-t px-3 py-2 text-xs" data-locum-agent-chat-erro="">
+        <p className="flex items-center gap-1.5 border-t border-border px-3 py-2 text-xs text-muted-foreground" data-locum-agent-chat-erro="">
+          <StatusDot estado="erro" />
           {falha}
         </p>
       )}
-      <div className="border-border border-t p-3">
-        <div className="border-border bg-card focus-within:border-primary/50 flex items-end gap-2 rounded-xl border px-3 py-2.5">
+      <div className="border-t border-border p-3">
+        <div className="flex items-end gap-2 rounded-lg border border-input bg-background px-3 py-2 transition-colors focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/40">
           <textarea
             aria-label={t("agentChat.title")}
-            className="max-h-32 min-h-[20px] flex-1 resize-none bg-transparent text-sm outline-none"
+            className="max-h-32 min-h-[20px] flex-1 resize-none bg-transparent text-[13px] outline-none placeholder:text-muted-foreground disabled:opacity-50"
             disabled={!carregado || aguardando}
             onChange={(e) => setRascunho(e.target.value)}
             onKeyDown={(e) => {
@@ -230,62 +226,84 @@ export function ChatDoAgent({ id, modelo, versao, naoSalvo }: { id: string; mode
             value={rascunho}
           />
           {respondendo ? (
-            <Button className="size-7 cursor-pointer" data-locum-agent-chat-parar="" onClick={() => void chatDoAgent.cancelar(id)} size="icon" variant="ghost">
-              <Square className="size-3.5" aria-hidden />
+            <Button className="cursor-pointer" data-locum-agent-chat-parar="" onClick={() => void chatDoAgent.cancelar(id)} size="icon-sm" variant="ghost">
+              <Square aria-hidden />
               <span className="sr-only">{t("assistant.stop")}</span>
             </Button>
           ) : (
             <Button
-              className="size-7 cursor-pointer rounded-lg"
+              className="cursor-pointer"
               data-locum-agent-chat-enviar=""
               disabled={!carregado || aguardando || rascunho.trim() === ""}
               onClick={() => void enviar()}
-              size="icon"
+              size="icon-sm"
               variant={rascunho.trim() === "" ? "ghost" : "default"}
             >
-              <ArrowUp className="size-3.5" aria-hidden />
+              <ArrowUp aria-hidden />
               <span className="sr-only">{t("assistant.send")}</span>
             </Button>
           )}
         </div>
-        <p className="text-muted-foreground/70 mt-1.5 text-xs">{t("agentChat.note")}</p>
+        <p className="mt-1.5 text-[11px] text-muted-foreground">{t("agentChat.note")}</p>
       </div>
     </div>
   );
 }
 
+const PONTO_DO_CARTAO: Record<Cartao["estado"], Estado> = {
+  pendente: "aviso",
+  executando: "aviso",
+  executado: "ok",
+  falhou: "erro",
+  recusado: "ocioso",
+  expirado: "ocioso",
+};
+
 /** A chamada de escrita que o agent quer fazer, à espera do clique de quem conversa. */
 function CartaoDeEscrita({ cartao, decidir, marca, nomeDaConexao }: { cartao: Cartao; decidir: (d: "executar" | "recusar") => void; marca: { name: string; url?: string | undefined }; nomeDaConexao: string | undefined }) {
   const { t } = useTranslation();
   const pendente = cartao.estado === "pendente";
+  const argumentos = argumentosLegiveis(cartao.argumentos);
   return (
     <div
-      className={cn("border-border bg-muted/30 flex flex-col gap-2 rounded-lg border p-3", pendente && "border-amber-400/50")}
+      className={cn("flex w-full min-w-72 flex-col gap-2.5 rounded-lg border bg-background p-3", pendente ? "border-primary/50" : "border-border")}
       data-estado={cartao.estado}
       data-locum-agent-cartao={cartao.ferramenta}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <AlertTriangle className={cn("size-3.5", pendente ? "text-amber-400" : "text-muted-foreground")} aria-hidden />
-        <span className="text-xs font-medium" data-locum-agent-cartao-titulo="">
+        <StatusDot estado={PONTO_DO_CARTAO[cartao.estado]} />
+        <span className="text-[13px] font-medium" data-locum-agent-cartao-titulo="">
           {t(`agentChat.card.title.${cartao.estado}`)}
         </span>
-        <span className="font-mono text-xs font-semibold">{cartao.ferramenta}</span>
-        <MarcaLogo fonte={marca} tamanho="sm" />
-        <span className="text-muted-foreground text-[11px]">{nomeDaConexao ?? cartao.servidor}</span>
+        <span className="ml-auto flex items-center gap-1.5">
+          <MarcaLogo fonte={marca} tamanho="sm" />
+          <span className="font-mono text-xs">{cartao.ferramenta}</span>
+          <span className="text-[11px] text-muted-foreground">{nomeDaConexao ?? cartao.servidor}</span>
+        </span>
       </div>
-      <pre className="bg-background/60 max-h-48 overflow-auto rounded-md p-2 font-mono text-[11px] leading-relaxed" data-locum-agent-cartao-argumentos="">
-        {JSON.stringify(cartao.argumentos, null, 2)}
-      </pre>
-      {cartao.estado === "expirado" ? <p className="text-muted-foreground text-xs">{t("agentChat.card.expiredHint")}</p> : null}
+      {argumentos.length === 0 ? null : (
+        <dl
+          className="grid max-h-48 grid-cols-[minmax(5rem,auto)_1fr] gap-x-3 gap-y-1 overflow-auto rounded-md bg-card px-2.5 py-2 text-xs"
+          data-locum-agent-cartao-argumentos=""
+        >
+          {argumentos.map((a, i) => (
+            <div className="contents" key={`${a.chave}-${i}`}>
+              <dt className="text-muted-foreground">{a.chave}</dt>
+              <dd className="break-words whitespace-pre-wrap">{a.valor}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {cartao.estado === "expirado" ? <p className="text-xs text-muted-foreground">{t("agentChat.card.expiredHint")}</p> : null}
       {cartao.resultado === undefined ? null : <ResultadoDaFerramenta texto={cartao.resultado} />}
       {pendente ? (
         <div className="flex gap-2">
           <Button className="cursor-pointer" data-locum-agent-cartao-executar="" onClick={() => decidir("executar")} size="sm">
-            <Check className="size-3.5" aria-hidden />
+            <Check aria-hidden />
             {t("agentChat.card.run")}
           </Button>
           <Button className="cursor-pointer" data-locum-agent-cartao-recusar="" onClick={() => decidir("recusar")} size="sm" variant="outline">
-            <X className="size-3.5" aria-hidden />
+            <X aria-hidden />
             {t("agentChat.card.refuse")}
           </Button>
         </div>
@@ -294,23 +312,30 @@ function CartaoDeEscrita({ cartao, decidir, marca, nomeDaConexao }: { cartao: Ca
   );
 }
 
-/** O que a ferramenta devolveu: JSON formatado quando é JSON, texto puro no resto, e recolhido quando é longo. */
+/** O que a ferramenta devolveu: texto corrido quando é JSON (sem chaves nem aspas), texto puro no resto, e recolhido quando é longo. */
 function ResultadoDaFerramenta({ texto }: { texto: string }) {
   const { t } = useTranslation();
-  let formatado: string | null = null;
+  let linhas: ReturnType<typeof argumentosLegiveis> | null = null;
   try {
     const lido: unknown = JSON.parse(texto);
-    if (lido !== null && typeof lido === "object") formatado = JSON.stringify(lido, null, 2);
+    if (lido !== null && typeof lido === "object") linhas = argumentosLegiveis(lido);
   } catch {
-    formatado = null;
+    linhas = null;
   }
   return (
     <details className="text-xs" data-locum-agent-cartao-resultado="" open={texto.length <= 240}>
-      <summary className="text-muted-foreground cursor-pointer select-none">{t("agentChat.card.result")}</summary>
-      {formatado === null ? (
-        <p className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words">{texto}</p>
+      <summary className="cursor-pointer text-muted-foreground select-none">{t("agentChat.card.result")}</summary>
+      {linhas === null ? (
+        <p className="mt-1 max-h-48 overflow-auto break-words whitespace-pre-wrap">{texto}</p>
       ) : (
-        <pre className="bg-background/60 mt-1 max-h-48 overflow-auto rounded-md p-2 font-mono text-[11px] leading-relaxed">{formatado}</pre>
+        <dl className="mt-1 grid max-h-48 grid-cols-[minmax(5rem,auto)_1fr] gap-x-3 gap-y-1 overflow-auto rounded-md bg-card px-2.5 py-2">
+          {linhas.map((a, i) => (
+            <div className="contents" key={`${a.chave}-${i}`}>
+              <dt className="text-muted-foreground">{a.chave}</dt>
+              <dd className="break-words whitespace-pre-wrap">{a.valor}</dd>
+            </div>
+          ))}
+        </dl>
       )}
     </details>
   );
