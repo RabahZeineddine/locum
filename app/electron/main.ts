@@ -1913,6 +1913,9 @@ async function checkPacote(window: BrowserWindow): Promise<void> {
     const { db } = await import("../src/db/index.js");
     const { schema } = await import("../src/db/index.js");
     const { eq } = await import("drizzle-orm");
+    // Toda tabela que aponta para o agent, nas duas pontas, antes da linha dele.
+    db.delete(schema.budgets).where(eq(schema.budgets.agentId, idOrigem)).run();
+    db.delete(schema.usageDaily).where(eq(schema.usageDaily.agentId, idOrigem)).run();
     db.delete(schema.triggers).where(eq(schema.triggers.agentId, idOrigem)).run();
     db.delete(schema.agentVersions).where(eq(schema.agentVersions.agentId, idOrigem)).run();
     db.delete(schema.agents).where(eq(schema.agents.id, idOrigem)).run();
@@ -1928,7 +1931,7 @@ async function checkPacote(window: BrowserWindow): Promise<void> {
         id: idOrigem, name: "Pacote do smoke", defaultTools: [], skills: [], budget: {},
         steps: [{ type: "model", key: "revisar", name: "Revisar", needs: [], optional: false, model: "claude-code/claude-sonnet-5", prompt: "Revise.", requiresServers: [], maxSteps: 12, profile: agentId }],
       },
-      triggers: [{ config: { kind: "slack-channel", channels: ["C0SMOKE123"] }, enabled: true }, { config: { kind: "manual" } }],
+      triggers: [{ config: { kind: "slack-channel", channels: ["C0SMOKE123"] }, enabled: false }, { config: { kind: "manual" } }],
       note: "", create: true,
     });
 

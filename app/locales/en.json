@@ -2254,8 +2254,9 @@
       "slackReplyNeedsSlack": "Replying in Slack needs a Slack trigger: that is where the thread comes from.",
       "teamsReplyNeedsTeams": "Replying in Teams needs a Teams trigger.",
       "noTracker": "Choose which tracker opens the task.",
+      "createReviewer": "Without a reviewer agent, the review uses a loose AI step. Create an agent for PR review and swap the step for it.",
       "githubTokenForDiff": "GitHub has no token: the review needs it to bring the PR diff.",
-      "openConnection": "Open Connections > GitHub",
+      "openConnection": "Open",
       "agentMissing": "This step's agent no longer exists in the library.",
       "noTool": "Choose the app and the tool for this action.",
       "noUrl": "Fill in the API address, starting with http:// or https://.",
@@ -2537,15 +2538,11 @@
       "downgraded": "An action that posted on its own comes in with approval.",
       "agentState": {
         "novo": "new",
-        "versao-nova": "new version (now v{{version}})",
         "igual": "already the same (v{{version}})",
-        "nome-igual": "name already used"
+        "nome-igual": "name already used",
+        "mesmo-id": "same id, different content (now v{{version}})"
       },
       "sameName": "You already have the agent \"{{nome}}\" with another id.",
-      "sameNameChoice": {
-        "usar-existente": "Use the one I have",
-        "criar-novo": "Create a new one beside it"
-      },
       "usedBy": "Used in: {{lista}}",
       "models": "Model of each agent",
       "modelMissing": "the suggested one is not available here",
@@ -2555,7 +2552,8 @@
       "kind": {
         "conexao": "Connection",
         "servidor": "MCP server",
-        "provedor": "Provider"
+        "provedor": "Provider",
+        "skill": "Skill"
       },
       "state": {
         "ok": "ok",
@@ -2576,7 +2574,47 @@
       "donePending": "The automation still needs choices, like channels.",
       "open": "Open the automation",
       "notJson": "Only .locum.json files.",
-      "unreadable": "Could not read the file."
+      "unreadable": "Could not read the file.",
+      "sameId": "You already have an agent with this id (v{{version}}), different from the package.",
+      "choice": {
+        "mesmo-id": {
+          "criar-novo": "Create a new one beside it (yours does not change)",
+          "atualizar": "Update mine with the package's",
+          "usar-existente": "Use mine as it is"
+        },
+        "nome-igual": {
+          "usar-existente": "Use the one I have",
+          "criar-novo": "Create a new one beside it"
+        }
+      },
+      "diffSummary_one": "{{count}} difference",
+      "diffSummary_other": "{{count}} differences",
+      "diffHere": "Here",
+      "diffPackage": "Package",
+      "field": {
+        "description": "Description",
+        "context": "Context",
+        "instructions": "Instructions",
+        "model": "Model",
+        "temperature": "Temperature",
+        "tools": "Tools",
+        "connections": "Connections",
+        "skills": "Skills",
+        "budget": "Budget",
+        "maxSteps": "Max steps"
+      },
+      "updateNoOne": "None of your automations uses this agent today.",
+      "updateAffects": "These automations of yours will run the package's text: {{lista}}",
+      "tools": "Tools the package turns on",
+      "toolsWrite_one": "{{count}} tool writes. Writes never run on their own: they come out as a card in the agent chat or through the queue.",
+      "toolsWrite_other": "{{count}} tools write. Writes never run on their own: they come out as a card in the agent chat or through the queue.",
+      "toolClass": {
+        "leitura": "read",
+        "escrita": "write"
+      },
+      "declaredRead": "the file said read",
+      "urlFill": "The address of step {{passo}} is not in the package: fill it in the automation.",
+      "urlFillHost": "The address of step {{passo}} is not in the package: fill it in the automation (it was on {{host}})."
     }
   }
 }

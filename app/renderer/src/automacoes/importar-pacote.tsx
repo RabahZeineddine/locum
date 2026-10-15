@@ -29,7 +29,10 @@ export function ImportarPacote({
   const [modelos, setModelos] = useState<Record<string, string>>({});
   const [servidores, setServidores] = useState<Record<string, string>>({});
   const [conexoes, setConexoes] = useState<Record<string, string>>({});
-  const [agents, setAgents] = useState<Record<string, "versao-nova" | "criar-novo" | "usar-existente">>({});
+  const [agents, setAgents] = useState<Record<string, "atualizar" | "criar-novo" | "usar-existente">>({});
+  // Agent de mesmo id nunca é reescrito por omissão: o padrão é criar um novo ao lado.
+  const escolhaDo = (a: PreviaDoPacote["agents"][number]): "atualizar" | "criar-novo" | "usar-existente" | undefined =>
+    agents[a.id] ?? (a.situacao === "mesmo-id" ? "criar-novo" : undefined);
 
   const ler = (): void => {
     setPrevia(null);
@@ -46,6 +49,7 @@ export function ImportarPacote({
   const todosModelos = previa === null ? [] : [...previa.agents.map((a) => a.modelo), ...previa.passosDeIA];
   const modeloDe = (m: (typeof todosModelos)[number]): string => modelos[m.chave] ?? m.padrao ?? m.sugerido;
   const nomeIgualSemResposta = previa?.agents.some((a) => a.situacao === "nome-igual" && agents[a.id] === undefined) ?? false;
+  const escritas = previa?.ferramentas.filter((f) => f.classe === "escrita") ?? [];
   const semModelo = todosModelos.some((m) => !m.disponivel && modelos[m.chave] === undefined && m.padrao === null);
 
   const importar = (): void => {
@@ -57,7 +61,12 @@ export function ImportarPacote({
       modelos: Object.fromEntries(todosModelos.map((m) => [m.chave, modeloDe(m)])),
       servidores,
       conexoes,
-      agents: Object.fromEntries(Object.entries(agents).map(([id, acao]) => [id, { acao }])),
+      agents: Object.fromEntries(
+        previa.agents.flatMap((a) => {
+          const acao = escolhaDo(a);
+          return acao === undefined ? [] : [[a.id, { acao }] as const];
+        }),
+      ),
     };
     call("pacote.import", arquivo.texto, escolhas).then(
       (r) => {
@@ -132,19 +141,37 @@ export function ImportarPacote({
                     <span className="flex-1 truncate">{a.nome}</span>
                     <Badge variant="outline">{t(`pacote.import.agentState.${a.situacao}`, { version: a.versaoAtual })}</Badge>
                   </div>
-                  {a.situacao === "nome-igual" ? (
+                  {a.situacao === "nome-igual" || a.situacao === "mesmo-id" ? (
                     <div className="flex flex-col gap-1 text-xs">
-                      <span className="text-amber-500">{t("pacote.import.sameName", { nome: a.existente?.nome })}</span>
-                      {(["usar-existente", "criar-novo"] as const).map((acao) => (
+                      <span className="text-amber-500">
+                        {a.situacao === "nome-igual" ? t("pacote.import.sameName", { nome: a.existente?.nome }) : t("pacote.import.sameId", { version: a.versaoAtual })}
+                      </span>
+                      {(a.situacao === "mesmo-id" ? (["criar-novo", "atualizar", "usar-existente"] as const) : (["usar-existente", "criar-novo"] as const)).map((acao) => (
                         <label className="flex items-center gap-1.5" key={acao}>
-                          <input checked={agents[a.id] === acao} name={`agent-${a.id}`} onChange={() => setAgents((x) => ({ ...x, [a.id]: acao }))} type="radio" />
-                          {t(`pacote.import.sameNameChoice.${acao}`)}
+                          <input checked={escolhaDo(a) === acao} data-locum-pacote-escolha={`${a.id}:${acao}`} name={`agent-${a.id}`} onChange={() => setAgents((x) => ({ ...x, [a.id]: acao }))} type="radio" />
+                          {t(`pacote.import.choice.${a.situacao}.${acao}`)}
                         </label>
                       ))}
+                      {a.situacao === "mesmo-id" ? (
+                        <details className="text-muted-foreground" data-locum-pacote-diferencas={a.id}>
+                          <summary className="cursor-pointer">{t("pacote.import.diffSummary", { count: a.diferencas.length })}</summary>
+                          <ul className="mt-1 flex flex-col gap-2">
+                            {a.diferencas.map((d) => (
+                              <li className="flex flex-col gap-0.5" key={d.campo}>
+                                <span className="text-foreground">{t(`pacote.import.field.${d.campo}`)}</span>
+                                <span className="whitespace-pre-wrap break-words font-mono">{t("pacote.import.diffHere")}: {d.daqui === "" ? "—" : d.daqui}</span>
+                                <span className="whitespace-pre-wrap break-words font-mono">{t("pacote.import.diffPackage")}: {d.pacote === "" ? "—" : d.pacote}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </details>
+                      ) : null}
+                      {a.situacao === "mesmo-id" && escolhaDo(a) === "atualizar" ? (
+                        <span className="text-sev-critical" data-locum-pacote-afetadas={a.id}>
+                          {a.usadoPor.length === 0 ? t("pacote.import.updateNoOne") : t("pacote.import.updateAffects", { lista: a.usadoPor.join(", ") })}
+                        </span>
+                      ) : null}
                     </div>
-                  ) : null}
-                  {a.situacao === "versao-nova" && a.usadoPor.length > 0 ? (
-                    <span className="text-muted-foreground text-xs">{t("pacote.import.usedBy", { lista: a.usadoPor.join(", ") })}</span>
                   ) : null}
                 </li>
               ))}
@@ -167,6 +194,31 @@ export function ImportarPacote({
                 </label>
               ))}
             </div>
+          ) : null}
+
+          {previa.ferramentas.length > 0 ? (
+            <div className="flex flex-col gap-1" data-locum-pacote-ferramentas="">
+              <span className="text-muted-foreground text-xs">{t("pacote.import.tools")}</span>
+              {escritas.length > 0 ? <span className="text-xs text-amber-500">{t("pacote.import.toolsWrite", { count: escritas.length })}</span> : null}
+              <ul className="flex flex-col gap-0.5 text-xs">
+                {previa.ferramentas.map((f, i) => (
+                  <li className={cn("flex items-center gap-2", f.classe === "escrita" && "text-amber-500")} data-classe={f.classe} key={i}>
+                    <span className="min-w-32 truncate">{f.dono}</span>
+                    <span className="font-mono">{f.servidor === null ? f.ferramenta : `${f.servidor}/${f.ferramenta}`}</span>
+                    <Badge variant="outline">{t(`pacote.import.toolClass.${f.classe}`)}</Badge>
+                    {f.declarada === undefined ? null : <span>{t("pacote.import.declaredRead")}</span>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {previa.urlsAPreencher.length > 0 ? (
+            <ul className="flex flex-col gap-0.5 text-xs text-amber-500" data-locum-pacote-urls="">
+              {previa.urlsAPreencher.map((u) => (
+                <li key={u.passo}>{u.origem === undefined ? t("pacote.import.urlFill", { passo: u.passo }) : t("pacote.import.urlFillHost", { passo: u.passo, host: u.origem })}</li>
+              ))}
+            </ul>
           ) : null}
 
           <div className="flex flex-col gap-2" data-locum-pacote-dependencias="">

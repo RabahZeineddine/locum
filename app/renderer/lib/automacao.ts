@@ -541,7 +541,7 @@ export interface Problema {
   /** Impede salvar. Os outros são aviso. */
   bloqueia: boolean;
   /** Para onde levar a pessoa a resolver. */
-  atalho?: { rota: "connections"; detalhe: string };
+  atalho?: { rota: "connections" | "agents"; detalhe: string };
 }
 
 export interface Contexto {
@@ -588,6 +588,12 @@ export function problemas(r: Rascunho, ctx: Contexto): Problema[] {
   const trazDiff = r.gatilhos.find((g) => g.config.kind === "teams-inbox" && g.config.prLinks);
   if (trazDiff !== undefined && ctx.githubComToken === false) {
     lista.push({ chave: "automations.problems.githubTokenForDiff", no: trazDiff.chave, bloqueia: false, atalho: { rota: "connections", detalhe: "github" } });
+  }
+
+  // O modelo de revisão por link nasce com passo de IA solto quando não havia agent revisor: sugere criar um.
+  const revisao = r.spec.steps.find((p) => p.key === "revisar" && p.type === "model" && p.profile === undefined);
+  if (trazDiff !== undefined && revisao !== undefined && ctx.agents !== undefined) {
+    lista.push({ chave: "automations.problems.createReviewer", no: "revisar", bloqueia: false, atalho: { rota: "agents", detalhe: "novo" } });
   }
 
   const porChave = new Map(r.spec.steps.map((p) => [p.key, p]));
@@ -798,8 +804,9 @@ export function rascunhoDoModelo(
         ],
       };
     case "teamsPrReview": {
-      // Com agents, a revisão é de um deles: o de nome parecido com revisor ou review, senão o primeiro.
-      const revisor = (lista.find((a) => /revis|review/i.test(`${a.name} ${a.id}`)) ?? lista[0])?.id;
+      // A revisão é de um agent só quando há um de nome parecido com revisor ou review.
+      // Sem ele fica o passo de IA, e o editor sugere criar o agent: o primeiro qualquer não é revisor.
+      const revisor = lista.find((a) => /revis|review/i.test(`${a.name} ${a.id}`))?.id;
       return {
         spec: {
           ...base,

@@ -2303,8 +2303,9 @@
       "slackReplyNeedsSlack": "Responder no Slack precisa de um gatilho do Slack: é dele que vem a thread.",
       "teamsReplyNeedsTeams": "Responder no Teams precisa de um gatilho do Teams.",
       "noTracker": "Escolha em qual tracker abrir a tarefa.",
+      "createReviewer": "Sem um agent revisor, a revisão usa um passo de IA solto. Crie um agent para revisar PR e troque o passo por ele.",
       "githubTokenForDiff": "O GitHub está sem token: a revisão precisa dele para trazer o diff do PR.",
-      "openConnection": "Abrir Conexões > GitHub",
+      "openConnection": "Abrir",
       "agentMissing": "O agent deste passo não existe mais na biblioteca.",
       "noTool": "Escolha o app e a ferramenta desta ação.",
       "noUrl": "Informe o endereço da API, começando com http:// ou https://.",
@@ -2592,15 +2593,11 @@
       "downgraded": "Ação que publicava sozinha entra com aprovação.",
       "agentState": {
         "novo": "novo",
-        "versao-nova": "versão nova (hoje v{{version}})",
         "igual": "já existe igual (v{{version}})",
-        "nome-igual": "nome já usado"
+        "nome-igual": "nome já usado",
+        "mesmo-id": "mesmo id, conteúdo diferente (hoje v{{version}})"
       },
       "sameName": "Você já tem o agent \"{{nome}}\" com outro id.",
-      "sameNameChoice": {
-        "usar-existente": "Usar o que eu tenho",
-        "criar-novo": "Criar um novo ao lado"
-      },
       "usedBy": "Usado em: {{lista}}",
       "models": "Modelo de cada agent",
       "modelMissing": "o sugerido não existe aqui",
@@ -2610,7 +2607,8 @@
       "kind": {
         "conexao": "Conexão",
         "servidor": "Servidor MCP",
-        "provedor": "Provedor"
+        "provedor": "Provedor",
+        "skill": "Skill"
       },
       "state": {
         "ok": "ok",
@@ -2631,7 +2629,49 @@
       "donePending": "Ainda faltam escolhas na automação, como os canais.",
       "open": "Abrir a automação",
       "notJson": "Só arquivos .locum.json.",
-      "unreadable": "Não consegui ler o arquivo."
+      "unreadable": "Não consegui ler o arquivo.",
+      "sameId": "Você já tem um agent com este id (v{{version}}), diferente do pacote.",
+      "choice": {
+        "mesmo-id": {
+          "criar-novo": "Criar um novo ao lado (o seu não muda)",
+          "atualizar": "Atualizar o meu com o do pacote",
+          "usar-existente": "Usar o meu como está"
+        },
+        "nome-igual": {
+          "usar-existente": "Usar o que eu tenho",
+          "criar-novo": "Criar um novo ao lado"
+        }
+      },
+      "diffSummary_one": "{{count}} diferença",
+      "diffSummary_other": "{{count}} diferenças",
+      "diffSummary_zero": "Sem diferenças",
+      "diffHere": "Aqui",
+      "diffPackage": "Pacote",
+      "field": {
+        "description": "Descrição",
+        "context": "Contexto",
+        "instructions": "Instruções",
+        "model": "Modelo",
+        "temperature": "Temperatura",
+        "tools": "Ferramentas",
+        "connections": "Conexões",
+        "skills": "Skills",
+        "budget": "Orçamento",
+        "maxSteps": "Máximo de passos"
+      },
+      "updateNoOne": "Nenhuma automação sua usa este agent hoje.",
+      "updateAffects": "Estas automações suas passam a rodar o texto do pacote: {{lista}}",
+      "tools": "Ferramentas que o pacote liga",
+      "toolsWrite_one": "{{count}} ferramenta escreve. Escrita não roda sozinha: sai como cartão no chat do agent ou pela fila.",
+      "toolsWrite_other": "{{count}} ferramentas escrevem. Escrita não roda sozinha: sai como cartão no chat do agent ou pela fila.",
+      "toolsWrite_zero": "",
+      "toolClass": {
+        "leitura": "leitura",
+        "escrita": "escrita"
+      },
+      "declaredRead": "o arquivo dizia leitura",
+      "urlFill": "O endereço do passo {{passo}} não vem no pacote: preencha na automação.",
+      "urlFillHost": "O endereço do passo {{passo}} não vem no pacote: preencha na automação (era em {{host}})."
     }
   }
 }
