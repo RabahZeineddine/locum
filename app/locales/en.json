@@ -587,6 +587,20 @@
     }
   },
   "palette": {
+    "groupActions": "Actions",
+    "groupGo": "Go to",
+    "groupConnections": "Connections",
+    "groupAgents": "Agents",
+    "groupAutomations": "Automations",
+    "groupInitiatives": "Initiatives",
+    "groupPrompts": "Prompts",
+    "newAutomation": "New automation",
+    "newAgent": "New agent",
+    "addConnection": "Add connection",
+    "goTo": "Go to {{name}}",
+    "hintNavigate": "navigate",
+    "hintSelect": "open",
+    "trigger": "Search",
     "label": "Command palette",
     "placeholder": "Search command...",
     "empty": "No command registered yet.",
@@ -1782,6 +1796,7 @@
     "testing": "testing...",
     "detail": {
       "missing": "There is no connection \"{{id}}\" on this machine. It may have been removed.",
+      "status": "Status",
       "account": "account {{account}}",
       "customDescription": "MCP server you registered. Agents use its tools when an automation names it.",
       "teamsViaServer": "Teams through the {{servidor}} MCP server{{origem}}, with its own account. Agents read and reply through its tools; what goes out in your name still goes through your approval.",
