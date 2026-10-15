@@ -319,6 +319,9 @@ export function graphPeloMcp(
         return eu;
       }
       if (rota === "/me/chats") return lista("list-chats", q);
+      if (rota === "/me/joinedTeams") return lista("list-joined-teams", q);
+      const canaisDaEquipe = rota.match(/^\/teams\/([^/]+)\/channels$/);
+      if (canaisDaEquipe) return lista("list-team-channels", { teamid: v(canaisDaEquipe[1], "teamId"), ...q });
       const chat = rota.match(/^\/chats\/([^/]+)\/messages$/);
       if (chat) return lista("list-chat-messages", { chatid: v(chat[1], "chatId"), ...q });
 

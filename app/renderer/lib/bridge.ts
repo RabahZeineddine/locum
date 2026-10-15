@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { semPrefixoDoIpc } from "./erro-da-ponte";
 import type {
   BridgeChannel,
   LocumApi,
@@ -398,7 +399,7 @@ async function invoke<C extends AnyChannel>(
   try {
     return await call(...args);
   } catch (erro) {
-    throw new BridgeError(channel, erro instanceof Error ? erro.message : String(erro));
+    throw new BridgeError(channel, semPrefixoDoIpc(erro instanceof Error ? erro.message : String(erro)));
   }
 }
 

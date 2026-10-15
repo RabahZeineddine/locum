@@ -2094,6 +2094,7 @@
         "channels": "Canais de equipe (menção ou link de PR acorda)",
         "list": "Listar canais",
         "loading": "Lendo canais...",
+        "channelsHintVia": "O Teams vem pelo {{server}}, que já traz os canais. Cada canal é uma chamada por batida.",
         "channelsHint": "Precisa ligar os canais na conexão do Teams, em Conexões. Cada canal é uma chamada ao Graph por batida."
       },
       "poll": {

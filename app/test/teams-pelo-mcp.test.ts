@@ -5,6 +5,7 @@ import { schema } from "../src/db/index.js";
 import { pollTeamsInbox } from "../src/sources/teams-inbox.js";
 import { teamsPostHandler } from "../src/teams/action.js";
 import { reagirNoTeams, REACAO_PEGOU } from "../src/teams/reaction.js";
+import { listTeamsChannels } from "../src/teams/channels.js";
 import { alvoDaReacao } from "../src/teams/reaction.js";
 import { capacidadesDoTeams, compartilhar, soltarSessoes, teamsNoMcp } from "../src/teams/graph.js";
 import type { McpCaller } from "../src/sources/mcp-poll.js";
@@ -570,4 +571,33 @@ test("pendência sem conta num servidor com várias contas não publica", async 
     /tem várias contas e esta resposta não diz por qual sair\. Rejeite e gere a resposta de novo\./,
   );
   assert.equal(chamadas.length, 0);
+});
+
+test("listar equipes e canais para o gatilho passa pelo servidor MCP, e sem Teams nenhum o erro diz onde conectar", async () => {
+  const chamadas: Chamada[] = [];
+  const call = async (_s: string, tool: string, args: Record<string, unknown>) => {
+    chamadas.push({ tool, args });
+    const texto = (valor: unknown) => ({ content: [{ type: "text", text: JSON.stringify(valor) }] });
+    if (tool === "list-joined-teams") return texto({ value: [{ id: EQUIPE, displayName: "Time" }] });
+    return texto({ value: [{ id: CANAL, displayName: "Geral" }] });
+  };
+  // O ms365 não aceita query em `list-joined-teams`: o $select do Graph some em vez de virar recusa.
+  const ferramentas = [
+    ...FERRAMENTAS,
+    { name: "list-joined-teams", inputSchema: esquema(), description: "", estimatedTokens: 0 },
+    { name: "list-team-channels", inputSchema: esquema("teamId", "$select"), description: "", estimatedTokens: 0 },
+  ];
+
+  const lista = await listTeamsChannels({ token: semLogin, mcp: cadastro("ms365", true, ferramentas), call });
+
+  assert.deepEqual(lista, [{ teamId: EQUIPE, teamName: "Time", channelId: CANAL, channelName: "Geral" }]);
+  assert.deepEqual(chamadas, [
+    { tool: "list-joined-teams", args: {} },
+    { tool: "list-team-channels", args: { teamId: EQUIPE, $select: "id,displayName" } },
+  ]);
+
+  await assert.rejects(
+    listTeamsChannels({ token: semLogin, mcp: { list: async () => [], cachedTools: async () => null } }),
+    /Em Conexões, entre com o Teams ou ligue um servidor/,
+  );
 });

@@ -2045,6 +2045,7 @@
         "channels": "Team channels (mention or PR link wakes it)",
         "list": "List channels",
         "loading": "Reading channels...",
+        "channelsHintVia": "Teams comes through {{server}}, which already brings channels. Each channel is one call per beat.",
         "channelsHint": "Turn on channels in the Teams connection, under Connections. Each channel is one Graph call per beat."
       },
       "poll": {
