@@ -1743,6 +1743,7 @@
       }
     },
     "offers": {
+      "viaServer": "Teams comes through {{server}}: it unlocks the Teams trigger and actions.",
       "title": "What it unlocks",
       "triggers_one": "{{count}} trigger",
       "triggers_other": "{{count}} triggers",
@@ -1918,6 +1919,7 @@
       "triggers": "Triggers",
       "steps": "Steps",
       "hint": "Click to add. A new step goes after the selected node.",
+      "viaServer": "via {{server}}",
       "needsApp": "connect in Connections",
       "agents": "Agents",
       "newAgent": "Create agent in the library",

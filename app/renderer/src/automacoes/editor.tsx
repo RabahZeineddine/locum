@@ -138,6 +138,8 @@ function EditorCarregado({
     atlassian: listaDeTrackers.length > 0 || conectado("atlassian"),
   };
 
+  const viaDoTeams = (conexoes.data ?? []).find((c) => c.id === "teams")?.via;
+
   const mudou = JSON.stringify(rascunho) !== JSON.stringify(salvo);
   const lista = problemas(rascunho, ctx);
   const bloqueado = lista.some((p) => p.bloqueia);
@@ -388,6 +390,7 @@ function EditorCarregado({
           aoLogica={acrescentarLogica}
           aoPasso={acrescentarPasso}
           appsLigados={appsLigados}
+          viaDoTeams={viaDoTeams}
           criarAgent={() => navegar("agents", "novo")}
         />
         <div className="border-border min-w-0 flex-1 overflow-hidden rounded-lg border" data-locum-probe="automacao-canvas">
@@ -423,6 +426,7 @@ function EditorCarregado({
 
 function Paleta({
   appsLigados,
+  viaDoTeams,
   agents,
   aoGatilho,
   aoPasso,
@@ -431,6 +435,8 @@ function Paleta({
   criarAgent,
 }: {
   appsLigados: Record<AppDoComponente, boolean>;
+  /** O servidor MCP por onde o Teams vem, quando não há login nativo. */
+  viaDoTeams: string | undefined;
   agents: readonly AgentDaBiblioteca[];
   aoGatilho: (id: string) => void;
   aoPasso: (id: string) => void;
@@ -450,7 +456,11 @@ function Paleta({
         <Selo app={app} id={id} tamanho="sm" />
         <span className="flex min-w-0 flex-col">
           <span className="truncate">{titulo}</span>
-          {appsLigados[app] ? null : (
+          {appsLigados[app] ? (
+            app === "teams" && viaDoTeams !== undefined ? (
+              <span className="text-muted-foreground text-[10px]">{t("automations.palette.viaServer", { server: viaDoTeams })}</span>
+            ) : null
+          ) : (
             <span className="text-muted-foreground text-[10px]">{t("automations.palette.needsApp")}</span>
           )}
         </span>

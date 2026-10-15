@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { eq } from "drizzle-orm";
 import { AgentProfile } from "../src/config/types.js";
+import { db, schema } from "../src/db/index.js";
 import { migrateDb } from "../src/db/migrate.js";
 import { CATALOG, ConnectionService } from "../src/services/connection-service.js";
 import type { GithubService } from "../src/services/github-service.js";
@@ -631,4 +633,29 @@ test("toolCount e toolWrites somam os mesmos servidores do item", async () => {
     await mcp.remove("notion");
     await mcp.remove("notion-b");
   }
+});
+
+test("Teams sem login nativo vem pelo servidor MCP, por nome ou pelas ferramentas que ele expõe", async () => {
+  const { servico, mcp } = montarFusao();
+  const ferramentas = ["get-current-user", "list-chats", "list-chat-messages"].map((name) => ({ name }));
+  const chave = "mcp.ferramentas.casa-do-teams";
+  await mcp.register({ name: "ms365", transport: "stdio", command: ["npx", "-y", "@softeria/ms-365-mcp-server"] });
+  try {
+    assert.equal((await servico.list()).find((c) => c.id === "teams")!.via, "ms365");
+  } finally {
+    await mcp.remove("ms365");
+  }
+
+  // Outro nome, sem pista no comando: só as ferramentas guardadas dizem que é o Teams.
+  await mcp.register({ name: "casa-do-teams", transport: "http", url: "https://exemplo.test/mcp" });
+  await db.insert(schema.settings).values({ key: chave, value: JSON.stringify({ at: 1, tools: ferramentas }) });
+  try {
+    const teams = (await servico.list()).find((c) => c.id === "teams")!;
+    assert.equal(teams.via, "casa-do-teams");
+    assert.deepEqual(teams.servers, ["casa-do-teams"]);
+  } finally {
+    await db.delete(schema.settings).where(eq(schema.settings.key, chave));
+    await mcp.remove("casa-do-teams");
+  }
+  assert.equal((await servico.list()).find((c) => c.id === "teams")!.via, undefined);
 });

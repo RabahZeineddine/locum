@@ -18,6 +18,7 @@ import {
   slackManifestUrl,
   validSlackClientId,
 } from "./slack-app.js";
+import { teamsNoMcp } from "../teams/graph.js";
 import { slackService, type SlackService } from "./slack-service.js";
 import { trackerService } from "./tracker-service.js";
 import {
@@ -133,6 +134,8 @@ export interface Connection extends CatalogEntry {
   trackers: number;
   /** O estado de cada parte, só no GitHub; nulo nas demais. */
   partes: PartesDoGithub | null;
+  /** Só no Teams sem login nativo: o servidor MCP por onde ele vem, como "ms365". */
+  via?: string;
 }
 
 /** Que tipo de tracker mora em qual conexão. */
@@ -625,12 +628,25 @@ export class ConnectionService {
         }
         if (entry.id === TEAMS_SERVER) {
           const login = this.deps.oauth.status(TEAMS_SERVER).connected;
-          const servidores = await Promise.all(doItem.map((sv) => this.estadoDe(sv, entry.id, credencial)));
+          // O servidor que expõe as ferramentas de Teams, sob qualquer nome, é o
+          // que `abrirTeams` usa, e só ele diz "pelo": o conhecido pelo nome, sem
+          // ferramentas listadas, dá o estado mas a caixa não leria por ele.
+          const achado = login ? null : await teamsNoMcp(this.deps.mcp);
+          const usado = achado === null ? undefined : porNome.get(achado.server);
+          const donos = usado === undefined || doItem.includes(usado) ? doItem : [...doItem, usado];
+          const servidores = await Promise.all(donos.map((sv) => this.estadoDe(sv, entry.id, credencial)));
           // O login no Graph e o servidor do Microsoft 365 são duas formas da
           // mesma conexão: o servidor falhando não some por haver login.
           if (servidores.length === 0) return { ...base, state: login ? "connected" : "available" };
           const pior = piorEstado(servidores);
-          return { ...base, ...(login && pior.state !== "attention" && pior.state !== "error" ? { state: "connected" as const, reason: null, detail: null } : pior) };
+          return {
+            ...base,
+            servers: donos.map((sv) => sv.config.name),
+            ...(usado === undefined ? {} : { via: usado.config.name }),
+            ...(login && pior.state !== "attention" && pior.state !== "error"
+              ? { state: "connected" as const, reason: null, detail: null }
+              : pior),
+          };
         }
         return { ...base, state: "available" };
       }

@@ -1782,6 +1782,7 @@
       }
     },
     "offers": {
+      "viaServer": "Teams pelo {{server}}: libera o gatilho e as ações do Teams.",
       "title": "O que libera",
       "triggers_one": "{{count}} gatilho",
       "triggers_other": "{{count}} gatilhos",
@@ -1966,6 +1967,7 @@
       "triggers": "Gatilhos",
       "steps": "Passos",
       "hint": "Clique para acrescentar. Passo novo entra depois do nó selecionado.",
+      "viaServer": "pelo {{server}}",
       "needsApp": "conecte em Conexões",
       "agents": "Agents",
       "newAgent": "Criar agent na biblioteca",
