@@ -363,7 +363,7 @@ test("servidor github desligado aparece na conexão GitHub como desligado, em ve
     assert.equal(lista.filter((c) => c.id === "github").length, 1, "uma conexão só, e não um cartão solto");
     const github = lista.find((c) => c.id === "github")!;
     assert.deepEqual(github.servers, ["github"]);
-    assert.equal(github.state, "attention");
+    assert.equal(github.state, "off");
     assert.equal(github.reason, "disabled");
     assert.deepEqual(github.partes, { token: "missing", servidor: "disabled", nome: "github", outros: [] });
   } finally {
@@ -404,7 +404,7 @@ test("com token e servidor desligado, a conexão não diz conectado", async () =
   await mcp.setEnabled("github", false);
   try {
     const github = (await servico.list()).find((c) => c.id === "github")!;
-    assert.equal(github.state, "attention");
+    assert.equal(github.state, "off");
     assert.deepEqual(github.partes, { token: "ok", servidor: "disabled", nome: "github", outros: [] });
   } finally {
     await mcp.remove("github");
@@ -559,7 +559,7 @@ test("a pior instância do item decide o estado, em OAuth e no Teams", async () 
     const lista = await servico.list();
     assert.equal(lista.find((c) => c.id === "notion")!.reason, "disabled");
     const teams = lista.find((c) => c.id === "teams")!;
-    assert.equal(teams.state, "attention");
+    assert.equal(teams.state, "off");
     assert.equal(teams.reason, "disabled");
   } finally {
     for (const n of ["notion", "notion-trabalho", "ms365", "ms365-b"]) await mcp.remove(n);

@@ -160,12 +160,14 @@ test("seta de uma decisão grava o caminho, e desligar tira o caminho junto", ()
   assert.ok(AgentSpec.safeParse(trocado.spec).success);
 });
 
-test("o modelo de PR no Teams reage, revisa e só responde depois de aprovar", () => {
+test("o modelo de PR no Teams revisa e só responde depois de aprovar, sem nó que espere escolha", () => {
   const r = rascunhoDoModelo("teamsPrReview", "t", "T", null);
   assert.deepEqual(r.gatilhos.map((g) => g.config.kind), ["teams-inbox"]);
   assert.equal(r.gatilhos[0]!.config.kind === "teams-inbox" && r.gatilhos[0]!.config.prLinks, true);
-  assert.deepEqual(r.spec.steps.map((p) => p.key), ["reagir", "revisar", "responder"]);
-  const resposta = r.spec.steps[2]!;
+  assert.deepEqual(r.spec.steps.map((p) => p.key), ["revisar", "responder"]);
+  // O gatilho com link de PR já reage 👀 sozinho: não há ferramenta a escolher.
+  assert.ok(r.spec.steps.every((p) => p.type !== "action" || p.action !== "mcp.call"));
+  const resposta = r.spec.steps[1]!;
   assert.equal(resposta.type === "action" && resposta.action, "teams.post");
   assert.equal(resposta.type === "action" && resposta.mode, "approve");
   assert.deepEqual(resposta.needs, ["revisar"]);

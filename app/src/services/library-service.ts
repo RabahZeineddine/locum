@@ -181,7 +181,7 @@ export async function expandirConexoes(
       for (const f of oferecidas) {
         const escolha = escolhaDe(conexao.tools, server, f.name);
         const leitura = ehLeituraDa(f);
-        if (!(escolha === undefined ? ligadaPorPadrao(f, leiturasDoServidor) : escolha !== false)) continue;
+        if (!(escolha === undefined ? ligadaPorPadrao(f, leiturasDoServidor, conexao.leituraPadrao) : escolha !== false)) continue;
         if (leitura || escolha === "read") saida.leitura.push({ server, tool: f.name, class: "read" });
         else saida.escrita.push({ server, tool: f.name, class: "external_write" });
       }

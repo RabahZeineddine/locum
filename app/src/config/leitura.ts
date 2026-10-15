@@ -59,11 +59,17 @@ export const LIMITE_DE_LEITURA_PADRAO = 30;
 
 /**
  * Se a ferramenta vem ligada quando a pessoa não escolheu nada. Leitura liga
- * sozinha, a não ser em servidor grande (ms365 tem mais de cem), onde ligar
- * tudo gasta contexto e dá ao agent o que ele não pediu.
+ * sozinha, a não ser na conexão de modo `limitada` com servidor grande (ms365
+ * tem mais de cem), onde ligar tudo gasta contexto. O agent salvo antes não
+ * tem modo e segue com toda leitura ligada.
  */
-export function ligadaPorPadrao(f: FerramentaClassificavel, leiturasDoServidor: number): boolean {
-  return leiturasDoServidor <= LIMITE_DE_LEITURA_PADRAO && ehLeituraDa(f);
+export function ligadaPorPadrao(
+  f: FerramentaClassificavel,
+  leiturasDoServidor: number,
+  modo: "todas" | "limitada" | undefined,
+): boolean {
+  if (modo === "limitada" && leiturasDoServidor > LIMITE_DE_LEITURA_PADRAO) return false;
+  return ehLeituraDa(f);
 }
 
 /** Valor de `AgentConnection.tools`: liga, desliga, ou liga declarando que a ferramenta lê. */

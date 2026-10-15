@@ -3,7 +3,7 @@ import { SERVIDOR_NATIVO } from "../../src/config/types.js";
 /** O que o guia da Hoje precisa saber de uma conexão. */
 export interface ConexaoParaOPasso {
   id: string;
-  state: "connected" | "attention" | "error" | "available" | "soon";
+  state: "connected" | "attention" | "error" | "off" | "available" | "soon";
   reason: string | null;
   custom: boolean;
 }

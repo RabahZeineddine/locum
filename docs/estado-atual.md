@@ -38,9 +38,17 @@ Lote de uma jornada real no app empacotado.
 - **Automações**: a aba "Meus Agents" listava automações e passou a "Minhas
   automações". Modelos novos de revisão de PR (link no Teams, e PR aberto no
   GitHub), e o fluxo em branco chama o primeiro agent criado.
-- Fica de fora: busca e agrupamento por equipe na lista de canais do gatilho do
-  Teams (depende do PR do Teams pelo ms365), e o nó de reação no Teams, que não
-  é ação nativa: o modelo traz um `mcp.call` do ms365 para escolher a ferramenta.
+- **Teams**: o modelo de PR no Teams é só revisar e responder com aprovação; o
+  gatilho com link de PR já reage 👀. A lista de canais do gatilho ganhou busca
+  e grupos por equipe, com as equipes de canal marcado primeiro
+  (`renderer/lib/canais-do-teams.ts`). O detalhe do Teams via servidor MCP usa
+  `Connection.via`.
+- **Estado `off`**: servidor cadastrado e desligado é um estado próprio
+  (`ConnectionState`), neutro, que nenhum contador de atenção soma. A pior parte
+  decide: erro, atenção, desligada, o resto.
+- **Padrão de leitura**: `AgentConnection.leituraPadrao`. A tela grava `limitada`
+  ao adicionar a conexão (servidor com mais de 30 leituras começa sem nenhuma
+  ligada); sem o campo, o agent salvo antes mantém toda leitura ligada.
 
 ## Conexões: busca, GitHub numa conexão só e ícones de marca (15/10/2026)
 

@@ -599,7 +599,7 @@ export class ConnectionService {
         // Uma parte falhando basta para a conexão não dizer "conectado", e o
         // servidor de pé sem o token dos gatilhos também é meia conexão.
         const geral =
-          pior.state === "attention" || pior.state === "error"
+          pior.state === "attention" || pior.state === "error" || pior.state === "off"
             ? pior
             : !token
               ? { state: "attention" as const, reason: "no-token" as const, detail: null }
@@ -687,9 +687,14 @@ function parteDoServidor(reason: EstadoDoServidor["reason"]): NonNullable<Partes
 type Credencial = "ok" | "falta" | "dispensa";
 type EstadoDoServidor = ReturnType<typeof estadoDoServidor>;
 
-/** A pior entre as instâncias: erro, depois atenção, depois a primeira. */
+/** A pior entre as instâncias: erro, atenção, desligada, e então a primeira. */
 function piorEstado(estados: EstadoDoServidor[]): EstadoDoServidor {
-  return estados.find((e) => e.state === "error") ?? estados.find((e) => e.state === "attention") ?? estados[0]!;
+  return (
+    estados.find((e) => e.state === "error") ??
+    estados.find((e) => e.state === "attention") ??
+    estados.find((e) => e.state === "off") ??
+    estados[0]!
+  );
 }
 
 /**

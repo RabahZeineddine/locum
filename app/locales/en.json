@@ -1894,7 +1894,7 @@
     "templates": {
       "teamsPrReview": {
         "title": "Teams: review the linked PR",
-        "description": "Message with a PR link in a Teams group: reacts with 👀, the agent reviews the PR and the reply in the thread goes out after your approval. Pick the ms365 reaction tool in the first node."
+        "description": "Message with a PR link in a Teams group: the trigger reacts with 👀, the agent reviews the PR and the reply in the thread goes out after your approval."
       },
       "githubPrReview": {
         "title": "GitHub: review an opened PR",
@@ -2071,6 +2071,9 @@
         "dms": "Direct chats",
         "prLinks": "Message with a PR link",
         "channels": "Team channels (mention or PR link wakes it)",
+        "search": "Search team or channel",
+        "noMatch": "No channel matches \"{{termo}}\".",
+        "countOf": "{{marked}} of {{total}} selected",
         "list": "List channels",
         "loading": "Reading channels...",
         "channelsHintVia": "Teams comes through {{server}}, which already brings channels. Each channel is one call per beat.",

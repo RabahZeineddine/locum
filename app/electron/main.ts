@@ -1773,7 +1773,12 @@ async function checkAgentsDoConceito(window: BrowserWindow): Promise<void> {
     // A rota agents é a tela nova, e a lista bate com a biblioteca.
     await irPara(window, "agents");
     const esperadosNaLista = (await libraryService.listProfiles()).length;
-    const naLista = await total();
+    // A tela mostra o probe antes de a lista chegar: espera a contagem assentar.
+    let naLista = await total();
+    for (let tentativa = 0; tentativa < 20 && naLista !== esperadosNaLista; tentativa++) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      naLista = await total();
+    }
     if (naLista !== esperadosNaLista) throw new Error(`a tela Agents listou ${naLista} e a biblioteca tem ${esperadosNaLista}`);
     const legado = (await window.webContents.executeJavaScript(
       `document.querySelector("[data-locum-probe=agents]") !== null`,
@@ -2226,7 +2231,7 @@ async function checkConfig(window: BrowserWindow): Promise<string> {
   }
 
   // O servidor MCP do GitHub desligado é a conexão GitHub, e não some: aparece
-  // em "Suas conexões" como atenção, a busca o acha, e o detalhe mostra o token
+  // em "Suas conexões" como desligado (neutro), a busca o acha, e o detalhe mostra o token
   // e o servidor como partes separadas.
   if ((await mcpService.get("github")) === undefined) {
     await mcpService.register({
@@ -2246,8 +2251,9 @@ async function checkConfig(window: BrowserWindow): Promise<string> {
         "conexão GitHub com o servidor desligado",
         `document.querySelector('[data-locum-conexao="github"]')?.dataset.locumConexaoEstado ?? null`,
       );
+      // O github está desligado (neutro), mas o github-ro, sem credencial, pede atenção, e a pior parte decide.
       if (estadoDoGithub !== "attention") {
-        throw new Error(`o GitHub com o servidor desligado mostrou "${estadoDoGithub}" e nao "attention"`);
+        throw new Error(`o GitHub com um servidor sem credencial mostrou "${estadoDoGithub}" e nao "attention"`);
       }
 
       const digitar = (texto: string): Promise<unknown> =>
@@ -2306,7 +2312,7 @@ async function checkConfig(window: BrowserWindow): Promise<string> {
       if (servidoresDoGithub !== 2) throw new Error(`o detalhe do GitHub mostrou ${servidoresDoGithub} servidor(es) e nao 2`);
       const ligarServidor = await window.webContents.executeJavaScript(`document.querySelector('[data-locum-ligar-parte="github"]') !== null`);
       if (ligarServidor !== true) throw new Error("o detalhe do GitHub nao ofereceu ligar o servidor desligado");
-      console.log("conexões: GitHub com o servidor desligado aparece como atenção, a barra foca a busca, a busca acha o GitHub e o catálogo, e o detalhe separa token e servidor");
+      console.log("conexões: GitHub com o servidor desligado aparece pela pior parte, a barra foca a busca, a busca acha o GitHub e o catálogo, e o detalhe separa token e servidor");
     } finally {
       await mcpService.remove("github");
       await mcpService.remove("github-ro");
@@ -7041,6 +7047,9 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
     const clicar = (seletor: string): Promise<unknown> =>
       janela.webContents.executeJavaScript(`(document.querySelector(${JSON.stringify(seletor)})?.click(), null)`);
 
+    // O painel do Assistente fica de fora das fotos.
+    await clicar("[data-locum-fechar]");
+    await pausa(400);
     for (const servidor of await mcpService.list()) await mcpService.remove(servidor.config.name);
     await irPara(janela, "today");
     await pausa(1500);

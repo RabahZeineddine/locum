@@ -671,7 +671,7 @@ function ConexoesDoAgent({ conexoes, trocar }: { conexoes: AgentConnection[]; tr
             className={cn(CAMPO, "w-auto min-w-56 cursor-pointer")}
             data-locum-agent-conexao-adicionar=""
             onChange={(e) => {
-              if (e.target.value !== "") trocar([...conexoes, { connectionId: e.target.value, tools: {} }]);
+              if (e.target.value !== "") trocar([...conexoes, { connectionId: e.target.value, tools: {}, leituraPadrao: "limitada" }]);
             }}
             value=""
           >
@@ -736,7 +736,7 @@ function CartaoDaConexao({
             {t(
               conexao.state === "connected" && conexao.reason === "untested"
                 ? "connections.state.untested"
-                : conexao.state === "attention" && conexao.reason === "disabled"
+                : conexao.state === "off"
                   ? "connections.state.off"
                   : `connections.state.${conexao.state}`,
             )}
@@ -803,7 +803,7 @@ function FerramentasDoServidor({
   const leituras = todas.filter((f) => ehLeituraDa(f));
   const escritas = todas.filter((f) => !ehLeituraDa(f));
   // Em servidor grande a leitura não liga sozinha: o padrão depende do total do servidor.
-  const padrao = (f: Ferramenta): boolean => ligadaPorPadrao(f, leituras.length);
+  const padrao = (f: Ferramenta): boolean => ligadaPorPadrao(f, leituras.length, escolha_.leituraPadrao);
   const efetiva = (f: Ferramenta): { ligada: boolean; leitura: boolean; declarada: boolean } => {
     const escolha = escolhaDe(escolha_.tools, servidor, f.name);
     const classe = ehLeituraDa(f);

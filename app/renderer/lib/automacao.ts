@@ -792,16 +792,6 @@ export function rascunhoDoModelo(
           ...base,
           steps: [
             {
-              type: "action",
-              key: "reagir",
-              name: "Reagir com 👀",
-              needs: [],
-              optional: false,
-              action: "mcp.call",
-              mode: "auto",
-              params: { server: "ms365", tool: "", args: {} },
-            },
-            {
               ...ia(
                 "revisar",
                 "Revisar o PR",
@@ -818,7 +808,7 @@ export function rascunhoDoModelo(
                   "Mensagem:",
                   "{{event.text}}",
                 ].join("\n"),
-                ["reagir"],
+                [],
                 FORMATOS.respostaTeams,
               ),
               requiresServers: ["github"],

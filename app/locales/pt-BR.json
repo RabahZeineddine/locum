@@ -1941,7 +1941,7 @@
     "templates": {
       "teamsPrReview": {
         "title": "Teams: revisar o PR do link",
-        "description": "Mensagem com link de PR num grupo do Teams: reage com 👀, o agent revisa o PR e a resposta no fio sai com a sua aprovação. Escolha a ferramenta de reação do ms365 no primeiro nó."
+        "description": "Mensagem com link de PR num grupo do Teams: o gatilho reage com 👀, o agent revisa o PR e a resposta no fio sai com a sua aprovação."
       },
       "githubPrReview": {
         "title": "GitHub: revisar PR aberto",
@@ -2120,6 +2120,9 @@
         "dms": "Conversas diretas",
         "prLinks": "Mensagem com link de PR",
         "channels": "Canais de equipe (menção ou link de PR acorda)",
+        "search": "Buscar equipe ou canal",
+        "noMatch": "Nenhum canal com \"{{termo}}\".",
+        "countOf": "{{marked}} de {{total}} marcados",
         "list": "Listar canais",
         "loading": "Lendo canais...",
         "channelsHintVia": "O Teams vem pelo {{server}}, que já traz os canais. Cada canal é uma chamada por batida.",

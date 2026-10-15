@@ -2,7 +2,7 @@
 export interface ParaLigar {
   kind: "github" | "oauth" | "panel" | "soon";
   custom: boolean;
-  state: "connected" | "attention" | "error" | "available" | "soon";
+  state: "connected" | "attention" | "error" | "off" | "available" | "soon";
   /** Os servidores MCP cadastrados da conexão. */
   servers: readonly string[];
 }

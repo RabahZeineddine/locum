@@ -125,13 +125,13 @@ test("o servidor interno do Locum não aparece como conexão", async () => {
   }
 });
 
-test("servidor desligado pede atenção com o motivo", async () => {
+test("servidor desligado é neutro, com o motivo, e não conta como atenção", async () => {
   const { servico, mcp } = montar(["asana"]);
   await mcp.register({ name: "asana", transport: "http", url: "https://mcp.asana.com/v2/mcp" });
   await mcp.setEnabled("asana", false);
   try {
     const c = await achar(servico, "asana");
-    assert.equal(c?.state, "attention");
+    assert.equal(c?.state, "off");
     assert.equal(c?.reason, "disabled");
   } finally {
     await mcp.remove("asana");

@@ -31,7 +31,7 @@ test("o servidor interno do Locum não conta como conexão", () => {
 });
 
 test("servidor importado desligado ou ainda sem teste não conta", () => {
-  assert.deepEqual(feitos({ conexoes: [conexao({ id: "ms365", custom: true, state: "attention", reason: "disabled" })] }), ["model"]);
+  assert.deepEqual(feitos({ conexoes: [conexao({ id: "ms365", custom: true, state: "off", reason: "disabled" })] }), ["model"]);
   assert.deepEqual(feitos({ conexoes: [conexao({ id: "ms365", custom: true, reason: "untested" })] }), ["model"]);
 });
 

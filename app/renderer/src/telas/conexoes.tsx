@@ -139,7 +139,7 @@ function SuasConexoes({ navegar }: { navegar: TelaProps["navegar"] }) {
 
   const todas = lista.data ?? [];
   const suas = todas.filter(ligada);
-  const precisam = suas.filter((c) => (c.state === "attention" && !desligada(c)) || c.state === "error").length;
+  const precisam = suas.filter((c) => c.state === "attention" || c.state === "error").length;
   const termo = busca.trim();
   const achadas = buscarConexoes(textosDeBusca(todas, origens.status === "ready" ? origens.data : {}, t), termo);
   const suasVisiveis = termo === "" ? suas : suas.filter((c) => achadas.suas.includes(c.id));
@@ -340,7 +340,7 @@ function naoTestada(c: Conexao): boolean {
 
 /** Cadastrada e ainda não ligada (o servidor importado entra assim): neutra, com Ligar, sem pedir atenção. */
 function desligada(c: Conexao): boolean {
-  return c.state === "attention" && c.reason === "disabled";
+  return c.state === "off";
 }
 
 function Estado({ conexao }: { conexao: Conexao }) {
@@ -419,7 +419,7 @@ function ConexaoNaLista({ conexao, onAbrir, vinculos }: { conexao: Conexao; onAb
     <button
       className={cn(
         "border-border superficie hover:border-foreground/30 flex min-h-[132px] flex-1 cursor-pointer flex-col gap-3 rounded-xl border p-4 text-left transition-all duration-150",
-        conexao.state === "attention" && !desligada(conexao) && "border-amber-500/30",
+        conexao.state === "attention" && "border-amber-500/30",
         conexao.state === "error" && "border-destructive/40",
       )}
       data-locum-conexao={conexao.id}
@@ -802,6 +802,7 @@ function DetalheDaConexao({ id, navegar }: { id: string; navegar: TelaProps["nav
 
   const doServidor = (servidores.data ?? []).filter((s) => conexao.servers.includes(s.config.name));
   const doVinculo = vinculos.data ?? {};
+  const vinculoDaVia = conexao.via === undefined ? undefined : doVinculo[conexao.via];
   const vinculoDoDetalhe = doServidor.map((sv) => doVinculo[sv.config.name]).find((v) => v !== undefined);
   const credencial = (credenciais.data?.refs ?? []).find((r) =>
     r.users.some((u) => u.kind === "mcp" && conexao.servers.includes(u.name)),
@@ -876,8 +877,8 @@ function DetalheDaConexao({ id, navegar }: { id: string; navegar: TelaProps["nav
           ? vinculoDoDetalhe === undefined
             ? t("connections.detail.customDescription")
             : t("connections.detail.linkedDescription", { origem: textoDaOrigem(vinculoDoDetalhe, t) })
-          : conexao.id === "teams" && doServidor.length > 0
-            ? t("connections.detail.teamsViaServer", { servidor: doServidor[0]!.config.name, origem: vinculoDoDetalhe === undefined ? "" : ` ${textoDaOrigem(vinculoDoDetalhe, t)}` })
+          : conexao.via !== undefined
+            ? t("connections.detail.teamsViaServer", { servidor: conexao.via, origem: vinculoDaVia === undefined ? "" : ` ${textoDaOrigem(vinculoDaVia, t)}` })
             : t(`${chave}.description`)}
       </p>
 
