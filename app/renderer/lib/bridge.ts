@@ -80,6 +80,7 @@ export const READ_CHANNELS = [
   "approvals.get",
   "mcp.list",
   "mcp.usage",
+  "mcp.vinculos",
   "mcp.toolsCached",
   "providers.list",
   "providers.fallbacks",
@@ -217,6 +218,11 @@ export const ACTION_CHANNELS = [
   "mcp.tools",
   "claudeAccount.list",
   "mcp.setEnabled",
+  // Aceitar, manter, desvincular e mostrar o arquivo: decisão de quem olhou o aviso.
+  "mcp.aceitarOrigem",
+  "mcp.manterAnterior",
+  "mcp.desvincular",
+  "mcp.mostrarOrigem",
   // O tracker de tarefa: cadastrar, apontar destino, guardar a credencial e
   // testar. Escrita e rede, as duas atrás de um clique, pelo mesmo motivo dos
   // canais do GitHub. Abrir tarefa não está aqui e não está em lugar nenhum:

@@ -12,7 +12,10 @@ import { MARCAS } from "../marcas";
 import type { TelaProps } from "../rotas";
 import { Github, Grafana, Slack, SlackOficial, TeamsPeloGraph, Trackers } from "./paineis-de-conexao";
 import {
+  AvisoDaOrigem,
   DetalhesTecnicos,
+  SeloVinculado,
+  type Vinculo,
   EstadoDoServidor,
   FerramentasDoServidor,
   ResultadoDoTeste,
@@ -85,6 +88,7 @@ function ligada(c: Conexao): boolean {
 function SuasConexoes({ navegar }: { navegar: TelaProps["navegar"] }) {
   const { t } = useTranslation();
   const lista = useDadosEstaveis(useRead("connections.list"));
+  const vinculos = useDadosEstaveis(useRead("mcp.vinculos"));
   const [adicionando, setAdicionando] = useState(false);
 
   const suas = (lista.data ?? []).filter(ligada);
@@ -131,7 +135,7 @@ function SuasConexoes({ navegar }: { navegar: TelaProps["navegar"] }) {
         ) : (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-3">
             {suas.map((c) => (
-              <ConexaoNaLista conexao={c} key={c.id} onAbrir={() => navegar("connections", c.id)} />
+              <ConexaoNaLista conexao={c} key={c.id} onAbrir={() => navegar("connections", c.id)} vinculos={vinculos.data ?? {}} />
             ))}
           </div>
         )}
@@ -223,8 +227,11 @@ function Resumo({ conexao }: { conexao: Conexao }) {
   );
 }
 
-function ConexaoNaLista({ conexao, onAbrir }: { conexao: Conexao; onAbrir: () => void }) {
+function ConexaoNaLista({ conexao, onAbrir, vinculos }: { conexao: Conexao; onAbrir: () => void; vinculos: Record<string, Vinculo> }) {
   const { t } = useTranslation();
+  const vinculado = conexao.servers.map((nome) => vinculos[nome]).find((v) => v !== undefined);
+  const mudou = conexao.servers.some((nome) => vinculos[nome]?.estado === "mudou" && vinculos[nome]?.mantida === false);
+  const sumiu = conexao.servers.some((nome) => vinculos[nome]?.estado === "sumiu");
   const porque = textoDoEstado(conexao, t);
   return (
     <button
@@ -249,6 +256,11 @@ function ConexaoNaLista({ conexao, onAbrir }: { conexao: Conexao; onAbrir: () =>
               </span>
             ) : null}
           </span>
+          {vinculado === undefined ? null : (
+            <span>
+              <SeloVinculado vinculo={vinculado} />
+            </span>
+          )}
           <Resumo conexao={conexao} />
         </span>
       </span>
@@ -264,6 +276,11 @@ function ConexaoNaLista({ conexao, onAbrir }: { conexao: Conexao; onAbrir: () =>
             {porque}
           </span>
         )}
+        {mudou || sumiu ? (
+          <span className="line-clamp-2 text-xs text-amber-400" data-locum-origem-aviso={mudou ? "mudou" : "sumiu"}>
+            {t(mudou ? "settings.servers.link.changed.title" : "settings.servers.link.gone.title")}
+          </span>
+        ) : null}
       </span>
     </button>
   );
@@ -320,6 +337,7 @@ function AdicionarConexao({
             onPronto={() => {
               invalidateReads("connections.list");
               invalidateReads("mcp.list");
+              invalidateReads("mcp.vinculos");
               onFechar();
             }}
           />
@@ -508,6 +526,7 @@ function DetalheDaConexao({ id, navegar }: { id: string; navegar: TelaProps["nav
   const { t } = useTranslation();
   const lista = useDadosEstaveis(useRead("connections.list"));
   const servidores = useDadosEstaveis(useRead("mcp.list"));
+  const vinculos = useDadosEstaveis(useRead("mcp.vinculos"));
   const credenciais = useDadosEstaveis(useRead("credentials.overview"));
   const origens = useRead("claudeImport.origins");
   const trackers = useRead("trackers.list");
@@ -542,6 +561,7 @@ function DetalheDaConexao({ id, navegar }: { id: string; navegar: TelaProps["nav
   }
 
   const doServidor = (servidores.data ?? []).filter((s) => conexao.servers.includes(s.config.name));
+  const doVinculo = vinculos.data ?? {};
   const credencial = (credenciais.data?.refs ?? []).find((r) =>
     r.users.some((u) => u.kind === "mcp" && conexao.servers.includes(u.name)),
   );
@@ -561,6 +581,7 @@ function DetalheDaConexao({ id, navegar }: { id: string; navegar: TelaProps["nav
         setLigando(false);
         invalidateReads("connections.list");
         invalidateReads("mcp.list");
+        invalidateReads("mcp.vinculos");
         depois?.();
       },
       (e: unknown) => {
@@ -595,6 +616,10 @@ function DetalheDaConexao({ id, navegar }: { id: string; navegar: TelaProps["nav
             {conexao.account === null ? null : (
               <span className="text-muted-foreground text-xs">{t("connections.detail.account", { account: conexao.account })}</span>
             )}
+            {doServidor.map((servidor) => {
+              const v = doVinculo[servidor.config.name];
+              return v === undefined ? null : <SeloVinculado key={servidor.config.name} vinculo={v} />;
+            })}
           </div>
         </div>
       </header>
@@ -661,6 +686,22 @@ function DetalheDaConexao({ id, navegar }: { id: string; navegar: TelaProps["nav
         <p className="border-border text-muted-foreground rounded-md border border-dashed px-3 py-2 text-xs">{t(`${chave}.soon`)}</p>
       ) : null}
 
+      {doServidor.map((servidor) => {
+        const v = doVinculo[servidor.config.name];
+        return v === undefined ? null : (
+          <AvisoDaOrigem
+            key={servidor.config.name}
+            nome={servidor.config.name}
+            onMudou={() => {
+              invalidateReads("connections.list");
+              invalidateReads("mcp.list");
+              invalidateReads("mcp.vinculos");
+            }}
+            vinculo={v}
+          />
+        );
+      })}
+
       {doServidor.map((servidor) => (
         <EstadoDoServidor
           autorizavel={conexao.custom && servidor.config.transport === "http"}
@@ -669,6 +710,7 @@ function DetalheDaConexao({ id, navegar }: { id: string; navegar: TelaProps["nav
           onMudou={() => {
             invalidateReads("connections.list");
             invalidateReads("mcp.list");
+            invalidateReads("mcp.vinculos");
           }}
           servidor={servidor}
         />
@@ -755,10 +797,12 @@ function DetalheDaConexao({ id, navegar }: { id: string; navegar: TelaProps["nav
                 onMudou={() => {
                   invalidateReads("connections.list");
                   invalidateReads("mcp.list");
+                  invalidateReads("mcp.vinculos");
                   invalidateReads("credentials.overview");
                 }}
                 origem={origem}
                 servidor={servidor}
+                vinculo={doVinculo[servidor.config.name]}
               />
             ))}
           </div>
@@ -829,6 +873,7 @@ function TesteDaConexao({ servidor }: { servidor: string }) {
         // O teste grava o desfecho no cadastro: o estado da conexão acompanha.
         invalidateReads("connections.list");
         invalidateReads("mcp.list");
+        invalidateReads("mcp.vinculos");
       },
       // `testConnection` devolve a falha como dado, então chegar aqui quer
       // dizer que a ponte recusou, e não que o servidor está fora do ar.

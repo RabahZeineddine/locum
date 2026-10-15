@@ -823,7 +823,41 @@
         "reload": "List again"
       },
       "turnOffConfirm": "Turn off anyway",
-      "turnOffInUse": "Automations or agents use this server. Once it is off they stop running with it. Click again to turn it off."
+      "turnOffInUse": "Automations or agents use this server. Once it is off they stop running with it. Click again to turn it off.",
+      "link": {
+        "badge": "linked to {{origem}}",
+        "badgeHint": "The configuration is read from {{origem}} when connecting. Locum keeps only what is its own: on/off, credential, scope and the agents' choices.",
+        "readOnly": "Read from the origin, read only.",
+        "editAtOrigin": "Edit at the origin",
+        "originFile": "Origin file",
+        "reveal": "Show in Finder",
+        "unlink": "Unlink",
+        "unlinkConfirm": "Unlink anyway",
+        "unlinkHint": "It becomes your own entry, with today's configuration as an editable copy. It stops following the origin, and linking again means importing again.",
+        "changed": {
+          "title": "The origin changed",
+          "body": "{{origem}} changed the configuration of {{nome}}. Until you accept it, Locum keeps using the previous one.",
+          "kept": "The origin has a different configuration from the accepted one. Locum keeps using the previous one.",
+          "accept": "Accept the new one",
+          "keep": "Keep the previous one",
+          "before": "before",
+          "after": "after",
+          "none": "nothing",
+          "field": {
+            "transport": "Transport",
+            "command": "Program",
+            "args": "Arguments",
+            "url": "Address",
+            "env": "Variable {{chave}}",
+            "headers": "Header {{chave}}"
+          }
+        },
+        "gone": {
+          "title": "The origin is gone",
+          "body": "{{origem}} no longer has the server {{nome}} (plugin turned off or removed, or the file changed). Locum uses the last accepted configuration."
+        },
+        "missing": "The origin mentions variables this machine does not have: {{names}}."
+      }
     },
     "github": {
       "title": "GitHub credential",
@@ -1137,7 +1171,7 @@
     "low": "low"
   },
   "smoke": {
-    "ok": "smoke ok: database opened, agents: {{agents}}, {{schema}}, tray created with pending: {{pending}}, start at login with {{loginItem}}, power with {{power}}, updates with {{updates}}, keychain with {{secrets}}, notification with {{notifications}}, reconciliation with {{reconcile}}, authorship with {{authorship}}, MCP sweep with {{mcpPoll}}, Slack with {{slack}}, digest with {{digest}}, Slack reply with {{slackPost}}, task with {{trackerIssue}}, deep link with {{deepLink}}, bridge with {{bridge}}, interface with {{renderer}}, main process with {{mainText}}",
+    "ok": "smoke ok: database opened, agents: {{agents}}, {{schema}}, tray created with pending: {{pending}}, start at login with {{loginItem}}, power with {{power}}, updates with {{updates}}, keychain with {{secrets}}, link with {{vinculo}}, notification with {{notifications}}, reconciliation with {{reconcile}}, authorship with {{authorship}}, MCP sweep with {{mcpPoll}}, Slack with {{slack}}, digest with {{digest}}, Slack reply with {{slackPost}}, task with {{trackerIssue}}, deep link with {{deepLink}}, bridge with {{bridge}}, interface with {{renderer}}, main process with {{mainText}}",
     "loginItem": "preference {{decision}}, system {{status}}",
     "loginItemUndecided": "undecided",
     "power": "suspend and resume registered, one beat after {{minutes}}min of sleep",
@@ -1180,7 +1214,8 @@
     "slackPost": "written reply became a pending item in channel {{channel}}, thread {{thread}}, with the model's text word for word, channel and thread taken from the event, made-up timestamp refused, and the gate refusing draft",
     "slackWindow": "Slack: {{server}} saved through the window and the old-setup channel {{channel}} visible, no bridge channel that posts",
     "claudeSessions": "{{count}} Claude sessions classified, Mark done and Reopen round trip",
-    "updateScreen": "update footer went through checking, downloading 42% and ready, with the modal and notes, no network"
+    "updateScreen": "update footer went through checking, downloading 42% and ready, with the modal and notes, no network",
+    "vinculo": "imported linked, origin changed and asked for acceptance, accepted, new plugin version without a prompt"
   },
   "status": {
     "done": "done",

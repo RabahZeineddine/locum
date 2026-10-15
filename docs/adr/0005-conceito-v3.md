@@ -143,3 +143,9 @@ ou descartar.
   confirmação do chat (fatia B), de acordo com "mecanismo, não política" e com a
   regra de que escrita externa pede aprovação. Ligar escrita é decisão de quem
   usa a tela; o MCP continua recusando.
+- Decisão 8, vínculo com a origem (15/10/2026): servidor MCP importado deixa de
+  ser cópia e passa a ler a configuração da origem na hora do uso. A decisão
+  não muda: segue "mecanismo, não política". O padrão é conservador, porque
+  mudança de comando, args, url ou env na origem (escopos, por exemplo) pede
+  aceite antes de valer, mas quem usa decide: aceita, mantém a anterior ou
+  desvincula. Só a versão do diretório do plugin segue sem pergunta.

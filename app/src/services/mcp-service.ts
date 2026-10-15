@@ -236,6 +236,8 @@ export class McpService {
 
   /** Estado de cada servidor vinculado: se a origem bate com o aceito, mudou ou sumiu. */
   async vinculos(): Promise<Record<string, McpVinculo>> {
+    // Quem pergunta pelo estado quer o de agora, e não o de até 5 s atrás.
+    this.origem.esquecer();
     const rows = (await this.db.select().from(schema.mcpServers)).filter((r) => r.source != null);
     const saida: Record<string, McpVinculo> = {};
     await Promise.all(
@@ -259,6 +261,7 @@ export class McpService {
 
   /** A pessoa aceita a mudança da origem: ela passa a ser a configuração aceita. */
   async aceitarOrigem(name: string): Promise<McpServerEntry> {
+    this.origem.esquecer();
     const row = await this.row(name);
     const d = row === undefined ? null : await this.decidir(row);
     if (row === undefined || d === null) throw new Error(`servidor MCP "${name}" nao esta vinculado`);
@@ -276,6 +279,7 @@ export class McpService {
 
   /** Mantém a configuração anterior: a mudança sai do aviso, e volta se a origem mudar de novo. */
   async manterAnterior(name: string): Promise<void> {
+    this.origem.esquecer();
     const row = await this.row(name);
     const d = row === undefined ? null : await this.decidir(row);
     if (d?.resolvido === undefined) throw new Error(`servidor MCP "${name}" nao tem mudanca da origem para manter`);
@@ -288,6 +292,7 @@ export class McpService {
    * volta automática: importar de novo é o caminho para vincular outra vez.
    */
   async desvincular(name: string): Promise<McpServerEntry> {
+    this.origem.esquecer();
     const row = await this.row(name);
     const d = row === undefined ? null : await this.decidir(row);
     if (row === undefined || d === null) throw new Error(`servidor MCP "${name}" nao esta vinculado`);

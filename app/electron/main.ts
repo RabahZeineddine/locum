@@ -66,6 +66,9 @@ if (pastaDaFumaca) {
   const pasta = join(pastaDaFumaca.dir, "claude");
   escreverSessoesDeExemplo(pasta, join(pastaDaFumaca.dir, "projeto"), process.pid);
   process.env.LOCUM_CLAUDE_DIR = pasta;
+  // E as outras ferramentas (Claude Code, plugins, Cursor...) também: o vínculo
+  // lê a origem daqui, e nem a fumaça nem a captura tocam o home de quem roda.
+  process.env.LOCUM_FERRAMENTAS_HOME = join(pastaDaFumaca.dir, "ferramentas");
   // Pelo mesmo motivo, a prévia do gatilho do GitHub lê um GitHub de exemplo.
   process.env.LOCUM_GITHUB_FIXTURE = "1";
 }
@@ -611,6 +614,68 @@ async function checkUpdates(): Promise<string> {
     espia.parar();
     if (anterior === null) await updateService.clearPreference();
     else await updateService.setEnabled(anterior);
+  }
+}
+
+/**
+ * Servidor MCP vinculado a uma origem, de ponta a ponta: importa de uma origem
+ * falsa numa pasta de rascunho, muda a origem, vê o pedido de aceite e aceita.
+ * A casa das outras ferramentas aponta para a pasta de rascunho, e o home de
+ * verdade nem é lido.
+ */
+async function checkVinculo(): Promise<string> {
+  const { mkdtempSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { claudeImportService } = await import("../src/services/claude-import.js");
+  const { mcpService } = await import("../src/services/mcp-service.js");
+
+  const casa = mkdtempSync(join(tmpdir(), "locum-vinculo-fumaca-"));
+  const anterior = process.env.LOCUM_FERRAMENTAS_HOME;
+  process.env.LOCUM_FERRAMENTAS_HOME = casa;
+  const nome = `locum-smoke-vinculo-${randomUUID().slice(0, 8)}`;
+  const plugin = (versao: string, args: string[]): string => {
+    const raiz = join(casa, ".claude", "plugins", "cache", "falso", "falso", versao);
+    mkdirSync(raiz, { recursive: true });
+    writeFileSync(join(raiz, ".mcp.json"), JSON.stringify({ mcpServers: { [nome]: { command: "${CLAUDE_PLUGIN_ROOT}/bin/servidor", args } } }));
+    mkdirSync(join(casa, ".claude"), { recursive: true });
+    writeFileSync(
+      join(casa, ".claude", "plugins", "installed_plugins.json"),
+      JSON.stringify({ version: 2, plugins: { "falso@falso": [{ scope: "user", installPath: raiz }] } }),
+    );
+    writeFileSync(join(casa, ".claude", "settings.json"), JSON.stringify({ enabledPlugins: { "falso@falso": true } }));
+    return raiz;
+  };
+
+  try {
+    plugin("1.0.0", ["--preset", "antigo"]);
+    await claudeImportService.importar([nome]);
+    const importado = await mcpService.get(nome);
+    if (importado?.source?.kind !== "claude-plugin") throw new Error("o servidor importado nao guardou a origem");
+    if ((await mcpService.vinculos())[nome]?.estado !== "ok") throw new Error("origem recem importada deveria bater com o aceito");
+
+    // Versão nova do plugin, mesmo conteúdo: segue a versão instalada, sem aceite.
+    const nova = plugin("2.0.0", ["--preset", "antigo"]);
+    if ((await mcpService.vinculos())[nome]?.estado !== "ok") throw new Error("so a versao do plugin pediu aceite");
+    if (!(await mcpService.get(nome))?.config.command?.[0]?.startsWith(nova)) throw new Error("a copia nao seguiu a versao instalada");
+
+    // O preset muda: pede aceite e segue com o anterior.
+    plugin("2.1.0", ["--preset", "novo"]);
+    const mudou = (await mcpService.vinculos())[nome];
+    if (mudou?.estado !== "mudou" || !mudou.mudancas.some((m) => m.campo === "args")) throw new Error("a mudanca da origem nao pediu aceite");
+    await mcpService.setEnabled(nome, true);
+    const [vigente] = (await mcpService.enabledConfigs()).filter((c) => c.name === nome);
+    if (vigente?.command?.includes("novo") || !vigente?.command?.includes("antigo")) throw new Error("usou a configuracao nova antes do aceite");
+
+    await mcpService.aceitarOrigem(nome);
+    if ((await mcpService.vinculos())[nome]?.estado !== "ok") throw new Error("aceitar nao fechou o aviso");
+    const [depois] = (await mcpService.enabledConfigs()).filter((c) => c.name === nome);
+    if (!depois?.command?.includes("novo")) throw new Error("depois do aceite deveria valer a configuracao nova");
+    return t("smoke.vinculo");
+  } finally {
+    await mcpService.remove(nome);
+    if (anterior === undefined) delete process.env.LOCUM_FERRAMENTAS_HOME;
+    else process.env.LOCUM_FERRAMENTAS_HOME = anterior;
+    rmSync(casa, { recursive: true, force: true });
   }
 }
 
@@ -6393,6 +6458,52 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
     writeFileSync(join(destino, "connections-tecnico.png"), (await janela.webContents.capturePage()).toPNG());
   }
 
+  // Servidor vinculado a uma origem falsa: o detalhe vinculado e, com a origem
+  // mudada, o aviso com o diff. A origem mora na pasta de rascunho.
+  {
+    const { mkdirSync: criar } = await import("node:fs");
+    const { claudeImportService } = await import("../src/services/claude-import.js");
+    const { mcpService } = await import("../src/services/mcp-service.js");
+    const casa = process.env.LOCUM_FERRAMENTAS_HOME ?? join(destino, "ferramentas");
+    const plugin = (versao: string, args: string[], env: Record<string, string>): void => {
+      const raiz = join(casa, ".claude", "plugins", "cache", "akad", "akad", versao);
+      criar(raiz, { recursive: true });
+      writeFileSync(join(raiz, ".mcp.json"), JSON.stringify({ mcpServers: { ms365: { type: "stdio", command: "npx", args, env } } }));
+      writeFileSync(join(casa, ".claude", "plugins", "installed_plugins.json"), JSON.stringify({ version: 2, plugins: { "akad@akad": [{ scope: "user", installPath: raiz }] } }));
+      writeFileSync(join(casa, ".claude", "settings.json"), JSON.stringify({ enabledPlugins: { "akad@akad": true } }));
+    };
+    plugin("0.17.1", ["-y", "@softeria/ms-365-mcp-server@0.150.0", "--preset", "onedrive,excel,mail,calendar,teams,search,users"], { MS365_MCP_CLIENT_ID: "app-exemplo", MS365_MCP_ALLOWED_SCOPES: "User.Read Mail.ReadWrite" });
+    try {
+      await claudeImportService.importar(["ms365"]);
+      await irPara(janela, "connections");
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      writeFileSync(join(destino, "connections-vinculada-lista.png"), (await janela.webContents.capturePage()).toPNG());
+      await irPara(janela, "connections", "ms365");
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      await janela.webContents.executeJavaScript(
+        `(document.querySelector("[data-locum-tecnico]")?.setAttribute("open", ""), document.querySelector("[data-locum-vinculo-detalhe]")?.scrollIntoView({ block: "center" }), null)`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      writeFileSync(join(destino, "connections-vinculada-detalhe.png"), (await janela.webContents.capturePage()).toPNG());
+
+      plugin("0.21.1", ["-y", "@softeria/ms-365-mcp-server@0.155.0", "--preset", "teams,files,outlook,search,work"], {
+        MS365_MCP_CLIENT_ID: "app-exemplo",
+        MS365_MCP_ALLOWED_SCOPES: "User.Read Mail.ReadWrite Chat.ReadWrite Files.ReadWrite.All",
+        MS365_MCP_REQUIRE_CONFIRM: "true",
+      });
+      await irPara(janela, "connections");
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      writeFileSync(join(destino, "connections-origem-mudou-lista.png"), (await janela.webContents.capturePage()).toPNG());
+      await irPara(janela, "connections", "ms365");
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      await janela.webContents.executeJavaScript(`(document.querySelector("[data-locum-origem-de]")?.scrollIntoView({ block: "center" }), null)`);
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      writeFileSync(join(destino, "connections-origem-mudou.png"), (await janela.webContents.capturePage()).toPNG());
+    } finally {
+      await mcpService.remove("ms365");
+    }
+  }
+
   // O editor do agent separa em abas; uma foto das instruções e uma das ferramentas.
   for (const aba of ["instructions", "tools"]) {
     await irPara(janela, "agents", "novo");
@@ -6862,6 +6973,7 @@ async function main(): Promise<void> {
     const power = await checkPower();
     const updates = await checkUpdates();
     const secrets = await checkSecrets();
+    const vinculo = await checkVinculo();
     const avisos = await checkNotifications();
     const conferencia = await checkReconcile();
     const autoria = await checkAuthorship();
@@ -6883,6 +6995,7 @@ async function main(): Promise<void> {
         power,
         updates,
         secrets,
+        vinculo,
         notifications: avisos,
         reconcile: conferencia,
         authorship: autoria,

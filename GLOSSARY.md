@@ -34,6 +34,15 @@ antiga se chamava "App".
 **Ferramenta**: operação de uma conexão que um agent pode chamar, com classe
 leitura, escrita interna ou escrita externa.
 
+**Origem**: o arquivo ou plugin de onde a configuração de um servidor MCP vem
+(Claude Code, um plugin dele, opencode, Cursor, VS Code, Claude Desktop). É
+guardada como ferramenta, plugin e servidor, nunca como caminho com versão.
+
+**Vínculo**: a ligação de uma conexão importada com a origem dela, no lugar da
+cópia. Comando, args, env e url se leem da origem na hora do uso; ligado,
+credencial, escopo e as escolhas dos agents ficam no Locum. Mudança sensível na
+origem espera aceite, e "desvincular" vira cadastro manual.
+
 **Provedor**: de onde vêm os modelos: assinatura (Claude Code, Codex), chave de
 API ou endereço compatível com OpenAI.
 
