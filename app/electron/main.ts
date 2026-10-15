@@ -7176,13 +7176,17 @@ async function main(): Promise<void> {
   // processos é a saída do aplicativo. O `app.exit` da fumaça pula o
   // `will-quit`, e por isso ela fecha o pool na mão antes de sair.
   const { closeMcpPool } = await import("../src/executor/build.js");
+  // A sessão curta do servidor MCP do Teams fica fora do pool: sem fechá-la
+  // aqui o ms365 sobraria órfão por até 20s depois da saída.
+  const { soltarSessoes } = await import("../src/teams/graph.js");
+  const fecharServidores = (): Promise<unknown> => Promise.all([closeMcpPool(), soltarSessoes()]);
   let poolFechado = false;
   app.on("will-quit", (event) => {
     if (poolFechado) return;
     event.preventDefault();
     // Batida nova no meio da saída abriria servidor MCP depois do pool fechado.
     void import("./power.js").then(({ teardownPower }) => teardownPower());
-    void closeMcpPool()
+    void fecharServidores()
       .catch(() => undefined)
       .finally(() => {
         poolFechado = true;
@@ -7266,7 +7270,7 @@ async function main(): Promise<void> {
         mainText,
       }),
     );
-    await closeMcpPool();
+    await fecharServidores();
     app.exit(0);
     return;
   }

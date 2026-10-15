@@ -1,9 +1,8 @@
 import { and, eq, gte, notInArray } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
-import { mcpOAuthService } from "../services/mcp-oauth-service.js";
-import { GRAPH_URL, TEAMS_SERVER } from "../services/teams-app.js";
+import { TEAMS_SERVER } from "../services/teams-app.js";
 import { pollMcpServer, CURSOR_TOKEN, type McpCaller, type McpPollShape } from "./mcp-poll.js";
-import { clienteHttp } from "../net/http.js";
+import { abrirTeams, type GraphGet, type TeamsGraphOptions } from "../teams/graph.js";
 import { alvoDaReacao, reagirNoTeams, REACAO_PEGOU } from "../teams/reaction.js";
 import { githubService } from "../services/github-service.js";
 import { fetchPr as defaultFetchPr } from "./github.js";
@@ -76,12 +75,8 @@ export interface TeamsChannelRef {
 /** Prefixo do `repo` de evento que veio de canal de equipe. */
 export const TEAMS_CHANNEL_PREFIX = "teams-channel/";
 
-export interface TeamsInboxOptions {
+export interface TeamsInboxOptions extends TeamsGraphOptions {
   db?: Db;
-  /** Token do Graph. Ausente é o que a conexão do Teams guardou. */
-  token?: () => Promise<string | null>;
-  fetchFn?: typeof fetch;
-  graphUrl?: string;
   /** Busca do contexto do PR. Existe para o teste trocar. */
   fetchPr?: typeof defaultFetchPr;
   /**
@@ -122,10 +117,33 @@ export async function pollTeamsInbox(
   options: TeamsInboxOptions = {},
 ): Promise<TeamsInboxOutcome> {
   const db = options.db ?? defaultDb;
-  const token = await (options.token ?? (() => mcpOAuthService.accessToken(TEAMS_SERVER)))();
-  if (token === null) throw new Error("o Teams não está conectado");
+  // Num servidor com várias contas, a conta lida na primeira batida do gatilho
+  // vale para as seguintes: trocar a padrão em outro lugar não muda de quem se lê.
+  const chaveConta = `teams.account.${TEAMS_INBOX_CURSOR}${options.triggerId === undefined ? "" : `:${options.triggerId}`}`;
+  const guardada =
+    (await db.select({ value: schema.settings.value }).from(schema.settings).where(eq(schema.settings.key, chaveConta)))[0]
+      ?.value ?? null;
+  const teams = await abrirTeams(guardada === null || options.account !== undefined ? options : { ...options, account: guardada });
+  try {
+    return await varrer(watch, options, db, teams);
+  } finally {
+    if (guardada === null && teams.conta() !== null) {
+      await db
+        .insert(schema.settings)
+        .values({ key: chaveConta, value: teams.conta()! })
+        .onConflictDoNothing();
+    }
+    await teams.close();
+  }
+}
 
-  const graph = graphGet(token, options.fetchFn ?? clienteHttp, options.graphUrl ?? GRAPH_URL);
+async function varrer(
+  watch: TeamsInboxWatch,
+  options: TeamsInboxOptions,
+  db: Db,
+  teams: Awaited<ReturnType<typeof abrirTeams>>,
+): Promise<TeamsInboxOutcome> {
+  const graph = teams.get;
   const outcome: TeamsInboxOutcome = { eventIds: [], inWindow: [], seen: 0, errors: [], descartes: [] };
   const revisados = memoizar(() => carregarRevisados(db));
   const canais = watch.mentions || watch.prLinks ? (watch.channels ?? []) : [];
@@ -148,7 +166,7 @@ export async function pollTeamsInbox(
     kind: "inbox" | "channel",
     channel?: string,
   ) => {
-    const { erros, fora, descartes } = await enriquecerPrs(varredura.inWindow, kind, channel, db, options, revisados);
+    const { erros, fora, descartes } = await enriquecerPrs(varredura.inWindow, kind, channel, db, { ...options, graph: teams }, revisados);
     outcome.descartes.push(...descartes);
     outcome.eventIds.push(...varredura.eventIds.filter((id) => !fora.has(id)));
     for (const id of varredura.inWindow) {
@@ -165,7 +183,7 @@ export async function pollTeamsInbox(
     await acolher(
       await pollMcpServer(
         { server: TEAMS_SERVER, tool: "inbox", args: { since: CURSOR_TOKEN } },
-        { db, call: caixa(graph), shape: inboxShape(vigia, eu, chave) },
+        { db, call: caixa(graph), shape: inboxShape(vigia, eu, chave, teams.conta) },
       ),
       "inbox",
     );
@@ -183,7 +201,7 @@ export async function pollTeamsInbox(
       await acolher(
         await pollMcpServer(
           { server: TEAMS_SERVER, tool: "channel", args: { since: CURSOR_TOKEN } },
-          { db, call: doCanal(graph, canal), shape: canalShape(canal, eu, vigia, `${antiga}${sufixo}`) },
+          { db, call: doCanal(graph, canal), shape: canalShape(canal, eu, vigia, `${antiga}${sufixo}`, teams.conta) },
         ),
         "channel",
         canal.label ?? canal.channelId,
@@ -455,7 +473,13 @@ export function channelRepo(teamId: string, channelId: string, threadId: string)
   return `${TEAMS_CHANNEL_PREFIX}${teamId}/${channelId}/${threadId}`;
 }
 
-function canalShape(canal: TeamsChannelRef, eu: string, watch: TeamsInboxWatch, chave: string): McpPollShape {
+function canalShape(
+  canal: TeamsChannelRef,
+  eu: string,
+  watch: TeamsInboxWatch,
+  chave: string,
+  conta: () => string | null,
+): McpPollShape {
   const traduzir = (item: unknown) => {
     const bruto = (item ?? {}) as Record<string, unknown>;
     const pr = prDoItem(item);
@@ -491,6 +515,7 @@ function canalShape(canal: TeamsChannelRef, eu: string, watch: TeamsInboxWatch, 
         messageId: mensagem.messageId,
         webUrl: mensagem.webUrl,
         item,
+        ...daConta(conta),
         ...(pr === null
           ? {}
           : {
@@ -506,25 +531,9 @@ function canalShape(canal: TeamsChannelRef, eu: string, watch: TeamsInboxWatch, 
   };
 }
 
-/** Um GET no Graph, com o endereço relativo ou o `@odata.nextLink` inteiro. */
-type GraphGet = (caminho: string) => Promise<Record<string, unknown>>;
-
-function graphGet(token: string, fetchFn: typeof fetch, graphUrl: string): GraphGet {
-  return async (caminho) => {
-    const url = caminho.startsWith("https://") ? caminho : `${graphUrl}${caminho}`;
-    const resposta = await fetchFn(url, { headers: { Authorization: `Bearer ${token}` } });
-    if (!resposta.ok) {
-      const corpo = (await resposta.json().catch(() => ({}))) as { error?: { code?: unknown } };
-      const codigo = typeof corpo.error?.code === "string" ? `: ${corpo.error.code}` : "";
-      throw new Error(`Graph respondeu ${resposta.status}${codigo}`);
-    }
-    return (await resposta.json()) as Record<string, unknown>;
-  };
-}
-
 /** Quem é a pessoa dona do token, para tirar o que ela mesma escreveu. */
 async function quemSou(graph: GraphGet): Promise<string> {
-  const resposta = await graph("/me?$select=id");
+  const resposta = await graph("/me?$select=id,userPrincipalName");
   if (typeof resposta.id !== "string" || resposta.id === "") {
     throw new Error("o Graph não disse de quem é o token");
   }
@@ -697,6 +706,9 @@ function antesDaAtivacao(bruto: Record<string, unknown>, watch: TeamsInboxWatch)
   return criada === null || criada < watch.prDesde;
 }
 
+/** A conta do servidor MCP que leu a mensagem, para a resposta e a reação saírem por ela. */
+const daConta = (conta: () => string | null) => (conta() === null ? {} : { teamsAccount: conta() });
+
 function prDoItem(item: unknown): ParsedGithubPr | null {
   const pr = (item as { prLink?: ParsedGithubPr } | null)?.prLink;
   return pr ?? null;
@@ -756,7 +768,7 @@ export function semHtml(html: string): string {
     .trim();
 }
 
-function inboxShape(watch: TeamsInboxWatch, eu: string, chave: string): McpPollShape {
+function inboxShape(watch: TeamsInboxWatch, eu: string, chave: string, conta: () => string | null): McpPollShape {
   const tipo = (item: unknown): TeamsInboxKind =>
     prDoItem(item) !== null ? "pr" : (kindOf(item, eu, watch) ?? "dm");
   return {
@@ -785,6 +797,7 @@ function inboxShape(watch: TeamsInboxWatch, eu: string, chave: string): McpPollS
         messageId: mensagem.messageId,
         webUrl: mensagem.webUrl,
         item,
+        ...daConta(conta),
         ...(pr === null ? {} : { ...camposDoPr(pr), teamsChatId: mensagem.chatId, teamsMessageId: mensagem.messageId }),
       };
     },

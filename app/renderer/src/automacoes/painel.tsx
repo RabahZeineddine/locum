@@ -65,7 +65,7 @@ export function PainelDoNo({
   remover: () => void;
   fechar: () => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const gatilho = ehGatilho(chave) ? rascunho.gatilhos.find((g) => g.chave === chave) : undefined;
   const passo = ehGatilho(chave) ? undefined : rascunho.spec.steps.find((p) => p.key === chave);
   if (gatilho === undefined && passo === undefined) return null;
@@ -115,7 +115,9 @@ export function PainelDoNo({
 
       {gatilho !== undefined ? (
         <>
-          <p className="text-muted-foreground text-xs">{t(`automations.triggers.${gatilho.config.kind}.help`, { defaultValue: "" })}</p>
+          {i18n.exists(`automations.triggers.${gatilho.config.kind}.help`) && (
+            <p className="text-muted-foreground text-xs">{t(`automations.triggers.${gatilho.config.kind}.help`)}</p>
+          )}
           <ConfigDoGatilho config={gatilho.config} key={chave} trocar={trocarGatilho} triggerId={gatilho.id} />
           <Alternador
             ligado={gatilho.enabled}
@@ -320,6 +322,8 @@ function CanaisDoTeams({ canais, trocar }: { canais: readonly CanalDoTeams[]; tr
   const [opcoes, setOpcoes] = useState<ReadResult<"connections.teamsChannels"> | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [lendo, setLendo] = useState(false);
+  // Pelo servidor MCP (ms365) os canais já vêm: a conexão nativa e os escopos dela não entram.
+  const viaDoTeams = useRead("connections.list").data?.find((c) => c.id === "teams")?.via;
   const marcado = (teamId: string, channelId: string): boolean =>
     canais.some((c) => c.teamId === teamId && c.channelId === channelId);
 
@@ -384,7 +388,11 @@ function CanaisDoTeams({ canais, trocar }: { canais: readonly CanalDoTeams[]; tr
           ))}
         </ul>
       )}
-      <p className="text-muted-foreground text-[11px]">{t("automations.triggers.teams-inbox.channelsHint")}</p>
+      <p className="text-muted-foreground text-[11px]">
+        {viaDoTeams === undefined
+          ? t("automations.triggers.teams-inbox.channelsHint")
+          : t("automations.triggers.teams-inbox.channelsHintVia", { server: viaDoTeams })}
+      </p>
       {erro === null ? null : <p className="text-sev-critical text-xs">{erro}</p>}
     </Campo>
   );

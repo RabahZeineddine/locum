@@ -1205,6 +1205,13 @@ function Libera({ conexao, libera }: { conexao: Conexao; libera: ReturnType<type
   if (vazio) return <p className="text-muted-foreground text-xs">{t("connections.offers.none")}</p>;
   return (
     <ul className="flex flex-col gap-1.5" data-locum-app-oferece={conexao.id}>
+      {conexao.via === undefined ? null : (
+        <li className="text-muted-foreground text-xs" data-locum-teams-via={conexao.via}>
+          {t(conexao.reason === "disabled" ? "connections.offers.viaServerOff" : "connections.offers.viaServer", {
+            server: conexao.via,
+          })}
+        </li>
+      )}
       {libera.gatilhos.map((g) => (
         <li className="flex items-center gap-2 text-sm" key={g}>
           <Badge variant="outline">{t("connections.offers.trigger")}</Badge>

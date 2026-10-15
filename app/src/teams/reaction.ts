@@ -1,6 +1,4 @@
-import { mcpOAuthService } from "../services/mcp-oauth-service.js";
-import { GRAPH_URL, TEAMS_SERVER } from "../services/teams-app.js";
-import { clienteHttp } from "../net/http.js";
+import { abrirTeams, type TeamsGraphOptions } from "./graph.js";
 
 /** Pegou o PR. */
 export const REACAO_PEGOU = "👀";
@@ -13,16 +11,15 @@ export const REACAO_DO_VEREDITO = {
 } as const;
 
 /** A mensagem do Teams onde o Locum reage. */
-export type AlvoDaReacao =
+export type AlvoDaReacao = (
   | { tipo: "chat"; chatId: string; messageId: string }
-  | { tipo: "canal"; teamId: string; channelId: string; messageId: string; replyToId?: string };
+  | { tipo: "canal"; teamId: string; channelId: string; messageId: string; replyToId?: string }
+) & {
+  /** A conta do servidor MCP que leu a mensagem; ausente no login nativo. */
+  account?: string;
+};
 
-export interface TeamsReactionOptions {
-  /** Token do Graph. Ausente é o que a conexão do Teams guardou. */
-  token?: () => Promise<string | null>;
-  fetchFn?: typeof fetch;
-  graphUrl?: string;
-}
+export type TeamsReactionOptions = TeamsGraphOptions;
 
 const texto = (valor: unknown): string | null => (typeof valor === "string" && valor !== "" ? valor : null);
 
@@ -35,13 +32,15 @@ export function alvoDaReacao(payload: unknown): AlvoDaReacao | null {
   const p = (payload ?? {}) as Record<string, unknown>;
   const messageId = texto(p.teamsMessageId);
   if (messageId === null) return null;
+  const account = texto(p.teamsAccount);
+  const conta = account === null ? {} : { account };
   const chatId = texto(p.teamsChatId);
-  if (chatId !== null) return { tipo: "chat", chatId, messageId };
+  if (chatId !== null) return { tipo: "chat", chatId, messageId, ...conta };
   const teamId = texto(p.teamsTeamId);
   const channelId = texto(p.teamsChannelId);
   if (teamId === null || channelId === null) return null;
   const replyToId = texto(p.teamsReplyToId);
-  return { tipo: "canal", teamId, channelId, messageId, ...(replyToId === null ? {} : { replyToId }) };
+  return { tipo: "canal", teamId, channelId, messageId, ...(replyToId === null ? {} : { replyToId }), ...conta };
 }
 
 function caminhoDe(alvo: AlvoDaReacao): string {
@@ -75,19 +74,11 @@ export async function reagirNoTeams(
   emoji: string,
   options: TeamsReactionOptions = {},
 ): Promise<void> {
-  const valor = await (options.token ?? (() => mcpOAuthService.accessToken(TEAMS_SERVER)))();
-  if (valor === null) throw new Error("o Teams não está conectado");
-  const resposta = await (options.fetchFn ?? clienteHttp)(
-    `${options.graphUrl ?? GRAPH_URL}${caminhoDe(alvo)}/${acao}Reaction`,
-    {
-      method: "POST",
-      headers: { Authorization: `Bearer ${valor}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ reactionType: emoji }),
-    },
-  );
-  if (!resposta.ok) {
-    const corpo = (await resposta.json().catch(() => ({}))) as { error?: { code?: unknown } };
-    const codigo = typeof corpo.error?.code === "string" ? `: ${corpo.error.code}` : "";
-    throw new Error(`Graph recusou a reação com ${resposta.status}${codigo}`);
+  const teams = await abrirTeams(alvo.account === undefined ? options : { ...options, account: alvo.account });
+  try {
+    await teams.post(`${caminhoDe(alvo)}/${acao}Reaction`, { reactionType: emoji }, "a reação");
+  } finally {
+    // Uma sessão que veio de fora (a da varredura) é de quem a abriu.
+    if (options.graph === undefined) await teams.close();
   }
 }

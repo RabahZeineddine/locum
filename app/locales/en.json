@@ -1743,6 +1743,8 @@
       }
     },
     "offers": {
+      "viaServerOff": "Teams comes through {{server}}, which is off. Turn it on to unlock the Teams trigger and actions.",
+      "viaServer": "Teams comes through {{server}}: it unlocks the Teams trigger and actions.",
       "title": "What it unlocks",
       "triggers_one": "{{count}} trigger",
       "triggers_other": "{{count}} triggers",
@@ -1918,6 +1920,7 @@
       "triggers": "Triggers",
       "steps": "Steps",
       "hint": "Click to add. A new step goes after the selected node.",
+      "viaServer": "via {{server}}",
       "needsApp": "connect in Connections",
       "agents": "Agents",
       "newAgent": "Create agent in the library",
@@ -2042,6 +2045,7 @@
         "channels": "Team channels (mention or PR link wakes it)",
         "list": "List channels",
         "loading": "Reading channels...",
+        "channelsHintVia": "Teams comes through {{server}}, which already brings channels. Each channel is one call per beat.",
         "channelsHint": "Turn on channels in the Teams connection, under Connections. Each channel is one Graph call per beat."
       },
       "poll": {

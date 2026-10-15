@@ -4,6 +4,9 @@ import { schema } from "../src/db/index.js";
 import { chatOf, teamsPostHandler } from "../src/teams/action.js";
 import { bancoDeTeste } from "./helpers/db.js";
 
+/** Nenhum servidor MCP cadastrado: sem login nativo, não há por onde falar com o Teams. */
+const semServidores = { list: async () => [], cachedTools: async () => null };
+
 /** Um evento como a caixa do Teams grava, só com o que a resposta lê. */
 async function lido(db: ReturnType<typeof bancoDeTeste>, chatId: string) {
   await db.insert(schema.events).values({
@@ -73,5 +76,5 @@ test("recusa do Graph estoura, para a pendência não fechar", async () => {
   const proposta = { chatId: "19:dm", text: "oi", subject: "x", author: null, webUrl: null };
 
   await assert.rejects(handler.publish(proposta, "id"), /Graph recusou a mensagem com 403: Forbidden/);
-  await assert.rejects(teamsPostHandler({ token: async () => null }).publish(proposta, "id"), /não está conectado/);
+  await assert.rejects(teamsPostHandler({ token: async () => null, mcp: semServidores }).publish(proposta, "id"), /não está conectado/);
 });
