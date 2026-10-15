@@ -5,6 +5,7 @@ import {
 } from "@/components/ai-elements/conversation";
 import { Message, MessageContent } from "@/components/ai-elements/message";
 import { Button } from "@/components/ui/button";
+import { Kbd } from "@/components/ui/kbd";
 import { call, useRead } from "@/lib/bridge";
 import { assinarEventosDoChat, type ChatEvent } from "@/lib/chat";
 import { cn } from "@/lib/utils";
@@ -362,15 +363,13 @@ function BotaoFlutuante({ aoAbrir }: { aoAbrir: () => void }) {
 
   return (
     <button
-      className="ia-borda bg-card/90 hover:bg-accent focus-visible:ring-ring fixed right-5 bottom-5 z-40 flex h-10 cursor-pointer items-center gap-2 rounded-full px-3.5 text-sm shadow-lg backdrop-blur transition-colors duration-200 focus-visible:ring-2 focus-visible:outline-none"
+      className="border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-ring fixed right-4 bottom-4 z-40 flex h-7 cursor-pointer items-center gap-1.5 rounded-md border px-2 text-xs transition-colors focus-visible:ring-2 focus-visible:outline-none"
       onClick={aoAbrir}
       type="button"
     >
-      <Sparkles className="text-primary size-4" aria-hidden />
+      <Sparkles className="size-3.5" aria-hidden />
       {t("assistant.title")}
-      <kbd className="bg-muted rounded px-1 py-0.5 font-mono text-[10px]">
-        {t("assistant.shortcut")}
-      </kbd>
+      <Kbd>{t("assistant.shortcut")}</Kbd>
     </button>
   );
 }

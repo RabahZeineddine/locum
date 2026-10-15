@@ -608,6 +608,20 @@
     }
   },
   "palette": {
+    "groupActions": "Ações",
+    "groupGo": "Ir para",
+    "groupConnections": "Conexões",
+    "groupAgents": "Agents",
+    "groupAutomations": "Automações",
+    "groupInitiatives": "Iniciativas",
+    "groupPrompts": "Prompts",
+    "newAutomation": "Nova automação",
+    "newAgent": "Novo agent",
+    "addConnection": "Adicionar conexão",
+    "goTo": "Ir para {{name}}",
+    "hintNavigate": "navegar",
+    "hintSelect": "abrir",
+    "trigger": "Buscar",
     "label": "Paleta de comandos",
     "placeholder": "Buscar comando...",
     "empty": "Nenhum comando cadastrado ainda.",
@@ -1824,6 +1838,7 @@
     "testing": "testando...",
     "detail": {
       "missing": "Não há conexão \"{{id}}\" nesta máquina. Pode ter sido removida.",
+      "status": "Estado",
       "account": "conta {{account}}",
       "customDescription": "Servidor MCP cadastrado por você. Os agents usam as ferramentas dele quando uma automação o cita.",
       "teamsViaServer": "Teams pelo servidor MCP {{servidor}}{{origem}}, com a conta dele. Os agents leem e respondem pelas ferramentas dele; o que sai com o seu nome continua passando pela sua aprovação.",

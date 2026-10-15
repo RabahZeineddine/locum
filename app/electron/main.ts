@@ -7140,6 +7140,73 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
     await foto("atritos-nova-automacao");
   }
 
+  // O redesign: Hoje, Conexões (lista, GitHub, Teams, catálogo), a paleta e uma
+  // tela que não foi tocada (Agents), com o painel do Assistente fechado.
+  {
+    const { mcpService } = await import("../src/services/mcp-service.js");
+    const { githubService } = await import("../src/services/github-service.js");
+    const { claudeImportService } = await import("../src/services/claude-import.js");
+    const pausa = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+    const foto = async (nome: string): Promise<void> => writeFileSync(join(destino, `${nome}.png`), (await janela.webContents.capturePage()).toPNG());
+    const clicar = (seletor: string): Promise<unknown> =>
+      janela.webContents.executeJavaScript(`(document.querySelector(${JSON.stringify(seletor)})?.click(), null)`);
+    const tecla = (script: string): Promise<unknown> => janela.webContents.executeJavaScript(script);
+
+    await clicar("[data-locum-fechar]");
+    await pausa(400);
+    await irPara(janela, "today");
+    await pausa(1500);
+    await foto("redesign-hoje");
+
+    const emprestados = ["github", "slack", "context7", "argocd"];
+    await mcpService.register({ name: "github", transport: "http", url: "https://api.githubcopilot.com/mcp/", headers: { Authorization: "${credential}" } });
+    await mcpService.setEnabled("github", false);
+    await mcpService.register({ name: "slack", transport: "http", url: "https://mcp.slack.com/mcp" });
+    await mcpService.register({ name: "context7", transport: "http", url: "https://mcp.context7.com/mcp" });
+    await mcpService.register({ name: "argocd", transport: "http", url: "http://localhost:8080/mcp" });
+    try {
+      await githubService.setToken("ghp_exemplo_de_captura").catch(() => undefined);
+      await claudeImportService.importar(["ms365"]).catch(() => undefined);
+      await irPara(janela, "connections");
+      await pausa(1800);
+      await foto("redesign-conexoes-lista");
+      await irPara(janela, "connections", "github");
+      await pausa(2000);
+      await foto("redesign-conexao-github");
+      await irPara(janela, "connections", "teams");
+      await pausa(2000);
+      await foto("redesign-conexao-teams");
+      await irPara(janela, "connections");
+      await pausa(1000);
+      await clicar("[data-locum-adicionar-conexao]");
+      await pausa(700);
+      await foto("redesign-conexoes-catalogo");
+      await tecla(`(window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })), null)`);
+      await pausa(300);
+      await irPara(janela, "today");
+      await pausa(800);
+      await tecla(`(document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true })), null)`);
+      await pausa(600);
+      await foto("redesign-paleta");
+      await tecla(`(() => {
+        const campo = document.querySelector("[role=dialog] input");
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(campo, "git");
+        campo.dispatchEvent(new Event("input", { bubbles: true }));
+        return null;
+      })()`);
+      await pausa(400);
+      await foto("redesign-paleta-busca");
+      await tecla(`(document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })), null)`);
+      await pausa(300);
+      await irPara(janela, "agents");
+      await pausa(1200);
+      await foto("redesign-agents-nao-tocada");
+    } finally {
+      for (const nome of [...emprestados, "ms365"]) await mcpService.remove(nome).catch(() => undefined);
+      await githubService.clearToken().catch(() => undefined);
+    }
+  }
+
   console.log(`capturas em ${destino}`);
 }
 

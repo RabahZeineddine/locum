@@ -1,5 +1,7 @@
+import { Search } from "lucide-react";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
+import { Kbd } from "@/components/ui/kbd";
 import { useRead } from "@/lib/bridge";
 import { useRota } from "@/lib/router";
 import { cn } from "@/lib/utils";
@@ -7,7 +9,7 @@ import { assinarEventosDoTerminal } from "@/lib/terminal";
 import { Assistente } from "./assistente";
 import { AtualizacaoNoRodape } from "./atualizacao";
 import { CurrentInitiativeProvider } from "./current-initiative";
-import { Paleta } from "./paleta";
+import { EVENTO_ABRIR_PALETA, Paleta } from "./paleta";
 import { ROTA_IDS, ROTA_PADRAO, ROTAS, ROTAS_ANTIGAS, ROTAS_DA_BARRA, type TelaProps } from "./rotas";
 
 /**
@@ -47,7 +49,7 @@ function Ponte({
 
   return (
     <div
-      className="border-border border-t px-3 py-3 text-muted-foreground text-xs"
+      className="px-3 pt-2 pb-1 text-muted-foreground text-[11px]"
       data-agents={agents.join(",")}
       data-erro={erro?.message ?? ""}
       data-estado={estado}
@@ -69,6 +71,15 @@ function Ponte({
   );
 }
 
+const TECLA_DA_PALETA = "⌘K";
+
+/** As seções da barra, na ordem em que aparecem. */
+const SECOES = [
+  { secao: "cockpit", titulo: "nav.sectionCockpit" },
+  { secao: "operacoes", titulo: "nav.sectionOperations" },
+  { secao: "recursos", titulo: "nav.sectionResources" },
+] as const;
+
 /**
  * A marca: o mesmo desenho do ícone do app. Atrás, em tracejado, a pessoa
  * ausente; na frente, sólido, o Locum ocupando o lugar dela; o selo vermelho
@@ -77,7 +88,7 @@ function Ponte({
  */
 function Marca() {
   return (
-    <svg aria-hidden className="size-6 shrink-0" viewBox="0 0 1024 1024">
+    <svg aria-hidden className="size-5 shrink-0" viewBox="0 0 1024 1024">
       <defs>
         <clipPath id="locum-marca">
           <rect height="1024" rx="230" width="1024" />
@@ -125,142 +136,97 @@ export function Layout() {
   return (
     <CurrentInitiativeProvider ativa={ativa} detalhe={detalhe}>
     <div className="flex h-screen text-foreground">
-      <nav className="regiao-de-arrasto bg-sidebar border-sidebar-border flex w-56 shrink-0 flex-col border-r">
-        <div className="flex items-center gap-2.5 px-4 pt-9 pb-6">
+      <nav className="regiao-de-arrasto bg-sidebar border-sidebar-border flex w-48 shrink-0 flex-col border-r">
+        <div className="flex items-center gap-2 px-3.5 pt-9 pb-3">
           <Marca />
           <span
-            className="text-sidebar-accent-foreground font-semibold text-[15px] tracking-[-0.01em]"
+            className="text-sidebar-accent-foreground font-semibold text-[13px] tracking-[-0.01em]"
             data-locum-probe="marca"
           >
             Locum
           </span>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-2.5 space-y-4">
-          {/* Seção Cockpit */}
-          <div className="space-y-0.5">
-            <span className="px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
-              {t("nav.sectionCockpit")}
-            </span>
-            {ROTAS_DA_BARRA.filter((r) => r.secao === "cockpit" || !r.secao).slice(0, 2).map(({ id, rotulo, icone: Icone }) => (
-              <button
-                aria-current={id === ativa ? "page" : undefined}
-                className={cn(
-                  "group relative flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors duration-200",
-                  id === ativa
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-[inset_0_1px_0_0_oklch(1_0_0/5%)]"
-                    : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
-                )}
-                data-locum-rota={id}
-                key={id}
-                onClick={() => navegar(id)}
-                type="button"
-              >
-                {id === ativa && (
-                  <i aria-hidden className="ia-gradiente absolute top-1/2 left-0 h-4 w-[3px] -translate-y-1/2 rounded-full" />
-                )}
-                <Icone className={cn("size-4 transition-colors", id === ativa && "text-primary")} />
-                <span className="flex-1">{t(rotulo)}</span>
-                {id === "inbox" && naFila > 0 ? (
-                  <span className="ia-gradiente text-primary-foreground min-w-5 rounded-full px-1.5 text-center font-semibold text-[11px] leading-5 tabular-nums">
-                    {naFila}
-                  </span>
-                ) : null}
-              </button>
-            ))}
-          </div>
-
-          {/* Seção Operações */}
-          <div className="space-y-0.5">
-            <span className="px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
-              {t("nav.sectionOperations")}
-            </span>
-            {ROTAS_DA_BARRA.filter((r) => r.secao === "operacoes").map(({ id, rotulo, icone: Icone }) => (
-              <button
-                aria-current={id === ativa ? "page" : undefined}
-                className={cn(
-                  "group relative flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors duration-200",
-                  id === ativa
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-[inset_0_1px_0_0_oklch(1_0_0/5%)]"
-                    : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
-                )}
-                data-locum-rota={id}
-                key={id}
-                onClick={() => navegar(id)}
-                type="button"
-              >
-                {id === ativa && (
-                  <i aria-hidden className="ia-gradiente absolute top-1/2 left-0 h-4 w-[3px] -translate-y-1/2 rounded-full" />
-                )}
-                <Icone className={cn("size-4 transition-colors", id === ativa && "text-primary")} />
-                <span className="flex-1">{t(rotulo)}</span>
-              </button>
-            ))}
-          </div>
-
-          {/* Seção Recursos & Configurações */}
-          <div className="space-y-0.5">
-            <span className="px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
-              {t("nav.sectionResources")}
-            </span>
-            {ROTAS_DA_BARRA.filter((r) => r.secao === "recursos").map(({ id, rotulo, icone: Icone }) => (
-              <button
-                aria-current={id === ativa ? "page" : undefined}
-                className={cn(
-                  "group relative flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors duration-200",
-                  id === ativa
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-[inset_0_1px_0_0_oklch(1_0_0/5%)]"
-                    : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
-                )}
-                data-locum-rota={id}
-                key={id}
-                onClick={() => navegar(id)}
-                type="button"
-              >
-                {id === ativa && (
-                  <i aria-hidden className="ia-gradiente absolute top-1/2 left-0 h-4 w-[3px] -translate-y-1/2 rounded-full" />
-                )}
-                <Icone className={cn("size-4 transition-colors", id === ativa && "text-primary")} />
-                <span className="flex-1">{t(rotulo)}</span>
-              </button>
-            ))}
-          </div>
+        <div className="px-2 pb-2">
+          <button
+            className="border-sidebar-border text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground flex h-7 w-full cursor-pointer items-center gap-2 rounded-md border px-2 text-xs transition-colors"
+            data-locum-paleta-abrir=""
+            onClick={() => globalThis.dispatchEvent(new Event(EVENTO_ABRIR_PALETA))}
+            type="button"
+          >
+            <Search aria-hidden className="size-3.5" />
+            <span className="flex-1 text-left">{t("palette.trigger")}</span>
+            <Kbd>{TECLA_DA_PALETA}</Kbd>
+          </button>
         </div>
 
-        <Ponte
-          agents={(agents.data ?? []).map((a) => a.id)}
-          exibidos={perfis.data?.length}
-          erro={erro}
-          estado={estado}
-          execucoes={runs.data?.length ?? -1}
-          naFila={naFila}
-        />
-        {versao.data === undefined ? null : (
-          <div className="flex flex-col gap-1.5 pb-3">
-            <button
-              className="px-3 text-left text-[11px] text-muted-foreground/70 hover:text-muted-foreground"
-              data-locum-probe="versao"
-              onClick={() => navegar("settings")}
-              title={t("nav.versionHint")}
-              type="button"
-            >
-              {t("nav.version", { version: versao.data })}
-            </button>
-            <AtualizacaoNoRodape />
-          </div>
-        )}
+        <div className="flex-1 space-y-3 overflow-y-auto px-2 pt-1">
+          {SECOES.map(({ secao, titulo }) => (
+            <div className="space-y-px" key={secao}>
+              <span className="text-muted-foreground block px-2 pb-1 text-[11px] font-medium">{t(titulo)}</span>
+              {ROTAS_DA_BARRA.filter((r) => r.secao === secao).map(({ id, rotulo, icone: Icone }) => (
+                <button
+                  aria-current={id === ativa ? "page" : undefined}
+                  className={cn(
+                    "group relative flex h-7 w-full cursor-pointer items-center gap-2 rounded-md px-2 text-left text-[13px] transition-colors",
+                    id === ativa
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+                      : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
+                  )}
+                  data-locum-rota={id}
+                  key={id}
+                  onClick={() => navegar(id)}
+                  type="button"
+                >
+                  <Icone className={cn("size-3.5 transition-colors", id === ativa && "text-primary")} />
+                  <span className="flex-1">{t(rotulo)}</span>
+                  {id === "inbox" && naFila > 0 ? (
+                    <span className="bg-primary text-primary-foreground num min-w-4 rounded px-1 text-center font-medium text-[11px] leading-4">
+                      {naFila}
+                    </span>
+                  ) : null}
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
+
+        <div className="border-sidebar-border border-t py-1.5">
+          <Ponte
+            agents={(agents.data ?? []).map((a) => a.id)}
+            exibidos={perfis.data?.length}
+            erro={erro}
+            estado={estado}
+            execucoes={runs.data?.length ?? -1}
+            naFila={naFila}
+          />
+          {versao.data === undefined ? null : (
+            <div className="flex flex-col gap-1 pb-1">
+              <button
+                className="num px-3 text-left text-[11px] text-muted-foreground hover:text-muted-foreground"
+                data-locum-probe="versao"
+                onClick={() => navegar("settings")}
+                title={t("nav.versionHint")}
+                type="button"
+              >
+                {t("nav.version", { version: versao.data })}
+              </button>
+              <AtualizacaoNoRodape />
+            </div>
+          )}
+        </div>
       </nav>
 
-      <div className="bg-background ia-aurora flex min-w-0 flex-1 flex-col">
+      <div className="bg-background flex min-w-0 flex-1 flex-col">
         {/*
           A faixa de arrasto é um elemento próprio, acima do que rola, e não uma
           classe no `main`. No Electron a área de arrasto engole os eventos do
           mouse: com o `main` inteiro arrastável, a roda não rolava a tela, o
           `textarea` não recebia clique e texto nenhum se selecionava.
         */}
-        <div aria-hidden className="regiao-de-arrasto h-9 shrink-0" data-locum-probe="arrasto" />
+        <div aria-hidden className="regiao-de-arrasto h-8 shrink-0" data-locum-probe="arrasto" />
         <main
-          className="min-h-0 flex-1 overflow-auto px-10 pb-12"
+          className="min-h-0 flex-1 overflow-auto px-8 pb-10"
           data-ativo={ativa}
           data-detalhe={detalhe ?? ""}
           data-locum-probe="rota"

@@ -1,5 +1,4 @@
 import {
-  Activity,
   CalendarClock,
   Check,
   CheckCheck,
@@ -20,6 +19,8 @@ import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ListGroup, ListRow } from "@/components/ui/list-row";
+import { StatusDot } from "@/components/ui/status-dot";
 import { call, read, useRead, type ReadResult } from "@/lib/bridge";
 import { cn } from "@/lib/utils";
 import type { TelaProps } from "../rotas";
@@ -176,102 +177,49 @@ export function Hoje({ navegar }: TelaProps) {
     };
   }, [todas24h.data, falhadas.data]);
 
+  const falhas = metricasExecutivas.falhas24h;
+
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 pt-2">
-      <header className="flex flex-col gap-2 pt-4">
-        <span className="text-muted-foreground font-medium text-xs uppercase tracking-[0.08em]">
-          {dataDeHoje(idioma)}
-        </span>
-        <h1 className="font-semibold text-[32px] leading-tight tracking-[-0.02em]">
-          <span className="ia-texto">{t("home.today.title")}</span>
-        </h1>
-        <p className="text-muted-foreground text-[15px]">{t("home.today.lead")}</p>
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 pt-2">
+      <header className="flex flex-col gap-0.5">
+        <span className="text-muted-foreground text-xs">{dataDeHoje(idioma)}</span>
+        <h1 className="font-semibold text-[22px] leading-7 tracking-[-0.015em]">{t("home.today.title")}</h1>
+        <p className="text-muted-foreground text-[13px]">{t("home.today.lead")}</p>
       </header>
 
-      {/* Resumo Executivo Operacional */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div
-          className="superficie flex cursor-pointer flex-col gap-1 rounded-xl p-3.5 transition-colors hover:border-foreground/20"
+      {/* Os números do dia numa linha só: rótulo pequeno e valor tabular. */}
+      <div className="border-border bg-card grid grid-cols-2 divide-x divide-border overflow-hidden rounded-lg border sm:grid-cols-4">
+        <Numero
           onClick={() => navegar("inbox")}
-        >
-          <span className="text-muted-foreground text-[11px] font-medium uppercase tracking-[0.06em]">
-            {t("home.today.kpi.waiting")}
-          </span>
-          <div className="flex items-baseline gap-2">
-            <span
-              className={cn(
-                "font-mono text-2xl font-semibold",
-                fila.length > 0 ? "text-sev-medium" : "text-foreground",
-              )}
-            >
-              {fila.length}
-            </span>
-            <span className="text-muted-foreground text-xs">
-              {fila.length === 1 ? t("home.today.kpi.item") : t("home.today.kpi.items")}
-            </span>
-          </div>
-        </div>
-
-        <div
-          className="superficie flex cursor-pointer flex-col gap-1 rounded-xl p-3.5 transition-colors hover:border-foreground/20"
+          rotulo={t("home.today.kpi.waiting")}
+          sufixo={fila.length === 1 ? t("home.today.kpi.item") : t("home.today.kpi.items")}
+          valor={String(fila.length)}
+        />
+        <Numero
           onClick={() => navegar("automations")}
-        >
-          <span className="text-muted-foreground text-[11px] font-medium uppercase tracking-[0.06em]">
-            {t("home.today.kpi.active_watch")}
-          </span>
-          <div className="flex items-baseline gap-2">
-            <span
-              className={cn("font-mono text-2xl font-semibold", ativos.length > 0 ? "text-emerald-500" : "text-foreground")}
-            >
-              {ativos.length}
-            </span>
-            <span className="text-muted-foreground text-xs">{t("home.today.kpi.monitors")}</span>
-          </div>
-        </div>
-
-        <div
-          className="superficie flex cursor-pointer flex-col gap-1 rounded-xl p-3.5 transition-colors hover:border-foreground/20"
+          rotulo={t("home.today.kpi.active_watch")}
+          sufixo={t("home.today.kpi.monitors")}
+          valor={String(ativos.length)}
+        />
+        <Numero
           onClick={() => navegar("runs")}
-        >
-          <span className="text-muted-foreground text-[11px] font-medium uppercase tracking-[0.06em]">
-            {t("home.today.kpi.runs_today")}
-          </span>
-          <div className="flex items-baseline gap-2">
-            <span className="font-mono text-2xl font-semibold text-foreground">
-              {metricasExecutivas.total24h}
-            </span>
-            {metricasExecutivas.falhas24h > 0 && (
-              <span className="text-sev-critical text-xs font-medium">
-                ({metricasExecutivas.falhas24h} {t("home.today.kpi.failures")})
-              </span>
-            )}
-          </div>
-        </div>
-
-        <div
-          className="superficie flex cursor-pointer flex-col gap-1 rounded-xl p-3.5 transition-colors hover:border-foreground/20"
+          rotulo={t("home.today.kpi.runs_today")}
+          sufixo={falhas > 0 ? `${falhas} ${t("home.today.kpi.failures")}` : undefined}
+          valor={String(metricasExecutivas.total24h)}
+        />
+        <Numero
           onClick={() => navegar("runs")}
-        >
-          <span className="text-muted-foreground text-[11px] font-medium uppercase tracking-[0.06em]">
-            {t("home.today.kpi.cost_24h")}
-          </span>
-          <div className="flex items-baseline gap-2">
-            <span className="font-mono text-2xl font-semibold text-foreground">
-              ${metricasExecutivas.custoTotal.toFixed(2)}
-            </span>
-            <span className="text-muted-foreground text-xs">{t("home.today.kpi.currency")}</span>
-          </div>
-        </div>
+          rotulo={t("home.today.kpi.cost_24h")}
+          sufixo={t("home.today.kpi.currency")}
+          valor={`$${metricasExecutivas.custoTotal.toFixed(2)}`}
+        />
       </div>
 
       <ComeceAqui agenda={agenda.data} navegar={navegar} />
 
-      <section aria-labelledby="hoje-espera" className="flex flex-col gap-3">
+      <section aria-labelledby="hoje-espera" className="flex flex-col gap-2">
         <h2
-          className={cn(
-            "font-semibold text-xs uppercase tracking-[0.06em]",
-            fila.length > 0 ? "text-sev-medium" : "text-muted-foreground",
-          )}
+          className="text-[13px] font-medium"
           data-estado={pendentes.status}
           data-locum-probe="today"
           data-pendencias={pendentes.status === "ready" ? fila.length : -1}
@@ -281,13 +229,13 @@ export function Hoje({ navegar }: TelaProps) {
         </h2>
 
         {pendentes.status === "error" ? (
-          <p className="text-muted-foreground text-sm">
+          <p className="text-muted-foreground text-xs">
             {t("home.today.refused", { message: pendentes.error.message })}
           </p>
         ) : pendentes.status === "ready" && fila.length === 0 ? (
           <Vazio icone={InboxIcon} texto={t("home.today.waiting.empty")} />
         ) : (
-          <ul className="flex flex-col gap-3">
+          <ListGroup>
             {fila.slice(0, LIMITE).map((p) => (
               <CartaoDeEspera
                 iniciativa={iniciativaDoAgent.get(p.agentId)}
@@ -296,17 +244,17 @@ export function Hoje({ navegar }: TelaProps) {
                 pendencia={p}
               />
             ))}
-          </ul>
+          </ListGroup>
         )}
 
         {fila.length > LIMITE && (
           <button
-            className="text-muted-foreground hover:text-foreground focus-visible:ring-ring flex cursor-pointer items-center gap-1 self-start rounded text-sm transition-colors duration-200 focus-visible:ring-2 focus-visible:outline-none"
+            className="text-muted-foreground hover:text-foreground focus-visible:ring-ring flex cursor-pointer items-center gap-1 self-start rounded text-xs transition-colors focus-visible:ring-2 focus-visible:outline-none"
             onClick={() => navegar("inbox")}
             type="button"
           >
             {t("home.today.waiting.more", { count: fila.length - LIMITE })}
-            <ChevronRight aria-hidden className="size-4" />
+            <ChevronRight aria-hidden className="size-3.5" />
           </button>
         )}
       </section>
@@ -315,43 +263,24 @@ export function Hoje({ navegar }: TelaProps) {
 
       <SessoesPelaMetade navegar={navegar} />
 
-      {/* Painel Central de Vigilância Ativa - Cockpit Grid */}
-      <section aria-labelledby="hoje-proximas" className="flex flex-col gap-3.5">
+      <section aria-labelledby="hoje-proximas" className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <span className="relative flex size-2.5">
-              {ativos.length > 0 ? (
-                <>
-                  <span className="bg-emerald-400 absolute inline-flex h-full w-full animate-ping rounded-full opacity-75" />
-                  <span className="bg-emerald-500 relative inline-flex size-2.5 rounded-full" />
-                </>
-              ) : (
-                <span className="bg-muted-foreground/40 relative inline-flex size-2.5 rounded-full" />
-              )}
-            </span>
-            <div className="flex items-baseline gap-2">
-              <h2
-                className="text-foreground font-semibold text-sm tracking-tight"
-                id="hoje-proximas"
-              >
-                {t("home.today.next.watch_title")}
-              </h2>
-              {ativos.length > 0 && (
-                <span className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-mono text-[11px] font-semibold px-2 py-0.5 rounded-full border border-emerald-500/20">
-                  {t("home.today.next.watch_badge", { count: ativos.length })}
-                </span>
-              )}
-            </div>
+          <div className="flex items-center gap-2">
+            <StatusDot estado={ativos.length > 0 ? "ok" : "ocioso"} />
+            <h2 className="text-[13px] font-medium" id="hoje-proximas">
+              {t("home.today.next.watch_title")}
+            </h2>
+            {ativos.length > 0 && <Badge variant="secondary">{t("home.today.next.watch_badge", { count: ativos.length })}</Badge>}
           </div>
 
           <Button
-            className="text-muted-foreground hover:text-foreground h-7 px-2.5 text-xs gap-1.5 font-medium cursor-pointer"
+            className="cursor-pointer"
             disabled={verificando}
             onClick={checarAgora}
-            size="sm"
-            variant="outline"
+            size="xs"
+            variant="ghost"
           >
-            <RefreshCw className={cn("size-3.5", verificando && "animate-spin text-primary")} />
+            <RefreshCw className={cn(verificando && "animate-spin")} />
             <span>{verificando ? t("home.today.next.checking") : t("home.today.next.check_now")}</span>
           </Button>
         </div>
@@ -362,93 +291,53 @@ export function Hoje({ navegar }: TelaProps) {
             texto={agenda.status === "loading" ? t("home.today.loading") : t("home.today.next.empty")}
           />
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <ListGroup>
             {proximas.map((g) => {
               const ultima = g.lastFireAt ? tempoRelativoCurto(t, g.lastFireAt / 1000) : undefined;
               const nome = nomeDoAgent.get(g.agentId) ?? g.agentId;
               const iniciativa = iniciativaDoAgent.get(g.agentId);
               const saude = saudePorAgent.get(g.agentId);
-
               const falhou = saude?.saude === "falha";
 
               return (
-                <div
-                  className={cn(
-                    "superficie flex cursor-pointer flex-col justify-between gap-3 rounded-xl border p-4 transition-all hover:shadow-sm",
-                    falhou
-                      ? "border-destructive/40 bg-destructive/[0.03] hover:border-destructive/60"
-                      : "hover:border-foreground/30",
-                  )}
-                  key={g.triggerId}
-                  onClick={() => navegar("runs", g.agentId)}
-                  role="button"
-                  tabIndex={0}
-                >
-                  <div className="flex items-start justify-between gap-2.5">
-                    <div className="flex flex-col gap-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="truncate font-semibold text-sm tracking-tight text-foreground">
-                          {nome}
-                        </span>
-                        {iniciativa && (
-                          <span className="bg-muted text-muted-foreground truncate rounded px-1.5 py-0.5 text-[10px] font-medium">
-                            {iniciativa}
-                          </span>
-                        )}
-                      </div>
-                      <span className="text-muted-foreground text-xs font-mono">
-                        {g.kind} · {g.everyMinutes ? t("common.cadence", { minutes: g.everyMinutes, defaultValue: `cada ${g.everyMinutes}m` }) : "agendado"}
-                      </span>
+                <ListRow className="min-h-11" key={g.triggerId} onClick={() => navegar("runs", g.agentId)} rotulo={nome}>
+                  <StatusDot estado={falhou ? "erro" : "ok"} />
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate font-medium">{nome}</span>
+                      {iniciativa && <Badge variant="secondary">{iniciativa}</Badge>}
                     </div>
-
-                    {falhou ? (
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-destructive/10 px-2 py-0.5 font-mono text-[11px] font-medium text-destructive shrink-0">
-                        <span className="size-1.5 rounded-full bg-destructive animate-pulse" />
-                        {t("home.today.next.health_failed", { defaultValue: "conexão falhou" })}
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2 py-0.5 font-mono text-[11px] font-medium text-emerald-600 dark:text-emerald-400 shrink-0">
-                        <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                        {t("home.today.next.active_synced", { defaultValue: "ouvindo" })}
+                    <span className="text-muted-foreground truncate font-mono text-[11px]">
+                      {g.kind} · {g.everyMinutes ? t("common.cadence", { minutes: g.everyMinutes, defaultValue: `cada ${g.everyMinutes}m` }) : "agendado"}
+                      {ultima ? ` · ${t("home.today.next.last_checked", { when: ultima })}` : ""}
+                    </span>
+                    {falhou && saude?.erro && (
+                      <span className="text-muted-foreground line-clamp-1 text-[11px]" title={saude.erro}>
+                        {saude.erro}
                       </span>
                     )}
                   </div>
-
-                  {falhou && saude?.erro && (
-                    <p className="text-destructive/90 line-clamp-2 text-[11px] leading-relaxed break-words" title={saude.erro}>
-                      {saude.erro}
-                    </p>
-                  )}
-
-                  <div className="flex items-baseline justify-between border-t border-border/60 pt-2.5 text-xs text-muted-foreground">
-                    <span>
-                      {ultima ? t("home.today.next.last_checked", { when: ultima }) : "aguardando primeira batida"}
-                    </span>
-                    <span className="font-mono text-primary font-medium">
-                      {t("home.today.next.upcoming", { when: quandoRoda(t, idioma, g.nextDueAt) })}
-                    </span>
-                  </div>
-                </div>
+                  <span className="text-muted-foreground text-xs whitespace-nowrap">
+                    {falhou
+                      ? t("home.today.next.health_failed", { defaultValue: "conexão falhou" })
+                      : t("home.today.next.active_synced", { defaultValue: "ouvindo" })}
+                  </span>
+                  <span className="text-muted-foreground num w-36 shrink-0 text-right text-xs">
+                    {t("home.today.next.upcoming", { when: quandoRoda(t, idioma, g.nextDueAt) })}
+                  </span>
+                </ListRow>
               );
             })}
-          </div>
+          </ListGroup>
         )}
       </section>
 
-      <section aria-labelledby="hoje-terminou" className="flex flex-col gap-3">
+      <section aria-labelledby="hoje-terminou" className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
-          <h2
-            className="text-foreground font-semibold text-sm tracking-tight"
-            id="hoje-terminou"
-          >
+          <h2 className="text-[13px] font-medium" id="hoje-terminou">
             {t("home.today.done.title", { defaultValue: "Auditorias & Execuções Recentes" })}
           </h2>
-          <Button
-            className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
-            onClick={() => navegar("runs")}
-            size="sm"
-            variant="ghost"
-          >
+          <Button className="cursor-pointer" onClick={() => navegar("runs")} size="xs" variant="ghost">
             {t("home.today.seeAll")}
           </Button>
         </div>
@@ -458,7 +347,7 @@ export function Hoje({ navegar }: TelaProps) {
             texto={terminadas.status === "loading" ? t("home.today.loading") : t("home.today.done.empty")}
           />
         ) : (
-          <ul className="divide-border border-border superficie divide-y overflow-hidden rounded-xl border">
+          <ListGroup>
             {recentes.map((r) => (
               <LinhaTerminada
                 iniciativa={tituloDaIniciativa(r.initiativeId) ?? iniciativaDoAgent.get(r.agentId)}
@@ -468,10 +357,27 @@ export function Hoje({ navegar }: TelaProps) {
                 run={r}
               />
             ))}
-          </ul>
+          </ListGroup>
         )}
       </section>
     </div>
+  );
+}
+
+/** Um número do dia: rótulo pequeno, valor tabular e, se houver, a unidade. */
+function Numero({ onClick, rotulo, sufixo, valor }: { onClick: () => void; rotulo: string; sufixo?: string; valor: string }) {
+  return (
+    <button
+      className="hover:bg-accent flex cursor-pointer flex-col gap-0.5 px-3.5 py-2.5 text-left transition-colors"
+      onClick={onClick}
+      type="button"
+    >
+      <span className="text-muted-foreground text-[11px]">{rotulo}</span>
+      <span className="flex items-baseline gap-1.5">
+        <span className="num text-[18px] leading-6 font-semibold">{valor}</span>
+        {sufixo === undefined ? null : <span className="text-muted-foreground text-xs">{sufixo}</span>}
+      </span>
+    </button>
   );
 }
 
@@ -500,104 +406,70 @@ function CartaoDeEspera({
   const rotulo = iniciativa ?? (titulo.includes(pendencia.agentName) ? undefined : pendencia.agentName);
 
   return (
-    <li className="ia-borda group flex items-center gap-4 rounded-xl px-5 py-4 shadow-[0_8px_30px_-16px_var(--ia-2)]">
-      <span
-        aria-hidden
-        className={cn(
-          "flex size-9 shrink-0 items-center justify-center rounded-lg",
-          ehMsg ? "bg-amber-500/12 text-amber-500" : "bg-primary/12 text-primary",
-        )}
-      >
-        {ehMsg ? <MessageSquare className="size-4" /> : <Sparkles className="size-4" />}
+    <ListRow className="min-h-12 py-2" onClick={() => navegar("inbox", pendencia.id)} rotulo={titulo}>
+      <span aria-hidden className="bg-muted text-muted-foreground flex size-6 shrink-0 items-center justify-center rounded">
+        {ehMsg ? <MessageSquare className="size-3.5" /> : <Sparkles className="size-3.5" />}
       </span>
-      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-        <div className="flex flex-wrap items-center gap-2">
-          {rotulo && <span className="text-muted-foreground truncate text-xs font-medium">{rotulo}</span>}
-          {ehPr && (
-            <div className="flex flex-wrap items-center gap-1.5">
-              {alvo.repo && (
-                <span className="bg-muted text-muted-foreground inline-flex items-center rounded px-1.5 py-0.5 font-mono text-xs">
-                  {alvo.repo}
-                </span>
-              )}
-              {alvo.pull && (
-                <span className="text-primary inline-flex items-center gap-0.5 font-mono text-xs font-semibold">
-                  <GitPullRequest aria-hidden className="size-3" />
-                  #{alvo.pull}
-                </span>
-              )}
-            </div>
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <div className="flex min-w-0 items-center gap-2">
+          {rotulo && <span className="text-muted-foreground truncate text-xs">{rotulo}</span>}
+          {ehPr && alvo.repo && <Badge className="font-mono" variant="secondary">{alvo.repo}</Badge>}
+          {ehPr && alvo.pull && (
+            <span className="text-muted-foreground num inline-flex items-center gap-0.5 font-mono text-xs">
+              <GitPullRequest aria-hidden className="size-3" />#{alvo.pull}
+            </span>
           )}
           {ehMsg && (
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium inline-flex items-center rounded px-1.5 py-0.5 text-xs capitalize">
-                {alvo.servico ?? (pendencia.kind.startsWith("slack") ? "slack" : "teams")}
-              </span>
-              {alvo.detalhe && (
-                <span className="bg-muted text-muted-foreground inline-flex items-center rounded px-1.5 py-0.5 font-mono text-xs">
-                  {alvo.detalhe}
-                </span>
-              )}
-            </div>
+            <Badge className="capitalize" variant="secondary">
+              {alvo.servico ?? (pendencia.kind.startsWith("slack") ? "slack" : "teams")}
+            </Badge>
           )}
+          {ehMsg && alvo.detalhe && <Badge className="font-mono" variant="secondary">{alvo.detalhe}</Badge>}
         </div>
 
-        <span className="truncate font-medium text-[15px] tracking-tight">{titulo}</span>
+        <span className="truncate font-medium">{titulo}</span>
 
-        <div className="text-muted-foreground flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs">
+        <div className="text-muted-foreground flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs">
           {alvo.autor && (
             <span className="inline-flex items-center gap-1">
-              <User aria-hidden className="size-3 text-muted-foreground/70" />
+              <User aria-hidden className="size-3" />
               <span>{alvo.autor}</span>
             </span>
           )}
           {alvo.headBranch && alvo.baseBranch && (
             <span className="inline-flex items-center gap-1 font-mono text-[11px]">
-              <GitBranch aria-hidden className="size-3 text-muted-foreground/70" />
-              <span className="text-foreground/80">{alvo.headBranch}</span>
-              <span className="text-muted-foreground/60">→</span>
+              <GitBranch aria-hidden className="size-3" />
+              <span>{alvo.headBranch}</span>
+              <span>→</span>
               <span>{alvo.baseBranch}</span>
             </span>
           )}
           {(alvo.additions !== undefined || alvo.deletions !== undefined) && (
-            <span className="inline-flex items-center gap-1 font-mono text-[11px] tabular-nums">
-              {alvo.additions !== undefined && (
-                <span className="text-emerald-500 font-medium">+{alvo.additions}</span>
-              )}
-              {alvo.deletions !== undefined && (
-                <span className="text-rose-500 font-medium">−{alvo.deletions}</span>
-              )}
+            <span className="num inline-flex items-center gap-1 font-mono text-[11px]">
+              {alvo.additions !== undefined && <span>+{alvo.additions}</span>}
+              {alvo.deletions !== undefined && <span>−{alvo.deletions}</span>}
             </span>
           )}
           {!ehPr && !ehMsg && alvo.detalhe && <span>{alvo.detalhe}</span>}
-          {alvo.resumo && ehMsg && (
-            <span className="line-clamp-1 italic text-muted-foreground/80">
-              "{alvo.resumo}"
-            </span>
-          )}
+          {alvo.resumo && ehMsg && <span className="line-clamp-1 italic">"{alvo.resumo}"</span>}
           <span>·</span>
-          <span>{quando}</span>
+          <span className="num">{quando}</span>
         </div>
       </div>
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="flex shrink-0 items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
         {alvo.link && (
-          <Button
-            asChild
-            className="shrink-0 cursor-pointer text-xs"
-            size="sm"
-            variant="outline"
-          >
+          <Button asChild className="shrink-0 cursor-pointer" size="sm" variant="ghost">
             <a href={alvo.link} rel="noreferrer" target="_blank">
-              <ExternalLink aria-hidden className="mr-1 size-3.5" />
+              <ExternalLink aria-hidden />
               {alvo.servico === "slack" ? "Slack" : "Teams"}
             </a>
           </Button>
         )}
-        <Button className="shrink-0 cursor-pointer" onClick={() => navegar("inbox", pendencia.id)}>
+        <Button className="shrink-0 cursor-pointer" onClick={() => navegar("inbox", pendencia.id)} size="sm" variant="outline">
           {alvo.somenteLeitura ? t("inbox.review") : t("home.today.waiting.open")}
         </Button>
       </div>
-    </li>
+    </ListRow>
   );
 }
 
@@ -625,71 +497,65 @@ function LinhaTerminada({
   const quando = quandoTerminou(t, idioma, run.endedAt ?? run.createdAt);
 
   return (
-    <li className="flex items-center gap-3.5 px-4 py-3">
-      <Check aria-hidden className="text-chart-2 size-4 shrink-0" />
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <div className="flex flex-wrap items-center gap-1.5">
-          {alvo?.repo && (
-            <span className="bg-muted text-muted-foreground inline-flex items-center rounded px-1.5 py-0.5 font-mono text-[11px]">
-              {alvo.repo}
-            </span>
-          )}
+    <ListRow className="min-h-11 py-2" onClick={() => navegar("runs", run.id)} rotulo={titulo}>
+      <StatusDot estado="ok" />
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <div className="flex min-w-0 items-center gap-2">
+          {alvo?.repo && <Badge className="font-mono" variant="secondary">{alvo.repo}</Badge>}
           {alvo?.pull && (
-            <span className="text-primary inline-flex items-center gap-0.5 font-mono text-xs font-semibold">
-              <GitPullRequest aria-hidden className="size-3" />
-              #{alvo.pull}
+            <span className="text-muted-foreground num inline-flex items-center gap-0.5 font-mono text-xs">
+              <GitPullRequest aria-hidden className="size-3" />#{alvo.pull}
             </span>
           )}
-          <span className="truncate text-sm font-medium">{titulo}</span>
+          <span className="truncate font-medium">{titulo}</span>
         </div>
 
         <div className="text-muted-foreground flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs">
-          {iniciativa && <span className="text-foreground/75 font-medium">{iniciativa}</span>}
+          {iniciativa && <span>{iniciativa}</span>}
           {alvo?.author && (
             <span className="inline-flex items-center gap-1">
-              <User aria-hidden className="size-3 text-muted-foreground/70" />
+              <User aria-hidden className="size-3" />
               <span>{alvo.author}</span>
             </span>
           )}
           {alvo?.headBranch && alvo?.baseBranch && (
             <span className="inline-flex items-center gap-1 font-mono text-[11px]">
-              <GitBranch aria-hidden className="size-3 text-muted-foreground/70" />
-              <span className="text-foreground/80">{alvo.headBranch}</span>
-              <span className="text-muted-foreground/60">→</span>
+              <GitBranch aria-hidden className="size-3" />
+              <span>{alvo.headBranch}</span>
+              <span>→</span>
               <span>{alvo.baseBranch}</span>
             </span>
           )}
           {(alvo?.additions !== undefined || alvo?.deletions !== undefined) && (
-            <span className="inline-flex items-center gap-1 font-mono text-[11px] tabular-nums">
-              {alvo.additions !== undefined && (
-                <span className="text-emerald-500 font-medium">+{alvo.additions}</span>
-              )}
-              {alvo.deletions !== undefined && (
-                <span className="text-rose-500 font-medium">−{alvo.deletions}</span>
-              )}
+            <span className="num inline-flex items-center gap-1 font-mono text-[11px]">
+              {alvo.additions !== undefined && <span>+{alvo.additions}</span>}
+              {alvo.deletions !== undefined && <span>−{alvo.deletions}</span>}
             </span>
           )}
           <span>·</span>
-          <span>{quando}</span>
+          <span className="num">{quando}</span>
         </div>
       </div>
       <button
-        className="text-muted-foreground hover:text-foreground focus-visible:ring-ring shrink-0 cursor-pointer rounded px-1 text-sm transition-colors duration-200 focus-visible:ring-2 focus-visible:outline-none"
+        className="text-muted-foreground hover:text-foreground focus-visible:ring-ring shrink-0 cursor-pointer rounded px-1 text-xs transition-colors focus-visible:ring-2 focus-visible:outline-none"
         data-locum-run={run.id}
-        onClick={() => navegar("runs", run.id)}
+        onClick={(e) => {
+          e.stopPropagation();
+          navegar("runs", run.id);
+        }}
         type="button"
       >
         {t("home.today.done.view")}
       </button>
-    </li>
+    </ListRow>
   );
 }
 
 /** Estado vazio de bloco: ícone apagado e uma frase, sem caixa pesada. */
 function Vazio({ icone: Icone, texto }: { icone: typeof Check; texto: string }) {
   return (
-    <div className="border-border text-muted-foreground flex items-center gap-3 rounded-xl border border-dashed px-4 py-4 text-sm">
-      <Icone aria-hidden className="text-muted-foreground/60 size-4 shrink-0" />
+    <div className="border-border text-muted-foreground flex items-center gap-2.5 rounded-lg border border-dashed px-3 py-3 text-xs">
+      <Icone aria-hidden className="text-muted-foreground/60 size-3.5 shrink-0" />
       {texto}
     </div>
   );
@@ -709,19 +575,19 @@ function SessoesPelaMetade({ navegar }: { navegar: TelaProps["navegar"] }) {
 
   return (
     <button
-      className="superficie hover:border-foreground/20 focus-visible:ring-ring group flex cursor-pointer items-center gap-4 rounded-xl px-5 py-4 text-left transition-colors duration-200 focus-visible:ring-2 focus-visible:outline-none"
+      className="border-border bg-card hover:bg-accent focus-visible:ring-ring group flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 text-left text-[13px] transition-colors focus-visible:ring-2 focus-visible:outline-none"
       data-locum-probe="hoje-sessoes"
       onClick={() => navegar("sessions")}
       type="button"
     >
-      <span aria-hidden className="bg-chart-5/12 text-chart-5 flex size-9 shrink-0 items-center justify-center rounded-lg">
-        <TerminalSquare className="size-4" />
+      <span aria-hidden className="bg-muted text-muted-foreground flex size-6 shrink-0 items-center justify-center rounded">
+        <TerminalSquare className="size-3.5" />
       </span>
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="font-medium text-[15px] tracking-tight">
+        <span className="font-medium">
           {t("home.today.sessions.title", { count: pendentes.length })}
         </span>
-        <span className="text-muted-foreground truncate text-sm">
+        <span className="text-muted-foreground truncate text-xs">
           {esperando > 0
             ? t("home.today.sessions.waiting", { count: esperando })
             : pendentes
@@ -730,10 +596,7 @@ function SessoesPelaMetade({ navegar }: { navegar: TelaProps["navegar"] }) {
                 .join(" · ")}
         </span>
       </div>
-      <ChevronRight
-        aria-hidden
-        className="text-muted-foreground size-4 shrink-0 transition-transform duration-200 group-hover:translate-x-0.5"
-      />
+      <ChevronRight aria-hidden className="text-muted-foreground size-3.5 shrink-0" />
     </button>
   );
 }
@@ -751,27 +614,24 @@ function ServidoresSemCredencial({ navegar }: { navegar: TelaProps["navegar"] })
 
   return (
     <button
-      className="superficie hover:border-foreground/20 focus-visible:ring-ring group flex cursor-pointer items-center gap-4 rounded-xl px-5 py-4 text-left transition-colors duration-200 focus-visible:ring-2 focus-visible:outline-none"
+      className="border-border bg-card hover:bg-accent focus-visible:ring-ring group flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 text-left text-[13px] transition-colors focus-visible:ring-2 focus-visible:outline-none"
       data-locum-probe="hoje-credencial"
       data-servidores={recusados.join(",")}
       onClick={() => navegar("settings")}
       type="button"
     >
-      <span aria-hidden className="bg-destructive/12 text-destructive flex size-9 shrink-0 items-center justify-center rounded-lg">
-        <KeyRound className="size-4" />
+      <span aria-hidden className="bg-muted text-muted-foreground flex size-6 shrink-0 items-center justify-center rounded">
+        <KeyRound className="size-3.5" />
       </span>
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="font-medium text-[15px] tracking-tight">
+        <span className="font-medium">
           {t("home.today.auth.title", { count: recusados.length })}
         </span>
-        <span className="text-muted-foreground truncate text-sm">
+        <span className="text-muted-foreground truncate text-xs">
           {t("home.today.auth.detail", { names: recusados.slice(0, 3).join(", ") })}
         </span>
       </div>
-      <ChevronRight
-        aria-hidden
-        className="text-muted-foreground size-4 shrink-0 transition-transform duration-200 group-hover:translate-x-0.5"
-      />
+      <ChevronRight aria-hidden className="text-muted-foreground size-3.5 shrink-0" />
     </button>
   );
 }
@@ -877,84 +737,63 @@ function ComeceAqui({ agenda, navegar }: { agenda: Agenda[] | undefined; navegar
   const feitos = passos.filter((p) => p.feito).length;
 
   return (
-    <section
-      aria-labelledby="hoje-comece"
-      className="superficie relative flex flex-col gap-5 overflow-hidden rounded-2xl p-6"
-      data-locum-probe="hoje-comece"
-    >
-      <div className="flex items-end justify-between gap-6">
-        <div className="flex flex-col gap-1">
-          <h2 className="flex items-center gap-2 font-semibold text-[15px] tracking-tight" id="hoje-comece">
-            <Sparkles aria-hidden className="text-primary size-4" />
+    <section aria-labelledby="hoje-comece" className="flex flex-col gap-2" data-locum-probe="hoje-comece">
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-baseline gap-2">
+          <h2 className="text-[13px] font-medium" id="hoje-comece">
             {t("home.today.start.title")}
           </h2>
-          <p className="text-muted-foreground text-sm">{t("home.today.start.lead")}</p>
-        </div>
-        <span className="flex shrink-0 items-center gap-3">
-          <span className="text-muted-foreground text-xs tabular-nums">
+          <span className="text-muted-foreground num text-xs">
             {feitos}/{passos.length}
           </span>
-          <button
-            className="text-muted-foreground hover:text-foreground cursor-pointer text-xs"
-            onClick={() => {
-              setOculto(true);
-              try {
-                window.localStorage.setItem(CHAVE_COMECE_OCULTO, "1");
-              } catch {
-                // Sem armazenamento, oculta só até recarregar.
-              }
-            }}
-            type="button"
-          >
-            {t("home.today.start.hide")}
-          </button>
-        </span>
+        </div>
+        <button
+          className="text-muted-foreground hover:text-foreground cursor-pointer text-xs"
+          onClick={() => {
+            setOculto(true);
+            try {
+              window.localStorage.setItem(CHAVE_COMECE_OCULTO, "1");
+            } catch {
+              // Sem armazenamento, oculta só até recarregar.
+            }
+          }}
+          type="button"
+        >
+          {t("home.today.start.hide")}
+        </button>
       </div>
-      <div aria-hidden className="bg-muted h-1 overflow-hidden rounded-full">
-        <div
-          className="ia-gradiente h-full rounded-full transition-[width] duration-500"
-          style={{ width: `${(feitos / passos.length) * 100}%` }}
-        />
-      </div>
-      <ol className="grid grid-cols-1 items-start gap-3 md:grid-cols-4">
+      <ol className="border-border bg-card overflow-hidden rounded-lg border">
         {passos.map((passo, indice) => (
           <li
-            className={cn(
-              "flex flex-col gap-3 rounded-xl border p-4 transition-colors",
-              passo === proximo ? "ia-borda" : "border-border bg-background/40",
-            )}
+            className="border-border flex min-h-10 items-center gap-3 border-b px-3 py-1.5 text-[13px] last:border-b-0"
             data-feito={passo.feito}
             key={passo.id}
           >
-            <div className="flex items-center gap-2.5">
-              <span
-                aria-hidden="true"
-                className={cn(
-                  "flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-medium",
-                  passo.feito ? "ia-gradiente text-primary-foreground" : "border-border text-muted-foreground border",
-                )}
-              >
-                {passo.feito ? <Check className="size-3.5" /> : indice + 1}
-              </span>
-              <span className={cn("text-sm font-medium", passo.feito && "text-muted-foreground")}>
-                {t(`home.today.start.${passo.id}.title`)}
-              </span>
-            </div>
+            <span
+              aria-hidden="true"
+              className={cn(
+                "num flex size-4 shrink-0 items-center justify-center rounded-full text-[10px] font-medium",
+                passo.feito ? "bg-primary text-primary-foreground" : "border-input text-muted-foreground border",
+              )}
+            >
+              {passo.feito ? <Check className="size-2.5" /> : indice + 1}
+            </span>
+            <span className={cn("font-medium", passo.feito && "text-muted-foreground")}>
+              {t(`home.today.start.${passo.id}.title`)}
+            </span>
             {passo.feito ? null : (
-              <>
-                <span className="text-muted-foreground flex-1 text-xs leading-relaxed">
-                  {t(`home.today.start.${passo.id}.hint`)}
-                </span>
-                <Button
-                  className="cursor-pointer self-start"
-                  onClick={passo.ir}
-                  size="sm"
-                  variant={passo === proximo ? "default" : "secondary"}
-                >
-                  {t(`home.today.start.${passo.id}.go`)}
-                  <ChevronRight className="size-3.5" />
-                </Button>
-              </>
+              <span className="text-muted-foreground min-w-0 flex-1 truncate text-xs">{t(`home.today.start.${passo.id}.hint`)}</span>
+            )}
+            {passo.feito ? null : (
+              <Button
+                className="ml-auto cursor-pointer"
+                onClick={passo.ir}
+                size="sm"
+                variant={passo === proximo ? "default" : "ghost"}
+              >
+                {t(`home.today.start.${passo.id}.go`)}
+                <ChevronRight />
+              </Button>
             )}
           </li>
         ))}
