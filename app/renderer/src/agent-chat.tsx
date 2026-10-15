@@ -2,6 +2,7 @@ import { Conversation, ConversationContent, ConversationEmptyState } from "@/com
 import { Message, MessageContent } from "@/components/ai-elements/message";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { MarcaLogo } from "@/components/marca-logo";
 import { useRead } from "@/lib/bridge";
 import { chatDoAgent } from "@/lib/agent-chat";
 import { cn } from "@/lib/utils";
@@ -86,6 +87,8 @@ export function ChatDoAgent({ id, modelo, versao, naoSalvo }: { id: string; mode
   // Nome da conexão pelo id dela, e pelo nome de cada servidor que ela tem: o cartão traz o servidor.
   const nomes = new Map((conexoes.data ?? []).map((c) => [c.id, c.name]));
   const nomesPorServidor = new Map((conexoes.data ?? []).flatMap((c) => c.servers.map((s) => [s, c.name] as const)));
+  // A marca é a da conexão que tem o servidor, e não a do nome com que ele foi cadastrado.
+  const marcasPorServidor = new Map((conexoes.data ?? []).flatMap((c) => c.servers.map((s) => [s, { name: c.id, url: c.url }] as const)));
 
   async function enviar(): Promise<void> {
     const texto = rascunho.trim();
@@ -193,6 +196,7 @@ export function ChatDoAgent({ id, modelo, versao, naoSalvo }: { id: string; mode
                     cartao={cartao}
                     decidir={(d) => void decidir(cartao, d)}
                     key={cartao.id}
+                    marca={marcasPorServidor.get(cartao.servidor) ?? { name: cartao.servidor }}
                     nomeDaConexao={nomesPorServidor.get(cartao.servidor)}
                   />
                 ))}
@@ -251,7 +255,7 @@ export function ChatDoAgent({ id, modelo, versao, naoSalvo }: { id: string; mode
 }
 
 /** A chamada de escrita que o agent quer fazer, à espera do clique de quem conversa. */
-function CartaoDeEscrita({ cartao, decidir, nomeDaConexao }: { cartao: Cartao; decidir: (d: "executar" | "recusar") => void; nomeDaConexao: string | undefined }) {
+function CartaoDeEscrita({ cartao, decidir, marca, nomeDaConexao }: { cartao: Cartao; decidir: (d: "executar" | "recusar") => void; marca: { name: string; url?: string | undefined }; nomeDaConexao: string | undefined }) {
   const { t } = useTranslation();
   const pendente = cartao.estado === "pendente";
   return (
@@ -266,6 +270,7 @@ function CartaoDeEscrita({ cartao, decidir, nomeDaConexao }: { cartao: Cartao; d
           {t(`agentChat.card.title.${cartao.estado}`)}
         </span>
         <span className="font-mono text-xs font-semibold">{cartao.ferramenta}</span>
+        <MarcaLogo fonte={marca} tamanho="sm" />
         <span className="text-muted-foreground text-[11px]">{nomeDaConexao ?? cartao.servidor}</span>
       </div>
       <pre className="bg-background/60 max-h-48 overflow-auto rounded-md p-2 font-mono text-[11px] leading-relaxed" data-locum-agent-cartao-argumentos="">

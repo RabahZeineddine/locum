@@ -322,3 +322,313 @@ test("o agent que escolhe a conexão aparece em quem usa, mesmo sem ferramenta a
   assert.deepEqual(await comFontes.usage("github"), [{ tipo: "agent", id: "revisor", nome: "Revisor", como: ["ferramenta"] }]);
   assert.deepEqual(await comFontes.usage("notion"), []);
 });
+
+/** Vitrine para os casos em que o servidor MCP de um item do catálogo existe. */
+function montarFusao(token: { stored: boolean } = { stored: true }, slackServer: string | null = null) {
+  const secrets = new SecretService(mkdtempSync(join(tmpdir(), "locum-fusao-")));
+  secrets.useBackend({
+    available: () => true,
+    encrypt: (plain) => Buffer.from(plain),
+    decrypt: (blob) => blob.toString(),
+  });
+  const mcp = new McpService(undefined, secrets);
+  const oauth = {
+    status: () => ({ connected: false, expiresAt: null, renewable: false }),
+  } as unknown as McpOAuthService;
+  if (token.stored) secrets.set("source/github", "ghp_exemplo");
+  const servico = new ConnectionService({
+    mcp,
+    oauth,
+    github: { status: async () => ({ stored: token.stored, env: false, identity: null }) } as unknown as GithubService,
+    slack: { get: async () => ({ server: slackServer }) } as unknown as SlackService,
+  });
+  return { servico, mcp, secrets };
+}
+
+const SERVIDOR_GITHUB = {
+  name: "github",
+  transport: "http",
+  url: "https://api.githubcopilot.com/mcp/",
+  headers: { Authorization: "${credential}" },
+} as const;
+
+test("servidor github desligado aparece na conexão GitHub como desligado, em vez de sumir", async () => {
+  const { servico, mcp } = montarFusao({ stored: false });
+  await mcp.register(SERVIDOR_GITHUB);
+  await mcp.setEnabled("github", false);
+  try {
+    const lista = await servico.list();
+    assert.equal(lista.filter((c) => c.id === "github").length, 1, "uma conexão só, e não um cartão solto");
+    const github = lista.find((c) => c.id === "github")!;
+    assert.deepEqual(github.servers, ["github"]);
+    assert.equal(github.state, "attention");
+    assert.equal(github.reason, "disabled");
+    assert.deepEqual(github.partes, { token: "missing", servidor: "disabled", nome: "github", outros: [] });
+  } finally {
+    await mcp.remove("github");
+  }
+});
+
+test("com token e servidor desligado, a conexão não diz conectado", async () => {
+  const { servico, mcp } = montarFusao();
+  await mcp.register(SERVIDOR_GITHUB);
+  await mcp.setEnabled("github", false);
+  try {
+    const github = (await servico.list()).find((c) => c.id === "github")!;
+    assert.equal(github.state, "attention");
+    assert.deepEqual(github.partes, { token: "ok", servidor: "disabled", nome: "github", outros: [] });
+  } finally {
+    await mcp.remove("github");
+  }
+});
+
+test("o token guardado no GitHub alimenta o servidor MCP, que então conta como ok", async () => {
+  const { servico, mcp } = montarFusao();
+  await mcp.register(SERVIDOR_GITHUB);
+  try {
+    const github = (await servico.list()).find((c) => c.id === "github")!;
+    assert.equal(github.state, "connected");
+    assert.deepEqual(github.partes, { token: "ok", servidor: "untested", nome: "github", outros: [] });
+  } finally {
+    await mcp.remove("github");
+  }
+});
+
+test("servidor github sem credencial nenhuma pede o token, e não fica conectado", async () => {
+  const { servico, mcp } = montarFusao({ stored: false });
+  await mcp.register(SERVIDOR_GITHUB);
+  try {
+    const github = (await servico.list()).find((c) => c.id === "github")!;
+    assert.equal(github.state, "attention");
+    assert.equal(github.reason, "no-credential");
+    assert.deepEqual(github.partes, { token: "missing", servidor: "no-credential", nome: "github", outros: [] });
+  } finally {
+    await mcp.remove("github");
+  }
+});
+
+test("GitHub sem servidor cadastrado não tem parte de servidor", async () => {
+  const { servico } = montarFusao();
+  const github = (await servico.list()).find((c) => c.id === "github")!;
+  assert.equal(github.state, "connected");
+  assert.deepEqual(github.partes, { token: "ok", servidor: null, nome: null, outros: [] });
+});
+
+test("servidor slack importado entra em Slack, e não vira conexão própria", async () => {
+  const { servico, mcp } = montarFusao();
+  await mcp.register({ name: "slack", transport: "http", url: "https://mcp.slack.com/mcp" });
+  try {
+    const lista = await servico.list();
+    assert.equal(lista.filter((c) => c.id === "slack").length, 1);
+    const slack = lista.find((c) => c.id === "slack")!;
+    assert.deepEqual(slack.servers, ["slack"]);
+    assert.notEqual(slack.state, "available");
+    assert.equal(lista.some((c) => c.custom && c.id === "slack"), false);
+  } finally {
+    await mcp.remove("slack");
+  }
+});
+
+test("servidor de outro nome, mas com o host de um item do catálogo, entra nesse item", async () => {
+  const { servico, mcp } = montarFusao();
+  await mcp.register({ name: "figma-da-casa", transport: "http", url: "https://mcp.figma.com/mcp" });
+  await mcp.register({ name: "ms365", transport: "stdio", command: ["npx", "-y", "@softeria/ms-365-mcp-server"] });
+  try {
+    const lista = await servico.list();
+    assert.deepEqual(lista.find((c) => c.id === "figma")!.servers, ["figma-da-casa"]);
+    assert.deepEqual(lista.find((c) => c.id === "teams")!.servers, ["ms365"]);
+    assert.equal(lista.some((c) => c.custom && (c.id === "figma-da-casa" || c.id === "ms365")), false);
+  } finally {
+    await mcp.remove("figma-da-casa");
+    await mcp.remove("ms365");
+  }
+});
+
+test("servidor que não é de nenhum item continua como conexão própria", async () => {
+  const { servico, mcp } = montarFusao();
+  await mcp.register({ name: "locum-fixture", transport: "http", url: "https://exemplo.test/mcp" });
+  try {
+    const propria = (await servico.list()).find((c) => c.id === "locum-fixture");
+    assert.equal(propria?.custom, true);
+  } finally {
+    await mcp.remove("locum-fixture");
+  }
+});
+
+test("conectar um item cujo servidor foi importado com outro nome autoriza o importado, sem cadastrar um segundo", async () => {
+  const { servico, mcp, chamadas } = montar();
+  await mcp.register({ name: "figma-da-casa", transport: "http", url: "https://mcp.figma.com/mcp" });
+  try {
+    await servico.connect("figma");
+    assert.deepEqual(chamadas, ["connect:figma-da-casa"]);
+    assert.equal(await mcp.get("figma"), undefined);
+  } finally {
+    await mcp.remove("figma-da-casa");
+  }
+});
+
+test("desconectar remove só o servidor que a conexão cadastrou; o importado com outro nome só perde a credencial", async () => {
+  const { servico, mcp, chamadas } = montar();
+  await mcp.register({ name: "notion", transport: "http", url: "https://mcp.notion.com/mcp" });
+  await mcp.register({ name: "notion-trabalho", transport: "http", url: "https://mcp.notion.com/mcp" });
+  try {
+    const antes = (await servico.list()).find((c) => c.id === "notion")!;
+    assert.deepEqual(antes.desligar, { remove: ["notion"], forget: ["notion-trabalho"], literal: [], keep: [] });
+
+    await servico.disconnect("notion");
+    assert.equal(await mcp.get("notion"), undefined);
+    assert.notEqual(await mcp.get("notion-trabalho"), undefined, "o outro servidor continua cadastrado");
+    assert.deepEqual(chamadas, ["disconnect:notion", "disconnect:notion-trabalho"]);
+  } finally {
+    await mcp.remove("notion");
+    await mcp.remove("notion-trabalho");
+  }
+});
+
+test("servidor vinculado a uma origem nunca é apagado nem tem a credencial esquecida ao desconectar", async () => {
+  const { servico, mcp, chamadas } = montar();
+  await mcp.register(
+    { name: "notion", transport: "http", url: "https://mcp.notion.com/mcp" },
+    { source: { kind: "claude-user", server: "notion" }, hash: "h" },
+  );
+  try {
+    const conexao = (await servico.list()).find((c) => c.id === "notion")!;
+    assert.deepEqual(conexao.desligar, { remove: [], forget: [], literal: [], keep: ["notion"] });
+    await assert.rejects(servico.disconnect("notion"), /vinculad/);
+    assert.notEqual(await mcp.get("notion"), undefined);
+    assert.deepEqual(chamadas, []);
+  } finally {
+    await mcp.remove("notion");
+  }
+});
+
+test("servidor importado no host de um item OAuth, com cabeçalho escrito à mão, não pede autorização", async () => {
+  const { servico, mcp } = montar();
+  await mcp.register({ name: "sentry-casa", transport: "http", url: "https://mcp.sentry.dev/mcp", headers: { Authorization: "Bearer abc" } });
+  await mcp.register({ name: "linear-casa", transport: "http", url: "https://mcp.linear.app/mcp" });
+  try {
+    const lista = await servico.list();
+    const sentry = lista.find((c) => c.id === "sentry")!;
+    assert.equal(sentry.state, "connected");
+    assert.equal(sentry.reason, "untested");
+    assert.equal(lista.find((c) => c.id === "linear")!.reason, "untested", "sem marcador, vale como não testado, e não como autorização faltando");
+  } finally {
+    await mcp.remove("sentry-casa");
+    await mcp.remove("linear-casa");
+  }
+});
+
+test("a pior instância do item decide o estado, em OAuth e no Teams", async () => {
+  const { servico, mcp } = montar();
+  await servico.connect("notion");
+  await mcp.register({ name: "notion-trabalho", transport: "http", url: "https://mcp.notion.com/mcp" });
+  await mcp.setEnabled("notion-trabalho", false);
+  await mcp.register({ name: "ms365", transport: "stdio", command: ["npx", "-y", "@softeria/ms-365-mcp-server"] });
+  await mcp.register({ name: "ms365-b", transport: "stdio", command: ["npx", "-y", "@softeria/ms-365-mcp-server"] });
+  await mcp.setEnabled("ms365-b", false);
+  try {
+    const lista = await servico.list();
+    assert.equal(lista.find((c) => c.id === "notion")!.reason, "disabled");
+    const teams = lista.find((c) => c.id === "teams")!;
+    assert.equal(teams.state, "attention");
+    assert.equal(teams.reason, "disabled");
+  } finally {
+    for (const n of ["notion", "notion-trabalho", "ms365", "ms365-b"]) await mcp.remove(n);
+  }
+});
+
+test("GitHub com servidor ok por credencial própria e sem token pede atenção", async () => {
+  const { servico, mcp, secrets } = montarFusao({ stored: false });
+  await mcp.register({ name: "github", transport: "http", url: "https://api.githubcopilot.com/mcp/", headers: { Authorization: "${credential}" } });
+  await mcp.setCredential("github", { campo: "Authorization", valor: "ghp_proprio" });
+  void secrets;
+  try {
+    const github = (await servico.list()).find((c) => c.id === "github")!;
+    assert.deepEqual(github.partes, { token: "missing", servidor: "untested", nome: "github", outros: [] });
+    assert.equal(github.state, "attention");
+    assert.equal(github.reason, "no-token");
+  } finally {
+    await mcp.remove("github");
+  }
+});
+
+test("Slack com origem escolhida continua listando os outros servidores do item", async () => {
+  const { servico, mcp } = montarFusao({ stored: false }, "slack-oficial");
+  await mcp.register({ name: "slack-oficial", transport: "http", url: "https://exemplo.test/slack-mcp" });
+  await mcp.register({ name: "slack", transport: "http", url: "https://mcp.slack.com/mcp" });
+  try {
+    const slack = (await servico.list()).find((c) => c.id === "slack")!;
+    assert.deepEqual([...slack.servers].sort(), ["slack", "slack-oficial"]);
+  } finally {
+    await mcp.remove("slack-oficial");
+    await mcp.remove("slack");
+  }
+});
+
+test("a conexão diz quantas ferramentas escrevem, pelas anotações guardadas", async () => {
+  const { servico, mcp } = montar();
+  await mcp.register({ name: "notion", transport: "http", url: "https://mcp.notion.com/mcp" });
+  try {
+    // O cache de ferramentas só se enche subindo o servidor; aqui entra pelo mesmo gravador.
+    await (mcp as unknown as { guardarFerramentas: (n: string, t: unknown[]) => Promise<void> }).guardarFerramentas("notion", [
+      { name: "search", description: "", estimatedTokens: 1, readOnlyHint: true },
+      { name: "create_page", description: "", estimatedTokens: 1 },
+      { name: "delete_page", description: "", estimatedTokens: 1, destructiveHint: true },
+    ]);
+    const notion = (await servico.list()).find((c) => c.id === "notion")!;
+    assert.equal(notion.toolCount, 3);
+    assert.equal(notion.toolWrites, 2);
+  } finally {
+    await mcp.remove("notion");
+  }
+});
+
+test("os outros servidores do GitHub aparecem em partes, cada um com o estado, e o pior decide o geral", async () => {
+  const { servico, mcp } = montarFusao();
+  await mcp.register({ name: "github", transport: "http", url: "https://api.githubcopilot.com/mcp/", headers: { Authorization: "${credential}" } });
+  await mcp.register({ name: "github-ro", transport: "http", url: "https://api.githubcopilot.com/mcp/readonly", headers: { Authorization: "${credential}" } });
+  await mcp.recordConnection("github-ro", { ok: false, error: "boom" });
+  try {
+    const github = (await servico.list()).find((c) => c.id === "github")!;
+    assert.equal(github.state, "error");
+    assert.equal(github.partes?.nome, "github");
+    assert.equal(github.partes?.servidor, "untested");
+    assert.deepEqual(github.partes?.outros, [{ nome: "github-ro", estado: "failing" }]);
+  } finally {
+    await mcp.remove("github");
+    await mcp.remove("github-ro");
+  }
+});
+
+test("servidor com credencial escrita à mão cai num balde próprio ao desconectar, e não em esquecer", async () => {
+  const { servico, mcp, chamadas } = montar();
+  await mcp.register({ name: "notion", transport: "http", url: "https://mcp.notion.com/mcp" });
+  await mcp.register({ name: "notion-chave", transport: "http", url: "https://mcp.notion.com/mcp", headers: { Authorization: "Bearer abc" } });
+  try {
+    const plano = (await servico.list()).find((c) => c.id === "notion")!.desligar;
+    assert.deepEqual(plano, { remove: ["notion"], forget: [], literal: ["notion-chave"], keep: [] });
+    await servico.disconnect("notion");
+    assert.deepEqual(chamadas, ["disconnect:notion"], "não finge esquecer o que não está no cofre");
+  } finally {
+    await mcp.remove("notion");
+    await mcp.remove("notion-chave");
+  }
+});
+
+test("toolCount e toolWrites somam os mesmos servidores do item", async () => {
+  const { servico, mcp } = montar();
+  await mcp.register({ name: "notion", transport: "http", url: "https://mcp.notion.com/mcp" });
+  await mcp.register({ name: "notion-b", transport: "http", url: "https://mcp.notion.com/mcp" });
+  const guardar = (n: string, t: unknown[]) => (mcp as unknown as { guardarFerramentas: (n: string, t: unknown[]) => Promise<void> }).guardarFerramentas(n, t);
+  try {
+    await guardar("notion", [{ name: "search", description: "", estimatedTokens: 1, readOnlyHint: true }]);
+    await guardar("notion-b", [{ name: "create_page", description: "", estimatedTokens: 1 }, { name: "delete_page", description: "", estimatedTokens: 1, destructiveHint: true }]);
+    const notion = (await servico.list()).find((c) => c.id === "notion")!;
+    assert.equal(notion.toolCount, 3);
+    assert.equal(notion.toolWrites, 2);
+    assert.equal(notion.toolNames.length, 3);
+  } finally {
+    await mcp.remove("notion");
+    await mcp.remove("notion-b");
+  }
+});

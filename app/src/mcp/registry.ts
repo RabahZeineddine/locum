@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import { createMCPClient } from "@ai-sdk/mcp";
 import { Experimental_StdioMCPTransport } from "@ai-sdk/mcp/mcp-stdio";
 import type { ToolSet } from "ai";
-import type { McpServerConfig, ToolRef } from "../config/types.js";
+import type { McpServerConfig, McpServerPronto, ToolRef } from "../config/types.js";
+import { conexaoDoServidor } from "../services/conexao-catalogo.js";
 
 /** O que o servidor expoe, do ponto de vista de quem administra o cadastro. */
 export interface McpToolInfo {
@@ -78,9 +79,9 @@ export class McpRegistry {
   // dois processos, e o que perdesse a vaga no mapa ficaria órfão.
   private connecting = new Map<string, Promise<Entry>>();
 
-  constructor(private configs: Map<string, McpServerConfig>) {}
+  constructor(private configs: Map<string, McpServerPronto>) {}
 
-  static fromList(list: McpServerConfig[]): McpRegistry {
+  static fromList(list: McpServerPronto[]): McpRegistry {
     return new McpRegistry(new Map(list.map((c) => [c.name, c])));
   }
 
@@ -108,7 +109,7 @@ export class McpRegistry {
           // diz que o conserto é reconectar.
           if (isAuthError(message)) {
             throw new Error(
-              `servidor MCP "${name}" recusou a credencial; reconecte em Configuração (${message.slice(0, 200)})`,
+              `servidor MCP "${name}" recusou a credencial; reconecte em Conexões > ${conexaoDoServidor(this.configs.get(name) ?? { name })?.name ?? name} (${message.slice(0, 200)})`,
               { cause: err },
             );
           }
@@ -123,6 +124,9 @@ export class McpRegistry {
   private async spawn(name: string): Promise<Entry> {
     const cfg = this.configs.get(name);
     if (!cfg) throw new Error(`servidor MCP "${name}" nao cadastrado`);
+    // Sem a credencial referenciada o servidor só responderia "missing
+    // Authorization header", e a pessoa não saberia onde colar o token.
+    if (cfg.credencialFaltando !== undefined) throw new Error(cfg.credencialFaltando);
 
     let client: Awaited<ReturnType<typeof createMCPClient>>;
     let tools: ToolSet;
@@ -167,7 +171,7 @@ export class McpRegistry {
    * o usa, fecha quando o uso soltar, e a próxima conexão sobe com o cadastro
    * novo.
    */
-  reconfigure(configs: Map<string, McpServerConfig>): void {
+  reconfigure(configs: Map<string, McpServerPronto>): void {
     this.configs = configs;
     for (const [name, entry] of this.live) {
       const cfg = configs.get(name);

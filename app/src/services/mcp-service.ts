@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
 import { isAuthError, McpRegistry, type McpConnectOutcome, type McpToolInfo } from "../mcp/registry.js";
-import { McpServerConfig, McpSource, type McpServerInput } from "../config/types.js";
+import { McpServerConfig, McpSource, type McpServerInput, type McpServerPronto } from "../config/types.js";
 import {
   cobrirPelaCopia,
   configMascarada,
@@ -18,6 +18,9 @@ import {
   type Mudanca,
   type Resolvido,
 } from "./mcp-origem.js";
+import { conexaoDoServidor, itemDoHost } from "./conexao-catalogo.js";
+import { temCredencialLiteral } from "./mcp-credencial.js";
+import { githubToken } from "./github-service.js";
 import { CREDENTIAL_PLACEHOLDER, fillCredential, secretService, type SecretService } from "./secret-service.js";
 
 /**
@@ -153,7 +156,7 @@ export class McpService {
    * So o que o executor deve enxergar. Servidor desabilitado some do registro
    * em vez de virar erro de conexao no meio de um passo.
    */
-  async enabledConfigs(): Promise<McpServerConfig[]> {
+  async enabledConfigs(): Promise<McpServerPronto[]> {
     const rows = await this.db
       .select()
       .from(schema.mcpServers)
@@ -569,18 +572,56 @@ export class McpService {
    * Servidor vinculado conecta com a configuração da origem, lida agora, e não
    * com a cópia que ficou no banco.
    */
-  private async connectable(row: McpServerRow): Promise<McpServerConfig> {
+  private async connectable(row: McpServerRow): Promise<McpServerPronto> {
     const d = await this.decidir(row);
     const config = d === null ? toEntry(row).config : d.config;
     // O segredo que a origem traz literal vale enquanto a origem é a aceita; o
     // do cofre, nos outros casos e no OAuth.
     const doCofre = row.credentialRef ? this.secrets.get(row.credentialRef) : undefined;
-    const secret = (d?.estado === "ok" ? d.resolvido?.segredo : undefined) ?? doCofre;
+    const proprio = (d?.estado === "ok" ? d.resolvido?.segredo : undefined) ?? doCofre;
+    // A credencial própria do servidor vence; sem ela, o token do GitHub
+    // guardado na conexão serve ao servidor do GitHub.
+    const secret = proprio ?? this.doServico(config);
+    const env = fillCredential(config.env, secret, { envFallback: true });
+    let headers = fillCredential(config.headers, secret, { envFallback: false });
+    // O servidor do GitHub cadastrado sem cabeçalho de credencial usa o token da conexão.
+    if (ehDoGithub(config) && secret !== undefined && !temCredencialLiteral(headers)) {
+      headers = { ...(headers ?? {}), ...fillCredential({ Authorization: CREDENTIAL_PLACEHOLDER }, secret, { envFallback: false }) };
+    }
+    const faltando = faltaCredencial(config, env, headers, secret);
     return {
       ...config,
-      env: fillCredential(config.env, secret, { envFallback: true }),
-      headers: fillCredential(config.headers, secret, { envFallback: false }),
+      env,
+      headers,
+      ...(faltando ? { credencialFaltando: mensagemDeCredencialFaltando(config) } : {}),
     };
+  }
+
+  /**
+   * O token que a conexão do catálogo guarda e que o servidor dela pode usar.
+   * O cofre do servidor já guarda "Bearer ..."; o token pessoal do GitHub é
+   * guardado puro, e o servidor não o aceita sem o esquema.
+   */
+  private doServico(config: McpServerConfig): string | undefined {
+    if (!ehDoGithub(config)) return undefined;
+    const token = githubToken(this.secrets);
+    return token === undefined || /^(bearer|basic|token)\s/i.test(token) ? token : `Bearer ${token}`;
+  }
+
+  /**
+   * Se o servidor tem a credencial de que precisa: `ok`, `falta`, ou
+   * `dispensa` quando o cadastro não referencia nenhuma. É o que a vitrine lê
+   * para dizer "falta o token" antes de a pessoa descobrir testando.
+   */
+  async credencialDoServidor(name: string): Promise<"ok" | "falta" | "dispensa"> {
+    const row = await this.row(name);
+    if (row === undefined) throw new Error(`servidor MCP "${name}" nao cadastrado`);
+    const config = await this.connectable(row);
+    const original = toEntry(row).config;
+    const referencia = temMarcador(original) || ehDoGithub(original);
+    // Cabeçalho de credencial escrito à mão também é credencial.
+    if (!referencia) return temCredencialLiteral(original.headers) ? "ok" : "dispensa";
+    return config.credencialFaltando === undefined ? "ok" : "falta";
   }
 
   /**
@@ -718,3 +759,39 @@ McpRegistry.observe((name, outcome) => {
     console.error(`guardar a saúde de ${name} falhou: ${err instanceof Error ? err.message : String(err)}`);
   });
 });
+
+/**
+ * O servidor remoto do GitHub, e só pelo endereço: o token pessoal não vai para
+ * um host que apenas se chama `github`.
+ */
+function ehDoGithub(config: { url?: string; transport?: string }): boolean {
+  return config.transport !== "stdio" && itemDoHost(config.url)?.id === "github";
+}
+
+function temMarcador(config: { env?: Record<string, string>; headers?: Record<string, string> }): boolean {
+  return [...Object.values(config.env ?? {}), ...Object.values(config.headers ?? {})].includes(CREDENTIAL_PLACEHOLDER);
+}
+
+/** Há marcador que ficou sem valor, ou o servidor do GitHub sem cabeçalho nem token. */
+function faltaCredencial(
+  config: McpServerConfig,
+  env: Record<string, string> | undefined,
+  headers: Record<string, string> | undefined,
+  secret: string | undefined,
+): boolean {
+  const sobrou = (entrada: Record<string, string> | undefined, preenchido: Record<string, string> | undefined): boolean =>
+    Object.entries(entrada ?? {}).some(([k, v]) => v === CREDENTIAL_PLACEHOLDER && preenchido?.[k] === undefined);
+  if (sobrou(config.env, env) || sobrou(config.headers, headers)) return true;
+  return ehDoGithub(config) && secret === undefined && !temCredencialLiteral(config.headers);
+}
+
+function mensagemDeCredencialFaltando(config: McpServerConfig): string {
+  const item = conexaoDoServidor(config);
+  const conexao = item?.name ?? config.name;
+  // Agrupado só pelo nome, em outro endereço: o token da conexão não é dele, e
+  // a credencial se cola nos detalhes técnicos do próprio servidor.
+  if (item !== undefined && itemDoHost(config.url)?.id !== item.id) {
+    return `falta a credencial do servidor "${config.name}"; cole o token nos detalhes técnicos dele, em Conexões > ${conexao}`;
+  }
+  return `falta a credencial de ${conexao}; cole o token em Conexões > ${conexao}`;
+}
