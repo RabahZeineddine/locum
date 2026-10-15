@@ -1,5 +1,6 @@
 import { IMAGEM_DO_GRAFANA } from "./grafana-service.js";
 import { claudeImportService } from "./claude-import.js";
+import { estadoDoServidor, type ConnectionReason, type ConnectionState } from "./conexao-estado.js";
 import { carregarFontesDeUso, quemUsa, type FontesDeUso, type UsoDaConexao } from "./conexao-uso.js";
 import { githubService, type GithubService } from "./github-service.js";
 import { chaveDoClienteOAuth, mcpOAuthService, type McpOAuthService, type PreRegisteredClient } from "./mcp-oauth-service.js";
@@ -85,14 +86,7 @@ export type ConnectionCategory = "dev" | "communication" | "work" | "observabili
  */
 export type ConnectionKind = "github" | "oauth" | "panel" | "soon";
 
-/**
- * `attention`: falta uma ação da pessoa (autorizar, religar). `error`: o
- * servidor foi procurado e falhou, e `detail` traz o que ele respondeu.
- */
-export type ConnectionState = "connected" | "attention" | "error" | "available" | "soon";
-
-/** Por que a conexão não está ok. A tela traduz o código; o texto cru da falha vai em `detail`. */
-export type ConnectionReason = "needs-auth" | "disabled" | "failing";
+export type { ConnectionReason, ConnectionState } from "./conexao-estado.js";
 
 export interface CatalogEntry {
   id: string;
@@ -146,8 +140,12 @@ export interface Connection extends CatalogEntry {
   detail: string | null;
   /** Ferramentas da última lista guardada, sem subir o servidor. Nulo quando nunca listou. */
   toolCount: number | null;
-  /** Há servidor MCP cadastrado por trás desta conexão. */
-  mcp: boolean;
+  /**
+   * Os servidores MCP cadastrados que esta conexão realmente usa: um para o
+   * serviço do catálogo, um para o próprio, todas as instâncias do Grafana, e
+   * o servidor escolhido como origem do Slack. Vazio quando não há nenhum.
+   */
+  servers: string[];
   /** Trackers de tarefas ligados que moram nesta conexão (Jira, Shortcut, GitHub Issues). */
   trackers: number;
 }
@@ -208,7 +206,7 @@ export class ConnectionService {
     }
 
     const doCatalogo = await Promise.all(
-      CATALOG.map((entry) => this.estado(entry, porNome.get(entry.id), ligados.get(entry.id) ?? 0)),
+      CATALOG.map((entry) => this.estado(entry, porNome, ligados.get(entry.id) ?? 0)),
     );
 
     const proprios: Connection[] = await Promise.all(
@@ -227,7 +225,7 @@ export class ConnectionService {
           custom: true,
           account: null,
           toolCount: await this.toolCount(s.config.name),
-          mcp: true,
+          servers: [s.config.name],
           trackers: 0,
           // Servidor próprio sem credencial é o que não pede OAuth: `addCustom`
           // só cadastra sem conectar quando a sonda não achou autorização.
@@ -240,7 +238,17 @@ export class ConnectionService {
 
   /** Automações e agents que dependem do servidor desta conexão. */
   async usage(id: string): Promise<UsoDaConexao[]> {
-    return quemUsa(id, await this.deps.fontesDeUso!());
+    const conexao = (await this.list()).find((c) => c.id === id);
+    const fontes = await this.deps.fontesDeUso!();
+    const porId = new Map<string, UsoDaConexao>();
+    for (const servidor of conexao?.servers ?? []) {
+      for (const uso of quemUsa(servidor, fontes)) {
+        const chave = `${uso.tipo}:${uso.id}`;
+        const antes = porId.get(chave);
+        porId.set(chave, antes === undefined ? uso : { ...antes, como: [...new Set([...antes.como, ...uso.como])] });
+      }
+    }
+    return [...porId.values()];
   }
 
   private async toolCount(nome: string): Promise<number | null> {
@@ -447,9 +455,14 @@ export class ConnectionService {
     return achada;
   }
 
-  private async estado(entry: CatalogEntry, cadastro: McpServerEntry | undefined, trackers: number): Promise<Connection> {
+  private async estado(
+    entry: CatalogEntry,
+    porNome: Map<string, McpServerEntry>,
+    trackers: number,
+  ): Promise<Connection> {
+    const cadastro = porNome.get(entry.id);
     const base = {
-      mcp: cadastro !== undefined,
+      servers: cadastro === undefined ? [] : [entry.id],
       trackers,
       ...entry,
       custom: false,
@@ -476,17 +489,23 @@ export class ConnectionService {
         if (entry.id === "slack") {
           const s = await this.deps.slack.get();
           if (s.server === null) return { ...base, state: "available" };
-          // O servidor oficial é o único com cadastro: a origem por outro
-          // servidor MCP não tem saúde a mostrar aqui.
-          return { ...base, ...(cadastro !== undefined && s.server === "slack" ? estadoDoServidor(cadastro, true) : { state: "connected" as const, reason: null, detail: null }) };
+          // A conexão do Slack é o servidor que serve de origem, o oficial ou
+          // outro; a saúde e as ferramentas vêm dele.
+          const origem = porNome.get(s.server);
+          const servers = origem === undefined ? [] : [s.server];
+          const estado =
+            origem === undefined
+              ? { state: "connected" as const, reason: null, detail: null }
+              : estadoDoServidor(origem, true);
+          return { ...base, servers, toolCount: servers[0] === undefined ? null : await this.toolCount(servers[0]), ...estado };
         }
         if (entry.id === "grafana") {
-          const instancias = (await this.deps.mcp.list()).filter((s) => ehDoGrafana(s.config));
+          const instancias = [...porNome.values()].filter((s) => ehDoGrafana(s.config));
           if (instancias.length === 0) return { ...base, state: "available" };
           // A pior instância decide: uma com falha basta para a conexão pedir olhar.
           const estados = instancias.map((i) => estadoDoServidor(i, true));
           const pior = estados.find((e) => e.state === "error") ?? estados.find((e) => e.state === "attention") ?? estados[0]!;
-          return { ...base, ...pior, mcp: true };
+          return { ...base, ...pior, servers: instancias.map((i) => i.config.name) };
         }
         if (entry.id === TEAMS_SERVER) {
           return { ...base, state: this.deps.oauth.status(TEAMS_SERVER).connected ? "connected" : "available" };
@@ -521,25 +540,4 @@ async function clienteGuardado(settings: Pick<SettingsService, "get">, nome: str
   } catch {
     return undefined;
   }
-}
-
-
-/**
- * O estado de uma conexão que é um servidor MCP cadastrado, a partir do
- * cadastro e de a autorização estar valendo.
- *
- * A ordem é a da ação que a pessoa tem a fazer: ligar, depois autorizar, e só
- * então olhar a falha. Credencial recusada é autorização, não erro: o remédio é
- * reconectar, e dizer "erro" mandaria a pessoa procurar o que não quebrou.
- */
-export function estadoDoServidor(
-  servidor: Pick<McpServerEntry, "enabled" | "health">,
-  autorizado: boolean,
-): { state: ConnectionState; reason: ConnectionReason | null; detail: string | null } {
-  const { health } = servidor;
-  if (!servidor.enabled) return { state: "attention", reason: "disabled", detail: null };
-  if (!autorizado || health.needsAuth) return { state: "attention", reason: "needs-auth", detail: null };
-  const falhando = health.lastFailureAt !== null && (health.lastOkAt === null || health.lastFailureAt > health.lastOkAt);
-  if (falhando) return { state: "error", reason: "failing", detail: health.lastError };
-  return { state: "connected", reason: null, detail: null };
 }

@@ -1,5 +1,4 @@
 import { generateText } from "ai";
-import { buildProviders } from "../src/providers/registry.js";
 import { ClaudeCodeRuntime } from "../src/runtimes/claude-code.js";
 import { CODEX_DEFAULT_MODEL, CodexRuntime } from "../src/runtimes/codex.js";
 import { AgentBuilder, type CatalogoDoCriador, type Gerador } from "../src/services/agent-builder.js";
@@ -51,7 +50,7 @@ async function gerador(): Promise<Gerador | null> {
   const guardado = await settingsService.get(CHAVE_DO_MODELO);
   const corte = guardado?.indexOf("/") ?? -1;
   if (guardado === undefined || guardado === null || corte < 1) return null;
-  const entry = buildProviders()[guardado.slice(0, corte)];
+  const entry = providerService.entries()[guardado.slice(0, corte)];
   if (!entry?.model || !entry.available()) return null;
   const modelo = entry.model(guardado.slice(corte + 1));
   return {

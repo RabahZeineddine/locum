@@ -2,6 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { CabecalhoDaTela } from "@/components/cabecalho-da-tela";
 import { Button } from "@/components/ui/button";
 import { call, invalidateReads, read, useRead, type ReadResult } from "@/lib/bridge";
+import { avisoDoEnderecoDoOllama } from "@/lib/conexao-acao";
 import { rotuloDoModelo, rotuloDoProvedor } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
 import { Plus } from "lucide-react";
@@ -284,6 +285,7 @@ function EnderecoDoOllama({ recarregar }: { recarregar: () => Promise<void> }) {
   if (lido.data === undefined) return null;
   const { saved, env } = lido.data;
   const atual = valor ?? saved ?? env ?? "";
+  const aviso = avisoDoEnderecoDoOllama(atual);
 
   const gravar = (endereco: string | null): void => {
     setEnviando(true);
@@ -327,7 +329,7 @@ function EnderecoDoOllama({ recarregar }: { recarregar: () => Promise<void> }) {
         <Button
           className="cursor-pointer"
           data-locum-ollama-salvar=""
-          disabled={enviando || atual.trim() === "" || atual.trim() === saved}
+          disabled={enviando || atual.trim() === "" || atual.trim() === saved || aviso === "invalid"}
           size="sm"
           type="submit"
         >
@@ -342,6 +344,14 @@ function EnderecoDoOllama({ recarregar }: { recarregar: () => Promise<void> }) {
       <p className="text-muted-foreground text-xs">
         {saved === null && env !== null ? t("settings.providers.ollama.fromEnv") : t("settings.providers.ollama.hint")}
       </p>
+      {aviso === null ? null : (
+        <p
+          className={cn("text-xs", aviso === "invalid" ? "text-sev-critical" : "text-amber-400")}
+          data-locum-ollama-aviso={aviso}
+        >
+          {t(`settings.providers.ollama.${aviso}`)}
+        </p>
+      )}
       {erro === null ? null : <p className="text-sev-critical text-xs">{erro}</p>}
     </form>
   );

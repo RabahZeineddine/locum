@@ -104,3 +104,14 @@ test("GLM só aparece quando já está configurado nesta máquina", async () => 
   assert.equal(glm()?.available, false);
   assert.equal(glm()?.visible, true);
 });
+
+test("GLM desligado continua na tela, para religar ou esquecer a chave", async () => {
+  const { servico } = montar();
+  const glm = () => servico.listProviders().find((p) => p.name === "glm");
+
+  await servico.setSecret("glm", "chave-no-cofre");
+  await servico.setEnabled("glm", false);
+
+  assert.equal(glm()?.disabled, true);
+  assert.equal(glm()?.visible, true);
+});

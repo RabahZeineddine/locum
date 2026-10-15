@@ -125,7 +125,7 @@ que a interface vai usar.
 | passo de ação que abre tarefa | `tracker.create_issue` monta o item e para na fila; corpo escrito por um passo de modelo antes dele, modo travado em `approve` pelo handler |
 | descoberta de skills e seleção por arquivo alterado | pronto |
 | servidor MCP próprio | 38 ferramentas de leitura, configuração, biblioteca, execução e iniciativa sobre a camada de serviço, servido pelo próprio app em `--mcp` e cadastrado no Claude Code por um botão em Conexões |
-| vitrine de conexões | catálogo de serviços com logo, estado, busca e categoria em Conexões; servidor MCP remoto com OAuth e registro automático de cliente (Notion, Atlassian, Figma) liga num clique pelo navegador, com PKCE, retorno em loopback, token no keychain e renovação antes de cada uso; servidor próprio entra pelo endereço; verificado contra um servidor de autorização de mentira em 127.0.0.1, ainda não contra os serviços de verdade |
+| vitrine de conexões (a tela Conexões, antes Apps) | catálogo de serviços com logo, estado, busca e categoria em Conexões; servidor MCP remoto com OAuth e registro automático de cliente (Notion, Atlassian, Figma) liga num clique pelo navegador, com PKCE, retorno em loopback, token no keychain e renovação antes de cada uso; servidor próprio entra pelo endereço; verificado contra um servidor de autorização de mentira em 127.0.0.1, ainda não contra os serviços de verdade |
 | iniciativa como unidade de trabalho (I1) | `InitiativeService` cadastra, liga servidor MCP, workspace, agent e link; `ContextStore` guarda a pasta de contexto em disco e o hash do arquivo; contexto só muda por proposta aprovada na fila, decidida pelo agent de sistema `locum-context`; agent ligado a uma iniciativa não pode passar a exigir servidor de fora dela, checado ao ligar e a cada `upsert` de spec |
 | ferramentas de iniciativa no chat interno | 13 entradas do catálogo (`electron/chat-tools.ts`), de um total de 26, para criar e configurar iniciativa, ligar agent, propor mudança de contexto e cadastrar prompt |
 | prompts por iniciativa | `PromptService` com versionamento; leitura por iniciativa via `list_prompts({ initiativeId })`, sem ligação a agent nesta rodada |
@@ -151,7 +151,7 @@ que a interface vai usar.
 | layout e roteamento | barra lateral com os quatro destinos, rota por hash com sub-rota de detalhe, paleta de comandos pelo atalho, ainda sem comando |
 | tela de execuções | lista virtualizada com estado, custo e agent, detalhe com a linha do tempo dos passos e botão de reexecutar por passo |
 | tela de agents | somente leitura: lista, histórico de versões, comparação de spec linha a linha, e por passo o modelo pedido contra o que esta máquina resolve |
-| tela de configuração | provedores com disponibilidade e campo de chave por provedor, cadastro de gateway compatível com OpenAI, tabela de substituição de modelo, servidores MCP com testar conexão e listar ferramentas por token, credencial do GitHub com guardar, conferir e esquecer, repositórios observados com gatilho de varredura e filtro de autoria, canais do Slack observados por servidor MCP, preço por modelo editável na linha de cada provedor, e orçamentos com o gasto do dia em dólar e em tokens, avisando quando um modelo sem preço deixa o teto medindo só em tokens |
+| tela de configuração | Geral, Assistente e Ferramentas (Claude Code e opencode, que deixaram de ser conexões); provedores, servidores, trackers e canais moraram aqui e foram para Modelos e Conexões, ver a entrada "Conexões, Modelos e Configuração" |
 | grafo da execução | desenho somente leitura sobre a família de workflow do AI Elements, lendo `needs` do spec, com estado por cor da borda |
 | base de i18n | i18next e react-i18next com dicionário em `app/locales`, idioma vindo de `app.getLocale()` pela ponte, preferência em `settings` por cima, plural por `Intl.PluralRules` e chave ausente estourando fora de app empacotado; 699 chaves-folha em `en.json` e 729 em `pt-BR.json`, as 30 a mais são a forma plural `_zero`, que o português usa e o `Intl.PluralRules` do inglês não distingue |
 | texto do processo principal | menu da bandeja, notificação, item de login e a saída do `--smoke` pelo mesmo dicionário, com instância própria do i18next sem React |
@@ -164,9 +164,9 @@ que a interface vai usar.
 | fumaça fora do banco real | `--smoke` sem `LOCUM_HOME` roda numa pasta de rascunho vazia, semeada com o agent `pr-review` e apagada na saída; com `LOCUM_HOME`, como o loop faz, a pasta escolhida vale |
 | fumaça contra o pacote | `npm run smoke:dist` roda o binário de dentro do `.app` com `--smoke`, com a mesma bateria do smoke de desenvolvimento |
 | atualização automática | electron-updater atrás de interruptor em `settings`, desligado por padrão, sem carregar o módulo nem sair para a rede enquanto estiver desligado |
-| credencial do GitHub na interface | seção na configuração guarda o token no keychain pelo `GithubService`, mostra se existe, de quem é e quando foi conferido, e nunca o valor; o botão de conferir pergunta ao GitHub a conta e os escopos |
-| repositórios observados na interface | seção na configuração cadastra dono, padrão de repositório e cadência, e mostra a última varredura e a próxima; o gatilho nasce parado e ligar é o segundo clique |
-| canais do Slack na interface | seção na configuração escolhe qual servidor MCP responde pelo Slack e quais canais o Locum lê, sem campo de token: a credencial é a do servidor MCP |
+| credencial do GitHub na interface | detalhe da conexão GitHub em Conexões guarda o token no keychain pelo `GithubService`, mostra se existe, de quem é e quando foi conferido, e nunca o valor; o botão de conferir pergunta ao GitHub a conta e os escopos |
+| repositórios observados na interface | detalhe da conexão GitHub em Conexões cadastra dono, padrão de repositório e cadência, e mostra a última varredura e a próxima; o gatilho nasce parado e ligar é o segundo clique |
+| canais do Slack na interface | detalhe da conexão Slack em Conexões escolhe qual servidor MCP responde pelo Slack e quais canais o Locum lê, sem campo de token: a credencial é a do servidor MCP |
 | guia da primeira execução real | `docs/primeira-execucao.md` na ordem em que alguém faria, do provedor ao primeiro review na fila, com a seção de tracker explicando onde pegar a credencial, o que o Locum cria e por que abrir tarefa nunca é automático |
 | teste unitário | `npm test` pelo executor embutido do Node com `tsx` como carregador, sem dependência nova; 35 arquivos em `app/test`, banco em memória montado pelas migrações, e `LOCUM_HOME` apontado para pasta temporária antes de qualquer importação, para que nenhum teste alcance o banco de verdade; cobre ordenação topológica, resolução de fallback com ciclo, rebaixamento de modo de ação, o run que termina depois da decisão, aprovada ou rejeitada, e o orçamento: custo pelo preço cadastrado, gasto gravado ao pausar e ao falhar, e teto em dólar e em tokens interrompendo o runtime nativo, o corte do diff: descarte por tipo de arquivo, teto por arquivo inteiro e a lista chegando ao prompt, a edição da revisão que não troca o alvo, o esquema da triagem com categoria e a categoria chegando à auditoria, o prompt da auditoria com focos, rubrica e intenção do pull request, a confiança obrigatória na saída e aceita na edição, o veredito no esquema da auditoria, como evento da review, trocável na edição e segurando a fila em modo automático, o status de CI: estado por conclusão do check, leitura pelo commit de cabeça, falha de leitura sem derrubar a ingestão, resumo gravado no evento e chegando à auditoria, o pool MCP: duas execuções no mesmo processo do servidor, fechamento depois do ócio e troca de cadastro, e o cache de prompt: ordem do estável antes do variável, marca no fim do estável e tokens de cache gravados no passo; e as iniciativas: escopo de agent fora dos servidores da iniciativa, o run da decisão de contexto não contando execução nova, `InMemoryTransport` do MCP SDK ligando cliente e servidor sem processo externo, e `staleDays` configurável no painel do Início |
 
@@ -1204,7 +1204,7 @@ de uma vez e roda "Executar agora" sem evento.
 Automações e ganha Apps. Apps é a vitrine de conexões que morava em
 Configuração (o endereço antigo redireciona), e cada app conectado mostra
 "Testar conexão" e a lista do que oferece como gatilho e como passo.
-Configuração fica só com Geral e Modelos. Automações lista cada automação com o
+Configuração ficou, então, só com Geral e Modelos (hoje, ver "Conexões, Modelos e Configuração"). Automações lista cada automação com o
 que a acorda, ligar e "Executar agora"; "Nova automação" parte de um modelo
 (responder no Slack, Slack para Jira, menções, resumo diário, em branco), grava
 com o gatilho desligado e abre o canvas. O canvas (React Flow) tem paleta à
@@ -1234,6 +1234,30 @@ passo. O canvas lista os agents da biblioteca na paleta, o painel do passo
 escolhe o agent e escreve só a tarefa, e o passo de IA avulso tem
 "Transformar em agent da biblioteca". O fluxo em lista continua em
 `#/agents/<id>`, fora da barra.
+
+**Conexões, Modelos e Configuração.** Apps voltou a se chamar Conexões
+(`connections`; `apps`, `settings/connections` e `configuracao/*` ainda
+chegam). A tela tem "Suas conexões" e o botão "Adicionar conexão", que abre um
+painel lateral com o catálogo; cada conexão abre numa página própria
+(`connections/<id>`) com estado, conta, Testar, o que libera, ferramentas, quem
+usa, o formulário do tipo e, atrás de "detalhes técnicos", o endereço ou o
+comando. Os trackers moram na conexão dona (Jira em Atlassian, Shortcut, issues
+do GitHub), e `settings/trackers/<id>` leva até ela. Uma regra só diz o estado
+(`app/src/services/conexao-estado.ts`): ligada e autorizada mas nunca testada
+aparece como conectada com o motivo `untested`, igual na lista, no cabeçalho e
+no ponto do servidor. Uma conexão pode ter vários servidores MCP (as instâncias
+`grafana-<nome>`, o servidor de origem do Slack): Testar, ferramentas e "Quem
+usa" olham todos. Atlassian e Shortcut só com tracker aparecem conectadas, mas
+o botão é "Conectar servidor MCP" até existir servidor; Desconectar só existe
+com servidor cadastrado. Desligar um servidor em uso pede confirmação.
+
+Modelos tem rota própria (`models`): provedores, chave, endereço do Ollama
+editável (setting `ollama:baseUrl`, com aviso quando não termina em `/v1`), GLM
+só aparece se configurado, ou desligado com chave, e a ajuda de assinatura do
+Codex e do Claude Code. Configuração ficou com Geral, Assistente e Ferramentas;
+Claude Code e opencode saíram do catálogo de conexões e os ids antigos levam a
+`settings/tools`. O criador de agent lê os provedores por
+`providerService.entries()`, o mesmo registro do executor.
 
 **Automações, fatia 6: ação em app e chamada de API.** Duas ações novas na
 gate, em `src/actions/generic.ts`. `mcp.call` chama qualquer ferramenta de um

@@ -1,11 +1,12 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { call, read, type ReadResult } from "@/lib/bridge";
+import { call, invalidateReads, read, type ReadResult } from "@/lib/bridge";
 import { cn } from "@/lib/utils";
 import { RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ehLeitura } from "../../../src/config/leitura.js";
+import { saudeDoServidor } from "../../../src/services/conexao-estado.js";
 import { Credenciais } from "./blocos";
 import { quando } from "./sessoes";
 
@@ -21,13 +22,6 @@ export type EstadoDoTeste =
   | { fase: "testando" }
   | { fase: "respondeu"; teste: Teste }
   | { fase: "recusado"; erro: string };
-
-/** Ligado e com a falha mais recente depois do último sucesso, ou pedindo autorização. */
-export function comProblema(servidor: Servidor): boolean {
-  const { health } = servidor;
-  const falhando = health.lastFailureAt !== null && (health.lastOkAt === null || health.lastFailureAt > health.lastOkAt);
-  return servidor.enabled && (health.needsAuth || falhando);
-}
 
 export function destinoDe(servidor: Servidor): string {
   return servidor.config.transport === "stdio" ? (servidor.config.command ?? []).join(" ") : (servidor.config.url ?? "");
@@ -80,11 +74,6 @@ export function TagsDoServidor({ servidor, usadoPor }: { servidor: Servidor; usa
   );
 }
 
-/** Falha mais recente depois do último sucesso: o que o servidor responde hoje é erro. */
-function estaFalhando(saude: Servidor["health"]): boolean {
-  return saude.lastFailureAt !== null && (saude.lastOkAt === null || saude.lastFailureAt > saude.lastOkAt);
-}
-
 /**
  * O estado do servidor cadastrado: ponto, selo da última conexão, o erro
  * inteiro quando falhou, o interruptor de ligado e, para o servidor próprio
@@ -92,11 +81,14 @@ function estaFalhando(saude: Servidor["health"]): boolean {
  */
 export function EstadoDoServidor({
   autorizavel,
+  emUso = false,
   onMudou,
   servidor,
 }: {
   /** Servidor http fora do catálogo: o OAuth do Locum resolve sem passar pelo cartão. */
   autorizavel: boolean;
+  /** Alguma automação ou agent usa o servidor: desligar pede uma confirmação. */
+  emUso?: boolean;
   onMudou: () => void;
   servidor: Servidor;
 }) {
@@ -105,6 +97,7 @@ export function EstadoDoServidor({
   const saude = servidor.health;
   const [ocupado, setOcupado] = useState<"ligar" | "autorizar" | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const [confirmando, setConfirmando] = useState(false);
 
   const agir = (qual: NonNullable<typeof ocupado>, fazer: () => Promise<unknown>): void => {
     setOcupado(qual);
@@ -128,7 +121,7 @@ export function EstadoDoServidor({
         <span className="text-sm font-medium">{t(`settings.servers.dot.${chaveDoPonto(servidor.enabled, saude)}`)}</span>
         <SaudeDoServidor saude={saude} />
       </div>
-      {estaFalhando(saude) && saude.lastError !== null ? (
+      {saudeDoServidor(saude) === "failed" && saude.lastError !== null ? (
         <pre className="border-destructive/30 bg-destructive/5 text-destructive max-h-48 overflow-auto rounded-md border p-2 font-mono text-[11px] whitespace-pre-wrap">
           {saude.lastError}
         </pre>
@@ -138,11 +131,18 @@ export function EstadoDoServidor({
           className="cursor-pointer"
           data-locum-ligar-servidor={nome}
           disabled={ocupado !== null}
-          onClick={() => agir("ligar", () => call("mcp.setEnabled", nome, !servidor.enabled))}
+          onClick={() => {
+            if (servidor.enabled && emUso && !confirmando) {
+              setConfirmando(true);
+              return;
+            }
+            setConfirmando(false);
+            agir("ligar", () => call("mcp.setEnabled", nome, !servidor.enabled));
+          }}
           size="sm"
           variant={servidor.enabled ? "outline" : "default"}
         >
-          {t(servidor.enabled ? "settings.servers.turnOff" : "settings.servers.turnOn")}
+          {t(servidor.enabled ? (confirmando ? "settings.servers.turnOffConfirm" : "settings.servers.turnOff") : "settings.servers.turnOn")}
         </Button>
         {autorizavel ? (
           <Button
@@ -157,6 +157,11 @@ export function EstadoDoServidor({
           </Button>
         ) : null}
       </div>
+      {confirmando ? (
+        <p className="text-muted-foreground text-xs" data-locum-desligar-aviso={nome}>
+          {t("settings.servers.turnOffInUse")}
+        </p>
+      ) : null}
       {erro === null ? null : <p className="text-destructive text-xs">{erro}</p>}
     </section>
   );
@@ -175,10 +180,18 @@ export function FerramentasDoServidor({ servidor }: { servidor: Servidor }) {
 
   const carregar = (): void => {
     setErro(null);
-    call("mcp.tools", nome).then(setFerramentas, (falha: unknown) => {
-      setFerramentas([]);
-      setErro(falha instanceof Error ? falha.message : String(falha));
-    });
+    call("mcp.tools", nome).then(
+      (lista) => {
+        setFerramentas(lista);
+        // Listar grava a contagem no cadastro: "O que libera" acompanha.
+        invalidateReads("connections.list");
+      },
+      (falha: unknown) => {
+        setFerramentas([]);
+        setErro(falha instanceof Error ? falha.message : String(falha));
+        invalidateReads("connections.list");
+      },
+    );
   };
   useEffect(() => {
     if (servidor.enabled) carregar();
@@ -355,13 +368,8 @@ export function DetalhesTecnicos({
   );
 }
 
-function chaveDoPonto(ligado: boolean, saude: Servidor["health"]): "off" | "auth" | "failed" | "ok" | "untested" {
-  const falhando =
-    saude.lastFailureAt !== null && (saude.lastOkAt === null || saude.lastFailureAt > saude.lastOkAt);
-  if (!ligado) return "off";
-  if (saude.needsAuth) return "auth";
-  if (falhando) return "failed";
-  return saude.lastOkAt !== null ? "ok" : "untested";
+function chaveDoPonto(ligado: boolean, saude: Servidor["health"]): "off" | ReturnType<typeof saudeDoServidor> {
+  return ligado ? saudeDoServidor(saude) : "off";
 }
 
 /** Estado num relance: desligado, precisa autorizar, falhou, respondeu ou nunca testado. */
@@ -391,24 +399,23 @@ export function PontoDoServidor({ ligado, saude }: { ligado: boolean; saude: Ser
  */
 export function SaudeDoServidor({ saude }: { saude: Servidor["health"] }) {
   const { t, i18n } = useTranslation();
-  const falhando =
-    saude.lastFailureAt !== null && (saude.lastOkAt === null || saude.lastFailureAt > saude.lastOkAt);
+  const estado = saudeDoServidor(saude);
 
-  if (saude.needsAuth) {
+  if (estado === "auth") {
     return (
       <Badge data-locum-saude="autenticar" title={saude.lastError ?? undefined} variant="destructive">
         {t("settings.servers.health.needsAuth")}
       </Badge>
     );
   }
-  if (falhando) {
+  if (estado === "failed") {
     return (
       <span className="text-destructive text-xs" data-locum-saude="falhou" title={saude.lastError ?? undefined}>
         {t("settings.servers.health.failed", { when: quando(i18n.language, saude.lastFailureAt! / 1000) })}
       </span>
     );
   }
-  if (saude.lastOkAt !== null) {
+  if (estado === "ok" && saude.lastOkAt !== null) {
     return (
       <span className="text-muted-foreground text-xs" data-locum-saude="ok">
         {t("settings.servers.health.ok", { when: quando(i18n.language, saude.lastOkAt / 1000) })}

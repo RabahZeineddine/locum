@@ -2,6 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CabecalhoDaTela } from "@/components/cabecalho-da-tela";
 import { call, invalidateReads, useRead, type ReadResult, type ReadState } from "@/lib/bridge";
+import { acaoDeLigar, destinoDeConexaoAntiga } from "@/lib/conexao-acao";
 import { liberaDaConexao } from "@/lib/conexao-libera";
 import { cn } from "@/lib/utils";
 import { ArrowLeft, Download, MessageSquare, Plug, Plus, Search, Server, Users, X } from "lucide-react";
@@ -209,7 +210,7 @@ function textoDoEstado(c: Conexao, t: (chave: string, opcoes?: Record<string, un
 /** "2 gatilhos, 1 ação, 12 ferramentas": o que a conexão libera, na língua da automação. */
 function Resumo({ conexao }: { conexao: Conexao }) {
   const { t } = useTranslation();
-  const libera = liberaDaConexao(conexao.id, { servidor: conexao.mcp });
+  const libera = liberaDaConexao(conexao.id, { servidor: conexao.servers.length > 0 });
   const partes = [
     libera.gatilhos.length > 0 ? t("connections.offers.triggers", { count: libera.gatilhos.length }) : null,
     libera.acoes.length > 0 ? t("connections.offers.actions", { count: libera.acoes.length }) : null,
@@ -509,6 +510,7 @@ function DetalheDaConexao({ id, navegar }: { id: string; navegar: TelaProps["nav
   const servidores = useDadosEstaveis(useRead("mcp.list"));
   const credenciais = useDadosEstaveis(useRead("credentials.overview"));
   const origens = useRead("claudeImport.origins");
+  const trackers = useRead("trackers.list");
   const usoDeIniciativas = useRead("mcp.usage");
   const usadoPor = useDadosEstaveis(useRead("connections.usage", id));
   const [ligando, setLigando] = useState(false);
@@ -517,6 +519,15 @@ function DetalheDaConexao({ id, navegar }: { id: string; navegar: TelaProps["nav
 
   const voltar = (): void => navegar("connections");
   const conexao = (lista.data ?? []).find((c) => c.id === id);
+  const naoExiste = lista.status !== "loading" && conexao === undefined;
+
+  // Endereço antigo (id de tracker, Claude Code, opencode): leva ao lugar de hoje.
+  useEffect(() => {
+    if (!naoExiste || trackers.status === "loading") return;
+    const destino = destinoDeConexaoAntiga(id, trackers.data ?? []);
+    navegar(destino.rota, destino.detalhe);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [naoExiste, trackers.status, id]);
 
   if (lista.status === "loading") {
     return <p className="text-muted-foreground mx-auto w-full max-w-3xl pt-4 text-sm">{t("connections.loading")}</p>;
@@ -530,13 +541,16 @@ function DetalheDaConexao({ id, navegar }: { id: string; navegar: TelaProps["nav
     );
   }
 
-  const servidor = (servidores.data ?? []).find((s) => s.config.name === id);
-  const credencial = (credenciais.data?.refs ?? []).find((r) => r.users.some((u) => u.kind === "mcp" && u.name === id));
-  const libera = liberaDaConexao(conexao.id, { servidor: conexao.mcp });
+  const doServidor = (servidores.data ?? []).filter((s) => conexao.servers.includes(s.config.name));
+  const credencial = (credenciais.data?.refs ?? []).find((r) =>
+    r.users.some((u) => u.kind === "mcp" && conexao.servers.includes(u.name)),
+  );
+  const acao = acaoDeLigar(conexao);
+  const libera = liberaDaConexao(conexao.id, { servidor: conexao.servers.length > 0 });
   const porque = textoDoEstado(conexao, t);
   const painel = PAINEIS[conexao.id];
   const chave = `connections.catalog.${conexao.id}`;
-  const iniciativas = usoDeIniciativas.data?.[id] ?? [];
+  const iniciativas = conexao.servers.flatMap((nome) => usoDeIniciativas.data?.[nome] ?? []);
   const quemUsa = usadoPor.data ?? [];
 
   const agir = (fazer: () => Promise<unknown>, depois?: () => void): void => {
@@ -595,7 +609,9 @@ function DetalheDaConexao({ id, navegar }: { id: string; navegar: TelaProps["nav
             "rounded-md border px-3 py-2 text-xs break-words",
             conexao.state === "error"
               ? "border-destructive/30 bg-destructive/5 text-destructive"
-              : "border-amber-500/30 bg-amber-500/5 text-amber-400",
+              : conexao.reason === "untested"
+                ? "border-border text-muted-foreground"
+                : "border-amber-500/30 bg-amber-500/5 text-amber-400",
           )}
           data-locum-conexao-motivo={conexao.reason ?? ""}
         >
@@ -603,10 +619,10 @@ function DetalheDaConexao({ id, navegar }: { id: string; navegar: TelaProps["nav
         </p>
       )}
 
-      {conexao.kind === "oauth" && !conexao.custom ? (
+      {acao === null ? null : (
         <div className="flex flex-col gap-2">
           <div className="flex flex-wrap gap-2">
-            {conexao.state === "connected" ? (
+            {acao === "disconnect" ? (
               <Button
                 className="cursor-pointer"
                 disabled={ligando}
@@ -616,39 +632,61 @@ function DetalheDaConexao({ id, navegar }: { id: string; navegar: TelaProps["nav
                 {t("connections.disconnect")}
               </Button>
             ) : (
-              <Button className="cursor-pointer" disabled={ligando} onClick={() => agir(() => call("connections.connect", conexao.id))}>
-                {t(ligando ? "connections.connecting" : conexao.state === "available" ? "connections.connect" : "connections.reconnect")}
+              <Button
+                className="cursor-pointer"
+                data-locum-conectar-mcp={conexao.id}
+                disabled={ligando}
+                onClick={() => agir(() => call("connections.connect", conexao.id))}
+              >
+                {t(
+                  ligando
+                    ? "connections.connecting"
+                    : acao === "reconnect"
+                      ? "connections.reconnect"
+                      : conexao.state === "connected"
+                        ? "connections.connectServer"
+                        : "connections.connect",
+                )}
               </Button>
             )}
           </div>
+          {acao === "connect" && conexao.state === "connected" ? (
+            <p className="text-muted-foreground text-xs">{t("connections.noServerHint")}</p>
+          ) : null}
           <p className="text-muted-foreground text-xs">{t(ligando ? "connections.oauth.waiting" : "connections.oauth.how")}</p>
         </div>
-      ) : null}
+      )}
 
       {conexao.state === "soon" ? (
         <p className="border-border text-muted-foreground rounded-md border border-dashed px-3 py-2 text-xs">{t(`${chave}.soon`)}</p>
       ) : null}
 
-      {servidor === undefined ? null : (
+      {doServidor.map((servidor) => (
         <EstadoDoServidor
           autorizavel={conexao.custom && servidor.config.transport === "http"}
+          emUso={quemUsa.length > 0 || iniciativas.length > 0}
+          key={servidor.config.name}
           onMudou={() => {
             invalidateReads("connections.list");
             invalidateReads("mcp.list");
           }}
           servidor={servidor}
         />
-      )}
+      ))}
 
-      {conexao.mcp ? <TesteDaConexao servidor={conexao.id} /> : null}
+      {doServidor.map((servidor) => (
+        <TesteDaConexao key={servidor.config.name} servidor={servidor.config.name} />
+      ))}
 
       <Bloco dica={t("connections.detail.offersHint")} titulo={t("connections.offers.title")}>
         <Libera conexao={conexao} libera={libera} />
       </Bloco>
 
-      {servidor === undefined ? null : (
+      {doServidor.length === 0 ? null : (
         <Bloco dica={t("connections.detail.toolsHint")} titulo={t("connections.detail.tools")}>
-          <FerramentasDoServidor key={servidor.config.name} servidor={servidor} />
+          {doServidor.map((servidor) => (
+            <FerramentasDoServidor key={servidor.config.name} servidor={servidor} />
+          ))}
         </Bloco>
       )}
 
@@ -704,22 +742,25 @@ function DetalheDaConexao({ id, navegar }: { id: string; navegar: TelaProps["nav
 
       {erro === null ? null : <p className="text-sev-critical text-xs break-words">{erro}</p>}
 
-      {servidor === undefined ? null : (
+      {doServidor.length === 0 ? null : (
         <details className="border-border rounded-lg border" data-locum-tecnico="">
           <summary className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-2.5 text-xs font-medium select-none">
             {t("connections.detail.technical")}
           </summary>
           <div className="border-border border-t px-4 py-4">
-            <DetalhesTecnicos
-              credencial={credencial === undefined ? undefined : credencial}
-              onMudou={() => {
-                invalidateReads("connections.list");
-                invalidateReads("mcp.list");
-                invalidateReads("credentials.overview");
-              }}
-              origem={origem}
-              servidor={servidor}
-            />
+            {doServidor.map((servidor) => (
+              <DetalhesTecnicos
+                credencial={credencial}
+                key={servidor.config.name}
+                onMudou={() => {
+                  invalidateReads("connections.list");
+                  invalidateReads("mcp.list");
+                  invalidateReads("credentials.overview");
+                }}
+                origem={origem}
+                servidor={servidor}
+              />
+            ))}
           </div>
         </details>
       )}

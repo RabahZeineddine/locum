@@ -677,7 +677,9 @@
         "save": "Save",
         "clear": "Clear",
         "hint": "The OpenAI-compatible API address, like http://127.0.0.1:11434/v1. Takes effect right away.",
-        "fromEnv": "Comes from the OLLAMA_BASE_URL variable. Saving an address here takes over from it."
+        "fromEnv": "Comes from the OLLAMA_BASE_URL variable. Saving an address here takes over from it.",
+        "invalid": "The address starts with http:// or https://, like http://127.0.0.1:11434/v1.",
+        "noV1": "The address does not end in /v1, where the OpenAI-compatible API lives. Check it before saving."
       },
       "subscriptionHelp": {
         "codex": "Uses your ChatGPT subscription through the Codex CLI. Install Codex, run \"codex login\" in a terminal and reopen Locum: it becomes available by itself.",
@@ -807,7 +809,9 @@
         "tokens_other": "{{count}} tok",
         "tokens_zero": "{{count}} tok",
         "reload": "List again"
-      }
+      },
+      "turnOffConfirm": "Turn off anyway",
+      "turnOffInUse": "Automations or agents use this server. Once it is off they stop running with it. Click again to turn it off."
     },
     "github": {
       "title": "GitHub credential",
@@ -1590,7 +1594,8 @@
     "reason": {
       "needs-auth": "Needs authorization, or the authorization expired. Reconnect.",
       "disabled": "Turned off: no automation uses this connection while it stays like this.",
-      "failing": "The last connection attempt failed."
+      "failing": "The last connection attempt failed.",
+      "untested": "On and authorized, but not tested yet. Use Test to check."
     },
     "offers": {
       "title": "What it unlocks",
@@ -1633,7 +1638,9 @@
       "removeAction": "Remove connection",
       "removeConfirm": "Confirm removal",
       "technical": "Technical details"
-    }
+    },
+    "connectServer": "Connect MCP server",
+    "noServerHint": "This connection works for token-based triggers, but it has no MCP server yet to give agents tools."
   },
   "claudeSessions": {
     "title": "Sessions",

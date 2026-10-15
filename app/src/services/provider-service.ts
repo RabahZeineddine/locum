@@ -448,7 +448,12 @@ export class ProviderService {
       requires: entry.requires,
       registered: entry.registered ?? null,
       disabled: this.desligados.has(name),
-      visible: !DE_EMPRESA.has(name) || entry.available() || this.configuradoPorFora(name),
+      // Desligado continua à vista: é por ali que se religa ou se esquece a chave.
+      visible:
+        !DE_EMPRESA.has(name) ||
+        entry.available() ||
+        this.configuradoPorFora(name) ||
+        this.desligados.has(name),
     }));
   }
 

@@ -1252,6 +1252,28 @@ async function checkRoutes(window: BrowserWindow): Promise<string> {
     }
   }
 
+  // Com o id da conexão no endereço: o alias carrega o id junto. O que não é
+  // conexão cai onde vale hoje (a conexão dona do tracker, a lista, ou a
+  // Configuração para o Claude Code e o opencode), nunca em "não encontrada".
+  const comId: [string, string, string][] = [
+    ["settings/connections/github", "connections", "github"],
+    ["apps/github", "connections", "github"],
+    ["configuracao/conexoes/github", "connections", "github"],
+    ["settings/trackers/qualquer-tracker", "connections", ""],
+    ["apps/claude-code", "settings", "tools"],
+    ["settings/connections/opencode", "settings", "tools"],
+  ];
+  for (const [velho, ativo, detalhe] of comId) {
+    await window.webContents.executeJavaScript(`(location.hash = "#/${velho}", null)`);
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    const chegou = (await window.webContents.executeJavaScript(
+      `(() => { const r = document.querySelector("[data-locum-probe=rota]"); return r ? r.dataset.ativo + "|" + r.dataset.detalhe : null; })()`,
+    )) as string | null;
+    if (chegou !== `${ativo}|${detalhe}`) {
+      throw new Error(`o hash antigo ${velho} levou a ${chegou} e nao a ${ativo}|${detalhe}`);
+    }
+  }
+
   return t("smoke.routes", { count: barra.length });
 }
 

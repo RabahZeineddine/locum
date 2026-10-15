@@ -701,7 +701,9 @@
         "save": "Salvar",
         "clear": "Apagar",
         "hint": "O endereço da API compatível com OpenAI, como http://127.0.0.1:11434/v1. Vale na hora.",
-        "fromEnv": "Vem da variável OLLAMA_BASE_URL. Salvar um endereço aqui passa a valer no lugar dela."
+        "fromEnv": "Vem da variável OLLAMA_BASE_URL. Salvar um endereço aqui passa a valer no lugar dela.",
+        "invalid": "O endereço começa com http:// ou https://, como http://127.0.0.1:11434/v1.",
+        "noV1": "O endereço não termina em /v1, onde fica a API compatível com OpenAI. Confira antes de salvar."
       },
       "subscriptionHelp": {
         "codex": "Usa a assinatura do ChatGPT pelo Codex CLI. Instale o Codex, rode \"codex login\" no terminal e reabra o Locum: ele fica disponível sozinho.",
@@ -836,7 +838,9 @@
         "tokens_other": "{{count}} tok",
         "tokens_zero": "{{count}} tok",
         "reload": "Listar de novo"
-      }
+      },
+      "turnOffConfirm": "Desligar mesmo assim",
+      "turnOffInUse": "Há automações ou agents usando este servidor. Desligado, eles deixam de rodar com ele. Clique de novo para desligar."
     },
     "github": {
       "title": "Credencial do GitHub",
@@ -1629,7 +1633,8 @@
     "reason": {
       "needs-auth": "Falta autorizar, ou a autorização venceu. Reconecte.",
       "disabled": "Desligada: nenhuma automação usa esta conexão enquanto estiver assim.",
-      "failing": "A última tentativa de conexão falhou."
+      "failing": "A última tentativa de conexão falhou.",
+      "untested": "Ligada e autorizada, mas ainda sem teste. Use Testar para conferir."
     },
     "offers": {
       "title": "O que libera",
@@ -1675,7 +1680,9 @@
       "removeAction": "Remover conexão",
       "removeConfirm": "Confirmar remoção",
       "technical": "Detalhes técnicos"
-    }
+    },
+    "connectServer": "Conectar servidor MCP",
+    "noServerHint": "Esta conexão vale para os gatilhos pelo token, mas ainda não tem o servidor MCP que dá ferramentas aos agents."
   },
   "claudeSessions": {
     "title": "Sessões",
