@@ -2,10 +2,8 @@ import { desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import type { ActionHandler } from "../approval/gate.js";
 import { db as defaultDb, schema } from "../db/index.js";
-import { mcpOAuthService } from "../services/mcp-oauth-service.js";
-import { GRAPH_URL, TEAMS_SERVER } from "../services/teams-app.js";
 import { TEAMS_CHANNEL_PREFIX, TEAMS_SOURCE } from "../sources/teams-inbox.js";
-import { clienteHttp } from "../net/http.js";
+import { abrirTeams, type TeamsGraphOptions } from "./graph.js";
 
 type Db = typeof defaultDb;
 
@@ -93,11 +91,8 @@ export function chatOf(payload: unknown): string {
   return repo.slice(PREFIXO.length);
 }
 
-export interface TeamsPostHandlerOptions {
+export interface TeamsPostHandlerOptions extends TeamsGraphOptions {
   db?: Db;
-  token?: () => Promise<string | null>;
-  fetchFn?: typeof fetch;
-  graphUrl?: string;
 }
 
 /**
@@ -114,9 +109,6 @@ export interface TeamsPostHandlerOptions {
  */
 export function teamsPostHandler(options: TeamsPostHandlerOptions = {}): ActionHandler {
   const db = options.db ?? defaultDb;
-  const token = options.token ?? (() => mcpOAuthService.accessToken(TEAMS_SERVER));
-  const fetchFn = options.fetchFn ?? clienteHttp;
-  const graphUrl = options.graphUrl ?? GRAPH_URL;
 
   return {
     modes: ["approve", "auto"],
@@ -157,26 +149,17 @@ export function teamsPostHandler(options: TeamsPostHandlerOptions = {}): ActionH
 
     async publish(payload) {
       const proposta = TeamsPostProposal.parse(payload);
-      const valor = await token();
-      if (valor === null) throw new Error("o Teams não está conectado");
-
-      const canal = proposta.channel;
-      const endereco =
-        canal === undefined
-          ? `${graphUrl}/chats/${encodeURIComponent(proposta.chatId)}/messages`
-          : `${graphUrl}/teams/${encodeURIComponent(canal.teamId)}/channels/${encodeURIComponent(canal.channelId)}` +
-            `/messages/${encodeURIComponent(canal.threadId)}/replies`;
-      const resposta = await fetchFn(endereco, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${valor}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ body: { contentType: "text", content: proposta.text } }),
-      });
-      // Falha precisa estourar: a gate fecha a pendência quando `publish`
-      // volta, e fechar a de uma resposta que não saiu esconderia a falha.
-      if (!resposta.ok) {
-        const corpo = (await resposta.json().catch(() => ({}))) as { error?: { code?: unknown } };
-        const codigo = typeof corpo.error?.code === "string" ? `: ${corpo.error.code}` : "";
-        throw new Error(`Graph recusou a mensagem com ${resposta.status}${codigo}`);
+      const teams = await abrirTeams(options);
+      try {
+        const canal = proposta.channel;
+        const caminho =
+          canal === undefined
+            ? `/chats/${encodeURIComponent(proposta.chatId)}/messages`
+            : `/teams/${encodeURIComponent(canal.teamId)}/channels/${encodeURIComponent(canal.channelId)}` +
+              `/messages/${encodeURIComponent(canal.threadId)}/replies`;
+        await teams.post(caminho, { body: { contentType: "text", content: proposta.text } }, "a mensagem");
+      } finally {
+        await teams.close();
       }
     },
   };

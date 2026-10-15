@@ -229,8 +229,13 @@ test("recusa do Graph vira erro da batida, sem mover o cursor", async () => {
 test("sem conexão, a varredura recusa antes de chamar o Graph", async () => {
   const { fetchFn, pedidos } = graphFalso([]);
   await assert.rejects(
-    pollTeamsInbox({ mentions: true, dms: true }, { db: bancoDeTeste(), token: async () => null, fetchFn }),
-    /não está conectado/,
+    pollTeamsInbox({ mentions: true, dms: true }, {
+      db: bancoDeTeste(),
+      token: async () => null,
+      fetchFn,
+      mcp: { list: async () => [], cachedTools: async () => null },
+    }),
+    /Em Conexões/,
   );
   assert.equal(pedidos.length, 0);
 });

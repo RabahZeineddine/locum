@@ -1,9 +1,8 @@
 import { and, eq, gte, notInArray } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
-import { mcpOAuthService } from "../services/mcp-oauth-service.js";
-import { GRAPH_URL, TEAMS_SERVER } from "../services/teams-app.js";
+import { TEAMS_SERVER } from "../services/teams-app.js";
 import { pollMcpServer, CURSOR_TOKEN, type McpCaller, type McpPollShape } from "./mcp-poll.js";
-import { clienteHttp } from "../net/http.js";
+import { abrirTeams, type GraphGet, type TeamsGraphOptions } from "../teams/graph.js";
 import { alvoDaReacao, reagirNoTeams, REACAO_PEGOU } from "../teams/reaction.js";
 import { githubService } from "../services/github-service.js";
 import { fetchPr as defaultFetchPr } from "./github.js";
@@ -76,12 +75,8 @@ export interface TeamsChannelRef {
 /** Prefixo do `repo` de evento que veio de canal de equipe. */
 export const TEAMS_CHANNEL_PREFIX = "teams-channel/";
 
-export interface TeamsInboxOptions {
+export interface TeamsInboxOptions extends TeamsGraphOptions {
   db?: Db;
-  /** Token do Graph. Ausente é o que a conexão do Teams guardou. */
-  token?: () => Promise<string | null>;
-  fetchFn?: typeof fetch;
-  graphUrl?: string;
   /** Busca do contexto do PR. Existe para o teste trocar. */
   fetchPr?: typeof defaultFetchPr;
   /**
@@ -122,10 +117,21 @@ export async function pollTeamsInbox(
   options: TeamsInboxOptions = {},
 ): Promise<TeamsInboxOutcome> {
   const db = options.db ?? defaultDb;
-  const token = await (options.token ?? (() => mcpOAuthService.accessToken(TEAMS_SERVER)))();
-  if (token === null) throw new Error("o Teams não está conectado");
+  const teams = await abrirTeams(options);
+  try {
+    return await varrer(watch, options, db, teams);
+  } finally {
+    await teams.close();
+  }
+}
 
-  const graph = graphGet(token, options.fetchFn ?? clienteHttp, options.graphUrl ?? GRAPH_URL);
+async function varrer(
+  watch: TeamsInboxWatch,
+  options: TeamsInboxOptions,
+  db: Db,
+  teams: Awaited<ReturnType<typeof abrirTeams>>,
+): Promise<TeamsInboxOutcome> {
+  const graph = teams.get;
   const outcome: TeamsInboxOutcome = { eventIds: [], inWindow: [], seen: 0, errors: [], descartes: [] };
   const revisados = memoizar(() => carregarRevisados(db));
   const canais = watch.mentions || watch.prLinks ? (watch.channels ?? []) : [];
@@ -148,7 +154,7 @@ export async function pollTeamsInbox(
     kind: "inbox" | "channel",
     channel?: string,
   ) => {
-    const { erros, fora, descartes } = await enriquecerPrs(varredura.inWindow, kind, channel, db, options, revisados);
+    const { erros, fora, descartes } = await enriquecerPrs(varredura.inWindow, kind, channel, db, { ...options, graph: teams }, revisados);
     outcome.descartes.push(...descartes);
     outcome.eventIds.push(...varredura.eventIds.filter((id) => !fora.has(id)));
     for (const id of varredura.inWindow) {
@@ -503,22 +509,6 @@ function canalShape(canal: TeamsChannelRef, eu: string, watch: TeamsInboxWatch, 
             }),
       };
     },
-  };
-}
-
-/** Um GET no Graph, com o endereço relativo ou o `@odata.nextLink` inteiro. */
-type GraphGet = (caminho: string) => Promise<Record<string, unknown>>;
-
-function graphGet(token: string, fetchFn: typeof fetch, graphUrl: string): GraphGet {
-  return async (caminho) => {
-    const url = caminho.startsWith("https://") ? caminho : `${graphUrl}${caminho}`;
-    const resposta = await fetchFn(url, { headers: { Authorization: `Bearer ${token}` } });
-    if (!resposta.ok) {
-      const corpo = (await resposta.json().catch(() => ({}))) as { error?: { code?: unknown } };
-      const codigo = typeof corpo.error?.code === "string" ? `: ${corpo.error.code}` : "";
-      throw new Error(`Graph respondeu ${resposta.status}${codigo}`);
-    }
-    return (await resposta.json()) as Record<string, unknown>;
   };
 }
 
