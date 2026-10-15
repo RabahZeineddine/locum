@@ -383,6 +383,13 @@ export const McpServerConfig = z
      */
     scope: z.enum(["read", "write"]).default("read"),
     idleTimeoutMs: z.number().int().positive().default(300_000),
+    /**
+     * Só o `connectable` do cadastro preenche, nunca o que se grava: a mensagem
+     * de quem recusa subir o servidor porque a credencial referenciada não
+     * existe. Sem ela o servidor subiria sem o cabeçalho e o erro seria o do
+     * servidor ("missing Authorization header"), que não diz o que fazer.
+     */
+    credencialFaltando: z.string().optional(),
   })
   .superRefine((cfg, ctx) => {
     if (cfg.transport === "stdio" && !cfg.command) {

@@ -3,6 +3,7 @@ import { createMCPClient } from "@ai-sdk/mcp";
 import { Experimental_StdioMCPTransport } from "@ai-sdk/mcp/mcp-stdio";
 import type { ToolSet } from "ai";
 import type { McpServerConfig, ToolRef } from "../config/types.js";
+import { conexaoDoServidor } from "../services/conexao-catalogo.js";
 
 /** O que o servidor expoe, do ponto de vista de quem administra o cadastro. */
 export interface McpToolInfo {
@@ -108,7 +109,7 @@ export class McpRegistry {
           // diz que o conserto é reconectar.
           if (isAuthError(message)) {
             throw new Error(
-              `servidor MCP "${name}" recusou a credencial; reconecte em Configuração (${message.slice(0, 200)})`,
+              `servidor MCP "${name}" recusou a credencial; reconecte em Conexões > ${conexaoDoServidor(this.configs.get(name) ?? { name })?.name ?? name} (${message.slice(0, 200)})`,
               { cause: err },
             );
           }
@@ -123,6 +124,9 @@ export class McpRegistry {
   private async spawn(name: string): Promise<Entry> {
     const cfg = this.configs.get(name);
     if (!cfg) throw new Error(`servidor MCP "${name}" nao cadastrado`);
+    // Sem a credencial referenciada o servidor só responderia "missing
+    // Authorization header", e a pessoa não saberia onde colar o token.
+    if (cfg.credencialFaltando !== undefined) throw new Error(cfg.credencialFaltando);
 
     let client: Awaited<ReturnType<typeof createMCPClient>>;
     let tools: ToolSet;

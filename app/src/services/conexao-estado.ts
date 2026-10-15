@@ -13,9 +13,10 @@ export type ConnectionState = "connected" | "attention" | "error" | "available" 
 /**
  * Por que a conexão não está ok. A tela traduz o código; o texto cru da falha
  * vai em `detail`. `untested` não é problema: está ligada e autorizada, mas
- * nunca foi procurada.
+ * nunca foi procurada. `no-credential`: o cadastro referencia uma credencial
+ * que não existe (o token não foi colado), e subir o servidor só daria 401.
  */
-export type ConnectionReason = "needs-auth" | "disabled" | "failing" | "untested";
+export type ConnectionReason = "needs-auth" | "no-credential" | "disabled" | "failing" | "untested";
 
 /** O que o cadastro sabe da última vez que o servidor foi procurado. */
 export interface SaudeBruta {
@@ -43,8 +44,10 @@ export function saudeDoServidor(saude: SaudeBruta): SaudeDoServidor {
 export function estadoDoServidor(
   servidor: { enabled: boolean; health: SaudeBruta },
   autorizado: boolean,
+  semCredencial = false,
 ): { state: ConnectionState; reason: ConnectionReason | null; detail: string | null } {
   if (!servidor.enabled) return { state: "attention", reason: "disabled", detail: null };
+  if (semCredencial) return { state: "attention", reason: "no-credential", detail: null };
   const saude = saudeDoServidor(servidor.health);
   if (!autorizado || saude === "auth") return { state: "attention", reason: "needs-auth", detail: null };
   if (saude === "failed") return { state: "error", reason: "failing", detail: servidor.health.lastError };

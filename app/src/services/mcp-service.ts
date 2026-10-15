@@ -18,6 +18,8 @@ import {
   type Mudanca,
   type Resolvido,
 } from "./mcp-origem.js";
+import { conexaoDoServidor } from "./conexao-catalogo.js";
+import { githubToken } from "./github-service.js";
 import { CREDENTIAL_PLACEHOLDER, fillCredential, secretService, type SecretService } from "./secret-service.js";
 
 /**
@@ -575,12 +577,43 @@ export class McpService {
     // O segredo que a origem traz literal vale enquanto a origem é a aceita; o
     // do cofre, nos outros casos e no OAuth.
     const doCofre = row.credentialRef ? this.secrets.get(row.credentialRef) : undefined;
-    const secret = (d?.estado === "ok" ? d.resolvido?.segredo : undefined) ?? doCofre;
+    const proprio = (d?.estado === "ok" ? d.resolvido?.segredo : undefined) ?? doCofre;
+    // A credencial própria do servidor vence; sem ela, o token do GitHub
+    // guardado na conexão serve ao servidor do GitHub.
+    const secret = proprio ?? this.doServico(config);
+    const env = fillCredential(config.env, secret, { envFallback: true });
+    let headers = fillCredential(config.headers, secret, { envFallback: false });
+    // O servidor do GitHub cadastrado sem cabeçalho de credencial usa o token da conexão.
+    if (ehDoGithub(config) && secret !== undefined && !temAuthorization(headers)) {
+      headers = { ...(headers ?? {}), ...fillCredential({ Authorization: CREDENTIAL_PLACEHOLDER }, secret, { envFallback: false }) };
+    }
+    const faltando = faltaCredencial(config, env, headers, secret);
     return {
       ...config,
-      env: fillCredential(config.env, secret, { envFallback: true }),
-      headers: fillCredential(config.headers, secret, { envFallback: false }),
+      env,
+      headers,
+      ...(faltando ? { credencialFaltando: mensagemDeCredencialFaltando(config) } : {}),
     };
+  }
+
+  /** O token que a conexão do catálogo guarda e que o servidor dela pode usar. */
+  private doServico(config: McpServerConfig): string | undefined {
+    return ehDoGithub(config) ? githubToken(this.secrets) : undefined;
+  }
+
+  /**
+   * Se o servidor tem a credencial de que precisa: `ok`, `falta`, ou
+   * `dispensa` quando o cadastro não referencia nenhuma. É o que a vitrine lê
+   * para dizer "falta o token" antes de a pessoa descobrir testando.
+   */
+  async credencialDoServidor(name: string): Promise<"ok" | "falta" | "dispensa"> {
+    const row = await this.row(name);
+    if (row === undefined) throw new Error(`servidor MCP "${name}" nao cadastrado`);
+    const config = await this.connectable(row);
+    const original = toEntry(row).config;
+    const referencia = temMarcador(original) || ehDoGithub(original);
+    if (!referencia) return "dispensa";
+    return config.credencialFaltando === undefined ? "ok" : "falta";
   }
 
   /**
@@ -718,3 +751,34 @@ McpRegistry.observe((name, outcome) => {
     console.error(`guardar a saúde de ${name} falhou: ${err instanceof Error ? err.message : String(err)}`);
   });
 });
+
+/** O servidor remoto do GitHub, pelo nome do catálogo ou pelo endereço. */
+function ehDoGithub(config: { name: string; url?: string; command?: string[]; transport?: string }): boolean {
+  return config.transport !== "stdio" && conexaoDoServidor(config)?.id === "github";
+}
+
+function temMarcador(config: { env?: Record<string, string>; headers?: Record<string, string> }): boolean {
+  return [...Object.values(config.env ?? {}), ...Object.values(config.headers ?? {})].includes(CREDENTIAL_PLACEHOLDER);
+}
+
+function temAuthorization(headers: Record<string, string> | undefined): boolean {
+  return Object.keys(headers ?? {}).some((k) => k.toLowerCase() === "authorization");
+}
+
+/** Há marcador que ficou sem valor, ou o servidor do GitHub sem cabeçalho nem token. */
+function faltaCredencial(
+  config: McpServerConfig,
+  env: Record<string, string> | undefined,
+  headers: Record<string, string> | undefined,
+  secret: string | undefined,
+): boolean {
+  const sobrou = (entrada: Record<string, string> | undefined, preenchido: Record<string, string> | undefined): boolean =>
+    Object.entries(entrada ?? {}).some(([k, v]) => v === CREDENTIAL_PLACEHOLDER && preenchido?.[k] === undefined);
+  if (sobrou(config.env, env) || sobrou(config.headers, headers)) return true;
+  return ehDoGithub(config) && secret === undefined && !temAuthorization(config.headers);
+}
+
+function mensagemDeCredencialFaltando(config: McpServerConfig): string {
+  const conexao = conexaoDoServidor(config)?.name ?? config.name;
+  return `falta a credencial de ${conexao}; cole o token em Conexões > ${conexao}`;
+}
