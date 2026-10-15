@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { claudeBinary } from "../runtimes/claude-binary.js";
-import { decidirRegistro, type AmbienteDoApp } from "../native-tools/comando-do-locum.js";
+import { decidirRegistro, esteEOInstalado, type AmbienteDoApp } from "../native-tools/comando-do-locum.js";
 
 /** Nome com que o Locum aparece nas sessões do Claude Code. */
 export const CLAUDE_CODE_SERVER = "locum";
@@ -21,6 +21,12 @@ export interface ClaudeCodeStatus {
   registered: boolean;
   /** O cadastrado sobe este aplicativo, e não outra cópia ou o de desenvolvimento. */
   current: boolean;
+  /**
+   * O `locum` do Claude Code aponta para binário que sumiu ou para outra cópia,
+   * e este é o app instalado: a tela avisa e oferece corrigir. Nulo quando está
+   * certo, quando não há cadastro e sempre fora do app instalado.
+   */
+  desatualizado: string | null;
   /** A linha que o botão roda, para quem preferir colar no terminal. */
   command: string;
 }
@@ -66,6 +72,7 @@ function quote(parte: string): string {
  */
 export class ClaudeCodeService {
   private launcher: McpLauncher | null = null;
+  private ambiente: AmbienteDoApp | null = null;
   private readonly deps: ClaudeCodeServiceDeps;
 
   constructor(deps: Partial<ClaudeCodeServiceDeps> = {}) {
@@ -82,6 +89,11 @@ export class ClaudeCodeService {
     this.launcher = launcher;
   }
 
+  /** Como este processo roda, para saber se ele é o app instalado. */
+  useAmbiente(ambiente: AmbienteDoApp): void {
+    this.ambiente = ambiente;
+  }
+
   async status(): Promise<ClaudeCodeStatus> {
     const launcher = this.requireLauncher();
     const cli = (await this.deps.resolveClaude()) ?? null;
@@ -94,13 +106,16 @@ export class ClaudeCodeService {
         cadastrado !== null &&
         cadastrado.command === launcher.command &&
         JSON.stringify(cadastrado.args) === JSON.stringify(esperado.slice(1)),
+      desatualizado: this.desatualizado(cadastrado),
       command: ["claude", ...this.addArgs(launcher)].map(quote).join(" "),
     };
   }
 
   /**
    * Cadastra, ou recadastra quando o aplicativo mudou de lugar. Remover antes
-   * é o que faz o segundo clique valer: o `add` recusa nome que já existe.
+   * é o que faz o segundo clique valer: o `add` recusa nome que já existe. Se o
+   * `add` falha depois do `remove`, o comando que estava cadastrado volta: o
+   * Claude Code não fica sem o Locum por causa de um clique que não deu certo.
    */
   async connect(): Promise<ClaudeCodeStatus> {
     const launcher = this.requireLauncher();
@@ -108,26 +123,28 @@ export class ClaudeCodeService {
     if (cli === undefined) {
       throw new Error("não achei o claude nesta máquina; instale o Claude Code e tente de novo");
     }
-    if (this.registered() !== null) {
+    const anterior = this.registered();
+    if (anterior !== null) {
       await this.deps.run(cli, ["mcp", "remove", "--scope", "user", CLAUDE_CODE_SERVER]);
     }
-    await this.deps.run(cli, this.addArgs(launcher));
+    try {
+      await this.deps.run(cli, this.addArgs(launcher));
+    } catch (erro) {
+      if (anterior !== null) {
+        await this.deps
+          .run(cli, ["mcp", "add", "--scope", "user", CLAUDE_CODE_SERVER, "--", anterior.command, ...anterior.args])
+          .catch(() => undefined);
+      }
+      throw erro;
+    }
     return this.status();
   }
 
-  /**
-   * Na subida: o `locum` que a pessoa já cadastrou no Claude Code aponta para o
-   * app instalado? Se aponta para um binário que sumiu ou para uma cópia que não
-   * é o instalado, recadastra. Quem nunca ligou o Locum ao Claude Code não é
-   * cadastrado aqui: ligar é um clique dela.
-   */
-  async corrigirRegistro(ambiente: AmbienteDoApp): Promise<boolean> {
-    const cadastrado = this.registered();
-    if (cadastrado === null) return false;
-    const decisao = decidirRegistro(ambiente, [cadastrado.command, ...cadastrado.args], "--mcp");
-    if (decisao.acao === "manter") return false;
-    await this.connect();
-    return true;
+  /** Só o app instalado avisa, e só quando o Claude Code já tinha o Locum cadastrado. */
+  private desatualizado(cadastrado: { command: string; args: string[] } | null): string | null {
+    if (this.ambiente === null || cadastrado === null || !esteEOInstalado(this.ambiente)) return null;
+    const decisao = decidirRegistro(this.ambiente, [cadastrado.command, ...cadastrado.args], "--mcp");
+    return decisao.acao === "gravar" ? decisao.motivo : null;
   }
 
   private addArgs(launcher: McpLauncher): string[] {

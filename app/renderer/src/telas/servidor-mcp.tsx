@@ -30,16 +30,22 @@ export function destinoDe(servidor: Servidor, vinculo?: Vinculo): string {
   return config.transport === "stdio" ? (config.command ?? []).join(" ") : (config.url ?? "");
 }
 
-/** Selo "vinculado a <origem>": a configuração não é cópia, vem da origem. */
+/** Selo de origem: "do plugin akad (Claude Code)", "do Claude Code", "do Cursor". A configuração não é cópia, vem de lá. */
 export function SeloVinculado({ vinculo }: { vinculo: Vinculo }) {
   const { t } = useTranslation();
+  const texto =
+    vinculo.source.kind === "claude-plugin"
+      ? t("settings.servers.link.badgePlugin", { plugin: vinculo.source.plugin })
+      : vinculo.source.kind === "claude-user"
+        ? t("settings.servers.link.badgeUser")
+        : t("settings.servers.link.badgeTool", { origem: vinculo.rotulo });
   return (
     <span
       className="border-border text-muted-foreground rounded border px-1.5 py-px text-[10px] leading-4"
       data-locum-vinculado={vinculo.rotulo}
       title={t("settings.servers.link.badgeHint", { origem: vinculo.rotulo })}
     >
-      {t("settings.servers.link.badge", { origem: vinculo.rotulo })}
+      {texto}
     </span>
   );
 }
@@ -70,15 +76,32 @@ export function AvisoDaOrigem({ nome, onMudou, vinculo }: { nome: string; onMudo
       (falha: unknown) => {
         setOcupado(false);
         setErro(falha instanceof Error ? falha.message : String(falha));
+        // A origem pode ter mudado de novo: relê, e o diff novo aparece.
+        onMudou();
       },
     );
   };
+
+  if (vinculo.estado === "indisponivel") {
+    return (
+      <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-400" data-locum-origem-estado="indisponivel" data-locum-origem-de={nome}>
+        <p className="font-medium">{t("settings.servers.link.unavailable.title")}</p>
+        <p>{t("settings.servers.link.unavailable.body", { origem: vinculo.rotulo, names: vinculo.faltando.join(", ") })}</p>
+      </div>
+    );
+  }
 
   if (vinculo.estado === "sumiu") {
     return (
       <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-400" data-locum-origem-estado="sumiu" data-locum-origem-de={nome}>
         <p className="font-medium">{t("settings.servers.link.gone.title")}</p>
-        <p>{t("settings.servers.link.gone.body", { origem: vinculo.rotulo, nome })}</p>
+        <p>
+          {vinculo.motivo === "plugin-desligado"
+            ? t("settings.servers.link.goneDisabled", { origem: vinculo.rotulo })
+            : vinculo.motivo === "plugin-removido"
+              ? t("settings.servers.link.goneRemoved", { origem: vinculo.rotulo })
+              : t("settings.servers.link.gone.body", { origem: vinculo.rotulo, nome })}
+        </p>
       </div>
     );
   }
@@ -100,21 +123,27 @@ export function AvisoDaOrigem({ nome, onMudou, vinculo }: { nome: string; onMudo
         {vinculo.mudancas.map((m) => (
           <li className="flex flex-col gap-0.5" key={`${m.campo}:${m.chave ?? ""}`}>
             <span className="text-foreground font-medium">{campoDaMudanca(m, t)}</span>
-            <code className="font-mono text-[11px] break-all text-red-400/90">
-              {t("settings.servers.link.changed.before")}: {m.antes ?? vazio}
-            </code>
-            <code className="font-mono text-[11px] break-all text-emerald-400/90">
-              {t("settings.servers.link.changed.after")}: {m.depois ?? vazio}
-            </code>
+            {m.protegido === true ? (
+              <span className="text-muted-foreground">{t("settings.servers.link.protectedChanged")}</span>
+            ) : (
+              <>
+                <code className="font-mono text-[11px] break-all text-red-400/90">
+                  {t("settings.servers.link.changed.before")}: {m.antes ?? vazio}
+                </code>
+                <code className="font-mono text-[11px] break-all text-emerald-400/90">
+                  {t("settings.servers.link.changed.after")}: {m.depois ?? vazio}
+                </code>
+              </>
+            )}
           </li>
         ))}
       </ul>
       <div className="flex flex-wrap gap-2">
-        <Button className="cursor-pointer" data-locum-aceitar-origem={nome} disabled={ocupado} onClick={() => agir(() => call("mcp.aceitarOrigem", nome))} size="sm">
+        <Button className="cursor-pointer" data-locum-aceitar-origem={nome} disabled={ocupado} onClick={() => agir(() => call("mcp.aceitarOrigem", nome, vinculo.hash ?? ""))} size="sm">
           {t("settings.servers.link.changed.accept")}
         </Button>
         {vinculo.mantida ? null : (
-          <Button className="cursor-pointer" data-locum-manter-origem={nome} disabled={ocupado} onClick={() => agir(() => call("mcp.manterAnterior", nome))} size="sm" variant="outline">
+          <Button className="cursor-pointer" data-locum-manter-origem={nome} disabled={ocupado} onClick={() => agir(() => call("mcp.manterAnterior", nome, vinculo.hash ?? ""))} size="sm" variant="outline">
             {t("settings.servers.link.changed.keep")}
           </Button>
         )}

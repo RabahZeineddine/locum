@@ -149,3 +149,6 @@ ou descartar.
   mudança de comando, args, url ou env na origem (escopos, por exemplo) pede
   aceite antes de valer, mas quem usa decide: aceita, mantém a anterior ou
   desvincula. Só a versão do diretório do plugin segue sem pergunta.
+  O aceite cobre a declaração (comando, args, url, env), não o código do
+  pacote ou do script que ela aponta: uma versão nova do mesmo plugin pode
+  trazer outro código sob a mesma declaração, e isso o Locum não vê.

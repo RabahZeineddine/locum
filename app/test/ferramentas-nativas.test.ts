@@ -172,19 +172,28 @@ test("decisão: cópia fora de /Applications não reescreve registro que funcion
   assert.deepEqual(decidirRegistro(copia, [WORKTREE, "--ferramentas"], "--ferramentas"), { acao: "manter" });
 });
 
-test("decisão: cópia solta, com o app instalado na máquina, aponta o registro para ele e nunca para ela", () => {
+test("decisão: cópia solta, mesmo com o app instalado na máquina, nunca mexe em registro que existe", () => {
   const copia = maquina({ execPath: WORKTREE, existentes: [WORKTREE, INSTALADO] });
-  const d = decidirRegistro(copia, [WORKTREE, "--ferramentas"], "--ferramentas");
-  assert.equal(d.acao, "gravar");
-  assert.deepEqual(d.acao === "gravar" ? d.comando : null, [INSTALADO, "--ferramentas"]);
+  assert.deepEqual(decidirRegistro(copia, [WORKTREE, "--ferramentas"], "--ferramentas"), { acao: "manter" });
+  assert.deepEqual(decidirRegistro(copia, ["/tmp/sumiu/Locum", "--ferramentas"], "--ferramentas"), { acao: "manter" });
   assert.deepEqual(decidirRegistro(copia, [INSTALADO, "--ferramentas"], "--ferramentas"), { acao: "manter" });
 });
 
-test("decisão: cópia de DMG ou em quarentena não conta como o app instalado", () => {
+test("decisão: o locum-ferramentas de uma cópia solta, sem registro, aponta para a própria cópia e não para o instalado", () => {
+  const copia = maquina({ execPath: WORKTREE, existentes: [WORKTREE, INSTALADO] });
+  const d = decidirRegistro(copia, null, "--ferramentas");
+  assert.deepEqual(d.acao === "gravar" ? d.comando : null, [WORKTREE, "--ferramentas"]);
+  const dev = maquina({ execPath: "/usr/bin/electron", empacotado: false, existentes: [INSTALADO] });
+  const e = decidirRegistro(dev, null, "--ferramentas");
+  assert.deepEqual(e.acao === "gravar" ? e.comando : null, ["/usr/bin/electron", "/dev/main.cjs", "--ferramentas"]);
+});
+
+test("decisão: cópia de DMG ou em quarentena não conta como o app instalado e não corrige nada", () => {
   for (const caminho of ["/Volumes/Locum/Locum.app/Contents/MacOS/Locum", "/private/var/folders/x/AppTranslocation/ABC/d/Locum.app/Contents/MacOS/Locum"]) {
     const env = maquina({ execPath: caminho, existentes: [caminho] });
     assert.equal(esteEOInstalado(env), false);
-    assert.deepEqual(decidirRegistro(env, [INSTALADO, "--ferramentas"], "--ferramentas").acao, "gravar");
+    assert.deepEqual(decidirRegistro(env, [INSTALADO, "--ferramentas"], "--ferramentas"), { acao: "manter" });
+    assert.deepEqual(decidirRegistro(env, ["/tmp/sumiu/Locum", "--ferramentas"], "--ferramentas"), { acao: "manter" });
   }
 });
 
@@ -192,6 +201,7 @@ test("decisão: sem app instalado e sem registro, a cópia registra a si mesma; 
   const dev = maquina({ execPath: "/usr/bin/electron", empacotado: false });
   const d = decidirRegistro(dev, null, "--mcp");
   assert.deepEqual(d.acao === "gravar" ? d.comando : null, ["/usr/bin/electron", "/dev/main.cjs", "--mcp"]);
+  assert.deepEqual(decidirRegistro(dev, ["/qualquer/Locum", "--mcp"], "--mcp"), { acao: "manter" });
 });
 
 test("o comando que o Locum oferece ao Claude Code é o do app instalado, mesmo vindo de uma cópia", () => {
@@ -215,8 +225,12 @@ test("cadastro nasce ligado, segue o app instalado e respeita quem desligou", as
   const app = maquina({ execPath: INSTALADO, existentes: [INSTALADO] });
   await cadastrarFerramentasNativas(app, servico);
   await cadastrarFerramentasNativas(app, servico);
-  // A cópia de um worktree abre, com o registro bom: nada muda.
+  // A cópia de um worktree abre, com o registro bom ou quebrado: nada muda.
   await cadastrarFerramentasNativas(maquina({ execPath: WORKTREE, existentes: [WORKTREE, INSTALADO] }), servico);
+  const bom = atual;
+  atual = { config: { transport: "stdio", command: ["/tmp/sumiu/Locum", "--ferramentas"], scope: "read" } };
+  await cadastrarFerramentasNativas(maquina({ execPath: WORKTREE, existentes: [WORKTREE, INSTALADO] }), servico);
+  atual = bom;
   // O registro foi parar numa cópia que sumiu: o app instalado conserta.
   atual = { config: { transport: "stdio", command: ["/tmp/sumiu/Locum", "--ferramentas"], scope: "read" } };
   await cadastrarFerramentasNativas(app, servico);

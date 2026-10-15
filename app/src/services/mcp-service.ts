@@ -8,9 +8,10 @@ import {
   diferencas,
   homeDasFerramentas,
   impressao,
-  NOME_DE_SEGREDO,
   OrigemResolver,
   rotuloDaOrigem,
+  semMarcadorDoLocum,
+  type MotivoDoSumico,
   shellDeLogin,
   type Mudanca,
   type Resolvido,
@@ -79,7 +80,11 @@ export interface McpVinculo {
   rotulo: string;
   /** O arquivo onde editar, quando se sabe qual é. */
   arquivo: string | null;
-  estado: "ok" | "mudou" | "sumiu";
+  estado: "ok" | "mudou" | "sumiu" | "indisponivel";
+  /** Impressão da configuração que a origem tem agora; o aceite devolve esta, para valer só o que a pessoa viu. */
+  hash: string | null;
+  /** Para `sumiu`: plugin desligado no Claude Code, removido, ou só sem o servidor. */
+  motivo: MotivoDoSumico | null;
   /** Mudança sensível que a pessoa decidiu não aceitar; fica quieta até a origem mudar de novo. */
   mantida: boolean;
   mudancas: Mudanca[];
@@ -193,8 +198,10 @@ export class McpService {
     parsed: McpServerConfig,
     anterior: McpServerRow | undefined,
     origem: { source?: McpSource | null; sourceHash?: string | null; sourceKeptHash?: string | null },
+    preservarCredencial = false,
   ): Promise<McpServerEntry> {
     const mudouDestino =
+      !preservarCredencial &&
       anterior !== undefined &&
       (anterior.transport !== parsed.transport ||
         (anterior.url ?? null) !== (parsed.url ?? null) ||
@@ -228,9 +235,13 @@ export class McpService {
   async vincular(name: string, source: McpSource): Promise<void> {
     const row = await this.row(name);
     if (row === undefined) throw new Error(`servidor MCP "${name}" nao cadastrado`);
+    // O marcador de credencial que o Locum pôs na cópia (OAuth) não é da origem.
+    const origem = (await this.origem.resolver(source, name))?.config;
+    const copia = toEntry(row).config;
+    const aceita = origem === undefined ? copia : semMarcadorDoLocum(copia, origem);
     await this.db
       .update(schema.mcpServers)
-      .set({ source, sourceHash: impressao(toEntry(row).config, source), sourceKeptHash: null })
+      .set({ source, sourceHash: impressao(aceita, source), sourceKeptHash: null })
       .where(eq(schema.mcpServers.name, name));
   }
 
@@ -246,6 +257,8 @@ export class McpService {
         if (d === null) return;
         saida[row.name] = {
           source: d.source,
+          hash: d.resolvido?.hash ?? null,
+          motivo: d.estado === "sumiu" && d.resolvido === undefined ? this.origem.motivoDoSumico(d.source) : null,
           rotulo: rotuloDaOrigem(d.source),
           arquivo: d.resolvido?.arquivo ?? this.origem.arquivoDe(d.source) ?? null,
           estado: d.estado,
@@ -259,15 +272,27 @@ export class McpService {
     return saida;
   }
 
-  /** A pessoa aceita a mudança da origem: ela passa a ser a configuração aceita. */
-  async aceitarOrigem(name: string): Promise<McpServerEntry> {
+  /**
+   * A pessoa aceita a mudança da origem: ela passa a ser a configuração aceita.
+   * `hash` é a impressão que o aviso mostrou. Se a origem releu diferente, o
+   * aceite é recusado e a tela mostra o diff novo: vale o que a pessoa viu.
+   */
+  async aceitarOrigem(name: string, hash: string): Promise<McpServerEntry> {
     this.origem.esquecer();
     const row = await this.row(name);
     const d = row === undefined ? null : await this.decidir(row);
     if (row === undefined || d === null) throw new Error(`servidor MCP "${name}" nao esta vinculado`);
     if (d.resolvido === undefined) throw new Error(`a origem de "${name}" nao tem mais o servidor`);
-    const config = this.daOrigem(d.resolvido, toEntry(row).config, row);
-    const entry = await this.salvar(config, row, { sourceHash: d.resolvido.hash, sourceKeptHash: null });
+    if (d.estado === "indisponivel") throw new Error(`a origem de "${name}" cita variaveis que esta maquina nao resolveu agora (${d.resolvido.faltando.join(", ")}); tente de novo`);
+    if (d.resolvido.hash !== hash) throw new Error(`a origem de "${name}" mudou de novo desde que o aviso foi mostrado; confira o diff atualizado antes de aceitar`);
+    if (d.estado === "ok") return toEntry(row);
+    const aceita = toEntry(row).config;
+    const config = this.daOrigem(d.resolvido, aceita, row);
+    // Só os argumentos mudaram: o programa e o destino são os mesmos, e a credencial continua valendo.
+    const mesmoDestino =
+      config.transport === aceita.transport && (config.url ?? null) === (aceita.url ?? null) && (config.command?.[0] ?? null) === (aceita.command?.[0] ?? null);
+    const entry = await this.salvar(config, row, { sourceHash: d.resolvido.hash, sourceKeptHash: null }, mesmoDestino);
+    void entry;
     // O segredo que a origem traz literal vai para o cofre, como na importação.
     if (d.resolvido.segredo !== undefined) {
       const ref = `mcp/${name}`;
@@ -278,11 +303,12 @@ export class McpService {
   }
 
   /** Mantém a configuração anterior: a mudança sai do aviso, e volta se a origem mudar de novo. */
-  async manterAnterior(name: string): Promise<void> {
+  async manterAnterior(name: string, hash: string): Promise<void> {
     this.origem.esquecer();
     const row = await this.row(name);
     const d = row === undefined ? null : await this.decidir(row);
     if (d?.resolvido === undefined) throw new Error(`servidor MCP "${name}" nao tem mudanca da origem para manter`);
+    if (d.resolvido.hash !== hash) throw new Error(`a origem de "${name}" mudou de novo desde que o aviso foi mostrado; confira o diff atualizado`);
     await this.db.update(schema.mcpServers).set({ sourceKeptHash: d.resolvido.hash }).where(eq(schema.mcpServers.name, name));
   }
 
@@ -542,6 +568,9 @@ export class McpService {
       }
       return { source, estado: "ok", config: nova.data, resolvido: r, mudancas: [], mantida: false };
     }
+    // A origem cita variável que esta máquina não resolveu agora (shell de login
+    // que falhou, por exemplo): é indisponibilidade, e não mudança a aceitar.
+    if (r.incompleto) return { source, estado: "indisponivel", config: aceita, resolvido: r, mudancas: [], mantida: false };
     return {
       source,
       estado: "mudou",
@@ -554,28 +583,22 @@ export class McpService {
 
   /**
    * A configuração da origem como cadastro do Locum. O marcador de credencial
-   * que o Locum pôs (o OAuth, por exemplo) segue valendo, e uma chave de segredo
-   * que a origem cita por variável e esta máquina não tem cai no marcador da
-   * cópia aceita, que o cofre preenche.
+   * que o Locum pôs (o OAuth, por exemplo) segue valendo onde a origem não
+   * tem a chave.
    */
   private daOrigem(r: Resolvido, aceita: McpServerConfig, row: McpServerRow): McpServerConfig {
     const mapa = (nova: Record<string, string> | undefined, antes: Record<string, string> | undefined) => {
       const saida: Record<string, string> = { ...(nova ?? {}) };
-      for (const [k, v] of Object.entries(saida)) {
-        if (NOME_DE_SEGREDO.test(k) && v.includes("${") && antes?.[k] === CREDENTIAL_PLACEHOLDER) saida[k] = CREDENTIAL_PLACEHOLDER;
-      }
       for (const [k, v] of Object.entries(antes ?? {})) if (v === CREDENTIAL_PLACEHOLDER && saida[k] === undefined) saida[k] = v;
       return Object.keys(saida).length === 0 ? undefined : saida;
     };
-    const env = mapa(r.config.env, aceita.env);
-    const headers = mapa(r.config.headers, aceita.headers);
     return McpServerConfig.parse({
       ...r.config,
       name: row.name,
       scope: row.scope,
       idleTimeoutMs: row.idleTimeoutMs,
-      env,
-      headers,
+      env: mapa(r.config.env, aceita.env),
+      headers: mapa(r.config.headers, aceita.headers),
     });
   }
 

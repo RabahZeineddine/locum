@@ -666,7 +666,7 @@ async function checkVinculo(): Promise<string> {
     const [vigente] = (await mcpService.enabledConfigs()).filter((c) => c.name === nome);
     if (vigente?.command?.includes("novo") || !vigente?.command?.includes("antigo")) throw new Error("usou a configuracao nova antes do aceite");
 
-    await mcpService.aceitarOrigem(nome);
+    await mcpService.aceitarOrigem(nome, mudou.hash ?? "");
     if ((await mcpService.vinculos())[nome]?.estado !== "ok") throw new Error("aceitar nao fechou o aviso");
     const [depois] = (await mcpService.enabledConfigs()).filter((c) => c.name === nome);
     if (!depois?.command?.includes("novo")) throw new Error("depois do aceite deveria valer a configuracao nova");
@@ -6843,6 +6843,7 @@ async function main(): Promise<void> {
   const comandoMcp = comandoDoApp(ambienteDoApp, "--mcp");
   const launcher = { command: comandoMcp[0]!, args: comandoMcp.slice(1, -1) };
   claudeCodeService.useLauncher(launcher);
+  claudeCodeService.useAmbiente(ambienteDoApp);
   const { opencodeService } = await import("../src/services/opencode-service.js");
   opencodeService.useLauncher(launcher);
 
@@ -6876,12 +6877,6 @@ async function main(): Promise<void> {
     app.on("will-quit", () => terminalService.fecharTodos());
     await cadastrarFerramentasNativas(ambienteDoApp).catch((err: unknown) => {
       console.error(`ferramentas nativas: cadastro falhou (${err instanceof Error ? err.message : String(err)})`);
-    });
-    // O `locum` que o Claude Code guarda, quando a pessoa já o ligou, também
-    // segue o app instalado: aponta para um binário que sumiu, ou para uma
-    // cópia que não é o app instalado, e o app instalado corrige.
-    void claudeCodeService.corrigirRegistro(ambienteDoApp).catch((err: unknown) => {
-      console.error(`claude code: correção do registro falhou (${err instanceof Error ? err.message : String(err)})`);
     });
     // Servidores importados antes do vínculo eram cópia: voltam a seguir a origem.
     const { claudeImportService } = await import("../src/services/claude-import.js");

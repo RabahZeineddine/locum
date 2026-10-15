@@ -854,7 +854,6 @@
       "turnOffConfirm": "Desligar mesmo assim",
       "turnOffInUse": "Há automações ou agents usando este servidor. Desligado, eles deixam de rodar com ele. Clique de novo para desligar.",
       "link": {
-        "badge": "vinculado a {{origem}}",
         "badgeHint": "A configuração é lida de {{origem}} na hora de conectar. O Locum guarda só o que é dele: ligado, credencial, escopo e as escolhas dos agents.",
         "readOnly": "Lida da origem, só leitura.",
         "editAtOrigin": "Editar na origem",
@@ -885,7 +884,17 @@
           "title": "A origem sumiu",
           "body": "{{origem}} não tem mais o servidor {{nome}} (plugin desligado ou removido, ou o arquivo mudou). O Locum usa a última configuração aceita."
         },
-        "missing": "A origem cita variáveis que esta máquina não tem: {{names}}."
+        "missing": "A origem cita variáveis que esta máquina não tem: {{names}}.",
+        "badgePlugin": "do plugin {{plugin}} (Claude Code)",
+        "badgeUser": "do Claude Code",
+        "badgeTool": "do {{origem}}",
+        "protectedChanged": "valor protegido mudou",
+        "unavailable": {
+          "title": "Origem indisponível por enquanto",
+          "body": "{{origem}} cita variáveis que esta máquina não resolveu agora ({{names}}). O Locum usa a última configuração aceita e tenta de novo na próxima leitura."
+        },
+        "goneDisabled": "O plugin {{origem}} está desligado no Claude Code. O Locum usa a última configuração aceita; ligue o plugin lá para voltar a seguir a origem.",
+        "goneRemoved": "O plugin {{origem}} não está mais instalado no Claude Code. O Locum usa a última configuração aceita."
       }
     },
     "github": {
@@ -1730,7 +1739,13 @@
       "technical": "Detalhes técnicos"
     },
     "connectServer": "Conectar servidor MCP",
-    "noServerHint": "Esta conexão vale para os gatilhos pelo token, mas ainda não tem o servidor MCP que dá ferramentas aos agents."
+    "noServerHint": "Esta conexão vale para os gatilhos pelo token, mas ainda não tem o servidor MCP que dá ferramentas aos agents.",
+    "claudeCodeStale": {
+      "title": "O Claude Code aponta para outra cópia do Locum",
+      "body": "O Locum cadastrado no Claude Code não é este app instalado ({{motivo}}). Corrigir recadastra o comando; se falhar, o anterior volta.",
+      "fix": "Corrigir",
+      "fixing": "corrigindo..."
+    }
   },
   "claudeSessions": {
     "title": "Sessões",

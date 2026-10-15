@@ -68,35 +68,25 @@ export function comandoDoApp(env: AmbienteDoApp, modo: "--ferramentas" | "--mcp"
 export type DecisaoDoRegistro = { acao: "manter" } | { acao: "gravar"; comando: string[]; motivo: string };
 
 /**
- * O registro atual, o que está gravado (ou nada), precisa mudar? Regras:
+ * O registro atual, o que está gravado (ou nada), precisa mudar?
  *
- * - O app instalado corrige o registro que aponta para binário que não existe
- *   mais ou que não é o app instalado.
- * - Uma cópia fora de /Applications não reescreve um registro que funciona.
- *   Com o app instalado na máquina, ela o corrige para apontar para ele, e
- *   não para ela.
- * - Sem registro, qualquer cópia registra, para quem só tem o app de
- *   desenvolvimento ter as ferramentas.
+ * Só o app instalado corrige um registro que já existe: se ele aponta para
+ * binário que sumiu ou que não é o app instalado, vai para o instalado. Uma
+ * cópia solta, de desenvolvimento ou de fumaça, nunca mexe em registro
+ * existente (o banco pode ser o real) e só registra a si mesma quando não há
+ * nada gravado: para `--ferramentas` ela usa a própria cópia, e o banco de
+ * rascunho da fumaça fica com o próprio binário, não com o instalado.
  */
 export function decidirRegistro(env: AmbienteDoApp, atual: string[] | null, modo: "--ferramentas" | "--mcp"): DecisaoDoRegistro {
-  const alvo = comandoDoApp(env, modo);
-  if (atual === null || atual.length === 0) return { acao: "gravar", comando: alvo, motivo: "sem registro" };
-
-  const mesmo = JSON.stringify(atual) === JSON.stringify(alvo);
-  if (mesmo) return { acao: "manter" };
-
-  const existe = env.existe(atual[0]!);
-  const doInstalado = ehOInstalado(env, atual[0]!);
-  if (!existe) return { acao: "gravar", comando: alvo, motivo: "o binario registrado nao existe mais" };
-
-  if (esteEOInstalado(env)) {
-    // Aponta para uma cópia que existe mas não é o app instalado: o instalado corrige.
-    return doInstalado ? { acao: "manter" } : { acao: "gravar", comando: alvo, motivo: "o registro aponta para uma copia que nao e o app instalado" };
+  const semRegistro = atual === null || atual.length === 0;
+  if (!esteEOInstalado(env)) {
+    if (!semRegistro) return { acao: "manter" };
+    return { acao: "gravar", comando: modo === "--ferramentas" ? comandoDesteProcesso(env, modo) : comandoDoApp(env, modo), motivo: "sem registro" };
   }
-  // Cópia solta: só mexe se há app instalado para onde apontar e o registro não é ele.
-  const instalado = binarioInstalado(env);
-  if (instalado !== null && !doInstalado) {
-    return { acao: "gravar", comando: alvo, motivo: "o registro aponta para uma copia que nao e o app instalado" };
-  }
+  const alvo = comandoDesteProcesso(env, modo);
+  if (semRegistro) return { acao: "gravar", comando: alvo, motivo: "sem registro" };
+  if (JSON.stringify(atual) === JSON.stringify(alvo)) return { acao: "manter" };
+  if (!env.existe(atual[0]!)) return { acao: "gravar", comando: alvo, motivo: "o binario registrado nao existe mais" };
+  if (!ehOInstalado(env, atual[0]!)) return { acao: "gravar", comando: alvo, motivo: "o registro aponta para uma copia que nao e o app instalado" };
   return { acao: "manter" };
 }

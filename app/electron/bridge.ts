@@ -305,10 +305,10 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     },
     "mcp.usage": () => mcpService.usage(),
     "mcp.vinculos": () => mcpService.vinculos(),
-    "mcp.aceitarOrigem": async (name) => {
-      await mcpService.aceitarOrigem(name);
+    "mcp.aceitarOrigem": async (name, hash) => {
+      await mcpService.aceitarOrigem(name, hash);
     },
-    "mcp.manterAnterior": (name) => mcpService.manterAnterior(name),
+    "mcp.manterAnterior": (name, hash) => mcpService.manterAnterior(name, hash),
     "mcp.desvincular": async (name) => {
       await mcpService.desvincular(name);
     },

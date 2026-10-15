@@ -825,7 +825,6 @@
       "turnOffConfirm": "Turn off anyway",
       "turnOffInUse": "Automations or agents use this server. Once it is off they stop running with it. Click again to turn it off.",
       "link": {
-        "badge": "linked to {{origem}}",
         "badgeHint": "The configuration is read from {{origem}} when connecting. Locum keeps only what is its own: on/off, credential, scope and the agents' choices.",
         "readOnly": "Read from the origin, read only.",
         "editAtOrigin": "Edit at the origin",
@@ -856,7 +855,17 @@
           "title": "The origin is gone",
           "body": "{{origem}} no longer has the server {{nome}} (plugin turned off or removed, or the file changed). Locum uses the last accepted configuration."
         },
-        "missing": "The origin mentions variables this machine does not have: {{names}}."
+        "missing": "The origin mentions variables this machine does not have: {{names}}.",
+        "badgePlugin": "from the {{plugin}} plugin (Claude Code)",
+        "badgeUser": "from Claude Code",
+        "badgeTool": "from {{origem}}",
+        "protectedChanged": "protected value changed",
+        "unavailable": {
+          "title": "Origin unavailable for now",
+          "body": "{{origem}} mentions variables this machine could not resolve right now ({{names}}). Locum uses the last accepted configuration and tries again on the next read."
+        },
+        "goneDisabled": "The {{origem}} plugin is turned off in Claude Code. Locum uses the last accepted configuration; turn the plugin on there to follow the origin again.",
+        "goneRemoved": "The {{origem}} plugin is no longer installed in Claude Code. Locum uses the last accepted configuration."
       }
     },
     "github": {
@@ -1688,7 +1697,13 @@
       "technical": "Technical details"
     },
     "connectServer": "Connect MCP server",
-    "noServerHint": "This connection works for token-based triggers, but it has no MCP server yet to give agents tools."
+    "noServerHint": "This connection works for token-based triggers, but it has no MCP server yet to give agents tools.",
+    "claudeCodeStale": {
+      "title": "Claude Code points to another copy of Locum",
+      "body": "The Locum registered in Claude Code is not this installed app ({{motivo}}). Fixing re-registers the command; if it fails, the previous one is put back.",
+      "fix": "Fix",
+      "fixing": "fixing..."
+    }
   },
   "claudeSessions": {
     "title": "Sessions",

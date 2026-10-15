@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import nodeCrypto from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 // A build ESM: a UMD, que é o "main" do pacote, não passa pelo esbuild.
@@ -38,6 +38,8 @@ export interface Candidato {
 export interface Preparado extends Candidato {
   config: McpServerInput;
   segredo?: string;
+  /** Variáveis que a origem cita e esta máquina não resolveu (sem o segredo descartado). */
+  semValor: string[];
   /** App OAuth que o plugin declara, para autorizar sem registro automático. */
   cliente?: PreRegisteredClient;
 }
@@ -53,7 +55,35 @@ export interface Entrada {
   oauth?: { clientId?: string; callbackPort?: number; scopes?: string[] | string };
 }
 
-export const NOME_DE_SEGREDO = /key|token|secret|password|passwd|auth|bearer|cookie/i;
+/** Palavras que, num nome de variável ou cabeçalho, dizem que o valor é segredo. */
+const PALAVRAS_DE_SEGREDO = new Set(["key", "apikey", "token", "secret", "password", "passwd", "pwd", "bearer", "cookie", "credential", "credentials", "authorization", "auth"]);
+/** Palavras que dizem que o valor é um endereço, um nome ou uma lista, mesmo ao lado de "token" ou "auth". */
+const PALAVRAS_DE_NAO_SEGREDO = new Set(["url", "uri", "host", "endpoint", "scope", "scopes", "file", "path", "dir", "name", "id", "type", "mode", "port", "domain", "realm", "authority", "server", "issuer"]);
+
+/**
+ * O nome pede cofre? Vale por palavra inteira (`MINHA_API_KEY`, `x-api-key`,
+ * `clientSecret`), e não por trecho: `KEYCLOAK_URL`, `OAUTH_TOKEN_URL`,
+ * `AUTH_SERVER_URL` e `*_OAUTH_SCOPES` são configuração, e comparam como tal.
+ */
+export function ehChaveDeSegredo(chave: string): boolean {
+  const palavras = chave
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((p) => p !== "");
+  if (palavras.some((p) => PALAVRAS_DE_NAO_SEGREDO.has(p))) return false;
+  return palavras.some((p) => PALAVRAS_DE_SEGREDO.has(p)) || (palavras.includes("api") && palavras.includes("key"));
+}
+
+/** Endereço sem credencial embutida: nunca é o segredo, mesmo numa chave que pareça. */
+function ehEndereco(valor: string): boolean {
+  try {
+    const u = new URL(valor);
+    return (u.protocol === "http:" || u.protocol === "https:") && u.username === "" && u.password === "";
+  } catch {
+    return false;
+  }
+}
 const VARIAVEL = /\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}/g;
 
 export function lerJson(caminho: string): unknown {
@@ -227,7 +257,7 @@ export function fontes(home: string): Fonte[] {
     {
       origem: "usuário",
       arquivo: join(home, ".claude.json"),
-      servidores: comoObjeto(comoObjeto(lerJson(join(home, ".claude.json"))).mcpServers) as Record<string, Entrada>,
+      servidores: comoObjeto(comoObjeto(lerJsonCacheado(join(home, ".claude.json"))).mcpServers) as Record<string, Entrada>,
     },
     ...servidoresDosPlugins(home),
     {
@@ -326,12 +356,14 @@ export function preparar(
   cadastrados: ReadonlySet<string>,
 ): Preparado {
   const faltando = new Set<string>();
+  const semValor = new Set<string>();
   const expandir = (texto: string): string =>
     texto.replace(VARIAVEL, (inteiro, nome: string, padrao: string | undefined) => {
       if (nome === "CLAUDE_PLUGIN_ROOT" && raiz !== undefined) return raiz;
       const valor = ambiente[nome] ?? padrao;
       if (valor === undefined) {
         faltando.add(nome);
+        semValor.add(nome);
         return inteiro;
       }
       return valor;
@@ -343,7 +375,7 @@ export function preparar(
     const out: Record<string, string> = {};
     for (const [chave, bruto] of Object.entries(registro)) {
       const valor = expandir(bruto);
-      if (!NOME_DE_SEGREDO.test(chave) || valor.length === 0 || valor.includes("${")) {
+      if (!ehChaveDeSegredo(chave) || valor.length === 0 || valor.includes("${") || ehEndereco(valor)) {
         out[chave] = valor;
       } else if (segredo === undefined) {
         segredo = valor;
@@ -371,6 +403,7 @@ export function preparar(
     transport,
     destino: transport === "stdio" ? (config.command ?? []).join(" ").replace(raiz ?? "\u0000", "<plugin>") : (config.url ?? ""),
     faltando: [...faltando],
+    semValor: [...semValor],
     oauth: transport !== "stdio" && Object.keys(entrada.headers ?? {}).length === 0,
     jaCadastrado: cadastrados.has(name),
     config,
@@ -390,6 +423,12 @@ export interface Resolvido {
   segredo?: string;
   cliente?: PreRegisteredClient;
   faltando: string[];
+  /**
+   * A origem cita variável que esta máquina não resolveu agora (o shell de
+   * login pode ter falhado ou estourado o tempo). Não se aceita assim: o
+   * `${X}` literal não é a configuração que a pessoa quis.
+   */
+  incompleto: boolean;
   /** Pasta do plugin na versão instalada e ligada agora. */
   raiz?: string;
   /** O arquivo que declara o servidor, para "editar na origem". */
@@ -433,25 +472,44 @@ function ordenado(registro: Record<string, string> | undefined): [string, string
   return registro === undefined ? null : Object.entries(registro).sort(([a], [b]) => a.localeCompare(b));
 }
 
-/** A configuração que importa para dizer "mudou": o que sobe o processo ou abre a conexão. */
+/**
+ * A configuração que importa para dizer "mudou": o que sobe o processo ou abre
+ * a conexão. Fora dela só ficam o valor que foi para o cofre e o marcador de
+ * credencial do Locum, que aparecem como `<segredo>`; todo o resto compara,
+ * inclusive endereço e escopo.
+ */
 function essencial(config: McpServerInput, source: McpSource | undefined, raiz: string | undefined) {
   const limpo = (t: string): string => semVersaoDoPlugin(t, source, raiz);
-  // O valor de uma chave com cara de segredo não entra: ele vai para o cofre,
-  // ou vem de variável do shell, e trocar a chave de API não é mudar o servidor.
-  const valor = (k: string, v: string): string => (NOME_DE_SEGREDO.test(k) ? "<segredo>" : limpo(v));
+  const valor = (v: string): string => (v === CREDENTIAL_PLACEHOLDER ? "<segredo>" : limpo(v));
   return {
     transport: config.transport,
     command: config.command?.map(limpo) ?? null,
     url: config.url === undefined ? null : limpo(config.url),
-    env: ordenado(config.env)?.map(([k, v]) => [k, valor(k, v)]) ?? null,
-    headers: ordenado(config.headers)?.map(([k, v]) => [k, valor(k, v)]) ?? null,
+    env: ordenado(config.env)?.map(([k, v]) => [k, valor(v)]) ?? null,
+    headers: ordenado(config.headers)?.map(([k, v]) => [k, valor(v)]) ?? null,
   };
 }
 
 /** Impressão da configuração, sem o que é do Locum nem a versão do plugin. */
 export function impressao(config: McpServerInput, source?: McpSource, raiz?: string): string {
-  const { createHash } = nodeCrypto;
-  return createHash("sha256").update(JSON.stringify(essencial(config, source, raiz))).digest("hex").slice(0, 16);
+  return nodeCrypto.createHash("sha256").update(JSON.stringify(essencial(config, source, raiz))).digest("hex").slice(0, 16);
+}
+
+/**
+ * Tira da cópia o marcador de credencial que o Locum pôs (o OAuth, por
+ * exemplo) onde a origem não tem a chave: isso é do Locum, e não conta na
+ * impressão da cópia.
+ */
+export function semMarcadorDoLocum(copia: McpServerInput, origem: McpServerInput): McpServerInput {
+  const filtrar = (c: Record<string, string> | undefined, o: Record<string, string> | undefined) => {
+    if (c === undefined) return undefined;
+    const saida = Object.fromEntries(Object.entries(c).filter(([k, v]) => !(v === CREDENTIAL_PLACEHOLDER && o?.[k] === undefined)));
+    return Object.keys(saida).length === 0 ? undefined : saida;
+  };
+  const { env: _e, headers: _h, ...resto } = copia;
+  const env = filtrar(copia.env, origem.env);
+  const headers = filtrar(copia.headers, origem.headers);
+  return { ...resto, ...(env === undefined ? {} : { env }), ...(headers === undefined ? {} : { headers }) };
 }
 
 /** Uma diferença entre a configuração aceita e a da origem, com segredo mascarado. */
@@ -461,19 +519,45 @@ export interface Mudanca {
   chave?: string;
   antes: string | null;
   depois: string | null;
+  /** O valor mudou, mas é protegido: os dois lados saem mascarados e iguais. */
+  protegido?: boolean;
 }
 
 export const VALOR_OCULTO = "<oculto>";
 
-/** Valor de `env` ou `headers`: o que parece segredo não sai daqui. */
-function mascarar(chave: string, valor: string): string {
-  return NOME_DE_SEGREDO.test(chave) && valor !== CREDENTIAL_PLACEHOLDER && valor.length > 0 ? VALOR_OCULTO : valor;
+/** Este valor, nesta chave, é segredo de fato (e não endereço, escopo ou variável por resolver)? */
+function ehSegredoDeFato(chave: string, valor: string): boolean {
+  return ehChaveDeSegredo(chave) && valor.length > 0 && valor !== CREDENTIAL_PLACEHOLDER && !valor.includes("${") && !ehEndereco(valor);
 }
 
-/** `--token=abc` vira `--token=<oculto>`; o resto do argumento passa como está. */
-function mascararArg(arg: string): string {
-  const m = /^(-{0,2}[A-Za-z0-9_.-]+)=(.+)$/.exec(arg);
-  return m !== null && NOME_DE_SEGREDO.test(m[1]!) ? `${m[1]}=${VALOR_OCULTO}` : arg;
+/** Valor de `env` ou `headers`: o que parece segredo não sai daqui. */
+function mascarar(chave: string, valor: string): string {
+  return ehSegredoDeFato(chave, valor) ? VALOR_OCULTO : valor;
+}
+
+/**
+ * `--token=abc` e `--token abc` viram `--token=<oculto>` e `--token <oculto>`.
+ * O resto dos argumentos passa como está.
+ */
+export function mascararArgs(args: string[]): string[] {
+  const saida: string[] = [];
+  let mascararOProximo = false;
+  for (const arg of args) {
+    if (mascararOProximo && !arg.startsWith("-")) {
+      saida.push(VALOR_OCULTO);
+      mascararOProximo = false;
+      continue;
+    }
+    mascararOProximo = false;
+    const igual = /^(-{1,2}[A-Za-z0-9_.-]+)=(.*)$/.exec(arg);
+    if (igual !== null) {
+      saida.push(ehSegredoDeFato(igual[1]!.replace(/^-+/, ""), igual[2]!) ? `${igual[1]}=${VALOR_OCULTO}` : arg);
+    } else {
+      saida.push(arg);
+      mascararOProximo = /^-{1,2}[A-Za-z0-9_.-]+$/.test(arg) && ehChaveDeSegredo(arg.replace(/^-+/, ""));
+    }
+  }
+  return saida;
 }
 
 /** A configuração como a tela mostra: segredo mascarado, o resto inteiro. */
@@ -484,7 +568,7 @@ export function configMascarada(config: McpServerInput): McpServerInput {
   const headers = mapa(config.headers);
   return {
     ...config,
-    ...(config.command === undefined ? {} : { command: config.command.map((a, i) => (i === 0 ? a : mascararArg(a))) }),
+    ...(config.command === undefined ? {} : { command: [config.command[0]!, ...mascararArgs(config.command.slice(1))] }),
     ...(env === undefined ? {} : { env }),
     ...(headers === undefined ? {} : { headers }),
   };
@@ -492,35 +576,64 @@ export function configMascarada(config: McpServerInput): McpServerInput {
 
 /**
  * O que a origem mudou em relação ao que foi aceito. A versão do diretório do
- * plugin não conta: os dois lados passam por `semVersaoDoPlugin`.
+ * plugin não conta: os dois lados passam por `semVersaoDoPlugin`. A comparação
+ * é pelo valor de verdade; só a saída sai mascarada, e a mudança num valor
+ * protegido aparece como tal em vez de sumir.
  */
 export function diferencas(aceita: McpServerInput, nova: McpServerInput, source?: McpSource, raiz?: string): Mudanca[] {
-  const a = configMascarada(aceita);
-  const n = configMascarada(nova);
   const limpo = (t: string): string => semVersaoDoPlugin(t, source, raiz);
   const saida: Mudanca[] = [];
-  if (a.transport !== n.transport) saida.push({ campo: "transport", antes: a.transport, depois: n.transport });
-  const ca = a.command?.map(limpo);
-  const cn = n.command?.map(limpo);
+  if (aceita.transport !== nova.transport) saida.push({ campo: "transport", antes: aceita.transport, depois: nova.transport });
+
+  const ca = aceita.command?.map(limpo);
+  const cn = nova.command?.map(limpo);
   if ((ca?.[0] ?? null) !== (cn?.[0] ?? null)) saida.push({ campo: "command", antes: ca?.[0] ?? null, depois: cn?.[0] ?? null });
-  const aa = ca?.slice(1).join(" ") ?? null;
-  const an = cn?.slice(1).join(" ") ?? null;
-  if (aa !== an) saida.push({ campo: "args", antes: aa === "" ? null : aa, depois: an === "" ? null : an });
-  const ua = a.url === undefined ? null : limpo(a.url);
-  const un = n.url === undefined ? null : limpo(n.url);
+  const ra = ca?.slice(1).join(" ") ?? "";
+  const rn = cn?.slice(1).join(" ") ?? "";
+  if (ra !== rn) {
+    const ma = mascararArgs(ca?.slice(1) ?? []).join(" ");
+    const mn = mascararArgs(cn?.slice(1) ?? []).join(" ");
+    saida.push({ campo: "args", antes: ma === "" ? null : ma, depois: mn === "" ? null : mn, ...(ma === mn ? { protegido: true } : {}) });
+  }
+
+  const ua = aceita.url === undefined ? null : limpo(aceita.url);
+  const un = nova.url === undefined ? null : limpo(nova.url);
   if (ua !== un) saida.push({ campo: "url", antes: ua, depois: un });
+
   for (const campo of ["env", "headers"] as const) {
-    const antes = a[campo] ?? {};
-    const depois = n[campo] ?? {};
+    const antes = aceita[campo] ?? {};
+    const depois = nova[campo] ?? {};
     for (const chave of [...new Set([...Object.keys(antes), ...Object.keys(depois)])].sort()) {
       // O que é do Locum, como o marcador de OAuth, não vem da origem.
       if (antes[chave] === CREDENTIAL_PLACEHOLDER && depois[chave] === undefined) continue;
       const va = antes[chave] === undefined ? null : limpo(antes[chave]);
       const vn = depois[chave] === undefined ? null : limpo(depois[chave]);
-      if (va !== vn) saida.push({ campo, chave, antes: va, depois: vn });
+      if (va === vn) continue;
+      const ma = va === null ? null : mascarar(chave, va);
+      const mn = vn === null ? null : mascarar(chave, vn);
+      saida.push({ campo, chave, antes: ma, depois: mn, ...(ma !== null && ma === mn ? { protegido: true } : {}) });
     }
   }
   return saida;
+}
+
+/** Por que a origem não tem mais o servidor, para a tela dizer o certo. */
+export type MotivoDoSumico = "plugin-desligado" | "plugin-removido" | "ausente";
+
+/** Cache do `~/.claude.json`, que é grande e o Claude Code reescreve a cada sessão: vale enquanto o arquivo não muda. */
+const lidosPorMtime = new Map<string, { mtimeNs: bigint; size: bigint; valor: unknown }>();
+export function lerJsonCacheado(caminho: string): unknown {
+  try {
+    const st = statSync(caminho, { bigint: true });
+    const guardado = lidosPorMtime.get(caminho);
+    if (guardado !== undefined && guardado.mtimeNs === st.mtimeNs && guardado.size === st.size) return guardado.valor;
+    const valor = lerJson(caminho);
+    lidosPorMtime.set(caminho, { mtimeNs: st.mtimeNs, size: st.size, valor });
+    return valor;
+  } catch {
+    lidosPorMtime.delete(caminho);
+    return undefined;
+  }
 }
 
 /**
@@ -531,6 +644,7 @@ export function diferencas(aceita: McpServerInput, nova: McpServerInput, source?
 export class OrigemResolver {
   private lidos = new Map<string, { at: number; valor: Resolvido | undefined }>();
   private ambientes = new Map<string, { at: number; valor: Record<string, string> }>();
+  private lidas: { at: number; valor: Fonte[] } | undefined;
 
   constructor(private readonly deps: OrigemDeps) {}
 
@@ -538,20 +652,40 @@ export class OrigemResolver {
     return this.deps.home;
   }
 
+  /** Esquece o que se leu dos arquivos. O que o shell de login respondeu fica: abrir outro custa segundos. */
   esquecer(): void {
     this.lidos.clear();
-    this.ambientes.clear();
+    this.lidas = undefined;
+  }
+
+  /** As fontes, lidas uma vez por rodada. */
+  private fontesAgora(): Fonte[] {
+    const agora = (this.deps.agora ?? Date.now)();
+    if (this.lidas !== undefined && agora - this.lidas.at < (this.deps.ttlMs ?? TTL_PADRAO_MS)) return this.lidas.valor;
+    const valor = fontes(this.deps.home);
+    this.lidas = { at: agora, valor };
+    return valor;
   }
 
   /** A fonte onde a origem mora hoje, ou nada quando sumiu (plugin desligado, arquivo apagado). */
   fonteDe(source: McpSource): Fonte | undefined {
     const rotulo = rotuloDaOrigem(source);
-    return fontes(this.deps.home).find((f) => f.origem === rotulo && source.server in f.servidores);
+    return this.fontesAgora().find((f) => f.origem === rotulo && source.server in f.servidores);
   }
 
   /** Onde editar: o arquivo que declara o servidor, mesmo se a origem sumiu. */
   arquivoDe(source: McpSource): string | undefined {
-    return this.fonteDe(source)?.arquivo ?? fontes(this.deps.home).find((f) => f.origem === rotuloDaOrigem(source))?.arquivo;
+    return this.fonteDe(source)?.arquivo ?? this.fontesAgora().find((f) => f.origem === rotuloDaOrigem(source))?.arquivo;
+  }
+
+  /** Para a origem que sumiu: o plugin está desligado no Claude Code, foi removido, ou só não declara mais o servidor. */
+  motivoDoSumico(source: McpSource): MotivoDoSumico {
+    if (source.kind !== "claude-plugin") return "ausente";
+    const chave = rotuloDaOrigem(source);
+    const ajustes = comoObjeto(lerJson(join(this.deps.home, ".claude", "settings.json")));
+    if (comoObjeto(ajustes.enabledPlugins)[chave] === false) return "plugin-desligado";
+    const instalados = comoObjeto(comoObjeto(lerJson(join(this.deps.home, ".claude", "plugins", "installed_plugins.json"))).plugins);
+    return chave in instalados ? "ausente" : "plugin-removido";
   }
 
   /** `undefined` quando a origem não tem mais o servidor. */
@@ -572,6 +706,7 @@ export class OrigemResolver {
         ...(p.segredo === undefined ? {} : { segredo: p.segredo }),
         ...(p.cliente === undefined ? {} : { cliente: p.cliente }),
         faltando: p.faltando,
+        incompleto: p.semValor.length > 0,
         ...(fonte.raiz === undefined ? {} : { raiz: fonte.raiz }),
         ...(fonte.arquivo === undefined ? {} : { arquivo: fonte.arquivo }),
         hash: impressao(p.config, source, fonte.raiz),
@@ -590,7 +725,9 @@ export class OrigemResolver {
       if (guardado !== undefined && agora - guardado.at < TTL_DO_AMBIENTE_MS) doShell = guardado.valor;
       else {
         doShell = await this.deps.ambiente(faltam);
-        this.ambientes.set(chave, { at: agora, valor: doShell });
+        // Resposta incompleta (shell que falhou ou estourou o tempo) não fica
+        // guardada: a próxima leitura tenta de novo.
+        if (faltam.every((n) => doShell[n] !== undefined)) this.ambientes.set(chave, { at: agora, valor: doShell });
       }
     }
     return { ...doShell, ...Object.fromEntries(Object.entries(process.env).filter((p): p is [string, string] => p[1] !== undefined)) };

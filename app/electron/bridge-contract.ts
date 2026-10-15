@@ -248,8 +248,8 @@ interface ServiceApi {
   "mcp.usage": McpService["usage"];
   /** Servidores vinculados a uma origem: se ela bate com o aceito, mudou (com o diff) ou sumiu. */
   "mcp.vinculos": McpService["vinculos"];
-  /** A mudança da origem passa a valer. */
-  "mcp.aceitarOrigem": (name: string) => Promise<void>;
+  /** A mudança da origem passa a valer, se a origem ainda tem a impressão que o aviso mostrou. */
+  "mcp.aceitarOrigem": (name: string, hash: string) => Promise<void>;
   /** Fica com a configuração anterior; o aviso volta se a origem mudar de novo. */
   "mcp.manterAnterior": McpService["manterAnterior"];
   /** O servidor vira cadastro manual, com a configuração de hoje como cópia editável. */

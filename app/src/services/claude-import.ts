@@ -65,6 +65,16 @@ function hostDe(url: string | undefined): string | null {
   }
 }
 
+/** Programas que só lançam outro: o nome do programa não diz de que servidor se trata. */
+const LANCADORES = new Set(["npx", "bunx", "pnpx", "uvx", "pipx", "node", "python", "python3", "deno", "docker", "bun", "tsx"]);
+
+/** O primeiro argumento que não é opção, sem o `@versão` do pacote. */
+function pacoteOuScript(args: string[]): string | null {
+  const primeiro = args.find((a) => !a.startsWith("-") && a !== "run" && a !== "exec");
+  if (primeiro === undefined) return null;
+  return primeiro.replace(/(?<=.)@[^@/]*$/, "");
+}
+
 /**
  * Um cadastro sem origem guardada e uma declaração da origem são o mesmo
  * servidor? O nome igual não basta: o cadastro pode ser de outra pessoa, ou de
@@ -79,7 +89,17 @@ export function pareceOMesmoServidor(
   const transport = entrada.type === "http" || entrada.type === "sse" ? entrada.type : entrada.url !== undefined ? "http" : "stdio";
   if ((cadastro.transport === "stdio") !== (transport === "stdio")) return false;
   if (transport === "stdio") {
-    return basename(cadastro.command?.[0] ?? "\u0000") === basename(entrada.command ?? "\u0001");
+    const programa = basename(cadastro.command?.[0] ?? "\u0000");
+    if (programa !== basename(entrada.command ?? "\u0001")) return false;
+    // `npx`, `uvx`, `node` e afins são o mesmo programa para servidores sem
+    // relação: o que identifica é o pacote ou o script, o primeiro argumento
+    // que não é opção.
+    if (LANCADORES.has(programa)) {
+      const a = pacoteOuScript(cadastro.command?.slice(1) ?? []);
+      const b = pacoteOuScript(entrada.args ?? []);
+      return a !== null && a === b;
+    }
+    return true;
   }
   const a = hostDe(cadastro.url);
   return a !== null && a === hostDe(entrada.url?.replace(/\$\{[^}]*\}/g, "x"));
@@ -144,7 +164,7 @@ export class ClaudeImportService {
 
   /** O que dá para importar, sem segredo nem cadastro completo. */
   async listar(): Promise<Candidato[]> {
-    return (await this.preparados()).map(({ config: _c, segredo: _s, cliente: _k, source: _o, hash: _h, ...candidato }) => candidato);
+    return (await this.preparados()).map(({ config: _c, segredo: _s, cliente: _k, source: _o, hash: _h, semValor: _v, ...candidato }) => candidato);
   }
 
   /**

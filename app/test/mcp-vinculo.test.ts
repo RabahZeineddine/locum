@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import type { McpSource } from "../src/config/types.js";
 import { ClaudeImportService, pareceOMesmoServidor } from "../src/services/claude-import.js";
-import { diferencas, impressao, OrigemResolver, semVersaoDoPlugin } from "../src/services/mcp-origem.js";
+import { configMascarada, diferencas, ehChaveDeSegredo, impressao, lerJsonCacheado, mascararArgs, OrigemResolver, preparar, semVersaoDoPlugin } from "../src/services/mcp-origem.js";
 import { McpService } from "../src/services/mcp-service.js";
 import { SecretService } from "../src/services/secret-service.js";
 import { SettingsService } from "../src/services/settings-service.js";
@@ -134,7 +134,7 @@ test("mudança de preset e de escopos na origem pede aceite, mostra o diff e usa
   assert.ok(antes?.command?.includes("onedrive,excel,mail,calendar,teams,search,users"));
   assert.equal(antes?.env?.MS365_MCP_REQUIRE_CONFIRM, undefined);
 
-  await mcp.aceitarOrigem("ms365");
+  await mcp.aceitarOrigem("ms365", (await mcp.vinculos()).ms365!.hash!);
   assert.equal((await mcp.vinculos()).ms365?.estado, "ok");
   const [depois] = await mcp.enabledConfigs();
   assert.ok(depois?.command?.includes("teams,files,outlook,search,work"));
@@ -149,7 +149,7 @@ test("manter a anterior silencia o aviso até a origem mudar de novo", async () 
   await importacao.importar(["ms365"]);
 
   casa.instalar("0.21.1", { ms365: MS365_NOVO });
-  await mcp.manterAnterior("ms365");
+  await mcp.manterAnterior("ms365", (await mcp.vinculos()).ms365!.hash!);
   const mantida = (await mcp.vinculos()).ms365!;
   assert.equal(mantida.estado, "mudou");
   assert.equal(mantida.mantida, true);
@@ -176,10 +176,10 @@ test("a impressão ignora a versão do diretório do plugin, mas não o resto", 
   assert.equal(impressao(velha, PLUGIN), impressao(nova, PLUGIN));
   assert.notEqual(impressao(nova, PLUGIN), impressao(outroArg, PLUGIN));
   assert.equal(semVersaoDoPlugin("/h/.claude/plugins/cache/akad/akad/0.17.1/a", PLUGIN, undefined), "${CLAUDE_PLUGIN_ROOT}/a");
-  // O valor do segredo não entra: rodar a chave não é mudar o servidor.
+  // Só o que foi para o cofre fica fora da impressão; variável por resolver compara.
   const a = { name: "s", transport: "stdio" as const, command: ["x"], env: { API_KEY: "${credential}" } };
-  const b = { ...a, env: { API_KEY: "${MINHA_VAR}" } };
-  assert.equal(impressao(a), impressao(b));
+  assert.equal(impressao(a), impressao({ ...a }));
+  assert.notEqual(impressao(a), impressao({ ...a, env: { API_KEY: "${MINHA_VAR}" } }));
 });
 
 test("origem que sumiu: usa a última aceita e avisa", async () => {
@@ -290,4 +290,189 @@ test("nome igual não basta: outro programa ou outro host é cadastro de mão, n
   assert.equal(pareceOMesmoServidor({ transport: "http", url: "https://a.exemplo/mcp" }, { type: "http", url: "https://a.exemplo/outro" }), true);
   assert.equal(pareceOMesmoServidor({ transport: "http", url: "https://a.exemplo/mcp" }, { type: "http", url: "https://b.exemplo/mcp" }), false);
   assert.equal(pareceOMesmoServidor({ transport: "stdio", command: ["npx"] }, { type: "http", url: "https://a.exemplo/mcp" }), false);
+});
+
+/* ------------------------------------------------ revisão: nomes, aceite e ambiente */
+
+test("nome de chave: só palavra inteira de segredo vai para o cofre; endereço e escopo comparam", () => {
+  for (const nome of ["MINHA_API_KEY", "x-api-key", "clientSecret", "JIRA_TOKEN", "Authorization", "DB_PASSWORD"]) assert.equal(ehChaveDeSegredo(nome), true, nome);
+  for (const nome of ["MS365_OAUTH_SCOPES", "OAUTH_TOKEN_URL", "AUTH_SERVER_URL", "AZURE_AUTHORITY_HOST", "KEYCLOAK_URL", "TOKEN_FILE"]) assert.equal(ehChaveDeSegredo(nome), false, nome);
+
+  const p = preparar(
+    "x",
+    "usuário",
+    { command: "npx", env: { OAUTH_TOKEN_URL: "https://idp.exemplo/token", AUTH_SERVER_URL: "https://idp.exemplo", AZURE_AUTHORITY_HOST: "login.exemplo", GH_TOKEN: "ghp_abc" } },
+    undefined,
+    {},
+    new Set(),
+  );
+  // O segredo é o token de verdade, e nunca uma URL.
+  assert.equal(p.segredo, "ghp_abc");
+  assert.equal(p.config.env?.OAUTH_TOKEN_URL, "https://idp.exemplo/token");
+  assert.equal(p.config.env?.GH_TOKEN, "${credential}");
+  // Uma URL numa chave que parece segredo também não vai para o cofre.
+  assert.equal(preparar("y", "usuário", { command: "x", env: { API_KEY: "https://a.exemplo/b" } }, undefined, {}, new Set()).segredo, undefined);
+});
+
+test("mudar escopo, URL de token ou servidor de auth na origem pede aceite, com o valor à vista", async () => {
+  const casa = new Casa();
+  const base = { command: "npx", args: ["srv"], env: { MS365_OAUTH_SCOPES: "a b", OAUTH_TOKEN_URL: "https://idp.exemplo/token", AUTH_SERVER_URL: "https://idp.exemplo", KEYCLOAK_URL: "https://k.exemplo" } };
+  casa.instalar("1.0.0", { srv: base });
+  const { mcp, importacao } = montar(casa);
+  await importacao.importar(["srv"]);
+  for (const [chave, novo] of [["MS365_OAUTH_SCOPES", "a b c"], ["OAUTH_TOKEN_URL", "https://malicioso.exemplo/token"], ["AUTH_SERVER_URL", "https://outro.exemplo"], ["KEYCLOAK_URL", "https://x.exemplo"]] as const) {
+    casa.instalar("1.0.0", { srv: { ...base, env: { ...base.env, [chave]: novo } } });
+    const v = (await mcp.vinculos()).srv!;
+    assert.equal(v.estado, "mudou", chave);
+    assert.deepEqual(v.mudancas.map((m) => [m.chave, m.depois]), [[chave, novo]], chave);
+    // E a conexão segue com a aceita.
+    await mcp.setEnabled("srv", true);
+    assert.equal((await mcp.enabledConfigs())[0]?.env?.[chave], base.env[chave]);
+  }
+  casa.limpar();
+});
+
+test("o aceite vale só para a impressão que a pessoa viu", async () => {
+  const casa = new Casa();
+  casa.instalar("1.0.0", { ms365: MS365_ANTIGO });
+  const { mcp, importacao } = montar(casa);
+  await importacao.importar(["ms365"]);
+
+  casa.instalar("1.1.0", { ms365: MS365_NOVO });
+  const visto = (await mcp.vinculos()).ms365!.hash!;
+  // A origem muda de novo antes do clique.
+  casa.instalar("1.2.0", { ms365: { ...MS365_NOVO, args: [...MS365_NOVO.args, "--read-only"] } });
+  await assert.rejects(() => mcp.aceitarOrigem("ms365", visto), /mudou de novo/);
+  await assert.rejects(() => mcp.manterAnterior("ms365", visto), /mudou de novo/);
+  const agora = (await mcp.vinculos()).ms365!;
+  assert.equal(agora.estado, "mudou");
+  assert.ok(agora.mudancas.some((m) => /--read-only/.test(m.depois ?? "")));
+  assert.ok((await mcp.get("ms365"))?.config.command?.includes("onedrive,excel,mail,calendar,teams,search,users"));
+  await mcp.aceitarOrigem("ms365", agora.hash!);
+  assert.equal((await mcp.vinculos()).ms365?.estado, "ok");
+  casa.limpar();
+});
+
+test("aceitar mudança só de args em stdio mantém a credencial; mudar o programa a desfaz", async () => {
+  const casa = new Casa();
+  casa.instalar("1.0.0", { srv: { command: "npx", args: ["srv@1"] } });
+  const { mcp, importacao, secrets } = montar(casa);
+  await importacao.importar(["srv"]);
+  secrets.set("mcp/srv", "token-colado");
+  await mcp.setCredentialRef("srv", "mcp/srv");
+
+  casa.instalar("1.1.0", { srv: { command: "npx", args: ["srv@2"] } });
+  await mcp.aceitarOrigem("srv", (await mcp.vinculos()).srv!.hash!);
+  assert.equal((await mcp.get("srv"))?.credentialRef, "mcp/srv");
+
+  casa.instalar("1.2.0", { srv: { command: "outro-programa", args: ["srv@2"] } });
+  await mcp.aceitarOrigem("srv", (await mcp.vinculos()).srv!.hash!);
+  assert.equal((await mcp.get("srv"))?.credentialRef ?? null, null);
+  casa.limpar();
+});
+
+test("migração: http com Authorization do OAuth na cópia não vira mudança, e diferença protegida aparece", async () => {
+  const casa = new Casa();
+  casa.usuario({ remoto: { type: "http", url: "https://r.exemplo/mcp" }, outro: { type: "http", url: "https://o.exemplo/mcp", headers: { "x-api-key": "${CHAVE_A}" } } });
+  const { mcp, importacao } = montar(casa);
+  await mcp.register({ name: "remoto", transport: "http", url: "https://r.exemplo/mcp", headers: { Authorization: "${credential}" }, scope: "write" });
+  await mcp.register({ name: "outro", transport: "http", url: "https://o.exemplo/mcp", headers: { "x-api-key": "${credential}" }, scope: "write" });
+  await importacao.revincular();
+  const v = await mcp.vinculos();
+  assert.equal(v.remoto?.estado, "ok");
+  // O marcador do OAuth segue valendo na conexão.
+  await mcp.setEnabled("remoto", true);
+  const remoto = (await mcp.enabledConfigs()).find((c) => c.name === "remoto");
+  assert.equal(remoto?.headers?.Authorization, undefined); // sem segredo no cofre, a entrada sai, como sempre
+  // "outro": a origem cita ${CHAVE_A} sem valor nesta máquina, a cópia tem o marcador: indisponível, não mudança.
+  assert.equal(v.outro?.estado, "indisponivel");
+  casa.limpar();
+});
+
+test("diferença só em valor protegido aparece como tal, e o segredo nunca sai", () => {
+  const antes = { name: "s", transport: "stdio" as const, command: ["x", "--token", "AAA", "--api-key=BBB"], env: { CLIENT_SECRET: "um" } };
+  const depois = { ...antes, command: ["x", "--token", "CCC", "--api-key=DDD"], env: { CLIENT_SECRET: "dois" } };
+  const m = diferencas(antes, depois);
+  assert.ok(m.length >= 2 && m.every((x) => x.protegido === true), JSON.stringify(m));
+  assert.ok(!/AAA|BBB|CCC|DDD|um|dois/.test(JSON.stringify(m).replace(/oculto/g, "")), JSON.stringify(m));
+  assert.deepEqual(mascararArgs(["--token", "AAA", "--nome", "x", "--api-key=BBB"]), ["--token", "<oculto>", "--nome", "x", "--api-key=<oculto>"]);
+  assert.deepEqual(configMascarada(antes).command, ["x", "--token", "<oculto>", "--api-key=<oculto>"]);
+});
+
+test("shell de login que falha é indisponibilidade, não mudança; não se aceita, e a falha não fica guardada", async () => {
+  const casa = new Casa();
+  casa.usuario({ api: { type: "http", url: "${URL_DA_API}" } });
+  const respostas: Record<string, string>[] = [{}, {}, {}, { URL_DA_API: "https://a.exemplo/mcp" }];
+  let chamadas = 0;
+  const secrets = new SecretService(mkdtempSync(join(tmpdir(), "locum-vinculo-cofre-")));
+  secrets.useBackend({ available: () => true, encrypt: (p) => Buffer.from(p), decrypt: (b) => b.toString() });
+  const db = bancoDeTeste();
+  const origem = new OrigemResolver({ home: casa.home, ambiente: async () => respostas[Math.min(chamadas++, respostas.length - 1)]!, ttlMs: 0 });
+  const mcp = new McpService(db, secrets, origem);
+  const importacao = new ClaudeImportService({ home: casa.home, ambiente: async () => ({ URL_DA_API: "https://a.exemplo/mcp" }), mcp, secrets, settings: new SettingsService(db) });
+  await importacao.importar(["api"]);
+
+  const falho = (await mcp.vinculos()).api!;
+  assert.equal(falho.estado, "indisponivel");
+  assert.deepEqual(falho.mudancas, []);
+  await assert.rejects(() => mcp.aceitarOrigem("api", falho.hash!), /nao resolveu|resolveu/);
+  // A falha não ficou guardada: a leitura seguinte tenta de novo, e o shell que respondeu volta ao normal.
+  assert.equal((await mcp.vinculos()).api?.estado, "indisponivel");
+  assert.equal((await mcp.vinculos()).api?.estado, "ok");
+  casa.limpar();
+});
+
+test("ambiente que respondeu fica guardado entre as leituras: o shell de login não abre a cada vinculos()", async () => {
+  const casa = new Casa();
+  casa.usuario({ api: { type: "http", url: "${URL_DA_API}" } });
+  let chamadas = 0;
+  const secrets = new SecretService(mkdtempSync(join(tmpdir(), "locum-vinculo-cofre-")));
+  secrets.useBackend({ available: () => true, encrypt: (p) => Buffer.from(p), decrypt: (b) => b.toString() });
+  const db = bancoDeTeste();
+  const ambiente = async () => {
+    chamadas++;
+    return { URL_DA_API: "https://a.exemplo/mcp" };
+  };
+  const mcp = new McpService(db, secrets, new OrigemResolver({ home: casa.home, ambiente, ttlMs: 0 }));
+  const importacao = new ClaudeImportService({ home: casa.home, ambiente, mcp, secrets, settings: new SettingsService(db) });
+  await importacao.importar(["api"]);
+  const depoisDaImportacao = chamadas;
+  await mcp.vinculos();
+  await mcp.vinculos();
+  await mcp.vinculos();
+  assert.equal(chamadas, depoisDaImportacao + 1);
+  casa.limpar();
+});
+
+test("origem que sumiu diz por quê: plugin desligado no Claude Code, ou removido", async () => {
+  const casa = new Casa();
+  casa.instalar("1.0.0", { ms365: MS365_NOVO });
+  const { mcp, importacao } = montar(casa);
+  await importacao.importar(["ms365"]);
+  casa.desligar();
+  assert.equal((await mcp.vinculos()).ms365?.motivo, "plugin-desligado");
+  writeFileSync(join(casa.home, ".claude", "plugins", "installed_plugins.json"), JSON.stringify({ version: 2, plugins: {} }));
+  writeFileSync(join(casa.home, ".claude", "settings.json"), JSON.stringify({ enabledPlugins: {} }));
+  assert.equal((await mcp.vinculos()).ms365?.motivo, "plugin-removido");
+  casa.limpar();
+});
+
+test("nome igual com programa genérico: npx de outro pacote é cadastro de mão", () => {
+  const github = { transport: "stdio", command: ["npx", "-y", "@modelcontextprotocol/server-github"] };
+  assert.equal(pareceOMesmoServidor(github, { command: "npx", args: ["-y", "@acme/outro-github-mcp"] }), false);
+  assert.equal(pareceOMesmoServidor(github, { command: "npx", args: ["-y", "@modelcontextprotocol/server-github@1.2.0"] }), true);
+  assert.equal(pareceOMesmoServidor({ transport: "stdio", command: ["uvx", "mcp-a"] }, { command: "uvx", args: ["mcp-b"] }), false);
+});
+
+test("o ~/.claude.json só é relido quando o arquivo muda", () => {
+  const dir = mkdtempSync(join(tmpdir(), "locum-vinculo-mtime-"));
+  const arquivo = join(dir, ".claude.json");
+  writeFileSync(arquivo, '{"a":1}');
+  const primeiro = lerJsonCacheado(arquivo);
+  assert.equal(lerJsonCacheado(arquivo), primeiro, "mesmo objeto: veio do cache");
+  writeFileSync(arquivo, '{"a":22}');
+  assert.deepEqual(lerJsonCacheado(arquivo), { a: 22 });
+  rmSync(arquivo);
+  assert.equal(lerJsonCacheado(arquivo), undefined);
+  rmSync(dir, { recursive: true, force: true });
 });
