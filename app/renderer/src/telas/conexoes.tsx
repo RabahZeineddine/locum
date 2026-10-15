@@ -423,14 +423,14 @@ function ConexaoNaLista({ conexao, onAbrir, vinculos }: { conexao: Conexao; onAb
       <span className="w-28 shrink-0">
         <Estado conexao={conexao} />
       </span>
-      <span className="text-muted-foreground num w-28 shrink-0 text-right text-xs" title={undefined}>
+      <span className="text-muted-foreground num w-28 shrink-0 truncate text-right text-xs">
         {conexao.toolCount !== null
           ? t("connections.offers.tools", { count: conexao.toolCount })
           : conexao.servers.length > 0
             ? t("connections.offers.testToList")
             : ""}
       </span>
-      <span className="flex w-16 shrink-0 justify-end" onClick={(e) => e.stopPropagation()}>
+      <span className="flex w-28 shrink-0 justify-end" onClick={(e) => e.stopPropagation()}>
         {naoTestada(conexao) && conexao.servers.length > 0 ? <TestarNaLista servidores={conexao.servers} /> : null}
         {desligada(conexao) && conexao.servers.length > 0 ? <LigarNaLista aoFalhar={setErroAoLigar} servidores={conexao.servers} /> : null}
       </span>
