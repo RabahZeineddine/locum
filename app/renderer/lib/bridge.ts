@@ -102,6 +102,8 @@ export const READ_CHANNELS = [
   "opencode.status",
   "grafana.list",
   "connections.list",
+  // Lê o que está gravado de automação e agent: não sobe servidor nem toca segredo.
+  "connections.usage",
   // Só lê os arquivos do Claude Code, sem shell nem segredo.
   "claudeImport.origins",
   "connections.slackApp",

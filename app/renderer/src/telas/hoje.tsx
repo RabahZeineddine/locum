@@ -863,8 +863,8 @@ function ComeceAqui({ agenda, navegar }: { agenda: Agenda[] | undefined; navegar
     },
     {
       id: "connection",
-      feito: conexoes.data.some((c) => c.state === "connected" && c.id !== "claude-code"),
-      ir: () => navegar("settings", "connections"),
+      feito: conexoes.data.some((c) => c.state === "connected"),
+      ir: () => navegar("connections"),
     },
     {
       id: "trigger",

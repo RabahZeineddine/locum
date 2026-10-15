@@ -341,6 +341,7 @@ interface ServiceApi {
    * endereço, e só conecta se ele pedir OAuth com registro automático.
    */
   "connections.list": ConnectionService["list"];
+  "connections.usage": ConnectionService["usage"];
   "connections.connect": ConnectionService["connect"];
   "connections.disconnect": ConnectionService["disconnect"];
   "connections.addCustom": ConnectionService["addCustom"];
@@ -633,6 +634,7 @@ export const BRIDGE_CHANNELS = [
   "grafana.save",
   "grafana.remove",
   "connections.list",
+  "connections.usage",
   "connections.connect",
   "connections.disconnect",
   "connections.addCustom",

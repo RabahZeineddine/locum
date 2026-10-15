@@ -1128,26 +1128,15 @@ async function esperarPonte(
  * aqui e o mesmo que uma pessoa usa.
  */
 /**
- * Abre o painel de uma conexão na vitrine, que é onde mora o formulário dela.
- * Painel de outra conexão aberto antes é fechado primeiro, para o formulário
- * procurado não ficar escondido atrás dele.
+ * Abre o detalhe de uma conexão, que é onde mora o formulário dela. O detalhe é
+ * uma página da rota Conexões: o id da conexão vai como destino.
  */
 async function abrirConexao(window: BrowserWindow, id: string): Promise<void> {
+  await irPara(window, "connections", id);
   await esperarProbe<true>(
     window,
-    `cartão ${id}`,
-    `(() => {
-      const aberto = document.querySelector("[data-locum-painel-conexao]");
-      if (aberto !== null && aberto.dataset.locumPainelConexao !== ${JSON.stringify(id)}) {
-        aberto.querySelector("header button")?.click();
-        return null;
-      }
-      if (aberto !== null) return true;
-      const botao = document.querySelector('[data-locum-conexao=${JSON.stringify(id)}] button');
-      if (botao === null) return null;
-      botao.click();
-      return null;
-    })()`,
+    `detalhe de ${id}`,
+    `document.querySelector('[data-locum-conexao-id=${JSON.stringify(id)}]') === null ? null : true`,
   );
 }
 
@@ -1184,7 +1173,7 @@ async function irPara(window: BrowserWindow, id: string, detalhe?: string): Prom
  * so a exigencia da story, que sao estes quatro destinos.
  */
 async function checkRoutes(window: BrowserWindow): Promise<string> {
-  const esperados = ["today", "inbox", "automations", "runs", "sessions", "library", "initiatives", "apps", "settings"];
+  const esperados = ["today", "inbox", "automations", "runs", "sessions", "library", "initiatives", "connections", "settings"];
 
   const barra = (await window.webContents.executeJavaScript(
     `Array.from(document.querySelectorAll("[data-locum-rota]")).map((b) => ({
@@ -1241,15 +1230,24 @@ async function checkRoutes(window: BrowserWindow): Promise<string> {
     throw new Error(`hash desconhecido levou a janela para ${desconhecido}`);
   }
 
-  // O nome em português de antes da 0.1.20 ainda chega por deep link e janela
-  // restaurada, e precisa levar ao mesmo lugar: Conexões, que hoje é Apps.
-  await window.webContents.executeJavaScript(`(location.hash = "#/configuracao/conexoes", null)`);
-  await new Promise((resolve) => setTimeout(resolve, 200));
-  const antigo = (await window.webContents.executeJavaScript(
-    `[document.querySelector("[data-locum-probe=rota]")?.dataset.ativo, location.hash].join("|")`,
-  )) as string;
-  if (antigo !== "apps|#/apps") {
-    throw new Error(`hash antigo de Conexões levou a ${antigo}`);
+  // Os nomes antigos ainda chegam por deep link e janela restaurada, e precisam
+  // levar ao mesmo lugar: o português de antes da 0.1.20, o Apps que Conexões
+  // já foi, e a seção de trackers que passou a morar na conexão de cada um.
+  const antigos: [string, string][] = [
+    ["configuracao/conexoes", "connections"],
+    ["apps", "connections"],
+    ["settings/connections", "connections"],
+    ["settings/trackers", "connections"],
+  ];
+  for (const [velho, novo] of antigos) {
+    await window.webContents.executeJavaScript(`(location.hash = "#/${velho}", null)`);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    const chegou = (await window.webContents.executeJavaScript(
+      `[document.querySelector("[data-locum-probe=rota]")?.dataset.ativo, location.hash].join("|")`,
+    )) as string;
+    if (chegou !== `${novo}|#/${novo}`) {
+      throw new Error(`o hash antigo ${velho} levou a ${chegou} e nao a ${novo}`);
+    }
   }
 
   return t("smoke.routes", { count: barra.length });
@@ -1839,7 +1837,7 @@ async function checkConfig(window: BrowserWindow): Promise<string> {
       `document.querySelector('[data-locum-orcamento="${orcamento.agentId}"]') === null ? null : true`,
     );
   }
-  await irPara(window, "apps");
+  await abrirConexao(window, FIXTURE_SERVER);
 
   // Segredo nao tem como chegar na tela, porque nao ha canal que o devolva. O
   // que da para conferir daqui e que o marcador nao guarda nada alem do
@@ -2417,8 +2415,8 @@ async function checkRegisteredProviders(window: BrowserWindow): Promise<string> 
  * aprovação, e ele é assunto da próxima story.
  */
 async function checkTrackers(window: BrowserWindow): Promise<string> {
-  // Os trackers moram numa seção própria da Configuração, todos juntos.
-  await irPara(window, "settings", "trackers");
+  // Cada tracker mora na conexão dele; o GitHub Issues, no detalhe do GitHub.
+  await abrirConexao(window, "github");
   const { createServer } = await import("node:http");
   const { eq } = await import("drizzle-orm");
   const { db, schema } = await import("../src/db/index.js");
@@ -2595,19 +2593,15 @@ async function checkTrackers(window: BrowserWindow): Promise<string> {
 
     // O segundo pela tela, que é o que a story entrega. A tela do GitHub não
     // pede id, nome nem endereço: só o tipo e o repositório de destino.
-    const escolheu = await window.webContents.executeJavaScript(
-      `(() => {
-        const tipo = document.querySelector("[data-locum-tracker-tipo]");
-        if (tipo === null) return false;
-        Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, "value").set.call(
-          tipo,
-          "github-issues",
-        );
-        tipo.dispatchEvent(new Event("change", { bubbles: true }));
-        return true;
-      })()`,
+    // No detalhe do GitHub só cabe o GitHub Issues: não há seletor de tipo.
+    const semSeletor = await esperarProbe<true>(
+      window,
+      "formulario de tracker do GitHub",
+      `document.querySelector("[data-locum-probe=trackers]") === null ? null : true`,
     );
-    if (escolheu !== true) throw new Error("a tela nao ofereceu o seletor de tipo de tracker");
+    if (semSeletor !== true || (await window.webContents.executeJavaScript(`document.querySelector("[data-locum-tracker-tipo]") !== null`))) {
+      throw new Error("o detalhe do GitHub ofereceu seletor de tipo de tracker");
+    }
 
     const formularioEnxuto = await esperarProbe<boolean>(
       window,
@@ -2659,10 +2653,10 @@ async function checkTrackers(window: BrowserWindow): Promise<string> {
         return ${JSON.stringify(idDaTela)} in achados ? achados : null;
       })()`,
     );
-    // A seção é uma só para todos os serviços: o Jira cadastrado pelo serviço
-    // aparece ao lado do GitHub, cada um com o tipo dele.
-    if (naTela[idDaTela] !== "github-issues" || naTela[idDoServico] !== "jira") {
-      throw new Error(`a secao de trackers listou ${JSON.stringify(naTela)}`);
+    // Cada conexão lista só os trackers dela: o Jira cadastrado pelo serviço
+    // não aparece no detalhe do GitHub (e aparece no da Atlassian, mais abaixo).
+    if (naTela[idDaTela] !== "github-issues" || idDoServico in naTela) {
+      throw new Error(`o detalhe do GitHub listou ${JSON.stringify(naTela)}`);
     }
     const destinoNaTela = await window.webContents.executeJavaScript(
       `document.querySelector('[data-locum-tracker="${idDaTela}"]').dataset.locumTrackerDestino`,
@@ -2781,33 +2775,42 @@ async function checkTrackers(window: BrowserWindow): Promise<string> {
     );
     if (guardouNaAtlassian) throw new Error("o tracker pela Atlassian aceitou credencial propria");
 
-    await irPara(window, "apps");
     await abrirConexao(window, "atlassian");
-    const naAtlassian = await esperarProbe<{ kind: string; credencial: boolean; outros: number }>(
+    const naAtlassian = await esperarProbe<{ kind: string; credencial: boolean; outros: number; jira: string | undefined }>(
       window,
       "trackers no painel da Atlassian",
       `(() => {
         const linha = document.querySelector('[data-locum-tracker="${idDaAtlassian}"]');
         if (linha === null) return null;
         return {
+          jira: document.querySelector('[data-locum-tracker="${idDoServico}"]')?.dataset.locumTrackerKind,
           kind: linha.dataset.locumTrackerKind,
           credencial: linha.querySelector("[data-locum-tracker-credencial]") !== null,
           outros: document.querySelectorAll('[data-locum-tracker-kind="github-issues"]').length,
         };
       })()`,
     );
-    if (naAtlassian.kind !== "jira-atlassian" || naAtlassian.credencial || naAtlassian.outros > 0) {
+    if (naAtlassian.kind !== "jira-atlassian" || naAtlassian.jira !== "jira" || naAtlassian.credencial || naAtlassian.outros > 0) {
       throw new Error(`o painel da Atlassian mostrou ${JSON.stringify(naAtlassian)}`);
     }
 
-    // O painel do GitHub é só a credencial de pull request: o GitHub Issues
-    // vive na seção de trackers, e um segundo formulário seria o mesmo conceito
-    // cadastrado em dois lugares.
+    // O detalhe do GitHub guarda a credencial de pull request e o tracker de
+    // issues, que é GitHub também; o Jira e o Shortcut não aparecem ali.
     await abrirConexao(window, "github");
-    const noGithub = await window.webContents.executeJavaScript(
-      `document.querySelector("[data-locum-probe=trackers]") !== null`,
+    const noGithub = await esperarProbe<{ trackers: boolean; jira: number }>(
+      window,
+      "trackers no detalhe do GitHub",
+      `(() => {
+        if (document.querySelector("[data-locum-probe=trackers]") === null) return null;
+        return {
+          trackers: true,
+          jira: document.querySelectorAll('[data-locum-tracker-kind="jira"], [data-locum-tracker-kind="jira-atlassian"]').length,
+        };
+      })()`,
     );
-    if (noGithub) throw new Error("o painel do GitHub voltou a oferecer cadastro de tracker");
+    if (!noGithub.trackers || noGithub.jira > 0) {
+      throw new Error(`o detalhe do GitHub mostrou ${JSON.stringify(noGithub)}`);
+    }
 
     if (!(await trackerService.remove(idDaAtlassian))) {
       throw new Error("o tracker pela Atlassian nao saiu");
@@ -4137,7 +4140,6 @@ async function checkMcpPoll(): Promise<string> {
  * desenvolve, e sair de um exame tendo apagado o Slack dele seria estrago.
  */
 async function checkSlackWindow(window: BrowserWindow): Promise<string> {
-  await irPara(window, "apps");
   await abrirConexao(window, "slack");
   const { slackService } = await import("../src/services/slack-service.js");
   const { FIXTURE_SERVER } = await import("../src/fixtures/mcp-fixture.js");
@@ -4239,7 +4241,6 @@ async function checkSlackWindow(window: BrowserWindow): Promise<string> {
     await slackService.addChannel(canal);
     // O painel leu o cadastro ao abrir; trocar de tela e voltar faz ele ler de novo.
     await irPara(window, "today");
-    await irPara(window, "apps");
     await abrirConexao(window, "slack");
 
     // A recusa da ponte vira mensagem daqui antes de virar espera estourada.
@@ -4569,7 +4570,6 @@ async function esperarDoServico<T>(
  * olhando.
  */
 async function checkGithub(window: BrowserWindow): Promise<string> {
-  await irPara(window, "apps");
   await abrirConexao(window, "github");
   const { secretService } = await import("../src/services/secret-service.js");
   const { settingsService } = await import("../src/services/settings-service.js");
@@ -6006,6 +6006,13 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
   const { initiativeService } = await import("../src/services/initiative-service.js");
   const primeiraIniciativa = (await initiativeService.list())[0]?.slug;
 
+  // A conexão do detalhe é a primeira que já está ligada, e o GitHub quando
+  // nenhuma está: o detalhe abre para qualquer uma, ligada ou não.
+  const { connectionService } = await import("../src/services/connection-service.js");
+  const conexoes = await connectionService.list();
+  const primeiraConexao = (conexoes.find((c) => c.state !== "available" && c.state !== "soon") ?? conexoes.find((c) => c.id === "github"))?.id;
+  const primeiroServidor = conexoes.find((c) => c.custom)?.id ?? primeiraConexao;
+
   const destinos: [string, string | undefined][] = [
     ["today", undefined],
     ["inbox", undefined],
@@ -6024,7 +6031,8 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
     ["settings", "models"],
     ["settings", "assistant"],
     ["settings", "tools"],
-    ["apps", undefined],
+    ["connections", undefined],
+    ["connections", primeiraConexao],
     ["automations", undefined],
     ["automations", primeiroAgent],
     ["library", undefined],
@@ -6051,22 +6059,26 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
     writeFileSync(join(destino, `${id}${sufixo}.png`), imagem.toPNG());
   }
 
-  // Os servidores MCP ficam abaixo da vitrine, e o detalhe abre por clique.
-  await irPara(janela, "apps");
+  // O seletor de "Adicionar conexão" abre por clique, e fecha com Esc.
+  await irPara(janela, "connections");
   await new Promise((resolve) => setTimeout(resolve, 1200));
+  await janela.webContents.executeJavaScript(`(document.querySelector("[data-locum-adicionar-conexao]")?.click(), null)`);
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  writeFileSync(join(destino, "connections-adicionar.png"), (await janela.webContents.capturePage()).toPNG());
   await janela.webContents.executeJavaScript(
-    `(document.querySelector("[data-locum-probe=servidores-mcp]")?.scrollIntoView({ block: "start" }), null)`,
+    `(window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })), null)`,
   );
-  await new Promise((resolve) => setTimeout(resolve, 300));
-  writeFileSync(join(destino, "apps-servidores.png"), (await janela.webContents.capturePage()).toPNG());
-  await janela.webContents.executeJavaScript(
-    `(document.querySelector("[data-locum-detalhe-servidor]")?.click(), null)`,
-  );
-  await new Promise((resolve) => setTimeout(resolve, 2500));
-  writeFileSync(join(destino, "apps-servidor-detalhe.png"), (await janela.webContents.capturePage()).toPNG());
-  await janela.webContents.executeJavaScript(
-    `(document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })), window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })), null)`,
-  );
+
+  // O servidor MCP próprio, com os detalhes técnicos abertos.
+  if (primeiroServidor !== undefined) {
+    await irPara(janela, "connections", primeiroServidor);
+    await new Promise((resolve) => setTimeout(resolve, 2500));
+    await janela.webContents.executeJavaScript(
+      `(document.querySelector("[data-locum-tecnico]")?.setAttribute("open", ""), document.querySelector("[data-locum-tecnico]")?.scrollIntoView({ block: "end" }), null)`,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    writeFileSync(join(destino, "connections-tecnico.png"), (await janela.webContents.capturePage()).toPNG());
+  }
 
   // O editor do agent separa em abas; uma foto das instruções e uma das ferramentas.
   for (const aba of ["instructions", "tools"]) {

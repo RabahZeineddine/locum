@@ -510,12 +510,12 @@
     "versionHint": "Updates, in Settings",
     "sessions": "Sessions",
     "automations": "Automations",
-    "apps": "Apps",
     "library": "Agents",
     "sectionCockpit": "Cockpit",
     "sectionOperations": "Operations",
     "sectionResources": "Resources",
-    "settingsTitle": "Settings"
+    "settingsTitle": "Settings",
+    "connections": "Connections"
   },
   "notification": {
     "runFailed": {
@@ -1454,7 +1454,6 @@
   },
   "connections": {
     "title": "Connections",
-    "description": "What Locum reaches outside this machine. Services with OAuth connect in one click: the browser opens, you authorize in the service itself and the token stays in the keychain.",
     "search": "Search connections",
     "loading": "loading...",
     "none": "No connection matches this filter.",
@@ -1462,8 +1461,6 @@
     "reconnect": "Reconnect",
     "connecting": "connecting...",
     "disconnect": "Disconnect",
-    "manage": "Manage",
-    "setup": "Set up",
     "soon": "Coming soon",
     "close": "Close",
     "categories": {
@@ -1477,7 +1474,8 @@
     "state": {
       "connected": "connected",
       "attention": "needs attention",
-      "soon": "coming soon"
+      "soon": "coming soon",
+      "error": "error"
     },
     "oauth": {
       "how": "Opens the browser on the service's authorization page. No client id or token to copy.",
@@ -1492,16 +1490,13 @@
       "url": "Address",
       "urlPlaceholder": "https://example.com/mcp",
       "urlHint": "Must be https, except on localhost.",
-      "submit": "Add"
+      "submit": "Add",
+      "badge": "custom"
     },
     "catalog": {
       "grafana": {
         "tagline": "Dashboards, metrics and alerts, one connection per instance",
         "description": "Grafana's official MCP server, through Docker. Register each instance (dev, prod) with its address and a service account token."
-      },
-      "claude-code": {
-        "tagline": "Your agents and queue in any Claude Code session",
-        "description": "Registers Locum as an MCP server in this machine's Claude Code. Every new session sees agents, runs and the queue, using the credentials stored here."
       },
       "github": {
         "tagline": "PRs, issues and watched repositories",
@@ -1551,10 +1546,6 @@
         "tagline": "Files, frames and design system",
         "description": "Figma's remote MCP server. Agents read frames and variables to compare screens with the design."
       },
-      "opencode": {
-        "tagline": "Your agents and queue in any opencode session",
-        "description": "Registers Locum as an MCP server in this machine's opencode, in the global opencode.json. Every new session sees agents, runs and the queue, using the credentials stored here."
-      },
       "shortcut": {
         "tagline": "Stories, epics and iterations",
         "description": "Shortcut's official MCP server. Agents read and update stories and epics in the workspace you authorize."
@@ -1599,6 +1590,70 @@
       "submit_one": "Import {{count}}",
       "submit_other": "Import {{count}}",
       "submit_zero": "Import {{count}}"
+    },
+    "lead": "Everything Locum reaches outside this machine: services, MCP servers and task trackers. Connect once here; channel, filter and destination live in each automation.",
+    "yours": {
+      "title": "Your connections",
+      "description": "What is connected or registered, with the state of each one and what it unlocks in automations.",
+      "needAttention_one": "{{count}} connection needs attention. Open it to see what to do.",
+      "needAttention_other": "{{count}} connections need attention. Open them to see what to do.",
+      "empty": "Nothing connected yet. Connect GitHub, Slack or another service so automations have somewhere to read from and act on."
+    },
+    "add": {
+      "open": "Add connection",
+      "title": "Add connection",
+      "description": "Pick the service. It opens on its own page, where you connect.",
+      "others": "Outside the catalog",
+      "customHint": "Any MCP server, by address.",
+      "importHint": "Brings in the MCP servers from Claude Code, opencode, Cursor and others.",
+      "back": "Back to the list"
+    },
+    "reason": {
+      "needs-auth": "Needs authorization, or the authorization expired. Reconnect.",
+      "disabled": "Turned off: no automation uses this connection while it stays like this.",
+      "failing": "The last connection attempt failed."
+    },
+    "offers": {
+      "title": "What it unlocks",
+      "triggers_one": "{{count}} trigger",
+      "triggers_other": "{{count}} triggers",
+      "actions_one": "{{count}} action",
+      "actions_other": "{{count}} actions",
+      "tools_one": "{{count}} tool",
+      "tools_other": "{{count}} tools",
+      "none": "No tools listed yet. Test the connection so Locum finds out.",
+      "trigger": "trigger",
+      "action": "action",
+      "tool": "tool"
+    },
+    "test": "Test connection",
+    "testing": "testing...",
+    "detail": {
+      "missing": "There is no connection \"{{id}}\" on this machine. It may have been removed.",
+      "account": "account {{account}}",
+      "customDescription": "An MCP server you registered or imported from another tool. Agents use its tools when an automation names it.",
+      "offersHint": "What you can build in an automation with this connection.",
+      "tools": "Tools",
+      "toolsHint": "What an agent can call. Read only looks things up; write changes something in the service, and goes in an action step that passes through the Queue.",
+      "usedBy": "Used by",
+      "usedByHint": "Automations and agents that depend on this connection. Turning it off or removing it breaks their step.",
+      "unused": "No automation or agent uses this connection yet.",
+      "kind": {
+        "automation": "Automation",
+        "agent": "Agent",
+        "initiative": "Initiative"
+      },
+      "how": {
+        "ferramenta": "tool",
+        "exige": "requires the server",
+        "acao": "app action"
+      },
+      "settings": "Settings",
+      "remove": "Remove",
+      "removeHint": "Takes the server out of the registry and forgets the credential. An automation that uses it stops running that step.",
+      "removeAction": "Remove connection",
+      "removeConfirm": "Confirm removal",
+      "technical": "Technical details"
     }
   },
   "claudeSessions": {
@@ -1721,7 +1776,7 @@
       "triggers": "Triggers",
       "steps": "Steps",
       "hint": "Click to add. A new step goes after the selected node.",
-      "needsApp": "connect in Apps",
+      "needsApp": "connect in Connections",
       "agents": "Agents",
       "newAgent": "Create agent in the library",
       "agentsEmpty": "No agent yet.",
@@ -1845,7 +1900,7 @@
         "channels": "Team channels (mention or PR link wakes it)",
         "list": "List channels",
         "loading": "Reading channels...",
-        "channelsHint": "Turn on channels in the Teams connection, under Apps. Each channel is one Graph call per beat."
+        "channelsHint": "Turn on channels in the Teams connection, under Connections. Each channel is one Graph call per beat."
       },
       "poll": {
         "title": "GitHub pull request",
@@ -1897,7 +1952,7 @@
         "title": "Open task",
         "description": "Opens the task in Jira or GitHub with the AI's text.",
         "tracker": "Tracker",
-        "none": "Register a tracker in Apps, under Jira or GitHub.",
+        "none": "Register a tracker in Connections, under Jira, Shortcut or GitHub.",
         "choose": "Choose the tracker"
       },
       "other": {
@@ -1998,8 +2053,8 @@
       "noSteps": "Add at least one step.",
       "noTrigger": "Without a trigger it only runs from the button.",
       "noChannels": "Say which Slack channel to watch.",
-      "slackOff": "Slack is not connected. Turn it on in Apps.",
-      "teamsOff": "Teams is not connected. Turn it on in Apps.",
+      "slackOff": "Slack is not connected. Turn it on in Connections.",
+      "teamsOff": "Teams is not connected. Turn it on in Connections.",
       "noPrompt": "The AI step has no instruction.",
       "actionWithoutAi": "This action needs an AI step before it to write the text.",
       "slackReplyNeedsSlack": "Replying in Slack needs a Slack trigger: that is where the thread comes from.",
@@ -2087,18 +2142,6 @@
         "batida": "last scan failed, {{when}}:"
       }
     }
-  },
-  "apps": {
-    "title": "Apps",
-    "lead": "The services Locum uses. Connect once here; channel, filter and destination live in each automation.",
-    "offers": "What it offers in automations",
-    "offersTrigger": "trigger",
-    "offersStep": "step",
-    "test": "Test connection",
-    "testing": "testing...",
-    "testOk_one": "Responded: {{count}} tool in {{ms}} ms",
-    "testOk_other": "Responded: {{count}} tools in {{ms}} ms",
-    "testFail": "Did not respond: {{error}}"
   },
   "library": {
     "title": "Agents",

@@ -4,7 +4,6 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { migrateDb } from "../src/db/migrate.js";
-import type { ClaudeCodeService } from "../src/services/claude-code-service.js";
 import { CATALOG, ConnectionService } from "../src/services/connection-service.js";
 import type { GithubService } from "../src/services/github-service.js";
 import type { McpOAuthService } from "../src/services/mcp-oauth-service.js";
@@ -52,7 +51,6 @@ function montar(sonda = { oauth: true, registration: true }, clienteDoClaude: (n
   const servico = new ConnectionService({
     mcp,
     oauth,
-    claudeCode: { status: async () => ({ registered: false, current: false }) } as unknown as ClaudeCodeService,
     github: { status: async () => ({ stored: true, env: false, identity: { login: "octo" } }) } as unknown as GithubService,
     slack: { get: async () => ({ server: null }) } as unknown as SlackService,
     clienteDoClaude,
@@ -69,7 +67,6 @@ test("o catálogo inteiro aparece, com o estado de cada um", async () => {
   assert.equal(porId.get("github")?.state, "connected");
   assert.equal(porId.get("github")?.account, "octo");
   assert.equal(porId.get("teams")?.state, "available");
-  assert.equal(porId.get("claude-code")?.state, "available");
 });
 
 test("conectar servidor do catálogo cadastra pelo id e autoriza", async () => {
@@ -153,7 +150,6 @@ function montarSlack() {
     oauth,
     slack,
     settings,
-    claudeCode: { status: async () => ({ registered: false, current: false }) } as unknown as ClaudeCodeService,
     github: { status: async () => ({ stored: false, env: false, identity: null }) } as unknown as GithubService,
   });
   return { servico, mcp, slack, pedidos };
@@ -234,7 +230,6 @@ function montarTeams() {
     oauth,
     settings,
     slack: { get: async () => ({ server: null }) } as unknown as SlackService,
-    claudeCode: { status: async () => ({ registered: false, current: false }) } as unknown as ClaudeCodeService,
     github: { status: async () => ({ stored: false, env: false, identity: null }) } as unknown as GithubService,
   });
   return { servico, diretas, abertas, voltar: (v: URLSearchParams) => (volta = v) };

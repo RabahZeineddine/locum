@@ -345,7 +345,7 @@ test("canal do Slack sem conexão falha com o caminho para ligar", async () => {
 
   const batida = await scheduler.tick({ at: T0 });
   assert.equal(batida.outcomes[0]?.status, "failed");
-  assert.match(batida.outcomes[0]?.detail ?? "", /Apps/);
+  assert.match(batida.outcomes[0]?.detail ?? "", /Conexões/);
 });
 
 test("evento do Teams que desiste de abrir run depois do prazo solta o 👀 da mensagem", async () => {

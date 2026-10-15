@@ -331,6 +331,7 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "grafana.save": (entrada) => grafanaService.save(entrada),
     "grafana.remove": (nome) => grafanaService.remove(nome),
     "connections.list": () => connectionService.list(),
+    "connections.usage": (id) => connectionService.usage(id),
     "connections.connect": (id) => connectionService.connect(id),
     "connections.disconnect": (id) => connectionService.disconnect(id),
     "connections.addCustom": (input) => connectionService.addCustom(input),
