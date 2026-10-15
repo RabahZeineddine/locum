@@ -2018,7 +2018,7 @@
         "names": "Repository names",
         "hint": "my-service, api-*",
         "advanced": "I want a regular expression",
-        "advancedHow": "Names separated by commas, with * for anything (api-*). Text with ^, $, parentheses or | counts as a regular expression matched against the repository name, unchanged. Empty watches the whole organization."
+        "advancedHow": "Names separated by commas, with * for anything (api-*). Text with ^, $, parentheses or | counts as a regular expression matched against the repository name, unchanged. Empty watches the whole organization. A pattern without a / matches the repository name only, and one with / is matched against owner/name."
       },
       "people": {
         "title": "People and teams",
@@ -2081,6 +2081,10 @@
         "help": "What the real scans saw and left out, with the reason. Saving a different filter does not run again what already ran.",
         "empty": "Nothing skipped so far.",
         "unsaved": "Save the automation and let the trigger run to see what it skips."
+      },
+      "error": {
+        "configuracao": "configuration error, {{when}}:",
+        "batida": "last scan failed, {{when}}:"
       }
     }
   },

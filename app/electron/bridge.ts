@@ -373,6 +373,7 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "triggers.schedule": (at) => scheduler.schedule(at),
     "triggers.tick": () => scheduler.tick({ reason: "manual", wait: true }),
     "triggers.discards": (triggerId) => scheduler.descartes(triggerId),
+    "triggers.lastError": (triggerId) => scheduler.lastError(triggerId),
     "triggers.previewGithub": async (config) => {
       const { previaDoGatilho } = await import("../src/services/trigger-preview.js");
       // Na fumaça e nas capturas não há token nem rede: responde o GitHub de exemplo.

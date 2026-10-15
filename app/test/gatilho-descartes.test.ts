@@ -71,7 +71,7 @@ test("a batida entrega os filtros e a conta do token à varredura", async () => 
     viewer: "rabah",
   });
   await scheduler.tick({ at: T0 });
-  assert.deepEqual(recebido, [{ includeDrafts: false, authorship: "any", filters, viewer: "rabah" }]);
+  assert.deepEqual(recebido, [{ includeDrafts: false, authorship: "any", filters, viewer: "rabah", triggerId: "g1" }]);
 });
 
 test("o descarte da varredura fica guardado com o motivo e aparece no detail da batida", async () => {
@@ -232,4 +232,38 @@ test("trocar o filtro do gatilho não abre run de novo para o PR que já rodou",
   atual = {};
   await scheduler.tick({ at: T0 + 40 * MINUTO });
   assert.equal(iniciados.length, 1, "o mesmo commit não roda de novo, qualquer que seja o filtro");
+});
+
+test("o erro de configuração e o de batida ficam visíveis no gatilho, e uma batida limpa os apaga", async () => {
+  let rodada = 0;
+  const { scheduler } = montar({
+    gatilho: () => gatilho({ teamMembers: ["o/backend"] }),
+    poll: async () => {
+      rodada++;
+      if (rodada === 1) return { eventIds: [], created: [], configuracao: ["time o/backend ilegível: o token precisa de read:org"] };
+      if (rodada === 2) throw new Error("API rate limit exceeded");
+      return { eventIds: [], created: [] };
+    },
+  });
+  await scheduler.tick({ at: T0 });
+  assert.deepEqual(await scheduler.lastError("g1"), { em: T0, tipo: "configuracao", texto: "time o/backend ilegível: o token precisa de read:org" });
+  assert.equal((await scheduler.schedule(T0))[0]?.lastError?.tipo, "configuracao");
+
+  await scheduler.tick({ at: T0 + 20 * MINUTO });
+  assert.deepEqual(await scheduler.lastError("g1"), { em: T0 + 20 * MINUTO, tipo: "batida", texto: "API rate limit exceeded" });
+
+  await scheduler.tick({ at: T0 + 40 * MINUTO });
+  assert.equal(await scheduler.lastError("g1"), null);
+});
+
+test("cada chamada ao GitHub da varredura tem prazo, para uma promessa pendurada não prender a trava", async () => {
+  process.env.GITHUB_TOKEN = "token-de-teste";
+  const { octokit } = await import("../src/sources/github.js");
+  const pendurado = ((_url: unknown, init?: RequestInit) =>
+    new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(new Error("abortado pelo prazo")));
+    })) as unknown as typeof fetch;
+  const inicio = Date.now();
+  await assert.rejects(octokit({ timeoutMs: 50, fetch: pendurado }).rest.users.getAuthenticated(), /abort|prazo/i);
+  assert.ok(Date.now() - inicio < 2000);
 });

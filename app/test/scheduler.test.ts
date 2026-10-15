@@ -103,7 +103,7 @@ test("o gatilho entrega a autoria e a conta do token à varredura, que é quem f
   });
 
   await scheduler.tick({ at: T0 });
-  assert.deepEqual(recebido, [{ includeDrafts: false, authorship: "mine", viewer: "eu" }]);
+  assert.deepEqual(recebido, [{ includeDrafts: false, authorship: "mine", triggerId: "meus", viewer: "eu" }]);
 });
 
 test("duas batidas juntas no mesmo banco disparam o gatilho uma vez só", async () => {

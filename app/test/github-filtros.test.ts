@@ -101,32 +101,7 @@ test("review pedido a um time de que a pessoa é membro conta como pedido a ela"
   assert.equal(motivoDe(r, 2), "sem review pedido para Rabah");
 });
 
-test("review pedido a um time cuja membresia não dá para ler derruba a batida, sem descartar", async () => {
-  await assert.rejects(
-    varrer([{ number: 1, teams: ["backend"] }], { reviewRequested: { users: ["rabah"] } }, { membros: { "o/backend": { status: 403 } } }),
-    /read:org/,
-  );
-});
-
-test("teamMembers deixa entrar o autor que é membro do time", async () => {
-  const membros = { "o/backend": ["ana"], "o/web": ["bia"] };
-  const prs: Pr[] = [{ number: 1, author: "ana" }, { number: 2, author: "bia" }, { number: 3, author: "caio" }];
-  const r = await varrer(prs, { teamMembers: ["o/backend"] }, { membros });
-  assert.deepEqual(r.entraram, [1]);
-  assert.equal(motivoDe(r, 3), "autor caio fora do time o/backend");
-
-  const ou = await varrer(prs, { teamMembers: ["o/backend", "o/web"] }, { membros });
-  assert.deepEqual(ou.entraram, [1, 2]);
-  assert.equal(motivoDe(ou, 3), "autor caio fora dos times o/backend, o/web");
-});
-
-test("teamMembers consulta cada time uma vez por batida", async () => {
-  const prs: Pr[] = [{ number: 1, author: "ana" }, { number: 2, author: "ana" }, { number: 3, author: "bia" }];
-  const r = await varrer(prs, { teamMembers: ["o/backend"] }, { membros: { "o/backend": ["ana", "bia"] } });
-  assert.deepEqual(r.chamadas.membros, ["o/backend"]);
-});
-
-/** A batida falha com o motivo certo e o cursor não anda: corrigido o token, os PRs voltam. */
+/** A batida falha e o cursor não anda: corrigido o que deu errado, os PRs voltam. */
 async function falhaSemAndar(membro: Membros[string], erro: RegExp) {
   const db = bancoDeTeste();
   const { client } = githubFalso([{ number: 1, author: "ana" }], { "o/backend": membro });
@@ -138,16 +113,42 @@ async function falhaSemAndar(membro: Membros[string], erro: RegExp) {
   assert.deepEqual(await db.query.events.findMany(), []);
 }
 
-test("time sem read:org (403) falha a batida dizendo o que fazer, sem descartar nem andar o cursor", async () => {
-  await falhaSemAndar({ status: 403, message: "Resource not accessible by personal access token" }, /o token precisa de read:org/);
+/** Time ilegível: a batida segue, o PR fica de fora com o motivo e o erro de configuração é devolvido. */
+async function timeIlegivel(membro: Membros[string], razao: string) {
+  const r = await varrer([{ number: 1, author: "ana" }], { teamMembers: ["o/backend"] }, { membros: { "o/backend": membro } });
+  assert.deepEqual(r.entraram, []);
+  assert.equal(motivoDe(r, 1), `time o/backend ilegível: ${razao}`);
+  assert.deepEqual(r.varredura.configuracao, [`time o/backend ilegível: ${razao}`]);
+  assert.equal((await r.db.query.cursors.findMany()).length, 1, "o cursor andou: um time ilegível não prende o gatilho");
+}
+
+test("time sem read:org (403) deixa o PR de fora dizendo o que fazer, e a batida segue", async () => {
+  await timeIlegivel({ status: 403, message: "Resource not accessible by personal access token" }, "o token precisa de read:org");
 });
 
 test("time atrás de SSO não autorizado pede para autorizar o token na org", async () => {
-  await falhaSemAndar({ status: 403, message: "Resource protected by organization SAML enforcement", headers: { "x-github-sso": "required" } }, /autorize o token no SSO da org/);
+  await timeIlegivel({ status: 403, message: "Resource protected by organization SAML enforcement", headers: { "x-github-sso": "required" } }, "autorize o token no SSO da org");
 });
 
-test("time inexistente ou invisível (404) é configuração inválida e também não anda o cursor", async () => {
-  await falhaSemAndar({ status: 404 }, /time o\/backend não encontrado ou sem acesso/);
+test("time inexistente ou invisível (404) é erro de configuração, e a batida segue", async () => {
+  await timeIlegivel({ status: 404 }, "time não encontrado ou sem acesso");
+});
+
+test("um time ilegível não prende o PR que outro time do filtro confirma", async () => {
+  const membros = { "o/backend": ["ana"], "o/sumido": { status: 404 } } as Membros;
+  const prs: Pr[] = [{ number: 1, author: "ana" }, { number: 2, author: "bia" }];
+  const r = await varrer(prs, { teamMembers: ["o/sumido", "o/backend"] }, { membros });
+  assert.deepEqual(r.entraram, [1]);
+  assert.equal(motivoDe(r, 2), "autor bia fora do time o/backend; time o/sumido ilegível: time não encontrado ou sem acesso");
+  assert.equal(r.varredura.configuracao?.length, 1);
+});
+
+test("review pedido a time ilegível conta como não pedido, com a nota no motivo, sem derrubar a batida", async () => {
+  const prs: Pr[] = [{ number: 1, teams: ["backend"] }, { number: 2, reviewers: ["rabah"] }];
+  const r = await varrer(prs, { reviewRequested: { users: ["rabah"] } }, { membros: { "o/backend": { status: 403 } } });
+  assert.deepEqual(r.entraram, [2]);
+  assert.equal(motivoDe(r, 1), "sem review pedido para rabah (time o/backend ilegível: o token precisa de read:org)");
+  assert.deepEqual(r.varredura.configuracao, ["time o/backend ilegível: o token precisa de read:org"]);
 });
 
 test("limite de uso, 5xx e rede sobem como vieram, sem virar motivo de permissão", async () => {
@@ -348,23 +349,47 @@ test("others com authors.include @me não deixa passar ninguém, na varredura e 
   assert.deepEqual(r.entraram, []);
 });
 
-test("cursor de filtro parado há dias recomeça só nas últimas 24h", async () => {
+test("app fechado por dias: o cursor parado não vira teto, e o PR aberto antes entra", async () => {
   const db = bancoDeTeste();
   const { client, chamadas } = githubFalso([{ number: 1 }]);
-  const filters: PollFilters = { maxChangedLines: 500 };
-  const base = { client, db, now: agora, diffMaxChars: 100_000, filters };
+  const base = { client, db, now: agora, diffMaxChars: 100_000, authorship: "others" as const, viewer: "rabah", triggerId: "g1" };
   await scanOpenPullRequests("o", /.*/, base);
-  const [cursor] = await db.query.cursors.findMany();
-  await db.update((await import("../src/db/index.js")).schema.cursors).set({ value: "2026-09-10T00:00:00Z" });
-  await scanOpenPullRequests("o", /.*/, { ...base, now: agora + 5 * 24 * 3600_000 });
-  assert.ok(cursor);
-  assert.match(chamadas.buscas.at(-1)!, /updated:>=2026-09-26T12:00:00Z/);
+  const tresDias = agora + 3 * 24 * 3600_000;
+  await scanOpenPullRequests("o", /.*/, { ...base, now: tresDias });
+  assert.match(chamadas.buscas.at(-1)!, /updated:>=2026-09-22T10:00:00Z/, "a janela segue do cursor, e não de 24h atrás");
+});
 
-  // Sem filtro o cursor antigo continua valendo, como antes.
-  const velho = bancoDeTeste();
-  const { client: c2, chamadas: ch2 } = githubFalso([{ number: 1 }]);
-  await scanOpenPullRequests("o", /.*/, { client: c2, db: velho, now: agora, diffMaxChars: 100_000 });
-  await velho.update((await import("../src/db/index.js")).schema.cursors).set({ value: "2026-09-10T00:00:00Z" });
-  await scanOpenPullRequests("o", /.*/, { client: c2, db: velho, now: agora, diffMaxChars: 100_000 });
-  assert.match(ch2.buscas.at(-1)!, /updated:>=2026-09-10T00:00:00Z/);
+test("gatilho others sem filtros que já varria herda o cursor do escopo, sem teto de 24h", async () => {
+  const db = bancoDeTeste();
+  const { client, chamadas } = githubFalso([{ number: 1 }]);
+  const { schema } = await import("../src/db/index.js");
+  await db.insert(schema.cursors).values({ source: "github", key: "prs:o", value: "2026-09-10T00:00:00Z" });
+  await scanOpenPullRequests("o", /.*/, { client, db, now: agora, diffMaxChars: 100_000, authorship: "others", viewer: "rabah", triggerId: "g1" });
+  assert.match(chamadas.buscas.at(-1)!, /updated:>=2026-09-10T00:00:00Z/);
+  // Sem autoria nem filtro a chave é a de sempre.
+  const chaves = (await db.query.cursors.findMany()).filter((c) => c.source === "github").map((c) => c.key);
+  assert.ok(chaves.includes("prs:o") && chaves.length === 2);
+});
+
+test("mudar o filtro herda o cursor que o gatilho tinha, e o hash que nunca teve cursor olha 24h", async () => {
+  const db = bancoDeTeste();
+  const { client, chamadas } = githubFalso([{ number: 1 }]);
+  const base = { client, db, now: agora, diffMaxChars: 100_000, triggerId: "g1" };
+  await scanOpenPullRequests("o", /.*/, { ...base, filters: { maxChangedLines: 500 } });
+  const { schema } = await import("../src/db/index.js");
+  await db.update(schema.cursors).set({ value: "2026-09-18T00:00:00Z" }).where((await import("drizzle-orm")).eq(schema.cursors.source, "github"));
+  await scanOpenPullRequests("o", /.*/, { ...base, now: agora + 3600_000, filters: { maxChangedLines: 300 } });
+  assert.match(chamadas.buscas.at(-1)!, /updated:>=2026-09-18T00:00:00Z/);
+
+  // Outro gatilho, sem histórico nenhum: primeira vez, 24h.
+  await scanOpenPullRequests("o", /.*/, { ...base, triggerId: "g2", filters: { maxChangedLines: 100 } });
+  assert.match(chamadas.buscas.at(-1)!, /updated:>=2026-09-21T12:00:00Z/);
+});
+
+test("docs e docs/ pegam o que está dentro da pasta, e !x na exclusão é exclusão literal", async () => {
+  const prs: Pr[] = [{ number: 1, files: ["docs/a.md"] }, { number: 2, files: ["src/a.ts"] }, { number: 3, files: ["x/a.ts"] }];
+  assert.deepEqual((await varrer(prs, { paths: { exclude: ["docs"] } })).entraram, [2, 3]);
+  assert.deepEqual((await varrer(prs, { paths: { exclude: ["docs/"] } })).entraram, [2, 3]);
+  assert.deepEqual((await varrer(prs, { paths: { include: ["docs/"] } })).entraram, [1]);
+  assert.deepEqual((await varrer(prs, { paths: { exclude: ["!src/**"] } })).entraram, [1, 3]);
 });

@@ -190,6 +190,7 @@ export function GatilhoDoGithub({
         />
       </Secao>
 
+      <ErroDoGatilho triggerId={triggerId} />
       <PreviaDoGatilho config={config} />
       <DescartesReais triggerId={triggerId} />
     </div>
@@ -240,6 +241,31 @@ function CampoDeTexto({
         value={texto}
       />
     </Campo>
+  );
+}
+
+/* ------------------------------------------------------------------- erro */
+
+/** O último erro do gatilho, de configuração ou de batida, com a data. */
+function ErroDoGatilho({ triggerId }: { triggerId?: string }) {
+  const { t, i18n } = useTranslation();
+  if (triggerId === undefined) return null;
+  return <ErroLido triggerId={triggerId} idioma={i18n.language} t={t} />;
+}
+
+function ErroLido({ triggerId, idioma, t }: { triggerId: string; idioma: string; t: ReturnType<typeof useTranslation>["t"] }) {
+  const lida = useRead("triggers.lastError", triggerId);
+  if (lida.status !== "ready" || lida.data === null) return null;
+  return (
+    <section
+      className="border-destructive/40 bg-destructive/5 flex min-w-0 flex-col gap-1 rounded-md border px-2.5 py-2 text-xs"
+      data-locum-gatilho-erro={lida.data.tipo}
+    >
+      <span className="text-destructive font-medium">
+        {t(`automations.github.error.${lida.data.tipo}`, { when: new Date(lida.data.em).toLocaleString(idioma) })}
+      </span>
+      <span className="min-w-0 break-words">{lida.data.texto}</span>
+    </section>
   );
 }
 
@@ -301,36 +327,38 @@ function PreviaDoGatilho({ config }: { config: Poll }) {
       ) : null}
 
       {estado.fase === "pronta" ? (
-        estado.previa.itens.length === 0 ? (
-          <p className="text-muted-foreground text-xs">{t("automations.github.preview.empty")}</p>
-        ) : (
-          <>
-            <p className="text-muted-foreground text-xs">
-              {t("automations.github.preview.summary", {
-                enter: estado.previa.itens.filter((i) => i.entra).length,
-                total: estado.previa.itens.length,
-              })}
-              {estado.previa.cortada ? ` ${t("automations.github.preview.cut")}` : ""}
+        <>
+          {estado.previa.avisos.map((aviso) => (
+            <p className="text-amber-500 text-xs" data-locum-previa-aviso="" key={aviso}>
+              {t("automations.github.preview.warning", { message: aviso })}
             </p>
-            {estado.previa.avisos.map((aviso) => (
-              <p className="text-amber-500 text-xs" data-locum-previa-aviso="" key={aviso}>
-                {t("automations.github.preview.warning", { message: aviso })}
+          ))}
+          {estado.previa.itens.length === 0 ? (
+            <p className="text-muted-foreground text-xs">{t("automations.github.preview.empty")}</p>
+          ) : (
+            <>
+              <p className="text-muted-foreground text-xs">
+                {t("automations.github.preview.summary", {
+                  enter: estado.previa.itens.filter((i) => i.entra).length,
+                  total: estado.previa.itens.length,
+                })}
+                {estado.previa.cortada ? ` ${t("automations.github.preview.cut")}` : ""}
               </p>
-            ))}
-            <ul className="flex min-w-0 flex-col gap-1.5">
-              {estado.previa.itens.map((item) => (
-                <LinhaDePr
-                  autor={item.autor}
-                  entra={item.entra}
-                  key={item.pr}
-                  motivo={item.motivo}
-                  pr={item.pr}
-                  titulo={item.titulo}
-                />
-              ))}
-            </ul>
-          </>
-        )
+              <ul className="flex min-w-0 flex-col gap-1.5">
+                {estado.previa.itens.map((item) => (
+                  <LinhaDePr
+                    autor={item.autor}
+                    entra={item.entra}
+                    key={item.pr}
+                    motivo={item.motivo}
+                    pr={item.pr}
+                    titulo={item.titulo}
+                  />
+                ))}
+              </ul>
+            </>
+          )}
+        </>
       ) : null}
     </section>
   );

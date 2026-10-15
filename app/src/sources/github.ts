@@ -109,15 +109,31 @@ async function reagirNoSlack(p: ReviewPayload & OrigemDoReview): Promise<void> {
  * repetir a decisão aqui faria um desses três caminhos ficar para trás no dia
  * em que ela mudasse.
  */
-export function octokit(): Octokit {
+export function octokit(opcoes: { timeoutMs?: number; fetch?: typeof fetch } = {}): Octokit {
   const auth = githubToken();
   if (auth === undefined) {
     throw new Error(
       `sem token do GitHub: guarde um na configuração ou exporte ${GITHUB_TOKEN_ENV}`,
     );
   }
-  return new Octokit({ auth });
+  const { timeoutMs } = opcoes;
+  const base = opcoes.fetch ?? globalThis.fetch;
+  // Cada chamada ganha o próprio prazo no `fetch`: uma promessa pendurada do
+  // GitHub não pode prender a trava do gatilho para sempre. Sem retry nesse
+  // modo, porque o aborto vira 500 e seria repetido: a próxima batida refaz.
+  const comPrazo: typeof fetch = (url, init) =>
+    base(url, { ...init, signal: init?.signal ?? AbortSignal.timeout(timeoutMs as number) });
+  const cliente = new Octokit({
+    auth,
+    ...(timeoutMs === undefined
+      ? opcoes.fetch === undefined ? {} : { request: { fetch: opcoes.fetch } }
+      : { request: { fetch: comPrazo }, retry: { enabled: false } }),
+  });
+  return cliente;
 }
+
+/** Prazo de cada chamada ao GitHub numa varredura ou prévia. */
+export const PRAZO_DA_CHAMADA_MS = 30_000;
 
 /** O pedaço do cliente que a ação de review usa. Existe para o teste trocar. */
 export type ReviewClient = { rest: { pulls: Pick<Octokit["rest"]["pulls"], "createReview" | "listReviews"> } };
@@ -259,6 +275,8 @@ export type PollOptions = {
   filters?: PollFilters;
   /** Autoria do gatilho. Faz parte do mesmo exame que os filtros, para a prévia e a batida dizerem o mesmo. */
   authorship?: Authorship;
+  /** O gatilho que varre, para a chave de cursor nova herdar a do que ele já tinha. */
+  triggerId?: string;
   /** A conta do token, para trocar `@me`. Nulo é "nunca conferida". */
   viewer?: string | null;
   client?: PollClient;
@@ -322,6 +340,8 @@ export interface PullRequestScan {
   created: string[];
   /** O que a varredura viu e não virou evento, cada um com o motivo. */
   descartes?: Descarte[];
+  /** Erros de configuração do gatilho, como um time que o token não consegue ler. A batida seguiu sem eles. */
+  configuracao?: string[];
 }
 
 /**
@@ -362,10 +382,12 @@ type ContextoDoExame = {
   authorship: Authorship;
   viewer: string | null;
   membrosDe: ReturnType<typeof leitorDeTimes>;
+  /** Times que não deu para ler, sem repetir: erro de configuração do gatilho. */
+  configuracao: Set<string>;
 };
 
 function contextoDoExame(owner: string, repoFilter: RegExp, deps: PollOptions) {
-  const gh = deps.client ?? octokit();
+  const gh = deps.client ?? (octokit({ timeoutMs: PRAZO_DA_CHAMADA_MS }) as unknown as PollClient);
   return {
     gh,
     db: deps.db ?? defaultDb,
@@ -377,6 +399,7 @@ function contextoDoExame(owner: string, repoFilter: RegExp, deps: PollOptions) {
     authorship: deps.authorship ?? "any",
     viewer: deps.viewer ?? null,
     membrosDe: leitorDeTimes(gh as unknown as ClienteDeTimes),
+    configuracao: new Set<string>(),
   } satisfies ContextoDoExame;
 }
 
@@ -404,7 +427,7 @@ async function examinar(ctx: ContextoDoExame, item: ItemDaBusca & { repository_u
   if (daAutoria !== null) return fora(daAutoria);
   const doItem = avaliarItem(ctx.filtros, item);
   if (doItem !== null) return fora(doItem);
-  const dosTimes = await avaliarTimes(ctx.filtros, autor, ctx.membrosDe);
+  const dosTimes = await avaliarTimes(ctx.filtros, autor, ctx.membrosDe, (e) => ctx.configuracao.add(e.message));
   if (dosTimes !== null) return fora(dosTimes);
 
   const { data: pr } = await ctx.gh.rest.pulls.get({ owner: ctx.owner, repo, pull_number: item.number });
@@ -412,7 +435,7 @@ async function examinar(ctx: ContextoDoExame, item: ItemDaBusca & { repository_u
   if (pr.draft && !ctx.includeDrafts) return fora("draft");
   const doPr = avaliarPr(ctx.filtros, pr);
   if (doPr !== null) return fora(doPr);
-  const doReview = await avaliarReview(ctx.filtros, pr, ctx.owner, ctx.membrosDe);
+  const doReview = await avaliarReview(ctx.filtros, pr, ctx.owner, ctx.membrosDe, (e) => ctx.configuracao.add(e.message));
   if (doReview !== null) return fora(doReview);
 
   const externalId = `pr:${ctx.owner}/${repo}#${item.number}:sha:${pr.head.sha}`;
@@ -439,6 +462,39 @@ async function examinar(ctx: ContextoDoExame, item: ItemDaBusca & { repository_u
   return { entra: true, pr, repo, arquivos, conhecido: known?.id };
 }
 
+/** Fonte do registro da chave de cursor que cada gatilho usou por último. */
+const ULTIMA_CHAVE = "gatilho-cursor";
+
+async function valorDoCursor(db: typeof defaultDb, fonte: string, key: string): Promise<string | undefined> {
+  const [row] = await db
+    .select({ value: schema.cursors.value })
+    .from(schema.cursors)
+    .where(and(eq(schema.cursors.source, fonte), eq(schema.cursors.key, key)));
+  return row?.value;
+}
+
+/** O cursor da chave, ou o herdado: o da chave anterior do gatilho, ou o do escopo. */
+async function cursorDe(db: typeof defaultDb, key: string, base: string, triggerId?: string): Promise<string | undefined> {
+  const proprio = await valorDoCursor(db, "github", key);
+  if (proprio !== undefined) return proprio;
+  if (triggerId !== undefined) {
+    const anterior = await valorDoCursor(db, ULTIMA_CHAVE, triggerId);
+    const herdado = anterior === undefined || anterior === key ? undefined : await valorDoCursor(db, "github", anterior);
+    if (herdado !== undefined) return herdado;
+  }
+  return key === base ? undefined : valorDoCursor(db, "github", base);
+}
+
+async function lembrarChave(db: typeof defaultDb, triggerId: string, key: string): Promise<void> {
+  await db
+    .insert(schema.cursors)
+    .values({ source: ULTIMA_CHAVE, key: triggerId, value: key })
+    .onConflictDoUpdate({
+      target: [schema.cursors.source, schema.cursors.key],
+      set: { value: key, updatedAt: Math.floor(Date.now() / 1000) },
+    });
+}
+
 export async function scanOpenPullRequests(
   owner: string,
   repoFilter: RegExp,
@@ -453,20 +509,18 @@ export async function scanOpenPullRequests(
   // consulta, um cursor dividido entre dois gatilhos avançaria pelo que um viu
   // e faria o outro pular o que ainda não tinha visto. O escopo aberto guarda
   // a chave antiga para não perder a posição de quem já varria assim. O mesmo
-  // vale para os filtros: sem eles a chave é a de sempre.
+  // vale para filtros e autoria: o que um recusa, o outro quer ver, então cada
+  // combinação tem o seu cursor, e sem nenhuma a chave é a de sempre.
   const scope = repoFilter.source === ".*" ? "" : `:${repoFilter.source}`;
-  const key = `prs:${owner}${scope}${includeDrafts ? ":rascunhos" : ""}${chaveDosFiltros(deps.filters, ctx.authorship)}`;
+  const base = `prs:${owner}${scope}${includeDrafts ? ":rascunhos" : ""}`;
+  const key = `${base}${chaveDosFiltros(deps.filters, ctx.authorship)}`;
 
-  const [cursor] = await db
-    .select()
-    .from(schema.cursors)
-    .where(and(eq(schema.cursors.source, source), eq(schema.cursors.key, key)));
-
-  // Cursor de filtro parado há dias não vale uma janela de dias: o gatilho
-  // retomado olha só as últimas 24h, como o Teams.
-  const agora = deps.now ?? Date.now();
-  const umDiaAtras = new Date(agora - 24 * 3600 * 1000).toISOString();
-  const doCursor = cursor?.value !== undefined && key.includes(":f") && cursor.value < umDiaAtras ? umDiaAtras : cursor?.value;
+  // Chave nova começa onde a anterior do mesmo gatilho parou, e na falta dela
+  // onde o escopo parou: cursor parado não é teto, e um pull request aberto
+  // antes de o app ficar dias fechado entra na primeira batida. Só o hash que
+  // nunca teve cursor olha as últimas 24h.
+  const doCursor = await cursorDe(db, key, base, deps.triggerId);
+  const umDiaAtras = new Date((deps.now ?? Date.now()) - 24 * 3600 * 1000).toISOString();
   const since = searchTimestamp(doCursor ?? umDiaAtras);
   const query = montarConsulta(
     [
@@ -523,7 +577,8 @@ export async function scanOpenPullRequests(
       set: { value: newest, updatedAt: Math.floor(Date.now() / 1000) },
     });
 
-  return { eventIds, created, descartes };
+  if (deps.triggerId !== undefined) await lembrarChave(db, deps.triggerId, key);
+  return { eventIds, created, descartes, configuracao: [...ctx.configuracao] };
 }
 
 /** Quantos pull requests a prévia examina. */

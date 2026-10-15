@@ -6,6 +6,7 @@ import { mcpService, type McpService } from "../services/mcp-service.js";
 import { pollMcpServer } from "../sources/mcp-poll.js";
 import { proximaOcorrencia } from "./cron.js";
 import { comTrava } from "./trava.js";
+import { lerErro, limparErro, registrarErro, type ErroDoGatilho } from "./erros.js";
 import { lerDescartes, registrarDescartes, type DescarteGuardado } from "./descartes.js";
 import { precisaDaConta, type Descarte } from "../sources/github-filtros.js";
 import { pollSlack, slackWatchFor, type SlackPollOutcome } from "../sources/slack.js";
@@ -85,7 +86,7 @@ export interface TickOptions {
 export type PollFn = (
   owner: string,
   repoFilter: RegExp,
-  options?: { includeDrafts?: boolean; filters?: PollFilters; authorship?: Authorship; viewer?: string | null },
+  options?: { includeDrafts?: boolean; filters?: PollFilters; authorship?: Authorship; triggerId?: string; viewer?: string | null },
 ) => Promise<PullRequestScan>;
 
 /** A conferencia de pull request fechado, trocavel pelo mesmo motivo. */
@@ -134,6 +135,8 @@ export interface TriggerSchedule {
   everyMinutes: number | null;
   /** Ultima batida deste gatilho, em epoch de milissegundos. */
   lastFireAt: number | null;
+  /** O último erro do gatilho, de configuração ou de batida, ou nulo. */
+  lastError: ErroDoGatilho | null;
   /**
    * Quando o agendador vai acordar este gatilho.
    *
@@ -295,6 +298,7 @@ export class Scheduler {
         config: trigger.config,
         everyMinutes: cadence === null ? null : cadence / 60_000,
         lastFireAt: last,
+        lastError: await lerErro(this.db, trigger.id),
         // Gatilho que nunca disparou esta vencido, e a batida dele e a proxima
         // que acontecer. Nao e o mesmo que "daqui a uma cadencia": esperar um
         // ciclo inteiro depois de habilitar faria a primeira varredura demorar
@@ -387,9 +391,13 @@ export class Scheduler {
 
     const nextDueAt = vencimento(trigger.config, at, at, globalHours);
     try {
-      const fired = await this.fire(trigger, at, wait);
+      const { configuracao, ...fired } = await this.fire(trigger, at, wait);
+      // O que a batida não conseguiu ler fica visível no gatilho; batida limpa apaga o erro.
+      if (configuracao === undefined) await limparErro(this.db, trigger.id);
+      else await registrarErro(this.db, trigger.id, { em: at, tipo: "configuracao", texto: configuracao });
       return { ...base, ...fired, status: "fired", nextDueAt };
     } catch (err) {
+      await registrarErro(this.db, trigger.id, { em: at, tipo: "batida", texto: message(err) }).catch(() => undefined);
       return { ...base, status: "failed", detail: message(err), nextDueAt };
     }
   }
@@ -398,7 +406,7 @@ export class Scheduler {
     trigger: TriggerEntry,
     at: number,
     wait: boolean,
-  ): Promise<{ events: number; runs: string[]; detail?: string }> {
+  ): Promise<{ events: number; runs: string[]; detail?: string; configuracao?: string }> {
     const config = trigger.config;
 
     switch (config.kind) {
@@ -433,6 +441,7 @@ export class Scheduler {
           // Filtros e autoria são decididos na varredura, pelo mesmo exame da
           // prévia. A conta do token só é lida quando algum deles fala nela.
           authorship: config.authorship,
+          triggerId: trigger.id,
           ...(filters === undefined ? {} : { filters }),
           ...(precisaDaConta(filters, config.authorship) ? { viewer: await this.viewer() } : {}),
         });
@@ -446,7 +455,13 @@ export class Scheduler {
         // o que sobrou do filtro: quem lê a batida precisa ver que o pull
         // request chegou e foi descartado aqui, senão a única leitura possível
         // seria a de que a varredura não achou nada.
-        return { events: varredura.created.length, runs, detail: detailDaBatida(descartes) };
+        const configuracao = varredura.configuracao ?? [];
+        return {
+          events: varredura.created.length,
+          runs,
+          detail: detailDaBatida(descartes),
+          ...(configuracao.length === 0 ? {} : { configuracao: configuracao.join("; ") }),
+        };
       }
 
       case "mcp-poll": {
@@ -525,6 +540,11 @@ export class Scheduler {
         // que acordar o agent de um jeito que ninguem desenhou.
         throw new Error(`gatilho do tipo "${(config as TriggerConfig).kind}" nao tem disparo`);
     }
+  }
+
+  /** O último erro do gatilho, de configuração ou de batida, ou nulo. */
+  async lastError(triggerId: string): Promise<ErroDoGatilho | null> {
+    return lerErro(this.db, triggerId);
   }
 
   /** Os últimos pull requests que este gatilho viu e deixou passar, com o motivo. */

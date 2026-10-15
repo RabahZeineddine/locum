@@ -2063,7 +2063,7 @@
         "names": "Nomes dos repositórios",
         "hint": "meu-servico, api-*",
         "advanced": "Quero usar expressão regular",
-        "advancedHow": "Nomes separados por vírgula, com * para qualquer coisa (api-*). Texto com ^, $, parênteses ou | vale como expressão regular aplicada ao nome do repositório, sem mudança. Vazio observa a organização inteira."
+        "advancedHow": "Nomes separados por vírgula, com * para qualquer coisa (api-*). Texto com ^, $, parênteses ou | vale como expressão regular aplicada ao nome do repositório, sem mudança. Vazio observa a organização inteira. Padrão sem / casa só o nome do repositório, e com / é testado contra dono/nome."
       },
       "people": {
         "title": "Pessoas e times",
@@ -2126,6 +2126,10 @@
         "help": "O que as varreduras de verdade viram e deixaram de fora, com o motivo. Salvar outro filtro não roda de novo o que já rodou.",
         "empty": "Nada descartado até agora.",
         "unsaved": "Salve a automação e deixe o gatilho rodar para ver o que ele descarta."
+      },
+      "error": {
+        "configuracao": "erro de configuração, {{when}}:",
+        "batida": "a última varredura falhou, {{when}}:"
       }
     }
   },

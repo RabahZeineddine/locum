@@ -86,7 +86,8 @@ function trocarEu(logins: string[] | undefined, viewer: string | null): string[]
 export function resolverFiltros(filters: PollFilters | undefined, viewer: string | null): FiltrosResolvidos {
   const f = filters ?? {};
   const pathsInclude: string[] = [];
-  const pathsExclude = [...(f.paths?.exclude ?? [])];
+  // `!x` na lista de exclusão é a exclusão de `x`, e não uma negação.
+  const pathsExclude = (f.paths?.exclude ?? []).map((g) => g.replace(/^!+/, ""));
   // `!glob` na lista de inclusão é a notação de quem escreve `src/**, !**/*.md`.
   for (const glob of f.paths?.include ?? []) {
     if (glob.startsWith("!")) pathsExclude.push(glob.slice(1));
@@ -120,7 +121,7 @@ export function temFiltroDeArquivos(f: FiltrosResolvidos): boolean {
 export function chaveDosFiltros(filters: PollFilters | undefined, authorship: Authorship = "any"): string {
   // A autoria também decide o que vira evento, então entra na chave quando não é a padrão.
   const limpo = limpar({ ...(filters ?? {}), ...(authorship === "any" ? {} : { authorship }) });
-  return limpo === undefined ? "" : `:f${createHash("sha1").update(JSON.stringify(limpo)).digest("hex").slice(0, 10)}`;
+  return limpo === undefined ? "" : `\u001f${createHash("sha1").update(JSON.stringify(limpo)).digest("hex").slice(0, 10)}`;
 }
 
 /** Algum filtro precisa da conta do token: `@me` ou autoria diferente de `any`. */
@@ -146,18 +147,24 @@ const CACHE_DE_GLOB = new Map<string, (texto: string) => boolean>();
 
 /**
  * Glob de caminho: sem barra casa em qualquer pasta, como no gitignore
- * (`*.md`), e `**`, `[...]` e `{a,b}` valem. Branch não tem pasta de verdade,
- * então o glob dela casa o nome inteiro.
+ * (`*.md`), e `**`, `[...]` e `{a,b}` valem. `docs` e `docs/` pegam tudo o
+ * que está dentro de `docs/`. Branch não tem pasta de verdade, então o glob
+ * dela casa o nome inteiro. O `!` não nega aqui: negar é papel da lista de
+ * exclusão.
  */
 export function casaGlob(glob: string, texto: string, caminho = false): boolean {
   let casa = CACHE_DE_GLOB.get(glob);
   if (!casa) {
-    casa = picomatch(glob, { dot: true });
+    casa = picomatch(glob, { dot: true, nonegate: true });
     CACHE_DE_GLOB.set(glob, casa);
   }
   if (casa(texto)) return true;
-  // Sem barra, o glob de caminho vale para o nome do arquivo em qualquer pasta.
-  return caminho && !glob.includes("/") && casa(texto.slice(texto.lastIndexOf("/") + 1));
+  if (!caminho) return false;
+  // Sem barra, o glob vale para o nome do arquivo em qualquer pasta.
+  if (!glob.includes("/") && casa(texto.slice(texto.lastIndexOf("/") + 1))) return true;
+  // Sem coringa, o nome de uma pasta pega o que está dentro dela.
+  if (!TEM_CORINGA.test(glob)) return texto.startsWith(`${glob.replace(/\/+$/, "")}/`);
+  return false;
 }
 
 const TEM_CORINGA = /[*?[\]{}]/;
@@ -243,29 +250,40 @@ export function avaliarPr(f: FiltrosResolvidos, pr: FatosDoPr): string | null {
  *
  * Como na tela do GitHub, o pedido feito a um time de que a pessoa é membro
  * conta como pedido à pessoa: `requested_teams` mais a membresia, lida pelo
- * mesmo cache da batida. Se a membresia não puder ser lida, vale o erro do
- * time, e o pull request não é descartado por isso.
+ * mesmo cache da batida. Um time desses que não pode ser lido (permissão, SSO,
+ * inexistente) conta como "não é pedido a esta pessoa", com a nota no motivo e
+ * o erro entregue a `aoFalhar`; limite de uso, 5xx e rede derrubam a batida.
  */
 export async function avaliarReview(
   f: FiltrosResolvidos,
   pr: FatosDoPr,
   owner: string,
   membrosDe: LeitorDeTimes,
+  aoFalhar: (erro: ErroDeTime) => void = () => undefined,
 ): Promise<string | null> {
   if (f.reviewUsers.length + f.reviewTeams.length === 0) return null;
   const pessoas = new Set((pr.requested_reviewers ?? []).map((r) => minusculo(r.login ?? "")));
   const times = (pr.requested_teams ?? []).map((t) => `${owner}/${t.slug ?? ""}`);
   const timesMin = new Set(times.map(minusculo));
 
-  let pedido = f.reviewUsers.some((u) => pessoas.has(minusculo(u))) || f.reviewTeams.some((t) => timesMin.has(minusculo(t)));
-  for (const time of pedido || f.reviewUsers.length === 0 ? [] : times) {
-    const { membros } = await membrosDe(time);
-    if (f.reviewUsers.some((u) => membros.has(minusculo(u)))) {
-      pedido = true;
-      break;
+  if (f.reviewUsers.some((u) => pessoas.has(minusculo(u))) || f.reviewTeams.some((t) => timesMin.has(minusculo(t)))) {
+    return null;
+  }
+  const notas: string[] = [];
+  if (f.reviewUsers.length > 0) {
+    for (const time of times) {
+      try {
+        const { membros } = await membrosDe(time);
+        if (f.reviewUsers.some((u) => membros.has(minusculo(u)))) return null;
+      } catch (err) {
+        if (!(err instanceof ErroDeTime)) throw err;
+        aoFalhar(err);
+        notas.push(err.message);
+      }
     }
   }
-  return pedido ? null : `sem review pedido para ${[...f.reviewUsers, ...f.reviewTeams].join(" ou ")}`;
+  const base = `sem review pedido para ${[...f.reviewUsers, ...f.reviewTeams].join(" ou ")}`;
+  return notas.length === 0 ? base : `${base} (${notas.join("; ")})`;
 }
 
 /** A autoria do gatilho (`mine` ou `others`) contra a conta do token, com o mesmo motivo de descarte em todo caminho. */
@@ -305,18 +323,29 @@ export type ClienteDeTimes = {
 type MembrosDoTime = { membros: Set<string> };
 export type LeitorDeTimes = (time: string) => Promise<MembrosDoTime>;
 
-/** Falha de configuração ou de permissão ao ler um time: a batida para e o cursor não anda. */
-export class ErroDeTime extends Error {}
+/**
+ * Time que não pôde ser lido por permissão ou cadastro (`read:org`, SSO, time
+ * inexistente). Não derruba a batida: o pull request que dependia dele fica
+ * de fora com o motivo, e o gatilho registra o erro de configuração.
+ */
+export class ErroDeTime extends Error {
+  constructor(
+    readonly time: string,
+    readonly razao: string,
+  ) {
+    super(`time ${time} ilegível: ${razao}`);
+  }
+}
 
 type Falha = { status?: number; message?: string; response?: { headers?: Record<string, string | undefined> } };
 
 /**
  * O que cada falha ao ler um time significa.
  *
- * Limite de uso, 5xx e rede sobem como vieram. Permissão (`read:org`), SSO e
- * time inexistente viram `ErroDeTime` com o motivo certo. Nenhuma delas
- * descarta pull request: a batida falha, o cursor não anda, e com o token ou o
- * cadastro corrigidos os pull requests voltam.
+ * Limite de uso, 5xx e rede sobem como vieram e derrubam a batida, com o
+ * cursor parado. Permissão (`read:org`), SSO e time inexistente viram
+ * `ErroDeTime`: um time ilegível não pode prender para sempre todos os pull
+ * requests do gatilho.
  */
 function falhaDoTime(err: unknown, time: string): unknown {
   const { status, message = "", response } = err as Falha;
@@ -324,10 +353,10 @@ function falhaDoTime(err: unknown, time: string): unknown {
   const limite = status === 429 || h["x-ratelimit-remaining"] === "0" || h["retry-after"] !== undefined || /rate limit|abuse/i.test(message);
   if (limite) return err;
   if (status === 403 && (h["x-github-sso"] !== undefined || /saml|sso/i.test(message))) {
-    return new ErroDeTime(`não deu para conferir o time ${time}: autorize o token no SSO da org`);
+    return new ErroDeTime(time, "autorize o token no SSO da org");
   }
-  if (status === 403) return new ErroDeTime(`não deu para conferir o time ${time}: o token precisa de read:org`);
-  if (status === 404) return new ErroDeTime(`time ${time} não encontrado ou sem acesso`);
+  if (status === 403) return new ErroDeTime(time, "o token precisa de read:org");
+  if (status === 404) return new ErroDeTime(time, "time não encontrado ou sem acesso");
   return err;
 }
 
@@ -355,17 +384,33 @@ export function leitorDeTimes(gh: ClienteDeTimes): LeitorDeTimes {
   };
 }
 
-/** O autor é membro de algum dos times. */
+/**
+ * O autor é membro de algum dos times. Time ilegível não derruba a batida: se
+ * outro time confirma o autor, o pull request passa; se não, ele fica de fora
+ * dizendo qual time não deu para ler.
+ */
 export async function avaliarTimes(
   f: FiltrosResolvidos,
   autor: string | undefined,
   membrosDe: LeitorDeTimes,
+  aoFalhar: (erro: ErroDeTime) => void = () => undefined,
 ): Promise<string | null> {
   if (f.teamMembers.length === 0) return null;
   const nome = autor ?? "";
+  const lidos: string[] = [];
+  const ilegiveis: string[] = [];
   for (const time of f.teamMembers) {
-    const { membros } = await membrosDe(time);
-    if (nome !== "" && membros.has(minusculo(nome))) return null;
+    try {
+      const { membros } = await membrosDe(time);
+      if (nome !== "" && membros.has(minusculo(nome))) return null;
+      lidos.push(time);
+    } catch (err) {
+      if (!(err instanceof ErroDeTime)) throw err;
+      aoFalhar(err);
+      ilegiveis.push(err.message);
+    }
   }
-  return `autor ${nome || "desconhecido"} fora ${f.teamMembers.length === 1 ? "do time" : "dos times"} ${f.teamMembers.join(", ")}`;
+  const fora =
+    lidos.length === 0 ? [] : [`autor ${nome || "desconhecido"} fora ${lidos.length === 1 ? "do time" : "dos times"} ${lidos.join(", ")}`];
+  return [...fora, ...ilegiveis].join("; ");
 }

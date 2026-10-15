@@ -79,7 +79,7 @@ function LinhaDoGatilho({
   aoEditar: () => void;
   quando: (ms: number | null) => string;
 }) {
-  const { t } = useTranslation();
+  const { i18n, t } = useTranslation();
   const config = gatilho.config;
   if (config.kind !== "poll") return null;
 
@@ -125,6 +125,13 @@ function LinhaDoGatilho({
       >
         {t("settings.watched.edit")}
       </Button>
+
+      {gatilho.lastError === null ? null : (
+        <p className="text-destructive w-full min-w-0 break-words text-xs" data-locum-gatilho-erro={gatilho.lastError.tipo}>
+          {t(`automations.github.error.${gatilho.lastError.tipo}`, { when: new Date(gatilho.lastError.em).toLocaleString(i18n.language) })}
+          {` ${gatilho.lastError.texto}`}
+        </p>
+      )}
 
       <p className="text-muted-foreground w-full text-xs">
         {t("settings.watched.beats", {

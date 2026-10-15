@@ -435,6 +435,8 @@ interface ServiceApi {
    * motivo. Leitura do que a varredura já registrou.
    */
   "triggers.discards": Scheduler["descartes"];
+  /** O último erro do gatilho, de configuração ou de batida, com data e texto. */
+  "triggers.lastError": Scheduler["lastError"];
   /**
    * O que a varredura do GitHub faria agora com esta configuração, que pode
    * ainda não estar salva: cada pull request aberto com entra ou não entra e o
@@ -669,6 +671,7 @@ export const BRIDGE_CHANNELS = [
   "triggers.schedule",
   "triggers.tick",
   "triggers.discards",
+  "triggers.lastError",
   "triggers.previewGithub",
   "scheduler.getWorkingHours",
   "scheduler.setWorkingHours",

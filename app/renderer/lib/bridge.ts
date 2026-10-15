@@ -133,6 +133,7 @@ export const READ_CHANNELS = [
   // O que cada gatilho viu e deixou passar, com o motivo. Lê o registro da
   // varredura, sem bater em nada.
   "triggers.discards",
+  "triggers.lastError",
   "scheduler.getWorkingHours",
   "startup.get",
   "app.version",
