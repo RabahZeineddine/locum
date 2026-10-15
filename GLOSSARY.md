@@ -9,7 +9,10 @@ Não tem gatilho nem ação própria. Pode ser testado no chat dele. Não é a
 automação.
 
 **Conexão do agent**: o que um agent usa de uma conexão. Leitura vem ligada e
-escrita desligada; cada ferramenta pode ser ajustada. A escrita ligada só sai
+escrita desligada; cada ferramenta pode ser ajustada. Ao adicionar a conexão, a
+tela grava as leituras ligadas; servidor com mais de 30 leituras (ms365, por
+exemplo) começa sem nenhuma, e a pessoa escolhe as que o agent precisa. O agent
+salvo antes mantém toda leitura ligada. A escrita ligada só sai
 com confirmação, no chat do agent.
 
 **Automação**: fluxo de nós ligados que começa num gatilho. Decide quando os
