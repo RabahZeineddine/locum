@@ -429,8 +429,8 @@ export class PacoteService {
   ): GatilhoDoPacote {
     switch (config.kind) {
       case "teams-inbox": {
-        const { channels, ...resto } = config;
-        if (channels.length > 0) omitir("canais", "teams-inbox", channels.length);
+        const { channels, chats, ...resto } = config;
+        if (channels.length + chats.length > 0) omitir("canais", "teams-inbox", channels.length + chats.length);
         return resto;
       }
       case "slack-channel": {
@@ -1014,7 +1014,7 @@ function gatilhoParaCadastro(g: GatilhoDoPacote, servidor: (nome: string) => str
     case "slack-channel":
       return null;
     case "teams-inbox":
-      return { ...g, channels: [] };
+      return { ...g, channels: [], chats: [] };
     case "mcp-poll":
       return { ...g, server: servidor(g.server), args: {} };
     default:

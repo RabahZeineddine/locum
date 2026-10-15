@@ -2146,7 +2146,17 @@
         "list": "Listar canais",
         "loading": "Lendo canais...",
         "channelsHintVia": "O Teams vem pelo {{server}}, que já traz os canais. Cada canal é uma chamada por batida.",
-        "channelsHint": "Precisa ligar os canais na conexão do Teams, em Conexões. Cada canal é uma chamada ao Graph por batida."
+        "channelsHint": "Precisa ligar os canais na conexão do Teams, em Conexões. Cada canal é uma chamada ao Graph por batida.",
+        "chats": "Só nestes chats (vazio = todos os chats)",
+        "searchChats": "Buscar chat ou pessoa",
+        "noMatchChats": "Nenhum chat com \"{{termo}}\".",
+        "listChats": "Listar chats",
+        "loadingChats": "Lendo chats...",
+        "chatsHint": "Vazio vale para todos os chats em grupo e diretos. Com chats marcados, mensagem direta, link de PR e menção só contam neles, e os outros nem são lidos.",
+        "chatType": {
+          "oneOnOne": "1:1",
+          "group": "grupo"
+        }
       },
       "poll": {
         "title": "Pull request no GitHub",

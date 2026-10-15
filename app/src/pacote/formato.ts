@@ -91,7 +91,7 @@ const GatilhoDoPacote = z.discriminatedUnion("kind", [
   ManualTrigger.strict(),
   SlackInboxTrigger.strict(),
   SlackChannelTrigger.omit({ channels: true }).strict(),
-  TeamsInboxTrigger.omit({ channels: true }).strict(),
+  TeamsInboxTrigger.omit({ channels: true, chats: true }).strict(),
   PollTrigger.omit({ owner: true, filters: true })
     .extend({ filters: PollFilters.omit({ authors: true, reviewRequested: true, teamMembers: true }).strict().optional() })
     .strict(),

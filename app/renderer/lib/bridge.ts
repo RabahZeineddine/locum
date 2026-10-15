@@ -209,6 +209,7 @@ export const ACTION_CHANNELS = [
   // Graph: os dois atrás de um clique.
   "connections.setTeamsChannels",
   "connections.teamsChannels",
+  "connections.teamsChats",
   // A chave de provedor indo para o keychain, e o exame que pergunta o
   // catálogo àquele provedor. Escrita e rede, os dois atrás de um clique, pelo
   // mesmo motivo dos canais do GitHub logo acima.

@@ -124,6 +124,7 @@ async function montarAutomacao(m: Maquina, id = "revisao-de-pr"): Promise<void> 
         config: {
           kind: "teams-inbox", prLinks: true, mentions: false, dms: false,
           channels: [{ teamId: EQUIPE_DO_TEAMS, channelId: CANAL_DO_TEAMS, label: "Pagamentos" }],
+          chats: [{ chatId: CHAT_DO_TEAMS, label: "Revisões" }],
         },
         enabled: true,
       },
@@ -199,7 +200,7 @@ test("o pacote exportado não carrega segredo, id de canal, conta, e-mail nem ca
     for (const [rotulo, valor] of proibidos) assert.ok(!texto.includes(valor), `o pacote vazou: ${rotulo}`);
     assert.doesNotMatch(texto, /[\w.+-]+@[\w-]+\.[a-z]{2,}/i, "sobrou algo com cara de e-mail");
     assert.doesNotMatch(texto, /\/(?:Users|home)\//, "sobrou caminho de home");
-    for (const chave of ["credentialRef", "cursor", "headers", "env", "lastError", "channelId", "teamId"]) {
+    for (const chave of ["credentialRef", "cursor", "headers", "env", "lastError", "channelId", "teamId", "chatId"]) {
       assert.ok(!texto.includes(`"${chave}"`), `o pacote tem o campo ${chave}`);
     }
 
@@ -320,6 +321,7 @@ test("importar cria a automação com gatilhos desligados e sem canal, e o agent
   assert.ok(automacao.triggers.every((g) => !g.enabled), "todo gatilho entra desligado");
   const teams = automacao.triggers.find((g) => g.config.kind === "teams-inbox");
   assert.deepEqual(teams?.config.kind === "teams-inbox" && teams.config.channels, []);
+  assert.deepEqual(teams?.config.kind === "teams-inbox" && teams.config.chats, []);
   assert.ok(r.pendencias.some((p) => p.codigo === "gatilho-sem-canal" && p.onde === "slack-channel"));
   assert.ok(r.pendencias.some((p) => p.codigo === "dono-do-github"));
   // Ação em `auto` entra em aprovação: ninguém disse que podia sair sozinha.
@@ -535,6 +537,7 @@ test("campo estranho, dentro ou fora, é recusado com o lugar dele", async () =>
   recusa((p) => { p.requisitos.servidores[0].env = { A: "b" }; }, /campo desconhecido "env"/);
   recusa((p) => { p.automacao.spec.steps[0].extra = 1; }, /campo desconhecido "extra"/);
   recusa((p) => { p.automacao.gatilhos[0].channels = []; }, /campo desconhecido "channels"/);
+  recusa((p) => { p.automacao.gatilhos[0].chats = []; }, /campo desconhecido "chats"/);
   recusa((p) => { p.automacao.id = "Maiúscula"; }, /automacao\.id/);
   recusa((p) => { p.automacao.spec.steps[0].profile = "fantasma"; }, /usa o agent "fantasma", que não está no pacote/);
   recusa((p) => { p.agents.push(structuredClone(p.agents[0])); }, /aparece duas vezes/);

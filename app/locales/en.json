@@ -2097,7 +2097,17 @@
         "list": "List channels",
         "loading": "Reading channels...",
         "channelsHintVia": "Teams comes through {{server}}, which already brings channels. Each channel is one call per beat.",
-        "channelsHint": "Turn on channels in the Teams connection, under Connections. Each channel is one Graph call per beat."
+        "channelsHint": "Turn on channels in the Teams connection, under Connections. Each channel is one Graph call per beat.",
+        "chats": "Only these chats (empty = all chats)",
+        "searchChats": "Search chat or person",
+        "noMatchChats": "No chat with \"{{termo}}\".",
+        "listChats": "List chats",
+        "loadingChats": "Reading chats...",
+        "chatsHint": "Empty means every group and direct chat. With chats picked, direct messages, PR links and mentions only count in them, and the others are not even read.",
+        "chatType": {
+          "oneOnOne": "1:1",
+          "group": "group"
+        }
       },
       "poll": {
         "title": "GitHub pull request",

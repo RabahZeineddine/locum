@@ -64,6 +64,11 @@ export interface TeamsInboxWatch {
   prDesde?: string;
   /** Canais de equipe onde a menção também conta. */
   channels?: readonly TeamsChannelRef[];
+  /**
+   * Chats onde a caixa olha. Ausente ou vazia é todos. Com itens, o chat fora
+   * da lista não é lido, e portanto nunca gera evento nem reação.
+   */
+  chats?: readonly { chatId: string; label?: string }[];
 }
 
 export interface TeamsChannelRef {
@@ -183,7 +188,7 @@ async function varrer(
     await acolher(
       await pollMcpServer(
         { server: TEAMS_SERVER, tool: "inbox", args: { since: CURSOR_TOKEN } },
-        { db, call: caixa(graph), shape: inboxShape(vigia, eu, chave, teams.conta) },
+        { db, call: caixa(graph, watch.chats), shape: inboxShape(vigia, eu, chave, teams.conta) },
       ),
       "inbox",
     );
@@ -548,10 +553,12 @@ async function quemSou(graph: GraphGet): Promise<string> {
  * Mensagem criada antes do cursor fica aqui mesmo, porque só aqui o cursor é
  * conhecido: ela só voltou porque alguém a editou.
  */
-function caixa(graph: GraphGet): McpCaller {
+function caixa(graph: GraphGet, chats: TeamsInboxWatch["chats"]): McpCaller {
+  const so = chats === undefined || chats.length === 0 ? null : new Set(chats.map((c) => c.chatId));
   return async (_server, _tool, args) => {
     const desde = String(args.since);
-    const conversas = await conversasDesde(graph, desde);
+    // O filtro vem antes de buscar as mensagens: chat fora da lista não custa chamada.
+    const conversas = (await conversasDesde(graph, desde)).filter((c) => so === null || so.has(c.id));
     const mensagens: unknown[] = [];
     for (const conversa of conversas) {
       for (const mensagem of await mensagensDesde(graph, conversa.id, desde)) {
