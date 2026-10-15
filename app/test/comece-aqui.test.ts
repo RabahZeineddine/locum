@@ -6,7 +6,6 @@ const conexao = (extra: Partial<ConexaoParaOPasso>): ConexaoParaOPasso => ({
   id: "github",
   state: "connected",
   reason: null,
-  custom: false,
   ...extra,
 });
 
@@ -27,17 +26,19 @@ test("perfil sem conexão real não marca 'conectar'", () => {
 });
 
 test("o servidor interno do Locum não conta como conexão", () => {
-  assert.deepEqual(feitos({ conexoes: [conexao({ id: "locum-ferramentas", custom: true, reason: "untested" })] }), ["model"]);
+  assert.deepEqual(feitos({ conexoes: [conexao({ id: "locum-ferramentas", reason: "untested" })] }), ["model"]);
 });
 
 test("servidor importado desligado ou ainda sem teste não conta", () => {
-  assert.deepEqual(feitos({ conexoes: [conexao({ id: "ms365", custom: true, state: "off", reason: "disabled" })] }), ["model"]);
-  assert.deepEqual(feitos({ conexoes: [conexao({ id: "ms365", custom: true, reason: "untested" })] }), ["model"]);
+  assert.deepEqual(feitos({ conexoes: [conexao({ id: "ms365", state: "off", reason: "disabled" })] }), ["model"]);
+  assert.deepEqual(feitos({ conexoes: [conexao({ id: "ms365", reason: "untested" })] }), ["model"]);
+  // ms365 importado vira o item "teams" do catálogo: o estado decide, e não o custom.
+  assert.deepEqual(feitos({ conexoes: [conexao({ id: "teams", reason: "untested" })] }), ["model"]);
 });
 
 test("conexão autorizada ou servidor testado conta", () => {
-  assert.deepEqual(feitos({ conexoes: [conexao({ id: "notion", reason: "untested" })] }), ["model", "connection"]);
-  assert.deepEqual(feitos({ conexoes: [conexao({ id: "ms365", custom: true })] }), ["model", "connection"]);
+  assert.deepEqual(feitos({ conexoes: [conexao({ id: "notion" })] }), ["model", "connection"]);
+  assert.deepEqual(feitos({ conexoes: [conexao({ id: "teams" })] }), ["model", "connection"]);
 });
 
 test("agent criado marca o passo do agent", () => {

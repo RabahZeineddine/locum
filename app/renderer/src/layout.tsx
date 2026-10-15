@@ -36,7 +36,8 @@ function Ponte({
 }: {
   agents: string[];
   /** Quantos agents o rodapé diz ter: os do conceito novo (perfis), não o legado de `agents`. */
-  exibidos: number;
+  /** Indefinido enquanto a biblioteca carrega: não vira "0 agents". */
+  exibidos: number | undefined;
   erro: { channel: string; message: string } | undefined;
   estado: "carregando" | "erro" | "pronto";
   execucoes: number;
@@ -56,7 +57,7 @@ function Ponte({
     >
       {erro !== undefined ? (
         <span>{t("bridge.refused", { channel: erro.channel, message: erro.message })}</span>
-      ) : estado === "carregando" ? (
+      ) : estado === "carregando" || exibidos === undefined ? (
         <span>{t("bridge.loading")}</span>
       ) : (
         <span>
@@ -228,7 +229,7 @@ export function Layout() {
 
         <Ponte
           agents={(agents.data ?? []).map((a) => a.id)}
-          exibidos={perfis.data?.length ?? 0}
+          exibidos={perfis.data?.length}
           erro={erro}
           estado={estado}
           execucoes={runs.data?.length ?? -1}

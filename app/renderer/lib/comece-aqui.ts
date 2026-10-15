@@ -5,7 +5,6 @@ export interface ConexaoParaOPasso {
   id: string;
   state: "connected" | "attention" | "error" | "off" | "available" | "soon";
   reason: string | null;
-  custom: boolean;
 }
 
 export interface PassoDoComeco {
@@ -20,7 +19,7 @@ export interface PassoDoComeco {
  */
 export function ehConexaoReal(c: ConexaoParaOPasso): boolean {
   if (c.id === SERVIDOR_NATIVO || c.state !== "connected") return false;
-  return !(c.custom && c.reason === "untested");
+  return c.reason !== "untested";
 }
 
 /** Os passos do guia, na ordem em que fazem sentido. */
