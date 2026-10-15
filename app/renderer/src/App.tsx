@@ -1,3 +1,4 @@
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { Layout } from "./layout";
 
 /**
@@ -7,5 +8,9 @@ import { Layout } from "./layout";
  * fontes para a mesma pergunta.
  */
 export function App() {
-  return <Layout />;
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Layout />
+    </TooltipProvider>
+  );
 }

@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { StatusDot } from "@/components/ui/status-dot";
 import {
   ACOES_POR_PARAMETRO,
   anteriores,
@@ -85,15 +86,15 @@ export function PainelDoNo({
   return (
     <aside
       className={cn(
-        "border-border superficie flex shrink-0 flex-col gap-4 overflow-y-auto rounded-lg border p-3",
+        "border-border bg-card flex shrink-0 flex-col gap-4 overflow-y-auto rounded-lg border p-3",
         gatilho?.config.kind === "poll" ? "w-[26rem]" : "w-80",
       )}
       data-locum-probe="automacao-painel"
       data-locum-painel={chave}
     >
       <div className="flex items-center gap-2">
-        <Selo app={cabecalho.app} id={cabecalho.id} />
-        <span className="flex-1 truncate font-medium text-sm">{cabecalho.titulo}</span>
+        <Selo app={cabecalho.app} id={cabecalho.id} tamanho="sm" />
+        <span className="flex-1 truncate text-[13px] font-medium">{cabecalho.titulo}</span>
         <button
           aria-label={t("automations.panel.close")}
           className="text-muted-foreground hover:text-foreground cursor-pointer rounded p-1"
@@ -107,8 +108,9 @@ export function PainelDoNo({
       {problemas.length > 0 ? (
         <ul className="flex flex-col gap-1 text-xs">
           {problemas.map((p, i) => (
-            <li className={p.bloqueia ? "text-sev-critical" : "text-amber-500"} key={i}>
-              {t(p.chave)}
+            <li className="text-muted-foreground flex items-start gap-1.5" key={i}>
+              <StatusDot className="mt-1.5" estado={p.bloqueia ? "erro" : "aviso"} />
+              <span>{t(p.chave)}</span>
               {p.atalho === undefined ? null : (
                 <button className="ml-2 cursor-pointer underline" onClick={() => navegar(p.atalho!.rota, p.atalho!.detalhe)} type="button">
                   {t("automations.problems.openConnection")}
@@ -253,11 +255,11 @@ function ConfigDoCron({ expressao, trocar }: { expressao: string; trocar: (e: st
         ))}
       </div>
       {erro === null && frase !== null && (
-        <p className="text-sm font-medium" data-locum-cron-frase="">
+        <p className="text-[13px] font-medium" data-locum-cron-frase="">
           {frase}
         </p>
       )}
-      <p className={cn("text-xs", erro === null ? "text-muted-foreground" : "text-sev-critical")}>
+      <p className={cn("text-xs", erro === null ? "text-muted-foreground" : "text-destructive")}>
         {erro !== null
           ? t("automations.triggers.cron.invalid", { message: erro })
           : proxima === null
@@ -426,7 +428,7 @@ function CanaisDoTeams({ canais, trocar }: { canais: readonly CanalDoTeams[]; tr
           ? t("automations.triggers.teams-inbox.channelsHint")
           : t("automations.triggers.teams-inbox.channelsHintVia", { server: viaDoTeams })}
       </p>
-      {erro === null ? null : <p className="text-sev-critical text-xs">{erro}</p>}
+      {erro === null ? null : <p className="text-destructive text-xs">{erro}</p>}
     </Campo>
   );
 }
@@ -672,7 +674,7 @@ function ConfigDaIA({
           {t("automations.steps.agent.toLibrary")}
         </Button>
         <p className="text-muted-foreground text-[11px]">{t("automations.steps.agent.toLibraryHint")}</p>
-        {erro === null ? null : <p className="text-sev-critical text-xs">{erro}</p>}
+        {erro === null ? null : <p className="text-destructive text-xs">{erro}</p>}
       </div>
     </>
   );
@@ -779,9 +781,16 @@ function ModoDaAcao({ passo, trocar }: { passo: PassoDeAcao; trocar: (novo: Pass
           ))}
         </div>
       ) : null}
-      <p className={cn("text-xs", passo.mode === "auto" ? "text-sev-critical" : "text-amber-500")}>
-        {t(passo.mode === "auto" ? "automations.panel.autoHint" : oferecidos.length > 1 ? "automations.panel.approval" : "automations.panel.approvalOnly")}
-      </p>
+      {passo.mode === "auto" ? (
+        <p className="text-destructive flex items-start gap-1.5 text-xs" data-locum-modo-auto="">
+          <StatusDot className="mt-1" estado="erro" />
+          {t("automations.panel.autoHint")}
+        </p>
+      ) : (
+        <p className="text-muted-foreground text-xs">
+          {t(oferecidos.length > 1 ? "automations.panel.approval" : "automations.panel.approvalOnly")}
+        </p>
+      )}
     </Campo>
   );
 }
@@ -1051,7 +1060,7 @@ function ConfigDaChamada({
       {servidor === "" ? null : (
         <Campo rotulo={t("automations.steps.mcp.call.tool")}>
           {erro !== null ? (
-            <p className="text-sev-critical text-xs">{erro}</p>
+            <p className="text-destructive text-xs">{erro}</p>
           ) : ferramentas?.de !== servidor ? (
             <p className="text-muted-foreground text-xs">{t("automations.steps.mcp.call.loading")}</p>
           ) : (

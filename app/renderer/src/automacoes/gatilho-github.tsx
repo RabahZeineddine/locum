@@ -200,7 +200,7 @@ export function GatilhoDoGithub({
 function Secao({ titulo, ajuda, children }: { titulo: string; ajuda: string; children: ReactNode }) {
   return (
     <section className="border-border flex min-w-0 flex-col gap-2 border-t pt-3">
-      <h4 className="font-medium text-sm">{titulo}</h4>
+      <h4 className="text-[13px] font-medium">{titulo}</h4>
       <p className="text-muted-foreground text-xs">{ajuda}</p>
       {children}
     </section>
@@ -307,7 +307,7 @@ function PreviaDoGatilho({ config }: { config: Poll }) {
 
   return (
     <section className="border-border flex min-w-0 flex-col gap-2 border-t pt-3" data-locum-previa={estado.fase}>
-      <h4 className="font-medium text-sm">{t("automations.github.preview.title")}</h4>
+      <h4 className="text-[13px] font-medium">{t("automations.github.preview.title")}</h4>
       <p className="text-muted-foreground text-xs">{t("automations.github.preview.help")}</p>
       <Button
         className="cursor-pointer self-start"
@@ -329,7 +329,7 @@ function PreviaDoGatilho({ config }: { config: Poll }) {
       {estado.fase === "pronta" ? (
         <>
           {estado.previa.avisos.map((aviso) => (
-            <p className="text-amber-500 text-xs" data-locum-previa-aviso="" key={aviso}>
+            <p className="text-muted-foreground text-xs" data-locum-previa-aviso="" key={aviso}>
               {t("automations.github.preview.warning", { message: aviso })}
             </p>
           ))}
@@ -412,7 +412,7 @@ function DescartesReais({ triggerId }: { triggerId?: string }) {
   const { t } = useTranslation();
   return (
     <section className="border-border flex min-w-0 flex-col gap-2 border-t pt-3" data-locum-descartes="">
-      <h4 className="font-medium text-sm">{t("automations.github.discards.title")}</h4>
+      <h4 className="text-[13px] font-medium">{t("automations.github.discards.title")}</h4>
       <p className="text-muted-foreground text-xs">{t("automations.github.discards.help")}</p>
       {triggerId === undefined ? (
         <p className="text-muted-foreground text-xs">{t("automations.github.discards.unsaved")}</p>

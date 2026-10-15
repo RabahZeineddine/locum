@@ -82,7 +82,7 @@ export function appDoPasso(id: string): AppDoComponente {
 }
 
 const CORES: Record<AppDoComponente, string> = {
-  locum: "ia-gradiente text-primary-foreground",
+  locum: "bg-muted text-foreground",
   slack: "bg-[#4A154B] text-white",
   teams: "bg-[#5059C9] text-white",
   github: "bg-[#24292f] text-white ring-1 ring-white/15",

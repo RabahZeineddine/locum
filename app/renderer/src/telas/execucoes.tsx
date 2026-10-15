@@ -14,6 +14,10 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { CabecalhoDaTela } from "@/components/cabecalho-da-tela";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { StatusDot, type Estado as EstadoDoPonto } from "@/components/ui/status-dot";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { pontoDoEstado } from "@/lib/estado-do-ponto";
 import { call, read, useRead, type ReadResult } from "@/lib/bridge";
 import { useJanela } from "@/lib/janela";
 import {
@@ -21,7 +25,6 @@ import {
   rotuloDeSeveridade,
   rotuloDoModelo,
   rotuloDoMotivo,
-  type Estado,
 } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
 import {
@@ -58,7 +61,7 @@ type Detalhe = NonNullable<ReadResult<"runs.get">>;
 type Passo = Detalhe["steps"][number];
 
 /** Altura de cada linha da lista. Fixa, porque a janela virtual conta com isso. */
-const ALTURA_DA_LINHA = 76;
+const ALTURA_DA_LINHA = 52;
 
 /**
  * A tela de execucoes: a lista, e o detalhe de uma delas.
@@ -140,68 +143,32 @@ function Lista({ filtroAgente, navegar }: { filtroAgente?: string | null; navega
       <CabecalhoDaTela descricao={t("runs.lead")} titulo={t("runs.title")} />
 
       {metricas && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <div className="superficie flex flex-col gap-1 rounded-xl p-3.5">
-            <span className="text-muted-foreground text-[11px] font-medium uppercase tracking-[0.06em]">
-              {t("runs.metrics.total")}
-            </span>
-            <div className="flex items-baseline gap-2">
-              <span className="font-mono text-2xl font-semibold text-foreground">
-                {metricas.total}
-              </span>
-              <span className="text-muted-foreground text-xs">{t("runs.metrics.executions")}</span>
-            </div>
+        <dl className="text-muted-foreground num flex flex-wrap items-baseline gap-x-6 gap-y-1 text-xs" data-locum-metricas="">
+          <div className="flex items-baseline gap-1.5">
+            <dt>{t("runs.metrics.total")}</dt>
+            <dd className="text-foreground text-[13px] font-medium">{metricas.total}</dd>
           </div>
-
-          <div className="superficie flex flex-col gap-1 rounded-xl p-3.5">
-            <span className="text-muted-foreground text-[11px] font-medium uppercase tracking-[0.06em]">
-              {t("runs.metrics.success_rate")}
-            </span>
-            <div className="flex items-baseline gap-2">
-              <span
-                className={cn(
-                  "font-mono text-2xl font-semibold",
-                  metricas.taxaSucesso >= 90
-                    ? "text-emerald-500"
-                    : metricas.taxaSucesso >= 70
-                      ? "text-sev-medium"
-                      : "text-sev-critical",
-                )}
-              >
-                {metricas.taxaSucesso}%
-              </span>
+          <div className="flex items-center gap-1.5">
+            <dt>{t("runs.metrics.success_rate")}</dt>
+            <dd className="flex items-center gap-1.5">
+              <StatusDot estado={metricas.taxaSucesso >= 90 ? "ok" : metricas.taxaSucesso >= 70 ? "aviso" : "erro"} />
+              <span className="text-foreground text-[13px] font-medium">{metricas.taxaSucesso}%</span>
               {metricas.falhadas > 0 && (
-                <span className="text-sev-critical text-xs">
+                <span>
                   ({metricas.falhadas} {t("runs.metrics.failed")})
                 </span>
               )}
-            </div>
+            </dd>
           </div>
-
-          <div className="superficie flex flex-col gap-1 rounded-xl p-3.5">
-            <span className="text-muted-foreground text-[11px] font-medium uppercase tracking-[0.06em]">
-              {t("runs.metrics.cost")}
-            </span>
-            <div className="flex items-baseline gap-2">
-              <span className="font-mono text-2xl font-semibold text-foreground">
-                ${metricas.custoTotal.toFixed(2)}
-              </span>
-              <span className="text-muted-foreground text-xs">{t("runs.metrics.currency")}</span>
-            </div>
+          <div className="flex items-baseline gap-1.5">
+            <dt>{t("runs.metrics.cost")}</dt>
+            <dd className="text-foreground text-[13px] font-medium">${metricas.custoTotal.toFixed(2)}</dd>
           </div>
-
-          <div className="superficie flex flex-col gap-1 rounded-xl p-3.5">
-            <span className="text-muted-foreground text-[11px] font-medium uppercase tracking-[0.06em]">
-              {t("runs.metrics.avg_duration")}
-            </span>
-            <div className="flex items-baseline gap-2">
-              <span className="font-mono text-2xl font-semibold text-foreground">
-                {t("runs.metrics.seconds", { n: metricas.tempoMedioS })}
-              </span>
-              <span className="text-muted-foreground text-xs">{t("runs.metrics.per_run")}</span>
-            </div>
+          <div className="flex items-baseline gap-1.5">
+            <dt>{t("runs.metrics.avg_duration")}</dt>
+            <dd className="text-foreground text-[13px] font-medium">{t("runs.metrics.seconds", { n: metricas.tempoMedioS })}</dd>
           </div>
-        </div>
+        </dl>
       )}
 
       {iniciativaAtual !== undefined || filtroAgente ? (
@@ -210,10 +177,8 @@ function Lista({ filtroAgente, navegar }: { filtroAgente?: string | null; navega
             <button
               aria-pressed={aplicarFiltro}
               className={cn(
-                "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs transition-colors",
-                aplicarFiltro
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-accent text-accent-foreground hover:bg-accent/70",
+                "border-border inline-flex h-6 items-center gap-1.5 rounded-md border px-2 text-xs transition-colors",
+                aplicarFiltro ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent",
               )}
               data-aplicado={aplicarFiltro}
               data-locum-probe="execucoes-initiative"
@@ -228,7 +193,7 @@ function Lista({ filtroAgente, navegar }: { filtroAgente?: string | null; navega
           )}
 
           {filtroAgente && (
-            <div className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 border border-primary/20 px-2.5 py-1 text-xs text-primary font-mono font-medium">
+            <div className="border-border text-muted-foreground inline-flex h-6 items-center gap-1.5 rounded-md border px-2 font-mono text-xs">
               <span>{t("runs.monitorFilter", { agent: filtroAgente })}</span>
               <button
                 className="hover:text-foreground cursor-pointer"
@@ -243,31 +208,22 @@ function Lista({ filtroAgente, navegar }: { filtroAgente?: string | null; navega
         </div>
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-1.5">
-        {(
-          [
-            { id: "all", rotulo: t("runs.filter.all", { defaultValue: "Todas" }) },
-            { id: "review", rotulo: t("runs.filter.review", { defaultValue: "PR Reviews" }) },
-            { id: "digest", rotulo: t("runs.filter.digest", { defaultValue: "Vigilância & Alertas" }) },
-            { id: "failed", rotulo: t("runs.filter.failed", { defaultValue: "Com Falha" }) },
-          ] as const
-        ).map((f) => (
-          <button
-            aria-pressed={categoria === f.id}
-            className={cn(
-              "cursor-pointer rounded-full px-3 py-1 font-medium text-xs transition-colors",
-              categoria === f.id
-                ? "bg-primary text-primary-foreground"
-                : "bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground",
-            )}
-            key={f.id}
-            onClick={() => setCategoria(f.id)}
-            type="button"
-          >
-            {f.rotulo}
-          </button>
-        ))}
-      </div>
+      <Tabs onValueChange={(v) => setCategoria(v as typeof categoria)} value={categoria}>
+        <TabsList>
+          {(
+            [
+              { id: "all", rotulo: t("runs.filter.all", { defaultValue: "Todas" }) },
+              { id: "review", rotulo: t("runs.filter.review", { defaultValue: "PR Reviews" }) },
+              { id: "digest", rotulo: t("runs.filter.digest", { defaultValue: "Vigilância & Alertas" }) },
+              { id: "failed", rotulo: t("runs.filter.failed", { defaultValue: "Com Falha" }) },
+            ] as const
+          ).map((f) => (
+            <TabsTrigger data-locum-runs-filtro={f.id} key={f.id} value={f.id}>
+              {f.rotulo}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
 
       <div
         className="text-muted-foreground -mb-2 text-xs"
@@ -284,17 +240,19 @@ function Lista({ filtroAgente, navegar }: { filtroAgente?: string | null; navega
       </div>
 
       {runs.status === "ready" && linhas.length === 0 ? (
-        <p className="text-muted-foreground text-sm">
-          {/*
-            O comando fica dentro da frase traduzida, e nao colado de fora: a
-            posicao dele muda com o idioma, e frase partida em dois pedacos
-            perde a ordem no primeiro idioma que nao siga a do portugues.
-          */}
-          <Trans components={{ code: <code /> }} i18nKey="runs.empty" />
-        </p>
+        <EmptyState
+          titulo={
+            /*
+              O comando fica dentro da frase traduzida, e nao colado de fora: a
+              posicao dele muda com o idioma, e frase partida em dois pedacos
+              perde a ordem no primeiro idioma que nao siga a do portugues.
+            */
+            <Trans components={{ code: <code /> }} i18nKey="runs.empty" />
+          }
+        />
       ) : (
         <div
-          className="superficie max-h-full min-h-0 overflow-auto rounded-xl"
+          className="border-border bg-card max-h-full min-h-0 overflow-auto rounded-lg border"
           ref={janela.ref}
         >
           {/*
@@ -331,57 +289,36 @@ export function LinhaDeExecucao({
 
   return (
     <button
-      className={cn(
-        "hover:bg-accent/40 focus-visible:ring-ring border-border relative w-full cursor-pointer border-b px-4 py-2.5 text-left transition-colors duration-150 last:border-b-0 focus-visible:ring-2 focus-visible:-outline-offset-2",
-        run.status === "failed" && "bg-destructive/[0.03]",
-        run.status === "paused" && "bg-amber-500/[0.03]",
-      )}
+      className="hover:bg-accent focus-visible:ring-ring border-border relative flex w-full cursor-pointer items-center gap-3 border-b px-3 text-left text-[13px] transition-colors last:border-b-0 focus-visible:ring-2 focus-visible:-outline-offset-2"
       data-locum-run={run.id}
       onClick={() => navegar("runs", run.id)}
       style={{ height: ALTURA_DA_LINHA }}
       type="button"
     >
-      <div className="flex items-baseline gap-2.5">
-        {alvo?.pull ? (
-          <>
-            <span className="shrink-0 font-mono text-[13px] font-semibold text-foreground">
-              {t("common.pull", { number: alvo.pull })}
-            </span>
-            <span className="text-foreground/90 min-w-0 flex-1 truncate text-sm font-medium">
-              {alvo.title ?? alvo.repo}
-            </span>
-          </>
-        ) : (
-          <span className="text-muted-foreground min-w-0 flex-1 truncate text-sm">
-            {t("runs.no_target")}
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="flex items-baseline gap-2">
+          {alvo?.pull ? (
+            <>
+              <span className="num shrink-0 font-medium">{t("common.pull", { number: alvo.pull })}</span>
+              <span className="min-w-0 flex-1 truncate font-medium">{alvo.title ?? alvo.repo}</span>
+            </>
+          ) : (
+            <span className="text-muted-foreground min-w-0 flex-1 truncate">{t("runs.no_target")}</span>
+          )}
+        </span>
+        <span className="text-muted-foreground flex flex-nowrap items-center gap-x-3 overflow-hidden whitespace-nowrap text-xs">
+          <Estado status={run.status} />
+          <span className="font-mono">
+            {run.agentId} <span className="opacity-60">{t("common.version", { version: run.agentVersion })}</span>
           </span>
-        )}
-        <span className="text-muted-foreground shrink-0 font-mono text-xs tabular-nums">
-          {quando(t, run.createdAt)}
+          <span className="num">{t("runs.progress", { done: run.stepDone, total: run.stepTotal })}</span>
+          {run.stepPending > 0 && <span className="num">{t("runs.waiting_steps", { count: run.stepPending })}</span>}
+          {run.stepFailed > 0 && <span className="num">{t("runs.failed_steps", { count: run.stepFailed })}</span>}
+          {run.findingCount > 0 && <span className="num">{t("runs.findings", { count: run.findingCount })}</span>}
         </span>
-        <span className="w-24 shrink-0 text-right font-mono text-xs tabular-nums text-foreground/80">
-          {dinheiro(t, run)}
-        </span>
-      </div>
-
-      <div className="text-muted-foreground mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
-        <Estado status={run.status} />
-        <span className="font-mono text-foreground/75">
-          {run.agentId} <span className="text-muted-foreground/60">{t("common.version", { version: run.agentVersion })}</span>
-        </span>
-        <span className="tabular-nums font-mono text-[11px]">
-          {t("runs.progress", { done: run.stepDone, total: run.stepTotal })}
-        </span>
-        {run.stepPending > 0 && (
-          <span className="text-sev-medium font-medium">{t("runs.waiting_steps", { count: run.stepPending })}</span>
-        )}
-        {run.stepFailed > 0 && (
-          <span className="text-sev-critical font-medium">{t("runs.failed_steps", { count: run.stepFailed })}</span>
-        )}
-        {run.findingCount > 0 && (
-          <span className="text-sev-high font-medium">{t("runs.findings", { count: run.findingCount })}</span>
-        )}
-      </div>
+      </span>
+      <span className="text-muted-foreground num w-20 shrink-0 text-right text-xs">{quando(t, run.createdAt)}</span>
+      <span className="num w-28 shrink-0 whitespace-nowrap text-right text-xs">{dinheiro(t, run)}</span>
     </button>
   );
 }
@@ -437,22 +374,25 @@ function Execucao({ navegar, runId }: { navegar: TelaProps["navegar"]; runId: st
     >
       <div className="flex items-center gap-3">
         <Button onClick={() => navegar("runs")} size="sm" variant="ghost">
-          <ArrowLeft className="size-4" />
+          <ArrowLeft />
           {t("runs.title")}
         </Button>
-        <Estado status={detalhe.status} />
-        <span className="font-medium text-sm">
+        <span className="text-[13px] font-medium">
           {detalhe.agentId}{" "}
           <span className="text-muted-foreground">
             {t("common.version", { version: detalhe.agentVersion })}
           </span>
         </span>
-        <span className="text-muted-foreground text-xs">{quando(t, detalhe.createdAt)}</span>
-        <span className="ml-auto text-sm tabular-nums">{dinheiro(t, detalhe)}</span>
+        <span className="text-[13px]">
+          <Estado status={detalhe.status} />
+        </span>
+        <span className="text-muted-foreground num text-xs">{quando(t, detalhe.createdAt)}</span>
+        <span className="num ml-auto text-[13px]">{dinheiro(t, detalhe)}</span>
       </div>
 
       {detalhe.error !== null ? (
-        <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm">
+        <p className="border-border bg-card flex items-start gap-2 rounded-lg border px-3 py-2 text-[13px]">
+          <StatusDot className="mt-1.5" estado="erro" />
           {detalhe.error}
         </p>
       ) : null}
@@ -465,7 +405,7 @@ function Execucao({ navegar, runId }: { navegar: TelaProps["navegar"]; runId: st
       {/* Grafo e Passos sempre visíveis no DOM para o React Flow medir as caixas e desenhar as arestas */}
       <GrafoDaExecucao detalhe={detalhe} />
 
-      <ol className="flex flex-col gap-3">
+      <ol className="border-border flex flex-col gap-2 border-l pl-3">
         {detalhe.steps.map((passo) => (
           <li key={passo.id}>
             <PassoDaExecucao
@@ -506,7 +446,7 @@ function CardResumoPr({ target }: { target: NonNullable<Detalhe["target"]> }) {
   const { t } = useTranslation();
 
   return (
-    <div className="superficie flex flex-col gap-3 rounded-xl border border-border p-5 shadow-sm">
+    <div className="border-border bg-card flex flex-col gap-2 rounded-lg border p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
           {target.repo && (
@@ -515,7 +455,7 @@ function CardResumoPr({ target }: { target: NonNullable<Detalhe["target"]> }) {
             </span>
           )}
           {target.pull && (
-            <span className="text-primary inline-flex items-center gap-1 font-mono text-sm font-semibold">
+            <span className="num inline-flex items-center gap-1 text-[13px] font-medium">
               <GitPullRequest aria-hidden className="size-4" />
               #{target.pull}
             </span>
@@ -545,10 +485,10 @@ function CardResumoPr({ target }: { target: NonNullable<Detalhe["target"]> }) {
                 </span>
               )}
               {target.additions !== undefined && (
-                <span className="text-emerald-500 font-medium">+{target.additions}</span>
+                <span className="text-foreground">+{target.additions}</span>
               )}
               {target.deletions !== undefined && (
-                <span className="text-rose-500 font-medium">−{target.deletions}</span>
+                <span className="text-foreground">−{target.deletions}</span>
               )}
             </span>
           )}
@@ -556,7 +496,7 @@ function CardResumoPr({ target }: { target: NonNullable<Detalhe["target"]> }) {
       </div>
 
       {target.title && (
-        <h2 className="text-base font-semibold tracking-tight text-foreground">
+        <h2 className="text-foreground text-[15px] font-medium">
           {target.title}
         </h2>
       )}
@@ -569,33 +509,22 @@ function BannerVeredito({ veredito }: { veredito: { tipo: "APPROVE" | "COMMENT" 
   const { t } = useTranslation();
 
   const configs = {
-    APPROVE: {
-      bg: "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400",
-      icon: CheckCircle2,
-      titulo: t("runs.verdict.APPROVE"),
-    },
-    REQUEST_CHANGES: {
-      bg: "bg-destructive/10 border-destructive/30 text-destructive",
-      icon: XCircle,
-      titulo: t("runs.verdict.REQUEST_CHANGES"),
-    },
-    COMMENT: {
-      bg: "bg-sky-500/10 border-sky-500/30 text-sky-600 dark:text-sky-400",
-      icon: MessageSquareText,
-      titulo: t("runs.verdict.COMMENT"),
-    },
+    APPROVE: { ponto: "ok" as EstadoDoPonto, icon: CheckCircle2, titulo: t("runs.verdict.APPROVE") },
+    REQUEST_CHANGES: { ponto: "erro" as EstadoDoPonto, icon: XCircle, titulo: t("runs.verdict.REQUEST_CHANGES") },
+    COMMENT: { ponto: "ocioso" as EstadoDoPonto, icon: MessageSquareText, titulo: t("runs.verdict.COMMENT") },
   }[veredito.tipo];
 
   const Icone = configs.icon;
 
   return (
-    <div className={cn("flex flex-col gap-2 rounded-xl border p-4.5", configs.bg)}>
-      <div className="flex items-center gap-2.5 font-semibold text-sm">
-        <Icone aria-hidden className="size-5 shrink-0" />
+    <div className="border-border bg-card flex flex-col gap-1.5 rounded-lg border p-4">
+      <div className="flex items-center gap-2 text-[13px] font-medium">
+        <StatusDot estado={configs.ponto} />
+        <Icone aria-hidden className="text-muted-foreground size-4 shrink-0" />
         <span>{configs.titulo}</span>
       </div>
       {veredito.resumo && (
-        <p className="text-foreground/90 text-sm leading-relaxed whitespace-pre-wrap pl-7.5">
+        <p className="text-muted-foreground pl-6 text-[13px] leading-relaxed whitespace-pre-wrap">
           {veredito.resumo}
         </p>
       )}
@@ -612,65 +541,45 @@ function DestaqueAchados({ achados }: { achados: ReadResult<"runs.findings"> }) 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">
+        <h3 className="text-[13px] font-medium">
           {t("findings.count", { count: achados.length })}
         </h3>
       </div>
       <div className="grid grid-cols-1 gap-3">
         {achados.map((achado, i) => {
-          const severidadeTinta =
-            achado.severity === "critical"
-              ? "border-sev-critical/40 bg-sev-critical/5"
-              : achado.severity === "high"
-                ? "border-sev-high/40 bg-sev-high/5"
-                : achado.severity === "medium"
-                  ? "border-sev-medium/40 bg-sev-medium/5"
-                  : "border-border bg-card";
-
-          const badgeVariant =
-            achado.severity === "critical"
-              ? "destructive"
-              : achado.severity === "high"
-                ? "destructive"
-                : "secondary";
+          const ponto: EstadoDoPonto =
+            achado.severity === "critical" || achado.severity === "high"
+              ? "erro"
+              : achado.severity === "medium"
+                ? "aviso"
+                : "ocioso";
 
           return (
             <div
-              className={cn("superficie flex flex-col gap-2.5 rounded-xl border p-4 transition-all", severidadeTinta)}
+              className="border-border bg-card flex flex-col gap-2 rounded-lg border p-3"
               key={`${achado.file ?? "sem-arquivo"}-${achado.line ?? i}`}
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
-                  <Badge variant={badgeVariant}>
-                    {rotuloDeSeveridade(t, achado.severity)}
-                  </Badge>
-                  {achado.category && (
-                    <span className="text-muted-foreground text-xs uppercase tracking-wide">
-                      {achado.category}
-                    </span>
-                  )}
+                  <StatusDot estado={ponto} />
+                  <Badge variant="secondary">{rotuloDeSeveridade(t, achado.severity)}</Badge>
+                  {achado.category && <span className="text-muted-foreground text-xs">{achado.category}</span>}
                 </div>
                 {(achado.file || achado.line !== undefined) && (
                   <span className="text-muted-foreground inline-flex items-center gap-1 font-mono text-xs">
                     <FileCode aria-hidden className="size-3.5" />
-                    <span className="font-medium text-foreground">{achado.file ?? t("findings.general")}</span>
-                    {achado.line !== undefined && <span>:{achado.line}</span>}
+                    <span className="text-foreground">{achado.file ?? t("findings.general")}</span>
+                    {achado.line !== undefined && <span className="num">:{achado.line}</span>}
                   </span>
                 )}
               </div>
 
-              <p className="text-foreground text-sm font-medium leading-relaxed">
-                {achado.problem}
-              </p>
+              <p className="text-foreground text-[13px] leading-relaxed">{achado.problem}</p>
 
               {achado.fix && (
-                <div className="mt-1 flex flex-col gap-1 rounded-lg border border-border/60 bg-muted/40 p-3 text-xs">
-                  <span className="font-semibold text-muted-foreground uppercase tracking-wider text-[10px]">
-                    {t("runs.fixSuggestion")}
-                  </span>
-                  <p className="font-mono text-foreground/90 leading-relaxed whitespace-pre-wrap">
-                    {achado.fix}
-                  </p>
+                <div className="border-border bg-muted/40 flex flex-col gap-1 rounded-md border p-2.5 text-xs">
+                  <span className="text-muted-foreground text-[11px] font-medium">{t("runs.fixSuggestion")}</span>
+                  <p className="text-foreground/90 font-mono leading-relaxed whitespace-pre-wrap">{achado.fix}</p>
                 </div>
               )}
             </div>
@@ -700,7 +609,7 @@ function SecaoDetalhesTecnicos({
         type="button"
       >
         <div className="flex flex-col gap-0.5">
-          <span className="font-semibold text-sm text-foreground">
+          <span className="font-semibold text-[13px] text-foreground">
             {t("runs.technicalDetails")}
           </span>
           <span className="text-muted-foreground text-xs">
@@ -767,16 +676,16 @@ function PassoDaExecucao({
   );
 
   return (
-    <div className="rounded-lg border border-border px-4 py-3" data-locum-passo={passo.stepKey}>
-      <div className="flex flex-wrap items-center gap-2 text-sm">
-        <span className="text-muted-foreground tabular-nums">{passo.idx + 1}</span>
+    <div className="border-border bg-card rounded-lg border px-3 py-2.5" data-locum-passo={passo.stepKey}>
+      <div className="flex flex-wrap items-center gap-2 text-[13px]">
+        <span className="text-muted-foreground num">{passo.idx + 1}</span>
         <span className="font-medium">{passo.name}</span>
         <Estado status={passo.status} />
         <span className="text-muted-foreground text-xs" title={passo.modelUsed ?? undefined}>
           {passo.modelUsed !== null ? rotuloDoModelo(passo.modelUsed) : t("runs.step.action")}
           {passo.substitutionReason !== null ? ` ${t("runs.step.substituted")}` : ""}
         </span>
-        <span className="ml-auto flex items-center gap-3 text-muted-foreground text-xs tabular-nums">
+        <span className="num text-muted-foreground ml-auto flex items-center gap-3 text-xs">
           <span>{segundos === undefined ? "-" : t("runs.step.seconds", { seconds: segundos })}</span>
           <span>
             {t("runs.step.tokens", { tokens: passo.promptTokens + passo.completionTokens })}
@@ -874,15 +783,15 @@ function AtividadeDoPasso({ atividade, rodando }: { atividade: Atividade[]; roda
         {t("runs.step.activity.title", { count: chamadas })}
         {erros > 0 ? ` · ${t("runs.step.activity.errors", { count: erros })}` : ""}
       </span>
-      <ol className="border-border superficie flex max-h-96 flex-col gap-1.5 overflow-y-auto rounded-md border p-3" ref={caixa}>
+      <ol className="border-border bg-muted/30 flex max-h-96 flex-col gap-1.5 overflow-y-auto rounded-md border p-2.5" ref={caixa}>
         {atividade.map((a, i) => (
           <li className="flex items-start gap-2 text-xs" key={`${a.at}-${i}`}>
-            <span className="text-muted-foreground w-14 shrink-0 pt-0.5 font-mono tabular-nums">
+            <span className="text-muted-foreground num w-14 shrink-0 pt-0.5 font-mono">
               {new Date(a.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
             </span>
             {a.tipo === "ferramenta" ? (
               <>
-                <Wrench aria-hidden className="text-primary mt-0.5 size-3.5 shrink-0" />
+                <Wrench aria-hidden className="text-muted-foreground mt-0.5 size-3.5 shrink-0" />
                 <span className="flex min-w-0 flex-col gap-0.5">
                   <span className="font-mono font-medium">{a.ferramenta}</span>
                   {a.detalhe !== undefined && a.detalhe !== "{}" ? (
@@ -893,23 +802,19 @@ function AtividadeDoPasso({ atividade, rodando }: { atividade: Atividade[]; roda
             ) : a.tipo === "resultado" ? (
               <>
                 <CornerDownRight aria-hidden className="text-muted-foreground mt-0.5 ml-3 size-3.5 shrink-0" />
-                {a.erro === true ? (
-                  <X aria-hidden className="text-sev-critical mt-0.5 size-3.5 shrink-0" />
-                ) : (
-                  <Check aria-hidden className="mt-0.5 size-3.5 shrink-0 text-emerald-400" />
-                )}
-                <span className={cn("min-w-0 flex-1 break-all font-mono", a.erro === true ? "text-sev-critical" : "text-muted-foreground")}>
+                <StatusDot className="mt-1.5" estado={a.erro === true ? "erro" : "ok"} />
+                <span className="text-muted-foreground min-w-0 flex-1 break-all font-mono">
                   {a.detalhe === undefined || a.detalhe === "" ? t("runs.step.activity.empty") : a.detalhe}
                 </span>
                 {a.ms === undefined ? null : (
-                  <span className="text-muted-foreground shrink-0 font-mono tabular-nums">
+                  <span className="text-muted-foreground num shrink-0 font-mono">
                     {t("runs.step.activity.took", { seconds: (a.ms / 1000).toFixed(1) })}
                   </span>
                 )}
               </>
             ) : (
               <>
-                <MessageSquareText aria-hidden className="mt-0.5 size-3.5 shrink-0 text-violet-300" />
+                <MessageSquareText aria-hidden className="text-muted-foreground mt-0.5 size-3.5 shrink-0" />
                 <span className="min-w-0 flex-1">{a.detalhe}</span>
               </>
             )}
@@ -1051,13 +956,13 @@ function simples(valor: unknown): boolean {
  */
 function Valor({ valor, nivel = 0 }: { valor: unknown; nivel?: number }) {
   if (simples(valor)) {
-    return <span className="whitespace-pre-wrap text-sm">{valor === null ? "-" : String(valor)}</span>;
+    return <span className="whitespace-pre-wrap text-[13px]">{valor === null ? "-" : String(valor)}</span>;
   }
   if (nivel >= 3) {
     return <code className="break-all font-mono text-xs">{JSON.stringify(valor)}</code>;
   }
   if (Array.isArray(valor)) {
-    if (valor.length === 0) return <span className="text-muted-foreground text-sm">-</span>;
+    if (valor.length === 0) return <span className="text-muted-foreground text-[13px]">-</span>;
     return (
       <ul className={cn("flex flex-col gap-1", valor.every(simples) && "list-disc pl-5")}>
         {valor.map((item, i) => (
@@ -1087,41 +992,6 @@ function Valor({ valor, nivel = 0 }: { valor: unknown; nivel?: number }) {
   );
 }
 
-/** As cores dos estados, num lugar so, porque lista e detalhe mostram os mesmos. */
-const CORES: Record<Estado, "default" | "secondary" | "destructive" | "outline"> = {
-  done: "secondary",
-  running: "default",
-  queued: "outline",
-  pending: "outline",
-  paused: "default",
-  awaiting_approval: "default",
-  skipped: "outline",
-  failed: "destructive",
-  cancelled: "outline",
-};
-
-/**
- * O crachá de estado.
- *
- * O marcador guarda o estado cru, e não o traduzido: o smoke compara com o que
- * o serviço devolve, e comparar contra texto de tela faria a verificação
- * depender do idioma da máquina que roda o loop.
- */
-/**
- * Cor de estado é vocabulário próprio, e não o azul de ação.
- *
- * Um selo azul em "pausado" compete com o botão que a pessoa deve clicar, e
- * pinta de importante um estado que só está esperando.
- */
-const TINTA_DE_ESTADO: Record<string, string> = {
-  done: "text-chart-2",
-  running: "text-primary",
-  queued: "text-muted-foreground",
-  paused: "text-sev-medium",
-  failed: "text-sev-critical",
-  cancelled: "text-muted-foreground",
-};
-
 /** Vazio, objeto sem chave, ou objeto cujas chaves estão todas vazias. */
 function temConteudo(valor: unknown): boolean {
   if (valor === null || valor === undefined) return false;
@@ -1132,14 +1002,19 @@ function temConteudo(valor: unknown): boolean {
   return entradas.length > 0 && entradas.some((v) => temConteudo(v));
 }
 
+/**
+ * O estado como ponto e texto neutro, a cor só no ponto.
+ *
+ * O marcador guarda o estado cru, e não o traduzido: o smoke compara com o que
+ * o serviço devolve, e comparar contra texto de tela faria a verificação
+ * depender do idioma da máquina que roda o loop.
+ */
 function Estado({ status }: { status: string }) {
   const { t } = useTranslation();
 
   return (
-    <span
-      className={cn("shrink-0 font-medium", TINTA_DE_ESTADO[status] ?? "text-muted-foreground")}
-      data-locum-estado={status}
-    >
+    <span className="inline-flex shrink-0 items-center gap-1.5 font-medium" data-locum-estado={status}>
+      <StatusDot estado={pontoDoEstado(status)} />
       {rotuloDeEstado(t, status)}
     </span>
   );
@@ -1147,7 +1022,7 @@ function Estado({ status }: { status: string }) {
 
 function Aviso({ children, probe }: { children: React.ReactNode; probe: string }) {
   return (
-    <p className="text-muted-foreground text-sm" data-locum-probe={probe} data-passos={-1}>
+    <p className="text-muted-foreground text-[13px]" data-locum-probe={probe} data-passos={-1}>
       {children}
     </p>
   );
