@@ -7,6 +7,7 @@ import { teamsPostHandler } from "../src/teams/action.js";
 import { reagirNoTeams, REACAO_PEGOU } from "../src/teams/reaction.js";
 import { alvoDaReacao } from "../src/teams/reaction.js";
 import { capacidadesDoTeams, compartilhar, soltarSessoes, teamsNoMcp } from "../src/teams/graph.js";
+import type { McpCaller } from "../src/sources/mcp-poll.js";
 import { bancoDeTeste as bancoVazio } from "./helpers/db.js";
 
 const agoraMenos = (minutos: number) => new Date(Date.now() - minutos * 60_000).toISOString();
@@ -288,7 +289,7 @@ test("servidor desligado ou ausente: erro que diz o que fazer e onde, sem jargã
 });
 
 test("servidor fora do ar, sem login ou recusando: cada um com a mensagem certa, sem o corpo cru inteiro", async () => {
-  const rodar = async (call: Parameters<typeof pollTeamsInbox>[1] extends infer O ? NonNullable<O>["call"] : never) => {
+  const rodar = async (call: McpCaller) => {
     const r = await pollTeamsInbox(
       { mentions: false, dms: true },
       { db: bancoDeTeste(), token: semLogin, mcp: cadastro("ms365"), call, ...semGithub },
