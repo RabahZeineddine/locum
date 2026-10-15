@@ -91,7 +91,7 @@ export function argsDoChat(p: PedidoDoChat): string[] {
 }
 
 /** O que uma linha do `stream-json` vira: evento para a tela, id da conversa, ou nada. */
-export function lerLinha(linha: string): { evento?: EventoDoChat; sessao?: string; gasto?: GastoDaVolta } {
+export function lerLinha(linha: string): { evento?: EventoDoChat; outros?: EventoDoChat[]; sessao?: string; gasto?: GastoDaVolta } {
   let d: Record<string, unknown>;
   try {
     d = JSON.parse(linha) as Record<string, unknown>;
@@ -109,28 +109,31 @@ export function lerLinha(linha: string): { evento?: EventoDoChat; sessao?: strin
   }
   if (d.type === "assistant") {
     const conteudo = (d.message as { content?: { type?: string; name?: string; input?: unknown }[] } | undefined)?.content ?? [];
-    const uso = conteudo.find((c) => c.type === "tool_use" && typeof c.name === "string");
-    if (uso !== undefined) {
-      const id = (uso as { id?: unknown }).id;
-      return { evento: { tipo: "ferramenta", nome: uso.name!, entrada: uso.input, ...(typeof id === "string" ? { id } : {}) } };
-    }
-    return {};
+    // Uma mensagem pode chamar mais de uma ferramenta: todas viram evento.
+    const usos = conteudo.flatMap((c): EventoDoChat[] => {
+      if (c.type !== "tool_use" || typeof c.name !== "string") return [];
+      const id = (c as { id?: unknown }).id;
+      return [{ tipo: "ferramenta", nome: c.name, entrada: c.input, ...(typeof id === "string" ? { id } : {}) }];
+    });
+    return usos.length === 0 ? {} : { evento: usos[0]!, ...(usos.length > 1 ? { outros: usos.slice(1) } : {}) };
   }
   if (d.type === "user") {
-    // O que a ferramenta devolveu, ligado à chamada pelo id.
+    // O que cada ferramenta devolveu, ligado à chamada pelo id.
     const conteudo = (d.message as { content?: unknown } | undefined)?.content;
-    const volta = Array.isArray(conteudo)
-      ? (conteudo as { type?: string; tool_use_id?: string; content?: unknown; is_error?: boolean }[]).find(
+    const voltas = Array.isArray(conteudo)
+      ? (conteudo as { type?: string; tool_use_id?: string; content?: unknown; is_error?: boolean }[]).filter(
           (c) => c.type === "tool_result" && typeof c.tool_use_id === "string",
         )
-      : undefined;
-    if (volta === undefined) return {};
-    const texto = Array.isArray(volta.content)
-      ? (volta.content as { type?: string; text?: string }[]).flatMap((c) => (c.type === "text" && typeof c.text === "string" ? [c.text] : [])).join("\n")
-      : typeof volta.content === "string"
-        ? volta.content
-        : JSON.stringify(volta.content ?? "");
-    return { evento: { tipo: "resultado", nome: "", id: volta.tool_use_id!, texto, erro: volta.is_error === true } };
+      : [];
+    const eventos = voltas.map((volta): EventoDoChat => {
+      const texto = Array.isArray(volta.content)
+        ? (volta.content as { type?: string; text?: string }[]).flatMap((c) => (c.type === "text" && typeof c.text === "string" ? [c.text] : [])).join("\n")
+        : typeof volta.content === "string"
+          ? volta.content
+          : JSON.stringify(volta.content ?? "");
+      return { tipo: "resultado", nome: "", id: volta.tool_use_id!, texto, erro: volta.is_error === true };
+    });
+    return eventos.length === 0 ? {} : { evento: eventos[0]!, ...(eventos.length > 1 ? { outros: eventos.slice(1) } : {}) };
   }
   if (d.type === "result") {
     const uso = d.usage as { input_tokens?: number; output_tokens?: number } | undefined;
@@ -201,6 +204,7 @@ export async function conversarPeloClaude(
         teveTexto = true;
       }
       emitir(evento);
+      for (const outro of lido.outros ?? []) emitir(outro);
     }
     const codigo = await processo.saida;
     if (!terminou) {

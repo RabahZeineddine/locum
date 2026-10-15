@@ -303,7 +303,8 @@
       "expired": "Esse cartão expirou: a conversa foi limpa ou interrompida, ou o app fechou antes do clique.",
       "budget": "O orçamento {{scope}} deste agent acabou: limite {{limit}}, gasto {{spent}}. Ajuste em Orçamento, na página do agent.",
       "codex": "O chat do agent não roda com modelo do Codex: ele não entrega o texto aos pedaços. Escolha outro modelo na aba Modelo.",
-      "noApiModel": "O provedor \"{{provider}}\" não expõe modelo de API."
+      "noApiModel": "O provedor \"{{provider}}\" não expõe modelo de API.",
+      "noResult": "A ferramenta não respondeu: a volta terminou antes do resultado."
     },
     "accountIgnored": "{{count}} ferramenta(s) da conta Claude ficam de fora: conectores da conta Claude não entram no chat do agent por segurança, porque as configurações da sua conta poderiam liberar escrita sem o seu clique."
   },

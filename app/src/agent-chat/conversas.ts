@@ -266,10 +266,7 @@ export class ConversasDeAgent {
     }
     conversa.pendentes.clear();
     // A chamada que pediu aprovação ficou sem resultado, e provedor nenhum aceita isso: sai do histórico.
-    const ultima = conversa.historico?.at(-1);
-    if (ultima?.role === "assistant" && Array.isArray(ultima.content) && ultima.content.some((p) => p.type === "tool-approval-request")) {
-      conversa.historico!.pop();
-    }
+    this.tirarPedidoSemResposta(conversa);
     return true;
   }
 
@@ -293,12 +290,16 @@ export class ConversasDeAgent {
     conversa.cancelar = controle;
     conversa.respondendo = true;
     let terminou = false;
+    let houveErro = false;
     const emitir = (evento: EventoDoAgent): void => {
       if (evento.tipo === "fim") terminou = true;
+      if (evento.tipo === "erro") houveErro = true;
       if (conversa.geracao === geracao) this.emitir(conversa, evento);
     };
-    // Os cartões da volta por API só aparecem quando ela termina.
+    // Os cartões da volta por API só aparecem quando ela termina bem.
     const cartoesNovos: Cartao[] = [];
+    let deuCerto = false;
+    let motivo = this.deps.texto("agentChat.errors.noResult");
     try {
       const perfil = await this.deps.library.resolveProfile(conversa.id);
       const spec = perfil.version.spec;
@@ -316,8 +317,10 @@ export class ConversasDeAgent {
         conversa.gasto = { usd: conversa.gasto.usd + gasto.usd, tokens: conversa.gasto.tokens + gasto.tokens };
         await this.deps.orcamento.gastar(`biblioteca:${spec.id}`, gasto, novaMensagem);
       }
+      deuCerto = !controle.signal.aborted && !houveErro;
     } catch (err) {
-      emitir({ tipo: "erro", mensagem: this.mensagemDeErro(err) });
+      motivo = this.mensagemDeErro(err);
+      emitir({ tipo: "erro", mensagem: motivo });
     } finally {
       // Quem escuta espera um fim; erro do Claude Code ou falha antes do modelo não o trazem.
       if (!terminou) emitir({ tipo: "fim", motivo: "erro" });
@@ -326,14 +329,43 @@ export class ConversasDeAgent {
         if (conversa.cancelar === controle) conversa.cancelar = undefined;
         // O Claude Code terminou (ou morreu) com cartão à espera: ninguém mais recebe o clique.
         this.expirarDoClaude(conversa);
-        // A volta terminou: agora o cartão pode ser decidido.
-        for (const cartao of cartoesNovos) {
-          conversa.pendentes.set(cartao.id, {});
-          this.emitir(conversa, { tipo: "cartao", cartao });
+        // Clicou em Executar e a volta acabou sem a ferramenta responder: não fica "executando" para sempre.
+        this.fecharExecutando(conversa, motivo);
+        if (!deuCerto && !("texto" in entrada)) this.desfazerContinuacao(conversa);
+        if (deuCerto) {
+          // A volta terminou bem: agora o cartão pode ser decidido.
+          for (const cartao of cartoesNovos) {
+            conversa.pendentes.set(cartao.id, {});
+            this.emitir(conversa, { tipo: "cartao", cartao });
+          }
+        } else if (cartoesNovos.length > 0) {
+          // Parar ou falhar antes do fim: o pedido de aprovação ficou sem quem o decida, e sem resposta no histórico.
+          this.tirarPedidoSemResposta(conversa);
         }
         await this.salvar(conversa);
       }
     }
+  }
+
+  /** Cartão que o clique mandou executar e que a volta deixou sem resposta da ferramenta. */
+  private fecharExecutando(conversa: Conversa, motivo: string): void {
+    for (const c of conversa.falas.at(-1)?.cartoes ?? []) {
+      if (c.estado === "executando") this.emitir(conversa, { tipo: "cartao-estado", id: c.id, estado: "falhou", resultado: cortar(motivo) });
+    }
+  }
+
+  /** Tira do histórico o pedido de aprovação sem resposta, para a conversa seguir sem limpar. */
+  private tirarPedidoSemResposta(conversa: Conversa): void {
+    const h = conversa.historico;
+    const ultima = h?.at(-1);
+    if (ultima?.role === "assistant" && Array.isArray(ultima.content) && ultima.content.some((p) => p.type === "tool-approval-request")) h!.pop();
+  }
+
+  /** A continuação falhou antes de a ferramenta rodar: sai também a resposta de aprovação que já tinha entrado. */
+  private desfazerContinuacao(conversa: Conversa): void {
+    const h = conversa.historico;
+    while (h?.at(-1)?.role === "tool" && (h.at(-1)!.content as { type: string }[]).some((p) => p.type === "tool-approval-response")) h.pop();
+    this.tirarPedidoSemResposta(conversa);
   }
 
   /** Expira só o que esperava o processo do Claude Code, que já não está lá. */
@@ -414,7 +446,8 @@ export class ConversasDeAgent {
       let cancelado = false;
       // Texto de antes e de depois de uma ferramenta vem em blocos separados; sem a quebra, colam.
       let teveTexto = conversa.falas.at(-1)?.texto.trim() !== "";
-      let quebrar = false;
+      // Depois do clique, o texto novo continua o anterior: também quebra.
+      let quebrar = !("texto" in entrada);
       for await (const parte of resultado.fullStream) {
         if (parte.type === "text-delta") {
           if (quebrar && teveTexto) emitir({ tipo: "texto", delta: "\n\n" });
@@ -462,7 +495,7 @@ export class ConversasDeAgent {
 
       mensagens.push(...(await resultado.response).messages);
       emitir({ tipo: "fim", motivo: pediuAprovacao ? "aguardando" : await resultado.finishReason });
-      return gastoDaVolta();
+      return gastoDaVolta().catch(() => null);
     } finally {
       escritas?.release();
       lidas.release();
@@ -479,7 +512,7 @@ export class ConversasDeAgent {
   ): void {
     const id = conversa.chamadas.get(chamada);
     const cartao = conversa.falas.at(-1)?.cartoes.find((c) => c.id === id);
-    if (cartao !== undefined) emitir({ tipo: "cartao-estado", id: cartao.id, estado, resultado });
+    if (cartao?.estado === "executando") emitir({ tipo: "cartao-estado", id: cartao.id, estado, resultado });
   }
 
   /** Pela assinatura do Claude Code: o CLI faz o laço, e aqui só o clique das escritas. */
@@ -521,7 +554,8 @@ export class ConversasDeAgent {
     const daVolta = (evento: EventoDoAgent): void => {
       if (evento.tipo === "resultado" && evento.id !== undefined) {
         const cartao = conversa.chamadas.get(evento.id);
-        if (cartao !== undefined) {
+        // Só o que a pessoa mandou executar muda: a recusa continua recusa, mesmo com o erro que o CLI devolve.
+        if (cartao !== undefined && conversa.falas.at(-1)?.cartoes.find((c) => c.id === cartao)?.estado === "executando") {
           emitir({ tipo: "cartao-estado", id: cartao, estado: evento.erro === true ? "falhou" : "executado", resultado: cortar(evento.texto ?? "") });
         }
       }

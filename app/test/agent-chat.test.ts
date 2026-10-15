@@ -131,7 +131,7 @@ test("Executar roda só aquela chamada e devolve o resultado ao modelo, que cont
   assert.deepEqual(c.chamadas, [{ tool: "echo", entrada: { text: "oi" } }]);
   const fala = (await c.conversas.estado("executa")).falas.at(-1);
   assert.equal(fala?.cartoes[0]?.estado, "executado");
-  assert.match(fala?.texto ?? "", /Voltou: echo feito/);
+  assert.match(fala?.texto ?? "", /Vou chamar\.\n\nVoltou: echo feito/, "o texto da continuação não cola no anterior");
   assert.equal(c.eventos.at(-1)?.tipo, "fim");
 });
 
@@ -448,4 +448,79 @@ test("as ferramentas da conta Claude não entram no chat, e a tela é avisada", 
   assert.equal((await c.conversas.estado("conta")).contaIgnorada, 1);
   await c.conversas.enviar("conta", "oi [[chama painel__pid]]");
   assert.match(await textoDoAssistente(c, "conta"), /Voltou: pid feito/);
+});
+
+test("Recusar pela assinatura continua recusado mesmo com o tool_result de erro que o CLI devolve", async () => {
+  const c = montar("assina-erro", {
+    deps: {
+      modelo: async () => ({ via: "claude-code", modelo: "sonnet" }),
+      assinatura: async (pedido) => {
+        await pedido.aprovar("mcp__painel__echo", { text: "oi" }, "uso-9");
+        pedido.emitir({ tipo: "resultado", nome: "", id: "uso-9", texto: "A pessoa recusou esta chamada.", erro: true });
+        pedido.emitir({ tipo: "fim", motivo: "success" });
+        return { sessao: undefined, gasto: { usd: 0, tokens: 0 } };
+      },
+    },
+  });
+  const turno = c.conversas.enviar("assina-erro", "faz");
+  await new Promise((r) => setTimeout(r, 20));
+  await c.conversas.decidir("assina-erro", cartoes(c.eventos)[0]!.id, "recusar");
+  await turno;
+  assert.equal((await c.conversas.estado("assina-erro")).falas.at(-1)?.cartoes[0]?.estado, "recusado");
+});
+
+test("Claude Code que morre depois do Executar e antes do resultado: o cartão falha no fim da volta", async () => {
+  const c = montar("morre-depois", {
+    deps: {
+      modelo: async () => ({ via: "claude-code", modelo: "sonnet" }),
+      assinatura: async (pedido) => {
+        await pedido.aprovar("mcp__painel__echo", { text: "oi" }, "uso-1");
+        return { sessao: undefined, gasto: { usd: 0, tokens: 0 } };
+      },
+    },
+  });
+  const turno = c.conversas.enviar("morre-depois", "faz");
+  await new Promise((r) => setTimeout(r, 20));
+  await c.conversas.decidir("morre-depois", cartoes(c.eventos)[0]!.id, "executar");
+  await turno;
+  const cartao = (await c.conversas.estado("morre-depois")).falas.at(-1)!.cartoes[0]!;
+  assert.equal(cartao.estado, "falhou");
+  assert.equal(cartao.resultado, "agentChat.errors.noResult");
+});
+
+test("escrita pedida e Parar antes do fim da volta não deixa cartão pendente, e a conversa segue", async () => {
+  const c = montar("para", { demoraDaLeituraMs: 120 });
+  const turno = c.conversas.enviar("para", '[[chama painel__pid]] [[chama painel__echo {"text":"x"}]]');
+  await new Promise((r) => setTimeout(r, 30));
+  c.conversas.cancelar("para");
+  await turno;
+  assert.equal(cartoes(c.eventos).length, 0);
+  assert.deepEqual((await c.conversas.estado("para")).falas.at(-1)?.cartoes, []);
+  await c.conversas.enviar("para", "depois");
+  assert.match(await textoDoAssistente(c, "para"), /Resposta do modelo falso a: depois/);
+});
+
+test("a continuação que falha antes de a ferramenta rodar marca o cartão como falhou, e a conversa segue sem limpar", async () => {
+  let chamadas = 0;
+  const c = montar("falha-continua", {
+    deps: {
+      orcamento: {
+        checar: async () => {
+          if (++chamadas === 2) throw new BudgetExceeded("day", "tokens", 10, 15, "Agent");
+        },
+        gastar: async () => undefined,
+      },
+    },
+  });
+  await c.conversas.enviar("falha-continua", '[[chama painel__echo {"text":"x"}]]');
+  const id = cartoes(c.eventos)[0]!.id;
+  await c.conversas.decidir("falha-continua", id, "executar");
+  const cartao = (await c.conversas.estado("falha-continua")).falas.at(-1)!.cartoes[0]!;
+  assert.equal(cartao.estado, "falhou");
+  assert.match(cartao.resultado ?? "", /errors\.budget/);
+  assert.deepEqual(c.chamadas, []);
+
+  // O histórico não ficou com pedido de aprovação sem resposta.
+  await c.conversas.enviar("falha-continua", "e agora?");
+  assert.match(await textoDoAssistente(c, "falha-continua"), /Resposta do modelo falso a: e agora\?/);
 });
