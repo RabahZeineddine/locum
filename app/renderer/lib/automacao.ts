@@ -14,6 +14,7 @@
 import { topoSort, type AgentSpec, type LogicStep, type Step, type TriggerConfig } from "../../src/config/types";
 import { SLACK_REPLY_SCHEMA } from "../../src/slack/proposal";
 import { CONVERSATION_ISSUE_SCHEMA, ISSUE_CONTENT_SCHEMA } from "../../src/trackers/proposal";
+import prReview from "../../../examples/agents/pr-review.json";
 import { ALTURA_DO_NO, LARGURA_DO_NO, montarGrafo } from "./grafo";
 
 export type PassoDoSpec = Step;
@@ -628,9 +629,9 @@ export function problemas(r: Rascunho, ctx: Contexto): Problema[] {
 
 /* ----------------------------------------------------------------- modelos */
 
-export type ModeloId = "blank" | "slackReply" | "slackJira" | "mentions" | "daily";
+export type ModeloId = "blank" | "slackReply" | "slackJira" | "mentions" | "daily" | "teamsPrReview" | "githubPrReview";
 
-export const MODELOS: readonly ModeloId[] = ["slackReply", "slackJira", "mentions", "daily", "blank"];
+export const MODELOS: readonly ModeloId[] = ["teamsPrReview", "githubPrReview", "slackReply", "slackJira", "mentions", "daily", "blank"];
 
 const ORCAMENTO = { perRunUsd: 0.2, perDayUsd: 2 };
 
@@ -638,7 +639,14 @@ const ORCAMENTO = { perRunUsd: 0.2, perDayUsd: 2 };
  * Os modelos de "Nova automação". O texto dos prompts é ponto de partida, e
  * fica em português porque é o que a pessoa vai editar.
  */
-export function rascunhoDoModelo(modelo: ModeloId, id: string, nome: string, tracker: string | null): Rascunho {
+export function rascunhoDoModelo(
+  modelo: ModeloId,
+  id: string,
+  nome: string,
+  tracker: string | null,
+  /** Os agents já criados: o fluxo em branco sugere o primeiro como nó de agent. */
+  agentes: readonly string[] = [],
+): Rascunho {
   const base = { id, name: nome, defaultTools: [], skills: [], budget: ORCAMENTO } satisfies Partial<AgentSpec>;
   const ia = (key: string, name: string, prompt: string, needs: string[], outputSchema?: Record<string, unknown>): PassoDeIA => ({
     type: "model",
@@ -764,10 +772,77 @@ export function rascunhoDoModelo(modelo: ModeloId, id: string, nome: string, tra
         },
         gatilhos: [gatilho({ kind: "cron", expression: "0 9 * * 1-5" })],
       };
-    case "blank":
+    case "githubPrReview":
+      // Triagem, auditoria e comentário do exemplo de revisão de PR, com o comentário à espera de aprovação.
       return {
-        spec: { ...base, steps: [ia("analisar", "Analisar com IA", "", [])] },
+        spec: {
+          ...base,
+          budget: { perRunUsd: 0.4, perDayUsd: 6 },
+          steps: prReview.steps
+            .filter((p) => !("requiresServers" in p && (p.requiresServers?.length ?? 0) > 0))
+            .map((p) => (p.type === "model" ? { ...p, model: MODELO_PADRAO } : p)) as AgentSpec["steps"],
+        },
+        gatilhos: [
+          gatilho({ kind: "poll", source: "github", repoMatch: ".*", authorship: "others", includeDrafts: false, everyMinutes: 15 }),
+        ],
+      };
+    case "teamsPrReview":
+      return {
+        spec: {
+          ...base,
+          steps: [
+            {
+              type: "action",
+              key: "reagir",
+              name: "Reagir com 👀",
+              needs: [],
+              optional: false,
+              action: "mcp.call",
+              mode: "auto",
+              params: { server: "ms365", tool: "", args: {} },
+            },
+            {
+              ...ia(
+                "revisar",
+                "Revisar o PR",
+                [
+                  "Revise o pull request {{event.repo}}#{{event.prNumber}}, citado numa mensagem do Teams.",
+                  "Leia o diff e a descrição pelas ferramentas do GitHub e procure defeito real,",
+                  "não estilo nem preferência.",
+                  "",
+                  "Em `text`, a resposta como ela sairia no fio: direta, com os achados que importam",
+                  "em ordem de gravidade. Se não achou nada, diga isso em uma frase.",
+                  "",
+                  "De: {{event.author}}",
+                  "",
+                  "Mensagem:",
+                  "{{event.text}}",
+                ].join("\n"),
+                ["reagir"],
+                FORMATOS.respostaTeams,
+              ),
+              requiresServers: ["github"],
+              maxSteps: 16,
+            },
+            acao("responder", "Responder no fio", "teams.post", "revisar"),
+          ],
+        },
+        gatilhos: [gatilho({ kind: "teams-inbox", mentions: false, dms: false, prLinks: true, channels: [], everyMinutes: 5 })],
+      };
+    case "blank": {
+      // Com agent criado, o primeiro passo já chama um: o nó de IA solto fica para quem ainda não tem.
+      const agente = agentes[0];
+      return {
+        spec: {
+          ...base,
+          steps: [
+            agente === undefined
+              ? ia("analisar", "Analisar com IA", "", [])
+              : { ...ia("agente", "Chamar agent", "", []), profile: agente },
+          ],
+        },
         gatilhos: [gatilho({ kind: "manual" })],
       };
+    }
   }
 }

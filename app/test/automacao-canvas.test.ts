@@ -159,3 +159,30 @@ test("seta de uma decisão grava o caminho, e desligar tira o caminho junto", ()
   assert.equal(solto.steps.find((p) => p.key === texto.key)?.when, undefined);
   assert.ok(AgentSpec.safeParse(trocado.spec).success);
 });
+
+test("o modelo de PR no Teams reage, revisa e só responde depois de aprovar", () => {
+  const r = rascunhoDoModelo("teamsPrReview", "t", "T", null);
+  assert.deepEqual(r.gatilhos.map((g) => g.config.kind), ["teams-inbox"]);
+  assert.equal(r.gatilhos[0]!.config.kind === "teams-inbox" && r.gatilhos[0]!.config.prLinks, true);
+  assert.deepEqual(r.spec.steps.map((p) => p.key), ["reagir", "revisar", "responder"]);
+  const resposta = r.spec.steps[2]!;
+  assert.equal(resposta.type === "action" && resposta.action, "teams.post");
+  assert.equal(resposta.type === "action" && resposta.mode, "approve");
+  assert.deepEqual(resposta.needs, ["revisar"]);
+});
+
+test("o modelo de PR no GitHub comenta no PR só com aprovação", () => {
+  const r = rascunhoDoModelo("githubPrReview", "g", "G", null);
+  assert.equal(r.gatilhos[0]!.config.kind, "poll");
+  const comentario = r.spec.steps.find((p) => p.type === "action");
+  assert.equal(comentario?.type === "action" && comentario.action, "github.review_comment");
+  assert.equal(comentario?.type === "action" && comentario.mode, "approve");
+  assert.ok(r.spec.steps.every((p) => p.type !== "model" || p.requiresServers.length === 0));
+});
+
+test("em branco sugere o agent criado, e sem agent fica o passo de IA", () => {
+  const com = rascunhoDoModelo("blank", "b", "B", null, ["revisor"]);
+  assert.equal(com.spec.steps[0]!.type === "model" && com.spec.steps[0]!.profile, "revisor");
+  const sem = rascunhoDoModelo("blank", "b", "B", null);
+  assert.equal(sem.spec.steps[0]!.type === "model" && sem.spec.steps[0]!.profile, undefined);
+});

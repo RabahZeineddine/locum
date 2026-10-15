@@ -173,7 +173,7 @@
       "placeholder": "https://github.com/owner/repo/pull/123"
     },
     "tabs": {
-      "agents": "My Agents",
+      "agents": "My automations",
       "marketplace": "Marketplace"
     },
     "marketplace": {
@@ -1892,6 +1892,14 @@
       "trackerNone": "No tracker registered. You can pick one later, on the task node."
     },
     "templates": {
+      "teamsPrReview": {
+        "title": "Teams: review the linked PR",
+        "description": "Message with a PR link in a Teams group: reacts with 👀, the agent reviews the PR and the reply in the thread goes out after your approval. Pick the ms365 reaction tool in the first node."
+      },
+      "githubPrReview": {
+        "title": "GitHub: review an opened PR",
+        "description": "PR opened on GitHub: the agent reviews it and the PR comment waits in the queue for your approval."
+      },
       "slackReply": {
         "title": "Slack: reply in channel",
         "description": "New message in a channel, the AI writes the reply, you approve and it goes to the thread."
@@ -1910,7 +1918,7 @@
       },
       "blank": {
         "title": "Blank",
-        "description": "One AI step run by the button. Build the rest on the canvas."
+        "description": "A step that calls one of your agents (or plain AI, if you have none yet), run by the button. Build the rest on the canvas."
       }
     },
     "editor": {
@@ -1943,7 +1951,7 @@
       "viaServer": "via {{server}}",
       "needsApp": "connect in Connections",
       "agents": "Agents",
-      "newAgent": "Create agent in the library",
+      "newAgent": "Create agent",
       "agentsEmpty": "No agent yet.",
       "logic": "Logic"
     },

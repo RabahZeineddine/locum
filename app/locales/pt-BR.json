@@ -180,7 +180,7 @@
       "placeholder": "https://github.com/owner/repo/pull/123"
     },
     "tabs": {
-      "agents": "Meus Agents",
+      "agents": "Minhas automações",
       "marketplace": "Marketplace"
     },
     "marketplace": {
@@ -1939,6 +1939,14 @@
       "trackerNone": "Nenhum tracker cadastrado. Dá para escolher depois, no nó da tarefa."
     },
     "templates": {
+      "teamsPrReview": {
+        "title": "Teams: revisar o PR do link",
+        "description": "Mensagem com link de PR num grupo do Teams: reage com 👀, o agent revisa o PR e a resposta no fio sai com a sua aprovação. Escolha a ferramenta de reação do ms365 no primeiro nó."
+      },
+      "githubPrReview": {
+        "title": "GitHub: revisar PR aberto",
+        "description": "PR aberto no GitHub: o agent revisa e o comentário no PR fica na fila para você aprovar."
+      },
       "slackReply": {
         "title": "Slack: responder no canal",
         "description": "Mensagem nova num canal, a IA escreve a resposta, você aprova e ela sai na thread."
@@ -1957,7 +1965,7 @@
       },
       "blank": {
         "title": "Em branco",
-        "description": "Um passo de IA rodando pelo botão. Monte o resto no canvas."
+        "description": "Um passo que chama um agent seu (ou a IA, se ainda não criou um), rodando pelo botão. Monte o resto no canvas."
       }
     },
     "editor": {
@@ -1991,7 +1999,7 @@
       "viaServer": "pelo {{server}}",
       "needsApp": "conecte em Conexões",
       "agents": "Agents",
-      "newAgent": "Criar agent na biblioteca",
+      "newAgent": "Criar agent",
       "agentsEmpty": "Nenhum agent ainda.",
       "logic": "Lógica"
     },

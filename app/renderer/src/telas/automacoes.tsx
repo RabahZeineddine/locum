@@ -373,6 +373,7 @@ export function NovaAutomacao({
   const [erro, setErro] = useState<string | null>(null);
   const trackers = useRead("trackers.list");
   const listaDeTrackers = (trackers.data ?? []).filter((tr) => tr.enabled);
+  const agentes = useRead("library.profiles");
 
   const criar = async (): Promise<void> => {
     setCriando(true);
@@ -380,7 +381,7 @@ export function NovaAutomacao({
     try {
       const titulo = nome.trim() || t(`automations.templates.${modelo}.title`);
       const id = await call("automations.suggestId", titulo);
-      const r = rascunhoDoModelo(modelo, id, titulo, tracker === "" ? (listaDeTrackers[0]?.id ?? null) : tracker);
+      const r = rascunhoDoModelo(modelo, id, titulo, tracker === "" ? (listaDeTrackers[0]?.id ?? null) : tracker, (agentes.data ?? []).map((a) => a.id));
       await call("automations.save", {
         spec: r.spec,
         triggers: r.gatilhos.map((g) => ({ config: g.config })),
