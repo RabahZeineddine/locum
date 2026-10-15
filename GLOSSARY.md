@@ -23,6 +23,16 @@ postar no Slack ou no Teams, abrir card ou issue.
 **Aprovação**: nó que para o fluxo na Fila até alguém decidir. Quem monta
 escolhe onde ele entra.
 
+**Conexão**: algo externo que o Locum alcança: serviço do catálogo, servidor
+MCP próprio ou tracker. Libera gatilhos, ações de app e ferramentas. Na tela
+antiga se chamava "App".
+
+**Ferramenta**: operação de uma conexão que um agent pode chamar, com classe
+leitura, escrita interna ou escrita externa.
+
+**Provedor**: de onde vêm os modelos: assinatura (Claude Code, Codex), chave de
+API ou endereço compatível com OpenAI.
+
 **Fila**: o que pede decisão da pessoa: aprovações e etapas manuais.
 
 **Leitura**: saída que só informa (digest, briefing, alerta sem ação). Aparece

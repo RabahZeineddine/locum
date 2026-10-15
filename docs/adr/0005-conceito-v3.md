@@ -88,7 +88,35 @@ que falta, e a pessoa liga cada dependência ao que tem: provedor e modelo de ca
 agent, servidor MCP equivalente. Agent com o mesmo id vira versão nova. O
 template do marketplace é um pacote desses guardado no repositório.
 
-### 8. Recomeçar em vez de migrar
+### 8. Conexões, modelos e configuração, cada um no seu lugar
+
+**Conexões** (hoje "Apps") é o único lugar de tudo que é externo: serviço do
+catálogo, servidor MCP próprio, tracker de tarefas. Por baixo, um serviço do
+catálogo é um preset de servidor MCP ou de API nativa, e a tela trata os dois do
+mesmo jeito. Cada conexão diz o que libera, nas palavras da automação:
+
+- gatilhos (pull request, mensagem do Slack);
+- ações de app (comentar no PR, postar no canal);
+- ferramentas que um agent pode usar, com a classe de cada uma (leitura,
+  escrita interna, escrita externa).
+
+A tela abre com o que está conectado e o estado de cada um (ok, precisa de
+atenção, com erro). O catálogo fica atrás de "Adicionar conexão", com busca,
+em vez de uma parede de cartões. O detalhe de uma conexão mostra conta, teste,
+ferramentas com interruptor e quem usa (agents e automações).
+
+**Modelos** é a lista de provedores: estado, modelos, chave ou endereço editados
+na própria tela, sem variável de ambiente nem reinício. Provedor de fábrica é só
+o público; endereço de empresa entra como "compatível com OpenAI".
+
+**Configuração** fica só com o comportamento do app: idioma, início no login,
+horário de trabalho, assistente, terminal, atualização, e o Locum dentro das
+ferramentas de código (Claude Code, opencode).
+
+O agent escolhe ferramentas por conexão ("GitHub: leitura", "Slack: postar"), e
+o primeiro uso é um caminho guiado: modelo, conexões, primeira automação.
+
+### 9. Recomeçar em vez de migrar
 
 As automações e os agents do modelo atual não são convertidos. O conceito novo
 nasce vazio e o que existia fica como legado, só leitura, até a pessoa recriar
@@ -102,6 +130,7 @@ ou descartar.
 - A decisão 1 do ADR 0004 ("um agent pertence a no máximo uma iniciativa") vale
   para o agent novo; a iniciativa passa a agrupar também automações e sessões.
 - A Biblioteca deixa de existir como lugar separado: "Agents" é a tela do agent.
-- Ordem de trabalho, um PR por item: este documento e o glossário; Agent com o
-  chat; Automação v2 com o canvas, o nó de aprovação e o pacote; Fila e Hoje;
-  Iniciativa e Sessões com o orquestrador.
+- Ordem de trabalho, um PR por item: este documento e o glossário; Conexões,
+  Modelos e Configuração; Agent com o chat; Automação v2 com o canvas, o nó de
+  aprovação e o pacote; Fila e Hoje; Iniciativa e Sessões com o orquestrador.
+  Conexões vem antes do Agent porque a permissão do agent é dada por conexão.
