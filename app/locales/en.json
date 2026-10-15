@@ -269,7 +269,8 @@
     "note": "Reads run straight away. Each write shows up as a card and only goes out when you click Run. Outside the Queue: this is testing, not automation.",
     "saveFirst": "Save the agent to talk to it.",
     "unsaved": "The chat uses the saved version. Changes you have not saved yet apply after Save.",
-    "noServer": "The connection {{connection}} has no server right now: {{reason}}. The agent talks without its tools.",
+    "internal": "Locum tools",
+      "noServer": "The connection {{connection}} has no server right now: {{reason}}. The agent talks without its tools.",
     "card": {
       "title": {
         "pendente": "Write waiting",

@@ -278,7 +278,8 @@
     "note": "A leitura roda direto. Cada escrita aparece como um cartão e só sai quando você clica em Executar. Fora da Fila: isto é teste, não automação.",
     "saveFirst": "Salve o agent para conversar com ele.",
     "unsaved": "A conversa usa a versão salva. As mudanças ainda não salvas valem depois de Salvar.",
-    "noServer": "A conexão {{connection}} está sem servidor agora: {{reason}}. O agent conversa sem as ferramentas dela.",
+    "internal": "Ferramentas do Locum",
+      "noServer": "A conexão {{connection}} está sem servidor agora: {{reason}}. O agent conversa sem as ferramentas dela.",
     "card": {
       "title": {
         "pendente": "Escrita à espera",

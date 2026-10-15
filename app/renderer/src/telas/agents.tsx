@@ -11,7 +11,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { ehLeitura, ehLeituraDa, escolhaDe, escolhaInicial, ligadaPorPadrao, type EscolhaDeFerramenta } from "../../../src/config/leitura.js";
 import { agruparPorArea, filtrarFerramentas, LIMITE_PARA_AGRUPAR } from "@/lib/ferramentas-do-agent";
-import type { AgentBudget, AgentConnection, AgentProfile, ToolRef, Toolset } from "../../../src/config/types";
+import { SERVIDOR_NATIVO, type AgentBudget, type AgentConnection, type AgentProfile, type ToolRef, type Toolset } from "../../../src/config/types";
 import { SeletorDeModelo, ServidoresComBusca, servidoresDoModelo, useCatalogo } from "../editor-agent";
 import type { TelaProps } from "../rotas";
 
@@ -725,7 +725,9 @@ function CartaoDaConexao({
   mudar: (depois: AgentConnection | null) => void;
 }) {
   const { t } = useTranslation();
-  const servidores = conexao?.servers ?? [];
+  // O servidor interno do Locum não está na lista da tela, mas o agent salvo pode citá-lo: está sempre ligado.
+  const interno = conexao === undefined && escolha.connectionId === SERVIDOR_NATIVO;
+  const servidores = conexao?.servers ?? (interno ? [SERVIDOR_NATIVO] : []);
   const guardadas = useGuardadas(servidores);
   // A anotação que o servidor deixou no cache manda; o nome só decide sem ela.
   const ligadas = Object.entries(escolha.tools).filter(([chave, e]) => {
@@ -739,7 +741,7 @@ function CartaoDaConexao({
     <div className="border-border superficie flex flex-col gap-3 rounded-lg border p-3" data-locum-agent-conexao={escolha.connectionId}>
       <div className="flex flex-wrap items-center gap-2">
         <MarcaLogo fonte={{ name: escolha.connectionId, url: conexao?.url }} tamanho="sm" />
-        <span className="text-sm font-medium">{conexao?.name ?? escolha.connectionId}</span>
+        <span className="text-sm font-medium">{interno ? t("library.connections.internal") : (conexao?.name ?? escolha.connectionId)}</span>
         {conexao === undefined ? null : (
           <Badge variant="outline">
             {t(
@@ -811,8 +813,8 @@ function FerramentasDoServidor({
   const todas = ferramentas ?? [];
   const leituras = todas.filter((f) => ehLeituraDa(f));
   const escritas = todas.filter((f) => !ehLeituraDa(f));
-  // Em servidor grande a leitura não liga sozinha: o padrão depende do total do servidor.
-  const padrao = (f: Ferramenta): boolean => ligadaPorPadrao(f, leituras.length, escolha_.leituraPadrao);
+  // Na conexão `limitada` a leitura não liga sozinha.
+  const padrao = (f: Ferramenta): boolean => ligadaPorPadrao(f, escolha_.leituraPadrao);
   const efetiva = (f: Ferramenta): { ligada: boolean; leitura: boolean; declarada: boolean } => {
     const escolha = escolhaDe(escolha_.tools, servidor, f.name);
     const classe = ehLeituraDa(f);
