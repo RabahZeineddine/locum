@@ -7230,6 +7230,81 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
       await mcpService.remove("ms365").catch(() => undefined);
     }
 
+    // O redesign de Agents, com o painel do Assistente fechado: a lista com
+    // itens, os toolsets, o editor em cada aba, a conexão grande com busca e o
+    // chat com o cartão de escrita à espera.
+    {
+      const { FIXTURE_SERVER } = await import("../src/fixtures/mcp-fixture.js");
+      const ids = ["captura-triagem", "captura-revisor", "captura-resumo"];
+      await claudeImportService.importar(["ms365"]).catch(() => undefined);
+      await (mcpService as unknown as { guardarFerramentas(n: string, t: unknown[]): Promise<void> }).guardarFerramentas("ms365", ferramentas);
+      await libraryService.saveToolset({ toolset: { id: "captura-leitura-teams", name: "Teams leitura", description: "Lê chats e canais, sem escrever.", tools: [{ server: "ms365", tool: "list-chats", class: "read" }, { server: "ms365", tool: "get-chat-message", class: "read" }] }, create: true });
+      await libraryService.saveProfile({
+        spec: {
+          id: ids[0]!,
+          name: "Triagem de chamados",
+          description: "Lê os chamados abertos e resume o que mudou desde ontem.",
+          model: "claude-code/claude-sonnet-5",
+          instructions: "Resuma em cinco linhas. Cite o número do chamado. Nunca invente prazo.",
+          connections: [{ connectionId: FIXTURE_SERVER, tools: { echo: true } }],
+          skills: [{ skill: "revisao-que-nao-existe", when: { always: true } }],
+          toolsets: ["captura-leitura-teams"],
+          budget: { perDayUsd: 2 },
+        },
+      });
+      await libraryService.saveProfile({
+        spec: { id: ids[1]!, name: "Revisor do Teams", description: "Lê o chat e propõe a resposta.", model: "claude-code/claude-sonnet-5", instructions: "Leia o chat e resuma.", connections: [{ connectionId: "teams", tools: { "ms365/send-chat-message": true } }, { connectionId: "github", tools: {} }], skills: [], budget: {} },
+      });
+      await libraryService.saveProfile({
+        spec: { id: ids[2]!, name: "Resumo da semana", description: "", model: "claude-code/claude-haiku-4-5", instructions: "Resuma a semana.", connections: [], skills: [], budget: {} },
+      });
+      try {
+        await irPara(janela, "agents");
+        await pausa(1500);
+        await foto("redesign-agents-lista");
+        await irPara(janela, "agents", "toolsets");
+        await pausa(1200);
+        await foto("redesign-agents-toolsets");
+        await irPara(janela, "agents", ids[0]!);
+        await pausa(1200);
+        for (const aba of ["instructions", "model", "skills", "budget", "usage"]) {
+          await clicar(`[data-locum-agent-aba=${aba}]`);
+          await pausa(500);
+          await foto(`redesign-agents-editor-${aba}`);
+        }
+        await clicar("[data-locum-agent-aba=tools]");
+        await pausa(500);
+        await clicar(`[data-locum-agent-carregar="${FIXTURE_SERVER}"]`);
+        await pausa(3500);
+        await foto("redesign-agents-editor-tools");
+        await irPara(janela, "agents", ids[1]!);
+        await pausa(1000);
+        await clicar("[data-locum-agent-aba=tools]");
+        await pausa(2000);
+        await foto("redesign-agents-conexao-grande");
+        await janela.webContents.executeJavaScript(`(() => {
+          const campo = document.querySelector("[data-locum-agent-ferramentas-busca]");
+          if (campo === null) return null;
+          Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(campo, "chat");
+          campo.dispatchEvent(new Event("input", { bubbles: true }));
+          return null;
+        })()`);
+        await clicar("[data-locum-agent-ligar-leituras]");
+        await pausa(600);
+        await foto("redesign-agents-conexao-grande-busca");
+        await irPara(janela, "agents", ids[0]!);
+        await pausa(1000);
+        await conversarComOAgentNoSmoke(janela, ids[0]!, async (momento) => {
+          await pausa(500);
+          await foto({ resposta: "redesign-agents-chat-resposta", cartao: "redesign-agents-chat-cartao-pendente", executado: "redesign-agents-chat-executado" }[momento]);
+        });
+      } finally {
+        for (const outro of ids) await libraryService.removeProfile(outro).catch(() => undefined);
+        await libraryService.removeToolset("captura-leitura-teams").catch(() => undefined);
+        await mcpService.remove("ms365").catch(() => undefined);
+      }
+    }
+
     await irPara(janela, "automations");
     await pausa(1200);
     await clicar("[data-locum-automacao-nova]");
