@@ -113,7 +113,7 @@ function PainelDoAssistente({
         iniciativa={iniciativaAtual ?? undefined}
         irParaModelos={() => {
           aoFechar();
-          navegar("settings", "models");
+          navegar("models");
         }}
       />
     </aside>

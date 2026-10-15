@@ -310,6 +310,8 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "providers.setEnabled": (name, enabled) => providerService.setEnabled(name, enabled),
     "providers.remove": (id, force) => providerService.remove(id, force),
     "providers.credentials": () => providerService.credentials(),
+    "providers.ollamaUrl": () => providerService.ollamaUrl(),
+    "providers.setOllamaUrl": (endereco) => providerService.setOllamaUrl(endereco),
     "providers.saveSecret": (nome, chave) => providerService.setSecret(nome, chave),
     "providers.forgetSecret": (nome) => providerService.clearSecret(nome),
     "providers.checkSecret": (nome) => providerService.check(nome),

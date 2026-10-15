@@ -88,6 +88,8 @@ export const READ_CHANNELS = [
   // Mesma razão de `credentials.overview`: endereço, sim ou não, e o que a
   // última conferência contou. Valor de chave não volta por canal nenhum.
   "providers.credentials",
+  // O endereço é configuração, não segredo: o salvo e o do ambiente.
+  "providers.ollamaUrl",
   // O cadastro de gateway compatível: identificador, nome e endereço, que é
   // o que alguém escreveu. A chave dele não está aqui, e nem em canal nenhum.
   "providers.registered",
@@ -239,6 +241,7 @@ export const ACTION_CHANNELS = [
   "providers.remove",
   // Ligar e desligar provedor. Escrita, um clique, e desfaz no mesmo botão.
   "providers.setEnabled",
+  "providers.setOllamaUrl",
   // Gravar e apagar preço de modelo. Escrita, e cada uma é um clique.
   "providers.setPrice",
   "providers.removePrice",

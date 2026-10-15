@@ -859,7 +859,7 @@ function ComeceAqui({ agenda, navegar }: { agenda: Agenda[] | undefined; navegar
     {
       id: "model",
       feito: provedores.data.some((p) => p.available),
-      ir: () => navegar("settings", "models"),
+      ir: () => navegar("models"),
     },
     {
       id: "connection",

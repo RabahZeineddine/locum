@@ -13,7 +13,7 @@ import {
   type RegisteredProvider,
 } from "../providers/registry.js";
 import { secretService, type SecretService } from "./secret-service.js";
-import { settingsService, type SettingsService } from "./settings-service.js";
+import { SettingsService } from "./settings-service.js";
 import { clienteHttp } from "../net/http.js";
 
 type Db = typeof defaultDb;
@@ -58,7 +58,19 @@ export interface ProviderInfo {
   registered: { label: string; baseUrl: string } | null;
   /** Desligado por quem administra: some de tudo mesmo com credencial ou binário. */
   disabled: boolean;
+  /**
+   * A tela mostra. Provedor de fábrica público sempre; o de empresa (GLM) só
+   * quando já foi configurado nesta máquina, para não aparecer para quem nunca
+   * o usou. Endereço de empresa novo entra como "compatível com OpenAI".
+   */
+  visible: boolean;
 }
+
+/** Onde fica o endereço do Ollama escolhido na tela. Não é segredo. */
+export const CHAVE_ENDERECO_OLLAMA = "ollama:baseUrl";
+
+/** Provedores de fábrica que são de uma empresa, e não públicos. */
+const DE_EMPRESA = new Set(["glm"]);
 
 /** Um provedor cadastrado como ele está no banco. */
 export interface RegisteredProviderInfo extends RegisteredProvider {
@@ -130,7 +142,7 @@ export class ProviderService {
     private readonly db: Db = defaultDb,
     private providers: Record<string, ProviderEntry> = buildProviders(),
     private readonly secrets: SecretService = secretService,
-    private readonly settings: SettingsService = settingsService,
+    private readonly settings: SettingsService = new SettingsService(db),
     /**
      * Como remontar o registro quando o cofre muda.
      *
@@ -188,13 +200,56 @@ export class ProviderService {
       carregados.push(row.id);
     }
 
+    // O endereço escolhido na tela entra como a variável que o registro já lê,
+    // e vence o ambiente do processo como qualquer segredo guardado.
+    const enderecoDoOllama = await this.settings.get(CHAVE_ENDERECO_OLLAMA);
+    if (enderecoDoOllama !== undefined) secrets["OLLAMA_BASE_URL"] = enderecoDoOllama;
+
     this.desligados = new Set(rows.filter((r) => !r.enabled).map((r) => r.id));
+    this.comChave = new Set(carregados);
     this.providers = this.desligar(this.build(secrets, cadastrados));
     return carregados;
   }
 
   /** Os que alguém desligou na tela, lidos no último `loadSecrets`. */
   private desligados = new Set<string>();
+
+  /** Os que têm chave guardada ou no ambiente, lidos no último `loadSecrets`. */
+  private comChave = new Set<string>();
+
+  /**
+   * O endereço do Ollama: o salvo na tela e o que vem do ambiente. Quem vale é
+   * o salvo; o do ambiente é o caminho de trás, para quem já o usava.
+   */
+  async ollamaUrl(): Promise<{ saved: string | null; env: string | null }> {
+    const doAmbiente = process.env["OLLAMA_BASE_URL"];
+    return {
+      saved: (await this.settings.get(CHAVE_ENDERECO_OLLAMA)) ?? null,
+      env: doAmbiente !== undefined && doAmbiente.length > 0 ? doAmbiente : null,
+    };
+  }
+
+  /**
+   * Grava o endereço do Ollama e remonta o registro, para valer na hora e sem
+   * reiniciar. `null` apaga o salvo e devolve o provedor ao ambiente.
+   */
+  async setOllamaUrl(endereco: string | null): Promise<void> {
+    if (endereco === null) {
+      await this.settings.remove(CHAVE_ENDERECO_OLLAMA);
+    } else {
+      const limpo = endereco.trim();
+      let valido = false;
+      try {
+        const url = new URL(limpo);
+        valido = url.protocol === "http:" || url.protocol === "https:";
+      } catch {
+        valido = false;
+      }
+      if (!valido) throw new Error("endereço do Ollama começa com http:// ou https://, como http://127.0.0.1:11434/v1");
+      await this.settings.set(CHAVE_ENDERECO_OLLAMA, limpo);
+    }
+    await this.loadSecrets();
+  }
 
   /**
    * Provedor desligado responde indisponível para todo mundo: chat, executor,
@@ -393,7 +448,15 @@ export class ProviderService {
       requires: entry.requires,
       registered: entry.registered ?? null,
       disabled: this.desligados.has(name),
+      visible: !DE_EMPRESA.has(name) || entry.available() || this.configuradoPorFora(name),
     }));
+  }
+
+  /** Provedor de empresa com chave no cofre ou variável no ambiente, mesmo sem responder ainda. */
+  private configuradoPorFora(name: string): boolean {
+    if (this.comChave.has(name)) return true;
+    const variaveis = this.providers[name]?.requires ?? [];
+    return variaveis.some((v) => (process.env[v] ?? "") !== "");
   }
 
   /* --------------------------------------------------- provedor cadastrado */

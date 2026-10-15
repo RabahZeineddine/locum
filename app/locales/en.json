@@ -515,7 +515,8 @@
     "sectionOperations": "Operations",
     "sectionResources": "Resources",
     "settingsTitle": "Settings",
-    "connections": "Connections"
+    "connections": "Connections",
+    "models": "Models"
   },
   "notification": {
     "runFailed": {
@@ -666,11 +667,22 @@
       "missing": "set {{requirements}} in the environment and reopen Locum",
       "empty": "No provider connected yet. Save a key under Add provider, right below.",
       "addTitle": "Add provider",
-      "addDescription": "Save a key for one of these and its models show up above.",
+      "addDescription": "Save a key for one of these and its models show up above. A company address or gateway goes in \"OpenAI-compatible\", further down.",
       "modelsLoading": "reading models...",
       "modelsNone": "the provider listed no models",
       "modelsError": "could not read the models: {{message}}",
-      "modelsMore": "+{{count}}"
+      "modelsMore": "+{{count}}",
+      "ollama": {
+        "label": "Ollama address",
+        "save": "Save",
+        "clear": "Clear",
+        "hint": "The OpenAI-compatible API address, like http://127.0.0.1:11434/v1. Takes effect right away.",
+        "fromEnv": "Comes from the OLLAMA_BASE_URL variable. Saving an address here takes over from it."
+      },
+      "subscriptionHelp": {
+        "codex": "Uses your ChatGPT subscription through the Codex CLI. Install Codex, run \"codex login\" in a terminal and reopen Locum: it becomes available by itself.",
+        "claude-code": "Uses your Claude subscription through Claude Code. Install Claude Code, sign in with \"claude auth login\" in a terminal and reopen Locum."
+      }
     },
     "prices": {
       "rate": "input {{input}} and output {{output}} USD per million tokens",
@@ -703,8 +715,8 @@
       "bridgeRefused": "the bridge refused: {{message}}"
     },
     "registered": {
-      "title": "Compatible providers",
-      "description": "A gateway that speaks the OpenAI protocol, registered here: a second company endpoint, an Ollama on another machine, an OpenRouter.",
+      "title": "OpenAI-compatible",
+      "description": "Any address that speaks the OpenAI protocol: your company's gateway or hosted model (like GLM), a second endpoint, an Ollama on another machine, an OpenRouter.",
       "empty": "none registered, the providers above are the built-in ones",
       "id": "provider identifier",
       "idHint": "my-gateway",
@@ -996,17 +1008,12 @@
     },
     "sections": {
       "general": "General",
-      "models": "Models",
       "assistant": "Assistant",
-      "trackers": "Issue Trackers",
-      "tools": "Tools",
-      "connections": "Connections"
+      "tools": "Tools"
     },
     "sectionLead": {
-      "general": "Language, updates and where Locum keeps initiative work.",
-      "models": "The providers that think for your agents on this machine: subscription, API key or compatible gateway. Turn off what should not be used.",
+      "general": "Language, updates, working hours and where Locum keeps initiative work.",
       "assistant": "Who you talk to in ⌘J, and which model Locum switches to when the chosen one is unavailable.",
-      "trackers": "Shortcut, Jira and GitHub Issues: where tasks and stories are tracked and linked to your work.",
       "tools": "Locum inside the coding tools you already use, and the terminal that opens sessions."
     },
     "toolsLocum": {
@@ -1106,7 +1113,7 @@
     "teamsInbox": {
       "description": "Wakes an agent when someone mentions you or messages you in a Teams chat. Every 5 minutes Locum reads, through Graph and with your account, the chats that changed; any reply the agent proposes waits in the queue. Team channels are not covered yet."
     },
-    "lead": "How Locum behaves, which models it thinks with and where the work comes from.",
+    "lead": "How Locum behaves: language, updates, the assistant and the code tools.",
     "teamsChannels": {
       "toggle": "Include team channels",
       "toggleHint": "A mention in a chosen channel also wakes the agent, and the approved reply goes into the thread. Adds {{scopes}} to the request, and reading channels needs the tenant admin's consent.",
@@ -2235,5 +2242,9 @@
       "ignore": "Can be ignored"
     },
     "detail": "Source and detail"
+  },
+  "models": {
+    "title": "Models",
+    "lead": "Where the models agents use on this machine come from: a subscription, an API key or an OpenAI-compatible address. Keys and addresses are edited here, with no restart."
   }
 }

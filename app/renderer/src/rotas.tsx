@@ -1,4 +1,4 @@
-import { Blocks, Bot, Inbox as InboxIcon, ListTree, Settings, Sun, Target, TerminalSquare, Workflow } from "lucide-react";
+import { Blocks, Bot, Cpu, Inbox as InboxIcon, ListTree, Settings, Sun, Target, TerminalSquare, Workflow } from "lucide-react";
 import type { ComponentType } from "react";
 import type { Antigos } from "@/lib/router";
 import { Agents } from "./telas/agents";
@@ -10,6 +10,7 @@ import { Execucoes } from "./telas/execucoes";
 import { Hoje } from "./telas/hoje";
 import { Inbox } from "./telas/inbox";
 import { Initiatives } from "./telas/initiatives";
+import { Modelos } from "./telas/modelos";
 import { Sessoes } from "./telas/sessoes";
 
 /**
@@ -50,6 +51,7 @@ export const ROTAS = [
   { id: "library", rotulo: "nav.library", icone: Bot, Tela: Biblioteca, secao: "recursos" },
   { id: "initiatives", rotulo: "nav.initiatives", icone: Target, Tela: Initiatives, secao: "recursos" },
   { id: "connections", rotulo: "nav.connections", icone: Blocks, Tela: Conexoes, secao: "recursos" },
+  { id: "models", rotulo: "nav.models", icone: Cpu, Tela: Modelos, secao: "recursos" },
   { id: "settings", rotulo: "nav.settings", icone: Settings, Tela: Configuracao, secao: "recursos" },
 
   // FORA DA BARRA
@@ -89,7 +91,9 @@ export const ROTA_IDS: readonly RotaId[] = ROTAS.map((rota) => rota.id);
  */
 export const ROTAS_ANTIGAS: Antigos = [
   ["configuracao/geral", "settings/general"],
-  ["configuracao/modelos", "settings/models"],
+  ["configuracao/modelos", "models"],
+  // Modelos saiu da Configuração e ganhou item próprio na barra.
+  ["settings/models", "models"],
   // Conexões saíram da Configuração e viraram Apps na 0.1.39; Apps voltou a se
   // chamar Conexões, e o tracker passou a morar na conexão dele.
   ["configuracao/conexoes", "connections"],

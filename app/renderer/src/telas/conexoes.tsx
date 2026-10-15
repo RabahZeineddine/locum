@@ -1,11 +1,11 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CabecalhoDaTela } from "@/components/cabecalho-da-tela";
-import { call, invalidateReads, useRead, type ReadResult } from "@/lib/bridge";
+import { call, invalidateReads, useRead, type ReadResult, type ReadState } from "@/lib/bridge";
 import { liberaDaConexao } from "@/lib/conexao-libera";
 import { cn } from "@/lib/utils";
 import { ArrowLeft, Download, MessageSquare, Plug, Plus, Search, Server, Users, X } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { MARCAS } from "../marcas";
 import type { TelaProps } from "../rotas";
@@ -61,7 +61,19 @@ const PAINEIS: Record<string, () => ReactNode> = {
  * catálogo fica atrás de "Adicionar conexão", e não numa parede de cartões.
  */
 export function Conexoes({ detalhe, navegar }: TelaProps) {
-  return detalhe === null ? <SuasConexoes navegar={navegar} /> : <DetalheDaConexao id={detalhe} navegar={navegar} />;
+  return detalhe === null ? <SuasConexoes navegar={navegar} /> : <DetalheDaConexao id={detalhe} key={detalhe} navegar={navegar} />;
+}
+
+/**
+ * O último dado lido, mesmo enquanto uma releitura está em curso. `useRead`
+ * volta para "carregando" a cada invalidação, e a tela que trocasse de
+ * conteúdo nessa hora perderia o estado de quem está no meio de um teste ou
+ * de uma autorização.
+ */
+function useDadosEstaveis<T>(leitura: ReadState<T>): { data: T | undefined; status: ReadState<T>["status"] } {
+  const ultimo = useRef<T | undefined>(undefined);
+  if (leitura.status === "ready") ultimo.current = leitura.data;
+  return { data: ultimo.current, status: ultimo.current === undefined ? leitura.status : "ready" };
 }
 
 /** Já está ligada ou cadastrada, e portanto aparece na lista principal. */
@@ -71,14 +83,19 @@ function ligada(c: Conexao): boolean {
 
 function SuasConexoes({ navegar }: { navegar: TelaProps["navegar"] }) {
   const { t } = useTranslation();
-  const lista = useRead("connections.list");
+  const lista = useDadosEstaveis(useRead("connections.list"));
   const [adicionando, setAdicionando] = useState(false);
 
   const suas = (lista.data ?? []).filter(ligada);
   const precisam = suas.filter((c) => c.state === "attention" || c.state === "error").length;
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-8" data-locum-probe="connections">
+    <div
+      className="mx-auto flex w-full max-w-6xl flex-col gap-8"
+      data-locum-carregada={lista.status === "ready" ? "sim" : "nao"}
+      data-locum-ligadas={suas.map((c) => c.id).join(",")}
+      data-locum-probe="connections"
+    >
       <CabecalhoDaTela
         acoes={
           <Button className="cursor-pointer" data-locum-adicionar-conexao="" onClick={() => setAdicionando(true)}>
@@ -488,12 +505,12 @@ function Bloco({ children, dica, titulo }: { children: ReactNode; dica?: string;
  */
 function DetalheDaConexao({ id, navegar }: { id: string; navegar: TelaProps["navegar"] }) {
   const { t } = useTranslation();
-  const lista = useRead("connections.list");
-  const servidores = useRead("mcp.list");
-  const credenciais = useRead("credentials.overview");
+  const lista = useDadosEstaveis(useRead("connections.list"));
+  const servidores = useDadosEstaveis(useRead("mcp.list"));
+  const credenciais = useDadosEstaveis(useRead("credentials.overview"));
   const origens = useRead("claudeImport.origins");
   const usoDeIniciativas = useRead("mcp.usage");
-  const usadoPor = useRead("connections.usage", id);
+  const usadoPor = useDadosEstaveis(useRead("connections.usage", id));
   const [ligando, setLigando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [confirmando, setConfirmando] = useState(false);

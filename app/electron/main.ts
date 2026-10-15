@@ -1173,7 +1173,7 @@ async function irPara(window: BrowserWindow, id: string, detalhe?: string): Prom
  * so a exigencia da story, que sao estes quatro destinos.
  */
 async function checkRoutes(window: BrowserWindow): Promise<string> {
-  const esperados = ["today", "inbox", "automations", "runs", "sessions", "library", "initiatives", "connections", "settings"];
+  const esperados = ["today", "inbox", "automations", "runs", "sessions", "library", "initiatives", "connections", "models", "settings"];
 
   const barra = (await window.webContents.executeJavaScript(
     `Array.from(document.querySelectorAll("[data-locum-rota]")).map((b) => ({
@@ -1238,6 +1238,8 @@ async function checkRoutes(window: BrowserWindow): Promise<string> {
     ["apps", "connections"],
     ["settings/connections", "connections"],
     ["settings/trackers", "connections"],
+    ["settings/models", "models"],
+    ["configuracao/modelos", "models"],
   ];
   for (const [velho, novo] of antigos) {
     await window.webContents.executeJavaScript(`(location.hash = "#/${velho}", null)`);
@@ -1732,36 +1734,23 @@ async function checkConfig(window: BrowserWindow): Promise<string> {
   const { mcpService } = await import("../src/services/mcp-service.js");
   const { providerService } = await import("../src/services/provider-service.js");
   const { FIXTURE_SERVER } = await import("../src/fixtures/mcp-fixture.js");
+  const { IMAGEM_DO_GRAFANA } = await import("../src/services/grafana-service.js");
 
-  await irPara(window, "settings", "models");
-  const tela = await esperarProbe<{
-    maquina: string;
-    provedores: string;
-    fallbacks: number;
-    servidores: string;
-  }>(
+  await irPara(window, "models");
+  const tela = await esperarProbe<{ provedores: string }>(
     window,
-    "settings",
+    "models",
     `(() => {
-      const probe = document.querySelector("[data-locum-probe=settings]");
+      const probe = document.querySelector("[data-locum-probe=models]");
       if (probe === null || probe.dataset.estado !== "pronto") return null;
-      return {
-        maquina: probe.dataset.locumMaquina,
-        provedores: probe.dataset.locumProvedores,
-        fallbacks: Number(probe.dataset.locumFallbacks),
-        servidores: probe.dataset.locumServidores,
-      };
+      return { provedores: probe.dataset.locumProvedores };
     })()`,
   );
 
-  if (tela.maquina !== machineId) {
-    throw new Error(`a tela diz estar em "${tela.maquina}" e a maquina e "${machineId}"`);
-  }
-
-  // A Configuração é a tela mais longa, e foi nela que o scroll quebrou. Aqui
-  // se confere que o conteúdo passa da janela e que a área que rola anda; a
-  // roda de verdade depende também de ela não ser arrastável, que a subida da
-  // interface já confere.
+  // Modelos é a tela mais longa, e foi numa tela longa que o scroll quebrou.
+  // Aqui se confere que o conteúdo passa da janela e que a área que rola anda;
+  // a roda de verdade depende também de ela não ser arrastável, que a subida
+  // da interface já confere.
   const rolagem = (await window.webContents.executeJavaScript(
     `(() => {
       const main = document.querySelector("[data-locum-probe=rota]");
@@ -1773,15 +1762,30 @@ async function checkConfig(window: BrowserWindow): Promise<string> {
     })()`,
   )) as { sobra: number; andou: number };
   if (rolagem.sobra > 0 && rolagem.andou <= 0) {
-    throw new Error(`a Configuração passa ${rolagem.sobra}px da janela e não rola`);
+    throw new Error(`Modelos passa ${rolagem.sobra}px da janela e não rola`);
   }
 
-  const provedores = providerService.listProviders();
+  // A tela mostra os provedores de fábrica públicos, os cadastrados e o que o
+  // GLM de empresa tiver de configuração; o GLM sem configuração fica de fora.
+  const provedores = providerService.listProviders().filter((p) => p.visible);
   if (tela.provedores !== provedores.map((p) => p.name).join(",")) {
     throw new Error(
       `a tela listou os provedores ${tela.provedores} e o servico tem ${provedores.length}`,
     );
   }
+  const glm = providerService.listProviders().find((p) => p.name === "glm");
+  const glmNaTela = tela.provedores.split(",").includes("glm");
+  if (glm !== undefined && glmNaTela !== glm.visible) {
+    throw new Error(`o GLM ${glm.visible ? "configurado sumiu da" : "sem configuração apareceu na"} tela`);
+  }
+
+  // O endereço do Ollama se edita na própria tela, e não pela variável de ambiente.
+  const campoDoOllama = await esperarProbe<true>(
+    window,
+    "endereço do Ollama",
+    `document.querySelector("[data-locum-ollama-url]") === null ? null : true`,
+  );
+  if (campoDoOllama !== true) throw new Error("a tela de Modelos nao ofereceu o endereco do Ollama");
 
   // Disponibilidade por provider, e nao so a contagem: uma tela que mostrasse
   // todo mundo como indisponivel teria a mesma lista e diria outra coisa.
@@ -1803,27 +1807,54 @@ async function checkConfig(window: BrowserWindow): Promise<string> {
     }
   }
 
+  // A tabela de substituição é do assistente, e mora na Configuração.
+  await irPara(window, "settings", "assistant");
+  const config = await esperarProbe<{ maquina: string; fallbacks: number }>(
+    window,
+    "settings",
+    `(() => {
+      const probe = document.querySelector("[data-locum-probe=settings]");
+      if (probe === null || probe.dataset.estado !== "pronto") return null;
+      return { maquina: probe.dataset.locumMaquina, fallbacks: Number(probe.dataset.locumFallbacks) };
+    })()`,
+  );
+  if (config.maquina !== machineId) {
+    throw new Error(`a tela diz estar em "${config.maquina}" e a maquina e "${machineId}"`);
+  }
   const fallbacks = await providerService.getFallbacks(machineId);
   const linhasDeFallback = (await window.webContents.executeJavaScript(
     `Array.from(document.querySelectorAll("[data-locum-fallback]")).map((e) => e.dataset.locumFallback)`,
   )) as string[];
   const esperadas = fallbacks.map((f) => `${f.fromModel}>${f.toModel}`);
-  if (tela.fallbacks !== fallbacks.length || linhasDeFallback.join("|") !== esperadas.join("|")) {
+  if (config.fallbacks !== fallbacks.length || linhasDeFallback.join("|") !== esperadas.join("|")) {
     throw new Error(
       `a tabela de substituicao desenhou ${linhasDeFallback.length} linha(s) ` +
-        `(${linhasDeFallback.join("|")}, contador ${tela.fallbacks}) e o servico tem ` +
+        `(${linhasDeFallback.join("|")}, contador ${config.fallbacks}) e o servico tem ` +
         `${fallbacks.length} (${esperadas.join("|")})`,
     );
   }
 
-  const servidores = await mcpService.list();
-  if (tela.servidores !== servidores.map((s) => s.config.name).join(",")) {
-    throw new Error(
-      `a tela listou os servidores ${tela.servidores} e o servico tem ${servidores.length}`,
-    );
+  // Todo servidor MCP cadastrado é uma conexão da lista, o próprio inclusive.
+  // As instâncias do Grafana moram na conexão Grafana, e não cada uma na sua.
+  await irPara(window, "connections");
+  const ligadas = await esperarProbe<string>(
+    window,
+    "lista de conexões",
+    `(() => {
+      const lista = document.querySelector("[data-locum-probe=connections]");
+      return lista === null || lista.dataset.locumCarregada !== "sim" ? null : lista.dataset.locumLigadas;
+    })()`,
+  );
+  const servidores = (await mcpService.list()).filter(
+    (s) => !(s.config.transport === "stdio" && (s.config.command ?? []).includes(IMAGEM_DO_GRAFANA)),
+  );
+  for (const servidor of servidores) {
+    if (!ligadas.split(",").includes(servidor.config.name)) {
+      throw new Error(`a lista de conexões nao mostrou o servidor ${servidor.config.name}: ${ligadas}`);
+    }
   }
-  if (!tela.servidores.split(",").includes(FIXTURE_SERVER)) {
-    throw new Error(`o servidor de brinquedo ${FIXTURE_SERVER} nao apareceu na tela`);
+  if (!ligadas.split(",").includes(FIXTURE_SERVER)) {
+    throw new Error(`o servidor de brinquedo ${FIXTURE_SERVER} nao apareceu nas conexões`);
   }
 
   // O orçamento saiu da Configuração e mora no detalhe de cada agent: cada um
@@ -1971,7 +2002,7 @@ async function checkConfig(window: BrowserWindow): Promise<string> {
  * onde a resposta sai de dentro da maquina.
  */
 async function checkProviderKeys(window: BrowserWindow): Promise<string> {
-  await irPara(window, "settings", "models");
+  await irPara(window, "models");
   const { createServer } = await import("node:http");
   const { eq } = await import("drizzle-orm");
   const { db, schema } = await import("../src/db/index.js");
@@ -2092,7 +2123,11 @@ async function checkProviderKeys(window: BrowserWindow): Promise<string> {
     }))`,
   )) as { nome: string; guardada: string; referencia: string; campo: boolean; disponivel: string }[];
 
-  const cadastro = await providerService.credentials();
+  // O provedor de empresa sem configuração (GLM) fica fora da tela de propósito.
+  const visiveis = new Set(
+    providerService.listProviders().filter((p) => p.visible).map((p) => p.name),
+  );
+  const cadastro = (await providerService.credentials()).filter((c) => visiveis.has(c.provider));
   for (const esperada of cadastro) {
     const naTela = linhas.find((l) => l.nome === esperada.provider);
     if (naTela === undefined) throw new Error(`o provedor ${esperada.provider} sumiu da tela`);
@@ -2160,7 +2195,7 @@ async function checkProviderKeys(window: BrowserWindow): Promise<string> {
  * linha é plantada e apagada aqui.
  */
 async function checkRegisteredProviders(window: BrowserWindow): Promise<string> {
-  await irPara(window, "settings", "models");
+  await irPara(window, "models");
   const { createServer } = await import("node:http");
   const { and, eq } = await import("drizzle-orm");
   const { db, schema } = await import("../src/db/index.js");
@@ -6028,11 +6063,11 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
     ["sessions", undefined],
     // Uma foto por seção, com o nome dela.
     ["settings", "general"],
-    ["settings", "models"],
     ["settings", "assistant"],
     ["settings", "tools"],
     ["connections", undefined],
     ["connections", primeiraConexao],
+    ["models", undefined],
     ["automations", undefined],
     ["automations", primeiroAgent],
     ["library", undefined],

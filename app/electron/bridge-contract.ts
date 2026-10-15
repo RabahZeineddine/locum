@@ -289,6 +289,8 @@ interface ServiceApi {
    * ela responde de dentro da máquina, sem sair.
    */
   "providers.credentials": ProviderService["credentials"];
+  "providers.ollamaUrl": ProviderService["ollamaUrl"];
+  "providers.setOllamaUrl": ProviderService["setOllamaUrl"];
   "providers.saveSecret": ProviderService["setSecret"];
   "providers.forgetSecret": ProviderService["clearSecret"];
   "providers.checkSecret": ProviderService["check"];
@@ -615,6 +617,8 @@ export const BRIDGE_CHANNELS = [
   "providers.setEnabled",
   "providers.remove",
   "providers.credentials",
+  "providers.ollamaUrl",
+  "providers.setOllamaUrl",
   "providers.saveSecret",
   "providers.forgetSecret",
   "providers.checkSecret",
