@@ -2244,10 +2244,10 @@ async function checkConfig(window: BrowserWindow): Promise<string> {
     // O github-ro precisa estar sem credencial: um GITHUB_TOKEN no ambiente da máquina o satisfaria.
     const { GITHUB_TOKEN_ENV: variavelDoToken } = await import("../src/services/github-service.js");
     const tokenDoAmbiente = process.env[variavelDoToken];
-    delete process.env[variavelDoToken];
     // Um segundo servidor do GitHub aparece no detalhe, com o seu próprio estado.
     await mcpService.register({ name: "github-ro", transport: "http", url: "https://api.githubcopilot.com/mcp/readonly", headers: { Authorization: "${credential}" } });
     try {
+      delete process.env[variavelDoToken];
       await irPara(window, "today");
       await irPara(window, "connections");
       const estadoDoGithub = await esperarProbe<string>(
