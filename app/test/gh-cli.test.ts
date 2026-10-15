@@ -23,13 +23,13 @@ const TEXTO_STATUS = `github.com
   ✓ Logged in to github.com account octo (keyring)
   - Active account: true
   - Git operations protocol: https
-  - Token: gho_****************
+  - Token: ****************
   - Token scopes: 'gist', 'read:org', 'repo'
 
   ✓ Logged in to github.com account outra (keyring)
   - Active account: false
   - Git operations protocol: ssh
-  - Token: gho_****************
+  - Token: ****************
 `;
 
 let pathAntes: string | undefined;
@@ -74,7 +74,7 @@ test("sem suporte a json, lê o texto de gh auth status", () => {
     ],
   );
   // a linha do token mascarado nunca vira dado
-  assert.equal(JSON.stringify(contas).includes("gho_"), false);
+  assert.equal(JSON.stringify(contas).includes("****"), false);
 });
 
 test("acha o gh num diretório extra quando o PATH do app é curto", () => {
