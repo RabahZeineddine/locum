@@ -127,7 +127,9 @@ export function resumoDoGatilho(t: TFunction, config: TriggerConfig, idioma: str
     case "slack-inbox":
       return t("automations.triggers.slack-inbox.summary");
     case "teams-inbox":
-      return t("automations.triggers.teams-inbox.summary");
+      return config.chats.length === 0
+        ? t("automations.triggers.teams-inbox.summary")
+        : t("automations.triggers.teams-inbox.summaryChats", { count: config.chats.length });
     case "poll":
       return t("automations.triggers.poll.summary", { owner: config.owner ?? "", repo: config.repoMatch });
     case "webhook":

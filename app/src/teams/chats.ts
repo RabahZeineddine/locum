@@ -1,3 +1,5 @@
+import { eq } from "drizzle-orm";
+import { db as defaultDb, schema } from "../db/index.js";
 import { abrirTeams, type TeamsGraphOptions } from "./graph.js";
 
 /** Um chat que a pessoa pode observar, com o rótulo que a tela mostra. */
@@ -11,7 +13,11 @@ export interface TeamsChatOption {
 /** Páginas de `/me/chats` lidas, de cinquenta em cinquenta. */
 const PAGINAS = 4;
 
-export type ListTeamsChatsOptions = TeamsGraphOptions;
+export interface ListTeamsChatsOptions extends TeamsGraphOptions {
+  /** O gatilho que vai ler: a lista sai pela conta que ele gravou, como a varredura. */
+  triggerId?: string;
+  db?: typeof defaultDb;
+}
 
 /**
  * O rótulo do chat: o tópico, quando tem, e senão os nomes dos membros sem a
@@ -33,7 +39,17 @@ export function rotuloDoChat(chat: Record<string, unknown>, eu: string): string 
  * escolha.
  */
 export async function listTeamsChats(options: ListTeamsChatsOptions = {}): Promise<TeamsChatOption[]> {
-  const teams = await abrirTeams(options);
+  const { triggerId, db = defaultDb, ...graph } = options;
+  const guardada =
+    triggerId === undefined || graph.account !== undefined
+      ? null
+      : ((
+          await db
+            .select({ value: schema.settings.value })
+            .from(schema.settings)
+            .where(eq(schema.settings.key, `teams.account.inbox:${triggerId}`))
+        )[0]?.value ?? null);
+  const teams = await abrirTeams(guardada === null ? graph : { ...graph, account: guardada });
   try {
     const eu = (await teams.get("/me?$select=id,userPrincipalName")).id;
     const opcoes: TeamsChatOption[] = [];

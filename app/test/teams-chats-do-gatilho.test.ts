@@ -143,3 +143,18 @@ test("a tela lista os chats com tópico ou nomes dos membros sem a própria pess
     { chatId: "g", label: "Revisões", chatType: "group" },
   ].sort((a, b) => a.label.localeCompare(b.label)));
 });
+
+test("id de chat no formato real (unq.gbl.spaces) filtra e reage pelo caminho certo", async () => {
+  const real = "19:a1b2c3d4-0000-4000-8000-000000000001_e5f6a7b8-0000-4000-8000-000000000002@unq.gbl.spaces";
+  const outro = "19:a1b2c3d4-0000-4000-8000-000000000001_99999999-0000-4000-8000-000000000003@unq.gbl.spaces";
+  const db = bancoDeTeste();
+  const g = graphFalso([
+    { id: real, chatType: "oneOnOne", mensagens: [mensagem("m1", PR)] },
+    { id: outro, chatType: "oneOnOne", mensagens: [mensagem("m2", PR)] },
+  ]);
+  await pollTeamsInbox({ mentions: false, dms: false, prLinks: true, chats: [{ chatId: real }] }, { db, token, ...semGithub, fetchFn: g.fetchFn });
+  const linhas = await db.select().from(schema.events).where(eq(schema.events.source, "teams"));
+  assert.deepEqual(linhas.map((e) => (e.payload as { messageId: string }).messageId), ["m1"]);
+  assert.equal(g.chamadas.some((c) => c.includes("99999999")), false);
+  assert.deepEqual(g.chamadas.filter((c) => c.includes("setReaction")), [`POST /chats/${real}/messages/m1/setReaction`]);
+});

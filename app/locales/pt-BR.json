@@ -2152,7 +2152,12 @@
         "noMatchChats": "Nenhum chat com \"{{termo}}\".",
         "listChats": "Listar chats",
         "loadingChats": "Lendo chats...",
-        "chatsHint": "Vazio vale para todos os chats em grupo e diretos. Com chats marcados, mensagem direta, link de PR e menção só contam neles, e os outros nem são lidos.",
+        "chatsHint": "Vazio vale para todos os chats em grupo e diretos. Com chats marcados, mensagem direta, link de PR e menção só contam neles, os outros nem são lidos, e menção em chat de reunião deixa de contar.",
+        "summaryChats": "menções e conversas · {{count}} chats",
+        "reloadChats": "Recarregar lista",
+        "chatsMax": "O máximo é {{max}} chats. Desmarque um para escolher outro.",
+        "chatsPending": "Este gatilho era restrito a chats no pacote. Escolha os chats antes de ligar: vazio valeria para todos.",
+        "chatsAll": "Valer para todos os chats",
         "chatType": {
           "oneOnOne": "1:1",
           "group": "grupo"
@@ -2613,6 +2618,7 @@
       "triggersOff_zero": "Nenhum gatilho",
       "triggersOff_other": "{{count}} gatilhos, desligados até você ligar",
       "chooseChannels": "Canais e chats não vêm no pacote: escolha na automação depois de importar.",
+      "chooseChats": "Este gatilho era restrito a chats. Escolha os chats no gatilho antes de ligar.",
       "downgraded": "Ação que publicava sozinha entra com aprovação.",
       "agentState": {
         "novo": "novo",

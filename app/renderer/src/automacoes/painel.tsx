@@ -207,7 +207,13 @@ function ConfigDoGatilho({
                 rotulo={t("automations.triggers.teams-inbox.prLinks")}
                 trocar={(prLinks) => trocar({ ...config, prLinks })}
               />
-              <ChatsDoTeams chats={config.chats} trocar={(chats) => trocar({ ...config, chats })} />
+              <ChatsDoTeams
+                chats={config.chats}
+                pendentes={config.chatsPendentes > 0}
+                trocar={(chats) => trocar({ ...config, chats })}
+                triggerId={triggerId}
+                valeParaTodos={() => trocar({ ...config, chatsPendentes: 0 })}
+              />
               <CanaisDoTeams canais={config.channels} trocar={(channels) => trocar({ ...config, channels })} />
             </>
           ) : null}
@@ -435,24 +441,40 @@ function CanaisDoTeams({ canais, trocar }: { canais: readonly CanalDoTeams[]; tr
   );
 }
 
+/** O teto de `chats` no gatilho, o mesmo do esquema. */
+const MAX_CHATS = 20;
+
 type ChatDoTeams = Extract<TriggerConfig, { kind: "teams-inbox" }>["chats"][number];
 
 /**
  * "Só nestes chats": restringe o gatilho a chats em grupo e diretos. Vazio é
  * todos. A lista vem do Graph e só chega por clique, como a de canais.
  */
-function ChatsDoTeams({ chats, trocar }: { chats: readonly ChatDoTeams[]; trocar: (c: ChatDoTeams[]) => void }) {
+function ChatsDoTeams({
+  chats,
+  trocar,
+  triggerId,
+  pendentes,
+  valeParaTodos,
+}: {
+  chats: readonly ChatDoTeams[];
+  trocar: (c: ChatDoTeams[]) => void;
+  triggerId?: string;
+  pendentes: boolean;
+  valeParaTodos: () => void;
+}) {
   const { t } = useTranslation();
   const [opcoes, setOpcoes] = useState<ReadResult<"connections.teamsChats"> | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [lendo, setLendo] = useState(false);
   const [busca, setBusca] = useState("");
+  const cheio = chats.length >= MAX_CHATS;
   const lista = organizarChats(opcoes ?? [], new Set(chats.map((c) => c.chatId)), busca);
 
   const listar = (): void => {
     setLendo(true);
     setErro(null);
-    call("connections.teamsChats").then(
+    call("connections.teamsChats", triggerId).then(
       (achados) => {
         setOpcoes(achados);
         setLendo(false);
@@ -483,12 +505,24 @@ function ChatsDoTeams({ chats, trocar }: { chats: readonly ChatDoTeams[]; trocar
           ))}
         </div>
       )}
+      {pendentes && chats.length === 0 ? (
+        <div className="flex flex-col items-start gap-1.5">
+          <p className="text-xs text-amber-600 dark:text-amber-400">{t("automations.triggers.teams-inbox.chatsPending")}</p>
+          <Button className="cursor-pointer" onClick={valeParaTodos} size="sm" variant="outline">
+            {t("automations.triggers.teams-inbox.chatsAll")}
+          </Button>
+        </div>
+      ) : null}
       {opcoes === null ? (
         <Button className="cursor-pointer self-start" disabled={lendo} onClick={listar} size="sm" variant="outline">
           {t(lendo ? "automations.triggers.teams-inbox.loadingChats" : "automations.triggers.teams-inbox.listChats")}
         </Button>
       ) : (
         <div className="flex flex-col gap-2" data-locum-teams-chats={opcoes.length}>
+          <Button className="cursor-pointer self-start" disabled={lendo} onClick={listar} size="sm" variant="ghost">
+            {t(lendo ? "automations.triggers.teams-inbox.loadingChats" : "automations.triggers.teams-inbox.reloadChats")}
+          </Button>
+          {cheio ? <p className="text-xs text-amber-600 dark:text-amber-400">{t("automations.triggers.teams-inbox.chatsMax", { max: MAX_CHATS })}</p> : null}
           <label className="border-border bg-card focus-within:ring-ring flex h-8 max-w-sm items-center gap-2 rounded-md border px-2 focus-within:ring-2">
             <Search aria-hidden className="text-muted-foreground size-3.5" />
             <input
@@ -508,6 +542,7 @@ function ChatsDoTeams({ chats, trocar }: { chats: readonly ChatDoTeams[]; trocar
                   <label className="flex cursor-pointer items-center gap-2">
                     <input
                       checked={chats.some((c) => c.chatId === o.chatId)}
+                      disabled={cheio && !chats.some((c) => c.chatId === o.chatId)}
                       className="accent-primary cursor-pointer"
                       onChange={(e) =>
                         trocar(e.target.checked ? [...chats, { chatId: o.chatId, label: o.label }] : chats.filter((x) => x.chatId !== o.chatId))

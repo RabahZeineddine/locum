@@ -380,7 +380,7 @@ interface ServiceApi {
   "connections.teamsAdminConsent": ConnectionService["teamsAdminConsent"];
   "connections.setTeamsChannels": ConnectionService["setTeamsChannels"];
   "connections.teamsChannels": () => Promise<TeamsChannelOption[]>;
-  "connections.teamsChats": () => Promise<TeamsChatOption[]>;
+  "connections.teamsChats": (triggerId?: string) => Promise<TeamsChatOption[]>;
 
   /**
    * O tracker de tarefa: cadastrar, apontar destino e testar.

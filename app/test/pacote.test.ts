@@ -272,7 +272,7 @@ test("a prévia mostra o que será criado e cada dependência com o estado dela"
   assert.deepEqual(previa.agents.map((a) => [a.id, a.situacao]), [["revisor", "novo"]]);
   assert.deepEqual(previa.dependencias.find((d) => d.tipo === "skill"), { tipo: "skill", chave: "review-pr", nome: "review-pr", estado: "ok", usadoPor: ["agent:revisor"], atalho: null, candidatos: [] });
   assert.equal(previa.agents[0]!.modelo.disponivel, true);
-  assert.deepEqual(previa.gatilhos.find((g) => g.tipo === "slack-channel"), { tipo: "slack-channel", precisaCanal: true });
+  assert.deepEqual(previa.gatilhos.find((g) => g.tipo === "slack-channel"), { tipo: "slack-channel", precisaCanal: true, precisaChats: false });
   assert.deepEqual(previa.acoesRebaixadas, ["avisar"]);
 
   const estado = (tipo: string, chave: string) => previa.dependencias.find((d) => d.tipo === tipo && d.chave === chave);
@@ -306,6 +306,44 @@ test("provedor ausente pede modelo: o padrão é um do mesmo provedor, ou nada",
 });
 
 /* -------------------------------------------------------------- importar */
+
+test("gatilho restrito a chats: o pacote só diz quantos, e a importação não liga até escolher os chats", async () => {
+  const dono = maquina();
+  await montarAutomacao(dono);
+  const { pacote, texto } = await dono.pacotes.exportar("revisao-de-pr");
+  const teamsDoPacote = pacote.automacao.gatilhos.find((g) => g.kind === "teams-inbox");
+  assert.equal(teamsDoPacote?.kind === "teams-inbox" && teamsDoPacote.chatsRestritos, 1);
+  assert.ok(!texto.includes(CHAT_DO_TEAMS), "o id do chat vazou");
+
+  const bruno = maquina();
+  const previa = await bruno.pacotes.previa(texto);
+  assert.ok(previa.gatilhos.some((g) => g.tipo === "teams-inbox" && g.precisaChats));
+  const r = await bruno.pacotes.importar(texto);
+  assert.ok(r.pendencias.some((p) => p.codigo === "chats-a-escolher" && p.onde === "teams-inbox"));
+
+  const gatilho = (await bruno.automations.get("revisao-de-pr"))!.triggers.find((g) => g.config.kind === "teams-inbox")!;
+  assert.equal(gatilho.config.kind === "teams-inbox" && gatilho.config.chatsPendentes, 1);
+  await assert.rejects(bruno.triggers.setEnabled(gatilho.id, true), /restrito a chats/);
+  await assert.rejects(bruno.triggers.set("revisao-de-pr", gatilho.config, { id: gatilho.id, enabled: true }), /restrito a chats/);
+
+  // Escolhidos os chats, liga.
+  const escolhido = { ...gatilho.config, chats: [{ chatId: CHAT_DO_TEAMS }] };
+  await bruno.triggers.set("revisao-de-pr", escolhido, { id: gatilho.id });
+  assert.equal((await bruno.triggers.setEnabled(gatilho.id, true)).enabled, true);
+});
+
+test("pacote antigo, sem chatsRestritos, segue válido e o gatilho liga", async () => {
+  const dono = maquina();
+  await montarAutomacao(dono);
+  const { pacote } = await dono.pacotes.exportar("revisao-de-pr");
+  for (const g of pacote.automacao.gatilhos) if (g.kind === "teams-inbox") delete (g as { chatsRestritos?: number }).chatsRestritos;
+  const bruno = maquina();
+  const r = await bruno.pacotes.importar(JSON.stringify(pacote));
+  assert.ok(!r.pendencias.some((p) => p.codigo === "chats-a-escolher"));
+  const gatilho = (await bruno.automations.get("revisao-de-pr"))!.triggers.find((g) => g.config.kind === "teams-inbox")!;
+  assert.equal((await bruno.triggers.setEnabled(gatilho.id, true)).enabled, true);
+});
+
 
 test("importar cria a automação com gatilhos desligados e sem canal, e o agent novo", async () => {
   const texto = await pacoteDoDono();

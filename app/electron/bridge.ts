@@ -415,7 +415,7 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "connections.teamsAdminConsent": (tenantId, clientId) => connectionService.teamsAdminConsent(tenantId, clientId),
     "connections.setTeamsChannels": (ligado) => connectionService.setTeamsChannels(ligado),
     "connections.teamsChannels": () => listTeamsChannels(),
-    "connections.teamsChats": () => listTeamsChats(),
+    "connections.teamsChats": (triggerId) => listTeamsChats({ triggerId }),
 
     "trackers.list": () => trackerService.list(),
     "trackers.register": (cadastro) => trackerService.register(cadastro),

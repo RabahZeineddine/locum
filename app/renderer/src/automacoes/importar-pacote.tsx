@@ -143,6 +143,7 @@ export function ImportarPacote({
             {previa.gatilhos.some((g) => g.precisaCanal) || previa.omitidos.some((o) => o.codigo === "canais") ? (
               <Aviso>{t("pacote.import.chooseChannels")}</Aviso>
             ) : null}
+            {previa.gatilhos.some((g) => g.precisaChats) ? <Aviso>{t("pacote.import.chooseChats")}</Aviso> : null}
             {previa.acoesRebaixadas.length > 0 ? (
               <Aviso>{t("pacote.import.downgraded")}</Aviso>
             ) : null}

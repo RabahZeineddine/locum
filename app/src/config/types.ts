@@ -608,6 +608,12 @@ export const TeamsInboxTrigger = z.object({
     )
     .max(20)
     .default([]),
+  /**
+   * Quantos chats restringiam o gatilho no pacote de onde veio, ou 0. Os ids são da conta de
+   * quem exportou, então a lista chega vazia, e vazio é todos: enquanto a
+   * pessoa não escolhe os chats, o gatilho não liga.
+   */
+  chatsPendentes: z.number().int().min(0).default(0),
   everyMinutes: z.number().int().min(1).default(5),
   workingHours: WorkingHoursConfig.optional(),
 });

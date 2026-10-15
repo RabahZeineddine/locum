@@ -318,7 +318,7 @@ export const GATILHOS: readonly ComponenteDeGatilho[] = [
   {
     id: "teams-inbox",
     app: "teams",
-    novo: () => ({ kind: "teams-inbox", mentions: true, dms: true, prLinks: false, channels: [], chats: [], everyMinutes: 5 }),
+    novo: () => ({ kind: "teams-inbox", mentions: true, dms: true, prLinks: false, channels: [], chats: [], chatsPendentes: 0, everyMinutes: 5 }),
   },
   {
     id: "poll",
@@ -844,7 +844,7 @@ export function rascunhoDoModelo(
             acao("responder", "Responder no fio", "teams.post", "revisar"),
           ],
         },
-        gatilhos: [gatilho({ kind: "teams-inbox", mentions: false, dms: false, prLinks: true, channels: [], chats: [], everyMinutes: 5 })],
+        gatilhos: [gatilho({ kind: "teams-inbox", mentions: false, dms: false, prLinks: true, channels: [], chats: [], chatsPendentes: 0, everyMinutes: 5 })],
       };
     }
     case "blank": {
