@@ -213,8 +213,8 @@ export const AgentConnection = z.object({
   /**
    * O que vale para a ferramenta sem escolha. Ausente ou `todas`: toda leitura
    * (o que sempre valeu, e o que o agent salvo antes mantém). `limitada`, que a
-   * tela grava ao adicionar a conexão: servidor com mais de
-   * `LIMITE_DE_LEITURA_PADRAO` leituras começa sem nenhuma ligada.
+   * tela grava ao adicionar a conexão de servidor grande ou sem lista: nada
+   * liga por padrão, só o que está em `tools`.
    */
   leituraPadrao: z.enum(["todas", "limitada"]).optional(),
 });
