@@ -577,7 +577,6 @@
     "sectionCockpit": "Cockpit",
     "sectionOperations": "Operações",
     "sectionResources": "Recursos",
-    "settingsTitle": "Configurações",
     "connections": "Conexões",
     "models": "Modelos"
   },
@@ -768,6 +767,9 @@
       "modelsNone": "o provedor não listou modelos",
       "modelsError": "não deu para ler os modelos: {{message}}",
       "modelsMore": "+{{count}}",
+      "modelCount_zero": "{{count}} modelos",
+      "modelCount_one": "{{count}} modelo",
+      "modelCount_other": "{{count}} modelos",
       "ollama": {
         "label": "Endereço do Ollama",
         "save": "Salvar",

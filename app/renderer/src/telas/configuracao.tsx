@@ -1,11 +1,15 @@
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import { StatusDot } from "@/components/ui/status-dot";
+import { pontoDaFerramenta } from "@/lib/estado-do-ponto";
 import { CabecalhoDaTela } from "@/components/cabecalho-da-tela";
 import { Button } from "@/components/ui/button";
 import { call, useRead, type ReadResult } from "@/lib/bridge";
 import { useAtualizacao } from "@/lib/atualizacao";
 import { cn } from "@/lib/utils";
 import { EscolhaDoModelo } from "../assistente-modelo";
-import { Grupo, Preferencia, Secao, Vazio } from "./blocos";
+import { GrupoDeLinhas, LinhaDePreferencia, Vazio } from "./blocos";
 import { SlidersHorizontal, Sparkles, SquareTerminal, type LucideIcon } from "lucide-react";
 import { quando } from "./sessoes";
 import { useIdioma } from "../idioma";
@@ -71,53 +75,46 @@ export function Configuracao({ detalhe, navegar }: TelaProps) {
         </p>
       )}
 
-      <div className="flex flex-col gap-8 md:flex-row md:items-start">
+      <div className="flex flex-col gap-6 md:flex-row md:items-start">
         <NavDaConfiguracao atual={secao} navegar={navegar} />
 
-        <div className="flex min-w-0 max-w-2xl flex-1 flex-col gap-8">
+        <div className="flex min-w-0 max-w-2xl flex-1 flex-col gap-6">
           <TopoDaSecao secao={secao} />
 
           {secao === "general" ? (
-            <Grupo>
-              <Preferencia descricao={t("settings.language.description")} titulo={t("settings.language.title")}>
+            <GrupoDeLinhas>
+              <LinhaDePreferencia descricao={t("settings.language.description")} titulo={t("settings.language.title")}>
                 <EscolhaDoIdioma />
-              </Preferencia>
-              <Preferencia descricao={t("settings.updates.description")} titulo={t("settings.updates.title")}>
+              </LinhaDePreferencia>
+              <LinhaDePreferencia descricao={t("settings.updates.description")} titulo={t("settings.updates.title")}>
                 <Atualizacao />
-              </Preferencia>
-              <Preferencia descricao={t("settings.staleDays.description")} titulo={t("settings.staleDays.title")}>
+              </LinhaDePreferencia>
+              <LinhaDePreferencia descricao={t("settings.staleDays.description")} titulo={t("settings.staleDays.title")}>
                 <EscolhaDeStaleDays />
-              </Preferencia>
-              <Preferencia descricao={t("settings.workingHours.description")} titulo={t("settings.workingHours.title")}>
+              </LinhaDePreferencia>
+              <LinhaDePreferencia descricao={t("settings.workingHours.description")} titulo={t("settings.workingHours.title")}>
                 <EscolhaDeWorkingHours />
-              </Preferencia>
-              <Preferencia
+              </LinhaDePreferencia>
+              <LinhaDePreferencia
                 descricao={t("settings.initiativesRoot.description")}
                 empilhado
                 titulo={t("settings.initiativesRoot.title")}
               >
                 <EscolhaDaRaiz />
-              </Preferencia>
-            </Grupo>
+              </LinhaDePreferencia>
+            </GrupoDeLinhas>
           ) : null}
 
           {secao === "assistant" ? (
             <>
-              <section className="superficie relative overflow-hidden rounded-xl">
-                <div aria-hidden className="ia-gradiente absolute inset-x-0 top-0 h-px opacity-80" />
-                <div className="flex items-start gap-3 px-4 pt-4 pb-2">
-                  <span className="ia-gradiente flex size-8 shrink-0 items-center justify-center rounded-lg">
-                    <Sparkles className="text-primary-foreground size-4" aria-hidden />
-                  </span>
-                  <div className="flex flex-col gap-0.5">
-                    <h2 className="text-[15px] font-medium tracking-tight">{t("settings.assistantModel.title")}</h2>
-                    <p className="text-muted-foreground max-w-[68ch] text-xs">{t("settings.assistantModel.description")}</p>
-                  </div>
-                </div>
+              <GrupoDeLinhas
+                descricao={t("settings.assistantModel.description")}
+                titulo={t("settings.assistantModel.title")}
+              >
                 <EscolhaDoModelo />
-              </section>
+              </GrupoDeLinhas>
 
-              <Secao
+              <GrupoDeLinhas
                 descricao={t("settings.fallbacks.description", { machine: machineId ?? "..." })}
                 titulo={t("settings.fallbacks.title")}
               >
@@ -128,24 +125,27 @@ export function Configuracao({ detalhe, navegar }: TelaProps) {
                     <LinhaDoFallback fallback={fallback} key={`${fallback.fromModel}>${fallback.toModel}`} />
                   ))
                 )}
-              </Secao>
+              </GrupoDeLinhas>
             </>
           ) : null}
 
           {secao === "tools" ? (
             <>
-              <Secao descricao={t("settings.toolsLocum.description")} titulo={t("settings.toolsLocum.title")}>
+              <GrupoDeLinhas
+                descricao={t("settings.toolsLocum.description")}
+                titulo={t("settings.toolsLocum.title")}
+              >
                 <ClaudeCode />
                 <Opencode />
-              </Secao>
-              <Grupo>
-                <Preferencia
+              </GrupoDeLinhas>
+              <GrupoDeLinhas>
+                <LinhaDePreferencia
                   descricao={t("settings.sessionTerminal.description")}
                   titulo={t("settings.sessionTerminal.title")}
                 >
                   <EscolhaDoTerminal />
-                </Preferencia>
-              </Grupo>
+                </LinhaDePreferencia>
+              </GrupoDeLinhas>
             </>
           ) : null}
         </div>
@@ -170,13 +170,10 @@ function NavDaConfiguracao({ atual, navegar }: { atual: SecaoId; navegar: TelaPr
   return (
     <nav
       aria-label={t("nav.settings")}
-      className="flex shrink-0 gap-1 overflow-x-auto md:sticky md:top-4 md:w-56 md:flex-col"
+      className="flex shrink-0 gap-0.5 overflow-x-auto md:sticky md:top-4 md:w-44 md:flex-col"
       data-locum-probe="secoes"
       role="tablist"
     >
-      <div className="hidden md:block px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">
-        {t("nav.settingsTitle")}
-      </div>
       {SECOES.map((id) => {
         const Icone = ICONE_DA_SECAO[id];
         const ativo = id === atual;
@@ -184,10 +181,10 @@ function NavDaConfiguracao({ atual, navegar }: { atual: SecaoId; navegar: TelaPr
           <button
             aria-selected={ativo}
             className={cn(
-              "focus-visible:ring-ring flex shrink-0 cursor-pointer items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm transition-all duration-150 focus-visible:ring-2 focus-visible:outline-none",
+              "focus-visible:ring-ring flex h-8 shrink-0 cursor-pointer items-center gap-2 rounded-md px-2.5 text-left text-[13px] transition-colors focus-visible:ring-2 focus-visible:outline-none",
               ativo
-                ? "bg-muted font-medium text-foreground shadow-sm"
-                : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                ? "bg-accent font-medium text-foreground"
+                : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
             )}
             data-locum-secao={id}
             key={id}
@@ -195,14 +192,7 @@ function NavDaConfiguracao({ atual, navegar }: { atual: SecaoId; navegar: TelaPr
             role="tab"
             type="button"
           >
-            <span
-              className={cn(
-                "flex size-6 items-center justify-center rounded-lg transition-colors",
-                ativo ? (id === "assistant" ? "ia-gradiente text-primary-foreground" : "bg-primary/10 text-primary") : "text-muted-foreground",
-              )}
-            >
-              <Icone aria-hidden className="size-3.5" />
-            </span>
+            <Icone aria-hidden className="size-3.5" />
             <span>{t(`settings.sections.${id}`)}</span>
           </button>
         );
@@ -215,9 +205,9 @@ function NavDaConfiguracao({ atual, navegar }: { atual: SecaoId; navegar: TelaPr
 function TopoDaSecao({ secao }: { secao: SecaoId }) {
   const { t } = useTranslation();
   return (
-    <div className="flex flex-col gap-1">
-      <h2 className="text-xl font-semibold tracking-[-0.01em]">{t(`settings.sections.${secao}`)}</h2>
-      <p className="text-muted-foreground max-w-[68ch] text-sm">{t(`settings.sectionLead.${secao}`)}</p>
+    <div className="flex flex-col gap-0.5">
+      <h2 className="text-[15px] font-medium tracking-tight">{t(`settings.sections.${secao}`)}</h2>
+      <p className="text-muted-foreground max-w-[68ch] text-xs">{t(`settings.sectionLead.${secao}`)}</p>
     </div>
   );
 }
@@ -262,13 +252,13 @@ function EscolhaDoIdioma() {
 
   return (
     <div
-      className="flex flex-col gap-2 px-4 py-3"
+      className="flex flex-col items-end gap-1.5"
       data-locum-idioma-ativo={language}
       data-locum-idioma-preferencia={preference ?? ""}
       data-locum-idioma-sistema={system}
       data-locum-probe="idioma-escolha"
     >
-      <div className="flex flex-wrap gap-2">
+      <div aria-label={t("settings.language.title")} className="flex flex-wrap justify-end gap-1" role="group">
         <Button
           data-locum-escolhido={preference === null ? "sim" : "nao"}
           data-locum-idioma="sistema"
@@ -339,12 +329,12 @@ function Atualizacao() {
 
   return (
     <div
-      className="flex flex-col gap-2 px-4 py-3"
+      className="flex max-w-80 flex-col items-end gap-1.5 text-right"
       data-locum-probe="atualizacao"
       data-locum-atualizacao-fase={estado.phase}
       data-locum-atualizacao-motivo={estado.reason ?? ""}
     >
-      <p className="text-sm">
+      <p className="text-[13px]">
         {t("settings.updates.current", { version: estado.current })}
         <span className="text-muted-foreground"> · {situacao}</span>
       </p>
@@ -353,7 +343,7 @@ function Atualizacao() {
           {t("settings.updates.lastCheck", { when: new Date(estado.lastCheckAt).toLocaleString() })}
         </p>
       )}
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap justify-end gap-1">
         {estado.phase === "ready" ? (
           <Button onClick={() => void call("updates.apply")} size="sm">
             {t("settings.updates.apply", { version: estado.available?.version ?? "" })}
@@ -411,12 +401,12 @@ function EscolhaDeStaleDays() {
   };
 
   return (
-    <div className="flex items-center gap-3 px-4 py-3" data-locum-probe="stale-days">
-      <label className="text-sm" htmlFor="stale-days">
+    <div className="flex items-center gap-2" data-locum-probe="stale-days">
+      <label className="text-muted-foreground text-xs" htmlFor="stale-days">
         {t("settings.staleDays.label")}
       </label>
-      <input
-        className="border-border bg-background w-16 rounded border px-2 py-1 text-right text-sm tabular-nums"
+      <Input
+        className="h-7 w-16 text-right tabular-nums"
         id="stale-days"
         max={90}
         min={1}
@@ -465,8 +455,8 @@ function EscolhaDeWorkingHours() {
   };
 
   return (
-    <div className="flex flex-col gap-3 px-4 py-3 text-sm" data-locum-probe="working-hours">
-      <div className="flex items-center justify-between">
+    <div className="flex flex-col items-end gap-2 text-[13px]" data-locum-probe="working-hours">
+      <div className="flex items-center gap-3">
         <label className="flex items-center gap-2 cursor-pointer">
           <input
             checked={atual.enabled}
@@ -474,24 +464,26 @@ function EscolhaDeWorkingHours() {
             onChange={(e) => salvar({ ...atual, enabled: e.target.checked })}
             type="checkbox"
           />
-          <span className="font-medium text-sm">{t("settings.workingHours.enableLabel")}</span>
+          <span className="text-[13px]">{t("settings.workingHours.enableLabel")}</span>
         </label>
-        {salvo && <span className="text-emerald-500 font-medium text-xs">{t("settings.workingHours.saved")}</span>}
+        {salvo && <span className="text-muted-foreground text-xs">{t("settings.workingHours.saved")}</span>}
       </div>
 
       {atual.enabled && (
-        <div className="flex flex-wrap items-center gap-4 pt-1">
+        <div className="flex flex-wrap items-center justify-end gap-3">
           <div className="flex items-center gap-2">
             <span className="text-muted-foreground text-xs">{t("settings.workingHours.start")}</span>
-            <input
-              className="border-border bg-background rounded border px-2 py-1 text-xs font-mono"
+            <Input
+              aria-label={t("settings.workingHours.start")}
+              className="h-7 w-24 font-mono text-xs"
               onChange={(e) => salvar({ ...atual, start: e.target.value })}
               type="time"
               value={atual.start}
             />
             <span className="text-muted-foreground text-xs">{t("settings.workingHours.end")}</span>
-            <input
-              className="border-border bg-background rounded border px-2 py-1 text-xs font-mono"
+            <Input
+              aria-label={t("settings.workingHours.end")}
+              className="h-7 w-24 font-mono text-xs"
               onChange={(e) => salvar({ ...atual, end: e.target.value })}
               type="time"
               value={atual.end}
@@ -500,15 +492,16 @@ function EscolhaDeWorkingHours() {
 
           <div className="flex items-center gap-2">
             <span className="text-muted-foreground text-xs">{t("settings.workingHours.offHoursLabel")}</span>
-            <select
-              className="border-border bg-background rounded border px-2 py-1 text-xs"
+            <Select
+              aria-label={t("settings.workingHours.offHoursLabel")}
+              className="h-7 text-xs"
               onChange={(e) => salvar({ ...atual, offHoursBehavior: e.target.value as WorkingHoursConfig["offHoursBehavior"] })}
               value={atual.offHoursBehavior}
             >
               <option value="pause">{t("settings.workingHours.behaviorPause")}</option>
               <option value="slow">{t("settings.workingHours.behaviorSlow")}</option>
               <option value="unrestricted">{t("settings.workingHours.behaviorUnrestricted")}</option>
-            </select>
+            </Select>
           </div>
         </div>
       )}
@@ -543,12 +536,12 @@ function EscolhaDaRaiz() {
   };
 
   return (
-    <div className="flex items-center gap-3 px-4 py-3" data-locum-probe="initiatives-root">
+    <div className="flex items-center gap-2" data-locum-probe="initiatives-root">
       <label className="sr-only" htmlFor="initiatives-root">
         {t("settings.initiativesRoot.label")}
       </label>
-      <input
-        className="border-border bg-background flex-1 rounded border px-2 py-1 font-mono text-sm"
+      <Input
+        className="h-8 flex-1 font-mono text-xs"
         id="initiatives-root"
         onChange={(e) => setRascunho(e.target.value)}
         placeholder={t("settings.initiativesRoot.label")}
@@ -587,7 +580,11 @@ function EscolhaDoTerminal() {
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-2 px-4 py-3" data-locum-probe="session-terminal" data-locum-terminal={atual}>
+    <div
+      aria-label={t("settings.sessionTerminal.title")}
+      className="flex flex-wrap items-center justify-end gap-1"
+      data-locum-probe="session-terminal"
+      role="group" data-locum-terminal={atual}>
       {TERMINAIS.filter((terminal) => terminal === atual || (instalados.data ?? TERMINAIS).includes(terminal)).map((terminal) => (
         <Button
           data-locum-escolhido={atual === terminal ? "sim" : "nao"}
@@ -614,7 +611,7 @@ function LinhaDoFallback({ fallback }: { fallback: Fallback }) {
 
   return (
     <div
-      className="flex flex-wrap items-center gap-3 border-border border-b px-4 py-2 text-sm last:border-b-0"
+      className="flex flex-wrap items-center gap-3 border-border border-b px-3 py-2 text-[13px] last:border-b-0"
       data-locum-fallback={`${fallback.fromModel}>${fallback.toModel}`}
       data-locum-ordem={fallback.order}
     >
@@ -673,23 +670,23 @@ export function ClaudeCode() {
 
   return (
     <div
-      className="flex flex-col gap-3 px-4 py-3"
+      className="border-border flex flex-col gap-2 border-b px-3 py-2.5 last:border-b-0"
       data-locum-claude-code={situacao ?? ""}
       data-locum-probe="claude-code"
     >
-      <div className="flex flex-wrap items-center gap-3 text-sm">
+      <div className="flex flex-wrap items-center gap-3 text-[13px]">
         <span className="font-medium">{t("settings.claudeCode.title")}</span>
         {situacao === null ? null : (
-          <Badge variant={situacao === "connected" ? "secondary" : situacao === "stale" ? "outline" : "destructive"}>
+          <span className="text-muted-foreground flex items-center gap-1.5 text-xs">
+            <StatusDot estado={pontoDaFerramenta(situacao)} />
             {t(`settings.claudeCode.${situacao}`)}
-          </Badge>
+          </span>
         )}
         {estado !== null && estado.cli === null ? (
           <Badge variant="outline">{t("settings.claudeCode.noCli")}</Badge>
         ) : null}
         <div className="ml-auto">
           <Button
-            className="cursor-pointer"
             data-locum-claude-code-ligar=""
             disabled={ligando || estado === null || estado.cli === null || estado.current}
             onClick={ligar}
@@ -754,17 +751,17 @@ export function Opencode() {
   const situacao = estado === null ? null : estado.current ? "connected" : estado.registered ? "stale" : "absent";
 
   return (
-    <div className="flex flex-col gap-3 px-4 py-3" data-locum-probe="opencode">
-      <div className="flex flex-wrap items-center gap-3 text-sm">
+    <div className="border-border flex flex-col gap-2 border-b px-3 py-2.5 last:border-b-0" data-locum-probe="opencode">
+      <div className="flex flex-wrap items-center gap-3 text-[13px]">
         <span className="font-medium">{t("settings.opencode.title")}</span>
         {situacao === null ? null : (
-          <Badge variant={situacao === "connected" ? "secondary" : situacao === "stale" ? "outline" : "destructive"}>
+          <span className="text-muted-foreground flex items-center gap-1.5 text-xs">
+            <StatusDot estado={pontoDaFerramenta(situacao)} />
             {t(`settings.claudeCode.${situacao}`)}
-          </Badge>
+          </span>
         )}
         <div className="ml-auto">
           <Button
-            className="cursor-pointer"
             disabled={ligando || estado === null || estado.current}
             onClick={ligar}
             size="sm"

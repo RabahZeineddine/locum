@@ -21,3 +21,23 @@ export const PONTOS: Record<string, Estado> = {
 export function pontoDoEstado(estado: string): Estado {
   return Object.hasOwn(PONTOS, estado) ? PONTOS[estado]! : "ocioso";
 }
+
+/**
+ * Provedor de modelo. `available` só diz que há chave ou assinatura, não que o
+ * provedor responde: o ponto verde exige a lista de modelos lida e não vazia.
+ * Ainda lendo é ocioso; erro ou lista vazia (Ollama parado, chave recusada) é erro.
+ * Desligado pela pessoa e sem chave também são ociosos.
+ */
+export function pontoDoProvedor(
+  p: { available: boolean; disabled: boolean },
+  lidos: { modelos: string[]; erro?: string } | null,
+): Estado {
+  if (p.disabled || !p.available || lidos === null) return "ocioso";
+  return lidos.modelos.length > 0 ? "ok" : "erro";
+}
+
+/** O Locum cadastrado numa ferramenta de código: ligado, apontando para outro lugar, ou ausente. */
+export function pontoDaFerramenta(situacao: "connected" | "stale" | "absent" | null): Estado {
+  if (situacao === "connected") return "ok";
+  return situacao === "stale" ? "aviso" : "ocioso";
+}

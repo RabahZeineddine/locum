@@ -1,15 +1,19 @@
 import { Badge } from "@/components/ui/badge";
 import { CabecalhoDaTela } from "@/components/cabecalho-da-tela";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Input } from "@/components/ui/input";
+import { StatusDot } from "@/components/ui/status-dot";
+import { pontoDoProvedor } from "@/lib/estado-do-ponto";
 import { call, invalidateReads, read, useRead, type ReadResult } from "@/lib/bridge";
 import { avisoDoEnderecoDoOllama } from "@/lib/conexao-acao";
 import { rotuloDoModelo, rotuloDoProvedor } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
-import { Plus } from "lucide-react";
+import { Cpu, Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TelaProps } from "../rotas";
-import { Secao, SecaoEmGrade, Vazio } from "./blocos";
+import { GrupoDeLinhas } from "./blocos";
 
 type Provedor = ReadResult<"providers.list">[number];
 type Orcamento = ReadResult<"agents.budgets">[number];
@@ -50,26 +54,26 @@ function ListaDeModelos({ modelos, provedor }: { modelos: ModelosDoProvedor | nu
   const [todos, setTodos] = useState(false);
 
   if (modelos === null) {
-    return <p className="text-muted-foreground pl-5 text-xs">{t("settings.providers.modelsLoading")}</p>;
+    return <p className="text-muted-foreground text-xs">{t("settings.providers.modelsLoading")}</p>;
   }
   if (modelos.erro !== undefined && modelos.modelos.length === 0) {
     return (
-      <p className="text-muted-foreground pl-5 text-xs">
+      <p className="text-muted-foreground text-xs">
         {t("settings.providers.modelsError", { message: modelos.erro })}
       </p>
     );
   }
   if (modelos.modelos.length === 0) {
-    return <p className="text-muted-foreground pl-5 text-xs">{t("settings.providers.modelsNone")}</p>;
+    return <p className="text-muted-foreground text-xs">{t("settings.providers.modelsNone")}</p>;
   }
 
   const visiveis = todos ? modelos.modelos : modelos.modelos.slice(0, MODELOS_VISIVEIS);
   const resto = modelos.modelos.length - visiveis.length;
   return (
-    <div className="flex flex-wrap gap-1.5 pl-5" data-locum-modelos={provedor}>
+    <div className="flex flex-wrap gap-1" data-locum-modelos={provedor}>
       {visiveis.map((m) => (
         <span
-          className="bg-muted text-foreground rounded px-2 py-0.5 text-xs"
+          className="bg-muted text-foreground rounded px-1.5 py-0.5 text-xs"
           data-locum-modelo={m}
           key={m}
           title={m}
@@ -79,7 +83,7 @@ function ListaDeModelos({ modelos, provedor }: { modelos: ModelosDoProvedor | nu
       ))}
       {resto > 0 ? (
         <button
-          className="text-muted-foreground hover:text-foreground cursor-pointer rounded px-2 py-0.5 text-xs"
+          className="text-muted-foreground hover:text-foreground focus-visible:ring-ring cursor-pointer rounded px-1.5 py-0.5 text-xs outline-none focus-visible:ring-2"
           onClick={() => setTodos(true)}
           type="button"
         >
@@ -118,37 +122,9 @@ function LigaDesligaProvedor({ provedor, recarregar }: { provedor: Provedor; rec
   return (
     <span className="ml-auto flex items-center gap-2">
       {erro === null ? null : <span className="text-sev-critical text-xs">{erro}</span>}
-      <Button className="h-7 cursor-pointer" disabled={enviando} onClick={alternar} size="sm" variant="ghost">
+      <Button disabled={enviando} onClick={alternar} size="sm" variant="ghost">
         {t(provedor.disabled ? "settings.providers.enable" : "settings.providers.disable")}
       </Button>
-    </span>
-  );
-}
-
-/** Cor de cada provedor no monograma; o resto usa o cinza da interface. */
-const COR_DO_PROVEDOR: Record<string, string> = {
-  "claude-code": "#D97757",
-  anthropic: "#D97757",
-  openai: "#10A37F",
-  codex: "#10A37F",
-  google: "#4285F4",
-  glm: "#3859FF",
-  ollama: "#64748B",
-};
-
-/** A inicial do provedor numa pastilha com a cor da marca, apagada quando ele não roda. */
-function Monograma({ nome, apagado }: { nome: string; apagado: boolean }) {
-  const rotulo = rotuloDoProvedor(nome);
-  return (
-    <span
-      aria-hidden
-      className={cn(
-        "flex size-8 shrink-0 items-center justify-center rounded-lg text-[13px] font-semibold text-white ring-1 ring-white/10",
-        apagado && "opacity-45 grayscale",
-      )}
-      style={{ backgroundColor: COR_DO_PROVEDOR[nome] ?? "#475569" }}
-    >
-      {rotulo.slice(0, 1).toUpperCase()}
     </span>
   );
 }
@@ -169,10 +145,11 @@ function LinhaDoProvedor({
   recarregarPrecos: () => Promise<void>;
 }) {
   const { t } = useTranslation();
+  const contagem = provedor.available && modelos !== null && modelos.modelos.length > 0 ? modelos.modelos.length : null;
 
   return (
     <div
-      className="superficie flex flex-col gap-3 rounded-xl px-4 py-3 text-sm"
+      className="border-border border-b text-[13px] last:border-b-0"
       data-locum-chave-ambiente={chave?.env === true ? "sim" : "nao"}
       data-locum-chave-conferida={chave?.checkedAt ?? ""}
       data-locum-chave-guardada={chave === undefined ? "" : chave.stored ? "sim" : "nao"}
@@ -181,14 +158,12 @@ function LinhaDoProvedor({
       data-locum-disponivel={provedor.available ? "sim" : "nao"}
       data-locum-provider={provedor.name}
     >
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <Monograma apagado={!provedor.available} nome={provedor.name} />
-        <span className="min-w-28 truncate text-sm font-medium" title={provedor.name}>
-          {rotuloDoProvedor(provedor.name)}
-        </span>
-        {/* Na seção de adicionar, dizer "indisponível" em cada linha só repete o título. */}
+      <div className="flex min-h-10 flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5">
+        <StatusDot estado={pontoDoProvedor(provedor, modelos)} />
+        <span className="min-w-24 truncate font-medium" title={provedor.name}>{rotuloDoProvedor(provedor.name)}</span>
+        {/* O ponto leva a cor; o texto ao lado diz o mesmo em palavras e fica neutro. */}
         {provedor.available ? (
-          <span className="text-chart-2 shrink-0 text-xs">{t("settings.providers.available")}</span>
+          <span className="text-muted-foreground shrink-0 text-xs">{t("settings.providers.available")}</span>
         ) : null}
         {provedor.subscription ? (
           <span className="text-muted-foreground border-border shrink-0 rounded border px-1.5 text-[11px]">
@@ -198,9 +173,11 @@ function LinhaDoProvedor({
         {provedor.disabled ? (
           <span className="text-muted-foreground shrink-0 text-xs">{t("settings.providers.disabled")}</span>
         ) : null}
-        {provedor.available || provedor.disabled ? (
-          <LigaDesligaProvedor provedor={provedor} recarregar={recarregar} />
-        ) : null}
+        {contagem === null ? null : (
+          <span className="text-muted-foreground shrink-0 text-xs tabular-nums" data-locum-modelos-contagem={contagem}>
+            {t("settings.providers.modelCount", { count: contagem })}
+          </span>
+        )}
         {chave === undefined || chave.ref === null || (!chave.stored && !provedor.available) ? null : (
           <Badge
             data-locum-credencial={chave.ref}
@@ -220,50 +197,55 @@ function LinhaDoProvedor({
             })}
           </span>
         ) : null}
+        {provedor.available || provedor.disabled ? (
+          <LigaDesligaProvedor provedor={provedor} recarregar={recarregar} />
+        ) : null}
       </div>
 
-      {provedor.available ? <ListaDeModelos modelos={modelos} provedor={provedor.name} /> : null}
+      <div className="flex flex-col gap-2 pr-3 pb-2.5 pl-[1.875rem] empty:hidden">
+        {provedor.available ? <ListaDeModelos modelos={modelos} provedor={provedor.name} /> : null}
 
-      {provedor.name === "ollama" ? <EnderecoDoOllama recarregar={recarregar} /> : null}
+        {provedor.name === "ollama" ? <EnderecoDoOllama recarregar={recarregar} /> : null}
 
-      {/* Assinatura sem ação na tela: diz o que fazer fora dela para o provedor ficar disponível. */}
-      {provedor.subscription && !provedor.available && !provedor.disabled ? (
-        <p className="text-muted-foreground max-w-[68ch] text-xs" data-locum-assinatura-ajuda={provedor.name}>
-          {t(`settings.providers.subscriptionHelp.${provedor.name}`, { defaultValue: "" })}
-        </p>
-      ) : null}
+        {/* Assinatura sem ação na tela: diz o que fazer fora dela para o provedor ficar disponível. */}
+        {provedor.subscription && !provedor.available && !provedor.disabled ? (
+          <p className="text-muted-foreground max-w-[68ch] text-xs" data-locum-assinatura-ajuda={provedor.name}>
+            {t(`settings.providers.subscriptionHelp.${provedor.name}`, { defaultValue: "" })}
+          </p>
+        ) : null}
 
-      {chave === undefined || chave.variable === null ? null : provedor.available || provedor.disabled ? (
-        <ChaveDoProvedor chave={chave} provedor={provedor} recarregar={recarregar} />
-      ) : (
-        // Recolhida enquanto o provedor não está em uso: cinco campos de senha
-        // abertos viravam o assunto da tela. Fechada, ela continua no DOM.
-        <details className="group">
-          <summary className="text-primary hover:text-foreground w-fit cursor-pointer list-none text-xs font-medium">
-            <Plus aria-hidden className="mr-1 inline size-3.5 align-[-2px]" />
-            {t("settings.providers.addKey")}
-          </summary>
-          <div className="mt-2">
-            <ChaveDoProvedor chave={chave} provedor={provedor} recarregar={recarregar} />
-          </div>
-        </details>
-      )}
+        {chave === undefined || chave.variable === null ? null : provedor.available || provedor.disabled ? (
+          <ChaveDoProvedor chave={chave} provedor={provedor} recarregar={recarregar} />
+        ) : (
+          // Recolhida enquanto o provedor não está em uso: cinco campos de senha
+          // abertos viravam o assunto da tela. Fechada, ela continua no DOM.
+          <details className="group">
+            <summary className="text-primary hover:text-foreground w-fit cursor-pointer list-none text-xs font-medium">
+              <Plus aria-hidden className="mr-1 inline size-3.5 align-[-2px]" />
+              {t("settings.providers.addKey")}
+            </summary>
+            <div className="mt-2">
+              <ChaveDoProvedor chave={chave} provedor={provedor} recarregar={recarregar} />
+            </div>
+          </details>
+        )}
 
-      {/*
-        A assinatura gasta cota do plano, e não token cobrado: preço ali não mede
-        nada. Nos outros, o preço só serve ao orçamento, então fica recolhido e
-        só aparece no provedor que já roda.
-      */}
-      {provedor.subscription || !provedor.available ? null : (
-        <details className="group">
-          <summary className="text-muted-foreground hover:text-foreground w-fit cursor-pointer text-xs">
-            {t("settings.prices.summary", { count: precos.length })}
-          </summary>
-          <div className="pt-2">
-            <PrecosDoProvedor precos={precos} provedor={provedor.name} recarregar={recarregarPrecos} />
-          </div>
-        </details>
-      )}
+        {/*
+          A assinatura gasta cota do plano, e não token cobrado: preço ali não mede
+          nada. Nos outros, o preço só serve ao orçamento, então fica recolhido e
+          só aparece no provedor que já roda.
+        */}
+        {provedor.subscription || !provedor.available ? null : (
+          <details className="group">
+            <summary className="text-muted-foreground hover:text-foreground w-fit cursor-pointer text-xs">
+              {t("settings.prices.summary", { count: precos.length })}
+            </summary>
+            <div className="pt-2">
+              <PrecosDoProvedor precos={precos} provedor={provedor.name} recarregar={recarregarPrecos} />
+            </div>
+          </details>
+        )}
+      </div>
     </div>
   );
 }
@@ -317,9 +299,9 @@ function EnderecoDoOllama({ recarregar }: { recarregar: () => Promise<void> }) {
         {t("settings.providers.ollama.label")}
       </label>
       <div className="flex gap-2">
-        <input
+        <Input
           autoComplete="off"
-          className="border-border bg-card focus:ring-ring h-8 min-w-0 flex-1 rounded-md border px-2.5 font-mono text-xs outline-none focus:ring-2"
+          className="flex-1 font-mono text-xs"
           data-locum-ollama-url=""
           id="ollama-url"
           onChange={(e) => setValor(e.target.value)}
@@ -327,7 +309,6 @@ function EnderecoDoOllama({ recarregar }: { recarregar: () => Promise<void> }) {
           value={atual}
         />
         <Button
-          className="cursor-pointer"
           data-locum-ollama-salvar=""
           disabled={enviando || atual.trim() === "" || atual.trim() === saved || aviso === "invalid"}
           size="sm"
@@ -336,7 +317,7 @@ function EnderecoDoOllama({ recarregar }: { recarregar: () => Promise<void> }) {
           {t("settings.providers.ollama.save")}
         </Button>
         {saved === null ? null : (
-          <Button className="cursor-pointer" disabled={enviando} onClick={() => gravar(null)} size="sm" type="button" variant="ghost">
+          <Button disabled={enviando} onClick={() => gravar(null)} size="sm" type="button" variant="ghost">
             {t("settings.providers.ollama.clear")}
           </Button>
         )}
@@ -346,9 +327,13 @@ function EnderecoDoOllama({ recarregar }: { recarregar: () => Promise<void> }) {
       </p>
       {aviso === null ? null : (
         <p
-          className={cn("text-xs", aviso === "invalid" ? "text-sev-critical" : "text-amber-400")}
+          className={cn(
+            "flex items-center gap-1.5 text-xs",
+            aviso === "invalid" ? "text-sev-critical" : "text-muted-foreground",
+          )}
           data-locum-ollama-aviso={aviso}
         >
+          <StatusDot estado={aviso === "invalid" ? "erro" : "aviso"} />
           {t(`settings.providers.ollama.${aviso}`)}
         </p>
       )}
@@ -409,11 +394,10 @@ function PrecosDoProvedor({
     call("providers.removePrice", provedor, nome).then(recarregar, recusar);
   };
 
-  const campo =
-    "border-border bg-background focus-visible:ring-ring rounded-md border px-3 py-1.5 font-mono text-xs outline-none focus-visible:ring-1";
+  const campo = "font-mono text-xs";
 
   return (
-    <div className="flex flex-col gap-1.5 pl-5" data-locum-precos={provedor}>
+    <div className="flex flex-col gap-1.5" data-locum-precos={provedor}>
       {precos.map((preco) => (
         <div
           className="flex flex-wrap items-center gap-3 text-xs"
@@ -434,7 +418,7 @@ function PrecosDoProvedor({
       ))}
 
       <div className="flex flex-wrap items-center gap-2">
-        <input
+        <Input
           aria-label={t("settings.prices.model", { provider: provedor })}
           className={cn(campo, "min-w-40 flex-1")}
           onChange={(evento) => setModelo(evento.target.value)}
@@ -442,7 +426,7 @@ function PrecosDoProvedor({
           spellCheck={false}
           value={modelo}
         />
-        <input
+        <Input
           aria-label={t("settings.prices.input")}
           className={cn(campo, "w-28")}
           inputMode="decimal"
@@ -450,7 +434,7 @@ function PrecosDoProvedor({
           placeholder={t("settings.prices.input")}
           value={entrada}
         />
-        <input
+        <Input
           aria-label={t("settings.prices.output")}
           className={cn(campo, "w-28")}
           inputMode="decimal"
@@ -548,12 +532,12 @@ function ChaveDoProvedor({
     chave.checkedAt === null ? null : new Date(chave.checkedAt * 1000).toLocaleString(i18n.language);
 
   return (
-    <div className="flex flex-col gap-1.5 pl-5">
+    <div className="flex flex-col gap-1.5">
       <div className="flex flex-wrap items-center gap-2">
-        <input
+        <Input
           aria-label={t("settings.providerKey.field", { provider: provedor.name })}
           autoComplete="off"
-          className="border-border bg-background focus-visible:ring-ring min-w-56 flex-1 rounded-md border px-3 py-1.5 font-mono text-xs outline-none focus-visible:ring-1"
+          className="min-w-56 flex-1 font-mono text-xs"
           data-locum-chave-campo={provedor.name}
           disabled={!chave.vault}
           onChange={(evento) => setValor(evento.target.value)}
@@ -643,10 +627,12 @@ type Remocao = ReadResult<"providers.remove">;
  */
 function ProvedoresCadastrados({
   chaves,
+  modelos,
   provedores,
   recarregar,
 }: {
   chaves: Map<string, ChaveDeProvedor>;
+  modelos: Map<string, ModelosDoProvedor> | null;
   provedores: Provedor[];
   recarregar: () => Promise<void>;
 }) {
@@ -721,14 +707,18 @@ function ProvedoresCadastrados({
 
   return (
     <div
-      className="flex flex-col gap-3 px-4 py-3"
+      className="flex flex-col"
       data-locum-cadastrados={lista.map((p) => p.id).join(",")}
       data-locum-probe="provedores-cadastrados"
     >
       {lista.length === 0 ? (
-        <p className="text-muted-foreground text-sm">{t("settings.registered.empty")}</p>
+        <EmptyState
+          className="m-3 py-5"
+          icone={<Plus aria-hidden />}
+          titulo={t("settings.registered.empty")}
+        />
       ) : (
-        <ul className="flex flex-col gap-2">
+        <ul className="flex flex-col">
           {lista.map((cadastrado) => (
             <LinhaDoCadastrado
               aoRemover={(force) => remover(cadastrado.id, force)}
@@ -736,6 +726,7 @@ function ProvedoresCadastrados({
               cadastrado={cadastrado}
               chave={chaves.get(cadastrado.id)}
               key={cadastrado.id}
+              modelos={modelos?.get(cadastrado.id) ?? null}
               ocupado={ocupado}
               provedor={provedores.find((p) => p.name === cadastrado.id)}
               recarregar={reler}
@@ -744,31 +735,31 @@ function ProvedoresCadastrados({
         </ul>
       )}
 
-      <div className="flex flex-wrap items-center gap-2">
-        <input
+      <div className="border-border flex flex-wrap items-center gap-2 border-t px-3 py-2">
+        <Input
           aria-label={t("settings.registered.id")}
           autoComplete="off"
-          className="border-border bg-background focus-visible:ring-ring w-40 rounded-md border px-3 py-1.5 font-mono text-xs outline-none focus-visible:ring-1"
+          className="w-40 font-mono text-xs"
           data-locum-cadastrar-id=""
           onChange={(evento) => setId(evento.target.value)}
           placeholder={t("settings.registered.idHint")}
           spellCheck={false}
           value={id}
         />
-        <input
+        <Input
           aria-label={t("settings.registered.label")}
           autoComplete="off"
-          className="border-border bg-background focus-visible:ring-ring w-44 rounded-md border px-3 py-1.5 text-xs outline-none focus-visible:ring-1"
+          className="w-44 text-xs"
           data-locum-cadastrar-nome=""
           onChange={(evento) => setNome(evento.target.value)}
           placeholder={t("settings.registered.labelHint")}
           spellCheck={false}
           value={nome}
         />
-        <input
+        <Input
           aria-label={t("settings.registered.baseUrl")}
           autoComplete="off"
-          className="border-border bg-background focus-visible:ring-ring min-w-56 flex-1 rounded-md border px-3 py-1.5 font-mono text-xs outline-none focus-visible:ring-1"
+          className="min-w-56 flex-1 font-mono text-xs"
           data-locum-cadastrar-url=""
           onChange={(evento) => setUrl(evento.target.value)}
           placeholder={t("settings.registered.baseUrlHint")}
@@ -786,10 +777,10 @@ function ProvedoresCadastrados({
         </Button>
       </div>
 
-      <p className="text-muted-foreground max-w-[68ch] text-xs">{t("settings.registered.howTo")}</p>
+      <p className="text-muted-foreground max-w-[68ch] px-3 pb-2 text-xs">{t("settings.registered.howTo")}</p>
 
       {recusa === null ? null : (
-        <p className="text-destructive text-xs" data-locum-cadastrados-erro={recusa}>
+        <p className="text-destructive px-3 pb-2 text-xs" data-locum-cadastrados-erro={recusa}>
           {t("settings.registered.refused", { message: recusa })}
         </p>
       )}
@@ -802,6 +793,7 @@ function LinhaDoCadastrado({
   aviso,
   cadastrado,
   chave,
+  modelos,
   ocupado,
   provedor,
   recarregar,
@@ -810,6 +802,7 @@ function LinhaDoCadastrado({
   aviso: Remocao | undefined;
   cadastrado: Cadastrado;
   chave: ChaveDeProvedor | undefined;
+  modelos: ModelosDoProvedor | null;
   ocupado: boolean;
   provedor: Provedor | undefined;
   recarregar: () => Promise<void>;
@@ -819,12 +812,13 @@ function LinhaDoCadastrado({
 
   return (
     <li
-      className="border-border flex flex-wrap items-center gap-3 rounded-md border px-3 py-2 text-sm"
+      className="border-border flex flex-wrap items-center gap-x-3 gap-y-1 border-b px-3 py-2 text-[13px] last:border-b-0"
       data-locum-cadastrado={cadastrado.id}
       data-locum-cadastrado-nome={cadastrado.label}
       data-locum-cadastrado-url={cadastrado.baseUrl}
       data-locum-cadastrado-usos={usos.length}
     >
+      <StatusDot estado={provedor === undefined ? "ocioso" : pontoDoProvedor(provedor, modelos)} />
       <span className="font-mono text-[13px]">{cadastrado.id}</span>
       <span className="text-muted-foreground text-xs">{cadastrado.label}</span>
       <span className="text-muted-foreground font-mono text-xs">{cadastrado.baseUrl}</span>
@@ -867,7 +861,7 @@ function LinhaDoCadastrado({
         </p>
       )}
       {chave === undefined || chave.variable === null || provedor === undefined ? null : (
-        <div className="w-full">
+        <div className="w-full pl-[1.875rem]">
           <ChaveDoProvedor chave={chave} provedor={provedor} recarregar={recarregar} />
         </div>
       )}
@@ -987,7 +981,7 @@ export function Modelos(_props: TelaProps) {
 
   return (
     <div
-      className="mx-auto flex w-full max-w-4xl flex-col gap-8"
+      className="mx-auto flex w-full max-w-4xl flex-col gap-6"
       data-estado={estado}
       data-locum-probe="models"
       data-locum-provedores={listaDeProvedores.map((p) => p.name).join(",")}
@@ -998,23 +992,32 @@ export function Modelos(_props: TelaProps) {
         <p className="text-destructive text-sm">{t("settings.refused", { channel: erro.channel, message: erro.message })}</p>
       )}
 
-      <SecaoEmGrade descricao={t("settings.providers.description")} titulo={t("settings.providers.title")}>
-        {ligados.length === 0 ? <Vazio>{t("settings.providers.empty")}</Vazio> : ligados.map((p) => linha(p, true))}
-      </SecaoEmGrade>
+      <GrupoDeLinhas descricao={t("settings.providers.description")} titulo={t("settings.providers.title")}>
+        {ligados.length === 0 ? (
+          <EmptyState
+            className="m-3 py-5"
+            icone={<Cpu aria-hidden />}
+            titulo={t("settings.providers.empty")}
+          />
+        ) : (
+          ligados.map((p) => linha(p, true))
+        )}
+      </GrupoDeLinhas>
 
       {paraLigar.length === 0 ? null : (
-        <SecaoEmGrade colunas descricao={t("settings.providers.addDescription")} titulo={t("settings.providers.addTitle")}>
+        <GrupoDeLinhas descricao={t("settings.providers.addDescription")} titulo={t("settings.providers.addTitle")}>
           {paraLigar.map((p) => linha(p, false))}
-        </SecaoEmGrade>
+        </GrupoDeLinhas>
       )}
 
-      <Secao descricao={t("settings.registered.description")} titulo={t("settings.registered.title")}>
+      <GrupoDeLinhas descricao={t("settings.registered.description")} titulo={t("settings.registered.title")}>
         <ProvedoresCadastrados
           chaves={chavesPorProvedor}
+          modelos={modelos}
           provedores={provedoresRecarregados?.lista ?? provedores.data ?? []}
           recarregar={recarregarProvedores}
         />
-      </Secao>
+      </GrupoDeLinhas>
     </div>
   );
 }
