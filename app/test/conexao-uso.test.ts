@@ -24,6 +24,9 @@ const perfil = (id: string, extra: Partial<AgentProfile> = {}): AgentProfile => 
   model: "claude-code/claude-sonnet-5",
   toolsets: [],
   tools: [],
+  connections: [],
+  skills: [],
+  budget: {},
   maxSteps: 12,
   ...extra,
 });

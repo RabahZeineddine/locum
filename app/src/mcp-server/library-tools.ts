@@ -11,6 +11,7 @@ import {
   type ToolRef,
   type ToolsetInput,
 } from "../config/types.js";
+import { ehLeitura } from "../config/leitura.js";
 import { buildGate } from "../executor/build.js";
 import { libraryService } from "../services/library-service.js";
 import { respond } from "./respond.js";
@@ -67,7 +68,7 @@ export function registerLibraryTools(server: McpServer): void {
     "upsert_library_agent",
     {
       description:
-        "Records a library agent as a new version. A spec identical to the latest records nothing. Fields: id (lowercase, digits and dashes), name, description, context, instructions, model (provider/model), temperature (0 to 2, optional), toolsets (ids), tools ([{server, tool, class}]), maxSteps. Tools that write externally are refused: writing goes in an action step. A tool from a write-scope server that the latest version did not already have is refused: only a person adds it, in the app.",
+        "Records a library agent as a new version. A spec identical to the latest records nothing. Fields: id (lowercase, digits and dashes), name, description, context, instructions, model (provider/model), temperature (0 to 2, optional), toolsets (ids), tools ([{server, tool, class}]), connections ([{connectionId, tools: {toolName: true|false}}]: reads are on by default, writes off, and `tools` overrides per tool), skills (names or {skill, when}), budget ({perRunUsd, perDayUsd, perRunTokens, perDayTokens}), maxSteps. Tools that write externally are refused: writing goes in an action step. A tool from a write-scope server that the latest version did not already have is refused, and so is turning on a write tool of a connection that the latest version did not already have on: only a person adds it, in the app.",
       inputSchema: {
         spec: z.record(z.string(), z.unknown()).describe("full agent spec, as get_library_agent returns it in `spec`"),
         note: z.string().optional().describe("reason for the change, stored with the version"),
@@ -79,6 +80,7 @@ export function registerLibraryTools(server: McpServer): void {
         const novo = AgentProfile.parse(spec);
         const anterior = await libraryService.getProfile(novo.id);
         await recusarEscritaNova(await ferramentasDoAgent(novo), anterior === null ? [] : await ferramentasDoAgent(anterior.spec));
+        recusarEscritaDeConexao(novo, anterior?.spec);
         const versao = await libraryService.saveProfile({ spec: novo as AgentProfileInput, note, create });
         return { id: versao.profileId, version: versao.version, note: versao.note };
       }),
@@ -117,6 +119,27 @@ export function registerLibraryTools(server: McpServer): void {
 async function ferramentasDoAgent(spec: AgentProfile): Promise<ToolRef[]> {
   const dosToolsets = await Promise.all(spec.toolsets.map((id) => libraryService.getToolset(id)));
   return [...spec.tools, ...dosToolsets.flatMap((t) => t?.tools ?? [])];
+}
+
+/** As ferramentas de escrita que as conexões do agent têm ligadas, como `conexão.ferramenta`. */
+function escritaDeConexao(spec: AgentProfile): Set<string> {
+  return new Set(
+    spec.connections.flatMap((c) =>
+      Object.entries(c.tools)
+        .filter(([tool, ligada]) => ligada && !ehLeitura(tool))
+        .map(([tool]) => `${c.connectionId}.${tool}`),
+    ),
+  );
+}
+
+function recusarEscritaDeConexao(novo: AgentProfile, anterior: AgentProfile | undefined): void {
+  const antes = anterior === undefined ? new Set<string>() : escritaDeConexao(anterior);
+  const barradas = [...escritaDeConexao(novo)].filter((t) => !antes.has(t));
+  if (barradas.length > 0) {
+    throw new Error(
+      `${barradas.join(", ")} é escrita numa conexão; liberar escrita só pela tela do Locum, onde a pessoa decide.`,
+    );
+  }
 }
 
 async function recusarEscritaNova(novas: readonly ToolRef[], jaEstavam: readonly ToolRef[]): Promise<void> {

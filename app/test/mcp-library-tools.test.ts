@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { migrateDb } from "../src/db/migrate.js";
+import { libraryService } from "../src/services/library-service.js";
 import { mcpService } from "../src/services/mcp-service.js";
 import { buildMcpServer } from "../src/mcp-server/server.js";
 
@@ -92,4 +93,58 @@ test("ferramenta nova de servidor write é recusada, direto ou pelo toolset", as
     arguments: { toolset: { id: `t-${sufixo}`, name: "T", tools: [{ server: servidor, tool: "comentar" }] } },
   });
   assert.equal(pelo.isError, true);
+});
+
+test("o agent grava e devolve conexões, skills e orçamento pelo MCP", async () => {
+  const client = await ligarCliente();
+  const id = `completo-${randomUUID().slice(0, 8)}`;
+  const spec = {
+    id,
+    name: "Completo",
+    model: "anthropic/claude-sonnet-5",
+    connections: [{ connectionId: "github", tools: { list_commits: false } }],
+    skills: ["revisao"],
+    budget: { perDayUsd: 2 },
+  };
+  resultado(await client.callTool({ name: "upsert_library_agent", arguments: { spec } }));
+  const lido = resultado(await client.callTool({ name: "get_library_agent", arguments: { id } })) as {
+    spec: { connections: unknown; skills: unknown; budget: unknown };
+  };
+  assert.deepEqual(lido.spec.connections, spec.connections);
+  assert.deepEqual(lido.spec.skills, [{ skill: "revisao", when: { always: true } }]);
+  assert.deepEqual(lido.spec.budget, { perDayUsd: 2 });
+});
+
+test("liberar escrita numa conexão pelo MCP é recusado, e manter a que já estava não", async () => {
+  const client = await ligarCliente();
+  const id = `escreve-${randomUUID().slice(0, 8)}`;
+  const base = { id, name: "Escreve", model: "a/b" };
+
+  const nova = await client.callTool({
+    name: "upsert_library_agent",
+    arguments: { spec: { ...base, connections: [{ connectionId: "github", tools: { create_comment: true } }] } },
+  });
+  assert.equal(nova.isError, true);
+  assert.match(texto(nova), /create_comment/);
+
+  // Escrita que a pessoa já liberou pela tela continua valendo quando o agente edita outra coisa.
+  await libraryService.saveProfile({
+    spec: { ...base, connections: [{ connectionId: "github", tools: { create_comment: true } }] },
+  });
+  resultado(
+    await client.callTool({
+      name: "upsert_library_agent",
+      arguments: {
+        spec: { ...base, instructions: "Novo texto.", connections: [{ connectionId: "github", tools: { create_comment: true } }] },
+      },
+    }),
+  );
+
+  // Ligar uma ferramenta de leitura, ou desligar uma de escrita, não é liberar escrita.
+  resultado(
+    await client.callTool({
+      name: "upsert_library_agent",
+      arguments: { spec: { ...base, connections: [{ connectionId: "github", tools: { get_issue: true, create_comment: false } }] } },
+    }),
+  );
 });

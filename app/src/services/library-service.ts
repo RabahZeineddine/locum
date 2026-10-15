@@ -4,11 +4,13 @@ import { db as defaultDb, schema } from "../db/index.js";
 import {
   AgentProfile,
   AgentSpec,
+  type AgentConnection,
   Toolset,
   type AgentProfileInput,
   type ToolRef,
   type ToolsetInput,
 } from "../config/types.js";
+import { ehLeitura } from "../config/leitura.js";
 
 type Db = typeof defaultDb;
 
@@ -28,6 +30,8 @@ export interface ProfileSummary {
   model: string;
   version: number;
   toolsets: string[];
+  /** Ids das conexões que o agent alcança. */
+  connections: string[];
   /** Fluxos que referenciam este agent na versão mais recente deles. */
   usedBy: string[];
 }
@@ -40,8 +44,18 @@ export interface ToolsetSummary extends Toolset {
 /** O que o executor precisa para rodar um passo com agent da biblioteca. */
 export interface ResolvedProfile {
   version: ProfileVersion;
-  /** Ferramentas dos toolsets mais as avulsas, sem repetição. */
+  /**
+   * O que o agent chama sozinho: ferramentas dos toolsets, avulsas e as das
+   * conexões (leitura, mais o que foi ligado de escrita interna), sem repetição.
+   */
   tools: ToolRef[];
+  /**
+   * Escrita que o agent recebeu numa conexão. Não entra em `tools`: escrita
+   * externa não roda sem alguém ver, e quem confirma é o chat do agent.
+   */
+  confirmar: ToolRef[];
+  /** Conexões do agent que não têm servidor cadastrado nesta máquina. */
+  semServidor: string[];
   /** Contexto e instruções juntos, prontos para o system. */
   system: string;
 }
@@ -61,6 +75,63 @@ function recusarEscrita(tools: readonly ToolRef[], onde: string): void {
   }
 }
 
+/** Onde a biblioteca descobre o que uma conexão alcança. */
+export interface CatalogoDeConexoes {
+  /** Nomes dos servidores MCP da conexão; vazio quando não há nenhum. */
+  servidoresDe(connectionId: string): Promise<string[]>;
+  /** Ferramentas do servidor, ou nulo quando nunca foram listadas. */
+  ferramentasDe(servidor: string): Promise<string[] | null>;
+}
+
+/** As conexões e ferramentas de verdade, carregadas só na primeira vez que alguém pede. */
+const catalogoPadrao: CatalogoDeConexoes = {
+  servidoresDe: async (id) => {
+    const { connectionService } = await import("./connection-service.js");
+    return (await connectionService.list()).find((c) => c.id === id)?.servers ?? [];
+  },
+  ferramentasDe: async (servidor) => {
+    const { mcpService } = await import("./mcp-service.js");
+    const guardada = await mcpService.cachedTools(servidor);
+    if (guardada !== null) return guardada.tools.map((t) => t.name);
+    try {
+      return (await mcpService.listTools(servidor)).map((t) => t.name);
+    } catch {
+      return null;
+    }
+  },
+};
+
+/**
+ * Cada conexão vira as ferramentas dos servidores dela: leitura liberada,
+ * escrita só a marcada, e a sobrescrita por ferramenta manda nos dois lados.
+ * A classe é a da tela de conexão, pelo nome.
+ */
+export async function expandirConexoes(
+  conexoes: readonly AgentConnection[],
+  catalogo: CatalogoDeConexoes,
+): Promise<{ leitura: ToolRef[]; escrita: ToolRef[]; semServidor: string[] }> {
+  const leitura: ToolRef[] = [];
+  const escrita: ToolRef[] = [];
+  const semServidor: string[] = [];
+  for (const conexao of conexoes) {
+    const servidores = await catalogo.servidoresDe(conexao.connectionId);
+    if (servidores.length === 0) {
+      semServidor.push(conexao.connectionId);
+      continue;
+    }
+    for (const server of servidores) {
+      const oferecidas = (await catalogo.ferramentasDe(server)) ?? [];
+      const nomes = new Set([...oferecidas, ...Object.keys(conexao.tools).filter((n) => conexao.tools[n] === true)]);
+      for (const tool of nomes) {
+        if (!(conexao.tools[tool] ?? ehLeitura(tool))) continue;
+        if (ehLeitura(tool)) leitura.push({ server, tool, class: "read" });
+        else escrita.push({ server, tool, class: "external_write" });
+      }
+    }
+  }
+  return { leitura, escrita, semServidor };
+}
+
 function semRepetir(tools: readonly ToolRef[]): ToolRef[] {
   const vistos = new Map<string, ToolRef>();
   for (const t of tools) vistos.set(`${t.server}\u0000${t.tool}`, t);
@@ -75,7 +146,10 @@ function semRepetir(tools: readonly ToolRef[]): ToolRef[] {
  * rodou. Toolset não tem, e editar vale para a próxima execução de todos.
  */
 export class LibraryService {
-  constructor(private readonly db: Db = defaultDb) {}
+  constructor(
+    private readonly db: Db = defaultDb,
+    private readonly conexoes: CatalogoDeConexoes = catalogoPadrao,
+  ) {}
 
   /* --------------------------------------------------------------- agents */
 
@@ -93,6 +167,7 @@ export class LibraryService {
         model: ultima.spec.model,
         version: ultima.version,
         toolsets: ultima.spec.toolsets,
+        connections: ultima.spec.connections.map((c) => c.connectionId),
         usedBy: usos.get(perfil.id) ?? [],
       });
     }
@@ -167,7 +242,7 @@ export class LibraryService {
 
   /**
    * O agent pronto para rodar: versão mais recente, ferramentas dos toolsets
-   * somadas às avulsas, e o system montado. Toolset apagado depois de gravado
+   * somadas às avulsas e às das conexões, e o system montado. Toolset apagado depois de gravado
    * falha aqui, com nome, em vez de rodar com menos ferramenta sem avisar.
    */
   async resolveProfile(id: string): Promise<ResolvedProfile> {
@@ -180,11 +255,13 @@ export class LibraryService {
       tools.push(...toolset.tools);
     }
     tools.push(...version.spec.tools);
+    const { leitura, escrita, semServidor } = await expandirConexoes(version.spec.connections, this.conexoes);
+    tools.push(...leitura);
     const partes = [
       version.spec.context.trim() === "" ? "" : `# Contexto\n\n${version.spec.context.trim()}`,
       version.spec.instructions.trim() === "" ? "" : `# Como trabalhar\n\n${version.spec.instructions.trim()}`,
     ].filter((p) => p !== "");
-    return { version, tools: semRepetir(tools), system: partes.join("\n\n") };
+    return { version, tools: semRepetir(tools), confirmar: semRepetir(escrita), semServidor, system: partes.join("\n\n") };
   }
 
   /** Id livre a partir do nome, como o da automação. */

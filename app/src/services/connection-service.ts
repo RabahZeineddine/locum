@@ -248,6 +248,18 @@ export class ConnectionService {
         porId.set(chave, antes === undefined ? uso : { ...antes, como: [...new Set([...antes.como, ...uso.como])] });
       }
     }
+    // O agent escolhe por conexão, e não pelo nome do servidor.
+    for (const agent of fontes.agents) {
+      if (!agent.connections.some((c) => c.connectionId === id)) continue;
+      const chave = `agent:${agent.id}`;
+      const antes = porId.get(chave);
+      porId.set(
+        chave,
+        antes === undefined
+          ? { tipo: "agent", id: agent.id, nome: agent.name, como: ["ferramenta"] }
+          : { ...antes, como: [...new Set([...antes.como, "ferramenta" as const])] },
+      );
+    }
     return [...porId.values()];
   }
 

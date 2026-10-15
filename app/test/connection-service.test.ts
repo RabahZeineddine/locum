@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { AgentProfile } from "../src/config/types.js";
 import { migrateDb } from "../src/db/migrate.js";
 import { CATALOG, ConnectionService } from "../src/services/connection-service.js";
 import type { GithubService } from "../src/services/github-service.js";
@@ -309,4 +310,15 @@ test("servidor próprio autoriza com o app OAuth que o plugin declara", async ()
   } finally {
     await mcp.remove("casa-oauth");
   }
+});
+
+test("o agent que escolhe a conexão aparece em quem usa, mesmo sem ferramenta avulsa dela", async () => {
+  const { servico } = montar();
+  const agent = AgentProfile.parse({ id: "revisor", name: "Revisor", model: "a/b", connections: [{ connectionId: "github" }] });
+  const comFontes = new ConnectionService({
+    ...(servico as unknown as { deps: object }).deps,
+    fontesDeUso: async () => ({ automacoes: [], agents: [agent], toolsets: [] }),
+  });
+  assert.deepEqual(await comFontes.usage("github"), [{ tipo: "agent", id: "revisor", nome: "Revisor", como: ["ferramenta"] }]);
+  assert.deepEqual(await comFontes.usage("notion"), []);
 });
