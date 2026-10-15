@@ -9,6 +9,7 @@
  * de verificações do `--smoke`.
  */
 import { spawn } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -56,6 +57,33 @@ console.log(`fumaça contra ${binario}`);
  */
 const TETO_MS = 5 * 60_000;
 
+/**
+ * O Dock do pacote. Três coisas, todas só verificáveis no `.app`: o Info.plist
+ * nasce `LSUIElement`, o `--mcp` nunca aparece no Dock, e o modo normal se
+ * promove e aparece. O `--diagnostico-dock` sobe o processo até a política do
+ * Dock aplicada, imprime `dock-visivel=<bool>` e sai.
+ */
+function perguntarDock(binario, argumentos) {
+  const saida = execFileSync(binario, [...argumentos, "--diagnostico-dock"], {
+    encoding: "utf8",
+    timeout: 60_000,
+    stdio: ["ignore", "pipe", "ignore"],
+  });
+  const achou = /dock-visivel=(true|false)/.exec(saida);
+  if (achou === null) throw new Error(`o diagnóstico do Dock não respondeu: ${JSON.stringify(saida)}`);
+  return achou[1] === "true";
+}
+
+async function examinarDock(bundle, binario) {
+  const plist = join(bundle, "Contents", "Info.plist");
+  const lsui = execFileSync("/usr/libexec/PlistBuddy", ["-c", "Print :LSUIElement", plist], { encoding: "utf8" }).trim();
+  if (lsui !== "true") throw new Error(`Info.plist sem LSUIElement verdadeiro (veio "${lsui}")`);
+  if (perguntarDock(binario, ["--mcp"])) throw new Error("o --mcp empacotado apareceu no Dock");
+  if (perguntarDock(binario, ["--ferramentas"])) throw new Error("o --ferramentas empacotado apareceu no Dock");
+  if (!perguntarDock(binario, [])) throw new Error("o modo normal empacotado ficou sem Dock");
+  console.log("dock do pacote: LSUIElement, --mcp e --ferramentas sem Dock, modo normal com Dock");
+}
+
 const filho = spawn(binario, ["--smoke"], { stdio: "inherit" });
 
 const teto = setTimeout(() => {
@@ -81,7 +109,8 @@ filho.on("exit", (code, signal) => {
   }
   // Depois da bateria, o caminho de quem usa o Locum pelo Claude Code: o mesmo
   // binário servindo MCP, que só dentro do `.app` alcança o cofre.
-  examinarMcp(binario)
+  examinarDock(bundle, binario)
+    .then(() => examinarMcp(binario))
     .then(async (resumo) => [resumo, await examinarMcp(binario, [], "--ferramentas")])
     .then(
       (resumos) => {

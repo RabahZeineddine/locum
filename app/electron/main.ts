@@ -1,6 +1,7 @@
 // Primeiro import de propósito: com `--mcp`, desvia o log do stdout antes que
 // qualquer outro módulo escreva nele.
 import { modoFerramentas, modoMcp } from "./mcp-stdout.js";
+import { politicaDoDock } from "./dock-policy.js";
 import { app, BrowserWindow, shell } from "electron";
 import { captureDeepLinks } from "./deep-link.js";
 import { VERSAO } from "./versao.js";
@@ -79,7 +80,7 @@ if (pastaDaFumaca) {
 const comandoDeLinha =
   modoMcp || process.argv.includes("--set-secret") || process.argv.includes("--remove-secret");
 captureDeepLinks({
-  singleInstance: !smoke && !comandoDeLinha,
+  singleInstance: !smoke && !comandoDeLinha && !process.argv.includes("--diagnostico-dock"),
   ...(modoMcp ? { encaminhar: abrirOAppDeVerdade } : {}),
 });
 
@@ -6469,11 +6470,33 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
   console.log(`capturas em ${destino}`);
 }
 
+/**
+ * O pacote nasce `LSUIElement` (sem Dock), e só o modo com janela é promovido
+ * a app comum, antes de qualquer janela. Os modos sem janela ficam `accessory`
+ * também em desenvolvimento, onde o Info.plist é o do Electron.
+ */
+async function aplicarPoliticaDoDock(): Promise<void> {
+  const politica = politicaDoDock({
+    modoMcp,
+    smoke,
+    comandoDeCofre: flagValue("--set-secret") !== undefined || flagValue("--remove-secret") !== undefined,
+  });
+  app.setActivationPolicy(politica);
+  if (politica === "regular") await app.dock?.show();
+  else app.dock?.hide();
+}
+
 async function main(): Promise<void> {
   await app.whenReady();
-  // Servidor MCP não tem janela nem ícone no dock: quem o abre é o Claude Code,
-  // a cada sessão, e um ícone pulando a cada sessão nova seria ruído.
-  if (modoMcp) app.dock?.hide();
+  await aplicarPoliticaDoDock();
+  if (process.argv.includes("--diagnostico-dock")) {
+    // Para a fumaça do pacote: o que o macOS enxerga deste processo, sem subir
+    // nada. `process.stdout` direto, porque no `--mcp` o `console.log` vai
+    // para o stderr.
+    process.stdout.write(`dock-visivel=${app.dock?.isVisible() ?? false}\n`);
+    app.exit(0);
+    return;
+  }
 
   // Antes de tudo que lê o banco, inclusive do idioma, que mora em `settings`.
   const esquema = await migrarEsquema();
@@ -6583,10 +6606,10 @@ async function main(): Promise<void> {
   });
 
   if (smoke) {
-    // Sem dock e sem janela: o loop de verificacao roda sem ninguem olhando, e
-    // uma janela aberta travaria a iteracao esperando um clique. A bandeja
-    // continua valendo, porque ela nao pede clique de ninguem para existir.
-    app.dock?.hide();
+    // Sem dock e sem janela (politica `accessory`, ver `aplicarPoliticaDoDock`):
+    // o loop de verificacao roda sem ninguem olhando, e uma janela aberta
+    // travaria a iteracao esperando um clique. A bandeja continua valendo,
+    // porque ela nao pede clique de ninguem para existir.
     // A pasta de rascunho nasce vazia, e boa parte da bateria parte do agent
     // semente. Numa pasta que já o tem, `upsert` com o mesmo spec não grava nada.
     const { agentService } = await import("../src/services/agent-service.js");
