@@ -160,7 +160,7 @@ function LinhaDoAgent({
       {agent.models.length > 0 && (
         <span className="hidden shrink-0 gap-1 md:flex">
           {agent.models.map((modelo) => (
-            <Badge key={modelo} title={modelo} variant="secondary">
+            <Badge key={modelo} variant="secondary">
               {rotuloDoModelo(modelo)}
             </Badge>
           ))}

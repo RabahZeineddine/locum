@@ -6,7 +6,6 @@ import { Input } from "@/components/ui/input";
 import { ListGroup, ListRow } from "@/components/ui/list-row";
 import { StatusDot } from "@/components/ui/status-dot";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { pontoDoEstado } from "@/lib/estado-do-ponto";
 import { MODELOS, rascunhoDoModelo, type ModeloId } from "@/lib/automacao";
 import { call, read, useRead, type ReadResult } from "@/lib/bridge";
@@ -340,22 +339,22 @@ export function LinhaDaAutomacao({
         {aviso === null ? null : <span className="text-muted-foreground truncate text-xs">{aviso}</span>}
       </span>
 
-      <span className="flex w-64 shrink-0 items-center gap-2 overflow-hidden">
+      <span className="flex w-72 shrink-0 flex-col gap-0.5 overflow-hidden">
         {gatilhos.length === 0 ? (
           <span className="text-muted-foreground text-xs">{t("automations.list.noTrigger")}</span>
         ) : (
           gatilhos.map((g, i) => (
-            <Tooltip key={`${g.kind}-${i}`}>
-              <TooltipTrigger asChild>
-                <span className="flex shrink-0 items-center gap-1.5" data-locum-gatilho-ligado={g.enabled ? "sim" : "nao"}>
-                  <Selo app={appDoGatilho(g.config.kind)} id={g.config.kind} tamanho="sm" />
-                  <StatusDot estado={g.enabled ? "ok" : "ocioso"} />
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>
+            <span
+              className="text-muted-foreground flex min-w-0 items-center gap-1.5 text-xs"
+              data-locum-gatilho-ligado={g.enabled ? "sim" : "nao"}
+              key={`${g.kind}-${i}`}
+            >
+              <Selo app={appDoGatilho(g.config.kind)} id={g.config.kind} tamanho="sm" />
+              <StatusDot estado={g.enabled ? "ok" : "ocioso"} />
+              <span className="truncate" title={`${tituloDoGatilho(t, g.config)} · ${resumoDoGatilho(t, g.config, i18n.language)}`}>
                 {tituloDoGatilho(t, g.config)} · {resumoDoGatilho(t, g.config, i18n.language)}
-              </TooltipContent>
-            </Tooltip>
+              </span>
+            </span>
           ))
         )}
       </span>

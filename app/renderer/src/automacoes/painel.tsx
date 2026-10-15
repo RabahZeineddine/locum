@@ -781,9 +781,16 @@ function ModoDaAcao({ passo, trocar }: { passo: PassoDeAcao; trocar: (novo: Pass
           ))}
         </div>
       ) : null}
-      <p className="text-muted-foreground text-xs">
-        {t(passo.mode === "auto" ? "automations.panel.autoHint" : oferecidos.length > 1 ? "automations.panel.approval" : "automations.panel.approvalOnly")}
-      </p>
+      {passo.mode === "auto" ? (
+        <p className="text-destructive flex items-start gap-1.5 text-xs" data-locum-modo-auto="">
+          <StatusDot className="mt-1" estado="erro" />
+          {t("automations.panel.autoHint")}
+        </p>
+      ) : (
+        <p className="text-muted-foreground text-xs">
+          {t(oferecidos.length > 1 ? "automations.panel.approval" : "automations.panel.approvalOnly")}
+        </p>
+      )}
     </Campo>
   );
 }

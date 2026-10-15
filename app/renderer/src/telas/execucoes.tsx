@@ -306,7 +306,7 @@ export function LinhaDeExecucao({
             <span className="text-muted-foreground min-w-0 flex-1 truncate">{t("runs.no_target")}</span>
           )}
         </span>
-        <span className="text-muted-foreground flex flex-wrap items-center gap-x-3 text-xs">
+        <span className="text-muted-foreground flex flex-nowrap items-center gap-x-3 overflow-hidden whitespace-nowrap text-xs">
           <Estado status={run.status} />
           <span className="font-mono">
             {run.agentId} <span className="opacity-60">{t("common.version", { version: run.agentVersion })}</span>
@@ -318,7 +318,7 @@ export function LinhaDeExecucao({
         </span>
       </span>
       <span className="text-muted-foreground num w-20 shrink-0 text-right text-xs">{quando(t, run.createdAt)}</span>
-      <span className="num w-20 shrink-0 text-right text-xs">{dinheiro(t, run)}</span>
+      <span className="num w-28 shrink-0 whitespace-nowrap text-right text-xs">{dinheiro(t, run)}</span>
     </button>
   );
 }

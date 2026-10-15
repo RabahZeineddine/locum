@@ -6,7 +6,7 @@ type Estado = "ok" | "aviso" | "erro" | "ocioso";
  * pessoa ou foram interrompidos; o que ainda não começou ou foi descartado
  * fica ocioso. Estado novo gravado no banco cai em ocioso em vez de quebrar.
  */
-const PONTOS: Record<string, Estado> = {
+export const PONTOS: Record<string, Estado> = {
   done: "ok",
   running: "ok",
   failed: "erro",
@@ -19,5 +19,5 @@ const PONTOS: Record<string, Estado> = {
 };
 
 export function pontoDoEstado(estado: string): Estado {
-  return PONTOS[estado] ?? "ocioso";
+  return Object.hasOwn(PONTOS, estado) ? PONTOS[estado]! : "ocioso";
 }

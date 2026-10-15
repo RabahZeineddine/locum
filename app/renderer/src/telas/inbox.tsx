@@ -597,7 +597,7 @@ function Linha({
         <ul className="border-border bg-muted/30 border-t">
           {achados.map((a, i) => (
             <li className="flex gap-3 py-2 pr-3 pl-8 text-[13px]" key={i}>
-              <StatusDot className="mt-1.5" estado={PONTO[(a.severity as Severidade) ?? "low"]} />
+              <StatusDot className="mt-1.5" estado={PONTO[a.severity as Severidade] ?? "ocioso"} />
               <div className="min-w-0 max-w-[72ch]">
                 <span className="text-muted-foreground font-mono text-xs">
                   {a.file ?? ""}

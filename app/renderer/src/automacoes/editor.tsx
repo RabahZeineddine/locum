@@ -571,6 +571,8 @@ type DadosDoNo = {
   subtitulo: string;
   gatilho: boolean;
   aprovacao: boolean;
+  /** Ação que sai sozinha, sem passar pela fila. */
+  automatico: boolean;
   problema: "bloqueia" | "aviso" | null;
   desligado: boolean;
   /** Saídas de uma decisão, uma alça por caminho. Vazio: uma saída só. */
@@ -617,6 +619,7 @@ function CanvasDaAutomacao({
         subtitulo: resumoDoGatilho(t, g.config, i18n.language),
         gatilho: true,
         aprovacao: false,
+        automatico: false,
         problema: nivel(g.chave),
         desligado: !g.enabled,
         caminhos: [],
@@ -645,6 +648,7 @@ function CanvasDaAutomacao({
                 : (p.model.split("/").at(-1) ?? p.model),
           gatilho: false,
           aprovacao: p.type === "action" && p.mode === "approve",
+          automatico: p.type === "action" && p.mode === "auto",
           problema: nivel(p.key),
           desligado: false,
           caminhos: caminhosDe(p).map((c) => ({ id: c, rotulo: rotuloDoCaminho(t, c) })),
@@ -775,12 +779,18 @@ function NoDoComponente({ data, selected }: NodeProps<NoDoCanvas>) {
         {data.problema === null ? null : <StatusDot data-locum-no-problema={data.problema} estado={data.problema === "bloqueia" ? "erro" : "aviso"} />}
       </div>
       {data.subtitulo === "" ? null : <p className="text-muted-foreground mt-1 truncate text-xs">{data.subtitulo}</p>}
-      {data.aprovacao || data.gatilho ? (
+      {data.aprovacao || data.automatico || data.gatilho ? (
         <div className="text-muted-foreground mt-1 flex flex-wrap gap-x-3 text-[11px]">
           {data.aprovacao ? (
             <span className="flex items-center gap-1.5">
               <StatusDot estado="aviso" />
               {t("automations.canvas.approval")}
+            </span>
+          ) : null}
+          {data.automatico ? (
+            <span className="flex items-center gap-1.5" data-locum-no-auto="">
+              <StatusDot estado="erro" />
+              {t("automations.panel.modes.auto")}
             </span>
           ) : null}
           {data.gatilho ? (
