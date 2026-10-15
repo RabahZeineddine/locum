@@ -540,6 +540,8 @@ export interface Problema {
   no?: string;
   /** Impede salvar. Os outros são aviso. */
   bloqueia: boolean;
+  /** Para onde levar a pessoa a resolver. */
+  atalho?: { rota: "connections" | "agents"; detalhe: string };
 }
 
 export interface Contexto {
@@ -548,6 +550,8 @@ export interface Contexto {
   trackers: readonly string[];
   /** Ids da biblioteca. Ausente enquanto a lista não chegou: não acusa nada. */
   agents?: readonly string[];
+  /** O GitHub tem token. Ausente enquanto a lista de conexões não chegou: não acusa nada. */
+  githubComToken?: boolean;
 }
 
 /**
@@ -578,6 +582,18 @@ export function problemas(r: Rascunho, ctx: Contexto): Problema[] {
     if (c.kind === "teams-inbox" && !ctx.teamsConectado) {
       lista.push({ chave: "automations.problems.teamsOff", no: g.chave, bloqueia: false });
     }
+  }
+
+  // O diff do PR vem do GitHub pelo token da conexão: sem ele a revisão chega sem o que revisar.
+  const trazDiff = r.gatilhos.find((g) => g.config.kind === "teams-inbox" && g.config.prLinks);
+  if (trazDiff !== undefined && ctx.githubComToken === false) {
+    lista.push({ chave: "automations.problems.githubTokenForDiff", no: trazDiff.chave, bloqueia: false, atalho: { rota: "connections", detalhe: "github" } });
+  }
+
+  // O modelo de revisão por link nasce com passo de IA solto quando não havia agent revisor: sugere criar um.
+  const revisao = r.spec.steps.find((p) => p.key === "revisar" && p.type === "model" && p.profile === undefined);
+  if (trazDiff !== undefined && revisao !== undefined && ctx.agents !== undefined) {
+    lista.push({ chave: "automations.problems.createReviewer", no: "revisar", bloqueia: false, atalho: { rota: "agents", detalhe: "novo" } });
   }
 
   const porChave = new Map(r.spec.steps.map((p) => [p.key, p]));
@@ -645,8 +661,9 @@ export function rascunhoDoModelo(
   nome: string,
   tracker: string | null,
   /** Os agents já criados: o fluxo em branco sugere o primeiro como nó de agent. */
-  agentes: readonly string[] = [],
+  agentes: readonly { id: string; name?: string }[] | readonly string[] = [],
 ): Rascunho {
+  const lista = agentes.map((a) => (typeof a === "string" ? { id: a, name: a } : { id: a.id, name: a.name ?? a.id }));
   const base = { id, name: nome, defaultTools: [], skills: [], budget: ORCAMENTO } satisfies Partial<AgentSpec>;
   const ia = (key: string, name: string, prompt: string, needs: string[], outputSchema?: Record<string, unknown>): PassoDeIA => ({
     type: "model",
@@ -786,7 +803,10 @@ export function rascunhoDoModelo(
           gatilho({ kind: "poll", source: "github", repoMatch: ".*", authorship: "others", includeDrafts: false, everyMinutes: 15 }),
         ],
       };
-    case "teamsPrReview":
+    case "teamsPrReview": {
+      // A revisão é de um agent só quando há um de nome parecido com revisor ou review.
+      // Sem ele fica o passo de IA, e o editor sugere criar o agent: o primeiro qualquer não é revisor.
+      const revisor = lista.find((a) => /revis|review/i.test(`${a.name} ${a.id}`))?.id;
       return {
         spec: {
           ...base,
@@ -819,15 +839,17 @@ export function rascunhoDoModelo(
                 FORMATOS.respostaTeams,
               ),
               maxSteps: 16,
+              ...(revisor === undefined ? {} : { profile: revisor }),
             },
             acao("responder", "Responder no fio", "teams.post", "revisar"),
           ],
         },
         gatilhos: [gatilho({ kind: "teams-inbox", mentions: false, dms: false, prLinks: true, channels: [], everyMinutes: 5 })],
       };
+    }
     case "blank": {
       // Com agent criado, o primeiro passo já chama um: o nó de IA solto fica para quem ainda não tem.
-      const agente = agentes[0];
+      const agente = lista[0]?.id;
       return {
         spec: {
           ...base,

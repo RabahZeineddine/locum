@@ -8,6 +8,44 @@ Atualizado em 15 de outubro de 2026.
 
 Tokens densos (quase preto, Inter, um acento violeta, sem gradiente), componentes base novos em `renderer/components/ui`, barra lateral estreita, paleta ⌘K com navegação e ações, Conexões em linhas com detalhe em duas colunas e Hoje compacta; as regras estão em `docs/design.md`.
 
+## Exportar e importar automação em pacote (15/10/2026)
+
+ADR 0005, decisão 7. O pacote é um `.locum.json` com `formato`, `versao` (1), o
+fluxo, os agents que ele usa e os requisitos da outra máquina.
+
+- **Formato** (`src/pacote/formato.ts`): esquema zod estrito, campo desconhecido
+  é erro com o lugar dele, versão desconhecida pede atualizar o Locum, e o
+  arquivo só passa por `JSON.parse` e validação. Nada vira comando: servidor
+  MCP é nome, pacote npm e host, só para achar o equivalente.
+- **Exportar** (`PacoteService.exportar`, botão no editor, só com a automação
+  salva): leva gatilhos, passos, ligações, agents (instruções, contexto, modelo
+  como sugestão, conexões, ferramentas, skills, orçamento) e requisitos. Fica
+  de fora o que é desta máquina: canais e chats, dono e autores do GitHub,
+  argumentos de consulta e de `mcp.call`, tracker, cofre, cursor e histórico.
+  Toolset vira ferramentas avulsas do agent. Texto livre passa por
+  `src/pacote/limpeza.ts` (token, e-mail, ids de canal, home) e o pacote diz o
+  que omitiu em `omitidos`.
+- **Importar** (`PacoteService.previa` e `importar`, botão em Automações e
+  arrastar o arquivo para a lista): a prévia diz o que será criado e cada
+  dependência (conexão, servidor, provedor, skill) como ok, falta conectar ou ausente,
+  com o atalho para Conexões, Modelos ou "Importar do Claude Code". A pessoa liga
+  modelo de cada agent, servidor e conexão equivalentes. Gatilho entra
+  desligado, o de canal do Slack fica de fora e canais ficam para escolher.
+  Ação em `auto` entra em aprovação. Agent de mesmo id com conteúdo diferente
+  mostra a diferença e, por padrão, é criado ao lado (a automação aponta para o
+  novo); "atualizar o meu" é escolha explícita e lista as automações afetadas.
+  Igual não cria versão, e nome igual com id diferente exige escolha.
+  A classe das ferramentas do arquivo não vale: é recalculada pela anotação do
+  servidor (cache) ou pelo nome, e escrita sai de agent da biblioteca. O
+  endereço de `http.request` sai só com esquema e host e volta "a preencher". Automação de
+  mesmo id ganha id livre.
+- **Modelo do Teams**: com agents, o passo de revisão usa o de nome parecido
+  com revisor ou review (senão o primeiro), e o editor avisa, com atalho para
+  Conexões > GitHub, que a revisão por link precisa do token para trazer o diff.
+- **Fumaça**: `checkPacote` exporta, importa por arrastar o arquivo (pasta
+  temporária) e confere a prévia com servidor ausente; `LOCUM_PACOTE_CAPTURAS`
+  pede as capturas.
+
 ## Atritos da jornada: Hoje, Conexões, Agent e Automações (15/10/2026)
 
 Lote de uma jornada real no app empacotado.

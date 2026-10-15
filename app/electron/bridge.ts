@@ -2,7 +2,7 @@ import { listTeamsChannels } from "../src/teams/channels.js";
 import { claudeAccountService, SERVIDOR_CONTA } from "../src/runtimes/claude-account.js";
 import { claudeImportService } from "../src/services/claude-import.js";
 import { app, BrowserWindow, dialog, ipcMain, shell, type WebContents } from "electron";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, stat, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { agentBuilder, criadorDisponivel } from "./agent-builder.js";
 import { agentChat } from "./agent-chat.js";
@@ -21,6 +21,8 @@ import { agentService } from "../src/services/agent-service.js";
 import { approvalService } from "../src/services/approval-service.js";
 import { automationService } from "../src/services/automation-service.js";
 import { libraryService } from "../src/services/library-service.js";
+import { pacoteService } from "../src/services/pacote-service.js";
+import { EXTENSAO_DO_PACOTE, TAMANHO_MAXIMO_DO_PACOTE } from "../src/pacote/formato.js";
 import { discoverSkills } from "../src/skills/loader.js";
 import { claudeCodeService } from "../src/services/claude-code-service.js";
 import { opencodeService } from "../src/services/opencode-service.js";
@@ -224,6 +226,35 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "automations.setEnabled": (agentId, enabled) => automationService.setEnabled(agentId, enabled),
     "automations.runNow": (agentId) => automationService.runNow(agentId),
     "automations.suggestId": (nome) => automationService.suggestId(nome),
+    "pacote.exportFile": async (agentId) => {
+      const { texto, nomeDoArquivo } = await pacoteService.exportar(agentId);
+      const janela = BrowserWindow.getFocusedWindow();
+      const opcoes = {
+        title: t("pacote.exportTitle"),
+        defaultPath: join(app.getPath("documents"), nomeDoArquivo),
+        filters: [{ name: "Locum", extensions: ["json"] }],
+      };
+      const escolha = janela ? await dialog.showSaveDialog(janela, opcoes) : await dialog.showSaveDialog(opcoes);
+      if (escolha.canceled || escolha.filePath === undefined) return null;
+      const caminho = escolha.filePath.endsWith(".json") ? escolha.filePath : `${escolha.filePath}${EXTENSAO_DO_PACOTE}`;
+      await writeFile(caminho, texto);
+      return { caminho, nomeDoArquivo: basename(caminho) };
+    },
+    "pacote.chooseFile": async () => {
+      const janela = BrowserWindow.getFocusedWindow();
+      const opcoes = {
+        title: t("pacote.importTitle"),
+        filters: [{ name: "Locum", extensions: ["json"] }],
+        properties: ["openFile" as const],
+      };
+      const escolha = janela ? await dialog.showOpenDialog(janela, opcoes) : await dialog.showOpenDialog(opcoes);
+      const caminho = escolha.filePaths[0];
+      if (escolha.canceled || caminho === undefined) return null;
+      if ((await stat(caminho)).size > TAMANHO_MAXIMO_DO_PACOTE) throw new Error(t("pacote.tooBig"));
+      return { nome: basename(caminho), texto: await readFile(caminho, "utf8") };
+    },
+    "pacote.preview": (texto) => pacoteService.previa(texto),
+    "pacote.import": (texto, escolhas) => pacoteService.importar(texto, escolhas),
     "library.profiles": () => libraryService.listProfiles(),
     "library.profile": (id) => libraryService.getProfile(id),
     "library.profileVersions": (id) => libraryService.listProfileVersions(id),

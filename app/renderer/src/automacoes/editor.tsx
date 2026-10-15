@@ -27,6 +27,7 @@ import {
   type Rascunho,
 } from "@/lib/automacao";
 import { call, read, useRead, type ReadResult } from "@/lib/bridge";
+import { semPrefixoDoIpc } from "@/lib/erro-da-ponte";
 import { cn } from "@/lib/utils";
 import {
   applyNodeChanges,
@@ -41,7 +42,7 @@ import {
   useNodesInitialized,
   useReactFlow,
 } from "@xyflow/react";
-import { AlertTriangle, ArrowLeft, List, Loader2, Play, Power } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Download, List, Loader2, Play, Power } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { RotaId } from "../rotas";
@@ -128,6 +129,7 @@ function EditorCarregado({
     slackConectado: conectado("slack"),
     teamsConectado: conectado("teams"),
     trackers: listaDeTrackers.map((tr) => tr.id),
+    ...(conexoes.data === undefined ? {} : { githubComToken: (conexoes.data.find((c) => c.id === "github")?.partes?.token ?? "missing") === "ok" }),
     ...(bibliotecaRelida === null && biblioteca.data === undefined ? {} : { agents: agentsDaBiblioteca.map((a) => a.id) }),
   };
   const appsLigados: Record<AppDoComponente, boolean> = {
@@ -144,6 +146,16 @@ function EditorCarregado({
   const lista = problemas(rascunho, ctx);
   const bloqueado = lista.some((p) => p.bloqueia);
   const ligada = salvo.gatilhos.some((g) => g.enabled);
+
+  const exportar = (): void => {
+    setAviso(null);
+    call("pacote.exportFile", agentId).then(
+      (r) => {
+        if (r !== null) setAviso({ tipo: "ok", texto: t("pacote.export.done", { arquivo: r.nomeDoArquivo }) });
+      },
+      (e: unknown) => setAviso({ tipo: "erro", texto: semPrefixoDoIpc(e instanceof Error ? e.message : String(e)) }),
+    );
+  };
 
   const salvar = (): void => {
     setOcupado("salvar");
@@ -312,6 +324,18 @@ function EditorCarregado({
           <List className="size-4" />
           {t("automations.editor.asList")}
         </Button>
+        <Button
+          className="cursor-pointer"
+          data-locum-automacao-exportar=""
+          disabled={ocupado !== null || mudou}
+          onClick={exportar}
+          size="sm"
+          title={mudou ? t("pacote.export.saveFirst") : t("pacote.export.hint")}
+          variant="ghost"
+        >
+          <Download className="size-4" />
+          {t("pacote.export.button")}
+        </Button>
         <Button className="cursor-pointer" disabled={ocupado !== null} onClick={executar} size="sm" variant="outline">
           {ocupado === "rodar" ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
           {t("automations.editor.runNow")}
@@ -376,6 +400,11 @@ function EditorCarregado({
                 >
                   {t(p.chave)}
                 </button>
+                {p.atalho === undefined ? null : (
+                  <button className="text-primary ml-2 cursor-pointer hover:underline" onClick={() => navegar(p.atalho!.rota, p.atalho!.detalhe)} type="button">
+                    {t("automations.problems.openConnection")}
+                  </button>
+                )}
               </li>
             ))}
           </ul>

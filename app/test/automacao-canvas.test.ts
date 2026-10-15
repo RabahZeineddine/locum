@@ -208,3 +208,36 @@ test("em branco sugere o agent criado, e sem agent fica o passo de IA", () => {
   const sem = rascunhoDoModelo("blank", "b", "B", null);
   assert.equal(sem.spec.steps[0]!.type === "model" && sem.spec.steps[0]!.profile, undefined);
 });
+
+test("o modelo de PR no Teams usa o agent de nome parecido com revisor, e sem ele fica o passo de IA", () => {
+  const passo = (r: ReturnType<typeof rascunhoDoModelo>) => {
+    const p = r.spec.steps[0]!;
+    return p.type === "model" ? p.profile : undefined;
+  };
+  assert.equal(passo(rascunhoDoModelo("teamsPrReview", "t", "T", null, [{ id: "geral", name: "Geral" }, { id: "rev", name: "Revisor de código" }])), "rev");
+  // O primeiro agent qualquer não é revisor: fica o passo de IA, como antes.
+  assert.equal(passo(rascunhoDoModelo("teamsPrReview", "t", "T", null, [{ id: "geral", name: "Geral" }, { id: "outro", name: "Outro" }])), undefined);
+  assert.equal(passo(rascunhoDoModelo("teamsPrReview", "t", "T", null)), undefined);
+});
+
+test("a revisão por link no Teams avisa que precisa do token do GitHub, com atalho, só quando falta", () => {
+  const r = rascunhoDoModelo("teamsPrReview", "t", "T", null);
+  const base = { slackConectado: true, teamsConectado: true, trackers: [] };
+  const aviso = (githubComToken?: boolean) =>
+    problemas(r, { ...base, ...(githubComToken === undefined ? {} : { githubComToken }) }).find((p) => p.chave === "automations.problems.githubTokenForDiff");
+  assert.deepEqual(aviso(false)?.atalho, { rota: "connections", detalhe: "github" });
+  assert.equal(aviso(false)?.bloqueia, false);
+  assert.equal(aviso(true), undefined);
+  assert.equal(aviso(undefined), undefined);
+});
+
+test("sem agent revisor, o modelo do Teams sugere criar um, com atalho para o agent novo", () => {
+  const base = { slackConectado: true, teamsConectado: true, trackers: [] };
+  const sem = rascunhoDoModelo("teamsPrReview", "t", "T", null, [{ id: "geral", name: "Geral" }]);
+  const aviso = problemas(sem, { ...base, agents: ["geral"] }).find((p) => p.chave === "automations.problems.createReviewer");
+  assert.deepEqual(aviso?.atalho, { rota: "agents", detalhe: "novo" });
+  assert.equal(aviso?.bloqueia, false);
+  const com = rascunhoDoModelo("teamsPrReview", "t", "T", null, [{ id: "rev", name: "Revisor" }]);
+  assert.equal(problemas(com, { ...base, agents: ["rev"] }).some((p) => p.chave === "automations.problems.createReviewer"), false);
+  assert.equal(problemas(sem, base).some((p) => p.chave === "automations.problems.createReviewer"), false, "sem a lista de agents não acusa");
+});

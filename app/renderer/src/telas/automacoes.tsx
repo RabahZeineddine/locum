@@ -3,13 +3,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MODELOS, rascunhoDoModelo, type ModeloId } from "@/lib/automacao";
 import { call, read, useRead, type ReadResult } from "@/lib/bridge";
+import { semPrefixoDoIpc } from "@/lib/erro-da-ponte";
 import { rotuloDeEstado } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
-import { Bot, Loader2, Play, Plus } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { Bot, Loader2, Play, Plus, Upload } from "lucide-react";
+import { useState, type DragEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { TriggerConfig } from "../../../src/config/types";
 import { EditorDeAutomacao } from "../automacoes/editor";
+import { ImportarPacote } from "../automacoes/importar-pacote";
 import { appDoGatilho, resumoDoGatilho, Selo, tituloDoGatilho } from "../automacoes/visual";
 import { InstalacaoDeTemplate } from "../instalar-template";
 import { AutomacoesLegado } from "./automacoes-legado";
@@ -195,23 +197,69 @@ function ListaDeAutomacoes({ navegar }: Pick<TelaProps, "navegar">) {
   const [relida, setRelida] = useState<Linha[] | null>(null);
   const [criando, setCriando] = useState(false);
   useAcaoDaTela("nova-automacao", () => setCriando(true));
+  const [pacote, setPacote] = useState<{ nome: string; texto: string } | null>(null);
+  const [erroDoArquivo, setErroDoArquivo] = useState<string | null>(null);
   const lista = relida ?? inicial.data ?? [];
   const reler = (): void => {
     read("agents.overview").then(setRelida, () => undefined);
   };
 
+  const escolherArquivo = (): void => {
+    setErroDoArquivo(null);
+    call("pacote.chooseFile").then(
+      (r) => r !== null && setPacote(r),
+      (e: unknown) => setErroDoArquivo(semPrefixoDoIpc(e instanceof Error ? e.message : String(e))),
+    );
+  };
+  // Arrastar o arquivo para a janela: só texto, que vai pela mesma prévia.
+  const soltar = (e: DragEvent<HTMLDivElement>): void => {
+    const arquivo = e.dataTransfer.files[0];
+    if (arquivo === undefined) return;
+    e.preventDefault();
+    setErroDoArquivo(null);
+    if (!arquivo.name.endsWith(".json")) {
+      setErroDoArquivo(t("pacote.import.notJson"));
+      return;
+    }
+    arquivo.text().then((texto) => setPacote({ nome: arquivo.name, texto }), () => setErroDoArquivo(t("pacote.import.unreadable")));
+  };
+
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6" data-locum-probe="automacoes" data-total={lista.length}>
+    <div
+      className="mx-auto flex w-full max-w-6xl flex-col gap-6"
+      data-locum-probe="automacoes"
+      data-total={lista.length}
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={soltar}
+    >
       <CabecalhoDaTela
         acoes={
-          <Button className="cursor-pointer" data-locum-automacao-nova="" onClick={() => setCriando(true)}>
-            <Plus className="size-4" />
-            {t("automations.list.new")}
-          </Button>
+          <>
+            <Button className="cursor-pointer" data-locum-automacao-importar="" onClick={escolherArquivo} variant="outline">
+              <Upload className="size-4" />
+              {t("pacote.import.button")}
+            </Button>
+            <Button className="cursor-pointer" data-locum-automacao-nova="" onClick={() => setCriando(true)}>
+              <Plus className="size-4" />
+              {t("automations.list.new")}
+            </Button>
+          </>
         }
         descricao={t("automations.lead")}
         titulo={t("automations.title")}
       />
+
+      {erroDoArquivo === null ? null : <p className="text-sev-critical text-xs">{erroDoArquivo}</p>}
+      {pacote === null ? null : (
+        <ImportarPacote
+          arquivo={pacote}
+          fechar={() => {
+            setPacote(null);
+            reler();
+          }}
+          navegar={navegar}
+        />
+      )}
 
       {criando ? (
         <NovaAutomacao
@@ -383,7 +431,7 @@ export function NovaAutomacao({
     try {
       const titulo = nome.trim() || t(`automations.templates.${modelo}.title`);
       const id = await call("automations.suggestId", titulo);
-      const r = rascunhoDoModelo(modelo, id, titulo, tracker === "" ? (listaDeTrackers[0]?.id ?? null) : tracker, (agentes.data ?? []).map((a) => a.id));
+      const r = rascunhoDoModelo(modelo, id, titulo, tracker === "" ? (listaDeTrackers[0]?.id ?? null) : tracker, (agentes.data ?? []).map((a) => ({ id: a.id, name: a.name })));
       await call("automations.save", {
         spec: r.spec,
         triggers: r.gatilhos.map((g) => ({ config: g.config })),

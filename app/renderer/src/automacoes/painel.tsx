@@ -109,6 +109,11 @@ export function PainelDoNo({
           {problemas.map((p, i) => (
             <li className={p.bloqueia ? "text-sev-critical" : "text-amber-500"} key={i}>
               {t(p.chave)}
+              {p.atalho === undefined ? null : (
+                <button className="ml-2 cursor-pointer underline" onClick={() => navegar(p.atalho!.rota, p.atalho!.detalhe)} type="button">
+                  {t("automations.problems.openConnection")}
+                </button>
+              )}
             </li>
           ))}
         </ul>

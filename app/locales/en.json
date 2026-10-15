@@ -2254,6 +2254,9 @@
       "slackReplyNeedsSlack": "Replying in Slack needs a Slack trigger: that is where the thread comes from.",
       "teamsReplyNeedsTeams": "Replying in Teams needs a Teams trigger.",
       "noTracker": "Choose which tracker opens the task.",
+      "createReviewer": "Without a reviewer agent, the review uses a loose AI step. Create an agent for PR review and swap the step for it.",
+      "githubTokenForDiff": "GitHub has no token: the review needs it to bring the PR diff.",
+      "openConnection": "Open",
       "agentMissing": "This step's agent no longer exists in the library.",
       "noTool": "Choose the app and the tool for this action.",
       "noUrl": "Fill in the API address, starting with http:// or https://.",
@@ -2509,5 +2512,111 @@
   "models": {
     "title": "Models",
     "lead": "Where the models agents use on this machine come from: a subscription, an API key or an OpenAI-compatible address. Keys and addresses are edited here, with no restart."
+  },
+  "pacote": {
+    "exportTitle": "Export automation",
+    "importTitle": "Import automation",
+    "tooBig": "The file is too big to be a Locum package.",
+    "export": {
+      "button": "Export",
+      "hint": "Writes a .locum.json file with no secrets, for someone else to import",
+      "saveFirst": "Save the automation before exporting",
+      "done": "Exported to {{arquivo}}"
+    },
+    "import": {
+      "button": "Import",
+      "title": "Import {{arquivo}}",
+      "cancel": "Cancel",
+      "close": "Close",
+      "reading": "Reading the package…",
+      "willCreate": "What will be created",
+      "automation": "Automation: {{nome}}",
+      "idTaken": "one with this id exists, it comes in as {{id}}",
+      "triggersOff_one": "{{count}} trigger, off until you turn it on",
+      "triggersOff_other": "{{count}} triggers, off until you turn them on",
+      "chooseChannels": "Channels and chats are not in the package: pick them in the automation after importing.",
+      "downgraded": "An action that posted on its own comes in with approval.",
+      "agentState": {
+        "novo": "new",
+        "igual": "already the same (v{{version}})",
+        "nome-igual": "name already used",
+        "mesmo-id": "same id, different content (now v{{version}})"
+      },
+      "sameName": "You already have the agent \"{{nome}}\" with another id.",
+      "usedBy": "Used in: {{lista}}",
+      "models": "Model of each agent",
+      "modelMissing": "the suggested one is not available here",
+      "modelChoose": "Pick a model",
+      "modelFor": "Model in place of {{sugerido}}",
+      "needs": "What the automation needs",
+      "kind": {
+        "conexao": "Connection",
+        "servidor": "MCP server",
+        "provedor": "Provider",
+        "skill": "Skill"
+      },
+      "state": {
+        "ok": "ok",
+        "falta-conectar": "needs connecting",
+        "ausente": "missing"
+      },
+      "link": "Link {{nome}} to what you have",
+      "linkNone": "Link to another…",
+      "shortcut": {
+        "conexoes": "Open Connections",
+        "importar-do-claude": "Import from Claude Code",
+        "modelos": "Open Models"
+      },
+      "recheck": "Check again",
+      "confirm": "Import",
+      "answerFirst": "Answer about the agent with the same name.",
+      "done": "Imported. Triggers are off.",
+      "donePending": "The automation still needs choices, like channels.",
+      "open": "Open the automation",
+      "notJson": "Only .locum.json files.",
+      "unreadable": "Could not read the file.",
+      "sameId": "You already have an agent with this id (v{{version}}), different from the package.",
+      "choice": {
+        "mesmo-id": {
+          "criar-novo": "Create a new one beside it (yours does not change)",
+          "atualizar": "Update mine with the package's",
+          "usar-existente": "Use mine as it is"
+        },
+        "nome-igual": {
+          "usar-existente": "Use the one I have",
+          "criar-novo": "Create a new one beside it"
+        }
+      },
+      "diffSummary_one": "{{count}} difference",
+      "diffSummary_other": "{{count}} differences",
+      "diffHere": "Here",
+      "diffPackage": "Package",
+      "field": {
+        "description": "Description",
+        "context": "Context",
+        "instructions": "Instructions",
+        "model": "Model",
+        "temperature": "Temperature",
+        "tools": "Tools",
+        "connections": "Connections",
+        "skills": "Skills",
+        "budget": "Budget",
+        "maxSteps": "Max steps"
+      },
+      "updateNoOne": "None of your automations uses this agent today.",
+      "updateAffects": "These automations of yours will run the package's text: {{lista}}",
+      "tools": "Tools the package turns on",
+      "toolsWrite_one": "{{count}} tool writes. Writes never run on their own: they come out as a card in the agent chat or through the queue.",
+      "toolsWrite_other": "{{count}} tools write. Writes never run on their own: they come out as a card in the agent chat or through the queue.",
+      "toolClass": {
+        "leitura": "read",
+        "escrita": "write"
+      },
+      "declaredRead": "the file said read, the classification here wins. To use it, turn the tool on in the agent's connection (Tools tab): each use will ask for confirmation.",
+      "urlFill": "The address of step {{passo}} is not in the package: fill it in the automation.",
+      "urlFillHost": "The address of step {{passo}} is not in the package: fill it in the automation (it was on {{host}}).",
+      "toolRemoved": "left out: writes do not run as loose tools. To write, use an action node in the automation, which goes through the queue.",
+      "toolAsks": "comes in and asks for confirmation on each use"
+    }
   }
 }
