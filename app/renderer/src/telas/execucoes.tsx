@@ -295,7 +295,6 @@ export function LinhaDeExecucao({
       style={{ height: ALTURA_DA_LINHA }}
       type="button"
     >
-      <StatusDot estado={pontoDoEstado(run.status)} />
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="flex items-baseline gap-2">
           {alvo?.pull ? (
