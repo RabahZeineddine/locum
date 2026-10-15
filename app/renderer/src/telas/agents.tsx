@@ -9,7 +9,7 @@ import { ChatDoAgent } from "../agent-chat";
 import { ArrowLeft, Bot, Copy, Loader2, Plus, RefreshCw, Search, Trash2, Workflow, Wrench, X } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { ehLeitura, ehLeituraDa, escolhaDe, ligadaPorPadrao, type EscolhaDeFerramenta } from "../../../src/config/leitura.js";
+import { ehLeitura, ehLeituraDa, escolhaDe, escolhaInicial, ligadaPorPadrao, type EscolhaDeFerramenta } from "../../../src/config/leitura.js";
 import { agruparPorArea, filtrarFerramentas, LIMITE_PARA_AGRUPAR } from "@/lib/ferramentas-do-agent";
 import type { AgentBudget, AgentConnection, AgentProfile, ToolRef, Toolset } from "../../../src/config/types";
 import { SeletorDeModelo, ServidoresComBusca, servidoresDoModelo, useCatalogo } from "../editor-agent";
@@ -642,6 +642,15 @@ function ConexoesDoAgent({ conexoes, trocar }: { conexoes: AgentConnection[]; tr
   const todas = lista.data ?? [];
   const livres = todas.filter((c) => c.servers.length > 0 && !conexoes.some((x) => x.connectionId === c.id));
 
+  // A escolha inicial sai da última lista guardada de cada servidor, e fica gravada: depois disso nenhuma regra tira o que estava ligado.
+  const adicionar = async (id: string): Promise<void> => {
+    const servidores = todas.find((c) => c.id === id)?.servers ?? [];
+    const lidos = await Promise.all(
+      servidores.map(async (nome) => ({ nome, ferramentas: (await read("mcp.toolsCached", nome).catch(() => null))?.tools ?? null })),
+    );
+    trocar([...conexoes, { connectionId: id, ...escolhaInicial(lidos) }]);
+  };
+
   const mudar = (id: string, depois: AgentConnection | null): void =>
     trocar(conexoes.flatMap((c) => (c.connectionId !== id ? [c] : depois === null ? [] : [depois])));
 
@@ -671,7 +680,7 @@ function ConexoesDoAgent({ conexoes, trocar }: { conexoes: AgentConnection[]; tr
             className={cn(CAMPO, "w-auto min-w-56 cursor-pointer")}
             data-locum-agent-conexao-adicionar=""
             onChange={(e) => {
-              if (e.target.value !== "") trocar([...conexoes, { connectionId: e.target.value, tools: {}, leituraPadrao: "limitada" }]);
+              if (e.target.value !== "") void adicionar(e.target.value);
             }}
             value=""
           >
