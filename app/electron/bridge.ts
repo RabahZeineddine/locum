@@ -1,7 +1,7 @@
 import { listTeamsChannels } from "../src/teams/channels.js";
 import { claudeAccountService, SERVIDOR_CONTA } from "../src/runtimes/claude-account.js";
 import { claudeImportService } from "../src/services/claude-import.js";
-import { app, BrowserWindow, dialog, ipcMain, type WebContents } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, shell, type WebContents } from "electron";
 import { readFile, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { agentBuilder, criadorDisponivel } from "./agent-builder.js";
@@ -304,6 +304,20 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
       await mcpService.setCredential(name, entrada);
     },
     "mcp.usage": () => mcpService.usage(),
+    "mcp.vinculos": () => mcpService.vinculos(),
+    "mcp.aceitarOrigem": async (name) => {
+      await mcpService.aceitarOrigem(name);
+    },
+    "mcp.manterAnterior": (name) => mcpService.manterAnterior(name),
+    "mcp.desvincular": async (name) => {
+      await mcpService.desvincular(name);
+    },
+    "mcp.mostrarOrigem": async (name) => {
+      const arquivo = (await mcpService.vinculos())[name]?.arquivo;
+      if (arquivo === null || arquivo === undefined) return false;
+      shell.showItemInFolder(arquivo);
+      return true;
+    },
 
     "providers.list": async () => providerService.listProviders(),
     "providers.fallbacks": (machine) => providerService.getFallbacks(machine),

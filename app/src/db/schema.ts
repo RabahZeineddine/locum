@@ -336,6 +336,17 @@ export const mcpServers = sqliteTable("mcp_servers", {
   lastOkAt: integer("last_ok_at", { mode: "timestamp_ms" }),
   lastFailureAt: integer("last_failure_at", { mode: "timestamp_ms" }),
   lastError: text("last_error"),
+  /**
+   * De onde a configuração vem, quando o servidor está vinculado a uma
+   * ferramenta (`McpSource`). Nulo é cadastro manual: comando, args, env e url
+   * são do Locum. Vinculado, as colunas de cima guardam a última configuração
+   * aceita, que vale enquanto a origem muda sem aceite ou some.
+   */
+  source: text("source", { mode: "json" }),
+  /** Impressão da configuração aceita, sem a versão do diretório do plugin. */
+  sourceHash: text("source_hash"),
+  /** Impressão de uma mudança da origem que a pessoa decidiu não aceitar. */
+  sourceKeptHash: text("source_kept_hash"),
 });
 
 /**

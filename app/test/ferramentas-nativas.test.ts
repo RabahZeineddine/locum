@@ -4,6 +4,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { ToolRef } from "../src/config/types.js";
 import { consultarAgent, SERVIDOR_NATIVO, type ConsultaDeps } from "../src/native-tools/ask.js";
+import { comandoDoApp, decidirRegistro, esteEOInstalado, type AmbienteDoApp } from "../src/native-tools/comando-do-locum.js";
 import { cadastrarFerramentasNativas } from "../src/native-tools/register.js";
 import { buildNativeToolsServer } from "../src/native-tools/server.js";
 import { httpGet, jsonQuery, LIMITE_DO_CORPO } from "../src/native-tools/tools.js";
@@ -133,7 +134,73 @@ test("o servidor expõe as quatro ferramentas, só de leitura", async () => {
   assert.equal(recusa.isError, true);
 });
 
-test("cadastro nasce ligado, segue o app quando muda de lugar e respeita quem desligou", async () => {
+/** Uma máquina com ou sem o app instalado, e um processo rodando de onde se disser. */
+function maquina(opcoes: { execPath: string; empacotado?: boolean; existentes?: string[] }): AmbienteDoApp {
+  const existentes = new Set(opcoes.existentes ?? []);
+  return {
+    execPath: opcoes.execPath,
+    empacotado: opcoes.empacotado ?? true,
+    script: "/dev/main.cjs",
+    home: "/Users/ana",
+    plataforma: "darwin",
+    existe: (c) => existentes.has(c),
+  };
+}
+
+const INSTALADO = "/Applications/Locum.app/Contents/MacOS/Locum";
+const WORKTREE = "/Users/ana/.worktrees/locum-dock/app/release/mac-arm64/Locum.app/Contents/MacOS/Locum";
+
+test("decisão: o app instalado corrige registro que aponta para binário que sumiu ou para cópia", () => {
+  const instalado = maquina({ execPath: INSTALADO, existentes: [INSTALADO, WORKTREE] });
+  const certo = [INSTALADO, "--ferramentas"];
+
+  assert.deepEqual(decidirRegistro(instalado, certo, "--ferramentas"), { acao: "manter" });
+  const sumiu = decidirRegistro(instalado, ["/tmp/apagado/Locum", "--ferramentas"], "--ferramentas");
+  assert.equal(sumiu.acao, "gravar");
+  assert.deepEqual(sumiu.acao === "gravar" ? sumiu.comando : null, certo);
+  // O worktree ainda existe, mas não é o app instalado.
+  const copia = decidirRegistro(instalado, [WORKTREE, "--ferramentas"], "--ferramentas");
+  assert.equal(copia.acao, "gravar");
+  assert.deepEqual(decidirRegistro(instalado, null, "--ferramentas"), { acao: "gravar", comando: certo, motivo: "sem registro" });
+});
+
+test("decisão: cópia fora de /Applications não reescreve registro que funciona", () => {
+  const copia = maquina({ execPath: WORKTREE, existentes: [WORKTREE, "/Users/ana/Outro/Locum"] });
+  // Sem app instalado na máquina, o registro de outro lugar que existe fica.
+  assert.deepEqual(decidirRegistro(copia, ["/Users/ana/Outro/Locum", "--ferramentas"], "--ferramentas"), { acao: "manter" });
+  // E o dela mesma também.
+  assert.deepEqual(decidirRegistro(copia, [WORKTREE, "--ferramentas"], "--ferramentas"), { acao: "manter" });
+});
+
+test("decisão: cópia solta, com o app instalado na máquina, aponta o registro para ele e nunca para ela", () => {
+  const copia = maquina({ execPath: WORKTREE, existentes: [WORKTREE, INSTALADO] });
+  const d = decidirRegistro(copia, [WORKTREE, "--ferramentas"], "--ferramentas");
+  assert.equal(d.acao, "gravar");
+  assert.deepEqual(d.acao === "gravar" ? d.comando : null, [INSTALADO, "--ferramentas"]);
+  assert.deepEqual(decidirRegistro(copia, [INSTALADO, "--ferramentas"], "--ferramentas"), { acao: "manter" });
+});
+
+test("decisão: cópia de DMG ou em quarentena não conta como o app instalado", () => {
+  for (const caminho of ["/Volumes/Locum/Locum.app/Contents/MacOS/Locum", "/private/var/folders/x/AppTranslocation/ABC/d/Locum.app/Contents/MacOS/Locum"]) {
+    const env = maquina({ execPath: caminho, existentes: [caminho] });
+    assert.equal(esteEOInstalado(env), false);
+    assert.deepEqual(decidirRegistro(env, [INSTALADO, "--ferramentas"], "--ferramentas").acao, "gravar");
+  }
+});
+
+test("decisão: sem app instalado e sem registro, a cópia registra a si mesma; em desenvolvimento leva o script", () => {
+  const dev = maquina({ execPath: "/usr/bin/electron", empacotado: false });
+  const d = decidirRegistro(dev, null, "--mcp");
+  assert.deepEqual(d.acao === "gravar" ? d.comando : null, ["/usr/bin/electron", "/dev/main.cjs", "--mcp"]);
+});
+
+test("o comando que o Locum oferece ao Claude Code é o do app instalado, mesmo vindo de uma cópia", () => {
+  const copia = maquina({ execPath: WORKTREE, existentes: [WORKTREE, INSTALADO] });
+  assert.deepEqual(comandoDoApp(copia, "--mcp"), [INSTALADO, "--mcp"]);
+  assert.deepEqual(comandoDoApp(maquina({ execPath: INSTALADO, existentes: [INSTALADO] }), "--mcp"), [INSTALADO, "--mcp"]);
+});
+
+test("cadastro nasce ligado, segue o app instalado e respeita quem desligou", async () => {
   const chamadas: string[] = [];
   let atual: { config: { transport: string; command?: string[]; scope: string } } | undefined;
   const servico = {
@@ -145,8 +212,13 @@ test("cadastro nasce ligado, segue o app quando muda de lugar e respeita quem de
     },
     setEnabled: async (_n: string, e: boolean) => void chamadas.push(`enabled ${e}`),
   };
-  await cadastrarFerramentasNativas(["/a/Locum", "--ferramentas"], servico);
-  await cadastrarFerramentasNativas(["/a/Locum", "--ferramentas"], servico);
-  await cadastrarFerramentasNativas(["/b/Locum", "--ferramentas"], servico);
-  assert.deepEqual(chamadas, ["register /a/Locum --ferramentas", "enabled true", "register /b/Locum --ferramentas"]);
+  const app = maquina({ execPath: INSTALADO, existentes: [INSTALADO] });
+  await cadastrarFerramentasNativas(app, servico);
+  await cadastrarFerramentasNativas(app, servico);
+  // A cópia de um worktree abre, com o registro bom: nada muda.
+  await cadastrarFerramentasNativas(maquina({ execPath: WORKTREE, existentes: [WORKTREE, INSTALADO] }), servico);
+  // O registro foi parar numa cópia que sumiu: o app instalado conserta.
+  atual = { config: { transport: "stdio", command: ["/tmp/sumiu/Locum", "--ferramentas"], scope: "read" } };
+  await cadastrarFerramentasNativas(app, servico);
+  assert.deepEqual(chamadas, [`register ${INSTALADO} --ferramentas`, "enabled true", `register ${INSTALADO} --ferramentas`]);
 });

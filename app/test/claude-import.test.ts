@@ -86,9 +86,10 @@ test("importar cadastra desligado, guarda o segredo e não traz o próprio Locum
       },
       setEnabled: async (n, ligado) => void (ligado ? undefined : desligados.push(n)),
       setCredentialRef: async (n, r) => void refs.set(n, r),
+      vincular: async () => undefined,
     },
     secrets: { set: (r, v) => void cofre.set(r, v) },
-    settings: { set: async () => undefined },
+    settings: { set: async () => undefined, get: async () => undefined },
   });
 
   const lista = await servico.listar();
@@ -132,9 +133,9 @@ test("outras ferramentas: opencode, Cursor, VS Code e Claude Desktop entram com 
   const servico = new ClaudeImportService({
     home,
     ambiente: async (nomes): Promise<Record<string, string>> => (nomes.includes("JIRA_TOKEN") ? { JIRA_TOKEN: "do-shell" } : {}),
-    mcp: { list: async () => [], register: async () => ({}) as never, setEnabled: async () => undefined, setCredentialRef: async () => undefined },
+    mcp: { list: async () => [], register: async () => ({}) as never, setEnabled: async () => undefined, setCredentialRef: async () => undefined, vincular: async () => undefined },
     secrets: { set: () => undefined },
-    settings: { set: async () => undefined },
+    settings: { set: async () => undefined, get: async () => undefined },
   });
   const lista = await servico.listar();
   const por = Object.fromEntries(lista.map((c) => [c.name, c]));

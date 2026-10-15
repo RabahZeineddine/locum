@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { claudeBinary } from "../runtimes/claude-binary.js";
+import { decidirRegistro, type AmbienteDoApp } from "../native-tools/comando-do-locum.js";
 
 /** Nome com que o Locum aparece nas sessões do Claude Code. */
 export const CLAUDE_CODE_SERVER = "locum";
@@ -112,6 +113,21 @@ export class ClaudeCodeService {
     }
     await this.deps.run(cli, this.addArgs(launcher));
     return this.status();
+  }
+
+  /**
+   * Na subida: o `locum` que a pessoa já cadastrou no Claude Code aponta para o
+   * app instalado? Se aponta para um binário que sumiu ou para uma cópia que não
+   * é o instalado, recadastra. Quem nunca ligou o Locum ao Claude Code não é
+   * cadastrado aqui: ligar é um clique dela.
+   */
+  async corrigirRegistro(ambiente: AmbienteDoApp): Promise<boolean> {
+    const cadastrado = this.registered();
+    if (cadastrado === null) return false;
+    const decisao = decidirRegistro(ambiente, [cadastrado.command, ...cadastrado.args], "--mcp");
+    if (decisao.acao === "manter") return false;
+    await this.connect();
+    return true;
   }
 
   private addArgs(launcher: McpLauncher): string[] {

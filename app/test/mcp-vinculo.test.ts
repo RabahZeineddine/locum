@@ -1,0 +1,293 @@
+import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { test } from "node:test";
+import type { McpSource } from "../src/config/types.js";
+import { ClaudeImportService, pareceOMesmoServidor } from "../src/services/claude-import.js";
+import { diferencas, impressao, OrigemResolver, semVersaoDoPlugin } from "../src/services/mcp-origem.js";
+import { McpService } from "../src/services/mcp-service.js";
+import { SecretService } from "../src/services/secret-service.js";
+import { SettingsService } from "../src/services/settings-service.js";
+import { bancoDeTeste } from "./helpers/db.js";
+
+const MS365_ANTIGO = {
+  command: "npx",
+  args: ["-y", "@softeria/ms-365-mcp-server@0.150.0", "--org-mode", "--preset", "onedrive,excel,mail,calendar,teams,search,users"],
+  env: { MS365_MCP_CLIENT_ID: "app-1", MS365_MCP_ALLOWED_SCOPES: "User.Read Mail.ReadWrite" },
+};
+const MS365_NOVO = {
+  command: "npx",
+  args: ["-y", "@softeria/ms-365-mcp-server@0.155.0", "--org-mode", "--preset", "teams,files,outlook,search,work"],
+  env: {
+    MS365_MCP_CLIENT_ID: "app-1",
+    MS365_MCP_ALLOWED_SCOPES: "User.Read Mail.ReadWrite Chat.ReadWrite Files.ReadWrite.All",
+    MS365_MCP_REQUIRE_CONFIRM: "true",
+  },
+};
+
+/** Uma casa falsa com o plugin `akad` em uma versão, como o Claude Code o guarda. */
+class Casa {
+  readonly home = mkdtempSync(join(tmpdir(), "locum-vinculo-"));
+  private ligado = true;
+  private versao = "";
+
+  instalar(versao: string, servidores: Record<string, unknown>): string {
+    this.versao = versao;
+    const raiz = join(this.home, ".claude", "plugins", "cache", "akad", "akad", versao);
+    mkdirSync(raiz, { recursive: true });
+    writeFileSync(join(raiz, ".mcp.json"), JSON.stringify({ mcpServers: servidores }));
+    this.gravar(raiz);
+    return raiz;
+  }
+
+  desligar(): void {
+    this.ligado = false;
+    this.gravar(join(this.home, ".claude", "plugins", "cache", "akad", "akad", this.versao));
+  }
+
+  usuario(servidores: Record<string, unknown>): void {
+    writeFileSync(join(this.home, ".claude.json"), JSON.stringify({ mcpServers: servidores }));
+  }
+
+  private gravar(raiz: string): void {
+    mkdirSync(join(this.home, ".claude", "plugins"), { recursive: true });
+    writeFileSync(
+      join(this.home, ".claude", "plugins", "installed_plugins.json"),
+      JSON.stringify({ version: 2, plugins: { "akad@akad": [{ scope: "user", installPath: raiz, version: this.versao }] } }),
+    );
+    writeFileSync(join(this.home, ".claude", "settings.json"), JSON.stringify({ enabledPlugins: { "akad@akad": this.ligado } }));
+  }
+
+  limpar(): void {
+    rmSync(this.home, { recursive: true, force: true });
+  }
+}
+
+function montar(casa: Casa) {
+  const secrets = new SecretService(mkdtempSync(join(tmpdir(), "locum-vinculo-cofre-")));
+  secrets.useBackend({ available: () => true, encrypt: (p) => Buffer.from(p), decrypt: (b) => b.toString() });
+  const db = bancoDeTeste();
+  const origem = new OrigemResolver({ home: casa.home, ambiente: async () => ({}), ttlMs: 0 });
+  const mcp = new McpService(db, secrets, origem);
+  const settings = new SettingsService(db);
+  const importacao = new ClaudeImportService({ home: casa.home, ambiente: async () => ({}), mcp, secrets, settings });
+  return { mcp, importacao, secrets, settings };
+}
+
+const PLUGIN: McpSource = { kind: "claude-plugin", marketplace: "akad", plugin: "akad", server: "ms365" };
+
+test("importar guarda a origem, e a configuração vem da origem na hora do uso", async () => {
+  const casa = new Casa();
+  const raiz = casa.instalar("0.17.1", { insuremo: { command: "${CLAUDE_PLUGIN_ROOT}/scripts/insuremo.sh", args: ["sandbox"] }, ms365: MS365_ANTIGO });
+  const { mcp, importacao } = montar(casa);
+
+  await importacao.importar(["insuremo", "ms365"]);
+  const entrada = await mcp.get("insuremo");
+  assert.deepEqual(entrada?.source, { kind: "claude-plugin", marketplace: "akad", plugin: "akad", server: "insuremo" });
+  // O cadastro guarda o caminho aceito, mas quem conecta lê a origem.
+  assert.deepEqual(entrada?.config.command, [`${raiz}/scripts/insuremo.sh`, "sandbox"]);
+  await mcp.setEnabled("insuremo", true);
+  const [config] = await mcp.enabledConfigs();
+  assert.deepEqual(config?.command, [`${raiz}/scripts/insuremo.sh`, "sandbox"]);
+  casa.limpar();
+});
+
+test("plugin em versão nova, mesmo conteúdo: usa a versão instalada e não pede aceite", async () => {
+  const casa = new Casa();
+  casa.instalar("0.17.1", { insuremo: { command: "${CLAUDE_PLUGIN_ROOT}/scripts/insuremo.sh", args: ["sandbox"] } });
+  const { mcp, importacao } = montar(casa);
+  await importacao.importar(["insuremo"]);
+  await mcp.setEnabled("insuremo", true);
+
+  const nova = casa.instalar("0.21.1", { insuremo: { command: "${CLAUDE_PLUGIN_ROOT}/scripts/insuremo.sh", args: ["sandbox"] } });
+  const vinculos = await mcp.vinculos();
+  assert.equal(vinculos.insuremo?.estado, "ok");
+  assert.deepEqual(vinculos.insuremo?.mudancas, []);
+
+  const [config] = await mcp.enabledConfigs();
+  assert.deepEqual(config?.command, [`${nova}/scripts/insuremo.sh`, "sandbox"]);
+  // A cópia aceita acompanhou, para continuar servindo se a origem sumir depois.
+  assert.deepEqual((await mcp.get("insuremo"))?.config.command, [`${nova}/scripts/insuremo.sh`, "sandbox"]);
+  casa.limpar();
+});
+
+test("mudança de preset e de escopos na origem pede aceite, mostra o diff e usa a anterior até aceitar", async () => {
+  const casa = new Casa();
+  casa.instalar("0.17.1", { ms365: MS365_ANTIGO });
+  const { mcp, importacao } = montar(casa);
+  await importacao.importar(["ms365"]);
+  await mcp.setEnabled("ms365", true);
+
+  casa.instalar("0.21.1", { ms365: MS365_NOVO });
+  const v = (await mcp.vinculos()).ms365!;
+  assert.equal(v.estado, "mudou");
+  assert.equal(v.mantida, false);
+  const campos = v.mudancas.map((m) => `${m.campo}${m.chave === undefined ? "" : `:${m.chave}`}`);
+  assert.deepEqual(campos, ["args", "env:MS365_MCP_ALLOWED_SCOPES", "env:MS365_MCP_REQUIRE_CONFIRM"]);
+  const args = v.mudancas.find((m) => m.campo === "args")!;
+  assert.match(args.antes ?? "", /onedrive,excel/);
+  assert.match(args.depois ?? "", /teams,files,outlook/);
+
+  // Até aceitar, conecta com a anterior.
+  const [antes] = await mcp.enabledConfigs();
+  assert.ok(antes?.command?.includes("onedrive,excel,mail,calendar,teams,search,users"));
+  assert.equal(antes?.env?.MS365_MCP_REQUIRE_CONFIRM, undefined);
+
+  await mcp.aceitarOrigem("ms365");
+  assert.equal((await mcp.vinculos()).ms365?.estado, "ok");
+  const [depois] = await mcp.enabledConfigs();
+  assert.ok(depois?.command?.includes("teams,files,outlook,search,work"));
+  assert.equal(depois?.env?.MS365_MCP_REQUIRE_CONFIRM, "true");
+  casa.limpar();
+});
+
+test("manter a anterior silencia o aviso até a origem mudar de novo", async () => {
+  const casa = new Casa();
+  casa.instalar("0.17.1", { ms365: MS365_ANTIGO });
+  const { mcp, importacao } = montar(casa);
+  await importacao.importar(["ms365"]);
+
+  casa.instalar("0.21.1", { ms365: MS365_NOVO });
+  await mcp.manterAnterior("ms365");
+  const mantida = (await mcp.vinculos()).ms365!;
+  assert.equal(mantida.estado, "mudou");
+  assert.equal(mantida.mantida, true);
+
+  casa.instalar("0.22.0", { ms365: { ...MS365_NOVO, args: [...MS365_NOVO.args, "--read-only"] } });
+  assert.equal((await mcp.vinculos()).ms365?.mantida, false);
+  casa.limpar();
+});
+
+test("diff mascara segredo: a chave de API muda de nome sem o valor aparecer", () => {
+  const antes = { name: "x", transport: "stdio" as const, command: ["npx", "srv", "--api-key=abc123"], env: { MINHA_API_KEY: "valor-antigo", MODO: "a" } };
+  const depois = { name: "x", transport: "stdio" as const, command: ["npx", "srv", "--api-key=zzz999"], env: { MINHA_API_KEY: "valor-novo", MODO: "b", NOVO_TOKEN: "sigiloso" } };
+  const mudancas = diferencas(antes, depois);
+  const texto = JSON.stringify(mudancas);
+  assert.ok(!/abc123|zzz999|valor-antigo|valor-novo|sigiloso/.test(texto), texto);
+  assert.ok(mudancas.some((m) => m.chave === "MODO" && m.antes === "a" && m.depois === "b"));
+  assert.ok(mudancas.some((m) => m.chave === "NOVO_TOKEN" && m.antes === null && m.depois === "<oculto>"));
+});
+
+test("a impressão ignora a versão do diretório do plugin, mas não o resto", () => {
+  const velha = { name: "s", transport: "stdio" as const, command: ["/h/.claude/plugins/cache/akad/akad/0.17.1/scripts/s.sh", "prod"] };
+  const nova = { name: "s", transport: "stdio" as const, command: ["/h/.claude/plugins/cache/akad/akad/0.21.1/scripts/s.sh", "prod"] };
+  const outroArg = { ...nova, command: [...nova.command.slice(0, 1), "dev"] };
+  assert.equal(impressao(velha, PLUGIN), impressao(nova, PLUGIN));
+  assert.notEqual(impressao(nova, PLUGIN), impressao(outroArg, PLUGIN));
+  assert.equal(semVersaoDoPlugin("/h/.claude/plugins/cache/akad/akad/0.17.1/a", PLUGIN, undefined), "${CLAUDE_PLUGIN_ROOT}/a");
+  // O valor do segredo não entra: rodar a chave não é mudar o servidor.
+  const a = { name: "s", transport: "stdio" as const, command: ["x"], env: { API_KEY: "${credential}" } };
+  const b = { ...a, env: { API_KEY: "${MINHA_VAR}" } };
+  assert.equal(impressao(a), impressao(b));
+});
+
+test("origem que sumiu: usa a última aceita e avisa", async () => {
+  const casa = new Casa();
+  casa.instalar("0.21.1", { ms365: MS365_NOVO });
+  const { mcp, importacao } = montar(casa);
+  await importacao.importar(["ms365"]);
+  await mcp.setEnabled("ms365", true);
+
+  casa.desligar();
+  const v = (await mcp.vinculos()).ms365!;
+  assert.equal(v.estado, "sumiu");
+  const [config] = await mcp.enabledConfigs();
+  assert.ok(config?.command?.includes("teams,files,outlook,search,work"));
+  casa.limpar();
+});
+
+test("desvincular vira cadastro manual com a configuração de hoje, editável", async () => {
+  const casa = new Casa();
+  casa.instalar("0.21.1", { ms365: MS365_NOVO });
+  const { mcp, importacao } = montar(casa);
+  await importacao.importar(["ms365"]);
+
+  await assert.rejects(
+    () => mcp.register({ name: "ms365", transport: "stdio", command: ["outro"], scope: "write" }),
+    /vinculado a akad@akad.*edite na origem/,
+  );
+  // O que é do Locum muda sem desvincular.
+  await mcp.register({ ...(await mcp.get("ms365"))!.config, scope: "read", idleTimeoutMs: 60_000 });
+  assert.equal((await mcp.get("ms365"))?.config.scope, "read");
+
+  await mcp.desvincular("ms365");
+  const manual = await mcp.get("ms365");
+  assert.equal(manual?.source, null);
+  assert.deepEqual(Object.keys(await mcp.vinculos()), []);
+  await mcp.register({ ...manual!.config, command: ["npx", "outro"] });
+  assert.deepEqual((await mcp.get("ms365"))?.config.command, ["npx", "outro"]);
+  casa.limpar();
+});
+
+test("segredo literal da origem vai para o cofre e a conexão o recebe; trocar a chave na origem é seguido sem aceite", async () => {
+  const casa = new Casa();
+  casa.usuario({ plataforma: { type: "http", url: "https://p.exemplo/mcp", headers: { "x-api-key": "chave-1" } } });
+  const { mcp, importacao, secrets } = montar(casa);
+  await importacao.importar(["plataforma"]);
+  await mcp.setEnabled("plataforma", true);
+  assert.equal(secrets.get("mcp/plataforma"), "chave-1");
+  assert.deepEqual((await mcp.get("plataforma"))?.source, { kind: "claude-user", server: "plataforma" });
+
+  casa.usuario({ plataforma: { type: "http", url: "https://p.exemplo/mcp", headers: { "x-api-key": "chave-2" } } });
+  assert.equal((await mcp.vinculos()).plataforma?.estado, "ok");
+  const [config] = await mcp.enabledConfigs();
+  assert.equal(config?.headers?.["x-api-key"], "chave-2");
+
+  // Já o endereço novo é mudança sensível: a chave não vai para lá sem aceite.
+  casa.usuario({ plataforma: { type: "http", url: "https://outro.exemplo/mcp", headers: { "x-api-key": "chave-2" } } });
+  const v = (await mcp.vinculos()).plataforma!;
+  assert.equal(v.estado, "mudou");
+  assert.deepEqual(v.mudancas.map((m) => m.campo), ["url"]);
+  assert.equal((await mcp.enabledConfigs())[0]?.url, "https://p.exemplo/mcp");
+  casa.limpar();
+});
+
+test("migração: cópias antigas voltam a seguir a origem; o que mudou espera aceite; sem origem fica manual", async () => {
+  const casa = new Casa();
+  const raiz017 = join(casa.home, ".claude", "plugins", "cache", "akad", "akad", "0.17.1");
+  const raiz = casa.instalar("0.21.1", {
+    ms365: MS365_NOVO,
+    "insuremo-sandbox": { command: "${CLAUDE_PLUGIN_ROOT}/scripts/insuremo-mcp.sh", args: ["sandbox"] },
+  });
+  const { mcp, importacao, settings } = montar(casa);
+
+  // Como estava no banco do usuário: cópias de antes do vínculo.
+  await mcp.register({ name: "ms365", transport: "stdio", command: [MS365_ANTIGO.command, ...MS365_ANTIGO.args], env: MS365_ANTIGO.env, scope: "write" });
+  await mcp.register({ name: "insuremo-sandbox", transport: "stdio", command: [`${raiz017}/scripts/insuremo-mcp.sh`, "sandbox"], scope: "write" });
+  await mcp.register({ name: "meu-proprio", transport: "stdio", command: ["meu-servidor"], scope: "read" });
+  // Nenhuma origem declara este nome.
+  await mcp.register({ name: "ms365-teste", transport: "stdio", command: ["/bin/cat"], scope: "read" });
+  await mcp.setEnabled("ms365", true);
+  await mcp.setEnabled("insuremo-sandbox", true);
+
+  const r = await importacao.revincular();
+  assert.deepEqual(r.vinculados.sort(), ["insuremo-sandbox", "ms365"]);
+  assert.deepEqual(r.manuais.sort(), ["meu-proprio", "ms365-teste"]);
+  assert.equal((await mcp.get("meu-proprio"))?.source, null);
+
+  const v = await mcp.vinculos();
+  // O insuremo apontava para o cache 0.17.1: é o mesmo servidor, agora na versão instalada.
+  assert.equal(v["insuremo-sandbox"]?.estado, "ok");
+  const configs = await mcp.enabledConfigs();
+  assert.deepEqual(configs.find((c) => c.name === "insuremo-sandbox")?.command, [`${raiz}/scripts/insuremo-mcp.sh`, "sandbox"]);
+  // O ms365 ficou com o preset antigo, e o novo passa pelo aceite.
+  assert.equal(v.ms365?.estado, "mudou");
+  assert.ok(v.ms365?.mudancas.some((m) => m.chave === "MS365_MCP_REQUIRE_CONFIRM"));
+  assert.ok(configs.find((c) => c.name === "ms365")?.command?.includes("onedrive,excel,mail,calendar,teams,search,users"));
+
+  // Roda uma vez só: quem desvincula depois não é religado na subida seguinte.
+  await mcp.desvincular("insuremo-sandbox");
+  assert.deepEqual(await importacao.revincular(), { vinculados: [], manuais: [] });
+  assert.equal((await mcp.get("insuremo-sandbox"))?.source, null);
+  assert.ok(await settings.get("mcp.vinculo.migrado"));
+  casa.limpar();
+});
+
+test("nome igual não basta: outro programa ou outro host é cadastro de mão, não cópia da origem", () => {
+  assert.equal(pareceOMesmoServidor({ transport: "stdio", command: ["/velho/caminho/s.sh", "a"] }, { command: "${CLAUDE_PLUGIN_ROOT}/scripts/s.sh" }), true);
+  assert.equal(pareceOMesmoServidor({ transport: "stdio", command: ["/bin/cat"] }, { command: "npx" }), false);
+  assert.equal(pareceOMesmoServidor({ transport: "http", url: "https://a.exemplo/mcp" }, { type: "http", url: "https://a.exemplo/outro" }), true);
+  assert.equal(pareceOMesmoServidor({ transport: "http", url: "https://a.exemplo/mcp" }, { type: "http", url: "https://b.exemplo/mcp" }), false);
+  assert.equal(pareceOMesmoServidor({ transport: "stdio", command: ["npx"] }, { type: "http", url: "https://a.exemplo/mcp" }), false);
+});

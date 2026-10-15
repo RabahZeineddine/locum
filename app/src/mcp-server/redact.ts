@@ -1,4 +1,5 @@
 import type { McpServerConfig } from "../config/types.js";
+import type { McpServerEntry, McpVinculo } from "../services/mcp-service.js";
 import { CREDENTIAL_PLACEHOLDER } from "../services/secret-service.js";
 
 /**
@@ -45,4 +46,28 @@ export function restoreHidden(
     else if (atual?.[chave] !== undefined) saida[chave] = atual[chave];
   }
   return saida;
+}
+
+/**
+ * A origem de um servidor vinculado, para quem lê pela ferramenta: de onde a
+ * configuração vem, o arquivo para editar, e se há mudança esperando aceite.
+ * O comando de um vinculado não se edita por aqui, e o texto diz isso.
+ */
+export function origemParaLeitura(entrada: McpServerEntry, vinculo: McpVinculo | undefined) {
+  if (entrada.source === null || vinculo === undefined) return { linked: false as const };
+  return {
+    linked: true as const,
+    origin: {
+      source: entrada.source,
+      label: vinculo.rotulo,
+      file: vinculo.arquivo,
+      state: vinculo.estado,
+      ...(vinculo.estado === "mudou"
+        ? { note: "the origin changed and waits for a person to accept it in the app; the previous accepted configuration is in use" }
+        : vinculo.estado === "sumiu"
+          ? { note: "the origin no longer has this server; the last accepted configuration is in use" }
+          : {}),
+    },
+    note: "linked: command, args, env and url come from the origin and cannot be edited here; edit the origin file or unlink in the app",
+  };
 }

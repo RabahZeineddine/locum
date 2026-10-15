@@ -246,6 +246,16 @@ interface ServiceApi {
   /** Token colado pela pessoa, para servidor sem OAuth. O valor nunca volta pela ponte. */
   "mcp.setCredential": (name: string, entrada: { campo: string; valor: string }) => Promise<void>;
   "mcp.usage": McpService["usage"];
+  /** Servidores vinculados a uma origem: se ela bate com o aceito, mudou (com o diff) ou sumiu. */
+  "mcp.vinculos": McpService["vinculos"];
+  /** A mudança da origem passa a valer. */
+  "mcp.aceitarOrigem": (name: string) => Promise<void>;
+  /** Fica com a configuração anterior; o aviso volta se a origem mudar de novo. */
+  "mcp.manterAnterior": McpService["manterAnterior"];
+  /** O servidor vira cadastro manual, com a configuração de hoje como cópia editável. */
+  "mcp.desvincular": (name: string) => Promise<void>;
+  /** Mostra o arquivo de origem no Finder. */
+  "mcp.mostrarOrigem": (name: string) => Promise<boolean>;
   /**
    * Conectores do claude.ai e MCPs de plugin da conta Claude, só leitura.
    * `mcp.tools` com o nome `claude-conta` devolve a mesma lista.
@@ -610,6 +620,11 @@ export const BRIDGE_CHANNELS = [
   "mcp.setEnabled",
   "mcp.setCredential",
   "mcp.usage",
+  "mcp.vinculos",
+  "mcp.aceitarOrigem",
+  "mcp.manterAnterior",
+  "mcp.desvincular",
+  "mcp.mostrarOrigem",
   "claudeAccount.list",
   "providers.list",
   "providers.fallbacks",

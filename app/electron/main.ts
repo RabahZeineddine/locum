@@ -6716,7 +6716,21 @@ async function main(): Promise<void> {
   // Claude Code e no opencode. Empacotado, o binário do `.app` basta; rodando por `electron dist/main.cjs`,
   // o Electron precisa saber qual script abrir.
   const { claudeCodeService } = await import("../src/services/claude-code-service.js");
-  const launcher = { command: process.execPath, args: app.isPackaged ? [] : [join(__dirname, "main.cjs")] };
+  // O app instalado é quem o Claude Code e o opencode sobem. Uma cópia aberta
+  // fora de /Applications (um worktree, um release local) não leva o registro
+  // para o caminho dela.
+  const { comandoDoApp } = await import("../src/native-tools/comando-do-locum.js");
+  const { homedir } = await import("node:os");
+  const ambienteDoApp = {
+    execPath: process.execPath,
+    empacotado: app.isPackaged,
+    script: join(__dirname, "main.cjs"),
+    home: homedir(),
+    plataforma: process.platform,
+    existe: existsSync,
+  };
+  const comandoMcp = comandoDoApp(ambienteDoApp, "--mcp");
+  const launcher = { command: comandoMcp[0]!, args: comandoMcp.slice(1, -1) };
   claudeCodeService.useLauncher(launcher);
   const { opencodeService } = await import("../src/services/opencode-service.js");
   opencodeService.useLauncher(launcher);
@@ -6743,16 +6757,29 @@ async function main(): Promise<void> {
   {
     const { cadastrarFerramentasNativas } = await import("../src/native-tools/register.js");
     const binario = [process.execPath, ...(app.isPackaged ? [] : [join(__dirname, "main.cjs")])];
-    const comando = [...binario, "--ferramentas"];
     // O chat pelo Claude Code alcança o próprio Locum pelo mesmo binário, com `--mcp`.
     const { usarComandoDoLocum } = await import("./chat.js");
     usarComandoDoLocum([...binario, "--mcp"]);
     const { ligarTerminalEmbutido, terminalService } = await import("./terminal.js");
     ligarTerminalEmbutido();
     app.on("will-quit", () => terminalService.fecharTodos());
-    await cadastrarFerramentasNativas(comando).catch((err: unknown) => {
+    await cadastrarFerramentasNativas(ambienteDoApp).catch((err: unknown) => {
       console.error(`ferramentas nativas: cadastro falhou (${err instanceof Error ? err.message : String(err)})`);
     });
+    // O `locum` que o Claude Code guarda, quando a pessoa já o ligou, também
+    // segue o app instalado: aponta para um binário que sumiu, ou para uma
+    // cópia que não é o app instalado, e o app instalado corrige.
+    void claudeCodeService.corrigirRegistro(ambienteDoApp).catch((err: unknown) => {
+      console.error(`claude code: correção do registro falhou (${err instanceof Error ? err.message : String(err)})`);
+    });
+    // Servidores importados antes do vínculo eram cópia: voltam a seguir a origem.
+    const { claudeImportService } = await import("../src/services/claude-import.js");
+    await claudeImportService.revincular().then(
+      (r) => {
+        if (r.vinculados.length > 0) console.log(`vinculo: ${r.vinculados.length} servidor(es) ligado(s) a origem (${r.vinculados.join(", ")})`);
+      },
+      (err: unknown) => console.error(`vinculo: migracao falhou (${err instanceof Error ? err.message : String(err)})`),
+    );
   }
 
   // Achar o `claude` abre um shell de login, que leva segundos. Começar agora

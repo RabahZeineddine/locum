@@ -1,361 +1,96 @@
-import { execFile } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
-// A build ESM: a UMD, que é o "main" do pacote, não passa pelo esbuild.
-import { parse, type ParseError } from "jsonc-parser/lib/esm/main.js";
-import type { McpServerInput } from "../config/types.js";
+import { basename } from "node:path";
+import { SERVIDOR_NATIVO, type McpSource } from "../config/types.js";
+import {
+  clienteDeclarado,
+  fontes,
+  homeDasFerramentas,
+  impressao,
+  origemEstruturada,
+  preparar,
+  shellDeLogin,
+  variaveisCitadas,
+  type Candidato,
+  type Entrada,
+  type Preparado,
+} from "./mcp-origem.js";
 import { mcpService, type McpService } from "./mcp-service.js";
 import { chaveDoClienteOAuth, type PreRegisteredClient } from "./mcp-oauth-service.js";
-import { CREDENTIAL_PLACEHOLDER, secretService, type SecretService } from "./secret-service.js";
+import { secretService, type SecretService } from "./secret-service.js";
 import { settingsService, type SettingsService } from "./settings-service.js";
 
 /**
  * Traz para o Locum os servidores MCP que a pessoa já configurou nas
  * ferramentas desta máquina: o Claude Code (os de usuário, em `~/.claude.json`,
  * e os dos plugins ligados), o opencode, o Cursor, o VS Code e o Claude
- * Desktop. Cada uma tem seu formato, e todas são lidas para o formato do
- * Claude Code antes de virar cadastro. Depois de importado o servidor é do
- * Locum e roda com qualquer modelo, com ou sem a ferramenta de origem. Os
- * conectores do claude.ai não entram: rodam nos servidores da Anthropic e só
+ * Desktop. A leitura de cada formato mora em `mcp-origem`.
+ *
+ * O servidor importado fica vinculado à origem: o Locum guarda de onde ele
+ * veio, e não uma cópia do comando. Comando, args, env e url se leem da origem
+ * na hora do uso; o que é do Locum (ligado, credencial, escopo) fica no Locum.
+ * Os conectores do claude.ai não entram: rodam nos servidores da Anthropic e só
  * se alcançam pela conta (ver `claude-account`).
  */
 
-export interface Candidato {
-  name: string;
-  /**
-   * "usuário" para o Claude Code, o plugin de onde veio (como `akad@akad`), ou
-   * o nome da outra ferramenta (`ORIGENS`).
-   */
-  origem: string;
-  transport: "stdio" | "http" | "sse";
-  /** Resumo para a tela: comando ou endereço, sem segredo. */
-  destino: string;
-  /** Variável que não se resolveu: o servidor entra, mas sem ela não conecta. */
-  faltando: string[];
-  /** http sem cabeçalho: a autorização sai pelo OAuth do Locum depois de importar. */
-  oauth: boolean;
-  jaCadastrado: boolean;
-}
-
-/** O que se grava; fica fora do que vai para a tela por carregar segredo. */
-interface Preparado extends Candidato {
-  config: McpServerInput;
-  segredo?: string;
-  /** App OAuth que o plugin declara, para autorizar sem registro automático. */
-  cliente?: PreRegisteredClient;
-}
-
-interface Entrada {
-  type?: string;
-  command?: string;
-  args?: string[];
-  env?: Record<string, string>;
-  url?: string;
-  headers?: Record<string, string>;
-  /** Como o Claude Code declara app OAuth já cadastrado no serviço. */
-  oauth?: { clientId?: string; callbackPort?: number; scopes?: string[] | string };
-}
+export {
+  clienteDeclarado,
+  fontes,
+  ORIGENS,
+  preparar,
+  servidoresDoOpencode,
+  servidoresDosPlugins,
+  servidoresDoVscode,
+  variaveisCitadas,
+  variavelDoClaude,
+  type Candidato,
+} from "./mcp-origem.js";
 
 export interface ImportDeps {
   home: string;
   /** Variáveis do shell de login, que o app aberto pelo Finder não herda. */
   ambiente: (nomes: string[]) => Promise<Record<string, string>>;
-  mcp: Pick<McpService, "list" | "register" | "setEnabled" | "setCredentialRef">;
+  mcp: Pick<McpService, "list" | "register" | "setEnabled" | "setCredentialRef" | "vincular">;
   secrets: Pick<SecretService, "set">;
-  settings: Pick<SettingsService, "set">;
+  settings: Pick<SettingsService, "set" | "get">;
 }
 
-const NOME_DE_SEGREDO = /key|token|secret|password|passwd|auth|bearer|cookie/i;
-const VARIAVEL = /\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}/g;
+/** Ponto de partida da migração, para ela rodar uma vez só. */
+const CHAVE_DA_MIGRACAO = "mcp.vinculo.migrado";
 
-function lerJson(caminho: string): unknown {
+/** O host de uma URL, para dizer se um cadastro antigo e a origem falam do mesmo servidor. */
+function hostDe(url: string | undefined): string | null {
   try {
-    return JSON.parse(readFileSync(caminho, "utf8"));
+    return url === undefined ? null : new URL(url).host;
   } catch {
-    return undefined;
+    return null;
   }
-}
-
-function comoObjeto(v: unknown): Record<string, unknown> {
-  return typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
-}
-
-/** JSON com comentário e vírgula sobrando, como o opencode e o VS Code aceitam. */
-function lerJsonc(caminho: string): unknown {
-  let texto: string;
-  try {
-    texto = readFileSync(caminho, "utf8");
-  } catch {
-    return undefined;
-  }
-  const erros: ParseError[] = [];
-  const valor = parse(texto, erros, { allowTrailingComma: true }) as unknown;
-  return erros.length === 0 ? valor : undefined;
-}
-
-/** O nome que a tela mostra para cada ferramenta além do Claude Code. */
-export const ORIGENS = {
-  opencode: "opencode",
-  cursor: "Cursor",
-  vscode: "VS Code",
-  claudeDesktop: "Claude Desktop",
-} as const;
-
-/** Uma origem lida: de onde, a pasta do plugin (só plugin) e os servidores. */
-interface Fonte {
-  origem: string;
-  raiz?: string;
-  servidores: Record<string, Entrada>;
 }
 
 /**
- * Variável escrita do jeito de cada ferramenta (`${env:X}` no Cursor e no VS
- * Code, `{env:X}` no opencode, `${input:X}` no VS Code) vira `${X}`, que é o
- * que o `preparar` resolve. O `input` do VS Code é perguntado na hora pela
- * própria ferramenta; aqui ele só se resolve se houver variável com o nome, e
- * senão aparece como faltando.
+ * Um cadastro sem origem guardada e uma declaração da origem são o mesmo
+ * servidor? O nome igual não basta: o cadastro pode ser de outra pessoa, ou de
+ * mão. Vale o mesmo transporte e o mesmo programa (stdio) ou o mesmo host
+ * (rede). Comando e args podem ter mudado desde a importação, e é isso que o
+ * aceite existe para mostrar.
  */
-export function variavelDoClaude(texto: string): string {
-  return texto
-    .replace(/\$\{(?:env|input):([A-Za-z_][A-Za-z0-9_.-]*)\}/g, (_t, nome: string) => `\${${nome.replace(/[.-]/g, "_")}}`)
-    .replace(/(?<!\$)\{env:([A-Za-z_][A-Za-z0-9_]*)\}/g, (_t, nome: string) => `\${${nome}}`);
-}
-
-function textos(v: unknown): string[] | undefined {
-  return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string").map(variavelDoClaude) : undefined;
-}
-
-function registro(v: unknown): Record<string, string> | undefined {
-  const o = comoObjeto(v);
-  const pares = Object.entries(o).filter((p): p is [string, string] => typeof p[1] === "string");
-  return pares.length === 0 ? undefined : Object.fromEntries(pares.map(([k, x]) => [k, variavelDoClaude(x)]));
-}
-
-/** Servidor no formato do Claude Code (Cursor, VS Code, Claude Desktop), com a variável traduzida. */
-function entradaParecida(v: unknown): Entrada | undefined {
-  const o = comoObjeto(v);
-  const url = typeof o.url === "string" ? variavelDoClaude(o.url) : undefined;
-  const command = typeof o.command === "string" ? variavelDoClaude(o.command) : undefined;
-  if (url === undefined && command === undefined) return undefined;
-  const args = textos(o.args);
-  const env = registro(o.env);
-  const headers = registro(o.headers);
-  return {
-    ...(typeof o.type === "string" ? { type: o.type } : {}),
-    ...(command === undefined ? {} : { command }),
-    ...(args === undefined ? {} : { args }),
-    ...(env === undefined ? {} : { env }),
-    ...(url === undefined ? {} : { url }),
-    ...(headers === undefined ? {} : { headers }),
-  };
-}
-
-function servidoresParecidos(v: unknown): Record<string, Entrada> {
-  const out: Record<string, Entrada> = {};
-  for (const [nome, bruto] of Object.entries(comoObjeto(v))) {
-    const entrada = entradaParecida(bruto);
-    if (entrada !== undefined) out[nome] = entrada;
-  }
-  return out;
-}
-
-/**
- * O `mcp` do opencode: `local` com o comando inteiro numa lista e o ambiente
- * em `environment`, `remote` com `url` e `headers`. Os dois arquivos globais
- * entram, `.json` e `.jsonc`, e o primeiro ganha no nome repetido.
- */
-export function servidoresDoOpencode(home: string): Record<string, Entrada> {
-  const out: Record<string, Entrada> = {};
-  for (const arquivo of ["opencode.json", "opencode.jsonc"]) {
-    for (const [nome, bruto] of Object.entries(comoObjeto(comoObjeto(lerJsonc(join(home, ".config", "opencode", arquivo))).mcp))) {
-      if (nome in out) continue;
-      const o = comoObjeto(bruto);
-      if (o.type === "remote" && typeof o.url === "string") {
-        const headers = registro(o.headers);
-        out[nome] = { type: "http", url: variavelDoClaude(o.url), ...(headers === undefined ? {} : { headers }) };
-      } else if (o.type === "local") {
-        const comando = textos(o.command) ?? [];
-        if (comando.length === 0) continue;
-        const env = registro(o.environment);
-        out[nome] = { command: comando[0]!, args: comando.slice(1), ...(env === undefined ? {} : { env }) };
-      }
-    }
-  }
-  return out;
-}
-
-/** A pasta de configuração de um app de desktop: `Application Support` no Mac, `.config` no resto. */
-function pastaDoApp(home: string, app: string): string {
-  return process.platform === "darwin" ? join(home, "Library", "Application Support", app) : join(home, ".config", app);
-}
-
-/** O VS Code guarda em `mcp.json` (`servers`) e, nas versões antigas, em `settings.json` (`mcp.servers`). */
-export function servidoresDoVscode(home: string): Record<string, Entrada> {
-  const usuario = join(pastaDoApp(home, "Code"), "User");
-  const antigos = comoObjeto(comoObjeto(lerJsonc(join(usuario, "settings.json")))["mcp"]).servers;
-  return { ...servidoresParecidos(antigos), ...servidoresParecidos(comoObjeto(lerJsonc(join(usuario, "mcp.json"))).servers) };
-}
-
-/**
- * Todas as origens, na ordem em que o nome repetido se resolve: o Claude Code
- * primeiro, porque é de onde a importação nasceu e o plugin traz o app OAuth;
- * depois as outras ferramentas.
- */
-export function fontes(home: string): Fonte[] {
-  const candidatas: Fonte[] = [
-    { origem: "usuário", servidores: comoObjeto(comoObjeto(lerJson(join(home, ".claude.json"))).mcpServers) as Record<string, Entrada> },
-    ...servidoresDosPlugins(home),
-    { origem: ORIGENS.opencode, servidores: servidoresDoOpencode(home) },
-    { origem: ORIGENS.cursor, servidores: servidoresParecidos(comoObjeto(lerJson(join(home, ".cursor", "mcp.json"))).mcpServers) },
-    { origem: ORIGENS.vscode, servidores: servidoresDoVscode(home) },
-    {
-      origem: ORIGENS.claudeDesktop,
-      servidores: servidoresParecidos(comoObjeto(lerJson(join(pastaDoApp(home, "Claude"), "claude_desktop_config.json"))).mcpServers),
-    },
-  ];
-  return candidatas.filter((f) => Object.keys(f.servidores).length > 0);
-}
-
-/** Servidores declarados pelos plugins ligados, com a pasta de cada plugin. */
-export function servidoresDosPlugins(home: string): { origem: string; raiz: string; servidores: Record<string, Entrada> }[] {
-  const ajustes = comoObjeto(lerJson(join(home, ".claude", "settings.json")));
-  const ligados = comoObjeto(ajustes.enabledPlugins);
-  const instalados = comoObjeto(comoObjeto(lerJson(join(home, ".claude", "plugins", "installed_plugins.json"))).plugins);
-
-  const saida: { origem: string; raiz: string; servidores: Record<string, Entrada> }[] = [];
-  for (const [origem, registro] of Object.entries(instalados)) {
-    if (ligados[origem] !== true) continue;
-    const primeiro = comoObjeto(Array.isArray(registro) ? registro[0] : registro);
-    const raiz = typeof primeiro.installPath === "string" ? primeiro.installPath : undefined;
-    if (raiz === undefined || !existsSync(raiz)) continue;
-
-    const manifesto = comoObjeto(lerJson(join(raiz, ".claude-plugin", "plugin.json")));
-    let declarado: unknown = manifesto.mcpServers;
-    if (typeof declarado === "string") declarado = lerJson(join(raiz, declarado));
-    if (declarado === undefined) declarado = lerJson(join(raiz, ".mcp.json"));
-    const objeto = comoObjeto(declarado);
-    const servidores = comoObjeto(objeto.mcpServers ?? objeto) as Record<string, Entrada>;
-    if (Object.keys(servidores).length > 0) saida.push({ origem, raiz, servidores });
-  }
-  return saida;
-}
-
-/** Nomes de variável citados num servidor, fora o `CLAUDE_PLUGIN_ROOT`. */
-export function variaveisCitadas(entrada: Entrada): string[] {
-  const textos = [entrada.command ?? "", entrada.url ?? "", ...(entrada.args ?? []), ...Object.values(entrada.env ?? {}), ...Object.values(entrada.headers ?? {})];
-  const nomes = new Set<string>();
-  for (const texto of textos) for (const m of texto.matchAll(VARIAVEL)) if (m[1] !== "CLAUDE_PLUGIN_ROOT") nomes.add(m[1]!);
-  return [...nomes];
-}
-
-/** O app OAuth que o Claude Code declara para o servidor (`oauth.clientId` e `callbackPort`). */
-export function clienteDeclarado(entrada: Entrada): PreRegisteredClient | undefined {
-  const declarado = entrada.oauth;
-  if (typeof declarado?.clientId !== "string" || typeof declarado.callbackPort !== "number") return undefined;
-  return {
-    clientId: declarado.clientId,
-    redirectUri: `http://localhost:${declarado.callbackPort}/callback`,
-    ...(declarado.scopes === undefined
-      ? {}
-      : { scope: Array.isArray(declarado.scopes) ? declarado.scopes.join(" ") : declarado.scopes }),
-  };
-}
-
-/**
- * Monta o cadastro do Locum a partir do que o Claude Code declara.
- *
- * Valor com cara de segredo, em `env` ou `headers`, vai para o cofre: o
- * cadastro fica com `${credential}` no lugar. O Locum guarda uma credencial
- * por servidor, então o segundo segredo do mesmo servidor fica como faltando.
- */
-export function preparar(
-  name: string,
-  origem: string,
+export function pareceOMesmoServidor(
+  cadastro: { transport: string; command?: string[]; url?: string },
   entrada: Entrada,
-  raiz: string | undefined,
-  ambiente: Record<string, string>,
-  cadastrados: ReadonlySet<string>,
-): Preparado {
-  const faltando = new Set<string>();
-  const expandir = (texto: string): string =>
-    texto.replace(VARIAVEL, (inteiro, nome: string, padrao: string | undefined) => {
-      if (nome === "CLAUDE_PLUGIN_ROOT" && raiz !== undefined) return raiz;
-      const valor = ambiente[nome] ?? padrao;
-      if (valor === undefined) {
-        faltando.add(nome);
-        return inteiro;
-      }
-      return valor;
-    });
-
-  let segredo: string | undefined;
-  const separar = (registro: Record<string, string> | undefined): Record<string, string> | undefined => {
-    if (registro === undefined) return undefined;
-    const out: Record<string, string> = {};
-    for (const [chave, bruto] of Object.entries(registro)) {
-      const valor = expandir(bruto);
-      if (!NOME_DE_SEGREDO.test(chave) || valor.length === 0 || valor.includes("${")) {
-        out[chave] = valor;
-      } else if (segredo === undefined) {
-        segredo = valor;
-        out[chave] = CREDENTIAL_PLACEHOLDER;
-      } else {
-        faltando.add(chave);
-      }
-    }
-    return out;
-  };
-
+): boolean {
   const transport = entrada.type === "http" || entrada.type === "sse" ? entrada.type : entrada.url !== undefined ? "http" : "stdio";
-  const env = separar(entrada.env);
-  const headers = separar(entrada.headers);
-  const config: McpServerInput =
-    transport === "stdio"
-      ? { name, transport, command: [expandir(entrada.command ?? ""), ...(entrada.args ?? []).map(expandir)], ...(env ? { env } : {}), scope: "write" }
-      : { name, transport, url: expandir(entrada.url ?? ""), ...(headers ? { headers } : {}), scope: "write" };
-
-  const cliente = transport === "stdio" ? undefined : clienteDeclarado(entrada);
-
-  return {
-    name,
-    origem,
-    transport,
-    destino: transport === "stdio" ? (config.command ?? []).join(" ").replace(raiz ?? "\u0000", "<plugin>") : (config.url ?? ""),
-    faltando: [...faltando],
-    oauth: transport !== "stdio" && Object.keys(entrada.headers ?? {}).length === 0,
-    jaCadastrado: cadastrados.has(name),
-    config,
-    ...(segredo === undefined ? {} : { segredo }),
-    ...(cliente === undefined ? {} : { cliente }),
-  };
-}
-
-function shellDeLogin(nomes: string[]): Promise<Record<string, string>> {
-  if (nomes.length === 0) return Promise.resolve({});
-  const marca = "__LOCUM_ENV__";
-  const script = nomes.map((n) => `printf '${marca}%s=%s\\n' ${n} "$${n}"`).join("; ");
-  return new Promise((resolve) => {
-    const filho = execFile("/bin/zsh", ["-ilc", script], { timeout: 5_000, encoding: "utf8" }, (erro, stdout) => {
-      const out: Record<string, string> = {};
-      if (!erro) {
-        for (const linha of stdout.split("\n")) {
-          if (!linha.startsWith(marca)) continue;
-          const [nome, ...resto] = linha.slice(marca.length).split("=");
-          const valor = resto.join("=");
-          if (nome && valor.length > 0) out[nome] = valor;
-        }
-      }
-      resolve(out);
-    });
-    filho.stdin?.end();
-  });
+  if ((cadastro.transport === "stdio") !== (transport === "stdio")) return false;
+  if (transport === "stdio") {
+    return basename(cadastro.command?.[0] ?? "\u0000") === basename(entrada.command ?? "\u0001");
+  }
+  const a = hostDe(cadastro.url);
+  return a !== null && a === hostDe(entrada.url?.replace(/\$\{[^}]*\}/g, "x"));
 }
 
 export class ClaudeImportService {
   constructor(
     private deps: ImportDeps = {
-      home: homedir(),
+      get home() {
+        return homeDasFerramentas();
+      },
       ambiente: shellDeLogin,
       mcp: mcpService,
       secrets: secretService,
@@ -363,7 +98,7 @@ export class ClaudeImportService {
     },
   ) {}
 
-  private async preparados(): Promise<Preparado[]> {
+  private async preparados(): Promise<(Preparado & { source: McpSource; hash: string })[]> {
     const cadastrados = new Set((await this.deps.mcp.list()).map((s) => s.config.name));
     const lidas = fontes(this.deps.home);
 
@@ -372,13 +107,15 @@ export class ClaudeImportService {
     const doShell = await this.deps.ambiente([...nomes].filter((n) => process.env[n] === undefined));
     const ambiente = { ...doShell, ...Object.fromEntries(Object.entries(process.env).filter((p): p is [string, string] => p[1] !== undefined)) };
 
-    const saida: Preparado[] = [];
+    const saida: (Preparado & { source: McpSource; hash: string })[] = [];
     for (const f of lidas) {
       for (const [nome, entrada] of Object.entries(f.servidores)) {
         // O próprio Locum, que a pessoa registrou na ferramenta, não se importa.
         if (nome === "locum" || (entrada.command ?? "").includes("Locum")) continue;
         if (saida.some((p) => p.name === nome)) continue;
-        saida.push(preparar(nome, f.origem, entrada, f.raiz, ambiente, cadastrados));
+        const source = origemEstruturada(f, nome);
+        const p = preparar(nome, f.origem, entrada, f.raiz, ambiente, cadastrados);
+        saida.push({ ...p, source, hash: impressao(p.config, source, f.raiz) });
       }
     }
     return saida;
@@ -407,18 +144,18 @@ export class ClaudeImportService {
 
   /** O que dá para importar, sem segredo nem cadastro completo. */
   async listar(): Promise<Candidato[]> {
-    return (await this.preparados()).map(({ config: _c, segredo: _s, cliente: _k, ...candidato }) => candidato);
+    return (await this.preparados()).map(({ config: _c, segredo: _s, cliente: _k, source: _o, hash: _h, ...candidato }) => candidato);
   }
 
   /**
-   * Cadastra os escolhidos, desligados: ligar é da pessoa, como em todo
-   * servidor que não nasce pela tela. Reimportar um já cadastrado atualiza o
-   * caminho, que no plugin muda a cada versão.
+   * Cadastra os escolhidos, vinculados à origem e desligados: ligar é da
+   * pessoa, como em todo servidor que não nasce pela tela. Reimportar um já
+   * cadastrado vincula de novo e aceita a configuração que a origem tem agora.
    */
   async importar(nomes: string[]): Promise<{ importados: string[] }> {
     const escolhidos = (await this.preparados()).filter((p) => nomes.includes(p.name));
     for (const p of escolhidos) {
-      await this.deps.mcp.register(p.config);
+      await this.deps.mcp.register(p.config, { source: p.source, hash: p.hash });
       if (!p.jaCadastrado) await this.deps.mcp.setEnabled(p.name, false);
       if (p.cliente !== undefined) await this.deps.settings.set(chaveDoClienteOAuth(p.name), JSON.stringify(p.cliente));
       if (p.segredo !== undefined) {
@@ -428,6 +165,43 @@ export class ClaudeImportService {
       }
     }
     return { importados: escolhidos.map((p) => p.name) };
+  }
+
+  /**
+   * Migração, na subida: os servidores importados antes do vínculo eram cópia.
+   * Os que a origem ainda declara pelo nome (e que parecem o mesmo servidor)
+   * passam a vinculados, com a cópia como configuração aceita: se a origem hoje
+   * diz outra coisa, a conexão mostra "a origem mudou" e espera o aceite. Sem
+   * origem encontrada, ficam como cadastro manual. Roda uma vez, para não
+   * religar o que a pessoa desvinculou de propósito.
+   */
+  async revincular(): Promise<{ vinculados: string[]; manuais: string[] }> {
+    const feita = await this.deps.settings.get(CHAVE_DA_MIGRACAO);
+    if (feita !== undefined) return { vinculados: [], manuais: [] };
+
+    const lidas = fontes(this.deps.home);
+    const vinculados: string[] = [];
+    const manuais: string[] = [];
+    for (const servidor of await this.deps.mcp.list()) {
+      const nome = servidor.config.name;
+      if (servidor.source !== null || nome === SERVIDOR_NATIVO || nome === "locum") continue;
+      let achado: { fonte: (typeof lidas)[number]; entrada: Entrada } | undefined;
+      for (const fonte of lidas) {
+        const entrada = fonte.servidores[nome];
+        if (entrada !== undefined && pareceOMesmoServidor(servidor.config, entrada)) {
+          achado = { fonte, entrada };
+          break;
+        }
+      }
+      if (achado === undefined) {
+        manuais.push(nome);
+        continue;
+      }
+      await this.deps.mcp.vincular(nome, origemEstruturada(achado.fonte, nome));
+      vinculados.push(nome);
+    }
+    await this.deps.settings.set(CHAVE_DA_MIGRACAO, new Date().toISOString());
+    return { vinculados, manuais };
   }
 }
 
