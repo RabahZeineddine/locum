@@ -26,11 +26,18 @@ test("estado desconhecido vira ocioso, sem quebrar", () => {
   assert.equal(pontoDoEstado("algo-novo"), "ocioso");
 });
 
-test("provedor disponível é ok, desligado é aviso e o que falta chave é ocioso", () => {
-  assert.equal(pontoDoProvedor({ available: true, disabled: false }), "ok");
-  assert.equal(pontoDoProvedor({ available: false, disabled: true }), "aviso");
-  assert.equal(pontoDoProvedor({ available: true, disabled: true }), "aviso");
-  assert.equal(pontoDoProvedor({ available: false, disabled: false }), "ocioso");
+test("provedor só é ok com modelos lidos; lendo é ocioso, erro ou lista vazia é erro", () => {
+  const ligado = { available: true, disabled: false };
+  assert.equal(pontoDoProvedor(ligado, { modelos: ["a"] }), "ok");
+  assert.equal(pontoDoProvedor(ligado, null), "ocioso");
+  assert.equal(pontoDoProvedor(ligado, { modelos: [] }), "erro");
+  assert.equal(pontoDoProvedor(ligado, { modelos: [], erro: "401" }), "erro");
+});
+
+test("provedor desligado pela pessoa ou sem chave é ocioso, mesmo com modelos", () => {
+  assert.equal(pontoDoProvedor({ available: false, disabled: true }, { modelos: ["a"] }), "ocioso");
+  assert.equal(pontoDoProvedor({ available: true, disabled: true }, { modelos: ["a"] }), "ocioso");
+  assert.equal(pontoDoProvedor({ available: false, disabled: false }, null), "ocioso");
 });
 
 test("o Locum numa ferramenta de código: ligado é ok, desatualizado é aviso, ausente é ocioso", () => {

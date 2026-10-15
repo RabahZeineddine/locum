@@ -258,7 +258,7 @@ function EscolhaDoIdioma() {
       data-locum-idioma-sistema={system}
       data-locum-probe="idioma-escolha"
     >
-      <div className="flex flex-wrap justify-end gap-1">
+      <div aria-label={t("settings.language.title")} className="flex flex-wrap justify-end gap-1" role="group">
         <Button
           data-locum-escolhido={preference === null ? "sim" : "nao"}
           data-locum-idioma="sistema"
@@ -474,6 +474,7 @@ function EscolhaDeWorkingHours() {
           <div className="flex items-center gap-2">
             <span className="text-muted-foreground text-xs">{t("settings.workingHours.start")}</span>
             <Input
+              aria-label={t("settings.workingHours.start")}
               className="h-7 w-24 font-mono text-xs"
               onChange={(e) => salvar({ ...atual, start: e.target.value })}
               type="time"
@@ -481,6 +482,7 @@ function EscolhaDeWorkingHours() {
             />
             <span className="text-muted-foreground text-xs">{t("settings.workingHours.end")}</span>
             <Input
+              aria-label={t("settings.workingHours.end")}
               className="h-7 w-24 font-mono text-xs"
               onChange={(e) => salvar({ ...atual, end: e.target.value })}
               type="time"
@@ -491,6 +493,7 @@ function EscolhaDeWorkingHours() {
           <div className="flex items-center gap-2">
             <span className="text-muted-foreground text-xs">{t("settings.workingHours.offHoursLabel")}</span>
             <Select
+              aria-label={t("settings.workingHours.offHoursLabel")}
               className="h-7 text-xs"
               onChange={(e) => salvar({ ...atual, offHoursBehavior: e.target.value as WorkingHoursConfig["offHoursBehavior"] })}
               value={atual.offHoursBehavior}
@@ -577,7 +580,11 @@ function EscolhaDoTerminal() {
   };
 
   return (
-    <div className="flex flex-wrap items-center justify-end gap-1" data-locum-probe="session-terminal" data-locum-terminal={atual}>
+    <div
+      aria-label={t("settings.sessionTerminal.title")}
+      className="flex flex-wrap items-center justify-end gap-1"
+      data-locum-probe="session-terminal"
+      role="group" data-locum-terminal={atual}>
       {TERMINAIS.filter((terminal) => terminal === atual || (instalados.data ?? TERMINAIS).includes(terminal)).map((terminal) => (
         <Button
           data-locum-escolhido={atual === terminal ? "sim" : "nao"}
@@ -680,7 +687,6 @@ export function ClaudeCode() {
         ) : null}
         <div className="ml-auto">
           <Button
-            className="cursor-pointer"
             data-locum-claude-code-ligar=""
             disabled={ligando || estado === null || estado.cli === null || estado.current}
             onClick={ligar}
@@ -756,7 +762,6 @@ export function Opencode() {
         )}
         <div className="ml-auto">
           <Button
-            className="cursor-pointer"
             disabled={ligando || estado === null || estado.current}
             onClick={ligar}
             size="sm"

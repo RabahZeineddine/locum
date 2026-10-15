@@ -159,8 +159,8 @@ function LinhaDoProvedor({
       data-locum-provider={provedor.name}
     >
       <div className="flex min-h-10 flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5">
-        <StatusDot estado={pontoDoProvedor(provedor)} />
-        <span className="min-w-24 truncate font-medium">{rotuloDoProvedor(provedor.name)}</span>
+        <StatusDot estado={pontoDoProvedor(provedor, modelos)} />
+        <span className="min-w-24 truncate font-medium" title={provedor.name}>{rotuloDoProvedor(provedor.name)}</span>
         {/* O ponto leva a cor; o texto ao lado diz o mesmo em palavras e fica neutro. */}
         {provedor.available ? (
           <span className="text-muted-foreground shrink-0 text-xs">{t("settings.providers.available")}</span>
@@ -202,7 +202,7 @@ function LinhaDoProvedor({
         ) : null}
       </div>
 
-      <div className="flex flex-col gap-2 pr-3 pb-2.5 pl-[2.125rem] empty:hidden">
+      <div className="flex flex-col gap-2 pr-3 pb-2.5 pl-[1.875rem] empty:hidden">
         {provedor.available ? <ListaDeModelos modelos={modelos} provedor={provedor.name} /> : null}
 
         {provedor.name === "ollama" ? <EnderecoDoOllama recarregar={recarregar} /> : null}
@@ -327,9 +327,13 @@ function EnderecoDoOllama({ recarregar }: { recarregar: () => Promise<void> }) {
       </p>
       {aviso === null ? null : (
         <p
-          className={cn("text-xs", aviso === "invalid" ? "text-sev-critical" : "text-muted-foreground")}
+          className={cn(
+            "flex items-center gap-1.5 text-xs",
+            aviso === "invalid" ? "text-sev-critical" : "text-muted-foreground",
+          )}
           data-locum-ollama-aviso={aviso}
         >
+          <StatusDot estado={aviso === "invalid" ? "erro" : "aviso"} />
           {t(`settings.providers.ollama.${aviso}`)}
         </p>
       )}
@@ -623,10 +627,12 @@ type Remocao = ReadResult<"providers.remove">;
  */
 function ProvedoresCadastrados({
   chaves,
+  modelos,
   provedores,
   recarregar,
 }: {
   chaves: Map<string, ChaveDeProvedor>;
+  modelos: Map<string, ModelosDoProvedor> | null;
   provedores: Provedor[];
   recarregar: () => Promise<void>;
 }) {
@@ -720,6 +726,7 @@ function ProvedoresCadastrados({
               cadastrado={cadastrado}
               chave={chaves.get(cadastrado.id)}
               key={cadastrado.id}
+              modelos={modelos?.get(cadastrado.id) ?? null}
               ocupado={ocupado}
               provedor={provedores.find((p) => p.name === cadastrado.id)}
               recarregar={reler}
@@ -786,6 +793,7 @@ function LinhaDoCadastrado({
   aviso,
   cadastrado,
   chave,
+  modelos,
   ocupado,
   provedor,
   recarregar,
@@ -794,6 +802,7 @@ function LinhaDoCadastrado({
   aviso: Remocao | undefined;
   cadastrado: Cadastrado;
   chave: ChaveDeProvedor | undefined;
+  modelos: ModelosDoProvedor | null;
   ocupado: boolean;
   provedor: Provedor | undefined;
   recarregar: () => Promise<void>;
@@ -809,7 +818,7 @@ function LinhaDoCadastrado({
       data-locum-cadastrado-url={cadastrado.baseUrl}
       data-locum-cadastrado-usos={usos.length}
     >
-      <StatusDot estado={provedor === undefined ? "ocioso" : pontoDoProvedor(provedor)} />
+      <StatusDot estado={provedor === undefined ? "ocioso" : pontoDoProvedor(provedor, modelos)} />
       <span className="font-mono text-[13px]">{cadastrado.id}</span>
       <span className="text-muted-foreground text-xs">{cadastrado.label}</span>
       <span className="text-muted-foreground font-mono text-xs">{cadastrado.baseUrl}</span>
@@ -852,7 +861,7 @@ function LinhaDoCadastrado({
         </p>
       )}
       {chave === undefined || chave.variable === null || provedor === undefined ? null : (
-        <div className="w-full pl-[1.625rem]">
+        <div className="w-full pl-[1.875rem]">
           <ChaveDoProvedor chave={chave} provedor={provedor} recarregar={recarregar} />
         </div>
       )}
@@ -1004,6 +1013,7 @@ export function Modelos(_props: TelaProps) {
       <GrupoDeLinhas descricao={t("settings.registered.description")} titulo={t("settings.registered.title")}>
         <ProvedoresCadastrados
           chaves={chavesPorProvedor}
+          modelos={modelos}
           provedores={provedoresRecarregados?.lista ?? provedores.data ?? []}
           recarregar={recarregarProvedores}
         />
