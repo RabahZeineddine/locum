@@ -2303,6 +2303,8 @@
       "slackReplyNeedsSlack": "Responder no Slack precisa de um gatilho do Slack: é dele que vem a thread.",
       "teamsReplyNeedsTeams": "Responder no Teams precisa de um gatilho do Teams.",
       "noTracker": "Escolha em qual tracker abrir a tarefa.",
+      "githubTokenForDiff": "O GitHub está sem token: a revisão precisa dele para trazer o diff do PR.",
+      "openConnection": "Abrir Conexões > GitHub",
       "agentMissing": "O agent deste passo não existe mais na biblioteca.",
       "noTool": "Escolha o app e a ferramenta desta ação.",
       "noUrl": "Informe o endereço da API, começando com http:// ou https://.",

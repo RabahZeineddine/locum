@@ -208,3 +208,24 @@ test("em branco sugere o agent criado, e sem agent fica o passo de IA", () => {
   const sem = rascunhoDoModelo("blank", "b", "B", null);
   assert.equal(sem.spec.steps[0]!.type === "model" && sem.spec.steps[0]!.profile, undefined);
 });
+
+test("o modelo de PR no Teams usa o agent de nome parecido com revisor, senão o primeiro", () => {
+  const passo = (r: ReturnType<typeof rascunhoDoModelo>) => {
+    const p = r.spec.steps[0]!;
+    return p.type === "model" ? p.profile : undefined;
+  };
+  assert.equal(passo(rascunhoDoModelo("teamsPrReview", "t", "T", null, [{ id: "geral", name: "Geral" }, { id: "rev", name: "Revisor de código" }])), "rev");
+  assert.equal(passo(rascunhoDoModelo("teamsPrReview", "t", "T", null, [{ id: "geral", name: "Geral" }, { id: "outro", name: "Outro" }])), "geral");
+  assert.equal(passo(rascunhoDoModelo("teamsPrReview", "t", "T", null)), undefined);
+});
+
+test("a revisão por link no Teams avisa que precisa do token do GitHub, com atalho, só quando falta", () => {
+  const r = rascunhoDoModelo("teamsPrReview", "t", "T", null);
+  const base = { slackConectado: true, teamsConectado: true, trackers: [] };
+  const aviso = (githubComToken?: boolean) =>
+    problemas(r, { ...base, ...(githubComToken === undefined ? {} : { githubComToken }) }).find((p) => p.chave === "automations.problems.githubTokenForDiff");
+  assert.deepEqual(aviso(false)?.atalho, { rota: "connections", detalhe: "github" });
+  assert.equal(aviso(false)?.bloqueia, false);
+  assert.equal(aviso(true), undefined);
+  assert.equal(aviso(undefined), undefined);
+});

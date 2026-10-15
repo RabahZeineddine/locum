@@ -431,7 +431,7 @@ export function NovaAutomacao({
     try {
       const titulo = nome.trim() || t(`automations.templates.${modelo}.title`);
       const id = await call("automations.suggestId", titulo);
-      const r = rascunhoDoModelo(modelo, id, titulo, tracker === "" ? (listaDeTrackers[0]?.id ?? null) : tracker, (agentes.data ?? []).map((a) => a.id));
+      const r = rascunhoDoModelo(modelo, id, titulo, tracker === "" ? (listaDeTrackers[0]?.id ?? null) : tracker, (agentes.data ?? []).map((a) => ({ id: a.id, name: a.name })));
       await call("automations.save", {
         spec: r.spec,
         triggers: r.gatilhos.map((g) => ({ config: g.config })),

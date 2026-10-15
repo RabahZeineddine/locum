@@ -129,6 +129,7 @@ function EditorCarregado({
     slackConectado: conectado("slack"),
     teamsConectado: conectado("teams"),
     trackers: listaDeTrackers.map((tr) => tr.id),
+    ...(conexoes.data === undefined ? {} : { githubComToken: (conexoes.data.find((c) => c.id === "github")?.partes?.token ?? "missing") === "ok" }),
     ...(bibliotecaRelida === null && biblioteca.data === undefined ? {} : { agents: agentsDaBiblioteca.map((a) => a.id) }),
   };
   const appsLigados: Record<AppDoComponente, boolean> = {
@@ -399,6 +400,11 @@ function EditorCarregado({
                 >
                   {t(p.chave)}
                 </button>
+                {p.atalho === undefined ? null : (
+                  <button className="text-primary ml-2 cursor-pointer hover:underline" onClick={() => navegar(p.atalho!.rota, p.atalho!.detalhe)} type="button">
+                    {t("automations.problems.openConnection")}
+                  </button>
+                )}
               </li>
             ))}
           </ul>

@@ -2254,6 +2254,8 @@
       "slackReplyNeedsSlack": "Replying in Slack needs a Slack trigger: that is where the thread comes from.",
       "teamsReplyNeedsTeams": "Replying in Teams needs a Teams trigger.",
       "noTracker": "Choose which tracker opens the task.",
+      "githubTokenForDiff": "GitHub has no token: the review needs it to bring the PR diff.",
+      "openConnection": "Open Connections > GitHub",
       "agentMissing": "This step's agent no longer exists in the library.",
       "noTool": "Choose the app and the tool for this action.",
       "noUrl": "Fill in the API address, starting with http:// or https://.",
