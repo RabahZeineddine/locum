@@ -2235,6 +2235,8 @@ async function checkConfig(window: BrowserWindow): Promise<string> {
       headers: { Authorization: "${credential}" },
     });
     await mcpService.setEnabled("github", false);
+    // Um segundo servidor do GitHub aparece no detalhe, com o seu próprio estado.
+    await mcpService.register({ name: "github-ro", transport: "http", url: "https://api.githubcopilot.com/mcp/readonly", headers: { Authorization: "${credential}" } });
     try {
       await irPara(window, "today");
       await irPara(window, "connections");
@@ -2291,11 +2293,14 @@ async function checkConfig(window: BrowserWindow): Promise<string> {
         })()`,
       );
       if (!partes.endsWith("|disabled")) throw new Error(`o detalhe do GitHub mostrou a parte do servidor como "${partes}" e nao "disabled"`);
+      const servidoresDoGithub = await window.webContents.executeJavaScript(`document.querySelectorAll('[data-locum-parte="servidor"]').length`);
+      if (servidoresDoGithub !== 2) throw new Error(`o detalhe do GitHub mostrou ${servidoresDoGithub} servidor(es) e nao 2`);
       const ligarServidor = await window.webContents.executeJavaScript(`document.querySelector('[data-locum-ligar-parte="github"]') !== null`);
       if (ligarServidor !== true) throw new Error("o detalhe do GitHub nao ofereceu ligar o servidor desligado");
       console.log("conexões: GitHub com o servidor desligado aparece como atenção, a barra foca a busca, a busca acha o GitHub e o catálogo, e o detalhe separa token e servidor");
     } finally {
       await mcpService.remove("github");
+      await mcpService.remove("github-ro");
     }
     await irPara(window, "connections");
   }

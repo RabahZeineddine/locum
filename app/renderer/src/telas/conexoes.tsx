@@ -759,7 +759,11 @@ function DetalheDaConexao({ id, navegar }: { id: string; navegar: TelaProps["nav
   const credencial = (credenciais.data?.refs ?? []).find((r) =>
     r.users.some((u) => u.kind === "mcp" && conexao.servers.includes(u.name)),
   );
-  const acao = acaoDeLigar(conexao);
+  const acaoBruta = acaoDeLigar(conexao);
+  // Só vinculado ou com credencial escrita na configuração: não há o que desconectar daqui.
+  const semDesligar =
+    acaoBruta === "disconnect" && conexao.desligar !== null && conexao.desligar.remove.length === 0 && conexao.desligar.forget.length === 0;
+  const acao = semDesligar ? null : acaoBruta;
   const libera = liberaDaConexao(conexao.id, { servidor: conexao.servers.length > 0 });
   const porque = textoDoEstado(conexao, t);
   const painel = PAINEIS[conexao.id];
@@ -846,9 +850,17 @@ function DetalheDaConexao({ id, navegar }: { id: string; navegar: TelaProps["nav
           emUso={quemUsa.length > 0 || iniciativas.length > 0}
           ocupado={ligando}
           partes={conexao.partes}
-          servidor={doServidor.find((sv) => sv.config.name === conexao.partes?.nome)}
+          servidores={doServidor}
         />
       )}
+
+      {semDesligar && conexao.desligar !== null ? (
+        <p className="text-muted-foreground text-xs" data-locum-sem-desligar="">
+          {t(conexao.desligar.keep.length > 0 ? "connections.disconnectPlan.onlyLinked" : "connections.disconnectPlan.onlyLiteral", {
+            names: [...conexao.desligar.keep, ...conexao.desligar.literal].join(", "),
+          })}
+        </p>
+      ) : null}
 
       {acao === null ? null : (
         <div className="flex flex-col gap-2">
@@ -886,6 +898,7 @@ function DetalheDaConexao({ id, navegar }: { id: string; navegar: TelaProps["nav
             <ul className="text-muted-foreground flex flex-col gap-1 text-xs" data-locum-desligar-plano="">
               {conexao.desligar.remove.length === 0 ? null : <li>{t("connections.disconnectPlan.remove", { names: conexao.desligar.remove.join(", ") })}</li>}
               {conexao.desligar.forget.length === 0 ? null : <li>{t("connections.disconnectPlan.forget", { names: conexao.desligar.forget.join(", ") })}</li>}
+              {conexao.desligar.literal.length === 0 ? null : <li>{t("connections.disconnectPlan.literal", { names: conexao.desligar.literal.join(", ") })}</li>}
               {conexao.desligar.keep.length === 0 ? null : <li>{t("connections.disconnectPlan.keep", { names: conexao.desligar.keep.join(", ") })}</li>}
             </ul>
           ) : null}
@@ -1038,20 +1051,17 @@ function PartesDoGithub({
   emUso,
   ocupado,
   partes,
-  servidor,
+  servidores,
 }: {
   agir: (fazer: () => Promise<unknown>, depois?: () => void) => void;
   emUso: boolean;
   ocupado: boolean;
   partes: NonNullable<Conexao["partes"]>;
-  servidor: ReadResult<"mcp.list">[number] | undefined;
+  servidores: ReadResult<"mcp.list">;
 }) {
   const { t } = useTranslation();
-  const [confirmando, setConfirmando] = useState(false);
-  const nome = partes.nome;
-  const ruim = partes.servidor === "disabled" || partes.servidor === "no-credential" || partes.servidor === "needs-auth" || partes.servidor === "failing";
   const linha = "border-border superficie flex flex-col gap-2 rounded-lg border p-3";
-  const falha = servidor !== undefined && partes.servidor === "failing" ? servidor.health.lastError : null;
+  const doPrincipal = servidores.find((sv) => sv.config.name === partes.nome);
   return (
     <Bloco dica={t("connections.parts.hint")} titulo={t("connections.parts.title")}>
       <div className="flex flex-col gap-2" data-locum-github-partes="">
@@ -1074,47 +1084,101 @@ function PartesDoGithub({
           <p className="text-muted-foreground text-xs">{t("connections.parts.token.offers")}</p>
         </div>
 
-        <div className={linha} data-locum-parte="servidor" data-locum-parte-estado={partes.servidor ?? "none"}>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-medium">{t("connections.parts.server.title")}</span>
-            {partes.servidor === null ? null : (
-              <Badge className={cn(ruim ? "text-amber-400" : partes.servidor === "untested" ? "text-muted-foreground" : "text-emerald-400")} variant="outline">
-                {t(`connections.parts.server.state.${partes.servidor}`)}
-              </Badge>
-            )}
-            {servidor === undefined || nome === null ? null : (
-              <Button
-                className="ml-auto cursor-pointer"
-                data-locum-ligar-parte={nome}
-                disabled={ocupado}
-                onClick={() => {
-                  if (servidor.enabled && emUso && !confirmando) {
-                    setConfirmando(true);
-                    return;
-                  }
-                  setConfirmando(false);
-                  agir(() => call("mcp.setEnabled", nome, !servidor.enabled));
-                }}
-                size="sm"
-                variant={servidor.enabled ? "outline" : "default"}
-              >
-                {t(servidor.enabled ? (confirmando ? "settings.servers.turnOffConfirm" : "connections.parts.server.turnOff") : "connections.parts.server.turnOn")}
-              </Button>
-            )}
-          </div>
-          <p className="text-muted-foreground text-xs">
-            {t(partes.servidor === null ? "connections.parts.server.none" : "connections.parts.server.offers")}
-          </p>
-          {confirmando ? <p className="text-muted-foreground text-xs">{t("settings.servers.turnOffInUse")}</p> : null}
-          {falha === null || falha === undefined ? null : (
-            <pre className="border-destructive/30 bg-destructive/5 text-destructive max-h-48 overflow-auto rounded-md border p-2 font-mono text-[11px] whitespace-pre-wrap">
-              {falha}
-            </pre>
-          )}
-          {nome === null ? null : <TesteDaConexao servidor={nome} />}
-        </div>
+        <ParteDoServidor
+          agir={agir}
+          emUso={emUso}
+          estado={partes.servidor}
+          nome={partes.nome}
+          ocupado={ocupado}
+          oferece
+          servidor={doPrincipal}
+          titulo={t("connections.parts.server.title")}
+        />
+        {partes.outros.map((o) => (
+          <ParteDoServidor
+            agir={agir}
+            emUso={emUso}
+            estado={o.estado}
+            key={o.nome}
+            nome={o.nome}
+            ocupado={ocupado}
+            oferece={false}
+            servidor={servidores.find((sv) => sv.config.name === o.nome)}
+            titulo={o.nome}
+          />
+        ))}
       </div>
     </Bloco>
+  );
+}
+
+/** Um servidor MCP do GitHub: estado, ligar ou desligar, a falha e o teste. */
+function ParteDoServidor({
+  agir,
+  emUso,
+  estado,
+  nome,
+  ocupado,
+  oferece,
+  servidor,
+  titulo,
+}: {
+  agir: (fazer: () => Promise<unknown>, depois?: () => void) => void;
+  emUso: boolean;
+  estado: NonNullable<Conexao["partes"]>["servidor"];
+  nome: string | null;
+  ocupado: boolean;
+  oferece: boolean;
+  servidor: ReadResult<"mcp.list">[number] | undefined;
+  titulo: string;
+}) {
+  const { t } = useTranslation();
+  const [confirmando, setConfirmando] = useState(false);
+  const ruim = estado === "disabled" || estado === "no-credential" || estado === "needs-auth" || estado === "failing";
+  const falha = servidor !== undefined && estado === "failing" ? servidor.health.lastError : null;
+  return (
+    <div
+      className="border-border superficie flex flex-col gap-2 rounded-lg border p-3"
+      data-locum-parte="servidor"
+      data-locum-parte-estado={estado ?? "none"}
+      data-locum-parte-servidor={nome ?? ""}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm font-medium">{titulo}</span>
+        {estado === null ? null : (
+          <Badge className={cn(ruim ? "text-amber-400" : estado === "untested" ? "text-muted-foreground" : "text-emerald-400")} variant="outline">
+            {t(`connections.parts.server.state.${estado}`)}
+          </Badge>
+        )}
+        {servidor === undefined || nome === null ? null : (
+          <Button
+            className="ml-auto cursor-pointer"
+            data-locum-ligar-parte={nome}
+            disabled={ocupado}
+            onClick={() => {
+              if (servidor.enabled && emUso && !confirmando) {
+                setConfirmando(true);
+                return;
+              }
+              setConfirmando(false);
+              agir(() => call("mcp.setEnabled", nome, !servidor.enabled));
+            }}
+            size="sm"
+            variant={servidor.enabled ? "outline" : "default"}
+          >
+            {t(servidor.enabled ? (confirmando ? "settings.servers.turnOffConfirm" : "connections.parts.server.turnOff") : "connections.parts.server.turnOn")}
+          </Button>
+        )}
+      </div>
+      <p className="text-muted-foreground text-xs">{t(estado === null ? "connections.parts.server.none" : oferece ? "connections.parts.server.offers" : "connections.parts.server.other")}</p>
+      {confirmando ? <p className="text-muted-foreground text-xs">{t("settings.servers.turnOffInUse")}</p> : null}
+      {falha === null || falha === undefined ? null : (
+        <pre className="border-destructive/30 bg-destructive/5 text-destructive max-h-48 overflow-auto rounded-md border p-2 font-mono text-[11px] whitespace-pre-wrap">
+          {falha}
+        </pre>
+      )}
+      {nome === null ? null : <TesteDaConexao servidor={nome} />}
+    </div>
   );
 }
 

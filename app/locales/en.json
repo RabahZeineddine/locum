@@ -1550,7 +1550,10 @@
     "disconnectPlan": {
       "remove": "Removed from the registry: {{names}}.",
       "forget": "Only the credential is forgotten, and it stays registered: {{names}}.",
-      "keep": "Left as is, because it comes from an origin: {{names}}."
+      "literal": "The credential is written in the configuration, nothing to forget: {{names}}.",
+      "keep": "Left as is, because it comes from an origin: {{names}}.",
+      "onlyLinked": "{{names}} comes from an origin and cannot be disconnected here: edit it at the origin, or unlink it in the server technical details.",
+      "onlyLiteral": "The credential of {{names}} is written in the server configuration: nothing to forget here."
     },
     "soon": "Coming soon",
     "close": "Close",
@@ -1728,6 +1731,7 @@
         "none": "No GitHub MCP server registered. Agents do not have those tools yet.",
         "turnOn": "Turn on server",
         "turnOff": "Turn off server",
+        "other": "Another registered GitHub server.",
         "state": {
           "ok": "responded",
           "untested": "on, not tested yet",

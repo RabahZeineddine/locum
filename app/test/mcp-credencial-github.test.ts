@@ -168,3 +168,30 @@ test("o token da conexão só vai por https", async () => {
     await mcp.remove("gh");
   }
 });
+
+test("cabeçalho de credencial vazio ou com marcador solto não conta como credencial", async () => {
+  const { mcp } = montar();
+  await mcp.register({ name: "vazio", transport: "http", url: "https://v.test/mcp", headers: { Authorization: " " } });
+  await mcp.register({ name: "solto", transport: "http", url: "https://s.test/mcp", headers: { Authorization: "Bearer ${TOKEN}" } });
+  await mcp.register({ name: "escrito", transport: "http", url: "https://e.test/mcp", headers: { Authorization: "Bearer abc" } });
+  try {
+    assert.equal(await mcp.credencialDoServidor("vazio"), "dispensa");
+    assert.equal(await mcp.credencialDoServidor("solto"), "dispensa");
+    assert.equal(await mcp.credencialDoServidor("escrito"), "ok");
+  } finally {
+    for (const n of ["vazio", "solto", "escrito"]) await mcp.remove(n);
+  }
+});
+
+test("servidor github em outro host diz que a credencial é do servidor, e não manda colar o token do GitHub", async () => {
+  const { mcp } = montar();
+  await mcp.register({ name: "github", transport: "http", url: "https://mcp.gateway.example/mcp", headers: { Authorization: "${credential}" } });
+  try {
+    const teste = await mcp.testConnection("github");
+    assert.match(teste.error ?? "", /credencial do servidor "github"/);
+    assert.match(teste.error ?? "", /detalhes técnicos/);
+    assert.doesNotMatch(teste.error ?? "", /cole o token em Conexões > GitHub$/);
+  } finally {
+    await mcp.remove("github");
+  }
+});

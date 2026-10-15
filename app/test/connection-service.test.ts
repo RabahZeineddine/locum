@@ -363,7 +363,7 @@ test("servidor github desligado aparece na conexão GitHub como desligado, em ve
     assert.deepEqual(github.servers, ["github"]);
     assert.equal(github.state, "attention");
     assert.equal(github.reason, "disabled");
-    assert.deepEqual(github.partes, { token: "missing", servidor: "disabled", nome: "github" });
+    assert.deepEqual(github.partes, { token: "missing", servidor: "disabled", nome: "github", outros: [] });
   } finally {
     await mcp.remove("github");
   }
@@ -376,7 +376,7 @@ test("com token e servidor desligado, a conexão não diz conectado", async () =
   try {
     const github = (await servico.list()).find((c) => c.id === "github")!;
     assert.equal(github.state, "attention");
-    assert.deepEqual(github.partes, { token: "ok", servidor: "disabled", nome: "github" });
+    assert.deepEqual(github.partes, { token: "ok", servidor: "disabled", nome: "github", outros: [] });
   } finally {
     await mcp.remove("github");
   }
@@ -388,7 +388,7 @@ test("o token guardado no GitHub alimenta o servidor MCP, que então conta como 
   try {
     const github = (await servico.list()).find((c) => c.id === "github")!;
     assert.equal(github.state, "connected");
-    assert.deepEqual(github.partes, { token: "ok", servidor: "untested", nome: "github" });
+    assert.deepEqual(github.partes, { token: "ok", servidor: "untested", nome: "github", outros: [] });
   } finally {
     await mcp.remove("github");
   }
@@ -401,7 +401,7 @@ test("servidor github sem credencial nenhuma pede o token, e não fica conectado
     const github = (await servico.list()).find((c) => c.id === "github")!;
     assert.equal(github.state, "attention");
     assert.equal(github.reason, "no-credential");
-    assert.deepEqual(github.partes, { token: "missing", servidor: "no-credential", nome: "github" });
+    assert.deepEqual(github.partes, { token: "missing", servidor: "no-credential", nome: "github", outros: [] });
   } finally {
     await mcp.remove("github");
   }
@@ -411,7 +411,7 @@ test("GitHub sem servidor cadastrado não tem parte de servidor", async () => {
   const { servico } = montarFusao();
   const github = (await servico.list()).find((c) => c.id === "github")!;
   assert.equal(github.state, "connected");
-  assert.deepEqual(github.partes, { token: "ok", servidor: null, nome: null });
+  assert.deepEqual(github.partes, { token: "ok", servidor: null, nome: null, outros: [] });
 });
 
 test("servidor slack importado entra em Slack, e não vira conexão própria", async () => {
@@ -473,7 +473,7 @@ test("desconectar remove só o servidor que a conexão cadastrou; o importado co
   await mcp.register({ name: "notion-trabalho", transport: "http", url: "https://mcp.notion.com/mcp" });
   try {
     const antes = (await servico.list()).find((c) => c.id === "notion")!;
-    assert.deepEqual(antes.desligar, { remove: ["notion"], forget: ["notion-trabalho"], keep: [] });
+    assert.deepEqual(antes.desligar, { remove: ["notion"], forget: ["notion-trabalho"], literal: [], keep: [] });
 
     await servico.disconnect("notion");
     assert.equal(await mcp.get("notion"), undefined);
@@ -493,7 +493,7 @@ test("servidor vinculado a uma origem nunca é apagado nem tem a credencial esqu
   );
   try {
     const conexao = (await servico.list()).find((c) => c.id === "notion")!;
-    assert.deepEqual(conexao.desligar, { remove: [], forget: [], keep: ["notion"] });
+    assert.deepEqual(conexao.desligar, { remove: [], forget: [], literal: [], keep: ["notion"] });
     await assert.rejects(servico.disconnect("notion"), /vinculad/);
     assert.notEqual(await mcp.get("notion"), undefined);
     assert.deepEqual(chamadas, []);
@@ -544,7 +544,7 @@ test("GitHub com servidor ok por credencial própria e sem token pede atenção"
   void secrets;
   try {
     const github = (await servico.list()).find((c) => c.id === "github")!;
-    assert.deepEqual(github.partes, { token: "missing", servidor: "untested", nome: "github" });
+    assert.deepEqual(github.partes, { token: "missing", servidor: "untested", nome: "github", outros: [] });
     assert.equal(github.state, "attention");
     assert.equal(github.reason, "no-token");
   } finally {
@@ -580,5 +580,55 @@ test("a conexão diz quantas ferramentas escrevem, pelas anotações guardadas",
     assert.equal(notion.toolWrites, 2);
   } finally {
     await mcp.remove("notion");
+  }
+});
+
+test("os outros servidores do GitHub aparecem em partes, cada um com o estado, e o pior decide o geral", async () => {
+  const { servico, mcp } = montarFusao();
+  await mcp.register({ name: "github", transport: "http", url: "https://api.githubcopilot.com/mcp/", headers: { Authorization: "${credential}" } });
+  await mcp.register({ name: "github-ro", transport: "http", url: "https://api.githubcopilot.com/mcp/readonly", headers: { Authorization: "${credential}" } });
+  await mcp.recordConnection("github-ro", { ok: false, error: "boom" });
+  try {
+    const github = (await servico.list()).find((c) => c.id === "github")!;
+    assert.equal(github.state, "error");
+    assert.equal(github.partes?.nome, "github");
+    assert.equal(github.partes?.servidor, "untested");
+    assert.deepEqual(github.partes?.outros, [{ nome: "github-ro", estado: "failing" }]);
+  } finally {
+    await mcp.remove("github");
+    await mcp.remove("github-ro");
+  }
+});
+
+test("servidor com credencial escrita à mão cai num balde próprio ao desconectar, e não em esquecer", async () => {
+  const { servico, mcp, chamadas } = montar();
+  await mcp.register({ name: "notion", transport: "http", url: "https://mcp.notion.com/mcp" });
+  await mcp.register({ name: "notion-chave", transport: "http", url: "https://mcp.notion.com/mcp", headers: { Authorization: "Bearer abc" } });
+  try {
+    const plano = (await servico.list()).find((c) => c.id === "notion")!.desligar;
+    assert.deepEqual(plano, { remove: ["notion"], forget: [], literal: ["notion-chave"], keep: [] });
+    await servico.disconnect("notion");
+    assert.deepEqual(chamadas, ["disconnect:notion"], "não finge esquecer o que não está no cofre");
+  } finally {
+    await mcp.remove("notion");
+    await mcp.remove("notion-chave");
+  }
+});
+
+test("toolCount e toolWrites somam os mesmos servidores do item", async () => {
+  const { servico, mcp } = montar();
+  await mcp.register({ name: "notion", transport: "http", url: "https://mcp.notion.com/mcp" });
+  await mcp.register({ name: "notion-b", transport: "http", url: "https://mcp.notion.com/mcp" });
+  const guardar = (n: string, t: unknown[]) => (mcp as unknown as { guardarFerramentas: (n: string, t: unknown[]) => Promise<void> }).guardarFerramentas(n, t);
+  try {
+    await guardar("notion", [{ name: "search", description: "", estimatedTokens: 1, readOnlyHint: true }]);
+    await guardar("notion-b", [{ name: "create_page", description: "", estimatedTokens: 1 }, { name: "delete_page", description: "", estimatedTokens: 1, destructiveHint: true }]);
+    const notion = (await servico.list()).find((c) => c.id === "notion")!;
+    assert.equal(notion.toolCount, 3);
+    assert.equal(notion.toolWrites, 2);
+    assert.equal(notion.toolNames.length, 3);
+  } finally {
+    await mcp.remove("notion");
+    await mcp.remove("notion-b");
   }
 });

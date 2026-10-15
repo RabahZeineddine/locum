@@ -51,6 +51,11 @@ Atritos de uso real da tela de Conexões.
   de "precisa autorizar". Ligada e nunca testada mostra selo neutro "não testado"
   com Testar no cartão; verde só depois de teste ok. GitHub com servidor de pé e
   sem token é atenção (`no-token`).
+- O detalhe do GitHub mostra todos os servidores do item (`partes.outros`), cada
+  um com estado, Ligar e Testar. O plano de desconexão tem um balde `literal`
+  para credencial escrita na configuração, que não há o que esquecer, e o botão
+  Desconectar não aparece quando só sobra vinculado ou literal. `toolCount`,
+  `toolWrites` e `toolNames` partem de todos os servidores do item.
 - Fica de fora: ícone em Modelos (provedores de modelo não são conexões), o
   seletor nativo de "adicionar conexão" do agent (um `<select>` não tem ícone) e
   a marca de servidor stdio próprio por pacote (a conexão não expõe o comando,

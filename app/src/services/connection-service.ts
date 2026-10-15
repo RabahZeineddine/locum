@@ -1,4 +1,5 @@
 import { ehLeituraDa } from "../config/leitura.js";
+import { temCredencialLiteral } from "./mcp-credencial.js";
 import { CATALOG, conexaoDoServidor, type CatalogEntry } from "./conexao-catalogo.js";
 import { IMAGEM_DO_GRAFANA } from "./grafana-service.js";
 import { claudeImportService } from "./claude-import.js";
@@ -86,16 +87,20 @@ export interface PartesDoGithub {
   servidor: "ok" | "untested" | "disabled" | "no-credential" | "needs-auth" | "failing" | null;
   /** O servidor de que `servidor` fala: o de nome `github`, ou o primeiro do item. */
   nome: string | null;
+  /** Os demais servidores do item, cada um com o seu estado, para o detalhe mostrar o que falha. */
+  outros: { nome: string; estado: NonNullable<PartesDoGithub["servidor"]> }[];
 }
 
 /**
  * O que desconectar faz com os servidores do item, para a tela confirmar:
- * `remove` sai do cadastro, `forget` só perde a credencial e `keep` é vinculado
- * a uma origem e fica como está.
+ * `remove` sai do cadastro, `forget` só perde a credencial, `literal` tem a
+ * credencial escrita na própria configuração (não há o que esquecer) e `keep`
+ * é vinculado a uma origem e fica como está.
  */
 export interface PlanoDeDesconexao {
   remove: string[];
   forget: string[];
+  literal: string[];
   keep: string[];
 }
 export type { ConnectionReason, ConnectionState } from "./conexao-estado.js";
@@ -224,7 +229,6 @@ export class ConnectionService {
           color: "64748B",
           custom: true,
           account: null,
-          toolCount: await this.toolCount(s.config.name),
           ...(await this.ferramentas([s.config.name])),
           desligar: null,
           servers: [s.config.name],
@@ -266,15 +270,19 @@ export class ConnectionService {
     return [...porId.values()];
   }
 
-  /** Nomes e quantas escrevem, da última lista guardada de cada servidor. */
-  private async ferramentas(servidores: string[]): Promise<{ toolNames: string[]; toolWrites: number }> {
+  /**
+   * Nomes, total e quantas escrevem, da última lista guardada de todos os
+   * servidores dados: as três contas partem da mesma base. Nulo no total quando
+   * nenhum nunca listou.
+   */
+  private async ferramentas(servidores: string[]): Promise<{ toolNames: string[]; toolWrites: number; toolCount: number | null }> {
     const listas = await Promise.all(servidores.map((nome) => this.deps.mcp.cachedTools(nome)));
     const todas = listas.flatMap((l) => l?.tools ?? []);
-    return { toolNames: todas.map((t) => t.name), toolWrites: todas.filter((t) => !ehLeituraDa(t)).length };
-  }
-
-  private async toolCount(nome: string): Promise<number | null> {
-    return (await this.deps.mcp.cachedTools(nome))?.tools.length ?? null;
+    return {
+      toolNames: todas.map((t) => t.name),
+      toolWrites: todas.filter((t) => !ehLeituraDa(t)).length,
+      toolCount: listas.every((l) => l === null) ? null : todas.length,
+    };
   }
 
   /**
@@ -331,7 +339,7 @@ export class ConnectionService {
     if (plano === undefined || plano === null || (plano.remove.length === 0 && plano.forget.length === 0)) {
       throw new Error(
         plano !== undefined && plano !== null && plano.keep.length > 0
-          ? `${plano.keep.join(", ")} está vinculado a uma origem: remova ou desvincule na origem, ou em Configuração`
+          ? `${plano.keep.join(", ")} está vinculado a uma origem: edite na origem, ou desvincule em Conexões, nos detalhes técnicos do servidor, antes de remover`
           : `"${entry.name}" não tem servidor para desconectar`,
       );
     }
@@ -542,7 +550,6 @@ export class ConnectionService {
       account: null,
       reason: null,
       detail: null,
-      toolCount: principal === undefined ? null : await this.toolCount(principal.config.name),
       ...(await this.ferramentas(nomes)),
       desligar: entry.kind === "oauth" ? planoDeDesconexao(entry.id, doItem) : null,
       partes: null,
@@ -557,7 +564,7 @@ export class ConnectionService {
             ...base,
             state: token || trackers > 0 ? "connected" : "available",
             account: conta,
-            partes: { token: token ? "ok" : "missing", servidor: null, nome: null },
+            partes: { token: token ? "ok" : "missing", servidor: null, nome: null, outros: [] },
           };
         }
         const estados = await Promise.all(doItem.map(async (sv) => ({ nome: sv.config.name, est: await this.estadoDe(sv, entry.id, credencial, { token: true }) })));
@@ -575,7 +582,12 @@ export class ConnectionService {
           ...base,
           ...geral,
           account: conta,
-          partes: { token: token ? "ok" : "missing", servidor: (doPrincipal.reason ?? "ok") as NonNullable<PartesDoGithub["servidor"]>, nome: principal.config.name },
+          partes: {
+            token: token ? "ok" : "missing",
+            servidor: parteDoServidor(doPrincipal.reason),
+            nome: principal.config.name,
+            outros: estados.filter((e) => e.nome !== principal.config.name).map((e) => ({ nome: e.nome, estado: parteDoServidor(e.est.reason) })),
+          },
         };
       }
       case "oauth": {
@@ -602,7 +614,6 @@ export class ConnectionService {
             ...base,
             servers,
             ...(await this.ferramentas(servers)),
-            toolCount: servers[0] === undefined ? null : await this.toolCount(servers[0]),
             ...piorEstado([daOrigem, ...outros]),
           };
         }
@@ -629,6 +640,11 @@ export class ConnectionService {
   }
 }
 
+/** O motivo do estado de um servidor, como parte do GitHub: sem motivo é `ok`. */
+function parteDoServidor(reason: EstadoDoServidor["reason"]): NonNullable<PartesDoGithub["servidor"]> {
+  return reason === null || reason === "no-token" ? "ok" : reason;
+}
+
 type Credencial = "ok" | "falta" | "dispensa";
 type EstadoDoServidor = ReturnType<typeof estadoDoServidor>;
 
@@ -643,10 +659,11 @@ function piorEstado(estados: EstadoDoServidor[]): EstadoDoServidor {
  * uma origem nunca é tocado.
  */
 function planoDeDesconexao(id: string, servidores: McpServerEntry[]): PlanoDeDesconexao {
-  const plano: PlanoDeDesconexao = { remove: [], forget: [], keep: [] };
+  const plano: PlanoDeDesconexao = { remove: [], forget: [], literal: [], keep: [] };
   for (const s of servidores) {
     if (s.source !== null) plano.keep.push(s.config.name);
     else if (s.config.name === id) plano.remove.push(s.config.name);
+    else if (s.credentialRef === null && temCredencialLiteral(s.config.headers)) plano.literal.push(s.config.name);
     else plano.forget.push(s.config.name);
   }
   return plano;

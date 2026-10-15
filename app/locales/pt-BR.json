@@ -1588,7 +1588,10 @@
     "disconnectPlan": {
       "remove": "Tira do cadastro: {{names}}.",
       "forget": "Esquece só a credencial, e continua cadastrado: {{names}}.",
-      "keep": "Fica como está, porque vem de uma origem: {{names}}."
+      "literal": "A credencial está escrita na configuração, não há o que esquecer: {{names}}.",
+      "keep": "Fica como está, porque vem de uma origem: {{names}}.",
+      "onlyLinked": "{{names}} vem de uma origem e não se desconecta daqui: edite na origem, ou desvincule nos detalhes técnicos do servidor.",
+      "onlyLiteral": "A credencial de {{names}} está escrita na configuração do servidor: não há o que esquecer aqui."
     },
     "soon": "Em breve",
     "close": "Fechar",
@@ -1767,6 +1770,7 @@
         "none": "Nenhum servidor MCP do GitHub cadastrado. Os agents ainda não têm essas ferramentas.",
         "turnOn": "Ligar servidor",
         "turnOff": "Desligar servidor",
+        "other": "Outro servidor do GitHub cadastrado.",
         "state": {
           "ok": "respondeu",
           "untested": "ligado, ainda sem teste",
