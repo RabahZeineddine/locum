@@ -1,4 +1,5 @@
 import { CabecalhoDaTela } from "@/components/cabecalho-da-tela";
+import { MarcaLogo } from "@/components/marca-logo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { call, read, useRead, type ReadResult } from "@/lib/bridge";
@@ -120,6 +121,7 @@ function ListaDeAgents({ abrir }: { abrir: (id: string) => void }) {
   if (lista.status === "loading") return <p className="text-muted-foreground text-sm">{t("library.loading")}</p>;
   const agents = lista.data ?? [];
   const nomes = new Map((conexoes.data ?? []).map((c) => [c.id, c.name]));
+  const urls = new Map((conexoes.data ?? []).map((c) => [c.id, c.url]));
 
   const copiar = (id: string): void => {
     setErro(null);
@@ -145,7 +147,7 @@ function ListaDeAgents({ abrir }: { abrir: (id: string) => void }) {
       {erro === null ? null : <p className="text-destructive text-xs">{erro}</p>}
       <ul className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-3" data-locum-biblioteca-total={agents.length}>
         {agents.map((a) => (
-          <CartaoDoAgent agent={a} abrir={() => abrir(a.id)} copiar={() => copiar(a.id)} key={a.id} nomes={nomes} />
+          <CartaoDoAgent agent={a} abrir={() => abrir(a.id)} copiar={() => copiar(a.id)} key={a.id} nomes={nomes} urls={urls} />
         ))}
       </ul>
     </div>
@@ -157,11 +159,13 @@ function CartaoDoAgent({
   abrir,
   copiar,
   nomes,
+  urls,
 }: {
   agent: ResumoDoAgent;
   abrir: () => void;
   copiar: () => void;
   nomes: Map<string, string>;
+  urls: Map<string, string | undefined>;
 }) {
   const { t } = useTranslation();
   return (
@@ -184,7 +188,10 @@ function CartaoDoAgent({
         {agent.description === "" ? null : <span className="text-muted-foreground line-clamp-2 text-xs">{agent.description}</span>}
         {/* O que ele alcança, em palavras: as conexões e o que cada uma deixa fazer. */}
         <span className="flex flex-col gap-0.5 text-xs" data-locum-agent-alcance={agent.id}>
-          <span>
+          <span className="flex flex-wrap items-center gap-1.5">
+            {agent.connections.slice(0, 6).map((id) => (
+              <MarcaLogo fonte={{ name: id, url: urls.get(id) }} key={id} tamanho="sm" />
+            ))}
             {agent.connections.length === 0
               ? t("library.card.noConnections")
               : t("library.card.uses", { list: agent.connections.map((id) => nomes.get(id) ?? id).join(", ") })}
@@ -713,6 +720,7 @@ function CartaoDaConexao({
   return (
     <div className="border-border superficie flex flex-col gap-3 rounded-lg border p-3" data-locum-agent-conexao={escolha.connectionId}>
       <div className="flex flex-wrap items-center gap-2">
+        <MarcaLogo fonte={{ name: escolha.connectionId, url: conexao?.url }} tamanho="sm" />
         <span className="text-sm font-medium">{conexao?.name ?? escolha.connectionId}</span>
         {conexao === undefined ? null : <Badge variant="outline">{t(`connections.state.${conexao.state}`)}</Badge>}
         <span className="text-muted-foreground text-xs">{t("library.connections.default")}</span>
