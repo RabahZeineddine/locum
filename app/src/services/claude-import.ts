@@ -9,6 +9,8 @@ import {
   preparar,
   shellDeLogin,
   variaveisCitadas,
+  RAIZ_DO_PLUGIN,
+  semVersaoDoPlugin,
   type Candidato,
   type Entrada,
   type Preparado,
@@ -68,11 +70,62 @@ function hostDe(url: string | undefined): string | null {
 /** Programas que só lançam outro: o nome do programa não diz de que servidor se trata. */
 const LANCADORES = new Set(["npx", "bunx", "pnpx", "uvx", "pipx", "node", "python", "python3", "deno", "docker", "bun", "tsx"]);
 
-/** O primeiro argumento que não é opção, sem o `@versão` do pacote. */
-function pacoteOuScript(args: string[]): string | null {
-  const primeiro = args.find((a) => !a.startsWith("-") && a !== "run" && a !== "exec");
-  if (primeiro === undefined) return null;
-  return primeiro.replace(/(?<=.)@[^@/]*$/, "");
+/** Opções que levam um valor na frente, por lançador; as outras são interruptores. */
+const OPCOES_COM_VALOR: Record<string, ReadonlySet<string>> = {
+  docker: new Set(["-e", "--env", "-v", "--volume", "--name", "-p", "--publish", "--network", "--net", "-w", "--workdir", "-u", "--user", "--env-file", "--entrypoint", "--platform", "--mount", "-l", "--label", "--add-host", "--cap-add", "-m", "--memory", "--pull", "--restart", "--hostname", "-h"]),
+  uvx: new Set(["--directory", "--from", "--with", "-p", "--python", "--index-url", "--extra-index-url", "--with-requirements", "--with-editable"]),
+  npx: new Set(["-p", "--package", "-c", "--call", "--registry", "--cache", "--userconfig"]),
+  node: new Set(["-r", "--require", "--import", "--loader", "--experimental-loader", "-e", "--eval"]),
+  python: new Set(["-W", "-X", "-c"]),
+  deno: new Set(["--config", "-c", "--allow-read", "--allow-write", "--allow-net", "--allow-env"]),
+};
+/** Opções cujo valor também diz de que servidor se trata (o diretório do projeto, o pacote de origem). */
+const OPCOES_QUE_IDENTIFICAM = new Set(["--directory", "--from", "-p", "--package"]);
+
+function familia(programa: string): string {
+  if (programa === "bunx" || programa === "pnpx") return "npx";
+  if (programa === "pipx") return "uvx";
+  if (programa === "python3") return "python";
+  if (programa === "bun" || programa === "tsx") return "node";
+  return programa;
+}
+
+function semVersaoDoPacote(valor: string, programa: string): string {
+  let v = valor.replace(/(?<=.)@[^@/]*$/, "").replace(/==.*$/, "");
+  if (programa === "docker") v = v.replace(/@sha256:.*$/, "").replace(/:[^/]*$/, "");
+  return v;
+}
+
+/**
+ * O que identifica o servidor num lançador: o pacote, o script, o módulo
+ * (`python -m x`) ou a imagem. Pula as opções, e o valor das que levam valor
+ * (`-e X`, `-v a:b`, `--name n`), e guarda o das que identificam
+ * (`uvx --directory d`). `normalizar` tira a versão do plugin dos dois lados.
+ */
+export function pacoteOuScript(args: string[], programa: string, normalizar: (t: string) => string = (t) => t): string | null {
+  const fam = familia(programa);
+  const comValor = OPCOES_COM_VALOR[fam] ?? new Set<string>();
+  const partes: string[] = [];
+  let alvo: string | null = null;
+  for (let i = 0; i < args.length && alvo === null; i++) {
+    const a = args[i]!;
+    if (a === "run" || a === "exec") continue;
+    if (fam === "python" && a === "-m") {
+      alvo = args[i + 1] ?? null;
+      break;
+    }
+    if (a.startsWith("-")) {
+      const [nome, junto] = a.split("=", 2) as [string, string | undefined];
+      if (comValor.has(nome)) {
+        const valor = junto ?? args[++i];
+        if (valor !== undefined && OPCOES_QUE_IDENTIFICAM.has(nome)) partes.push(`${nome}=${normalizar(valor)}`);
+      }
+      continue;
+    }
+    alvo = a;
+  }
+  if (alvo === null) return null;
+  return [...partes, semVersaoDoPacote(normalizar(alvo), fam)].join(" ");
 }
 
 /**
@@ -85,18 +138,20 @@ function pacoteOuScript(args: string[]): string | null {
 export function pareceOMesmoServidor(
   cadastro: { transport: string; command?: string[]; url?: string },
   entrada: Entrada,
+  contexto: { source?: McpSource; raiz?: string } = {},
 ): boolean {
   const transport = entrada.type === "http" || entrada.type === "sse" ? entrada.type : entrada.url !== undefined ? "http" : "stdio";
   if ((cadastro.transport === "stdio") !== (transport === "stdio")) return false;
   if (transport === "stdio") {
-    const programa = basename(cadastro.command?.[0] ?? "\u0000");
-    if (programa !== basename(entrada.command ?? "\u0001")) return false;
+    // Os dois lados na mesma forma: `${CLAUDE_PLUGIN_ROOT}` e o caminho da versão do plugin viram o marcador.
+    const normalizar = (t: string): string => semVersaoDoPlugin(t.split(RAIZ_DO_PLUGIN).join(RAIZ_DO_PLUGIN), contexto.source, contexto.raiz);
+    const programa = basename(normalizar(cadastro.command?.[0] ?? "\u0000"));
+    if (programa !== basename(normalizar(entrada.command ?? "\u0001"))) return false;
     // `npx`, `uvx`, `node` e afins são o mesmo programa para servidores sem
-    // relação: o que identifica é o pacote ou o script, o primeiro argumento
-    // que não é opção.
+    // relação: o que identifica é o pacote ou o script.
     if (LANCADORES.has(programa)) {
-      const a = pacoteOuScript(cadastro.command?.slice(1) ?? []);
-      const b = pacoteOuScript(entrada.args ?? []);
+      const a = pacoteOuScript(cadastro.command?.slice(1).map(normalizar) ?? [], programa);
+      const b = pacoteOuScript((entrada.args ?? []).map(normalizar), programa);
       return a !== null && a === b;
     }
     return true;
@@ -124,7 +179,7 @@ export class ClaudeImportService {
 
     const nomes = new Set<string>();
     for (const f of lidas) for (const e of Object.values(f.servidores)) for (const n of variaveisCitadas(e)) nomes.add(n);
-    const doShell = await this.deps.ambiente([...nomes].filter((n) => process.env[n] === undefined));
+    const doShell = await this.deps.ambiente([...nomes].filter((n) => process.env[n] === undefined)).catch(() => ({}) as Record<string, string>);
     const ambiente = { ...doShell, ...Object.fromEntries(Object.entries(process.env).filter((p): p is [string, string] => p[1] !== undefined)) };
 
     const saida: (Preparado & { source: McpSource; hash: string })[] = [];
@@ -208,7 +263,7 @@ export class ClaudeImportService {
       let achado: { fonte: (typeof lidas)[number]; entrada: Entrada } | undefined;
       for (const fonte of lidas) {
         const entrada = fonte.servidores[nome];
-        if (entrada !== undefined && pareceOMesmoServidor(servidor.config, entrada)) {
+        if (entrada !== undefined && pareceOMesmoServidor(servidor.config, entrada, { source: origemEstruturada(fonte, nome), ...(fonte.raiz === undefined ? {} : { raiz: fonte.raiz }) })) {
           achado = { fonte, entrada };
           break;
         }

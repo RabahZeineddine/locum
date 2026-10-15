@@ -310,8 +310,8 @@ test("nome de chave: só palavra inteira de segredo vai para o cofre; endereço 
   assert.equal(p.segredo, "ghp_abc");
   assert.equal(p.config.env?.OAUTH_TOKEN_URL, "https://idp.exemplo/token");
   assert.equal(p.config.env?.GH_TOKEN, "${credential}");
-  // Uma URL numa chave que parece segredo também não vai para o cofre.
-  assert.equal(preparar("y", "usuário", { command: "x", env: { API_KEY: "https://a.exemplo/b" } }, undefined, {}, new Set()).segredo, undefined);
+  // Chave de segredo cujo valor é URL (webhook, ?token=) continua segredo.
+  assert.equal(preparar("y", "usuário", { command: "x", env: { WEBHOOK_SECRET: "https://hooks.exemplo/T123/B456" } }, undefined, {}, new Set()).segredo, "https://hooks.exemplo/T123/B456");
 });
 
 test("mudar escopo, URL de token ou servidor de auth na origem pede aceite, com o valor à vista", async () => {
@@ -384,8 +384,9 @@ test("migração: http com Authorization do OAuth na cópia não vira mudança, 
   await mcp.setEnabled("remoto", true);
   const remoto = (await mcp.enabledConfigs()).find((c) => c.name === "remoto");
   assert.equal(remoto?.headers?.Authorization, undefined); // sem segredo no cofre, a entrada sai, como sempre
-  // "outro": a origem cita ${CHAVE_A} sem valor nesta máquina, a cópia tem o marcador: indisponível, não mudança.
-  assert.equal(v.outro?.estado, "indisponivel");
+  // "outro": a origem cita ${CHAVE_A} sem valor nesta máquina, mas a cópia já a cobre com o marcador do cofre: resolvida.
+  assert.equal(v.outro?.estado, "ok");
+  assert.deepEqual(v.outro?.faltando, []);
   casa.limpar();
 });
 
@@ -399,26 +400,64 @@ test("diferença só em valor protegido aparece como tal, e o segredo nunca sai"
   assert.deepEqual(configMascarada(antes).command, ["x", "--token", "<oculto>", "--api-key=<oculto>"]);
 });
 
-test("shell de login que falha é indisponibilidade, não mudança; não se aceita, e a falha não fica guardada", async () => {
+test("shell de login que falha é indisponibilidade, não mudança: não se aceita, e a falha vale 30 s sem reabrir o shell", async () => {
   const casa = new Casa();
   casa.usuario({ api: { type: "http", url: "${URL_DA_API}" } });
-  const respostas: Record<string, string>[] = [{}, {}, {}, { URL_DA_API: "https://a.exemplo/mcp" }];
+  let relogio = 1_000_000;
   let chamadas = 0;
+  let shellFuncionando = false;
   const secrets = new SecretService(mkdtempSync(join(tmpdir(), "locum-vinculo-cofre-")));
   secrets.useBackend({ available: () => true, encrypt: (p) => Buffer.from(p), decrypt: (b) => b.toString() });
   const db = bancoDeTeste();
-  const origem = new OrigemResolver({ home: casa.home, ambiente: async () => respostas[Math.min(chamadas++, respostas.length - 1)]!, ttlMs: 0 });
-  const mcp = new McpService(db, secrets, origem);
+  const ambiente = async (): Promise<Record<string, string>> => {
+    chamadas++;
+    if (!shellFuncionando) throw new Error("zsh estourou o tempo");
+    return { URL_DA_API: "https://a.exemplo/mcp" };
+  };
+  const mcp = new McpService(db, secrets, new OrigemResolver({ home: casa.home, ambiente, ttlMs: 0, agora: () => relogio }));
   const importacao = new ClaudeImportService({ home: casa.home, ambiente: async () => ({ URL_DA_API: "https://a.exemplo/mcp" }), mcp, secrets, settings: new SettingsService(db) });
   await importacao.importar(["api"]);
 
   const falho = (await mcp.vinculos()).api!;
   assert.equal(falho.estado, "indisponivel");
   assert.deepEqual(falho.mudancas, []);
-  await assert.rejects(() => mcp.aceitarOrigem("api", falho.hash!), /nao resolveu|resolveu/);
-  // A falha não ficou guardada: a leitura seguinte tenta de novo, e o shell que respondeu volta ao normal.
-  assert.equal((await mcp.vinculos()).api?.estado, "indisponivel");
+  await assert.rejects(() => mcp.aceitarOrigem("api", falho.hash!), /nao resolveu/);
+  await mcp.setEnabled("api", true);
+  await mcp.enabledConfigs();
+  // Vários caminhos quentes, um shell só.
+  assert.equal(chamadas, 1);
+
+  // Passados 30 s e com o shell de volta, a origem volta ao normal.
+  relogio += 31_000;
+  shellFuncionando = true;
   assert.equal((await mcp.vinculos()).api?.estado, "ok");
+  assert.equal(chamadas, 2);
+  casa.limpar();
+});
+
+test("variável que não existe é resposta do shell: vale 5 min, e nenhuma leitura abre outro shell", async () => {
+  const casa = new Casa();
+  casa.usuario({ api: { type: "http", url: "${URL_DA_API}" } });
+  let relogio = 1_000_000;
+  let chamadas = 0;
+  const secrets = new SecretService(mkdtempSync(join(tmpdir(), "locum-vinculo-cofre-")));
+  secrets.useBackend({ available: () => true, encrypt: (p) => Buffer.from(p), decrypt: (b) => b.toString() });
+  const db = bancoDeTeste();
+  const ambiente = async (): Promise<Record<string, string>> => {
+    chamadas++;
+    return {};
+  };
+  const mcp = new McpService(db, secrets, new OrigemResolver({ home: casa.home, ambiente, ttlMs: 0, agora: () => relogio }));
+  await mcp.register({ name: "api", transport: "http", url: "https://a.exemplo/mcp", scope: "write" }, { source: { kind: "claude-user", server: "api" }, hash: "x" });
+  await mcp.setEnabled("api", true);
+  for (let i = 0; i < 5; i++) {
+    await mcp.vinculos();
+    await mcp.enabledConfigs();
+  }
+  assert.equal(chamadas, 1);
+  relogio += 5 * 60_000 + 1;
+  await mcp.vinculos();
+  assert.equal(chamadas, 2);
   casa.limpar();
 });
 
@@ -475,4 +514,96 @@ test("o ~/.claude.json só é relido quando o arquivo muda", () => {
   rmSync(arquivo);
   assert.equal(lerJsonCacheado(arquivo), undefined);
   rmSync(dir, { recursive: true, force: true });
+});
+
+/* --------------------------------------------- terceira rodada: classificação de chaves */
+
+const SEGREDO = [
+  "MCP_SERVER_TOKEN", "SERVER_API_KEY", "PGPASSWORD", "APP_ID_TOKEN", "TOKEN_ID", "MINHA_API_KEY", "x-api-key", "clientSecret", "JIRA_TOKEN",
+  "Authorization", "DB_PASSWORD", "APIKEY", "GITHUB_PERSONAL_ACCESS_TOKEN", "SLACK_WEBHOOK_SECRET", "COOKIE", "X_AUTH", "AWS_SECRET_ACCESS_KEY", "OPENAI_API_KEY",
+];
+const CONFIGURACAO = [
+  "OAUTH_TOKEN_URL", "AUTH_SERVER_URL", "MS365_OAUTH_SCOPES", "MS365_MCP_ALLOWED_SCOPES", "AZURE_AUTHORITY_HOST", "KEYCLOAK_URL", "TOKEN_FILE", "TENANT_ID", "CLIENT_ID",
+  "MS365_MCP_CLIENT_ID", "MS365_MCP_TENANT_ID", "AWS_REGION", "DATA_DIR", "CONFIG_PATH", "SERVER_HOST", "API_URL", "TOKEN_ENDPOINT", "OAUTH_SCOPE", "DB_NAME", "MS365_MCP_REQUIRE_CONFIRM", "KEY_PATH",
+];
+
+test("tabela de chaves: segredo só pela palavra de segredo, configuração só pela última palavra", () => {
+  for (const nome of SEGREDO) assert.equal(ehChaveDeSegredo(nome), true, `${nome} deveria ser segredo`);
+  for (const nome of CONFIGURACAO) assert.equal(ehChaveDeSegredo(nome), false, `${nome} deveria ser configuração`);
+});
+
+test("segredo em texto puro nunca fica no cadastro nem sai no diff, mesmo com URL no valor", async () => {
+  const casa = new Casa();
+  const env = { MCP_SERVER_TOKEN: "tok-abc", PGPASSWORD: "senha-pg", OAUTH_TOKEN_URL: "https://idp.exemplo/token" };
+  casa.instalar("1.0.0", { srv: { command: "npx", args: ["srv"], env } });
+  const { mcp, importacao, secrets } = montar(casa);
+  await importacao.importar(["srv"]);
+  const gravado = (await mcp.get("srv"))!;
+  // Um segredo por servidor no cofre; o cadastro guarda o marcador e nunca o valor.
+  assert.equal(gravado.config.env?.MCP_SERVER_TOKEN, "${credential}");
+  assert.equal(secrets.get("mcp/srv"), "tok-abc");
+  assert.equal(gravado.config.env?.OAUTH_TOKEN_URL, "https://idp.exemplo/token");
+
+  const mascarada = JSON.stringify(configMascarada({ name: "s", transport: "stdio", command: ["x"], env: { ...env } }));
+  assert.ok(!/tok-abc|senha-pg/.test(mascarada), mascarada);
+  const d = JSON.stringify(diferencas({ name: "s", transport: "stdio", command: ["x"], env: { PGPASSWORD: "a" } }, { name: "s", transport: "stdio", command: ["x"], env: { PGPASSWORD: "b" } }));
+  assert.ok(!/"a"|"b"/.test(d) && /protegido/.test(d), d);
+  casa.limpar();
+});
+
+test("URL com segredo: webhook numa chave de segredo vai ao cofre, e query ?token= sai mascarada no diff", () => {
+  const url = "https://api.exemplo/mcp?token=abc123&modo=ro";
+  const m = diferencas(
+    { name: "s", transport: "http", url: "https://api.exemplo/mcp?token=abc123&modo=ro" },
+    { name: "s", transport: "http", url: "https://api.exemplo/mcp?token=zzz999&modo=ro" },
+  );
+  const txt = JSON.stringify(m);
+  assert.ok(!/abc123|zzz999/.test(txt), txt);
+  assert.equal(m[0]?.protegido, true);
+  assert.ok(!configMascarada({ name: "s", transport: "http", url }).url?.includes("abc123"));
+  assert.ok(!configMascarada({ name: "s", transport: "http", url: "https://user:senha@h.exemplo/mcp" }).url?.includes("senha"));
+  // Query sem segredo e URL de configuração passam inteiras.
+  assert.equal(configMascarada({ name: "s", transport: "http", url: "https://h.exemplo/mcp?modo=ro" }).url, "https://h.exemplo/mcp?modo=ro");
+  assert.equal(configMascarada({ name: "s", transport: "stdio", command: ["x"], env: { AUTH_SERVER_URL: "https://idp.exemplo/a?token=zzz" } }).env?.AUTH_SERVER_URL?.includes("zzz"), false);
+});
+
+test("reparo: segredo que ficou em texto puro num vinculado vai para o cofre uma vez só", async () => {
+  const casa = new Casa();
+  casa.instalar("1.0.0", { srv: { command: "npx", args: ["srv"], env: { MCP_SERVER_TOKEN: "tok-abc" } } });
+  const { mcp, importacao, secrets } = montar(casa);
+  await importacao.importar(["srv"]);
+  // Como a classificação antiga deixava: valor em claro, sem credencial.
+  await mcp.setCredentialRef("srv", null);
+  secrets.remove("mcp/srv");
+  const source = (await mcp.get("srv"))!.source!;
+  await mcp.register({ name: "srv", transport: "stdio", command: ["npx", "srv"], env: { MCP_SERVER_TOKEN: "tok-abc" }, scope: "write" }, { source, hash: "antigo" });
+
+  assert.deepEqual(await mcp.protegerSegredos(), ["srv"]);
+  const depois = (await mcp.get("srv"))!;
+  assert.equal(depois.config.env?.MCP_SERVER_TOKEN, "${credential}");
+  assert.equal(depois.credentialRef, "mcp/srv");
+  assert.equal(secrets.get("mcp/srv"), "tok-abc");
+  // A impressão aceita acompanhou: nada de "a origem mudou" por causa do reparo.
+  assert.equal((await mcp.vinculos()).srv?.estado, "ok");
+  assert.deepEqual(await mcp.protegerSegredos(), []);
+  casa.limpar();
+});
+
+test("lançadores: o pacote, o script, o módulo ou a imagem identifica, com a versão do plugin normalizada", () => {
+  const raiz = "/h/.claude/plugins/cache/akad/akad/0.17.1";
+  const source: McpSource = { kind: "claude-plugin", marketplace: "akad", plugin: "akad", server: "x" };
+  const ctx = { source, raiz: "/h/.claude/plugins/cache/akad/akad/0.21.1" };
+  // node: o script do plugin, em duas versões.
+  assert.equal(pareceOMesmoServidor({ transport: "stdio", command: ["node", `${raiz}/dist/index.js`] }, { command: "node", args: ["${CLAUDE_PLUGIN_ROOT}/dist/index.js"] }, ctx), true);
+  assert.equal(pareceOMesmoServidor({ transport: "stdio", command: ["node", `${raiz}/dist/outro.js`] }, { command: "node", args: ["${CLAUDE_PLUGIN_ROOT}/dist/index.js"] }, ctx), false);
+  // python: -m modulo.
+  assert.equal(pareceOMesmoServidor({ transport: "stdio", command: ["python3", "-m", "meu_mcp"] }, { command: "python3", args: ["-m", "meu_mcp"] }, ctx), true);
+  assert.equal(pareceOMesmoServidor({ transport: "stdio", command: ["python3", "-m", "meu_mcp"] }, { command: "python3", args: ["-m", "outro_mcp"] }, ctx), false);
+  // uvx --directory: o diretório e o pacote contam.
+  assert.equal(pareceOMesmoServidor({ transport: "stdio", command: ["uvx", "--directory", `${raiz}/srv`, "meu-mcp"] }, { command: "uvx", args: ["--directory", "${CLAUDE_PLUGIN_ROOT}/srv", "meu-mcp"] }, ctx), true);
+  assert.equal(pareceOMesmoServidor({ transport: "stdio", command: ["uvx", "--directory", "/a", "meu-mcp"] }, { command: "uvx", args: ["--directory", "/b", "meu-mcp"] }, ctx), false);
+  // docker run: pula opções com valor para achar a imagem.
+  const docker = { transport: "stdio", command: ["docker", "run", "-i", "--rm", "-e", "TOKEN", "-v", "a:b", "--name", "n", "ghcr.io/acme/github-mcp:1.0"] };
+  assert.equal(pareceOMesmoServidor(docker, { command: "docker", args: ["run", "--rm", "-i", "-e", "GITHUB_TOKEN", "--name", "outro", "ghcr.io/acme/github-mcp:2.0"] }, ctx), true);
+  assert.equal(pareceOMesmoServidor(docker, { command: "docker", args: ["run", "-i", "-e", "X", "ghcr.io/acme/outra-imagem"] }, ctx), false);
 });

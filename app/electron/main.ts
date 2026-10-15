@@ -7001,6 +7001,13 @@ async function main(): Promise<void> {
     await cadastrarFerramentasNativas(ambienteDoApp).catch((err: unknown) => {
       console.error(`ferramentas nativas: cadastro falhou (${err instanceof Error ? err.message : String(err)})`);
     });
+    // Segredo que a classificação antiga deixou em texto puro vai para o cofre.
+    await mcpService.protegerSegredos().then(
+      (nomes) => {
+        if (nomes.length > 0) console.log(`vinculo: segredo de ${nomes.join(", ")} movido para o cofre`);
+      },
+      (err: unknown) => console.error(`vinculo: reparo de segredos falhou (${err instanceof Error ? err.message : String(err)})`),
+    );
     // Servidores importados antes do vínculo eram cópia: voltam a seguir a origem.
     const { claudeImportService } = await import("../src/services/claude-import.js");
     await claudeImportService.revincular().then(

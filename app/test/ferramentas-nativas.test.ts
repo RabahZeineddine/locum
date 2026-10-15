@@ -161,7 +161,7 @@ test("decisão: o app instalado corrige registro que aponta para binário que su
   // O worktree ainda existe, mas não é o app instalado.
   const copia = decidirRegistro(instalado, [WORKTREE, "--ferramentas"], "--ferramentas");
   assert.equal(copia.acao, "gravar");
-  assert.deepEqual(decidirRegistro(instalado, null, "--ferramentas"), { acao: "gravar", comando: certo, motivo: "sem registro" });
+  assert.deepEqual(decidirRegistro(instalado, null, "--ferramentas"), { acao: "gravar", comando: certo, motivo: "sem-registro" });
 });
 
 test("decisão: cópia fora de /Applications não reescreve registro que funciona", () => {

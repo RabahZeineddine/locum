@@ -1787,7 +1787,11 @@
       "title": "O Claude Code aponta para outra cópia do Locum",
       "body": "O Locum cadastrado no Claude Code não é este app instalado ({{motivo}}). Corrigir recadastra o comando; se falhar, o anterior volta.",
       "fix": "Corrigir",
-      "fixing": "corrigindo..."
+      "fixing": "corrigindo...",
+      "motivo": {
+        "binario-sumiu": "o programa cadastrado não existe mais",
+        "outra-copia": "ele aponta para outra cópia do app"
+      }
     }
   },
   "claudeSessions": {

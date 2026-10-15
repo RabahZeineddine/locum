@@ -104,7 +104,7 @@ test("o aviso de cópia errada só existe no app instalado, e só com o Locum j�
 
   const instalado = montar(cadastro);
   instalado.servico.useAmbiente(AMBIENTE(APP, [APP, WORKTREE]));
-  assert.match((await instalado.servico.status()).desatualizado ?? "", /nao e o app instalado/);
+  assert.equal((await instalado.servico.status()).desatualizado, "outra-copia");
   // O status só lê: nada foi rodado no Claude Code.
   assert.deepEqual(instalado.chamadas, []);
 
@@ -156,5 +156,48 @@ test("corrigir recadastra; se o add falha, o comando anterior volta e o erro sob
   falharOAdd = false;
   chamadas.length = 0;
   assert.equal((await servico.connect()).current, true);
+  rmSync(pasta, { recursive: true, force: true });
+});
+
+test("o rollback recoloca a entrada inteira, com env e tipo", async () => {
+  const pasta = mkdtempSync(join(tmpdir(), "locum-claude-code-"));
+  const configPath = join(pasta, ".claude.json");
+  writeFileSync(configPath, JSON.stringify({ mcpServers: { locum: { type: "stdio", command: WORKTREE, args: ["--mcp"], env: { LOCUM_HOME: "/dados" } } } }));
+  const chamadas: string[][] = [];
+  const servico = new ClaudeCodeService({
+    configPath,
+    resolveClaude: async () => CLI,
+    run: async (command, args) => {
+      chamadas.push([command, ...args]);
+      if (args[1] === "add" && args.includes(APP)) throw new Error("claude: add falhou");
+    },
+  });
+  servico.useLauncher({ command: APP, args: [] });
+  await assert.rejects(() => servico.connect(), /add falhou/);
+  assert.deepEqual(chamadas[2], [CLI, "mcp", "add", "--scope", "user", "-e", "LOCUM_HOME=/dados", "locum", "--", WORKTREE, "--mcp"]);
+  rmSync(pasta, { recursive: true, force: true });
+});
+
+test("se o rollback também falha, o erro diz que o Claude Code ficou sem o locum e como recolocar, sem o valor do ambiente", async () => {
+  const pasta = mkdtempSync(join(tmpdir(), "locum-claude-code-"));
+  const configPath = join(pasta, ".claude.json");
+  writeFileSync(configPath, JSON.stringify({ mcpServers: { locum: { command: WORKTREE, args: ["--mcp"], env: { SEGREDO: "valor-secreto" } } } }));
+  const servico = new ClaudeCodeService({
+    configPath,
+    resolveClaude: async () => CLI,
+    run: async (_c, args) => {
+      if (args[1] === "add") throw new Error("claude: sem rede");
+    },
+  });
+  servico.useLauncher({ command: APP, args: [] });
+  await assert.rejects(
+    () => servico.connect(),
+    (e: Error) => {
+      assert.match(e.message, /ficou sem o "locum"/);
+      assert.match(e.message, new RegExp(`claude mcp add --scope user -e 'SEGREDO=<valor>' locum -- ${WORKTREE.replaceAll("/", "\\/")} --mcp`));
+      assert.ok(!e.message.includes("valor-secreto"));
+      return true;
+    },
+  );
   rmSync(pasta, { recursive: true, force: true });
 });

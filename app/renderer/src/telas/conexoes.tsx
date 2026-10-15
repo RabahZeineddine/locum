@@ -118,7 +118,7 @@ function SuasConexoes({ navegar }: { navegar: TelaProps["navegar"] }) {
       {claudeCode.status === "ready" && claudeCode.data.desatualizado !== null ? (
         <div className="flex flex-col gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2.5 text-xs" data-locum-claude-code-desatualizado="">
           <p className="font-medium text-amber-400">{t("connections.claudeCodeStale.title")}</p>
-          <p className="text-muted-foreground">{t("connections.claudeCodeStale.body", { motivo: claudeCode.data.desatualizado })}</p>
+          <p className="text-muted-foreground">{t("connections.claudeCodeStale.body", { motivo: t(`connections.claudeCodeStale.motivo.${claudeCode.data.desatualizado}`) })}</p>
           <div>
             <Button
               className="cursor-pointer"

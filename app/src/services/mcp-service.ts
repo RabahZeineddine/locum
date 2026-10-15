@@ -4,7 +4,9 @@ import { db as defaultDb, schema } from "../db/index.js";
 import { isAuthError, McpRegistry, type McpConnectOutcome, type McpToolInfo } from "../mcp/registry.js";
 import { McpServerConfig, McpSource, type McpServerInput } from "../config/types.js";
 import {
+  cobrirPelaCopia,
   configMascarada,
+  ehChaveDeSegredo,
   diferencas,
   homeDasFerramentas,
   impressao,
@@ -243,6 +245,47 @@ export class McpService {
       .update(schema.mcpServers)
       .set({ source, sourceHash: impressao(aceita, source), sourceKeptHash: null })
       .where(eq(schema.mcpServers.name, name));
+  }
+
+  /**
+   * Reparo, uma vez: servidor vinculado que ficou com o segredo em texto puro
+   * em `env` ou `headers` (a classificação de nomes antiga não o reconhecia)
+   * tem o valor movido para o cofre, e o cadastro passa a guardar o marcador. O
+   * cofre guarda um segredo por servidor, então só o primeiro se move; quem já
+   * tem credencial no cofre não é tocado. Devolve os nomes reparados.
+   */
+  async protegerSegredos(): Promise<string[]> {
+    const marca = "mcp.vinculo.segredos";
+    const [feito] = await this.db.select({ value: schema.settings.value }).from(schema.settings).where(eq(schema.settings.key, marca));
+    if (feito !== undefined) return [];
+    const reparados: string[] = [];
+    for (const row of await this.db.select().from(schema.mcpServers)) {
+      if (row.source == null || row.credentialRef !== null) continue;
+      const lida = McpSource.safeParse(row.source);
+      if (!lida.success) continue;
+      const config = toEntry(row).config;
+      const achar = (r: Record<string, string> | undefined) =>
+        Object.entries(r ?? {}).find(([k, v]) => ehChaveDeSegredo(k) && v.length > 0 && v !== CREDENTIAL_PLACEHOLDER && !v.includes("${"));
+      const emEnv = achar(config.env);
+      const emHeaders = emEnv === undefined ? achar(config.headers) : undefined;
+      const achado = emEnv ?? emHeaders;
+      if (achado === undefined) continue;
+      const ref = `mcp/${row.name}`;
+      this.secrets.set(ref, achado[1]);
+      const novo: McpServerConfig =
+        emEnv !== undefined
+          ? { ...config, env: { ...config.env, [achado[0]]: CREDENTIAL_PLACEHOLDER } }
+          : { ...config, headers: { ...config.headers, [achado[0]]: CREDENTIAL_PLACEHOLDER } };
+      await this.db
+        .update(schema.mcpServers)
+        .set({ env: novo.env ?? null, headers: novo.headers ?? null, credentialRef: ref })
+        .where(eq(schema.mcpServers.name, row.name));
+      // A impressão aceita era da cópia com o valor em claro: recalcula.
+      await this.vincular(row.name, lida.data);
+      reparados.push(row.name);
+    }
+    await this.db.insert(schema.settings).values({ key: marca, value: new Date().toISOString() });
+    return reparados;
   }
 
   /** Estado de cada servidor vinculado: se a origem bate com o aceito, mudou ou sumiu. */
@@ -552,7 +595,8 @@ export class McpService {
     if (!lida.success) return null;
     const source = lida.data;
     const aceita = toEntry(row).config;
-    const r = await this.origem.resolver(source, row.name);
+    const daOrigem = await this.origem.resolver(source, row.name);
+    const r = daOrigem === undefined ? undefined : cobrirPelaCopia(daOrigem, aceita, source);
     if (r === undefined) return { source, estado: "sumiu", config: aceita, resolvido: undefined, mudancas: [], mantida: false };
 
     if (r.hash === row.sourceHash) {

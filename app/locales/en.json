@@ -1745,7 +1745,11 @@
       "title": "Claude Code points to another copy of Locum",
       "body": "The Locum registered in Claude Code is not this installed app ({{motivo}}). Fixing re-registers the command; if it fails, the previous one is put back.",
       "fix": "Fix",
-      "fixing": "fixing..."
+      "fixing": "fixing...",
+      "motivo": {
+        "binario-sumiu": "the registered program no longer exists",
+        "outra-copia": "it points to another copy of the app"
+      }
     }
   },
   "claudeSessions": {

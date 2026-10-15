@@ -55,15 +55,21 @@ export interface Entrada {
   oauth?: { clientId?: string; callbackPort?: number; scopes?: string[] | string };
 }
 
-/** Palavras que, num nome de variável ou cabeçalho, dizem que o valor é segredo. */
-const PALAVRAS_DE_SEGREDO = new Set(["key", "apikey", "token", "secret", "password", "passwd", "pwd", "bearer", "cookie", "credential", "credentials", "authorization", "auth"]);
-/** Palavras que dizem que o valor é um endereço, um nome ou uma lista, mesmo ao lado de "token" ou "auth". */
-const PALAVRAS_DE_NAO_SEGREDO = new Set(["url", "uri", "host", "endpoint", "scope", "scopes", "file", "path", "dir", "name", "id", "type", "mode", "port", "domain", "realm", "authority", "server", "issuer"]);
+/** Radicais que dizem que o valor é segredo: a palavra inteira ou o fim dela (`PGPASSWORD`, `APIKEY`). */
+const RADICAIS_DE_SEGREDO = ["password", "passwd", "token", "secret", "apikey", "accesskey", "secretkey", "privatekey", "bearer", "cookie", "credential", "credentials", "authorization"];
+/** Palavras soltas de segredo: `key` e `auth` só valem inteiras, senão pegariam `KEYCLOAK`. */
+const PALAVRAS_SOLTAS_DE_SEGREDO = new Set(["key", "pwd", "auth"]);
+/** Última palavra que diz que o valor é um endereço, um nome ou uma lista, mesmo ao lado de "token" ou "auth". */
+const ULTIMA_PALAVRA_DE_CONFIGURACAO = new Set(["url", "uri", "host", "endpoint", "scope", "scopes", "file", "path", "dir", "name", "region", "port", "domain", "realm", "authority", "issuer", "server", "mode", "type"]);
+/** `TOKEN_ID` é segredo; `CLIENT_ID` e `TENANT_ID` são identificadores. */
+const SEGREDO_ANTES_DO_ID = new Set(["token", "secret", "password", "passwd", "pwd", "cookie", "bearer", "credential", "credentials", "authorization"]);
 
 /**
- * O nome pede cofre? Vale por palavra inteira (`MINHA_API_KEY`, `x-api-key`,
- * `clientSecret`), e não por trecho: `KEYCLOAK_URL`, `OAUTH_TOKEN_URL`,
- * `AUTH_SERVER_URL` e `*_OAUTH_SCOPES` são configuração, e comparam como tal.
+ * O nome pede cofre? Só a última palavra do nome pode dizer "isto é
+ * configuração" (`OAUTH_TOKEN_URL`, `AUTH_SERVER_URL`, `*_OAUTH_SCOPES`,
+ * `*_TENANT_ID`). Fora isso, uma palavra de segredo em qualquer lugar do nome
+ * pede cofre, inclusive no fim de uma palavra colada (`PGPASSWORD`), e
+ * `MCP_SERVER_TOKEN` é segredo apesar do `SERVER` no meio.
  */
 export function ehChaveDeSegredo(chave: string): boolean {
   const palavras = chave
@@ -71,18 +77,40 @@ export function ehChaveDeSegredo(chave: string): boolean {
     .toLowerCase()
     .split(/[^a-z0-9]+/)
     .filter((p) => p !== "");
-  if (palavras.some((p) => PALAVRAS_DE_NAO_SEGREDO.has(p))) return false;
-  return palavras.some((p) => PALAVRAS_DE_SEGREDO.has(p)) || (palavras.includes("api") && palavras.includes("key"));
+  const ultima = palavras[palavras.length - 1];
+  if (ultima === undefined) return false;
+  if (ultima === "id") return SEGREDO_ANTES_DO_ID.has(palavras[palavras.length - 2] ?? "");
+  if (ULTIMA_PALAVRA_DE_CONFIGURACAO.has(ultima)) return false;
+  return palavras.some((p) => PALAVRAS_SOLTAS_DE_SEGREDO.has(p) || RADICAIS_DE_SEGREDO.some((r) => p.endsWith(r)));
 }
 
-/** Endereço sem credencial embutida: nunca é o segredo, mesmo numa chave que pareça. */
-function ehEndereco(valor: string): boolean {
+/** Parâmetro de query ou userinfo que carrega segredo dentro de um endereço. */
+function mascararEndereco(valor: string): string {
+  let u: URL;
   try {
-    const u = new URL(valor);
-    return (u.protocol === "http:" || u.protocol === "https:") && u.username === "" && u.password === "";
+    u = new URL(valor);
   } catch {
-    return false;
+    return valor;
   }
+  if (u.protocol !== "http:" && u.protocol !== "https:") return valor;
+  let mudou = false;
+  if (u.password !== "") {
+    u.password = "oculto";
+    mudou = true;
+  }
+  for (const [k, v] of [...u.searchParams.entries()]) {
+    if (v !== "" && ehChaveDeSegredo(k)) {
+      u.searchParams.set(k, "oculto");
+      mudou = true;
+    }
+  }
+  return mudou ? u.toString().replace(/oculto/g, VALOR_OCULTO_NA_URL) : valor;
+}
+const VALOR_OCULTO_NA_URL = "<oculto>";
+
+/** Há segredo dentro do endereço (userinfo ou query)? */
+export function enderecoComSegredo(valor: string): boolean {
+  return mascararEndereco(valor) !== valor;
 }
 const VARIAVEL = /\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}/g;
 
@@ -375,7 +403,7 @@ export function preparar(
     const out: Record<string, string> = {};
     for (const [chave, bruto] of Object.entries(registro)) {
       const valor = expandir(bruto);
-      if (!ehChaveDeSegredo(chave) || valor.length === 0 || valor.includes("${") || ehEndereco(valor)) {
+      if (!ehChaveDeSegredo(chave) || valor.length === 0 || valor.includes("${")) {
         out[chave] = valor;
       } else if (segredo === undefined) {
         segredo = valor;
@@ -447,7 +475,8 @@ export interface OrigemDeps {
 }
 
 const TTL_PADRAO_MS = 5_000;
-const TTL_DO_AMBIENTE_MS = 60_000;
+const TTL_DO_AMBIENTE_MS = 5 * 60_000;
+const TTL_DA_FALHA_DO_SHELL_MS = 30_000;
 export const RAIZ_DO_PLUGIN = "${CLAUDE_PLUGIN_ROOT}";
 
 function escapar(texto: string): string {
@@ -512,6 +541,34 @@ export function semMarcadorDoLocum(copia: McpServerInput, origem: McpServerInput
   return { ...resto, ...(env === undefined ? {} : { env }), ...(headers === undefined ? {} : { headers }) };
 }
 
+/** Variáveis `${X}` que ficaram por resolver na configuração (as com padrão já foram). */
+export function variaveisPorResolver(config: McpServerInput): string[] {
+  const textos = [...(config.command ?? []), config.url ?? "", ...Object.values(config.env ?? {}), ...Object.values(config.headers ?? {})];
+  const nomes = new Set<string>();
+  for (const t of textos.map((x) => x.split(CREDENTIAL_PLACEHOLDER).join(""))) for (const m of t.matchAll(VARIAVEL)) if (m[1] !== "CLAUDE_PLUGIN_ROOT") nomes.add(m[1]!);
+  return [...nomes];
+}
+
+/**
+ * Variável de chave de segredo que esta máquina não tem, mas que a cópia aceita
+ * já cobre com o marcador de credencial (o segredo mora no cofre), conta como
+ * resolvida. Só o que sobra por resolver deixa a origem indisponível.
+ */
+export function cobrirPelaCopia(r: Resolvido, aceita: McpServerInput, source: McpSource): Resolvido {
+  if (!r.incompleto) return r;
+  const cobrir = (nova: Record<string, string> | undefined, antes: Record<string, string> | undefined) =>
+    nova === undefined
+      ? undefined
+      : Object.fromEntries(Object.entries(nova).map(([k, v]) => [k, ehChaveDeSegredo(k) && v.includes("${") && antes?.[k] === CREDENTIAL_PLACEHOLDER ? CREDENTIAL_PLACEHOLDER : v]));
+  const env = cobrir(r.config.env, aceita.env);
+  const headers = cobrir(r.config.headers, aceita.headers);
+  const config: McpServerInput = { ...r.config, ...(env === undefined ? {} : { env }), ...(headers === undefined ? {} : { headers }) };
+  const restantes = variaveisPorResolver(config);
+  const cobertas = variaveisPorResolver(r.config).filter((n) => !restantes.includes(n));
+  if (restantes.length > 0) return { ...r, faltando: r.faltando.filter((n) => !cobertas.includes(n)), incompleto: true };
+  return { ...r, config, incompleto: false, faltando: r.faltando.filter((n) => !cobertas.includes(n)), hash: impressao(config, source, r.raiz) };
+}
+
 /** Uma diferença entre a configuração aceita e a da origem, com segredo mascarado. */
 export interface Mudanca {
   campo: "transport" | "command" | "args" | "url" | "env" | "headers";
@@ -527,12 +584,12 @@ export const VALOR_OCULTO = "<oculto>";
 
 /** Este valor, nesta chave, é segredo de fato (e não endereço, escopo ou variável por resolver)? */
 function ehSegredoDeFato(chave: string, valor: string): boolean {
-  return ehChaveDeSegredo(chave) && valor.length > 0 && valor !== CREDENTIAL_PLACEHOLDER && !valor.includes("${") && !ehEndereco(valor);
+  return ehChaveDeSegredo(chave) && valor.length > 0 && valor !== CREDENTIAL_PLACEHOLDER && !valor.includes("${");
 }
 
 /** Valor de `env` ou `headers`: o que parece segredo não sai daqui. */
 function mascarar(chave: string, valor: string): string {
-  return ehSegredoDeFato(chave, valor) ? VALOR_OCULTO : valor;
+  return ehSegredoDeFato(chave, valor) ? VALOR_OCULTO : mascararEndereco(valor);
 }
 
 /**
@@ -553,7 +610,7 @@ export function mascararArgs(args: string[]): string[] {
     if (igual !== null) {
       saida.push(ehSegredoDeFato(igual[1]!.replace(/^-+/, ""), igual[2]!) ? `${igual[1]}=${VALOR_OCULTO}` : arg);
     } else {
-      saida.push(arg);
+      saida.push(mascararEndereco(arg));
       mascararOProximo = /^-{1,2}[A-Za-z0-9_.-]+$/.test(arg) && ehChaveDeSegredo(arg.replace(/^-+/, ""));
     }
   }
@@ -568,6 +625,7 @@ export function configMascarada(config: McpServerInput): McpServerInput {
   const headers = mapa(config.headers);
   return {
     ...config,
+    ...(config.url === undefined ? {} : { url: mascararEndereco(config.url) }),
     ...(config.command === undefined ? {} : { command: [config.command[0]!, ...mascararArgs(config.command.slice(1))] }),
     ...(env === undefined ? {} : { env }),
     ...(headers === undefined ? {} : { headers }),
@@ -598,7 +656,11 @@ export function diferencas(aceita: McpServerInput, nova: McpServerInput, source?
 
   const ua = aceita.url === undefined ? null : limpo(aceita.url);
   const un = nova.url === undefined ? null : limpo(nova.url);
-  if (ua !== un) saida.push({ campo: "url", antes: ua, depois: un });
+  if (ua !== un) {
+    const ma = ua === null ? null : mascararEndereco(ua);
+    const mn = un === null ? null : mascararEndereco(un);
+    saida.push({ campo: "url", antes: ma, depois: mn, ...(ma !== null && ma === mn ? { protegido: true } : {}) });
+  }
 
   for (const campo of ["env", "headers"] as const) {
     const antes = aceita[campo] ?? {};
@@ -643,7 +705,7 @@ export function lerJsonCacheado(caminho: string): unknown {
  */
 export class OrigemResolver {
   private lidos = new Map<string, { at: number; valor: Resolvido | undefined }>();
-  private ambientes = new Map<string, { at: number; valor: Record<string, string> }>();
+  private ambientes = new Map<string, { at: number; valor: Record<string, string>; falhou: boolean }>();
   private lidas: { at: number; valor: Fonte[] } | undefined;
 
   constructor(private readonly deps: OrigemDeps) {}
@@ -716,18 +778,27 @@ export class OrigemResolver {
     return valor;
   }
 
+  /**
+   * O que o shell de login diz das variáveis. Resposta que veio (mesmo sem a
+   * variável) vale 5 min. Falha de execução ou tempo esgotado vale 30 s e fica
+   * marcada como falha: o estado é "indisponível", e nenhum caminho quente abre
+   * outro `zsh -ilc` a cada chamada.
+   */
   private async ambiente(nomes: string[], agora: number): Promise<Record<string, string>> {
     const faltam = nomes.filter((n) => process.env[n] === undefined);
     let doShell: Record<string, string> = {};
     if (faltam.length > 0) {
       const chave = [...faltam].sort().join(",");
       const guardado = this.ambientes.get(chave);
-      if (guardado !== undefined && agora - guardado.at < TTL_DO_AMBIENTE_MS) doShell = guardado.valor;
+      if (guardado !== undefined && agora - guardado.at < (guardado.falhou ? TTL_DA_FALHA_DO_SHELL_MS : TTL_DO_AMBIENTE_MS)) doShell = guardado.valor;
       else {
-        doShell = await this.deps.ambiente(faltam);
-        // Resposta incompleta (shell que falhou ou estourou o tempo) não fica
-        // guardada: a próxima leitura tenta de novo.
-        if (faltam.every((n) => doShell[n] !== undefined)) this.ambientes.set(chave, { at: agora, valor: doShell });
+        let falhou = false;
+        try {
+          doShell = await this.deps.ambiente(faltam);
+        } catch {
+          falhou = true;
+        }
+        this.ambientes.set(chave, { at: agora, valor: doShell, falhou });
       }
     }
     return { ...doShell, ...Object.fromEntries(Object.entries(process.env).filter((p): p is [string, string] => p[1] !== undefined)) };
@@ -747,16 +818,20 @@ export function shellDeLogin(nomes: string[]): Promise<Record<string, string>> {
   if (nomes.length === 0) return Promise.resolve({});
   const marca = "__LOCUM_ENV__";
   const script = nomes.map((n) => `printf '${marca}%s=%s\\n' ${n} "$${n}"`).join("; ");
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const filho = execFile("/bin/zsh", ["-ilc", script], { timeout: 5_000, encoding: "utf8" }, (erro, stdout) => {
+      // Falhar ou estourar o tempo é diferente de a variável não existir: quem
+      // chama decide o que fazer com cada caso.
+      if (erro) {
+        reject(erro);
+        return;
+      }
       const out: Record<string, string> = {};
-      if (!erro) {
-        for (const linha of stdout.split("\n")) {
-          if (!linha.startsWith(marca)) continue;
-          const [nome, ...resto] = linha.slice(marca.length).split("=");
-          const valor = resto.join("=");
-          if (nome && valor.length > 0) out[nome] = valor;
-        }
+      for (const linha of stdout.split("\n")) {
+        if (!linha.startsWith(marca)) continue;
+        const [nome, ...resto] = linha.slice(marca.length).split("=");
+        const valor = resto.join("=");
+        if (nome && valor.length > 0) out[nome] = valor;
       }
       resolve(out);
     });

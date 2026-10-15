@@ -65,7 +65,8 @@ export function comandoDoApp(env: AmbienteDoApp, modo: "--ferramentas" | "--mcp"
   return instalado === null ? comandoDesteProcesso(env, modo) : [instalado, modo];
 }
 
-export type DecisaoDoRegistro = { acao: "manter" } | { acao: "gravar"; comando: string[]; motivo: string };
+export type MotivoDoRegistro = "sem-registro" | "binario-sumiu" | "outra-copia";
+export type DecisaoDoRegistro = { acao: "manter" } | { acao: "gravar"; comando: string[]; motivo: MotivoDoRegistro };
 
 /**
  * O registro atual, o que está gravado (ou nada), precisa mudar?
@@ -81,12 +82,12 @@ export function decidirRegistro(env: AmbienteDoApp, atual: string[] | null, modo
   const semRegistro = atual === null || atual.length === 0;
   if (!esteEOInstalado(env)) {
     if (!semRegistro) return { acao: "manter" };
-    return { acao: "gravar", comando: modo === "--ferramentas" ? comandoDesteProcesso(env, modo) : comandoDoApp(env, modo), motivo: "sem registro" };
+    return { acao: "gravar", comando: modo === "--ferramentas" ? comandoDesteProcesso(env, modo) : comandoDoApp(env, modo), motivo: "sem-registro" };
   }
   const alvo = comandoDesteProcesso(env, modo);
-  if (semRegistro) return { acao: "gravar", comando: alvo, motivo: "sem registro" };
+  if (semRegistro) return { acao: "gravar", comando: alvo, motivo: "sem-registro" };
   if (JSON.stringify(atual) === JSON.stringify(alvo)) return { acao: "manter" };
-  if (!env.existe(atual[0]!)) return { acao: "gravar", comando: alvo, motivo: "o binario registrado nao existe mais" };
-  if (!ehOInstalado(env, atual[0]!)) return { acao: "gravar", comando: alvo, motivo: "o registro aponta para uma copia que nao e o app instalado" };
+  if (!env.existe(atual[0]!)) return { acao: "gravar", comando: alvo, motivo: "binario-sumiu" };
+  if (!ehOInstalado(env, atual[0]!)) return { acao: "gravar", comando: alvo, motivo: "outra-copia" };
   return { acao: "manter" };
 }
