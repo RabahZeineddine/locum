@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ehLeitura, ehLeituraDa, escolhaDe } from "../src/config/leitura.js";
+import { ehLeitura, ehLeituraDa, escolhaDe, escolhaInicial, ligadaPorPadrao } from "../src/config/leitura.js";
 
 /** Nomes reais dos servidores que o Locum mais liga: GitHub, Atlassian e Grafana. */
 
@@ -53,4 +53,89 @@ test("a escolha por servidor e ferramenta vale sobre a chave antiga, só pelo no
   assert.equal(escolhaDe(tools, "c", "echo"), true);
   assert.equal(escolhaDe(tools, "b", "sum"), "read");
   assert.equal(escolhaDe(tools, "c", "sum"), undefined);
+});
+
+/** Nomes do servidor ms365: hífen em vez de sublinhado, e as anotações que ele entrega. */
+test("nome com hífen é classificado como o com sublinhado", () => {
+  for (const nome of ["list-chats", "get-chat-message", "list-calendar-events", "search-query"]) {
+    assert.equal(ehLeitura(nome), true, nome);
+  }
+  assert.equal(ehLeitura("list-chats"), true);
+  assert.equal(ehLeitura("send-chat-message"), false);
+  assert.equal(ehLeitura("delete-calendar-event"), false);
+});
+
+test("a anotação de leitura não vale para nome que escreve, mesmo local", () => {
+  assert.equal(ehLeituraDa({ name: "download-bytes-to-file", readOnlyHint: true }), false);
+  for (const nome of ["upload-file", "create-draft-email", "delete-chat", "send-mail", "set-presence", "update-event", "move-mail-message"]) {
+    assert.equal(ehLeituraDa({ name: nome, readOnlyHint: true }), false, nome);
+  }
+  assert.equal(ehLeituraDa({ name: "copilot-retrieve", readOnlyHint: true }), true);
+  assert.equal(ehLeituraDa({ name: "get_settings", readOnlyHint: true }), true);
+});
+
+const ESCRITA_DE_SUBSTANTIVO = [
+  "drop-schema", "clear-logs", "purge-history", "grant-access-policy", "destroy-resource", "subscribe-events",
+  "acknowledge-events", "snooze-events", "export-report", "lock-documents", "kill-process-tree", "reset-status",
+  "drop_schema", "clear_logs", "purge_history",
+];
+
+test("verbo de escrita antes de substantivo de leitura continua escrita, com ou sem hífen", () => {
+  for (const nome of ESCRITA_DE_SUBSTANTIVO) {
+    assert.equal(ehLeitura(nome), false, nome);
+    assert.equal(ehLeituraDa({ name: nome }), false, nome);
+  }
+});
+
+test("composto com hífen só é leitura com verbo de leitura na frente", () => {
+  for (const nome of ["list-chats", "get-settings", "list-updates", "search-created"]) {
+    assert.equal(ehLeitura(nome), true, nome);
+  }
+  for (const nome of ["events-feed", "schema-tree", "report-status"]) assert.equal(ehLeitura(nome), false, nome);
+});
+
+test("só o verbo inicial ou to-file e upload derrubam a anotação de leitura", () => {
+  for (const nome of ["get-update-status", "list-update-history", "get-send-status", "get-data-set"]) {
+    assert.equal(ehLeituraDa({ name: nome, readOnlyHint: true }), true, nome);
+  }
+  assert.equal(ehLeituraDa({ name: "download-bytes-to-file", readOnlyHint: true }), false);
+  assert.equal(ehLeituraDa({ name: "send-mail", readOnlyHint: true }), false);
+});
+
+test("a escolha ao adicionar a conexão grava as leituras ligadas e não depende de regra reavaliada", () => {
+  const pequeno = escolhaInicial([{ nome: "gh", ferramentas: [{ name: "get_issue" }, { name: "create_issue" }] }]);
+  assert.deepEqual(pequeno, { tools: { "gh/get_issue": true } });
+
+  const grande = Array.from({ length: 31 }, (_, i) => ({ name: `get_item_${i}` }));
+  assert.deepEqual(escolhaInicial([{ nome: "ms", ferramentas: grande }]), { tools: {}, leituraPadrao: "limitada" });
+  assert.deepEqual(escolhaInicial([{ nome: "novo", ferramentas: null }]), { tools: {}, leituraPadrao: "limitada" });
+});
+
+test("run e request depois de and, then, or ou colados no verbo de leitura são ação", () => {
+  for (const nome of ["list-and-run", "get-and-run", "analyze_and_run", "retrieve_then_request", "preview_run", "count_and_request", "query_and_run_job", "get_and_execute"]) {
+    assert.equal(ehLeitura(nome), false, nome);
+  }
+  for (const nome of [
+    "get-settings", "list-updates", "search-created", "get-asset", "list-datasets", "get-offset", "get-update-status",
+    "list-update-history", "get-send-status", "get-data-set", "list-chats", "get_pull_request", "get_workflow_run_logs", "pull_request_read",
+  ]) {
+    assert.equal(ehLeituraDa({ name: nome, readOnlyHint: true }), true, nome);
+  }
+  for (const nome of ["get-settings", "list-updates", "search-created", "get-asset", "list-datasets", "get-offset", "list-chats"]) {
+    assert.equal(ehLeitura(nome), true, nome);
+  }
+});
+
+test("connect só pesa como verbo inicial: get_code_connect_map lê", () => {
+  assert.equal(ehLeitura("get_code_connect_map"), true);
+  assert.equal(ehLeitura("get_code_connect_suggestions"), true);
+  assert.equal(ehLeitura("connect-account"), false);
+  assert.equal(ehLeitura("disconnect_session"), false);
+});
+
+test("limitada nunca liga nada por padrão, e sem modo toda leitura liga", () => {
+  assert.equal(ligadaPorPadrao({ name: "get_issue" }, "limitada"), false);
+  assert.equal(ligadaPorPadrao({ name: "get_issue" }, undefined), true);
+  assert.equal(ligadaPorPadrao({ name: "get_issue" }, "todas"), true);
+  assert.equal(ligadaPorPadrao({ name: "create_issue" }, undefined), false);
 });

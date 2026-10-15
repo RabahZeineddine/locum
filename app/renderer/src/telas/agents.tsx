@@ -2,15 +2,16 @@ import { CabecalhoDaTela } from "@/components/cabecalho-da-tela";
 import { MarcaLogo } from "@/components/marca-logo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { call, read, useRead, type ReadResult } from "@/lib/bridge";
+import { call, invalidateReads, read, useRead, type ReadResult } from "@/lib/bridge";
 import { rotuloDoModelo } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
 import { ChatDoAgent } from "../agent-chat";
-import { ArrowLeft, Bot, Copy, Loader2, Plus, RefreshCw, Trash2, Workflow, Wrench, X } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { ArrowLeft, Bot, Copy, Loader2, Plus, RefreshCw, Search, Trash2, Workflow, Wrench, X } from "lucide-react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { ehLeitura, ehLeituraDa, escolhaDe, type EscolhaDeFerramenta } from "../../../src/config/leitura.js";
-import type { AgentBudget, AgentConnection, AgentProfile, ToolRef, Toolset } from "../../../src/config/types";
+import { ehLeitura, ehLeituraDa, escolhaDe, escolhaInicial, ligadaPorPadrao, type EscolhaDeFerramenta } from "../../../src/config/leitura.js";
+import { agruparPorArea, filtrarFerramentas, LIMITE_PARA_AGRUPAR } from "@/lib/ferramentas-do-agent";
+import { SERVIDOR_NATIVO, type AgentBudget, type AgentConnection, type AgentProfile, type ToolRef, type Toolset } from "../../../src/config/types";
 import { SeletorDeModelo, ServidoresComBusca, servidoresDoModelo, useCatalogo } from "../editor-agent";
 import type { TelaProps } from "../rotas";
 
@@ -108,6 +109,7 @@ async function duplicar(spec: AgentProfile, sufixo: string): Promise<string> {
   const nome = `${spec.name} ${sufixo}`;
   const id = await call("library.suggestId", nome, "profile");
   const gravado = await call("library.saveProfile", { spec: { ...spec, id, name: nome }, create: true, note: sufixo });
+  invalidateReads("library.profiles");
   return gravado.profileId;
 }
 
@@ -294,6 +296,7 @@ function FormularioDoAgent({
         note: nota.trim() || (novo ? t("library.editor.created") : t("library.editor.edited")),
         create: novo,
       });
+      invalidateReads("library.profiles");
       setSalvo(gravado);
       setSpec(gravado.spec);
       setNota("");
@@ -317,10 +320,16 @@ function FormularioDoAgent({
 
   const remover = (): void => {
     setOcupado(true);
-    call("library.removeProfile", spec.id).then(voltar, (e: unknown) => {
-      setOcupado(false);
-      setAviso({ tipo: "erro", texto: e instanceof Error ? e.message : String(e) });
-    });
+    call("library.removeProfile", spec.id).then(
+      () => {
+        invalidateReads("library.profiles");
+        voltar();
+      },
+      (e: unknown) => {
+        setOcupado(false);
+        setAviso({ tipo: "erro", texto: e instanceof Error ? e.message : String(e) });
+      },
+    );
   };
 
   const ferramentasNoTotal =
@@ -633,6 +642,15 @@ function ConexoesDoAgent({ conexoes, trocar }: { conexoes: AgentConnection[]; tr
   const todas = lista.data ?? [];
   const livres = todas.filter((c) => c.servers.length > 0 && !conexoes.some((x) => x.connectionId === c.id));
 
+  // A escolha inicial sai da última lista guardada de cada servidor, e fica gravada: depois disso nenhuma regra tira o que estava ligado.
+  const adicionar = async (id: string): Promise<void> => {
+    const servidores = todas.find((c) => c.id === id)?.servers ?? [];
+    const lidos = await Promise.all(
+      servidores.map(async (nome) => ({ nome, ferramentas: (await read("mcp.toolsCached", nome).catch(() => null))?.tools ?? null })),
+    );
+    trocar([...conexoes, { connectionId: id, ...escolhaInicial(lidos) }]);
+  };
+
   const mudar = (id: string, depois: AgentConnection | null): void =>
     trocar(conexoes.flatMap((c) => (c.connectionId !== id ? [c] : depois === null ? [] : [depois])));
 
@@ -662,7 +680,7 @@ function ConexoesDoAgent({ conexoes, trocar }: { conexoes: AgentConnection[]; tr
             className={cn(CAMPO, "w-auto min-w-56 cursor-pointer")}
             data-locum-agent-conexao-adicionar=""
             onChange={(e) => {
-              if (e.target.value !== "") trocar([...conexoes, { connectionId: e.target.value, tools: {} }]);
+              if (e.target.value !== "") void adicionar(e.target.value);
             }}
             value=""
           >
@@ -707,7 +725,9 @@ function CartaoDaConexao({
   mudar: (depois: AgentConnection | null) => void;
 }) {
   const { t } = useTranslation();
-  const servidores = conexao?.servers ?? [];
+  // O servidor interno do Locum não está na lista da tela, mas o agent salvo pode citá-lo: está sempre ligado.
+  const interno = conexao === undefined && escolha.connectionId === SERVIDOR_NATIVO;
+  const servidores = conexao?.servers ?? (interno ? [SERVIDOR_NATIVO] : []);
   const guardadas = useGuardadas(servidores);
   // A anotação que o servidor deixou no cache manda; o nome só decide sem ela.
   const ligadas = Object.entries(escolha.tools).filter(([chave, e]) => {
@@ -721,8 +741,18 @@ function CartaoDaConexao({
     <div className="border-border superficie flex flex-col gap-3 rounded-lg border p-3" data-locum-agent-conexao={escolha.connectionId}>
       <div className="flex flex-wrap items-center gap-2">
         <MarcaLogo fonte={{ name: escolha.connectionId, url: conexao?.url }} tamanho="sm" />
-        <span className="text-sm font-medium">{conexao?.name ?? escolha.connectionId}</span>
-        {conexao === undefined ? null : <Badge variant="outline">{t(conexao.state === "connected" && conexao.reason === "untested" ? "connections.state.untested" : `connections.state.${conexao.state}`)}</Badge>}
+        <span className="text-sm font-medium">{interno ? t("library.connections.internal") : (conexao?.name ?? escolha.connectionId)}</span>
+        {conexao === undefined ? null : (
+          <Badge variant="outline">
+            {t(
+              conexao.state === "connected" && conexao.reason === "untested"
+                ? "connections.state.untested"
+                : conexao.state === "off"
+                  ? "connections.state.off"
+                  : `connections.state.${conexao.state}`,
+            )}
+          </Badge>
+        )}
         <span className="text-muted-foreground text-xs">{t("library.connections.default")}</span>
         {ligadas === 0 ? null : (
           <Badge className="text-amber-400" variant="outline">
@@ -779,39 +809,119 @@ function FerramentasDoServidor({
   };
 
   type Ferramenta = ReadResult<"mcp.tools">[number];
+  const [busca, setBusca] = useState("");
+  const todas = ferramentas ?? [];
+  const leituras = todas.filter((f) => ehLeituraDa(f));
+  const escritas = todas.filter((f) => !ehLeituraDa(f));
+  // Na conexão `limitada` a leitura não liga sozinha.
+  const padrao = (f: Ferramenta): boolean => ligadaPorPadrao(f, escolha_.leituraPadrao);
   const efetiva = (f: Ferramenta): { ligada: boolean; leitura: boolean; declarada: boolean } => {
     const escolha = escolhaDe(escolha_.tools, servidor, f.name);
     const classe = ehLeituraDa(f);
     return {
-      ligada: escolha === undefined ? classe : escolha !== false,
+      ligada: escolha === undefined ? padrao(f) : escolha !== false,
       leitura: classe || escolha === "read",
       declarada: escolha === "read",
     };
   };
   // Grava a escolha na chave `servidor/ferramenta`, e só quando ela difere do
-  // que a chave antiga, só pelo nome, ou o padrão já dariam.
-  const definir = (f: Ferramenta, valor: EscolhaDeFerramenta): void => {
-    const chave = `${servidor}/${f.name}`;
-    const { [chave]: _antes, ...resto } = escolha_.tools;
-    const base = escolhaDe(resto, servidor, f.name);
-    const normal = (x: EscolhaDeFerramenta | undefined): EscolhaDeFerramenta => {
-      const v = x === undefined ? ehLeituraDa(f) : x;
-      return v === "read" && ehLeituraDa(f) ? true : v;
-    };
-    mudar({ ...escolha_, tools: normal(valor) === normal(base) ? resto : { ...resto, [chave]: valor } });
+  // que a chave antiga, só pelo nome, ou o padrão já dariam. Várias de uma vez
+  // partem do mesmo mapa, para "ligar todas" não perder escolha no caminho.
+  const definirVarias = (pares: [Ferramenta, EscolhaDeFerramenta][]): void => {
+    let tools = escolha_.tools;
+    for (const [f, valor] of pares) {
+      const chave = `${servidor}/${f.name}`;
+      const { [chave]: _antes, ...resto } = tools;
+      const base = escolhaDe(resto, servidor, f.name);
+      const normal = (x: EscolhaDeFerramenta | undefined): EscolhaDeFerramenta => {
+        const v = x === undefined ? padrao(f) : x;
+        return v === "read" && ehLeituraDa(f) ? true : v;
+      };
+      tools = normal(valor) === normal(base) ? resto : { ...resto, [chave]: valor };
+    }
+    mudar({ ...escolha_, tools });
   };
+  const definir = (f: Ferramenta, valor: EscolhaDeFerramenta): void => definirVarias([[f, valor]]);
+  const ligarLeituras = (doGrupo: Ferramenta[]): void => definirVarias(doGrupo.filter((f) => ehLeituraDa(f)).map((f) => [f, true]));
+  const desligar = (doGrupo: Ferramenta[]): void => definirVarias(doGrupo.map((f) => [f, false]));
 
-  const leituras = (ferramentas ?? []).filter((f) => ehLeituraDa(f));
-  const escritas = (ferramentas ?? []).filter((f) => !ehLeituraDa(f));
+  const visiveis = filtrarFerramentas(todas, busca);
+  const visiveisOrdenadas = [...visiveis.filter((f) => ehLeituraDa(f)), ...visiveis.filter((f) => !ehLeituraDa(f))];
+  const grupos = agruparPorArea(visiveisOrdenadas, todas.length);
+  const ligadasNoTotal = todas.filter((f) => efetiva(f).ligada).length;
+  const grande = todas.length > LIMITE_PARA_AGRUPAR;
+
+  const linha = (f: Ferramenta) => {
+    const { ligada, leitura, declarada } = efetiva(f);
+    return (
+      <li className="hover:bg-muted/40 flex items-center gap-2 rounded-md px-2 py-1" key={f.name}>
+        <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
+          <input
+            checked={ligada}
+            className="accent-primary cursor-pointer"
+            data-locum-agent-ferramenta={`${servidor}/${f.name}`}
+            onChange={(e) => definir(f, e.target.checked ? (declarada ? "read" : true) : false)}
+            type="checkbox"
+          />
+          <span className="font-mono text-xs">{f.name}</span>
+          <span
+            className={cn(
+              "rounded border px-1.5 text-[10px] leading-4",
+              leitura ? "border-border text-muted-foreground" : "border-sev-medium/40 text-sev-medium",
+            )}
+          >
+            {t(leitura ? "library.editor.read" : "library.editor.write")}
+          </span>
+          {f.description === "" ? null : (
+            <span className="text-muted-foreground line-clamp-1 min-w-0 flex-1 text-xs">{f.description}</span>
+          )}
+        </label>
+        {ehLeituraDa(f) || !ligada ? null : (
+          <label className="text-muted-foreground flex shrink-0 cursor-pointer items-center gap-1 text-[11px]" title={t("library.connections.declareReadHint")}>
+            <input
+              checked={declarada}
+              className="accent-primary cursor-pointer"
+              data-locum-agent-declarar-leitura={`${servidor}/${f.name}`}
+              onChange={(e) => definir(f, e.target.checked ? "read" : true)}
+              type="checkbox"
+            />
+            {t("library.connections.declareRead")}
+          </label>
+        )}
+      </li>
+    );
+  };
 
   return (
     <div className="flex flex-col gap-2" data-locum-agent-servidor={servidor}>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <span className="font-mono text-xs">{servidor}</span>
         {ferramentas === null ? null : (
-          <span className="text-muted-foreground text-xs">
-            {t("library.connections.counts", { read: leituras.length, write: escritas.length })}
+          <span className="text-muted-foreground text-xs" data-locum-agent-ligadas={`${ligadasNoTotal}/${todas.length}`}>
+            {t("library.connections.ligadas", { on: ligadasNoTotal, total: todas.length })}
           </span>
+        )}
+        {ferramentas === null || todas.length === 0 ? null : (
+          <>
+            <Button
+              className="cursor-pointer"
+              data-locum-agent-ligar-leituras={servidor}
+              onClick={() => ligarLeituras(busca.trim() === "" ? todas : visiveis)}
+              size="sm"
+              variant="outline"
+            >
+              {t("library.connections.enableReads")}
+            </Button>
+            <Button
+              className="cursor-pointer"
+              data-locum-agent-desligar-todas={servidor}
+              onClick={() => desligar(busca.trim() === "" ? todas : visiveis)}
+              size="sm"
+              variant="outline"
+            >
+              {t("library.connections.disableAll")}
+            </Button>
+          </>
         )}
         <Button
           className="ml-auto cursor-pointer"
@@ -825,52 +935,51 @@ function FerramentasDoServidor({
           {t(ferramentas === null ? "library.connections.load" : "library.connections.reload")}
         </Button>
       </div>
+      {grande && ligadasNoTotal === 0 ? (
+        <p className="text-muted-foreground text-xs" data-locum-agent-escolha-as-que-precisa="">
+          {t("library.connections.pickThem")}
+        </p>
+      ) : null}
+      {ferramentas !== null && todas.length > 8 ? (
+        <label className="border-border bg-card focus-within:ring-ring flex h-8 max-w-sm items-center gap-2 rounded-md border px-2 focus-within:ring-2">
+          <Search aria-hidden className="text-muted-foreground size-3.5" />
+          <input
+            aria-label={t("library.connections.search")}
+            className="placeholder:text-muted-foreground w-full bg-transparent text-xs outline-none"
+            data-locum-agent-ferramentas-busca={servidor}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder={t("library.connections.search")}
+            value={busca}
+          />
+        </label>
+      ) : null}
       {erro === null ? null : <p className="text-destructive text-xs">{erro}</p>}
       {ferramentas === null ? (
         <p className="text-muted-foreground text-xs">{t("library.connections.notListed")}</p>
+      ) : visiveis.length === 0 && busca.trim() !== "" ? (
+        <p className="text-muted-foreground text-xs">{t("library.connections.noMatch", { termo: busca.trim() })}</p>
       ) : (
-        <ul className="flex flex-col gap-0.5">
-          {[...leituras, ...escritas].map((f) => {
-            const { ligada, leitura, declarada } = efetiva(f);
-            return (
-              <li className="hover:bg-muted/40 flex items-center gap-2 rounded-md px-2 py-1" key={f.name}>
-                <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
-                  <input
-                    checked={ligada}
-                    className="accent-primary cursor-pointer"
-                    data-locum-agent-ferramenta={`${servidor}/${f.name}`}
-                    onChange={(e) => definir(f, e.target.checked ? (declarada ? "read" : true) : false)}
-                    type="checkbox"
-                  />
-                  <span className="font-mono text-xs">{f.name}</span>
-                  <span
-                    className={cn(
-                      "rounded border px-1.5 text-[10px] leading-4",
-                      leitura ? "border-border text-muted-foreground" : "border-sev-medium/40 text-sev-medium",
-                    )}
-                  >
-                    {t(leitura ? "library.editor.read" : "library.editor.write")}
-                  </span>
-                  {f.description === "" ? null : (
-                    <span className="text-muted-foreground line-clamp-1 min-w-0 flex-1 text-xs">{f.description}</span>
-                  )}
-                </label>
-                {ehLeituraDa(f) || !ligada ? null : (
-                  <label className="text-muted-foreground flex shrink-0 cursor-pointer items-center gap-1 text-[11px]" title={t("library.connections.declareReadHint")}>
-                    <input
-                      checked={declarada}
-                      className="accent-primary cursor-pointer"
-                      data-locum-agent-declarar-leitura={`${servidor}/${f.name}`}
-                      onChange={(e) => definir(f, e.target.checked ? "read" : true)}
-                      type="checkbox"
-                    />
-                    {t("library.connections.declareRead")}
-                  </label>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+        grupos.map((g) => (
+          <div className="flex flex-col gap-0.5" data-locum-agent-grupo={g.area ?? ""} key={g.area ?? "todas"}>
+            {g.area === null ? null : (
+              <div className="mt-1 flex items-center gap-2">
+                <span className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
+                  {t(`library.connections.areas.${g.area}`)}
+                </span>
+                <span className="text-muted-foreground text-[11px]">
+                  {t("library.connections.ligadas", { on: g.itens.filter((f) => efetiva(f).ligada).length, total: g.itens.length })}
+                </span>
+                <Button className="ml-auto cursor-pointer" onClick={() => ligarLeituras(g.itens)} size="sm" variant="ghost">
+                  {t("library.connections.enableReads")}
+                </Button>
+                <Button className="cursor-pointer" onClick={() => desligar(g.itens)} size="sm" variant="ghost">
+                  {t("library.connections.disableAll")}
+                </Button>
+              </div>
+            )}
+            <ul className="flex flex-col gap-0.5">{g.itens.map(linha)}</ul>
+          </div>
+        ))
       )}
       {escritas.some((f) => efetiva(f).ligada && !efetiva(f).leitura) ? (
         <p className="text-amber-400 text-xs">{t("library.connections.writeNote")}</p>
@@ -914,22 +1023,103 @@ function SkillsDoAgent({ skills, trocar }: { skills: AgentProfile["skills"]; tro
       {livres.length === 0 ? (
         <span className="text-muted-foreground text-xs">{t("library.skills.noneToAdd")}</span>
       ) : (
-        <select
-          aria-label={t("library.skills.add")}
-          className={cn(CAMPO, "w-auto min-w-56 cursor-pointer")}
-          onChange={(e) => {
-            if (e.target.value !== "") trocar([...skills, { skill: e.target.value, when: { always: true } }]);
-          }}
-          value=""
-        >
-          <option value="">{t("library.skills.add")}</option>
-          {livres.map((s) => (
-            <option key={s.name} title={s.description} value={s.name}>
-              {s.name}
-            </option>
-          ))}
-        </select>
+        <CampoComBusca
+          aoEscolher={(nome) => trocar([...skills, { skill: nome, when: { always: true } }])}
+          opcoes={livres.map((s) => ({ name: s.name, description: s.description }))}
+          rotulo={t("library.skills.add")}
+          semResultado={t("library.skills.noMatch")}
+        />
       )}
+    </div>
+  );
+}
+
+/**
+ * Campo com busca no lugar de um `<select>` de muitos itens: digita, a lista
+ * afunila por nome ou descrição, e Enter ou o clique escolhe. Setas movem a
+ * escolha e Esc fecha.
+ */
+function CampoComBusca({
+  aoEscolher,
+  opcoes,
+  rotulo,
+  semResultado,
+}: {
+  aoEscolher: (nome: string) => void;
+  opcoes: { name: string; description?: string }[];
+  rotulo: string;
+  semResultado: string;
+}) {
+  const [termo, setTermo] = useState("");
+  const [aberto, setAberto] = useState(false);
+  const [ativa, setAtiva] = useState(0);
+  const achadas = useMemo(() => filtrarFerramentas(opcoes, termo).slice(0, 40), [opcoes, termo]);
+  const escolher = (nome: string): void => {
+    aoEscolher(nome);
+    setTermo("");
+    setAberto(false);
+    setAtiva(0);
+  };
+  return (
+    <div className="relative w-full max-w-sm" data-locum-campo-com-busca="">
+      <input
+        aria-autocomplete="list"
+        aria-expanded={aberto}
+        aria-label={rotulo}
+        className={CAMPO}
+        onBlur={() => setTimeout(() => setAberto(false), 120)}
+        onChange={(e) => {
+          setTermo(e.target.value);
+          setAberto(true);
+          setAtiva(0);
+        }}
+        onFocus={() => setAberto(true)}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowDown") {
+            e.preventDefault();
+            setAberto(true);
+            setAtiva((i) => Math.min(i + 1, achadas.length - 1));
+          } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            setAtiva((i) => Math.max(i - 1, 0));
+          } else if (e.key === "Enter") {
+            e.preventDefault();
+            const alvo = achadas[ativa];
+            if (alvo !== undefined) escolher(alvo.name);
+          } else if (e.key === "Escape") {
+            setAberto(false);
+          }
+        }}
+        placeholder={rotulo}
+        role="combobox"
+        value={termo}
+      />
+      {aberto ? (
+        <ul
+          className="border-border bg-popover absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-md border p-1 shadow-lg"
+          role="listbox"
+        >
+          {achadas.length === 0 ? (
+            <li className="text-muted-foreground px-2 py-1.5 text-xs">{semResultado}</li>
+          ) : (
+            achadas.map((o, i) => (
+              <li
+                aria-selected={i === ativa}
+                className={cn("flex cursor-pointer flex-col gap-0.5 rounded px-2 py-1", i === ativa && "bg-muted")}
+                key={o.name}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  escolher(o.name);
+                }}
+                role="option"
+              >
+                <span className="font-mono text-xs">{o.name}</span>
+                {o.description ? <span className="text-muted-foreground line-clamp-1 text-[11px]">{o.description}</span> : null}
+              </li>
+            ))
+          )}
+        </ul>
+      ) : null}
     </div>
   );
 }

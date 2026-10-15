@@ -180,7 +180,7 @@
       "placeholder": "https://github.com/owner/repo/pull/123"
     },
     "tabs": {
-      "agents": "Meus Agents",
+      "agents": "Minhas automações",
       "marketplace": "Marketplace"
     },
     "marketplace": {
@@ -278,7 +278,8 @@
     "note": "A leitura roda direto. Cada escrita aparece como um cartão e só sai quando você clica em Executar. Fora da Fila: isto é teste, não automação.",
     "saveFirst": "Salve o agent para conversar com ele.",
     "unsaved": "A conversa usa a versão salva. As mudanças ainda não salvas valem depois de Salvar.",
-    "noServer": "A conexão {{connection}} está sem servidor agora: {{reason}}. O agent conversa sem as ferramentas dela.",
+    "internal": "Ferramentas do Locum",
+      "noServer": "A conexão {{connection}} está sem servidor agora: {{reason}}. O agent conversa sem as ferramentas dela.",
     "card": {
       "title": {
         "pendente": "Escrita à espera",
@@ -831,6 +832,7 @@
       "order": "ordem {{order}}"
     },
     "servers": {
+      "turnOnFailed": "Não consegui ligar: {{message}}",
       "turnOn": "Ligar",
       "turnOff": "Desligar",
       "test": "Testar",
@@ -888,6 +890,8 @@
         "save": "Guardar e testar",
         "tools": "Ferramentas",
         "toolsCount": "{{read}} de leitura, {{write}} de escrita",
+        "toolsCached": "Lista guardada da última vez. Atualizando.",
+        "toolsCachedOff": "Lista guardada da última vez. O servidor está desligado: use Recarregar para subir e atualizar.",
         "toolsOff": "Ligue o servidor para listar as ferramentas, ou use Ferramentas para subir agora.",
         "tokens_one": "{{count}} tok",
         "tokens_other": "{{count}} tok",
@@ -1017,6 +1021,8 @@
     "trackers": {
       "title": "Trackers de tarefa",
       "description": "Onde a tarefa vai parar quando um achado virar trabalho: um Jira ou um repositório de issues do GitHub. A credencial fica no keychain, e a tela mostra se existe e o que o último teste alcançou, nunca o valor.",
+      "emptyGithub": "nenhum repositório de issues cadastrado",
+      "howToGithub": "Cadastre o repositório (dono/repo) onde as tarefas vão parar e guarde um token com escrita em Issues nele. Esse token é separado do que lê pull request, de propósito. Cadastrar não abre issue nenhuma: quem abre é o passo de ação, que para na fila até você aprovar.",
       "empty": "nenhum tracker cadastrado",
       "kind": "tipo de tracker",
       "kindJiraAtlassian": "Jira pela conexão Atlassian",
@@ -1477,8 +1483,8 @@
         "waiting": "Espera você",
         "item": "item",
         "items": "itens",
-        "active_watch": "Vigilância ativa",
-        "monitors": "monitores",
+        "active_watch": "Gatilhos ligados",
+        "monitors": "gatilhos",
         "runs_today": "Execuções (24h)",
         "failures": "falhas",
         "cost_24h": "Custo estimado (24h)",
@@ -1499,7 +1505,7 @@
         "empty": "Nenhum agent com hora marcada.",
         "due": "agora",
         "when": "{{day}} {{time}}",
-        "watch_title": "Vigilância Ativa",
+        "watch_title": "Gatilhos ligados",
         "watch_badge": "{{count}} ativos",
         "check_now": "Verificar agora",
         "checking": "Verificando...",
@@ -1521,7 +1527,7 @@
       },
       "start": {
         "title": "Comece por aqui",
-        "lead": "Três passos até um agent trabalhar sozinho. A saída de cada um sempre para na fila para você aprovar.",
+        "lead": "Quatro passos até um agent trabalhar sozinho. Você escolhe onde a automação para para pedir sua aprovação.",
         "model": {
           "title": "Escolher um modelo",
           "hint": "Claude Code já instalado serve, ou uma chave de API.",
@@ -1531,6 +1537,11 @@
           "title": "Conectar de onde vem o trabalho",
           "hint": "GitHub, Slack, Teams, Jira: o que o agent vai ler.",
           "go": "Conexões"
+        },
+        "agent": {
+          "title": "Criar um agent",
+          "hint": "Instruções, modelo e as ferramentas que ele pode usar.",
+          "go": "Agents"
         },
         "trigger": {
           "title": "Ligar uma automação",
@@ -1605,6 +1616,7 @@
     },
     "state": {
       "connected": "conectado",
+      "off": "desligado",
       "untested": "não testado",
       "attention": "precisa de atenção",
       "soon": "em breve",
@@ -1713,9 +1725,15 @@
     },
     "import": {
       "title": "Importar de outras ferramentas",
-      "description": "Os servidores MCP já configurados nesta máquina: no Claude Code (os seus e os dos plugins ligados), no opencode, no Cursor, no VS Code e no Claude Desktop. Importados, passam a ser do Locum e rodam com qualquer modelo, mesmo sem a ferramenta de origem. Entram desligados; a credencial vai para o cofre. Os conectores do claude.ai não aparecem aqui: eles só existem pela conta Claude.",
+      "description": "Os servidores MCP já configurados nesta máquina: no Claude Code (os seus e os dos plugins ligados), no opencode, no Cursor, no VS Code e no Claude Desktop. O Locum não copia: cada servidor fica vinculado à origem e lê a configuração de lá na hora do uso. Se a origem mudar comando, endereço ou variáveis, o Locum pede o seu aceite antes de valer. Entram desligados, e nada vem marcado: escolha o que importar. Os conectores do claude.ai não aparecem aqui, eles só existem pela conta Claude.",
       "empty": "Nenhum servidor MCP no Claude Code, opencode, Cursor, VS Code ou Claude Desktop desta máquina.",
-      "exists": "já cadastrado; importar substitui",
+      "exists": "já cadastrado; importar vincula de novo à origem",
+      "production": "O nome ou o endereço indica produção. Importe só se é isso mesmo que você quer ter por aqui.",
+      "origin": {
+        "plugin": "plugin {{name}}",
+        "usuario": "Claude Code, seus servidores",
+        "ferramenta": "{{name}}"
+      },
       "oauth": "autoriza pelo navegador depois",
       "missing": "falta {{names}}: entra, mas não conecta sem isso",
       "submit_one": "Importar {{count}}",
@@ -1726,6 +1744,7 @@
     "yours": {
       "title": "Suas conexões",
       "search": "Buscar por nome, origem ou ferramenta",
+      "importFromClaude": "Importar do Claude Code",
       "clearSearch": "Limpar a busca",
       "fromCatalog": "No catálogo, ainda não ligadas",
       "addFromCatalog": "Adicionar",
@@ -1761,12 +1780,12 @@
         "title": "Token do GitHub",
         "offers": "Libera os gatilhos de pull request e a prévia do diff nas automações.",
         "ok": "guardado",
-        "missing": "não guardado",
-        "save": "Guardar token"
+        "missing": "não guardado"
       },
       "server": {
         "title": "Servidor MCP do GitHub",
         "offers": "Libera as ferramentas de pull request, issue e código para os agents.",
+        "enable": "Ligar o servidor MCP do GitHub",
         "none": "Nenhum servidor MCP do GitHub cadastrado. Os agents ainda não têm essas ferramentas.",
         "turnOn": "Ligar servidor",
         "turnOff": "Desligar servidor",
@@ -1791,6 +1810,7 @@
       "actions_other": "{{count}} ações",
       "tools_one": "{{count}} ferramenta",
       "tools_other": "{{count}} ferramentas",
+      "testToList": "teste para listar",
       "none": "Ainda sem ferramentas listadas. Teste a conexão para o Locum descobrir.",
       "toolsSplit": "{{reads}} de leitura, {{writes}} de escrita",
       "trigger": "gatilho",
@@ -1805,7 +1825,9 @@
     "detail": {
       "missing": "Não há conexão \"{{id}}\" nesta máquina. Pode ter sido removida.",
       "account": "conta {{account}}",
-      "customDescription": "Servidor MCP cadastrado por você ou importado de outra ferramenta. Os agents usam as ferramentas dele quando uma automação o cita.",
+      "customDescription": "Servidor MCP cadastrado por você. Os agents usam as ferramentas dele quando uma automação o cita.",
+      "teamsViaServer": "Teams pelo servidor MCP {{servidor}}{{origem}}, com a conta dele. Os agents leem e respondem pelas ferramentas dele; o que sai com o seu nome continua passando pela sua aprovação.",
+      "linkedDescription": "Servidor MCP que vem {{origem}}: o Locum segue a origem e pede o seu aceite quando ela muda. Os agents usam as ferramentas dele quando uma automação o cita.",
       "offersHint": "O que dá para montar numa automação com esta conexão.",
       "tools": "Ferramentas",
       "toolsHint": "O que um agent pode chamar. Leitura só consulta; escrita muda algo no serviço, e fica num passo de ação que passa pela Fila.",
@@ -1919,6 +1941,14 @@
       "trackerNone": "Nenhum tracker cadastrado. Dá para escolher depois, no nó da tarefa."
     },
     "templates": {
+      "teamsPrReview": {
+        "title": "Teams: revisar o PR do link",
+        "description": "Mensagem com link de PR num grupo do Teams: o gatilho reage com 👀, o agent revisa o PR e a resposta no fio sai com a sua aprovação."
+      },
+      "githubPrReview": {
+        "title": "GitHub: revisar PR aberto",
+        "description": "PR aberto no GitHub: o agent revisa e o comentário no PR fica na fila para você aprovar."
+      },
       "slackReply": {
         "title": "Slack: responder no canal",
         "description": "Mensagem nova num canal, a IA escreve a resposta, você aprova e ela sai na thread."
@@ -1937,7 +1967,7 @@
       },
       "blank": {
         "title": "Em branco",
-        "description": "Um passo de IA rodando pelo botão. Monte o resto no canvas."
+        "description": "Um passo que chama um agent seu (ou a IA, se ainda não criou um), rodando pelo botão. Monte o resto no canvas."
       }
     },
     "editor": {
@@ -1971,7 +2001,7 @@
       "viaServer": "pelo {{server}}",
       "needsApp": "conecte em Conexões",
       "agents": "Agents",
-      "newAgent": "Criar agent na biblioteca",
+      "newAgent": "Criar agent",
       "agentsEmpty": "Nenhum agent ainda.",
       "logic": "Lógica"
     },
@@ -2092,6 +2122,9 @@
         "dms": "Conversas diretas",
         "prLinks": "Mensagem com link de PR",
         "channels": "Canais de equipe (menção ou link de PR acorda)",
+        "search": "Buscar equipe ou canal",
+        "noMatch": "Nenhum canal com \"{{termo}}\".",
+        "countOf": "{{marked}} de {{total}} marcados",
         "list": "Listar canais",
         "loading": "Lendo canais...",
         "channelsHintVia": "O Teams vem pelo {{server}}, que já traz os canais. Cada canal é uma chamada por batida.",
@@ -2466,6 +2499,19 @@
       "load": "Ver ferramentas",
       "reload": "Atualizar",
       "notListed": "As ferramentas ainda não foram listadas. Use \"Ver ferramentas\" para escolher uma a uma; enquanto isso vale o padrão.",
+      "ligadas": "{{on}} de {{total}} ligadas",
+      "enableReads": "Ligar todas de leitura",
+      "disableAll": "Desligar todas",
+      "pickThem": "Escolha as que este agent precisa: o servidor tem muitas ferramentas de leitura e nenhuma vem ligada sozinha.",
+      "search": "Buscar ferramenta por nome ou descrição",
+      "noMatch": "Nenhuma ferramenta com \"{{termo}}\".",
+      "areas": {
+          "teams": "Teams (chats, canais, times)",
+          "mail": "E-mail",
+          "calendar": "Agenda",
+          "files": "Arquivos",
+          "other": "Outras"
+      },
       "counts": "{{read}} de leitura, {{write}} de escrita",
       "writeNote": "Escrita ligada não roda sozinha: só passa pelo chat do agent, com a sua confirmação (chega na próxima versão). Numa automação, escrever é um nó de ação com aprovação.",
       "declareRead": "é leitura",
@@ -2473,6 +2519,7 @@
     },
     "skills": {
       "none": "Nenhuma skill escolhida.",
+      "noMatch": "Nenhuma skill com esse nome.",
       "noneToAdd": "Nenhuma outra skill encontrada neste computador.",
       "add": "Adicionar skill",
       "remove": "Tirar {{name}}",

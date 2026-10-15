@@ -153,7 +153,8 @@ export function Grafana() {
  * Conferir fica atrás de um clique pela mesma razão do teste de servidor MCP:
  * ele sai para a rede, e abrir a tela de configuração não é pedir exame.
  */
-export function Github() {
+/** `embutido`: dentro da parte do token no detalhe da conexão, que já diz o título e o estado. */
+export function Github({ embutido = false }: { embutido?: boolean } = {}) {
   const { i18n, t } = useTranslation();
   const inicial = useRead("github.status");
   const [recarregado, setRecarregado] = useState<EstadoDoGithub | null>(null);
@@ -219,7 +220,7 @@ export function Github() {
 
   return (
     <div
-      className="flex flex-col gap-3 px-4 py-3"
+      className={cn("flex flex-col gap-3", !embutido && "px-4 py-3")}
       data-locum-github-ambiente={estado?.env === true ? "sim" : "nao"}
       data-locum-github-cofre={estado?.vault === true ? "aberto" : "fechado"}
       data-locum-github-conferido={estado?.checkedAt ?? ""}
@@ -228,10 +229,14 @@ export function Github() {
       data-locum-probe="github"
     >
       <div className="flex flex-wrap items-center gap-3 text-sm">
-        <span className="w-40 shrink-0 truncate font-medium">{estado?.ref ?? ""}</span>
-        <Badge variant={estado?.stored === true ? "secondary" : "destructive"}>
-          {t(estado?.stored === true ? "settings.github.stored" : "settings.github.absent")}
-        </Badge>
+        {embutido ? null : (
+          <>
+            <span className="w-40 shrink-0 truncate font-medium">{estado?.ref ?? ""}</span>
+            <Badge variant={estado?.stored === true ? "secondary" : "destructive"}>
+              {t(estado?.stored === true ? "settings.github.stored" : "settings.github.absent")}
+            </Badge>
+          </>
+        )}
         {estado?.env === true ? (
           <Badge variant="outline">{t("settings.github.fromEnv")}</Badge>
         ) : null}
@@ -452,6 +457,8 @@ export function Trackers({ kinds }: { kinds: Tracker["kind"][] }) {
   const jira = tipo === "jira" || tipo === "jira-atlassian";
   const ehShortcut = tipo === "shortcut";
   const ehGithub = tipo === "github-issues";
+  // O detalhe do GitHub só fala de GitHub: nada de Jira, e a ajuda é a das issues.
+  const somenteGithub = kinds.length === 1 && kinds[0] === "github-issues";
   const precisaUrl = tipo === "jira" || tipo === "jira-atlassian";
 
   const valido =
@@ -467,7 +474,7 @@ export function Trackers({ kinds }: { kinds: Tracker["kind"][] }) {
       data-locum-trackers={lista.map((tracker) => tracker.id).join(",")}
     >
       {lista.length === 0 ? (
-        <p className="text-muted-foreground text-sm">{t("settings.trackers.empty")}</p>
+        <p className="text-muted-foreground text-sm">{t(somenteGithub ? "settings.trackers.emptyGithub" : "settings.trackers.empty")}</p>
       ) : (
         <ul className="flex flex-col gap-3">
           {lista.map((tracker) => (
@@ -578,7 +585,13 @@ export function Trackers({ kinds }: { kinds: Tracker["kind"][] }) {
       </div>
 
       <p className="text-muted-foreground max-w-[68ch] text-xs">
-        {t(tipo === "jira-atlassian" ? "settings.trackers.howToAtlassian" : "settings.trackers.howTo")}
+        {t(
+          tipo === "jira-atlassian"
+            ? "settings.trackers.howToAtlassian"
+            : somenteGithub
+              ? "settings.trackers.howToGithub"
+              : "settings.trackers.howTo",
+        )}
       </p>
 
       {recusa === null ? null : (

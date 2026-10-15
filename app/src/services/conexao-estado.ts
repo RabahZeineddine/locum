@@ -6,9 +6,11 @@
 
 /**
  * `attention`: falta uma ação da pessoa (autorizar, religar). `error`: o
- * servidor foi procurado e falhou, e `detail` traz o que ele respondeu.
+ * servidor foi procurado e falhou, e `detail` traz o que ele respondeu. `off`:
+ * cadastrado e ainda não ligado (o importado entra assim), que é neutro e não
+ * pede atenção de ninguém.
  */
-export type ConnectionState = "connected" | "attention" | "error" | "available" | "soon";
+export type ConnectionState = "connected" | "attention" | "error" | "off" | "available" | "soon";
 
 /**
  * Por que a conexão não está ok. A tela traduz o código; o texto cru da falha
@@ -47,7 +49,7 @@ export function estadoDoServidor(
   autorizado: boolean,
   semCredencial = false,
 ): { state: ConnectionState; reason: ConnectionReason | null; detail: string | null } {
-  if (!servidor.enabled) return { state: "attention", reason: "disabled", detail: null };
+  if (!servidor.enabled) return { state: "off", reason: "disabled", detail: null };
   if (semCredencial) return { state: "attention", reason: "no-credential", detail: null };
   const saude = saudeDoServidor(servidor.health);
   if (!autorizado || saude === "auth") return { state: "attention", reason: "needs-auth", detail: null };

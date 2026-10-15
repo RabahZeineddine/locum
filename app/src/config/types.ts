@@ -210,6 +210,13 @@ const IdDaBiblioteca = z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/, "use letras
 export const AgentConnection = z.object({
   connectionId: z.string().min(1),
   tools: z.record(z.string(), z.union([z.boolean(), z.literal("read")])).default({}),
+  /**
+   * O que vale para a ferramenta sem escolha. Ausente ou `todas`: toda leitura
+   * (o que sempre valeu, e o que o agent salvo antes mantém). `limitada`, que a
+   * tela grava ao adicionar a conexão de servidor grande ou sem lista: nada
+   * liga por padrão, só o que está em `tools`.
+   */
+  leituraPadrao: z.enum(["todas", "limitada"]).optional(),
 });
 export type AgentConnection = z.infer<typeof AgentConnection>;
 

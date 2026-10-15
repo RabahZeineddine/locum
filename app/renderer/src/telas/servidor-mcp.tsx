@@ -3,9 +3,9 @@ import { Button } from "@/components/ui/button";
 import { call, invalidateReads, read, type ReadResult } from "@/lib/bridge";
 import { cn } from "@/lib/utils";
 import { RefreshCw } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ehLeitura } from "../../../src/config/leitura.js";
+import { ehLeituraDa } from "../../../src/config/leitura.js";
 import { saudeDoServidor } from "../../../src/services/conexao-estado.js";
 import { Credenciais } from "./blocos";
 import { quando } from "./sessoes";
@@ -31,14 +31,17 @@ export function destinoDe(servidor: Servidor, vinculo?: Vinculo): string {
 }
 
 /** Selo de origem: "do plugin akad (Claude Code)", "do Claude Code", "do Cursor". A configuração não é cópia, vem de lá. */
+export function textoDaOrigem(vinculo: Vinculo, t: (chave: string, opcoes?: Record<string, unknown>) => string): string {
+  return vinculo.source.kind === "claude-plugin"
+    ? t("settings.servers.link.badgePlugin", { plugin: vinculo.source.plugin })
+    : vinculo.source.kind === "claude-user"
+      ? t("settings.servers.link.badgeUser")
+      : t("settings.servers.link.badgeTool", { origem: vinculo.rotulo });
+}
+
 export function SeloVinculado({ vinculo }: { vinculo: Vinculo }) {
   const { t } = useTranslation();
-  const texto =
-    vinculo.source.kind === "claude-plugin"
-      ? t("settings.servers.link.badgePlugin", { plugin: vinculo.source.plugin })
-      : vinculo.source.kind === "claude-user"
-        ? t("settings.servers.link.badgeUser")
-        : t("settings.servers.link.badgeTool", { origem: vinculo.rotulo });
+  const texto = textoDaOrigem(vinculo, t);
   return (
     <span
       className="border-border text-muted-foreground rounded border px-1.5 py-px text-[10px] leading-4"
@@ -302,30 +305,49 @@ export function FerramentasDoServidor({ servidor }: { servidor: Servidor }) {
   const { t } = useTranslation();
   const nome = servidor.config.name;
   const [ferramentas, setFerramentas] = useState<Ferramenta[] | null>(null);
+  const [guardada, setGuardada] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const vivo = useRef(true);
+  useEffect(() => {
+    vivo.current = true;
+    return () => {
+      vivo.current = false;
+    };
+  }, []);
 
   const carregar = (): void => {
     setErro(null);
     call("mcp.tools", nome).then(
       (lista) => {
+        if (!vivo.current) return;
         setFerramentas(lista);
+        setGuardada(false);
         // Listar grava a contagem no cadastro: "O que libera" acompanha.
         invalidateReads("connections.list");
       },
       (falha: unknown) => {
-        setFerramentas([]);
+        if (!vivo.current) return;
+        // Falhar ao subir o servidor não apaga o que já se sabe dele: a lista guardada fica na tela.
+        setFerramentas((antes) => antes ?? []);
         setErro(falha instanceof Error ? falha.message : String(falha));
-        invalidateReads("connections.list");
       },
     );
   };
   useEffect(() => {
+    // A lista guardada aparece na hora, ligado ou não; subir o servidor é que depende de estar ligado.
+    void read("mcp.toolsCached", nome)
+      .then((c) => {
+        if (!vivo.current || c === null) return;
+        setFerramentas((atual) => atual ?? c.tools);
+        setGuardada(true);
+      })
+      .catch(() => undefined);
     if (servidor.enabled) carregar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nome]);
 
-  const leituras = (ferramentas ?? []).filter((f) => ehLeitura(f.name));
-  const escritas = (ferramentas ?? []).filter((f) => !ehLeitura(f.name));
+  const leituras = (ferramentas ?? []).filter(ehLeituraDa);
+  const escritas = (ferramentas ?? []).filter((f) => !ehLeituraDa(f));
 
   return (
     <div className="flex flex-col gap-2" data-locum-ferramentas-de={nome}>
@@ -341,6 +363,11 @@ export function FerramentasDoServidor({ servidor }: { servidor: Servidor }) {
         </Button>
       </div>
       {erro === null ? null : <p className="text-destructive text-xs">{erro}</p>}
+      {guardada && ferramentas !== null && ferramentas.length > 0 ? (
+        <p className="text-muted-foreground text-xs" data-locum-ferramentas-guardada="">
+          {t(servidor.enabled ? "settings.servers.detail.toolsCached" : "settings.servers.detail.toolsCachedOff")}
+        </p>
+      ) : null}
       {ferramentas === null ? (
         <p className="text-muted-foreground text-xs">
           {t(servidor.enabled ? "connections.loading" : "settings.servers.detail.toolsOff")}
@@ -361,10 +388,10 @@ export function FerramentasDoServidor({ servidor }: { servidor: Servidor }) {
                 <span
                   className={cn(
                     "rounded border px-1.5 text-[10px] leading-4",
-                    ehLeitura(f.name) ? "border-border text-muted-foreground" : "border-sev-medium/40 text-sev-medium",
+                    ehLeituraDa(f) ? "border-border text-muted-foreground" : "border-sev-medium/40 text-sev-medium",
                   )}
                 >
-                  {t(ehLeitura(f.name) ? "settings.servers.scopeRead" : "settings.servers.scopeWrite")}
+                  {t(ehLeituraDa(f) ? "settings.servers.scopeRead" : "settings.servers.scopeWrite")}
                 </span>
                 <span className="text-muted-foreground ml-auto text-[10px] tabular-nums">
                   {t("settings.servers.detail.tokens", { count: f.estimatedTokens })}

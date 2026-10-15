@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { AgentSpec } from "../src/config/types.js";
+import { renderPrompt } from "../src/executor/executor.js";
 import {
   adicionarPasso,
   arestas,
@@ -158,4 +159,52 @@ test("seta de uma decisão grava o caminho, e desligar tira o caminho junto", ()
   const solto = desligar(trocado.spec, se.key, texto.key);
   assert.equal(solto.steps.find((p) => p.key === texto.key)?.when, undefined);
   assert.ok(AgentSpec.safeParse(trocado.spec).success);
+});
+
+test("o modelo de PR no Teams revisa e só responde depois de aprovar, sem nó que espere escolha", () => {
+  const r = rascunhoDoModelo("teamsPrReview", "t", "T", null);
+  assert.deepEqual(r.gatilhos.map((g) => g.config.kind), ["teams-inbox"]);
+  assert.equal(r.gatilhos[0]!.config.kind === "teams-inbox" && r.gatilhos[0]!.config.prLinks, true);
+  assert.deepEqual(r.spec.steps.map((p) => p.key), ["revisar", "responder"]);
+  // O gatilho com link de PR já reage 👀 sozinho: não há ferramenta a escolher.
+  assert.ok(r.spec.steps.every((p) => p.type !== "action" || p.action !== "mcp.call"));
+  const resposta = r.spec.steps[1]!;
+  assert.equal(resposta.type === "action" && resposta.action, "teams.post");
+  assert.equal(resposta.type === "action" && resposta.mode, "approve");
+  assert.deepEqual(resposta.needs, ["revisar"]);
+});
+
+test("o modelo de PR no Teams monta o prompt com o diff do evento e não exige servidor", () => {
+  const r = rascunhoDoModelo("teamsPrReview", "t", "T", null);
+  const revisar = r.spec.steps[0]!;
+  assert.equal(revisar.type, "model");
+  assert.deepEqual(revisar.type === "model" && revisar.requiresServers, []);
+  const prompt = renderPrompt(
+    revisar.type === "model" ? revisar.prompt : "",
+    {
+      repo: "acme/api", prNumber: 7, author: "ana", text: "olhem isso",
+      title: "Corrige o saldo", description: "Arredonda para baixo", diff: "@@ -1 +1 @@\n-a\n+b",
+    } as unknown as Parameters<typeof renderPrompt>[1],
+    new Map(),
+  );
+  assert.match(prompt, /Corrige o saldo/);
+  assert.match(prompt, /Arredonda para baixo/);
+  assert.match(prompt, /\+b/);
+  assert.doesNotMatch(prompt, /\{\{/);
+});
+
+test("o modelo de PR no GitHub comenta no PR só com aprovação", () => {
+  const r = rascunhoDoModelo("githubPrReview", "g", "G", null);
+  assert.equal(r.gatilhos[0]!.config.kind, "poll");
+  const comentario = r.spec.steps.find((p) => p.type === "action");
+  assert.equal(comentario?.type === "action" && comentario.action, "github.review_comment");
+  assert.equal(comentario?.type === "action" && comentario.mode, "approve");
+  assert.ok(r.spec.steps.every((p) => p.type !== "model" || p.requiresServers.length === 0));
+});
+
+test("em branco sugere o agent criado, e sem agent fica o passo de IA", () => {
+  const com = rascunhoDoModelo("blank", "b", "B", null, ["revisor"]);
+  assert.equal(com.spec.steps[0]!.type === "model" && com.spec.steps[0]!.profile, "revisor");
+  const sem = rascunhoDoModelo("blank", "b", "B", null);
+  assert.equal(sem.spec.steps[0]!.type === "model" && sem.spec.steps[0]!.profile, undefined);
 });

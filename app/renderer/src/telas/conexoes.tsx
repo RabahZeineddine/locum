@@ -6,6 +6,7 @@ import { acaoDeLigar, destinoDeConexaoAntiga } from "@/lib/conexao-acao";
 import { MarcaLogo } from "@/components/marca-logo";
 import { buscarConexoes, type ItemDeBusca } from "@/lib/busca-conexoes";
 import { liberaDaConexao } from "@/lib/conexao-libera";
+import { agruparPorOrigem, origemLegivel, pareceProducao } from "@/lib/importacao-origem";
 import { cn } from "@/lib/utils";
 import { ArrowLeft, Download, Plus, Search, Server, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -16,6 +17,7 @@ import {
   AvisoDaOrigem,
   DetalhesTecnicos,
   SeloVinculado,
+  textoDaOrigem,
   type Vinculo,
   EstadoDoServidor,
   FerramentasDoServidor,
@@ -35,12 +37,8 @@ const PAINEIS: Record<string, () => ReactNode> = {
   grafana: () => <Grafana />,
   // O GitHub guarda o token de pull request; o tracker de issues é outra
   // credencial, e mora junto porque também é GitHub.
-  github: () => (
-    <>
-      <Github />
-      <Trackers kinds={["github-issues"]} />
-    </>
-  ),
+  // O token mora na parte "Token do GitHub", dentro do detalhe; aqui só o que não tem outro lugar.
+  github: () => <Trackers kinds={["github-issues"]} />,
   slack: () => (
     <>
       <SlackOficial />
@@ -245,10 +243,21 @@ function SuasConexoes({ navegar }: { navegar: TelaProps["navegar"] }) {
         ) : suas.length === 0 && termo === "" ? (
           <div className="border-border text-muted-foreground flex flex-col items-start gap-3 rounded-xl border border-dashed p-6 text-sm">
             <p className="max-w-[60ch]">{t("connections.yours.empty")}</p>
-            <Button className="cursor-pointer" onClick={() => setAdicionando({ passo: "escolher", busca: "" })} size="sm" variant="outline">
-              <Plus aria-hidden className="size-3.5" />
-              {t("connections.add.open")}
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                className="cursor-pointer"
+                data-locum-importar-vazio=""
+                onClick={() => setAdicionando({ passo: "importar", busca: "" })}
+                size="sm"
+              >
+                <Download aria-hidden className="size-3.5" />
+                {t("connections.yours.importFromClaude")}
+              </Button>
+              <Button className="cursor-pointer" onClick={() => setAdicionando({ passo: "escolher", busca: "" })} size="sm" variant="outline">
+                <Plus aria-hidden className="size-3.5" />
+                {t("connections.add.open")}
+              </Button>
+            </div>
           </div>
         ) : (
           <>
@@ -329,15 +338,20 @@ function naoTestada(c: Conexao): boolean {
   return c.state === "connected" && c.reason === "untested";
 }
 
+/** Cadastrada e ainda não ligada (o servidor importado entra assim): neutra, com Ligar, sem pedir atenção. */
+function desligada(c: Conexao): boolean {
+  return c.state === "off";
+}
+
 function Estado({ conexao }: { conexao: Conexao }) {
   const { t } = useTranslation();
   if (conexao.state === "available") return null;
   // Ligada, mas ninguém perguntou ao servidor: verde só depois de um teste ok.
-  if (naoTestada(conexao)) {
+  if (naoTestada(conexao) || desligada(conexao)) {
     return (
       <Badge className="text-muted-foreground px-2 py-0.5 text-[11px] font-medium" data-locum-estado-neutro="" variant="outline">
         <span aria-hidden className="bg-muted-foreground/50 mr-1.5 inline-block size-1.5 rounded-full" />
-        {t("connections.state.untested")}
+        {t(desligada(conexao) ? "connections.state.off" : "connections.state.untested")}
       </Badge>
     );
   }
@@ -376,10 +390,16 @@ function textoDoEstado(c: Conexao, t: (chave: string, opcoes?: Record<string, un
 function Resumo({ conexao }: { conexao: Conexao }) {
   const { t } = useTranslation();
   const libera = liberaDaConexao(conexao.id, { servidor: conexao.servers.length > 0 });
+  // A ação genérica de chamar ferramenta é cada ferramenta do servidor, contadas abaixo: "1 ação" não diz nada.
+  const acoes = libera.acoes.filter((a) => a !== "mcp.call");
   const partes = [
     libera.gatilhos.length > 0 ? t("connections.offers.triggers", { count: libera.gatilhos.length }) : null,
-    libera.acoes.length > 0 ? t("connections.offers.actions", { count: libera.acoes.length }) : null,
-    conexao.toolCount !== null ? t("connections.offers.tools", { count: conexao.toolCount }) : null,
+    acoes.length > 0 ? t("connections.offers.actions", { count: acoes.length }) : null,
+    conexao.toolCount !== null
+      ? t("connections.offers.tools", { count: conexao.toolCount })
+      : conexao.servers.length > 0
+        ? t("connections.offers.testToList")
+        : null,
   ].filter((p): p is string => p !== null);
   return (
     <span className="text-muted-foreground text-xs leading-relaxed">
@@ -393,7 +413,7 @@ function ConexaoNaLista({ conexao, onAbrir, vinculos }: { conexao: Conexao; onAb
   const vinculado = conexao.servers.map((nome) => vinculos[nome]).find((v) => v !== undefined);
   const mudou = conexao.servers.some((nome) => vinculos[nome]?.estado === "mudou" && vinculos[nome]?.mantida === false);
   const sumiu = conexao.servers.some((nome) => vinculos[nome]?.estado === "sumiu" || vinculos[nome]?.estado === "indisponivel");
-  const porque = naoTestada(conexao) ? null : textoDoEstado(conexao, t);
+  const porque = naoTestada(conexao) || desligada(conexao) ? null : textoDoEstado(conexao, t);
   return (
     <div className="relative flex flex-col">
     <button
@@ -446,7 +466,47 @@ function ConexaoNaLista({ conexao, onAbrir, vinculos }: { conexao: Conexao; onAb
       </span>
     </button>
     {naoTestada(conexao) && conexao.servers.length > 0 ? <TestarNaLista servidores={conexao.servers} /> : null}
+    {desligada(conexao) && conexao.servers.length > 0 ? <LigarNaLista servidores={conexao.servers} /> : null}
     </div>
+  );
+}
+
+/** "Ligar" direto no cartão da conexão desligada: o servidor passa a valer, e o teste vem em seguida. */
+function LigarNaLista({ servidores }: { servidores: string[] }) {
+  const { t } = useTranslation();
+  const [ligando, setLigando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  return (
+    <>
+      {erro === null ? null : (
+        <p className="text-destructive absolute right-3 bottom-10 left-3 text-xs" data-locum-ligar-na-lista-erro="">
+          {t("settings.servers.turnOnFailed", { message: erro })}
+        </p>
+      )}
+      <Button
+        className="absolute right-3 bottom-2.5 cursor-pointer"
+        data-locum-ligar-na-lista={servidores[0]}
+        disabled={ligando}
+        onClick={() => {
+          setLigando(true);
+          setErro(null);
+          void Promise.allSettled(servidores.map((s) => call("mcp.setEnabled", s, true)))
+            .then((resultados) => {
+              const falha = resultados.find((r): r is PromiseRejectedResult => r.status === "rejected");
+              if (falha !== undefined) setErro(falha.reason instanceof Error ? falha.reason.message : String(falha.reason));
+            })
+            .finally(() => {
+              setLigando(false);
+              invalidateReads("connections.list");
+              invalidateReads("mcp.list");
+            });
+        }}
+        size="sm"
+        variant="outline"
+      >
+        {t("settings.servers.turnOn")}
+      </Button>
+    </>
   );
 }
 
@@ -756,6 +816,8 @@ function DetalheDaConexao({ id, navegar }: { id: string; navegar: TelaProps["nav
 
   const doServidor = (servidores.data ?? []).filter((s) => conexao.servers.includes(s.config.name));
   const doVinculo = vinculos.data ?? {};
+  const vinculoDaVia = conexao.via === undefined ? undefined : doVinculo[conexao.via];
+  const vinculoDoDetalhe = doServidor.map((sv) => doVinculo[sv.config.name]).find((v) => v !== undefined);
   const credencial = (credenciais.data?.refs ?? []).find((r) =>
     r.users.some((u) => u.kind === "mcp" && conexao.servers.includes(u.name)),
   );
@@ -825,7 +887,13 @@ function DetalheDaConexao({ id, navegar }: { id: string; navegar: TelaProps["nav
       </header>
 
       <p className="max-w-[68ch] text-sm leading-relaxed">
-        {conexao.custom ? t("connections.detail.customDescription") : t(`${chave}.description`)}
+        {conexao.custom
+          ? vinculoDoDetalhe === undefined
+            ? t("connections.detail.customDescription")
+            : t("connections.detail.linkedDescription", { origem: textoDaOrigem(vinculoDoDetalhe, t) })
+          : conexao.via !== undefined
+            ? t("connections.detail.teamsViaServer", { servidor: conexao.via, origem: vinculoDaVia === undefined ? "" : ` ${textoDaOrigem(vinculoDaVia, t)}` })
+            : t(`${chave}.description`)}
       </p>
 
       {porque === null || (conexao.reason === "disabled" && doServidor.length > 0) ? null : (
@@ -1071,17 +1139,9 @@ function PartesDoGithub({
             <Badge className={cn(partes.token === "ok" ? "text-emerald-400" : "text-amber-400")} variant="outline">
               {t(`connections.parts.token.${partes.token}`)}
             </Badge>
-            <Button
-              className="ml-auto cursor-pointer"
-              data-locum-guardar-token=""
-              onClick={() => document.querySelector("[data-locum-conexao-config]")?.scrollIntoView({ behavior: "smooth", block: "start" })}
-              size="sm"
-              variant={partes.token === "ok" ? "outline" : "default"}
-            >
-              {t("connections.parts.token.save")}
-            </Button>
           </div>
           <p className="text-muted-foreground text-xs">{t("connections.parts.token.offers")}</p>
+          <Github embutido />
         </div>
 
         <ParteDoServidor
@@ -1177,6 +1237,19 @@ function ParteDoServidor({
           {falha}
         </pre>
       )}
+      {nome === null && oferece ? (
+        <div>
+          <Button
+            className="cursor-pointer"
+            data-locum-ligar-servidor-github=""
+            disabled={ocupado}
+            onClick={() => agir(() => call("connections.ligarServidorDoGithub"))}
+            size="sm"
+          >
+            {t("connections.parts.server.enable")}
+          </Button>
+        </div>
+      ) : null}
       {nome === null ? null : <TesteDaConexao servidor={nome} />}
     </div>
   );
@@ -1200,7 +1273,9 @@ function BotaoVoltar({ onClick }: { onClick: () => void }) {
 /** Gatilhos e ações de app que a conexão libera, e quantas ferramentas ela tem. */
 function Libera({ conexao, libera }: { conexao: Conexao; libera: ReturnType<typeof liberaDaConexao> }) {
   const { t } = useTranslation();
-  const vazio = libera.gatilhos.length === 0 && libera.acoes.length === 0 && conexao.toolCount === null;
+  // Chamar ferramenta é o que as ferramentas listadas abaixo já dizem: sem ação de app própria, a seção não inventa uma.
+  const acoes = libera.acoes.filter((a) => a !== "mcp.call");
+  const vazio = libera.gatilhos.length === 0 && acoes.length === 0 && conexao.toolCount === null;
   const semLista = conexao.servers.length > 0 && conexao.toolCount === null;
   if (vazio) return <p className="text-muted-foreground text-xs">{t("connections.offers.none")}</p>;
   return (
@@ -1218,7 +1293,7 @@ function Libera({ conexao, libera }: { conexao: Conexao; libera: ReturnType<type
           {t(`automations.triggers.${g}.title`)}
         </li>
       ))}
-      {libera.acoes.map((a) => (
+      {acoes.map((a) => (
         <li className="flex items-center gap-2 text-sm" key={a}>
           <Badge variant="outline">{t("connections.offers.action")}</Badge>
           {t(`automations.steps.${a}.title`)}
@@ -1287,8 +1362,8 @@ function TesteDaConexao({ servidor }: { servidor: string }) {
 /**
  * Os servidores MCP que as ferramentas da máquina já usam (Claude Code,
  * opencode, Cursor, VS Code, Claude Desktop), para trazer ao Locum. Os já
- * cadastrados vêm desmarcados: reimportar troca o cadastro, e um servidor com
- * o mesmo nome pode ter sido ligado aqui por outro caminho.
+ * cadastrados e os de produção também vêm desmarcados, como todos: importar vincula
+ * o servidor à origem, e quem escolhe é a pessoa.
  */
 type Candidato = Awaited<ReturnType<typeof call<"claudeImport.list">>>[number];
 
@@ -1315,7 +1390,8 @@ export function ImportarDoClaude({ onPronto }: { onPronto: () => void }) {
   const [erro, setErro] = useState<string | null>(null);
 
   const lista = candidatos.data;
-  const escolhidos = marcados ?? new Set(lista.filter((c) => !c.jaCadastrado).map((c) => c.name));
+  // Nada vem marcado: importar liga uma origem a este app, e quem escolhe é a pessoa.
+  const escolhidos = marcados ?? new Set<string>();
   const alternar = (nome: string): void => {
     const novo = new Set(escolhidos);
     if (novo.has(nome)) novo.delete(nome);
@@ -1344,34 +1420,49 @@ export function ImportarDoClaude({ onPronto }: { onPronto: () => void }) {
   return (
     <div className="flex flex-col gap-4" data-locum-importar="">
       <p className="text-muted-foreground text-sm">{t("connections.import.description")}</p>
-      <ul className="flex flex-col gap-1.5">
-        {lista.map((c) => (
-          <li key={c.name}>
-            <label className="border-border hover:bg-muted/40 flex cursor-pointer items-start gap-3 rounded-md border px-3 py-2 text-sm">
-              <input
-                checked={escolhidos.has(c.name)}
-                className="accent-primary mt-1 cursor-pointer"
-                onChange={() => alternar(c.name)}
-                type="checkbox"
-              />
-              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span className="flex flex-wrap items-center gap-2">
-                  <span className="font-mono text-xs font-medium">{c.name}</span>
-                  <span className="text-muted-foreground text-xs">{c.origem}</span>
-                  {c.jaCadastrado ? <span className="text-sev-medium text-xs">{t("connections.import.exists")}</span> : null}
-                  {c.oauth ? <span className="text-muted-foreground text-xs">{t("connections.import.oauth")}</span> : null}
-                </span>
-                <span className="text-muted-foreground truncate font-mono text-[11px]">{c.destino}</span>
-                {c.faltando.length > 0 ? (
-                  <span className="text-sev-critical text-xs">
-                    {t("connections.import.missing", { names: c.faltando.join(", ") })}
-                  </span>
-                ) : null}
-              </span>
-            </label>
-          </li>
-        ))}
-      </ul>
+      {agruparPorOrigem(lista).map((grupo) => {
+        const origem = origemLegivel(grupo.origem);
+        return (
+          <section className="flex flex-col gap-1.5" data-locum-importar-origem={grupo.origem} key={grupo.origem}>
+            <h3 className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
+              {t(`connections.import.origin.${origem.tipo}`, { name: origem.nome })}
+            </h3>
+            <ul className="flex flex-col gap-1.5">
+              {grupo.itens.map((c) => (
+                <li key={c.name}>
+                  <label className="border-border hover:bg-muted/40 flex cursor-pointer items-start gap-3 rounded-md border px-3 py-2 text-sm">
+                    <input
+                      checked={escolhidos.has(c.name)}
+                      className="accent-primary mt-1 cursor-pointer"
+                      onChange={() => alternar(c.name)}
+                      type="checkbox"
+                    />
+                    <MarcaLogo fonte={{ name: c.name, ...(c.transport === "stdio" ? {} : { url: c.destino }) }} tamanho="sm" />
+                    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                      <span className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-xs font-medium">{c.name}</span>
+                        {c.jaCadastrado ? <span className="text-sev-medium text-xs">{t("connections.import.exists")}</span> : null}
+                        {c.oauth ? <span className="text-muted-foreground text-xs">{t("connections.import.oauth")}</span> : null}
+                      </span>
+                      <span className="text-muted-foreground truncate font-mono text-[11px]">{c.destino}</span>
+                      {pareceProducao(c) ? (
+                        <span className="text-sev-medium text-xs" data-locum-importar-producao={c.name}>
+                          {t("connections.import.production")}
+                        </span>
+                      ) : null}
+                      {c.faltando.length > 0 ? (
+                        <span className="text-sev-critical text-xs">
+                          {t("connections.import.missing", { names: c.faltando.join(", ") })}
+                        </span>
+                      ) : null}
+                    </span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          </section>
+        );
+      })}
       <div>
         <Button className="cursor-pointer" disabled={enviando || escolhidos.size === 0} onClick={importar} type="button">
           {t(enviando ? "connections.connecting" : "connections.import.submit", { count: escolhidos.size })}

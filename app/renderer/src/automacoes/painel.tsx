@@ -16,8 +16,9 @@ import {
   type Rascunho,
 } from "@/lib/automacao";
 import { call, useRead, type ReadResult } from "@/lib/bridge";
+import { organizarCanais } from "@/lib/canais-do-teams";
 import { cn } from "@/lib/utils";
-import { Trash2, X } from "lucide-react";
+import { Search, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { LogicCompare, type LogicStep, type TriggerConfig } from "../../../src/config/types";
@@ -324,8 +325,10 @@ function CanaisDoTeams({ canais, trocar }: { canais: readonly CanalDoTeams[]; tr
   const [lendo, setLendo] = useState(false);
   // Pelo servidor MCP (ms365) os canais já vêm: a conexão nativa e os escopos dela não entram.
   const viaDoTeams = useRead("connections.list").data?.find((c) => c.id === "teams")?.via;
+  const [busca, setBusca] = useState("");
   const marcado = (teamId: string, channelId: string): boolean =>
     canais.some((c) => c.teamId === teamId && c.channelId === channelId);
+  const grupos = organizarCanais(opcoes ?? [], new Set(canais.map((c) => `${c.teamId}/${c.channelId}`)), busca);
 
   const listar = (): void => {
     setLendo(true);
@@ -366,27 +369,52 @@ function CanaisDoTeams({ canais, trocar }: { canais: readonly CanalDoTeams[]; tr
           {t(lendo ? "automations.triggers.teams-inbox.loading" : "automations.triggers.teams-inbox.list")}
         </Button>
       ) : (
-        <ul className="flex max-h-48 flex-col gap-1 overflow-y-auto text-xs">
-          {opcoes.map((o) => (
-            <li key={`${o.teamId}/${o.channelId}`}>
-              <label className="flex cursor-pointer items-center gap-2">
-                <input
-                  checked={marcado(o.teamId, o.channelId)}
-                  className="accent-primary cursor-pointer"
-                  onChange={(e) =>
-                    trocar(
-                      e.target.checked
-                        ? [...canais, { teamId: o.teamId, channelId: o.channelId, label: `${o.teamName} / ${o.channelName}` }]
-                        : canais.filter((x) => !(x.teamId === o.teamId && x.channelId === o.channelId)),
-                    )
-                  }
-                  type="checkbox"
-                />
-                {o.teamName} / {o.channelName}
-              </label>
-            </li>
-          ))}
-        </ul>
+        <div className="flex flex-col gap-2" data-locum-teams-canais={opcoes.length}>
+          <label className="border-border bg-card focus-within:ring-ring flex h-8 max-w-sm items-center gap-2 rounded-md border px-2 focus-within:ring-2">
+            <Search aria-hidden className="text-muted-foreground size-3.5" />
+            <input
+              aria-label={t("automations.triggers.teams-inbox.search")}
+              className="placeholder:text-muted-foreground w-full bg-transparent text-xs outline-none"
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder={t("automations.triggers.teams-inbox.search")}
+              value={busca}
+            />
+          </label>
+          <div className="flex max-h-72 flex-col gap-2 overflow-y-auto text-xs">
+            {grupos.length === 0 ? (
+              <p className="text-muted-foreground">{t("automations.triggers.teams-inbox.noMatch", { termo: busca.trim() })}</p>
+            ) : (
+              grupos.map((g) => (
+                <section className="flex flex-col gap-1" data-locum-teams-equipe={g.teamName} key={g.teamId}>
+                  <h4 className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
+                    {g.teamName} · {t("automations.triggers.teams-inbox.countOf", { marked: g.marcados, total: g.canais.length })}
+                  </h4>
+                  <ul className="flex flex-col gap-1">
+                    {g.canais.map((o) => (
+                      <li key={`${o.teamId}/${o.channelId}`}>
+                        <label className="flex cursor-pointer items-center gap-2">
+                          <input
+                            checked={marcado(o.teamId, o.channelId)}
+                            className="accent-primary cursor-pointer"
+                            onChange={(e) =>
+                              trocar(
+                                e.target.checked
+                                  ? [...canais, { teamId: o.teamId, channelId: o.channelId, label: `${o.teamName} / ${o.channelName}` }]
+                                  : canais.filter((x) => !(x.teamId === o.teamId && x.channelId === o.channelId)),
+                              )
+                            }
+                            type="checkbox"
+                          />
+                          {o.channelName}
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ))
+            )}
+          </div>
+        </div>
       )}
       <p className="text-muted-foreground text-[11px]">
         {viaDoTeams === undefined

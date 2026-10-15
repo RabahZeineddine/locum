@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { migrateDb } from "../src/db/migrate.js";
 import { saudeDoServidor } from "../src/services/conexao-estado.js";
 import type { FontesDeUso } from "../src/services/conexao-uso.js";
-import { AgentSpec } from "../src/config/types.js";
+import { AgentSpec, SERVIDOR_NATIVO } from "../src/config/types.js";
 import { IMAGEM_DO_GRAFANA } from "../src/services/grafana-service.js";
 import { CATALOG, ConnectionService } from "../src/services/connection-service.js";
 import type { GithubService } from "../src/services/github-service.js";
@@ -114,13 +114,24 @@ test("falha depois do último sucesso vira erro com o texto da falha", async () 
   }
 });
 
-test("servidor desligado pede atenção com o motivo", async () => {
+test("o servidor interno do Locum não aparece como conexão", async () => {
+  const { servico, mcp } = montar();
+  await mcp.register({ name: SERVIDOR_NATIVO, transport: "stdio", command: ["locum", "--ferramentas"] });
+  try {
+    const lista = await servico.list();
+    assert.ok(!lista.some((c) => c.id === SERVIDOR_NATIVO || c.servers.includes(SERVIDOR_NATIVO)));
+  } finally {
+    await mcp.remove(SERVIDOR_NATIVO);
+  }
+});
+
+test("servidor desligado é neutro, com o motivo, e não conta como atenção", async () => {
   const { servico, mcp } = montar(["asana"]);
   await mcp.register({ name: "asana", transport: "http", url: "https://mcp.asana.com/v2/mcp" });
   await mcp.setEnabled("asana", false);
   try {
     const c = await achar(servico, "asana");
-    assert.equal(c?.state, "attention");
+    assert.equal(c?.state, "off");
     assert.equal(c?.reason, "disabled");
   } finally {
     await mcp.remove("asana");

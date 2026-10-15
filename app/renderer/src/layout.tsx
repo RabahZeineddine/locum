@@ -28,12 +28,16 @@ import { ROTA_IDS, ROTA_PADRAO, ROTAS, ROTAS_ANTIGAS, ROTAS_DA_BARRA, type TelaP
  */
 function Ponte({
   agents,
+  exibidos,
   erro,
   estado,
   execucoes,
   naFila,
 }: {
   agents: string[];
+  /** Quantos agents o rodapé diz ter: os do conceito novo (perfis), não o legado de `agents`. */
+  /** Indefinido enquanto a biblioteca carrega: não vira "0 agents". */
+  exibidos: number | undefined;
   erro: { channel: string; message: string } | undefined;
   estado: "carregando" | "erro" | "pronto";
   execucoes: number;
@@ -53,11 +57,11 @@ function Ponte({
     >
       {erro !== undefined ? (
         <span>{t("bridge.refused", { channel: erro.channel, message: erro.message })}</span>
-      ) : estado === "carregando" ? (
+      ) : estado === "carregando" || exibidos === undefined ? (
         <span>{t("bridge.loading")}</span>
       ) : (
         <span>
-          {t("bridge.agents", { count: agents.length })},{" "}
+          {t("bridge.agents", { count: exibidos })},{" "}
           {t("bridge.runs", { count: execucoes })}
         </span>
       )}
@@ -107,6 +111,7 @@ export function Layout() {
   const { Tela } = rota;
 
   const agents = useRead("agents.list");
+  const perfis = useRead("library.profiles");
   const runs = useRead("runs.list");
   const pendencias = useRead("approvals.listPending");
   const versao = useRead("app.version");
@@ -224,6 +229,7 @@ export function Layout() {
 
         <Ponte
           agents={(agents.data ?? []).map((a) => a.id)}
+          exibidos={perfis.data?.length}
           erro={erro}
           estado={estado}
           execucoes={runs.data?.length ?? -1}

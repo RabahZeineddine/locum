@@ -10,7 +10,7 @@ import {
   type ToolRef,
   type ToolsetInput,
 } from "../config/types.js";
-import { ehLeitura, ehLeituraDa, escolhaDe } from "../config/leitura.js";
+import { ehLeitura, ehLeituraDa, escolhaDe, ligadaPorPadrao } from "../config/leitura.js";
 
 type Db = typeof defaultDb;
 
@@ -104,7 +104,7 @@ const catalogoPadrao: CatalogoDeConexoes = {
   servidoresDe: async (id) => {
     const { connectionService } = await import("./connection-service.js");
     const { mcpService } = await import("./mcp-service.js");
-    const nomes = (await connectionService.list()).find((c) => c.id === id)?.servers ?? [];
+    const nomes = (await connectionService.list({ incluirInternos: true })).find((c) => c.id === id)?.servers ?? [];
     return Promise.all(nomes.map(async (nome) => ({ nome, ligado: (await mcpService.get(nome))?.enabled === true })));
   },
   // A lista vem do cache da última leitura boa, e só sobe o servidor sem cache:
@@ -144,8 +144,9 @@ export interface ConexoesExpandidas {
 
 /**
  * Cada conexão vira as ferramentas que os servidores ligados dela oferecem
- * agora: leitura liberada, escrita só a marcada, e a escolha por ferramenta
- * manda nos dois lados. A classe vem da anotação do servidor, e do nome quando
+ * agora: leitura liberada (menos na conexão `limitada`, que só liga o que foi
+ * escolhido), escrita só a
+ * marcada, e a escolha por ferramenta manda nos dois lados. A classe vem da anotação do servidor, e do nome quando
  * ele não anotou. "read" na escolha manda a ferramenta para a leitura mesmo
  * classificada como escrita. Ferramenta que o servidor não oferece mais fica
  * de fora, mesmo escolhida.
@@ -179,7 +180,7 @@ export async function expandirConexoes(
       for (const f of oferecidas) {
         const escolha = escolhaDe(conexao.tools, server, f.name);
         const leitura = ehLeituraDa(f);
-        if (!(escolha === undefined ? leitura : escolha !== false)) continue;
+        if (!(escolha === undefined ? ligadaPorPadrao(f, conexao.leituraPadrao) : escolha !== false)) continue;
         if (leitura || escolha === "read") saida.leitura.push({ server, tool: f.name, class: "read" });
         else saida.escrita.push({ server, tool: f.name, class: "external_write" });
       }

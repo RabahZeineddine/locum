@@ -173,7 +173,7 @@
       "placeholder": "https://github.com/owner/repo/pull/123"
     },
     "tabs": {
-      "agents": "My Agents",
+      "agents": "My automations",
       "marketplace": "Marketplace"
     },
     "marketplace": {
@@ -269,7 +269,8 @@
     "note": "Reads run straight away. Each write shows up as a card and only goes out when you click Run. Outside the Queue: this is testing, not automation.",
     "saveFirst": "Save the agent to talk to it.",
     "unsaved": "The chat uses the saved version. Changes you have not saved yet apply after Save.",
-    "noServer": "The connection {{connection}} has no server right now: {{reason}}. The agent talks without its tools.",
+    "internal": "Locum tools",
+      "noServer": "The connection {{connection}} has no server right now: {{reason}}. The agent talks without its tools.",
     "card": {
       "title": {
         "pendente": "Write waiting",
@@ -803,6 +804,7 @@
       "order": "order {{order}}"
     },
     "servers": {
+      "turnOnFailed": "Could not turn it on: {{message}}",
       "turnOn": "Turn on",
       "turnOff": "Turn off",
       "test": "Test",
@@ -859,6 +861,8 @@
         "save": "Save and test",
         "tools": "Tools",
         "toolsCount": "{{read}} read, {{write}} write",
+        "toolsCached": "List saved from last time. Refreshing.",
+        "toolsCachedOff": "List saved from last time. The server is off: use Reload to start it and refresh.",
         "toolsOff": "Turn the server on to list its tools, or use Tools to start it now.",
         "tokens_one": "{{count}} tok",
         "tokens_other": "{{count}} tok",
@@ -986,6 +990,8 @@
     "trackers": {
       "title": "Task trackers",
       "description": "Where a task lands when a finding becomes work: a Jira or a GitHub Issues repository. The credential stays in the keychain, and the screen shows whether one exists and what the last test reached, never the value.",
+      "emptyGithub": "no issue repository registered",
+      "howToGithub": "Register the repository (owner/repo) where tasks should land and store a token with write access to Issues on it. That token is separate from the one that reads pull requests, on purpose. Registering opens no issue: the action step does, and it waits in the queue until you approve.",
       "empty": "no tracker registered",
       "kind": "tracker kind",
       "kindJiraAtlassian": "Jira through the Atlassian connection",
@@ -1441,8 +1447,8 @@
         "waiting": "Waiting for you",
         "item": "item",
         "items": "items",
-        "active_watch": "Active watch",
-        "monitors": "monitors",
+        "active_watch": "Triggers on",
+        "monitors": "triggers",
         "runs_today": "Runs (24h)",
         "failures": "failures",
         "cost_24h": "Estimated cost (24h)",
@@ -1463,7 +1469,7 @@
         "empty": "No agent scheduled.",
         "due": "now",
         "when": "{{day}} {{time}}",
-        "watch_title": "Active Watch",
+        "watch_title": "Triggers on",
         "watch_badge": "{{count}} active",
         "check_now": "Check now",
         "checking": "Checking...",
@@ -1484,7 +1490,7 @@
       },
       "start": {
         "title": "Start here",
-        "lead": "Three steps until an agent works on its own. Whatever it produces always stops in the queue for you to approve.",
+        "lead": "Four steps until an agent works on its own. You choose where the automation stops to ask for your approval.",
         "model": {
           "title": "Pick a model",
           "hint": "An installed Claude Code works, or an API key.",
@@ -1494,6 +1500,11 @@
           "title": "Connect where the work comes from",
           "hint": "GitHub, Slack, Teams, Jira: what the agent will read.",
           "go": "Connections"
+        },
+        "agent": {
+          "title": "Create an agent",
+          "hint": "Instructions, model and the tools it may use.",
+          "go": "Agents"
         },
         "trigger": {
           "title": "Turn on an automation",
@@ -1567,6 +1578,7 @@
     },
     "state": {
       "connected": "connected",
+      "off": "off",
       "untested": "not tested",
       "attention": "needs attention",
       "soon": "coming soon",
@@ -1675,9 +1687,15 @@
     },
     "import": {
       "title": "Import from other tools",
-      "description": "The MCP servers already set up on this machine: in Claude Code (your own and the ones from enabled plugins), opencode, Cursor, VS Code and Claude Desktop. Once imported they belong to Locum and run with any model, even without the original tool. They come in disabled; credentials go to the vault. claude.ai connectors are not listed: they only exist through the Claude account.",
+      "description": "The MCP servers already configured on this machine: in Claude Code (yours and those of enabled plugins), opencode, Cursor, VS Code and Claude Desktop. Locum does not copy them: each server stays linked to its origin and reads the configuration from there at use time. If the origin changes the command, address or variables, Locum asks for your approval before the change applies. They come in turned off and nothing is pre-selected: pick what to import. claude.ai connectors do not show up here, they only exist through the Claude account.",
       "empty": "No MCP server in this machine's Claude Code, opencode, Cursor, VS Code or Claude Desktop.",
-      "exists": "already registered; importing replaces it",
+      "exists": "already registered; importing links it to the origin again",
+      "production": "The name or address points to production. Import it only if that is what you want here.",
+      "origin": {
+        "plugin": "{{name}} plugin",
+        "usuario": "Claude Code, your servers",
+        "ferramenta": "{{name}}"
+      },
       "oauth": "authorize in the browser afterwards",
       "missing": "missing {{names}}: it is added but will not connect without it",
       "submit_one": "Import {{count}}",
@@ -1688,6 +1706,7 @@
     "yours": {
       "title": "Your connections",
       "search": "Search by name, origin or tool",
+      "importFromClaude": "Import from Claude Code",
       "clearSearch": "Clear search",
       "fromCatalog": "In the catalog, not connected yet",
       "addFromCatalog": "Add",
@@ -1722,12 +1741,12 @@
         "title": "GitHub token",
         "offers": "Unlocks the pull request triggers and the diff preview in automations.",
         "ok": "stored",
-        "missing": "not stored",
-        "save": "Save token"
+        "missing": "not stored"
       },
       "server": {
         "title": "GitHub MCP server",
         "offers": "Unlocks the pull request, issue and code tools for agents.",
+        "enable": "Turn on the GitHub MCP server",
         "none": "No GitHub MCP server registered. Agents do not have those tools yet.",
         "turnOn": "Turn on server",
         "turnOff": "Turn off server",
@@ -1752,6 +1771,7 @@
       "actions_other": "{{count}} actions",
       "tools_one": "{{count}} tool",
       "tools_other": "{{count}} tools",
+      "testToList": "test to list",
       "none": "No tools listed yet. Test the connection so Locum finds out.",
       "toolsSplit": "{{reads}} read, {{writes}} write",
       "trigger": "trigger",
@@ -1763,7 +1783,9 @@
     "detail": {
       "missing": "There is no connection \"{{id}}\" on this machine. It may have been removed.",
       "account": "account {{account}}",
-      "customDescription": "An MCP server you registered or imported from another tool. Agents use its tools when an automation names it.",
+      "customDescription": "MCP server you registered. Agents use its tools when an automation names it.",
+      "teamsViaServer": "Teams through the {{servidor}} MCP server{{origem}}, with its own account. Agents read and reply through its tools; what goes out in your name still goes through your approval.",
+      "linkedDescription": "MCP server that comes {{origem}}: Locum follows the origin and asks for your approval when it changes. Agents use its tools when an automation names it.",
       "offersHint": "What you can build in an automation with this connection.",
       "tools": "Tools",
       "toolsHint": "What an agent can call. Read only looks things up; write changes something in the service, and goes in an action step that passes through the Queue.",
@@ -1872,6 +1894,14 @@
       "trackerNone": "No tracker registered. You can pick one later, on the task node."
     },
     "templates": {
+      "teamsPrReview": {
+        "title": "Teams: review the linked PR",
+        "description": "Message with a PR link in a Teams group: the trigger reacts with 👀, the agent reviews the PR and the reply in the thread goes out after your approval."
+      },
+      "githubPrReview": {
+        "title": "GitHub: review an opened PR",
+        "description": "PR opened on GitHub: the agent reviews it and the PR comment waits in the queue for your approval."
+      },
       "slackReply": {
         "title": "Slack: reply in channel",
         "description": "New message in a channel, the AI writes the reply, you approve and it goes to the thread."
@@ -1890,7 +1920,7 @@
       },
       "blank": {
         "title": "Blank",
-        "description": "One AI step run by the button. Build the rest on the canvas."
+        "description": "A step that calls one of your agents (or plain AI, if you have none yet), run by the button. Build the rest on the canvas."
       }
     },
     "editor": {
@@ -1923,7 +1953,7 @@
       "viaServer": "via {{server}}",
       "needsApp": "connect in Connections",
       "agents": "Agents",
-      "newAgent": "Create agent in the library",
+      "newAgent": "Create agent",
       "agentsEmpty": "No agent yet.",
       "logic": "Logic"
     },
@@ -2043,6 +2073,9 @@
         "dms": "Direct chats",
         "prLinks": "Message with a PR link",
         "channels": "Team channels (mention or PR link wakes it)",
+        "search": "Search team or channel",
+        "noMatch": "No channel matches \"{{termo}}\".",
+        "countOf": "{{marked}} of {{total}} selected",
         "list": "List channels",
         "loading": "Reading channels...",
         "channelsHintVia": "Teams comes through {{server}}, which already brings channels. Each channel is one call per beat.",
@@ -2412,6 +2445,19 @@
       "load": "Show tools",
       "reload": "Refresh",
       "notListed": "Tools have not been listed yet. Use \"Show tools\" to pick one by one; until then the default applies.",
+      "ligadas": "{{on}} of {{total}} on",
+      "enableReads": "Turn on all read tools",
+      "disableAll": "Turn off all",
+      "pickThem": "Pick the ones this agent needs: the server has many read tools and none comes on by itself.",
+      "search": "Search tools by name or description",
+      "noMatch": "No tool matches \"{{termo}}\".",
+      "areas": {
+          "teams": "Teams (chats, channels, teams)",
+          "mail": "Email",
+          "calendar": "Calendar",
+          "files": "Files",
+          "other": "Other"
+      },
       "counts": "{{read}} read, {{write}} write",
       "writeNote": "A write that is on does not run by itself: it only goes through the agent's chat, with your confirmation (coming in the next version). In an automation, writing is an action node with approval.",
       "declareRead": "is a read",
@@ -2419,6 +2465,7 @@
     },
     "skills": {
       "none": "No skill chosen.",
+      "noMatch": "No skill with that name.",
       "noneToAdd": "No other skill found on this computer.",
       "add": "Add skill",
       "remove": "Remove {{name}}",

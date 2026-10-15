@@ -1,4 +1,5 @@
 import { ehLeituraDa } from "../config/leitura.js";
+import { SERVIDOR_NATIVO } from "../config/types.js";
 import { temCredencialLiteral } from "./mcp-credencial.js";
 import { CATALOG, conexaoDoServidor, type CatalogEntry } from "./conexao-catalogo.js";
 import { IMAGEM_DO_GRAFANA } from "./grafana-service.js";
@@ -138,6 +139,9 @@ export interface Connection extends CatalogEntry {
   via?: string;
 }
 
+/** O servidor MCP oficial do GitHub, que usa o token da conexão. */
+const URL_DO_SERVIDOR_DO_GITHUB = "https://api.githubcopilot.com/mcp/";
+
 /** Que tipo de tracker mora em qual conexão. */
 const CONEXAO_DO_TRACKER: Readonly<Record<string, string>> = {
   jira: "atlassian",
@@ -183,7 +187,8 @@ export class ConnectionService {
     };
   }
 
-  async list(): Promise<Connection[]> {
+  /** `incluirInternos` traz o servidor interno do Locum, que a tela não mostra mas o agent salvo ainda cita. */
+  async list(opcoes: { incluirInternos?: boolean } = {}): Promise<Connection[]> {
     const servidores = await this.deps.mcp.list();
     const porNome = new Map(servidores.map((s) => [s.config.name, s]));
 
@@ -220,6 +225,8 @@ export class ConnectionService {
     const proprios: Connection[] = await Promise.all(
       servidores
         .filter((s) => conexaoDoServidor(s.config) === undefined)
+        // O servidor interno do Locum funciona por baixo e não é uma conexão da pessoa.
+        .filter((s) => opcoes.incluirInternos === true || s.config.name !== SERVIDOR_NATIVO)
         // As instâncias do Grafana moram no cartão dele, e não cada uma no seu.
         .filter((s) => !ehDoGrafana(s.config))
         .map(async (s) => ({
@@ -508,6 +515,23 @@ export class ConnectionService {
     return this.um(name);
   }
 
+  /**
+   * Cadastra o servidor MCP oficial do GitHub, sem a pessoa digitar nada: ele
+   * usa o token guardado na conexão. Um servidor `github` que já aponta para
+   * outro endereço fica como está, e a tela mostra o que há.
+   */
+  async ligarServidorDoGithub(): Promise<Connection> {
+    const atual = await this.deps.mcp.get("github");
+    if (atual === undefined) {
+      await this.deps.mcp.register({ name: "github", transport: "http", url: URL_DO_SERVIDOR_DO_GITHUB });
+    } else if (atual.config.url !== URL_DO_SERVIDOR_DO_GITHUB) {
+      throw new Error('já existe um servidor "github" com outro endereço: ligue ou edite esse');
+    } else {
+      await this.deps.mcp.setEnabled("github", true);
+    }
+    return this.um("github");
+  }
+
   private async um(id: string): Promise<Connection> {
     const achada = (await this.list()).find((c) => c.id === id);
     if (achada === undefined) throw new Error(`conexão "${id}" sumiu depois de ligar`);
@@ -576,7 +600,7 @@ export class ConnectionService {
         // Uma parte falhando basta para a conexão não dizer "conectado", e o
         // servidor de pé sem o token dos gatilhos também é meia conexão.
         const geral =
-          pior.state === "attention" || pior.state === "error"
+          pior.state === "attention" || pior.state === "error" || pior.state === "off"
             ? pior
             : !token
               ? { state: "attention" as const, reason: "no-token" as const, detail: null }
@@ -664,9 +688,14 @@ function parteDoServidor(reason: EstadoDoServidor["reason"]): NonNullable<Partes
 type Credencial = "ok" | "falta" | "dispensa";
 type EstadoDoServidor = ReturnType<typeof estadoDoServidor>;
 
-/** A pior entre as instâncias: erro, depois atenção, depois a primeira. */
+/** A pior entre as instâncias: erro, atenção, desligada, e então a primeira. */
 function piorEstado(estados: EstadoDoServidor[]): EstadoDoServidor {
-  return estados.find((e) => e.state === "error") ?? estados.find((e) => e.state === "attention") ?? estados[0]!;
+  return (
+    estados.find((e) => e.state === "error") ??
+    estados.find((e) => e.state === "attention") ??
+    estados.find((e) => e.state === "off") ??
+    estados[0]!
+  );
 }
 
 /**

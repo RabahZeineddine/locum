@@ -4,7 +4,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
-import { AgentProfile } from "../src/config/types.js";
+import { AgentProfile, SERVIDOR_NATIVO } from "../src/config/types.js";
 import { db, schema } from "../src/db/index.js";
 import { migrateDb } from "../src/db/migrate.js";
 import { CATALOG, ConnectionService } from "../src/services/connection-service.js";
@@ -86,6 +86,18 @@ test("conectar servidor do catálogo cadastra pelo id e autoriza", async () => {
     assert.equal(await mcp.get(id), undefined);
   } finally {
     await mcp.remove(id);
+  }
+});
+
+test("o servidor interno some da lista da tela mas segue resolvido para o agent salvo", async () => {
+  const { servico, mcp } = montar({ oauth: false, registration: false });
+  await mcp.register({ name: SERVIDOR_NATIVO, transport: "stdio", command: ["node", "x"] });
+  try {
+    assert.equal((await servico.list()).some((c) => c.id === SERVIDOR_NATIVO), false);
+    const interno = (await servico.list({ incluirInternos: true })).find((c) => c.id === SERVIDOR_NATIVO);
+    assert.deepEqual(interno?.servers, [SERVIDOR_NATIVO]);
+  } finally {
+    await mcp.remove(SERVIDOR_NATIVO);
   }
 });
 
@@ -363,9 +375,36 @@ test("servidor github desligado aparece na conexão GitHub como desligado, em ve
     assert.equal(lista.filter((c) => c.id === "github").length, 1, "uma conexão só, e não um cartão solto");
     const github = lista.find((c) => c.id === "github")!;
     assert.deepEqual(github.servers, ["github"]);
-    assert.equal(github.state, "attention");
+    assert.equal(github.state, "off");
     assert.equal(github.reason, "disabled");
     assert.deepEqual(github.partes, { token: "missing", servidor: "disabled", nome: "github", outros: [] });
+  } finally {
+    await mcp.remove("github");
+  }
+});
+
+test("ligar o servidor do GitHub cadastra o oficial, com o token guardado como credencial", async () => {
+  const { servico, mcp } = montarFusao({ stored: true });
+  try {
+    const conexao = await servico.ligarServidorDoGithub();
+    assert.deepEqual(conexao.servers, ["github"]);
+    const servidor = await mcp.get("github");
+    assert.equal(servidor?.config.url, "https://api.githubcopilot.com/mcp/");
+    assert.equal(servidor?.config.transport, "http");
+    assert.equal(servidor?.enabled, true);
+    assert.equal(conexao.partes?.servidor, "untested");
+    assert.equal(await mcp.credencialDoServidor("github"), "ok");
+  } finally {
+    await mcp.remove("github");
+  }
+});
+
+test("ligar o servidor do GitHub não sobrescreve um servidor github que aponta para outro lugar", async () => {
+  const { servico, mcp } = montarFusao({ stored: true });
+  await mcp.register({ name: "github", transport: "http", url: "https://outro.example.com/mcp" });
+  try {
+    await assert.rejects(() => servico.ligarServidorDoGithub(), /outro endereço/);
+    assert.equal((await mcp.get("github"))?.config.url, "https://outro.example.com/mcp");
   } finally {
     await mcp.remove("github");
   }
@@ -377,7 +416,7 @@ test("com token e servidor desligado, a conexão não diz conectado", async () =
   await mcp.setEnabled("github", false);
   try {
     const github = (await servico.list()).find((c) => c.id === "github")!;
-    assert.equal(github.state, "attention");
+    assert.equal(github.state, "off");
     assert.deepEqual(github.partes, { token: "ok", servidor: "disabled", nome: "github", outros: [] });
   } finally {
     await mcp.remove("github");
@@ -532,7 +571,7 @@ test("a pior instância do item decide o estado, em OAuth e no Teams", async () 
     const lista = await servico.list();
     assert.equal(lista.find((c) => c.id === "notion")!.reason, "disabled");
     const teams = lista.find((c) => c.id === "teams")!;
-    assert.equal(teams.state, "attention");
+    assert.equal(teams.state, "off");
     assert.equal(teams.reason, "disabled");
   } finally {
     for (const n of ["notion", "notion-trabalho", "ms365", "ms365-b"]) await mcp.remove(n);

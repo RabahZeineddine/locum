@@ -1773,7 +1773,12 @@ async function checkAgentsDoConceito(window: BrowserWindow): Promise<void> {
     // A rota agents é a tela nova, e a lista bate com a biblioteca.
     await irPara(window, "agents");
     const esperadosNaLista = (await libraryService.listProfiles()).length;
-    const naLista = await total();
+    // A tela mostra o probe antes de a lista chegar: espera a contagem assentar.
+    let naLista = await total();
+    for (let tentativa = 0; tentativa < 20 && naLista !== esperadosNaLista; tentativa++) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      naLista = await total();
+    }
     if (naLista !== esperadosNaLista) throw new Error(`a tela Agents listou ${naLista} e a biblioteca tem ${esperadosNaLista}`);
     const legado = (await window.webContents.executeJavaScript(
       `document.querySelector("[data-locum-probe=agents]") !== null`,
@@ -2198,7 +2203,7 @@ async function checkConfig(window: BrowserWindow): Promise<string> {
     );
   }
 
-  // Todo servidor MCP cadastrado é uma conexão da lista, o próprio inclusive.
+  // Todo servidor MCP cadastrado é uma conexão da lista.
   // As instâncias do Grafana moram na conexão Grafana, e não cada uma na sua.
   await irPara(window, "connections");
   const ligadas = await esperarProbe<string>(
@@ -2212,8 +2217,9 @@ async function checkConfig(window: BrowserWindow): Promise<string> {
   // O servidor que é de um item do catálogo mora na conexão dele, e por isso
   // basta aparecer como servidor de alguma conexão da lista.
   const [conexoesLigadas = "", servidoresLigados = ""] = ligadas.split("|");
+  // O servidor interno do Locum funciona por baixo e não é conexão da pessoa.
   const servidores = (await mcpService.list()).filter(
-    (s) => !(s.config.transport === "stdio" && (s.config.command ?? []).includes(IMAGEM_DO_GRAFANA)),
+    (s) => s.config.name !== "locum-ferramentas" && !(s.config.transport === "stdio" && (s.config.command ?? []).includes(IMAGEM_DO_GRAFANA)),
   );
   for (const servidor of servidores) {
     if (!servidoresLigados.split(",").includes(servidor.config.name)) {
@@ -2225,7 +2231,7 @@ async function checkConfig(window: BrowserWindow): Promise<string> {
   }
 
   // O servidor MCP do GitHub desligado é a conexão GitHub, e não some: aparece
-  // em "Suas conexões" como atenção, a busca o acha, e o detalhe mostra o token
+  // em "Suas conexões" como desligado (neutro), a busca o acha, e o detalhe mostra o token
   // e o servidor como partes separadas.
   if ((await mcpService.get("github")) === undefined) {
     await mcpService.register({
@@ -2235,9 +2241,13 @@ async function checkConfig(window: BrowserWindow): Promise<string> {
       headers: { Authorization: "${credential}" },
     });
     await mcpService.setEnabled("github", false);
+    // O github-ro precisa estar sem credencial: um GITHUB_TOKEN no ambiente da máquina o satisfaria.
+    const { GITHUB_TOKEN_ENV: variavelDoToken } = await import("../src/services/github-service.js");
+    const tokenDoAmbiente = process.env[variavelDoToken];
     // Um segundo servidor do GitHub aparece no detalhe, com o seu próprio estado.
     await mcpService.register({ name: "github-ro", transport: "http", url: "https://api.githubcopilot.com/mcp/readonly", headers: { Authorization: "${credential}" } });
     try {
+      delete process.env[variavelDoToken];
       await irPara(window, "today");
       await irPara(window, "connections");
       const estadoDoGithub = await esperarProbe<string>(
@@ -2245,8 +2255,9 @@ async function checkConfig(window: BrowserWindow): Promise<string> {
         "conexão GitHub com o servidor desligado",
         `document.querySelector('[data-locum-conexao="github"]')?.dataset.locumConexaoEstado ?? null`,
       );
+      // O github está desligado (neutro), mas o github-ro, sem credencial, pede atenção, e a pior parte decide.
       if (estadoDoGithub !== "attention") {
-        throw new Error(`o GitHub com o servidor desligado mostrou "${estadoDoGithub}" e nao "attention"`);
+        throw new Error(`o GitHub com um servidor sem credencial mostrou "${estadoDoGithub}" e nao "attention"`);
       }
 
       const digitar = (texto: string): Promise<unknown> =>
@@ -2280,6 +2291,14 @@ async function checkConfig(window: BrowserWindow): Promise<string> {
         "busca no catálogo",
         `document.querySelector('[data-locum-busca-catalogo] [data-locum-catalogo="slack"]') === null ? null : true`,
       );
+      // Adicionar, num resultado do catálogo, leva direto ao item e não abre o seletor inteiro.
+      await window.webContents.executeJavaScript(`(document.querySelector('[data-locum-busca-catalogo] [data-locum-catalogo="slack"]')?.click(), null)`);
+      await esperarProbe<true>(
+        window,
+        "detalhe do item do catálogo",
+        `document.querySelector('[data-locum-conexao-id="slack"]') !== null && document.querySelector("[data-locum-painel-conexao]") === null ? true : null`,
+      );
+      await irPara(window, "connections");
       await digitar("");
 
       await abrirConexao(window, "github");
@@ -2297,8 +2316,9 @@ async function checkConfig(window: BrowserWindow): Promise<string> {
       if (servidoresDoGithub !== 2) throw new Error(`o detalhe do GitHub mostrou ${servidoresDoGithub} servidor(es) e nao 2`);
       const ligarServidor = await window.webContents.executeJavaScript(`document.querySelector('[data-locum-ligar-parte="github"]') !== null`);
       if (ligarServidor !== true) throw new Error("o detalhe do GitHub nao ofereceu ligar o servidor desligado");
-      console.log("conexões: GitHub com o servidor desligado aparece como atenção, a barra foca a busca, a busca acha o GitHub e o catálogo, e o detalhe separa token e servidor");
+      console.log("conexões: GitHub com o servidor desligado aparece pela pior parte, a barra foca a busca, a busca acha o GitHub e o catálogo, e o detalhe separa token e servidor");
     } finally {
+      if (tokenDoAmbiente !== undefined) process.env[variavelDoToken] = tokenDoAmbiente;
       await mcpService.remove("github");
       await mcpService.remove("github-ro");
     }
@@ -7020,6 +7040,105 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
   );
   await new Promise((resolve) => setTimeout(resolve, 600));
   writeFileSync(join(destino, "assistente.png"), (await janela.webContents.capturePage()).toPNG());
+
+  // As telas do lote de atritos: Hoje sem conexão, Conexões vazia, a importação,
+  // o agent com um servidor grande e a nova automação.
+  {
+    const { mcpService } = await import("../src/services/mcp-service.js");
+    const { claudeImportService } = await import("../src/services/claude-import.js");
+    const { libraryService } = await import("../src/services/library-service.js");
+    const pausa = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+    const foto = async (nome: string): Promise<void> => writeFileSync(join(destino, `${nome}.png`), (await janela.webContents.capturePage()).toPNG());
+    const clicar = (seletor: string): Promise<unknown> =>
+      janela.webContents.executeJavaScript(`(document.querySelector(${JSON.stringify(seletor)})?.click(), null)`);
+
+    // O painel do Assistente fica de fora das fotos.
+    await clicar("[data-locum-fechar]");
+    await pausa(400);
+    for (const servidor of await mcpService.list()) await mcpService.remove(servidor.config.name);
+    await irPara(janela, "today");
+    await pausa(1500);
+    await foto("atritos-hoje");
+    await irPara(janela, "connections");
+    await pausa(1500);
+    await foto("atritos-conexoes-vazia");
+
+    const casa = process.env.LOCUM_FERRAMENTAS_HOME ?? join(destino, "ferramentas");
+    const raiz = join(casa, ".claude", "plugins", "cache", "akad", "akad", "0.21.1");
+    mkdirSync(raiz, { recursive: true });
+    writeFileSync(join(raiz, ".mcp.json"), JSON.stringify({ mcpServers: { ms365: { type: "stdio", command: "npx", args: ["-y", "@softeria/ms-365-mcp-server"], env: { MS365_MCP_CLIENT_ID: "app-exemplo" } } } }));
+    writeFileSync(join(casa, ".claude", "plugins", "installed_plugins.json"), JSON.stringify({ version: 2, plugins: { "akad@akad": [{ scope: "user", installPath: raiz }] } }));
+    writeFileSync(join(casa, ".claude", "settings.json"), JSON.stringify({ enabledPlugins: { "akad@akad": true } }));
+    writeFileSync(
+      join(casa, ".claude.json"),
+      JSON.stringify({ mcpServers: { "grafana-prod": { type: "http", url: "https://grafana-prod.example.com/mcp" }, context7: { type: "http", url: "https://mcp.context7.com/mcp" } } }),
+    );
+    await irPara(janela, "connections");
+    await pausa(800);
+    await clicar("[data-locum-importar-vazio]");
+    await pausa(2500);
+    await foto("atritos-importar");
+
+    // O ms365 importado, desligado, com a lista de ferramentas guardada (199 conhecidas).
+    await claudeImportService.importar(["ms365"]);
+    const verbos: [string, boolean][] = [["list", true], ["get", true], ["search", true], ["create", false], ["send", false], ["update", false], ["delete", false]];
+    const nomes = ["chats", "chat-message", "channels", "channel-message", "teams", "mail-messages", "mail-folders", "calendar-events", "calendars", "meetings", "drive-items", "drives", "sharepoint-sites", "files", "users", "contacts", "todo-tasks", "planner-plans", "notes", "groups"];
+    const ferramentas = verbos.flatMap(([verbo, leitura]) =>
+      nomes.map((n) => ({ name: `${verbo}-${n}`, description: `${verbo} ${n}`, estimatedTokens: 120, ...(leitura ? { readOnlyHint: true } : {}) })),
+    );
+    ferramentas.push({ name: "copilot-retrieve", description: "Busca no Copilot", estimatedTokens: 90, readOnlyHint: true }, { name: "download-bytes-to-file", description: "Baixa para um arquivo local", estimatedTokens: 90, readOnlyHint: true });
+    await (mcpService as unknown as { guardarFerramentas(n: string, t: unknown[]): Promise<void> }).guardarFerramentas("ms365", ferramentas);
+    await irPara(janela, "connections", "teams");
+    await pausa(2500);
+    await foto("atritos-conexao-importada-detalhe");
+    await irPara(janela, "connections");
+    await pausa(1200);
+    await foto("atritos-conexoes-importada-lista");
+
+    const id = "captura-grande";
+    await libraryService.saveProfile({
+      spec: { id, name: "Revisor do Teams", model: "claude-code/claude-sonnet-5", instructions: "Leia o chat e resuma.", connections: [{ connectionId: "teams", tools: {} }], skills: [], budget: {} },
+    });
+    try {
+      await irPara(janela, "agents", id);
+      await pausa(1000);
+      await clicar("[data-locum-agent-aba=tools]");
+      await pausa(2000);
+      await foto("atritos-agent-conexao-grande");
+      await janela.webContents.executeJavaScript(`(() => {
+        const campo = document.querySelector("[data-locum-agent-ferramentas-busca]");
+        if (campo === null) return null;
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(campo, "chat");
+        campo.dispatchEvent(new Event("input", { bubbles: true }));
+        return null;
+      })()`);
+      await clicar("[data-locum-agent-ligar-leituras]");
+      await pausa(600);
+      await foto("atritos-agent-busca-e-leituras");
+      await clicar("[data-locum-agent-aba=skills]");
+      await pausa(500);
+      await janela.webContents.executeJavaScript(`(() => {
+        const campo = document.querySelector("[data-locum-campo-com-busca] input");
+        if (campo === null) return null;
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(campo, "re");
+        campo.dispatchEvent(new Event("input", { bubbles: true }));
+        return null;
+      })()`);
+      await pausa(500);
+      await foto("atritos-agent-skills");
+    } finally {
+      await libraryService.removeProfile(id).catch(() => undefined);
+      await mcpService.remove("ms365").catch(() => undefined);
+    }
+
+    await irPara(janela, "automations");
+    await pausa(1200);
+    await clicar("[data-locum-automacao-nova]");
+    await pausa(800);
+    await clicar("[data-locum-modelo=teamsPrReview]");
+    await pausa(400);
+    await foto("atritos-nova-automacao");
+  }
 
   console.log(`capturas em ${destino}`);
 }

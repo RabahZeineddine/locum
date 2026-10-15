@@ -249,3 +249,30 @@ test("a contagem de escrita ligada segue a anotação do servidor, e o nome só 
   const [resumo] = await biblioteca.listProfiles();
   assert.equal(resumo?.writes, 3);
 });
+
+test("conexão limitada começa sem nenhuma leitura, e a escolha da pessoa liga", async () => {
+  const leituras = Array.from({ length: 31 }, (_, i) => `list-coisa-${i}`);
+  const grande = catalogoCom({ ms365: ["ms365"] }, { ms365: [...leituras, "send-mail"] });
+  const biblioteca = new LibraryService(bancoDeTeste(), grande);
+  await biblioteca.saveProfile({
+    spec: { id: "teams-agent", name: "Teams", model: modelo, connections: [{ connectionId: "ms365", tools: { "ms365/list-coisa-3": true }, leituraPadrao: "limitada" }] },
+  });
+  const resolvido = await biblioteca.resolveProfile("teams-agent");
+  assert.deepEqual(nomes(resolvido.tools), ["ms365.list-coisa-3"]);
+});
+
+test("conexão limitada de servidor pequeno também não liga nada que não foi escolhido", async () => {
+  const leituras = Array.from({ length: 5 }, (_, i) => `list-coisa-${i}`);
+  const biblioteca = new LibraryService(bancoDeTeste(), catalogoCom({ ms365: ["ms365"] }, { ms365: leituras }));
+  await biblioteca.saveProfile({ spec: { id: "t30", name: "T", model: modelo, connections: [{ connectionId: "ms365", leituraPadrao: "limitada" }] } });
+  assert.equal((await biblioteca.resolveProfile("t30")).tools.length, 0);
+});
+
+test("agent salvo sem modo mantém toda leitura ligada, mesmo em servidor com mais de 30", async () => {
+  const leituras = Array.from({ length: 31 }, (_, i) => `list-coisa-${i}`);
+  const biblioteca = new LibraryService(bancoDeTeste(), catalogoCom({ ms365: ["ms365"] }, { ms365: [...leituras, "send-mail"] }));
+  await biblioteca.saveProfile({ spec: { id: "antigo", name: "A", model: modelo, connections: [{ connectionId: "ms365" }] } });
+  const resolvido = await biblioteca.resolveProfile("antigo");
+  assert.equal(resolvido.tools.length, 31);
+  assert.ok(resolvido.tools.every((t) => t.class === "read"));
+});

@@ -358,6 +358,8 @@ interface ServiceApi {
   "connections.connect": ConnectionService["connect"];
   "connections.disconnect": ConnectionService["disconnect"];
   "connections.addCustom": ConnectionService["addCustom"];
+  /** Cadastra o servidor MCP oficial do GitHub, que usa o token guardado. */
+  "connections.ligarServidorDoGithub": ConnectionService["ligarServidorDoGithub"];
   /** Servidores MCP do Claude Code (usuário e plugins ligados) que dá para trazer. */
   "claudeImport.list": ClaudeImportService["listar"];
   /** Cadastra os escolhidos desligados, com o segredo no cofre. */
@@ -675,6 +677,7 @@ export const BRIDGE_CHANNELS = [
   "connections.connect",
   "connections.disconnect",
   "connections.addCustom",
+  "connections.ligarServidorDoGithub",
   "claudeImport.list",
   "claudeImport.apply",
   "claudeImport.origins",
