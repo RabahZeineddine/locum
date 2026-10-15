@@ -1615,7 +1615,12 @@ async function conversarComOAgentNoSmoke(window: BrowserWindow, id: string, aoMe
     // O cartão vive no processo principal: sair da tela e voltar não o perde.
     await irPara(window, "agents");
     await irPara(window, "agents", id);
-    await clicar("[data-locum-agent-aba=chat]");
+    // O editor monta depois de a rota chegar: clica até a aba existir e abrir.
+    await esperarProbe(
+      window,
+      "aba-do-chat",
+      `(() => { document.querySelector("[data-locum-agent-aba=chat]")?.click(); return document.querySelector("[data-locum-agent-chat]") !== null ? true : null; })()`,
+    );
     await esperarProbe(window, "cartao-depois-de-voltar", `${estadoDoCartao("echo")} === "pendente" ? true : null`);
 
     // Executar roda aquela chamada, e o modelo recebe o resultado.

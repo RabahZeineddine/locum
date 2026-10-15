@@ -99,7 +99,8 @@ test("conversa com o system, o modelo e as ferramentas do agent, e a leitura rod
   await c.conversas.enviar("leitor", 'olha [[chama painel__pid]]');
   assert.deepEqual(c.chamadas, [{ tool: "pid", entrada: {} }]);
   assert.equal(cartoes(c.eventos).length, 0);
-  assert.match(await textoDoAssistente(c, "leitor"), /Voltou: pid feito/);
+  // O texto de antes e o de depois da ferramenta não colam um no outro.
+  assert.match(await textoDoAssistente(c, "leitor"), /Vou chamar\.\n\nVoltou: pid feito/);
   assert.ok(c.eventos.every((e) => e.chave === "agent:leitor"));
   assert.equal(c.eventos.at(-1)?.tipo, "fim");
   assert.ok(JSON.stringify(c.modelo.recebidos[0]).includes("Você é o agent de teste."));

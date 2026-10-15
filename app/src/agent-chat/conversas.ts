@@ -361,9 +361,20 @@ export class ConversasDeAgent {
 
       let pediuAprovacao = false;
       let cancelado = false;
+      // Texto de antes e de depois de uma ferramenta vem em blocos separados; sem a quebra, colam.
+      let teveTexto = conversa.falas.at(-1)?.texto.trim() !== "";
+      let quebrar = false;
       for await (const parte of resultado.fullStream) {
-        if (parte.type === "text-delta") emitir({ tipo: "texto", delta: parte.text });
-        else if (parte.type === "tool-call") emitir({ tipo: "ferramenta", nome: parte.toolName, entrada: parte.input });
+        if (parte.type === "text-delta") {
+          if (quebrar && teveTexto) emitir({ tipo: "texto", delta: "\n\n" });
+          quebrar = false;
+          teveTexto = true;
+          emitir({ tipo: "texto", delta: parte.text });
+        }
+        else if (parte.type === "tool-call") {
+          quebrar = true;
+          emitir({ tipo: "ferramenta", nome: parte.toolName, entrada: parte.input });
+        }
         else if (parte.type === "tool-approval-request") {
           const ref = dono.get(parte.toolCall.toolName);
           const cartao: Cartao = {

@@ -62,3 +62,8 @@ a uma iniciativa.
 dependências, sem segredo. É também o formato do template do marketplace.
 
 **Legado**: automação ou agent do modelo anterior ao ADR 0005, só leitura.
+
+**Cartão**: a chamada de escrita que o agent quer fazer no chat dele, mostrada
+com servidor, ferramenta e argumentos, à espera do clique em Executar ou
+Recusar. Vive só na conversa, nunca vai para a Fila, e expira se a conversa for
+limpa ou o app fechar.
