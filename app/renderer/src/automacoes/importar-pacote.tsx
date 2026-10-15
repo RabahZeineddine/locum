@@ -81,7 +81,7 @@ export function ImportarPacote({
     <section className="border-border superficie flex flex-col gap-4 rounded-lg border p-4" data-locum-probe="pacote-previa">
       <div className="flex items-center gap-2">
         <span className="flex-1 truncate font-medium text-sm">{t("pacote.import.title", { arquivo: arquivo.nome })}</span>
-        <Button className="cursor-pointer" onClick={fechar} size="sm" variant="ghost">
+        <Button className="cursor-pointer" data-locum-pacote-fechar="" onClick={() => { invalidateReads(); fechar(); }} size="sm" variant="ghost">
           {t(feito === null ? "pacote.import.cancel" : "pacote.import.close")}
         </Button>
       </div>

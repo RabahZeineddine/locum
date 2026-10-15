@@ -6,7 +6,8 @@ import { app, BrowserWindow, shell } from "electron";
 import { captureDeepLinks } from "./deep-link.js";
 import { VERSAO } from "./versao.js";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync, writeSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, writeSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { aplicarIdioma, idiomaAtual, iniciarI18n, t } from "./i18n.js";
 import en from "../locales/en.json";
 import ptBR from "../locales/pt-BR.json";
@@ -1104,6 +1105,7 @@ async function checkRenderer(): Promise<string> {
     // de um run, que e onde a verificacao do destaque procura o bloco de codigo.
     const agents = await checkAgents(window);
     await checkAgentsDoConceito(window);
+    await checkPacote(window);
     const configuracao = await checkConfig(window);
     const revisao = await checkReviewVerdict(window);
     const sessoes = await checkClaudeSessions(window);
@@ -1882,6 +1884,100 @@ async function checkAgentsDoConceito(window: BrowserWindow): Promise<void> {
     await esperarProbe(window, "legado", `document.querySelector("[data-locum-probe=agents]") !== null ? true : null`);
   } finally {
     for (const criado of criados) await libraryService.removeProfile(criado).catch(() => undefined);
+  }
+}
+
+/**
+ * Exportar e importar pacote de ponta a ponta, com o arquivo numa pasta
+ * temporária. O seletor nativo não se aciona sem ninguém: exportar vai pelo
+ * mesmo serviço que o botão chama e grava o arquivo, e importar entra pelo
+ * arrastar-e-soltar da lista, que lê o arquivo na própria janela e abre a
+ * mesma prévia do botão. `LOCUM_PACOTE_CAPTURAS` pede as capturas.
+ */
+async function checkPacote(window: BrowserWindow): Promise<void> {
+  const { libraryService } = await import("../src/services/library-service.js");
+  const { automationService } = await import("../src/services/automation-service.js");
+  const { pacoteService } = await import("../src/services/pacote-service.js");
+  const idOrigem = "smoke-pacote";
+  const agentId = "smoke-pacote-revisor";
+  const pasta = mkdtempSync(join(tmpdir(), "locum-pacote-"));
+  const capturas = process.env.LOCUM_PACOTE_CAPTURAS;
+  const foto = async (nome: string): Promise<void> => {
+    if (capturas === undefined || capturas === "") return;
+    mkdirSync(capturas, { recursive: true });
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    writeFileSync(join(capturas, `${nome}.png`), (await window.webContents.capturePage()).toPNG());
+  };
+  const limpar = async (): Promise<void> => {
+    // Sem execução nenhuma, a automação some inteira: gatilhos, versões e a linha dela.
+    const { db } = await import("../src/db/index.js");
+    const { schema } = await import("../src/db/index.js");
+    const { eq } = await import("drizzle-orm");
+    db.delete(schema.triggers).where(eq(schema.triggers.agentId, idOrigem)).run();
+    db.delete(schema.agentVersions).where(eq(schema.agentVersions.agentId, idOrigem)).run();
+    db.delete(schema.agents).where(eq(schema.agents.id, idOrigem)).run();
+    await libraryService.removeProfile(agentId).catch(() => undefined);
+  };
+
+  try {
+    await libraryService.saveProfile({
+      spec: { id: agentId, name: "Revisor do smoke", model: "claude-code/claude-sonnet-5", instructions: "Revise.", connections: [{ connectionId: "servidor-que-nao-existe", tools: {} }] },
+    });
+    await automationService.save({
+      spec: {
+        id: idOrigem, name: "Pacote do smoke", defaultTools: [], skills: [], budget: {},
+        steps: [{ type: "model", key: "revisar", name: "Revisar", needs: [], optional: false, model: "claude-code/claude-sonnet-5", prompt: "Revise.", requiresServers: [], maxSteps: 12, profile: agentId }],
+      },
+      triggers: [{ config: { kind: "slack-channel", channels: ["C0SMOKE123"] }, enabled: true }, { config: { kind: "manual" } }],
+      note: "", create: true,
+    });
+
+    // Exportar: o botão existe no editor, e o arquivo sai sem o canal.
+    await irPara(window, "automations", idOrigem);
+    await esperarProbe(window, "exportar", `document.querySelector("[data-locum-automacao-exportar]") !== null ? true : null`);
+    await foto("exportar");
+    const { texto, nomeDoArquivo } = await pacoteService.exportar(idOrigem);
+    if (!nomeDoArquivo.endsWith(".locum.json")) throw new Error(`o arquivo exportado se chama ${nomeDoArquivo}`);
+    if (texto.includes("C0SMOKE123")) throw new Error("o pacote exportado levou o id do canal");
+    const arquivo = join(pasta, nomeDoArquivo);
+    writeFileSync(arquivo, texto);
+
+    // Importar: a automação de origem sai do caminho, e o arquivo cai na lista.
+    await limpar();
+    await irPara(window, "automations");
+    await esperarProbe(window, "lista", `document.querySelector("[data-locum-automacao-importar]") !== null ? true : null`);
+    await window.webContents.executeJavaScript(`(() => {
+      const arquivo = new File([${JSON.stringify(readFileSync(arquivo, "utf8"))}], ${JSON.stringify(nomeDoArquivo)}, { type: "application/json" });
+      const dados = new DataTransfer();
+      dados.items.add(arquivo);
+      document.querySelector("[data-locum-probe=automacoes]").dispatchEvent(new DragEvent("drop", { dataTransfer: dados, bubbles: true, cancelable: true }));
+      return null;
+    })()`);
+    const estados = await esperarProbe<Record<string, string>>(
+      window,
+      "previa",
+      `(() => {
+        const itens = [...document.querySelectorAll("[data-locum-pacote-dependencia]")];
+        return itens.length === 0 ? null : Object.fromEntries(itens.map((i) => [i.dataset.locumPacoteDependencia, i.dataset.estado]));
+      })()`,
+    );
+    if (estados["servidor:servidor-que-nao-existe"] !== "ausente") {
+      throw new Error(`a previa nao marcou o servidor ausente: ${JSON.stringify(estados)}`);
+    }
+    await foto("importar-previa");
+    await window.webContents.executeJavaScript(`(document.querySelector("[data-locum-pacote-importar]")?.click(), null)`);
+    await esperarProbe(window, "importada", `document.querySelector("[data-locum-pacote-feito]") !== null ? true : null`);
+
+    const criada = await automationService.get(idOrigem);
+    if (criada === null) throw new Error("importar pela tela nao criou a automacao");
+    if (criada.triggers.some((g) => g.enabled)) throw new Error("a automacao importada tem gatilho ligado");
+    if (criada.triggers.some((g) => g.config.kind === "slack-channel")) throw new Error("a automacao importada trouxe o gatilho de canal");
+    // Apaga o que a fumaça criou e fecha a prévia: fechar relê as listas da janela, que não deve contar o que saiu.
+    await limpar();
+    await window.webContents.executeJavaScript(`(document.querySelector("[data-locum-pacote-fechar]")?.click(), null)`);
+  } finally {
+    rmSync(pasta, { recursive: true, force: true });
+    await limpar();
   }
 }
 
