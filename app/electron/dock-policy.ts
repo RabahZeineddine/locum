@@ -8,10 +8,13 @@
  */
 export type PoliticaDoDock = "regular" | "accessory";
 
-export function politicaDoDock(modo: {
-  modoMcp: boolean;
-  smoke: boolean;
-  comandoDeCofre: boolean;
-}): PoliticaDoDock {
-  return modo.modoMcp || modo.smoke || modo.comandoDeCofre ? "accessory" : "regular";
+/** `--set-secret` e `--remove-secret` mexem no cofre e saem, sem janela. */
+export function ehComandoDeCofre(argv: readonly string[]): boolean {
+  return argv.includes("--set-secret") || argv.includes("--remove-secret");
+}
+
+export function politicaDoDock(argv: readonly string[]): PoliticaDoDock {
+  const semJanela =
+    argv.includes("--mcp") || argv.includes("--ferramentas") || argv.includes("--smoke") || ehComandoDeCofre(argv);
+  return semJanela ? "accessory" : "regular";
 }

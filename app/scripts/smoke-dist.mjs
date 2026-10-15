@@ -8,9 +8,9 @@
  * instalado. Aqui o alvo é o binário de dentro do pacote, com a mesma bateria
  * de verificações do `--smoke`.
  */
-import { spawn } from "node:child_process";
-import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { examinarMcp } from "./mcp-handshake.mjs";
@@ -64,13 +64,24 @@ const TETO_MS = 5 * 60_000;
  * Dock aplicada, imprime `dock-visivel=<bool>` e sai.
  */
 function perguntarDock(binario, argumentos) {
-  const saida = execFileSync(binario, [...argumentos, "--diagnostico-dock"], {
+  // userData temporário: o modo normal não pode tocar o do Locum real.
+  const dados = mkdtempSync(join(tmpdir(), "locum-dock-"));
+  const resultado = spawnSync(binario, [...argumentos, "--diagnostico-dock", `--user-data-dir=${dados}`], {
     encoding: "utf8",
     timeout: 60_000,
-    stdio: ["ignore", "pipe", "ignore"],
+    killSignal: "SIGKILL",
+    stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, LOCUM_HOME: dados },
   });
-  const achou = /dock-visivel=(true|false)/.exec(saida);
-  if (achou === null) throw new Error(`o diagnóstico do Dock não respondeu: ${JSON.stringify(saida)}`);
+  rmSync(dados, { recursive: true, force: true });
+  const achou = /dock-visivel=(true|false)/.exec(resultado.stdout ?? "");
+  if (achou === null) {
+    throw new Error(
+      `o diagnóstico do Dock (${argumentos.join(" ") || "modo normal"}) não respondeu: ` +
+        `status ${resultado.status ?? resultado.signal}, stdout ${JSON.stringify(resultado.stdout)}, ` +
+        `stderr ${JSON.stringify((resultado.stderr ?? "").slice(-500))}`,
+    );
+  }
   return achou[1] === "true";
 }
 
