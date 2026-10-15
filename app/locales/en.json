@@ -174,8 +174,7 @@
     },
     "tabs": {
       "agents": "My Agents",
-      "marketplace": "Marketplace",
-      "specialties": "Specialties"
+      "marketplace": "Marketplace"
     },
     "marketplace": {
       "loading": "reading the marketplace...",
@@ -2144,7 +2143,9 @@
     },
     "legacy": {
       "title": "Automations from the old model",
-      "link": "Legacy (read only)"
+      "link": "Legacy (read only)",
+      "lead": "Automations from the model before the new concept, for reference only. To create one, open Automations; agents live in Agents.",
+      "empty": "No automation from the old model."
     }
   },
   "library": {
@@ -2265,7 +2266,9 @@
       "reload": "Refresh",
       "notListed": "Tools have not been listed yet. Use \"Show tools\" to pick one by one; until then the default applies.",
       "counts": "{{read}} read, {{write}} write",
-      "writeNote": "A write that is on does not run by itself: it only goes through the agent's chat, with your confirmation (coming in the next version). In an automation, writing is an action node with approval."
+      "writeNote": "A write that is on does not run by itself: it only goes through the agent's chat, with your confirmation (coming in the next version). In an automation, writing is an action node with approval.",
+      "declareRead": "is a read",
+      "declareReadHint": "Tick it when the name or the server classifies the tool as a write but it only reads. It then runs by itself."
     },
     "skills": {
       "none": "No skill chosen.",

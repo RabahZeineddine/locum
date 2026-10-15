@@ -5,7 +5,7 @@ import { separarDaConta } from "../runtimes/claude-account.js";
 import { resolveModel } from "../providers/registry.js";
 import type { Runtime } from "../runtimes/types.js";
 import { SUBSCRIPTION_RUNTIMES } from "../runtimes/types.js";
-import { libraryService, type LibraryService } from "../services/library-service.js";
+import { conexoesIndisponiveis, libraryService, type LibraryService } from "../services/library-service.js";
 import { machineId } from "../services/machine-service.js";
 import { selectSkills, skillsPreamble, type LoadedSkill } from "../skills/loader.js";
 import { providerService } from "../services/provider-service.js";
@@ -42,9 +42,10 @@ export async function consultarAgent(id: string, pergunta: string, deps: Consult
   if (pergunta.trim() === "") throw new Error("diga o que perguntar ao agent");
   const perfil = await (deps.library ?? libraryService).resolveProfile(id);
   const spec = perfil.version.spec;
+  if (perfil.semServidor.length > 0) throw new Error(conexoesIndisponiveis(spec.id, perfil.semServidor));
 
   const chave = `biblioteca:${spec.id}`;
-  await (deps.budget ?? assertWithinBudget)(chave, { usd: 0, tokens: 0 }, spec.budget);
+  await (deps.budget ?? assertWithinBudget)(chave, { usd: 0, tokens: 0 }, spec.budget, spec.name);
 
   const fallbacks = deps.fallbacks ? await deps.fallbacks() : await providerService.getFallbacks(machineId);
   const { mcp, runtimes } = await deps.build();

@@ -202,12 +202,14 @@ const IdDaBiblioteca = z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/, "use letras
 
 /**
  * O que o agent usa de uma conexão. Sem sobrescrita, as ferramentas de
- * leitura valem e as de escrita ficam de fora; `tools` liga (true) ou desliga
- * (false) uma ferramenta pelo nome, no que a conexão oferece.
+ * leitura valem e as de escrita ficam de fora. `tools` troca isso por
+ * ferramenta, na chave `servidor/ferramenta` (ou só `ferramenta`, como era):
+ * true liga, false desliga, e "read" liga declarando que a ferramenta só lê,
+ * para a que o nome ou o servidor classificam como escrita sem ser.
  */
 export const AgentConnection = z.object({
   connectionId: z.string().min(1),
-  tools: z.record(z.string(), z.boolean()).default({}),
+  tools: z.record(z.string(), z.union([z.boolean(), z.literal("read")])).default({}),
 });
 export type AgentConnection = z.infer<typeof AgentConnection>;
 

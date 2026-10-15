@@ -11,19 +11,30 @@ Item 3 do ADR 0005, sem o chat. O agent nasce do perfil da Biblioteca
 migração: o spec é JSON versionado e os campos novos têm padrão).
 
 - `connections`: lista de `{ connectionId, tools }`. Em cada conexão a leitura
-  vem ligada e a escrita desligada; `tools` liga (true) ou desliga (false) uma
-  ferramenta pelo nome. A classe é a da tela de conexão (`ehLeitura`, por nome).
-  Toolsets e ferramentas avulsas continuam valendo e se somam.
+  vem ligada e a escrita desligada; `tools` liga (true), desliga (false) ou
+  liga declarando leitura ("read") uma ferramenta, na chave `servidor/ferramenta`
+  (a chave só pelo nome, de antes, ainda vale). A classe vem da anotação do
+  servidor (`readOnlyHint`, `destructiveHint`, guardadas no catálogo e no cache
+  de ferramentas) e, sem anotação, do nome (`ehLeitura`, em que `get_pull_request`
+  e `pull_request_read` leem). Toolsets e ferramentas avulsas continuam valendo
+  e se somam.
 - `skills` (nome ou regra, reaproveitando `SkillRule`) e `budget`
   (`AgentBudget`).
 - `resolveProfile` expande cada conexão em todos os servidores dela. A escrita
   ligada não entra em `tools`: vem em `confirmar`, como `external_write`, porque
   escrita externa não roda sem alguém ver. Quem confirma é o chat do agent, que
-  é a fatia B. `semServidor` lista conexões sem servidor nesta máquina.
+  é a fatia B. Só entram servidores ligados e ferramentas que o servidor ainda
+  oferece. `semServidor` lista as conexões sem servidor utilizável (não
+  cadastrado, desligado ou que não listou), com o motivo: o passo obrigatório
+  falha, o opcional é pulado e o `ask_agent` recusa, todos com o nome do agent e
+  da conexão. Em iniciativa basta uma instância da conexão dentro dela.
 - O executor e o `ask_agent` aplicam o teto do agent na chave `biblioteca:<id>`
   e põem as skills dele no system. O executor grava o gasto do passo nessa
   chave além da do fluxo, então a linha `biblioteca:<id>` de `usage_daily`
-  repete o que o fluxo já contou. O teto por execução vale por trecho do run.
+  repete o que o fluxo já contou; `get_metrics` e `locum metrics` marcam essas
+  linhas com `kind: "agent"`. O teto por execução soma o que os passos do run
+  já gastaram, inclusive depois de voltar da fila, e a mensagem de estouro diz
+  que o teto é do agent e onde mudar.
 - Tela Agents (rota `agents`, `app/renderer/src/telas/agents.tsx`) com lista,
   duplicar, criar, remover e as seções Instruções, Modelo, Conexões e
   ferramentas, Skills, Orçamento, Conversar (reservado, desabilitado) e Onde é
@@ -31,13 +42,18 @@ migração: o spec é JSON versionado e os campos novos têm padrão).
   `library/<id>` e `library/toolsets` são aliases em `ROTAS_ANTIGAS`; o
   marketplace de agents é o de Automações.
 - As automações do modelo antigo, antes em `agents`, ficam em
-  `automations/legacy` (link "Legado" em Automações), só leitura.
+  `automations/legacy` (link "Legado" em Automações), sem criar, importar,
+  duplicar nem editar. `agents/<id>` de automação antiga redireciona para lá, e
+  o `suggestId` de automação evita o id `legacy`.
 - MCP: `upsert_library_agent` e `get_library_agent` aceitam e devolvem os campos
-  novos, e `upsert_library_agent` recusa ligar escrita numa conexão.
+  novos, e `upsert_library_agent` recusa ligar escrita (ou declarar "read" numa
+  escrita) numa conexão, abrir conexão nova de servidor com escopo write e
+  liberar ferramenta de conexão assim.
 - Smoke: `checkAgentsDoConceito` cobre a tela, os aliases, um agent salvo com
   conexão (servidor de brinquedo), duplicar, criar e remover.
-- Não feito: chat do agent com confirmação de escrita (fatia B), recusa de
-  conexão nova a servidor de escopo write pelo MCP, e o item 4 (automação v2).
+- Não feito: chat do agent com confirmação de escrita (fatia B) e o item 4
+  (automação v2). A recusa do MCP classifica pelo nome, sem consultar a anotação
+  do servidor.
 
 ## Iniciativas: onde parou em 27/09/2026
 

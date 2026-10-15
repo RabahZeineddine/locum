@@ -57,6 +57,8 @@ function depsDaConsulta(pedidos: RuntimeRequest[], gastos: unknown[], ferramenta
         tools: ferramentas,
         confirmar: [],
         semServidor: [],
+        fixas: [],
+        grupos: [],
         system: "Você é o agent de chamados.",
       }),
     },

@@ -34,6 +34,12 @@ export interface VersionMetrics {
 export interface DailyUsage {
   day: string;
   agentId: string;
+  /**
+   * `agent` é a linha `biblioteca:<id>`, o gasto de um agent da biblioteca.
+   * Ela repete o que as automações que o usam já contam, então não se soma
+   * com as de `automation`.
+   */
+  kind: "automation" | "agent";
   costUsd: number;
   runs: number;
 }
@@ -214,7 +220,9 @@ export class MetricsService {
       .from(schema.usageDaily)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(desc(schema.usageDaily.day));
-    return rows.filter((r) => !isReserved(r.agentId));
+    return rows
+      .filter((r) => !isReserved(r.agentId))
+      .map((r) => ({ ...r, kind: r.agentId.startsWith("biblioteca:") ? ("agent" as const) : ("automation" as const) }));
   }
 
   /**

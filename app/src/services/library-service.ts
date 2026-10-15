@@ -10,7 +10,7 @@ import {
   type ToolRef,
   type ToolsetInput,
 } from "../config/types.js";
-import { ehLeitura } from "../config/leitura.js";
+import { ehLeitura, ehLeituraDa, escolhaDe } from "../config/leitura.js";
 
 type Db = typeof defaultDb;
 
@@ -48,8 +48,8 @@ export interface ToolsetSummary extends Toolset {
 export interface ResolvedProfile {
   version: ProfileVersion;
   /**
-   * O que o agent chama sozinho: ferramentas dos toolsets, avulsas e as das
-   * conexões (leitura, mais o que foi ligado de escrita interna), sem repetição.
+   * O que o agent chama sozinho: ferramentas dos toolsets, avulsas e a leitura
+   * das conexões, sem repetição.
    */
   tools: ToolRef[];
   /**
@@ -57,8 +57,12 @@ export interface ResolvedProfile {
    * externa não roda sem alguém ver, e quem confirma é o chat do agent.
    */
   confirmar: ToolRef[];
-  /** Conexões do agent que não têm servidor cadastrado nesta máquina. */
-  semServidor: string[];
+  /** Conexões do agent sem servidor utilizável agora (não ligado, desligado ou que não listou). */
+  semServidor: ConexaoIndisponivel[];
+  /** Só o que vem de toolsets e ferramentas avulsas: o que o agent exige, ao contrário das conexões. */
+  fixas: ToolRef[];
+  /** Os servidores utilizáveis de cada conexão, para quem filtra por iniciativa. */
+  grupos: { connectionId: string; servers: string[] }[];
   /** Contexto e instruções juntos, prontos para o system. */
   system: string;
 }
@@ -78,61 +82,106 @@ function recusarEscrita(tools: readonly ToolRef[], onde: string): void {
   }
 }
 
+/** Uma ferramenta que o servidor oferece, com o que ele anotou dela. */
+export interface FerramentaDoServidor {
+  name: string;
+  readOnlyHint?: boolean;
+  destructiveHint?: boolean;
+}
+
 /** Onde a biblioteca descobre o que uma conexão alcança. */
 export interface CatalogoDeConexoes {
-  /** Nomes dos servidores MCP da conexão; vazio quando não há nenhum. */
-  servidoresDe(connectionId: string): Promise<string[]>;
-  /** Ferramentas do servidor, ou nulo quando nunca foram listadas. */
-  ferramentasDe(servidor: string): Promise<string[] | null>;
+  /** Servidores MCP da conexão, ligados ou não; vazio quando não há nenhum cadastrado. */
+  servidoresDe(connectionId: string): Promise<{ nome: string; ligado: boolean }[]>;
+  /** Ferramentas que o servidor oferece agora. Lança quando não dá para listar. */
+  ferramentasDe(servidor: string): Promise<FerramentaDoServidor[]>;
 }
 
 /** As conexões e ferramentas de verdade, carregadas só na primeira vez que alguém pede. */
 const catalogoPadrao: CatalogoDeConexoes = {
   servidoresDe: async (id) => {
     const { connectionService } = await import("./connection-service.js");
-    return (await connectionService.list()).find((c) => c.id === id)?.servers ?? [];
+    const { mcpService } = await import("./mcp-service.js");
+    const nomes = (await connectionService.list()).find((c) => c.id === id)?.servers ?? [];
+    return Promise.all(nomes.map(async (nome) => ({ nome, ligado: (await mcpService.get(nome))?.enabled === true })));
   },
   ferramentasDe: async (servidor) => {
     const { mcpService } = await import("./mcp-service.js");
     const guardada = await mcpService.cachedTools(servidor);
-    if (guardada !== null) return guardada.tools.map((t) => t.name);
-    try {
-      return (await mcpService.listTools(servidor)).map((t) => t.name);
-    } catch {
-      return null;
-    }
+    return (guardada?.tools ?? (await mcpService.listTools(servidor))).map(
+      ({ name, readOnlyHint, destructiveHint }) => ({ name, readOnlyHint, destructiveHint }),
+    );
   },
 };
 
+/** Conexão do agent que não tem servidor utilizável agora, e por quê. */
+export interface ConexaoIndisponivel {
+  connectionId: string;
+  motivo: string;
+}
+
+/** A frase de quem recusa rodar o agent com conexão sem servidor. */
+export function conexoesIndisponiveis(agentId: string, lista: readonly ConexaoIndisponivel[]): string {
+  return lista.map((c) => `o agent "${agentId}" usa a conexão "${c.connectionId}", ${c.motivo}`).join("; ");
+}
+
+export interface ConexoesExpandidas {
+  leitura: ToolRef[];
+  escrita: ToolRef[];
+  /** Os servidores utilizáveis de cada conexão. */
+  grupos: { connectionId: string; servers: string[] }[];
+  semServidor: ConexaoIndisponivel[];
+}
+
 /**
- * Cada conexão vira as ferramentas dos servidores dela: leitura liberada,
- * escrita só a marcada, e a sobrescrita por ferramenta manda nos dois lados.
- * A classe é a da tela de conexão, pelo nome.
+ * Cada conexão vira as ferramentas que os servidores ligados dela oferecem
+ * agora: leitura liberada, escrita só a marcada, e a escolha por ferramenta
+ * manda nos dois lados. A classe vem da anotação do servidor, e do nome quando
+ * ele não anotou. "read" na escolha manda a ferramenta para a leitura mesmo
+ * classificada como escrita. Ferramenta que o servidor não oferece mais fica
+ * de fora, mesmo escolhida.
  */
 export async function expandirConexoes(
   conexoes: readonly AgentConnection[],
   catalogo: CatalogoDeConexoes,
-): Promise<{ leitura: ToolRef[]; escrita: ToolRef[]; semServidor: string[] }> {
-  const leitura: ToolRef[] = [];
-  const escrita: ToolRef[] = [];
-  const semServidor: string[] = [];
+): Promise<ConexoesExpandidas> {
+  const saida: ConexoesExpandidas = { leitura: [], escrita: [], grupos: [], semServidor: [] };
   for (const conexao of conexoes) {
-    const servidores = await catalogo.servidoresDe(conexao.connectionId);
-    if (servidores.length === 0) {
-      semServidor.push(conexao.connectionId);
+    const cadastrados = await catalogo.servidoresDe(conexao.connectionId);
+    const ligados = cadastrados.filter((s) => s.ligado);
+    if (ligados.length === 0) {
+      saida.semServidor.push({
+        connectionId: conexao.connectionId,
+        motivo: cadastrados.length === 0 ? "sem servidor ligado nesta máquina" : "o servidor dela está desligado",
+      });
       continue;
     }
-    for (const server of servidores) {
-      const oferecidas = (await catalogo.ferramentasDe(server)) ?? [];
-      const nomes = new Set([...oferecidas, ...Object.keys(conexao.tools).filter((n) => conexao.tools[n] === true)]);
-      for (const tool of nomes) {
-        if (!(conexao.tools[tool] ?? ehLeitura(tool))) continue;
-        if (ehLeitura(tool)) leitura.push({ server, tool, class: "read" });
-        else escrita.push({ server, tool, class: "external_write" });
+    const usaveis: string[] = [];
+    const falhas: string[] = [];
+    for (const { nome: server } of ligados) {
+      let oferecidas: FerramentaDoServidor[];
+      try {
+        oferecidas = await catalogo.ferramentasDe(server);
+      } catch (erro) {
+        falhas.push(`${server}: ${erro instanceof Error ? erro.message : String(erro)}`);
+        continue;
+      }
+      usaveis.push(server);
+      for (const f of oferecidas) {
+        const escolha = escolhaDe(conexao.tools, server, f.name);
+        const leitura = ehLeituraDa(f);
+        if (!(escolha === undefined ? leitura : escolha !== false)) continue;
+        if (leitura || escolha === "read") saida.leitura.push({ server, tool: f.name, class: "read" });
+        else saida.escrita.push({ server, tool: f.name, class: "external_write" });
       }
     }
+    if (usaveis.length === 0) {
+      saida.semServidor.push({ connectionId: conexao.connectionId, motivo: `não consegui listar as ferramentas (${falhas.join("; ")})` });
+      continue;
+    }
+    saida.grupos.push({ connectionId: conexao.connectionId, servers: usaveis });
   }
-  return { leitura, escrita, semServidor };
+  return saida;
 }
 
 function semRepetir(tools: readonly ToolRef[]): ToolRef[] {
@@ -172,7 +221,8 @@ export class LibraryService {
         toolsets: ultima.spec.toolsets,
         connections: ultima.spec.connections.map((c) => c.connectionId),
         writes: ultima.spec.connections.reduce(
-          (n, c) => n + Object.entries(c.tools).filter(([tool, ligada]) => ligada && !ehLeitura(tool)).length,
+          (n, c) =>
+            n + Object.entries(c.tools).filter(([chave, escolha]) => escolha === true && !ehLeitura(chave.split("/").pop()!)).length,
           0,
         ),
         skills: ultima.spec.skills.length,
@@ -263,13 +313,14 @@ export class LibraryService {
       tools.push(...toolset.tools);
     }
     tools.push(...version.spec.tools);
-    const { leitura, escrita, semServidor } = await expandirConexoes(version.spec.connections, this.conexoes);
+    const fixas = semRepetir(tools);
+    const { leitura, escrita, grupos, semServidor } = await expandirConexoes(version.spec.connections, this.conexoes);
     tools.push(...leitura);
     const partes = [
       version.spec.context.trim() === "" ? "" : `# Contexto\n\n${version.spec.context.trim()}`,
       version.spec.instructions.trim() === "" ? "" : `# Como trabalhar\n\n${version.spec.instructions.trim()}`,
     ].filter((p) => p !== "");
-    return { version, tools: semRepetir(tools), confirmar: semRepetir(escrita), semServidor, system: partes.join("\n\n") };
+    return { version, tools: semRepetir(tools), confirmar: semRepetir(escrita), semServidor, fixas, grupos, system: partes.join("\n\n") };
   }
 
   /** Id livre a partir do nome, como o da automação. */

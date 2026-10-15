@@ -148,3 +148,48 @@ test("liberar escrita numa conexão pelo MCP é recusado, e manter a que já est
     }),
   );
 });
+
+test("pelo MCP, conexão nova de servidor write e mudança que libera ferramenta dela são recusadas", async () => {
+  const client = await ligarCliente();
+  const sufixo = randomUUID().slice(0, 8);
+  const servidor = `conexao-escrita-${sufixo}`;
+  await mcpService.register({ name: servidor, transport: "http", url: "http://127.0.0.1:9/mcp", scope: "write" });
+  const base = { id: `w-${sufixo}`, name: "W", model: "a/b" };
+
+  const nova = await client.callTool({
+    name: "upsert_library_agent",
+    arguments: { spec: { ...base, connections: [{ connectionId: servidor }] } },
+  });
+  assert.equal(nova.isError, true);
+  assert.match(texto(nova), /conexão nova/);
+
+  // Gravada pela tela, a conexão segue valendo, e editar outra coisa passa.
+  await libraryService.saveProfile({ spec: { ...base, connections: [{ connectionId: servidor, tools: { buscar: false } }] } });
+  resultado(
+    await client.callTool({
+      name: "upsert_library_agent",
+      arguments: { spec: { ...base, instructions: "x", connections: [{ connectionId: servidor, tools: { buscar: false } }] } },
+    }),
+  );
+
+  const liga = await client.callTool({
+    name: "upsert_library_agent",
+    arguments: { spec: { ...base, connections: [{ connectionId: servidor, tools: { buscar: true } }] } },
+  });
+  assert.equal(liga.isError, true);
+  const tiraODesligar = await client.callTool({
+    name: "upsert_library_agent",
+    arguments: { spec: { ...base, connections: [{ connectionId: servidor }] } },
+  });
+  assert.equal(tiraODesligar.isError, true);
+});
+
+test("pelo MCP, declarar que uma ferramenta de escrita é leitura também é recusado", async () => {
+  const client = await ligarCliente();
+  const id = `declara-${randomUUID().slice(0, 8)}`;
+  const recusa = await client.callTool({
+    name: "upsert_library_agent",
+    arguments: { spec: { id, name: "D", model: "a/b", connections: [{ connectionId: "github", tools: { "github/create_comment": "read" } }] } },
+  });
+  assert.equal(recusa.isError, true);
+});

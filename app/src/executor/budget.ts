@@ -3,9 +3,10 @@ import { db, schema } from "../db/index.js";
 import type { AgentBudget } from "../config/types.js";
 
 export class BudgetExceeded extends Error {
-  constructor(scope: "run" | "day", unit: "usd" | "tokens", limit: number, spent: number) {
+  constructor(scope: "run" | "day", unit: "usd" | "tokens", limit: number, spent: number, agent?: string) {
     const fmt = (n: number) => (unit === "usd" ? `${n.toFixed(2)} USD` : `${Math.round(n)} tokens`);
-    super(`orçamento de ${scope} estourado: limite ${fmt(limit)}, gasto ${fmt(spent)}`);
+    const de = agent === undefined ? "" : `. É o teto do agent "${agent}": para mudar, abra Agents > ${agent} > Orçamento`;
+    super(`orçamento de ${scope} estourado: limite ${fmt(limit)}, gasto ${fmt(spent)}${de}`);
   }
 }
 
@@ -34,12 +35,14 @@ export async function assertWithinBudget(
   agentId: string,
   run: Spend,
   limits: AgentBudget,
+  /** Nome do agent da biblioteca dono do teto, para a mensagem dizer onde mudar. */
+  agent?: string,
 ): Promise<void> {
   if (limits.perRunUsd !== undefined && run.usd >= limits.perRunUsd) {
-    throw new BudgetExceeded("run", "usd", limits.perRunUsd, run.usd);
+    throw new BudgetExceeded("run", "usd", limits.perRunUsd, run.usd, agent);
   }
   if (limits.perRunTokens !== undefined && run.tokens >= limits.perRunTokens) {
-    throw new BudgetExceeded("run", "tokens", limits.perRunTokens, run.tokens);
+    throw new BudgetExceeded("run", "tokens", limits.perRunTokens, run.tokens, agent);
   }
   if (limits.perDayUsd === undefined && limits.perDayTokens === undefined) return;
 
@@ -50,11 +53,11 @@ export async function assertWithinBudget(
 
   const usd = row?.costUsd ?? 0;
   if (limits.perDayUsd !== undefined && usd >= limits.perDayUsd) {
-    throw new BudgetExceeded("day", "usd", limits.perDayUsd, usd);
+    throw new BudgetExceeded("day", "usd", limits.perDayUsd, usd, agent);
   }
   const tokens = row?.tokens ?? 0;
   if (limits.perDayTokens !== undefined && tokens >= limits.perDayTokens) {
-    throw new BudgetExceeded("day", "tokens", limits.perDayTokens, tokens);
+    throw new BudgetExceeded("day", "tokens", limits.perDayTokens, tokens, agent);
   }
 }
 

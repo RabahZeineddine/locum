@@ -213,7 +213,9 @@ async function metrics(agentId?: string): Promise<void> {
   if (usage.length > 0) {
     console.log("\ngasto dos ultimos 7 dias:");
     for (const u of usage) {
-      console.log(`  ${u.day}  ${u.agentId.padEnd(20)} ${u.costUsd.toFixed(3)} USD  ${u.runs} run(s)`);
+      console.log(
+        `  ${u.day}  ${u.agentId.padEnd(20)} ${u.costUsd.toFixed(3)} USD  ${u.runs} run(s)${u.kind === "agent" ? "  (agent da biblioteca, já contado nas automações)" : ""}`,
+      );
     }
   }
 }

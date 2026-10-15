@@ -181,8 +181,7 @@
     },
     "tabs": {
       "agents": "Meus Agents",
-      "marketplace": "Marketplace",
-      "specialties": "Especialidades"
+      "marketplace": "Marketplace"
     },
     "marketplace": {
       "loading": "lendo o marketplace...",
@@ -2193,7 +2192,9 @@
     },
     "legacy": {
       "title": "Automações do modelo antigo",
-      "link": "Legado (só leitura)"
+      "link": "Legado (só leitura)",
+      "lead": "As automações do modelo anterior ao conceito novo, só para consulta. Para criar, abra Automações; os agents moram em Agents.",
+      "empty": "Nenhuma automação do modelo antigo."
     }
   },
   "library": {
@@ -2319,7 +2320,9 @@
       "reload": "Atualizar",
       "notListed": "As ferramentas ainda não foram listadas. Use \"Ver ferramentas\" para escolher uma a uma; enquanto isso vale o padrão.",
       "counts": "{{read}} de leitura, {{write}} de escrita",
-      "writeNote": "Escrita ligada não roda sozinha: só passa pelo chat do agent, com a sua confirmação (chega na próxima versão). Numa automação, escrever é um nó de ação com aprovação."
+      "writeNote": "Escrita ligada não roda sozinha: só passa pelo chat do agent, com a sua confirmação (chega na próxima versão). Numa automação, escrever é um nó de ação com aprovação.",
+      "declareRead": "é leitura",
+      "declareReadHint": "Marque quando o nome ou o servidor classificam a ferramenta como escrita, mas ela só lê. Ela passa a rodar sozinha."
     },
     "skills": {
       "none": "Nenhuma skill escolhida.",

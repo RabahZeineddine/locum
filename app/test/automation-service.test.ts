@@ -103,4 +103,5 @@ test("identificador sugerido sai do nome, sem acento, e não colide", async () =
   assert.equal(await automations.suggestId("Canal de Suporte → Jira"), "canal-de-suporte-jira");
   await automations.save({ spec: { ...spec, id: "triagem" }, triggers: [], note: "", create: true });
   assert.equal(await automations.suggestId("Triagem"), "triagem-2");
+  assert.equal(await automations.suggestId("Legacy"), "legacy-2");
 });

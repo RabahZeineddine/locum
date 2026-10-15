@@ -4,15 +4,14 @@ import { Badge } from "@/components/ui/badge";
 import { CabecalhoDaTela } from "@/components/cabecalho-da-tela";
 import { Button } from "@/components/ui/button";
 import { call, useRead, type ReadResult } from "@/lib/bridge";
-import { duplicarAgent, exportarAgent, importarAgent } from "@/lib/editar-agent";
-import { EditorDeAgent } from "../editor-agent";
+import { exportarAgent } from "@/lib/editar-agent";
 import { Secao } from "./blocos";
 import { LinhaDoOrcamento } from "./configuracao";
 import { GatilhosDoAgent } from "./gatilhos-do-agent";
 import { comContexto, diffJson, type LinhaDoDiff } from "@/lib/diff";
 import { rotuloDeEstado, rotuloDoModelo } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, Plus, Sparkles, Workflow, X } from "lucide-react";
+import { ArrowLeft, Workflow, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { useCurrentInitiative } from "../current-initiative";
@@ -46,10 +45,6 @@ function Lista({ navegar }: { navegar: TelaProps["navegar"] }) {
   const { t } = useTranslation();
   const agents = useRead("agents.overview");
   const todasAsLinhas = agents.data ?? [];
-  const [erroDeImportar, setErroDeImportar] = useState<string | null>(null);
-  const [criando, setCriando] = useState(false);
-  const criador = useRead("agents.aiStatus");
-  const [criandoComIa, setCriandoComIa] = useState(false);
 
   // O chip so aparece quando ha iniciativa atual; filtrar por ela e um clique
   // a mais, nunca o padrao, porque quem entra em agents sem escolher iniciativa
@@ -63,59 +58,10 @@ function Lista({ navegar }: { navegar: TelaProps["navegar"] }) {
     ? todasAsLinhas.filter((a) => a.initiativeId === iniciativaAtual.id)
     : todasAsLinhas;
 
-  /*
-   * O Locum não traz agent de fábrica: importar é a porta de entrada. Agent
-   * que já existe ganha versão nova, e a tela abre nele para quem importou ver
-   * o que chegou.
-   */
-  const importar = (): void => {
-    setErroDeImportar(null);
-    importarAgent().then(
-      (feito) => {
-        if (feito !== null) navegar("agents", feito.agentId);
-      },
-      (err: unknown) => setErroDeImportar(err instanceof Error ? err.message : String(err)),
-    );
-  };
-
   return (
     <div className="flex flex-col gap-4">
       <CabecalhoDaTela
-        acoes={
-          <>
-            <Button className="cursor-pointer" data-locum-importar="" onClick={importar} variant="secondary">
-              {t("agents.io.import")}
-            </Button>
-            {criador.data?.disponivel === true ? (
-              <Button
-                className="ia-gradiente cursor-pointer border-0 text-white hover:opacity-90"
-                data-locum-agent-ia=""
-                onClick={() => {
-                  setCriando(false);
-                  setCriandoComIa((v) => !v);
-                }}
-              >
-                <Sparkles aria-hidden className="size-4" />
-                {t("agents.ai.button")}
-              </Button>
-            ) : null}
-            {todasAsLinhas.length === 0 ? null : (
-              <Button
-                className="cursor-pointer"
-                data-locum-agent-novo=""
-                onClick={() => {
-                  setCriandoComIa(false);
-                  setCriando((v) => !v);
-                }}
-                variant={criador.data?.disponivel === true ? "secondary" : "default"}
-              >
-                <Plus aria-hidden className="size-4" />
-                {t("agents.new.button")}
-              </Button>
-            )}
-          </>
-        }
-        descricao={t("agents.lead")}
+        descricao={t("automations.legacy.lead")}
         titulo={t("automations.legacy.title")}
       />
       {iniciativaAtual !== undefined ? (
@@ -157,35 +103,9 @@ function Lista({ navegar }: { navegar: TelaProps["navegar"] }) {
         </div>
       </div>
 
-      {criandoComIa && criador.data?.disponivel === true && (
-        <CriarComIa
-          aoCancelar={() => setCriandoComIa(false)}
-          aoCriar={(novo) => {
-            editarAoAbrir = novo;
-            navegar("agents", novo);
-          }}
-          modelo={criador.data.modelo}
-        />
-      )}
-
-      {criando && todasAsLinhas.length > 0 && (
-        <NovoAgent
-          aoCancelar={() => setCriando(false)}
-          aoCriar={(novo) => {
-            editarAoAbrir = novo;
-            navegar("agents", novo);
-          }}
-          bases={todasAsLinhas.map((a) => ({ id: a.id, nome: a.name }))}
-        />
-      )}
-
-      {erroDeImportar === null ? null : (
-        <p className="text-destructive text-xs">{t("agents.io.importRefused", { message: erroDeImportar })}</p>
-      )}
-
       {agents.status === "ready" && linhas.length === 0 ? (
         <p className="text-muted-foreground text-sm">
-          <Trans components={{ code: <code /> }} i18nKey="agents.empty" />
+          {t("automations.legacy.empty")}
         </p>
       ) : (
         <ul className="divide-border superficie divide-y overflow-hidden rounded-xl">
@@ -305,54 +225,18 @@ function ultima(t: TFunction, run: Resumo["lastRun"]): string {
  * e a ordem em que se procura: o que mudou por ultimo e o que se quer ver
  * primeiro.
  */
-/**
- * Pedido de abrir direto em edição, deixado por quem acabou de duplicar.
- *
- * Passado em memória e lido uma vez, em vez de ir na rota: "criar e editar"
- * promete abrir o agent novo já editando, e um parâmetro na rota continuaria lá
- * depois de salvar, reabrindo o editor a cada visita.
- */
-let editarAoAbrir: string | null = null;
-
 function Agent({ agentId, navegar }: { agentId: string; navegar: TelaProps["navegar"] }) {
-  const [editando, setEditando] = useState(() => {
-    const pedido = editarAoAbrir === agentId;
-    if (pedido) editarAoAbrir = null;
-    return pedido;
-  });
-  // Salvar grava versão nova; remontar o detalhe relê o histórico inteiro.
-  const [recarga, setRecarga] = useState(0);
-
-  return (
-    <DetalheDoAgent
-      agentId={agentId}
-      editando={editando}
-      key={recarga}
-      navegar={navegar}
-      setEditando={setEditando}
-      aoSalvar={() => {
-        setEditando(false);
-        setRecarga((r) => r + 1);
-      }}
-    />
-  );
+  return <DetalheDoAgent agentId={agentId} navegar={navegar} />;
 }
 
 function DetalheDoAgent({
   agentId,
-  editando,
   navegar,
-  setEditando,
-  aoSalvar,
 }: {
   agentId: string;
-  editando: boolean;
   navegar: TelaProps["navegar"];
-  setEditando: (v: boolean) => void;
-  aoSalvar: () => void;
 }) {
   const { t } = useTranslation();
-  const [duplicando, setDuplicando] = useState(false);
   const [rodando, setRodando] = useState(false);
   const [exportado, setExportado] = useState<string | null>(null);
   const versoes = useRead("agents.versions", agentId);
@@ -394,7 +278,7 @@ function DetalheDoAgent({
         <span className="font-medium text-sm">{atual.spec.name}</span>
         <span className="text-muted-foreground text-xs">{agentId}</span>
         <span className="ml-auto" />
-        {!editando && (
+        {(
           <>
             <Button
               className="cursor-pointer"
@@ -421,18 +305,6 @@ function DetalheDoAgent({
             >
               {t("agents.io.export")}
             </Button>
-            <Button className="cursor-pointer" onClick={() => setDuplicando(true)} size="sm" variant="ghost">
-              {t("agents.editor.duplicate")}
-            </Button>
-            <Button
-              className="cursor-pointer"
-              data-locum-editar=""
-              onClick={() => setEditando(true)}
-              size="sm"
-              variant="secondary"
-            >
-              {t("agents.editor.edit")}
-            </Button>
             {/* Rodar é o que se veio fazer aqui na maior parte das vezes, então é o botão cheio. */}
             <Button
               className="cursor-pointer"
@@ -450,7 +322,7 @@ function DetalheDoAgent({
         <p className="text-muted-foreground text-xs">{exportado}</p>
       )}
 
-      {rodando && !editando && (
+      {rodando && (
         <RodarAgora
           agentId={agentId}
           aoCancelar={() => setRodando(false)}
@@ -458,27 +330,7 @@ function DetalheDoAgent({
         />
       )}
 
-      {duplicando && (
-        <Duplicar
-          aoCancelar={() => setDuplicando(false)}
-          aoCriar={(novo) => {
-            editarAoAbrir = novo;
-            navegar("agents", novo);
-          }}
-          de={agentId}
-          nome={lista[0]!.spec.name}
-        />
-      )}
-
-      {editando ? (
-        <EditorDeAgent
-          agentId={agentId}
-          aoSair={() => setEditando(false)}
-          aoSalvar={aoSalvar}
-          spec={lista[0]!.spec}
-          versao={lista[0]!.version}
-        />
-      ) : (
+      {(
         <>
       {/*
         O que o agent faz vem primeiro, depois quando acorda e quanto gasta. O
@@ -604,256 +456,6 @@ function RodarAgora({
         </Button>
       </div>
     </form>
-  );
-}
-
-/**
- * Agent novo pela lista: escolhe de qual partir e segue como a duplicação.
- *
- * Não existe agent em branco porque um agent sem passo nenhum não roda, e o
- * editor não cria passo do zero. Partir de um que funciona é o caminho que dá
- * certo na primeira vez.
- */
-function NovoAgent({
-  aoCancelar,
-  aoCriar,
-  bases,
-}: {
-  aoCancelar: () => void;
-  aoCriar: (id: string) => void;
-  bases: { id: string; nome: string }[];
-}) {
-  const { t } = useTranslation();
-  const [base, setBase] = useState(bases[0]!.id);
-  const escolhida = bases.find((b) => b.id === base) ?? bases[0]!;
-
-  return (
-    <div className="flex max-w-xl flex-col gap-2" data-locum-probe="agent-novo">
-      <label className="flex flex-col gap-1 text-xs">
-        <span className="text-muted-foreground">{t("agents.new.from")}</span>
-        <select
-          className="border-border bg-background focus-visible:ring-ring rounded-md border px-2 py-1.5 text-sm outline-none focus-visible:ring-1"
-          onChange={(e) => setBase(e.target.value)}
-          value={base}
-        >
-          {bases.map((b) => (
-            <option key={b.id} value={b.id}>
-              {b.nome}
-            </option>
-          ))}
-        </select>
-      </label>
-      <Duplicar aoCancelar={aoCancelar} aoCriar={aoCriar} de={escolhida.id} key={escolhida.id} nome={escolhida.nome} />
-    </div>
-  );
-}
-
-/**
- * Agent novo a partir de uma descrição.
- *
- * O modelo escreve o rascunho e a tela mostra o que saiu antes de gravar. O
- * rascunho nasce sem gatilho e com toda ação em aprovação: salvo, ele abre em
- * edição e só roda quando a pessoa disser quando.
- */
-function CriarComIa({
-  aoCancelar,
-  aoCriar,
-  modelo,
-}: {
-  aoCancelar: () => void;
-  aoCriar: (id: string) => void;
-  modelo: string | null;
-}) {
-  const { t } = useTranslation();
-  const [descricao, setDescricao] = useState("");
-  const [estado, setEstado] = useState<"editando" | "montando" | "salvando">("editando");
-  const [erro, setErro] = useState<string | null>(null);
-  const [rascunho, setRascunho] = useState<ReadResult<"agents.aiDraft"> | null>(null);
-  const curta = descricao.trim().length < 10;
-
-  async function montar() {
-    setEstado("montando");
-    setErro(null);
-    try {
-      setRascunho(await call("agents.aiDraft", descricao));
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : String(e));
-    }
-    setEstado("editando");
-  }
-
-  async function salvar() {
-    if (rascunho === null) return;
-    setEstado("salvando");
-    setErro(null);
-    try {
-      await call("agents.aiSave", rascunho.spec, descricao);
-      aoCriar(rascunho.spec.id);
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : String(e));
-      setEstado("editando");
-    }
-  }
-
-  return (
-    <div className="superficie ia-aurora flex max-w-2xl flex-col gap-3 rounded-xl px-4 py-4" data-locum-probe="agent-ia">
-      <div className="flex items-start gap-3">
-        <span className="ia-gradiente flex size-8 shrink-0 items-center justify-center rounded-lg text-white">
-          <Sparkles aria-hidden className="size-4" />
-        </span>
-        <div>
-          <p className="text-sm font-medium">{t("agents.ai.title")}</p>
-          <p className="text-muted-foreground text-xs">
-            {t("agents.ai.hint", { model: modelo === null ? "" : rotuloDoModelo(modelo) })}
-          </p>
-        </div>
-      </div>
-
-      <label className="flex flex-col gap-1 text-xs">
-        <span className="text-muted-foreground">{t("agents.ai.describe")}</span>
-        <textarea
-          className="border-border bg-background focus-visible:border-primary/50 min-h-24 resize-y rounded-lg border px-3 py-2 text-sm leading-relaxed outline-none focus-visible:shadow-[0_0_0_3px_color-mix(in_oklab,var(--primary)_15%,transparent)]"
-          disabled={estado !== "editando"}
-          onChange={(e) => setDescricao(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !curta) void montar();
-          }}
-          placeholder={t("agents.ai.placeholder")}
-          value={descricao}
-        />
-      </label>
-
-      {estado === "montando" ? (
-        <p className="ia-texto animate-pulse text-xs font-medium">{t("agents.ai.drafting")}</p>
-      ) : null}
-      {erro === null ? null : <p className="text-sev-critical text-xs">{erro}</p>}
-
-      {rascunho === null || estado === "montando" ? null : (
-        <div className="border-border bg-background/60 flex flex-col gap-2 rounded-lg border px-3 py-3" data-locum-agent-rascunho="">
-          <div className="flex flex-wrap items-baseline gap-x-2">
-            <p className="text-sm font-medium">{rascunho.spec.name}</p>
-            <code className="text-muted-foreground text-xs">{rascunho.spec.id}</code>
-          </div>
-          <ol className="flex flex-col gap-1.5">
-            {rascunho.spec.steps.map((passo, i) => (
-              <li className="flex items-center gap-2 text-xs" key={passo.key}>
-                <span className="bg-accent text-muted-foreground flex size-5 shrink-0 items-center justify-center rounded-full text-[10px]">
-                  {i + 1}
-                </span>
-                <span className="font-medium">{passo.name}</span>
-                <Badge className="font-mono text-[10px]" variant="secondary">
-                  {passo.type === "model" ? rotuloDoModelo(passo.model) : passo.type === "logic" ? passo.op : passo.action}
-                </Badge>
-              </li>
-            ))}
-          </ol>
-          <p className="text-muted-foreground text-xs">
-            {t("agents.ai.review", { model: rotuloDoModelo(rascunho.modelo) })}
-          </p>
-        </div>
-      )}
-
-      <div className="flex flex-wrap gap-2">
-        {rascunho === null || estado === "montando" ? (
-          <Button
-            className="cursor-pointer"
-            disabled={curta || estado !== "editando"}
-            onClick={() => void montar()}
-            size="sm"
-          >
-            {t("agents.ai.draft")}
-          </Button>
-        ) : (
-          <>
-            <Button className="cursor-pointer" disabled={estado !== "editando"} onClick={() => void salvar()} size="sm">
-              {estado === "salvando" ? t("agents.ai.saving") : t("agents.ai.save")}
-            </Button>
-            <Button
-              className="cursor-pointer"
-              disabled={estado !== "editando" || curta}
-              onClick={() => void montar()}
-              size="sm"
-              variant="secondary"
-            >
-              {t("agents.ai.again")}
-            </Button>
-          </>
-        )}
-        <Button className="cursor-pointer" onClick={aoCancelar} size="sm" variant="ghost">
-          {t("agents.editor.cancel")}
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-/**
- * Agent novo a partir deste.
- *
- * O jeito real de criar agent: partir de um que funciona e mudar o que for
- * diferente. Criado, ele abre direto em edição.
- */
-function Duplicar({
-  aoCancelar,
-  aoCriar,
-  de,
-  nome,
-}: {
-  aoCancelar: () => void;
-  aoCriar: (id: string) => void;
-  de: string;
-  nome: string;
-}) {
-  const { t } = useTranslation();
-  const [novoId, setNovoId] = useState(`${de}-copia`);
-  const [novoNome, setNovoNome] = useState(() => t("agents.editor.dup.copyName", { name: nome }));
-  const [criando, setCriando] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
-
-  async function criar() {
-    setCriando(true);
-    setErro(null);
-    try {
-      aoCriar(await duplicarAgent(de, novoId, novoNome));
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : String(e));
-      setCriando(false);
-    }
-  }
-
-  return (
-    <div className="superficie flex max-w-xl flex-col gap-3 rounded-xl px-4 py-3">
-      <div>
-        <p className="text-sm font-medium">{t("agents.editor.dup.title", { name: nome })}</p>
-        <p className="text-muted-foreground text-xs">{t("agents.editor.dup.hint")}</p>
-      </div>
-      <label className="flex flex-col gap-1 text-xs">
-        <span className="text-muted-foreground">{t("agents.editor.dup.newId")}</span>
-        <input
-          className="border-border bg-background focus-visible:ring-ring rounded-md border px-2 py-1 font-mono outline-none focus-visible:ring-1"
-          onChange={(e) => setNovoId(e.target.value)}
-          spellCheck={false}
-          value={novoId}
-        />
-      </label>
-      <label className="flex flex-col gap-1 text-xs">
-        <span className="text-muted-foreground">{t("agents.editor.dup.newName")}</span>
-        <input
-          className="border-border bg-background focus-visible:ring-ring rounded-md border px-2 py-1 outline-none focus-visible:ring-1"
-          onChange={(e) => setNovoNome(e.target.value)}
-          value={novoNome}
-        />
-      </label>
-      {erro && <p className="text-sev-critical text-xs">{erro}</p>}
-      <div className="flex gap-2">
-        <Button className="cursor-pointer" disabled={criando} onClick={() => void criar()} size="sm">
-          {criando ? t("agents.editor.dup.creating") : t("agents.editor.dup.create")}
-        </Button>
-        <Button className="cursor-pointer" onClick={aoCancelar} size="sm" variant="ghost">
-          {t("agents.editor.cancel")}
-        </Button>
-      </div>
-    </div>
   );
 }
 

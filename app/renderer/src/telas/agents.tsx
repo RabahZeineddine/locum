@@ -5,9 +5,9 @@ import { call, read, useRead, type ReadResult } from "@/lib/bridge";
 import { rotuloDoModelo } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
 import { ArrowLeft, Bot, Copy, Loader2, MessageSquare, Plus, RefreshCw, Trash2, Workflow, Wrench, X } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { ehLeitura } from "../../../src/config/leitura.js";
+import { ehLeitura, ehLeituraDa, escolhaDe, type EscolhaDeFerramenta } from "../../../src/config/leitura.js";
 import type { AgentBudget, AgentConnection, AgentProfile, ToolRef, Toolset } from "../../../src/config/types";
 import { SeletorDeModelo, ServidoresComBusca, servidoresDoModelo, useCatalogo } from "../editor-agent";
 import type { TelaProps } from "../rotas";
@@ -228,7 +228,15 @@ function EditorDoAgent({
 }) {
   const { t } = useTranslation();
   const lido = useRead("library.profile", id ?? "");
-  if (id !== null && lido.status === "loading") return <p className="text-muted-foreground pt-6 text-sm">{t("library.loading")}</p>;
+  const automacoes = useRead("agents.list");
+  // `agents/<id>` já foi o detalhe de uma automação: sem agent com esse id e
+  // com automação do modelo antigo, o link velho vai para onde ela mora agora.
+  const deAutomacao = id !== null && lido.status === "ready" && lido.data === null && (automacoes.data ?? []).some((a) => a.id === id);
+  useEffect(() => {
+    if (deAutomacao) navegar("automations", `legacy/${id}`);
+  }, [deAutomacao, id, navegar]);
+  if (deAutomacao) return null;
+  if (id !== null && (lido.status === "loading" || (lido.data === null && automacoes.status === "loading"))) return <p className="text-muted-foreground pt-6 text-sm">{t("library.loading")}</p>;
   if (id !== null && (lido.status === "error" || lido.data === null)) {
     return (
       <div className="flex flex-col items-start gap-3 pt-6">
@@ -685,7 +693,7 @@ function CartaoDaConexao({
 }) {
   const { t } = useTranslation();
   const servidores = conexao?.servers ?? [];
-  const ligadas = Object.entries(escolha.tools).filter(([nome, ligada]) => ligada && !ehLeitura(nome)).length;
+  const ligadas = Object.entries(escolha.tools).filter(([chave, e]) => e === true && !ehLeitura(chave.slice(chave.lastIndexOf("/") + 1))).length;
   return (
     <div className="border-border superficie flex flex-col gap-3 rounded-lg border p-3" data-locum-agent-conexao={escolha.connectionId}>
       <div className="flex flex-wrap items-center gap-2">
@@ -717,7 +725,7 @@ function CartaoDaConexao({
 
 function FerramentasDoServidor({
   servidor,
-  escolha,
+  escolha: escolha_,
   mudar,
 }: {
   servidor: string;
@@ -746,14 +754,31 @@ function FerramentasDoServidor({
     );
   };
 
-  const ligada = (nome: string): boolean => escolha.tools[nome] ?? ehLeitura(nome);
-  const definir = (nome: string, valor: boolean): void => {
-    const { [nome]: _antes, ...resto } = escolha.tools;
-    mudar({ ...escolha, tools: valor === ehLeitura(nome) ? resto : { ...resto, [nome]: valor } });
+  type Ferramenta = ReadResult<"mcp.tools">[number];
+  const efetiva = (f: Ferramenta): { ligada: boolean; leitura: boolean; declarada: boolean } => {
+    const escolha = escolhaDe(escolha_.tools, servidor, f.name);
+    const classe = ehLeituraDa(f);
+    return {
+      ligada: escolha === undefined ? classe : escolha !== false,
+      leitura: classe || escolha === "read",
+      declarada: escolha === "read",
+    };
+  };
+  // Grava a escolha na chave `servidor/ferramenta`, e só quando ela difere do
+  // que a chave antiga, só pelo nome, ou o padrão já dariam.
+  const definir = (f: Ferramenta, valor: EscolhaDeFerramenta): void => {
+    const chave = `${servidor}/${f.name}`;
+    const { [chave]: _antes, ...resto } = escolha_.tools;
+    const base = escolhaDe(resto, servidor, f.name);
+    const normal = (x: EscolhaDeFerramenta | undefined): EscolhaDeFerramenta => {
+      const v = x === undefined ? ehLeituraDa(f) : x;
+      return v === "read" && ehLeituraDa(f) ? true : v;
+    };
+    mudar({ ...escolha_, tools: normal(valor) === normal(base) ? resto : { ...resto, [chave]: valor } });
   };
 
-  const leituras = (ferramentas ?? []).filter((f) => ehLeitura(f.name));
-  const escritas = (ferramentas ?? []).filter((f) => !ehLeitura(f.name));
+  const leituras = (ferramentas ?? []).filter((f) => ehLeituraDa(f));
+  const escritas = (ferramentas ?? []).filter((f) => !ehLeituraDa(f));
 
   return (
     <div className="flex flex-col gap-2" data-locum-agent-servidor={servidor}>
@@ -782,15 +807,15 @@ function FerramentasDoServidor({
       ) : (
         <ul className="flex flex-col gap-0.5">
           {[...leituras, ...escritas].map((f) => {
-            const leitura = ehLeitura(f.name);
+            const { ligada, leitura, declarada } = efetiva(f);
             return (
-              <li key={f.name}>
-                <label className="hover:bg-muted/40 flex cursor-pointer items-center gap-2 rounded-md px-2 py-1">
+              <li className="hover:bg-muted/40 flex items-center gap-2 rounded-md px-2 py-1" key={f.name}>
+                <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
                   <input
-                    checked={ligada(f.name)}
+                    checked={ligada}
                     className="accent-primary cursor-pointer"
                     data-locum-agent-ferramenta={`${servidor}/${f.name}`}
-                    onChange={(e) => definir(f.name, e.target.checked)}
+                    onChange={(e) => definir(f, e.target.checked ? (declarada ? "read" : true) : false)}
                     type="checkbox"
                   />
                   <span className="font-mono text-xs">{f.name}</span>
@@ -806,12 +831,24 @@ function FerramentasDoServidor({
                     <span className="text-muted-foreground line-clamp-1 min-w-0 flex-1 text-xs">{f.description}</span>
                   )}
                 </label>
+                {ehLeituraDa(f) || !ligada ? null : (
+                  <label className="text-muted-foreground flex shrink-0 cursor-pointer items-center gap-1 text-[11px]" title={t("library.connections.declareReadHint")}>
+                    <input
+                      checked={declarada}
+                      className="accent-primary cursor-pointer"
+                      data-locum-agent-declarar-leitura={`${servidor}/${f.name}`}
+                      onChange={(e) => definir(f, e.target.checked ? "read" : true)}
+                      type="checkbox"
+                    />
+                    {t("library.connections.declareRead")}
+                  </label>
+                )}
               </li>
             );
           })}
         </ul>
       )}
-      {escritas.some((f) => ligada(f.name)) ? (
+      {escritas.some((f) => efetiva(f).ligada && !efetiva(f).leitura) ? (
         <p className="text-amber-400 text-xs">{t("library.connections.writeNote")}</p>
       ) : null}
     </div>
@@ -876,29 +913,51 @@ function SkillsDoAgent({ skills, trocar }: { skills: AgentProfile["skills"]; tro
 /* ------------------------------------------------------------ orçamento */
 
 function OrcamentoDoAgent({ orcamento, trocar }: { orcamento: AgentBudget; trocar: (v: AgentBudget) => void }) {
-  const { t } = useTranslation();
-  const mudar = (campo: (typeof LIMITES)[number], texto: string): void => {
-    const { [campo]: _antes, ...resto } = orcamento;
-    const n = campo.endsWith("Usd") ? Number.parseFloat(texto) : Number.parseInt(texto, 10);
-    trocar(Number.isFinite(n) && n > 0 ? { ...resto, [campo]: n } : resto);
-  };
   return (
     <div className="grid gap-5 sm:grid-cols-2" data-locum-agent-orcamento="">
       {LIMITES.map((campo) => (
-        <Campo dica={t(`library.budget.${campo}Hint`)} key={campo} rotulo={t(`library.budget.${campo}`)}>
-          <input
-            className={cn(CAMPO, "w-40")}
-            data-locum-agent-limite={campo}
-            min={0}
-            onChange={(e) => mudar(campo, e.target.value)}
-            placeholder={t("library.budget.noLimit")}
-            step={campo.endsWith("Usd") ? 0.5 : 1000}
-            type="number"
-            value={orcamento[campo] ?? ""}
-          />
-        </Campo>
+        <LimiteDoOrcamento campo={campo} key={campo} orcamento={orcamento} trocar={trocar} />
       ))}
     </div>
+  );
+}
+
+/**
+ * Um teto. O que se digita fica como texto ("0." e "0,25" a meio caminho não
+ * somem), e só o número válido e positivo vai para o spec; o resto tira o teto.
+ */
+function LimiteDoOrcamento({
+  campo,
+  orcamento,
+  trocar,
+}: {
+  campo: (typeof LIMITES)[number];
+  orcamento: AgentBudget;
+  trocar: (v: AgentBudget) => void;
+}) {
+  const { t } = useTranslation();
+  const dinheiro = campo.endsWith("Usd");
+  const [texto, setTexto] = useState(() => (orcamento[campo] === undefined ? "" : String(orcamento[campo])));
+  const mudar = (digitado: string): void => {
+    setTexto(digitado);
+    const { [campo]: _antes, ...resto } = orcamento;
+    const normal = digitado.trim().replace(",", ".");
+    const n = Number(normal);
+    const valido = normal !== "" && Number.isFinite(n) && n > 0 && (dinheiro || Number.isInteger(n));
+    trocar(valido ? { ...resto, [campo]: n } : resto);
+  };
+  return (
+    <Campo dica={t(`library.budget.${campo}Hint`)} rotulo={t(`library.budget.${campo}`)}>
+      <input
+        className={cn(CAMPO, "w-40")}
+        data-locum-agent-limite={campo}
+        inputMode={dinheiro ? "decimal" : "numeric"}
+        onChange={(e) => mudar(e.target.value)}
+        placeholder={t("library.budget.noLimit")}
+        type="text"
+        value={texto}
+      />
+    </Campo>
   );
 }
 

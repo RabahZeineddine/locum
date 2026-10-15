@@ -1551,6 +1551,7 @@ async function irParaPeloAlias(window: BrowserWindow, hash: string, esperado: st
  */
 async function checkAgentsDoConceito(window: BrowserWindow): Promise<void> {
   const { libraryService } = await import("../src/services/library-service.js");
+  const { agentService } = await import("../src/services/agent-service.js");
   const { FIXTURE_SERVER } = await import("../src/fixtures/mcp-fixture.js");
   const id = "smoke-conexao";
   const criados = new Set<string>([id]);
@@ -1617,7 +1618,16 @@ async function checkAgentsDoConceito(window: BrowserWindow): Promise<void> {
       })()`,
     );
     // `echo` é escrita pelo nome e foi ligada; `slack_history` é leitura e vem ligada; `sum` é escrita e vem desligada.
-    if (caixas.echo !== true || caixas.slack_history !== true || caixas.sum !== false) {
+    // `pid` só é leitura pela anotação do servidor; `get_pull_request` e companhia, pelo nome mesmo com `request` e `run`.
+    const leituraDeNome = ["get_pull_request", "pull_request_read", "get_workflow_run", "list_pull_requests"];
+    if (
+      caixas.pid !== true ||
+      caixas.create_pull_request !== false ||
+      leituraDeNome.some((n) => caixas[n] !== true) ||
+      caixas.echo !== true ||
+      caixas.slack_history !== true ||
+      caixas.sum !== false
+    ) {
       throw new Error(`as ferramentas do servidor de brinquedo vieram ${JSON.stringify(caixas)}`);
     }
     const resolvido = await libraryService.resolveProfile(id);
@@ -1673,6 +1683,10 @@ async function checkAgentsDoConceito(window: BrowserWindow): Promise<void> {
     criados.add("criado-pela-tela");
     if ((await libraryService.getProfile("criado-pela-tela")) === null) throw new Error("criar pela tela nao gravou o agent");
 
+    // O link velho `agents/<automação>` leva à automação do modelo antigo.
+    const antiga = (await agentService.list())[0]?.id;
+    if (antiga !== undefined) await irParaPeloAlias(window, `agents/${antiga}`, `automations|legacy/${antiga}`);
+
     // As automações antigas seguem acessíveis em Automações.
     await irPara(window, "automations", "legacy");
     await esperarProbe(window, "legado", `document.querySelector("[data-locum-probe=agents]") !== null ? true : null`);
@@ -1722,47 +1736,11 @@ async function checkAgents(window: BrowserWindow): Promise<string> {
     throw new Error(`a lista desenhou ${desenhadas} linha(s) para ${doServico.length} agent(s)`);
   }
 
-  // Agent novo pela lista parte de um existente: o botão abre a escolha da
-  // base já com o primeiro agent e o formulário da duplicação embaixo.
-  const novo = (await window.webContents.executeJavaScript(
-    `(async () => {
-      document.querySelector("[data-locum-agent-novo]")?.click();
-      for (let i = 0; i < 50; i++) {
-        const painel = document.querySelector("[data-locum-probe=agent-novo]");
-        if (painel !== null) return painel.querySelectorAll("option").length;
-        await new Promise((r) => setTimeout(r, 50));
-      }
-      return -1;
-    })()`,
+  // A tela legada é só leitura: não oferece criar, importar nem duplicar.
+  const criacao = (await window.webContents.executeJavaScript(
+    `document.querySelectorAll("[data-locum-agent-novo], [data-locum-agent-ia], [data-locum-importar]").length`,
   )) as number;
-  if (novo !== doServico.length) {
-    throw new Error(`o agent novo ofereceu ${novo} base(s) para ${doServico.length} agent(s)`);
-  }
-
-  // Criar com IA só aparece quando há quem escreva o rascunho. O smoke abre o
-  // painel e não pede rascunho: isso chamaria modelo.
-  const { criadorDisponivel } = await import("./agent-builder.js");
-  const criador = await criadorDisponivel();
-  const painelDaIa = (await window.webContents.executeJavaScript(
-    `(async () => {
-      for (let i = 0; i < 50; i++) {
-        const botao = document.querySelector("[data-locum-agent-ia]");
-        if (botao !== null) {
-          botao.click();
-          for (let j = 0; j < 50; j++) {
-            if (document.querySelector("[data-locum-probe=agent-ia] textarea") !== null) return "aberto";
-            await new Promise((r) => setTimeout(r, 50));
-          }
-          return "sem painel";
-        }
-        await new Promise((r) => setTimeout(r, 50));
-      }
-      return "sem botao";
-    })()`,
-  )) as string;
-  if (painelDaIa !== (criador.disponivel ? "aberto" : "sem botao")) {
-    throw new Error(`criar com IA: ${painelDaIa} com criador ${criador.disponivel ? "disponível" : "indisponível"}`);
-  }
+  if (criacao !== 0) throw new Error(`a tela legada oferece ${criacao} controle(s) de criação`);
 
   // O alvo e quem tem historico: comparar versao exige duas, e um agent de uma
   // versao so provaria a tela de lista mais uma vez.
@@ -6572,16 +6550,6 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
     );
     await new Promise((resolve) => setTimeout(resolve, 800));
     writeFileSync(join(destino, "automations-logica.png"), (await janela.webContents.capturePage()).toPNG());
-  }
-
-  // O editor abre por clique, então a captura clica.
-  if (primeiroAgent) {
-    await irPara(janela, "automations", `legacy/${primeiroAgent}`);
-    await janela.webContents.executeJavaScript(
-      `(document.querySelector("[data-locum-editar]")?.click(), null)`,
-    );
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    writeFileSync(join(destino, "agents-editor.png"), (await janela.webContents.capturePage()).toPNG());
   }
 
   // Resposta de Slack ou Teams não existe no exemplo; uma do Teams entra só

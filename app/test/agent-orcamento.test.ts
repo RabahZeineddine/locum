@@ -128,6 +128,8 @@ function depsDaConsulta(opcoes: { budget?: object; skills?: string[] }, pedidos:
         tools: [],
         confirmar: [],
         semServidor: [],
+        fixas: [],
+        grupos: [],
         system: "Base.",
       }),
     },
@@ -173,4 +175,16 @@ test("ask_agent confere o teto do dia do agent antes de rodar e põe as skills d
     if (anterior === undefined) delete process.env.ANTHROPIC_API_KEY;
     else process.env.ANTHROPIC_API_KEY = anterior;
   }
+});
+
+test("ask_agent recusa consultar agent cuja conexão não tem servidor ligado, e diz qual", async () => {
+  const pedidos: RuntimeRequest[] = [];
+  const deps = depsDaConsulta({}, pedidos, []);
+  const base = await deps.library!.resolveProfile("triador");
+  const comFalta: ConsultaDeps = {
+    ...deps,
+    library: { resolveProfile: async () => ({ ...base, semServidor: [{ connectionId: "jira", motivo: "sem servidor ligado nesta máquina" }] }) },
+  };
+  await assert.rejects(consultarAgent("triador", "oi", comFalta), /o agent "triador" usa a conexão "jira", sem servidor ligado nesta máquina/);
+  assert.equal(pedidos.length, 0);
 });

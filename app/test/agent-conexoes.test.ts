@@ -9,17 +9,29 @@ import { bancoDeTeste } from "./helpers/db.js";
 
 const modelo = "anthropic/claude-sonnet-5";
 
+type Oferecida = string | { name: string; readOnlyHint?: boolean };
+
+/** Catálogo de mentira: servidores por conexão (ligados salvo `desligados`) e ferramentas por servidor. */
 function catalogoCom(
   servidores: Record<string, string[]>,
-  ferramentas: Record<string, string[] | null>,
+  ferramentas: Record<string, Oferecida[] | Error>,
+  desligados: string[] = [],
 ): CatalogoDeConexoes {
   return {
-    servidoresDe: async (id) => servidores[id] ?? [],
-    ferramentasDe: async (servidor) => ferramentas[servidor] ?? null,
+    servidoresDe: async (id) => (servidores[id] ?? []).map((nome) => ({ nome, ligado: !desligados.includes(nome) })),
+    ferramentasDe: async (servidor) => {
+      const lista = ferramentas[servidor];
+      if (lista === undefined) throw new Error("não listou");
+      if (lista instanceof Error) throw lista;
+      return lista.map((f) => (typeof f === "string" ? { name: f } : f));
+    },
   };
 }
 
-const github = catalogoCom({ github: ["github"] }, { github: ["get_issue", "list_commits", "create_comment", "merge_branch"] });
+const github = catalogoCom(
+  { github: ["github"] },
+  { github: ["get_issue", "list_commits", "create_comment", "merge_branch", "get_pull_request", "pull_request_read"] },
+);
 
 const nomes = (tools: readonly { server: string; tool: string }[]) => tools.map((t) => `${t.server}.${t.tool}`).sort();
 
@@ -29,7 +41,12 @@ test("a conexão libera só a leitura por padrão, e a escrita fica à espera de
     spec: { id: "revisor", name: "Revisor", model: modelo, connections: [{ connectionId: "github" }] },
   });
   const resolvido = await biblioteca.resolveProfile("revisor");
-  assert.deepEqual(nomes(resolvido.tools), ["github.get_issue", "github.list_commits"]);
+  assert.deepEqual(nomes(resolvido.tools), [
+    "github.get_issue",
+    "github.get_pull_request",
+    "github.list_commits",
+    "github.pull_request_read",
+  ]);
   assert.ok(resolvido.tools.every((t) => t.class === "read"));
   assert.deepEqual(resolvido.confirmar, []);
 });
@@ -45,7 +62,7 @@ test("a escrita marcada sai de tools e vem em confirmar, como escrita externa", 
     },
   });
   const resolvido = await biblioteca.resolveProfile("revisor");
-  assert.deepEqual(nomes(resolvido.tools), ["github.get_issue"]);
+  assert.deepEqual(nomes(resolvido.tools), ["github.get_issue", "github.get_pull_request", "github.pull_request_read"]);
   assert.deepEqual(resolvido.confirmar, [{ server: "github", tool: "create_comment", class: "external_write" }]);
 });
 
@@ -65,15 +82,80 @@ test("conexão sem servidor não entra e é apontada, sem derrubar o agent", asy
   await biblioteca.saveProfile({ spec: { id: "x", name: "X", model: modelo, connections: [{ connectionId: "jira" }] } });
   const resolvido = await biblioteca.resolveProfile("x");
   assert.deepEqual(resolvido.tools, []);
-  assert.deepEqual(resolvido.semServidor, ["jira"]);
+  assert.deepEqual(resolvido.semServidor, [{ connectionId: "jira", motivo: "sem servidor ligado nesta máquina" }]);
 });
 
-test("servidor que nunca listou ferramentas só entra pelo que foi marcado", async () => {
-  const biblioteca = new LibraryService(bancoDeTeste(), catalogoCom({ jira: ["jira"] }, {}));
+test("servidor que não consegue listar as ferramentas deixa a conexão indisponível, com o motivo", async () => {
+  const jira = catalogoCom({ jira: ["jira"] }, { jira: new Error("conexão recusada") });
+  const biblioteca = new LibraryService(bancoDeTeste(), jira);
   await biblioteca.saveProfile({
     spec: { id: "x", name: "X", model: modelo, connections: [{ connectionId: "jira", tools: { search_issues: true } }] },
   });
-  assert.deepEqual(nomes((await biblioteca.resolveProfile("x")).tools), ["jira.search_issues"]);
+  const resolvido = await biblioteca.resolveProfile("x");
+  assert.deepEqual(resolvido.tools, []);
+  assert.match(resolvido.semServidor[0]!.motivo, /não consegui listar.*conexão recusada/);
+});
+
+test("servidor desligado não entra, e a conexão só com ele fica indisponível", async () => {
+  const catalogo = catalogoCom(
+    { grafana: ["grafana-prod", "grafana-hml"], jira: ["jira"] },
+    { "grafana-prod": ["query_metrics"], "grafana-hml": ["query_metrics"], jira: ["search_issues"] },
+    ["grafana-hml", "jira"],
+  );
+  const biblioteca = new LibraryService(bancoDeTeste(), catalogo);
+  await biblioteca.saveProfile({
+    spec: { id: "x", name: "X", model: modelo, connections: [{ connectionId: "grafana" }, { connectionId: "jira" }] },
+  });
+  const resolvido = await biblioteca.resolveProfile("x");
+  assert.deepEqual(nomes(resolvido.tools), ["grafana-prod.query_metrics"]);
+  assert.deepEqual(resolvido.semServidor, [{ connectionId: "jira", motivo: "o servidor dela está desligado" }]);
+  assert.deepEqual(resolvido.grupos, [{ connectionId: "grafana", servers: ["grafana-prod"] }]);
+});
+
+test("ferramenta que o servidor deixou de oferecer sai, mesmo escolhida", async () => {
+  const biblioteca = new LibraryService(bancoDeTeste(), catalogoCom({ github: ["github"] }, { github: ["get_issue"] }));
+  await biblioteca.saveProfile({
+    spec: { id: "x", name: "X", model: modelo, connections: [{ connectionId: "github", tools: { sumiu: true, "github/outra": "read" } }] },
+  });
+  const resolvido = await biblioteca.resolveProfile("x");
+  assert.deepEqual(nomes(resolvido.tools), ["github.get_issue"]);
+  assert.deepEqual(resolvido.confirmar, []);
+});
+
+test("instância nova da conexão entra na próxima resolução, sem regravar o agent", async () => {
+  const servidores = { grafana: ["grafana-prod"] };
+  const ferramentas = { "grafana-prod": ["query_metrics"], "grafana-dev": ["query_metrics"] };
+  const biblioteca = new LibraryService(bancoDeTeste(), catalogoCom(servidores, ferramentas));
+  await biblioteca.saveProfile({ spec: { id: "x", name: "X", model: modelo, connections: [{ connectionId: "grafana" }] } });
+  assert.deepEqual(nomes((await biblioteca.resolveProfile("x")).tools), ["grafana-prod.query_metrics"]);
+  servidores.grafana.push("grafana-dev");
+  assert.deepEqual(nomes((await biblioteca.resolveProfile("x")).tools), ["grafana-dev.query_metrics", "grafana-prod.query_metrics"]);
+});
+
+test("a anotação do servidor classifica, e a pessoa pode declarar que uma escrita só lê", async () => {
+  const catalogo = catalogoCom(
+    { fx: ["fx"] },
+    { fx: [{ name: "pid", readOnlyHint: true }, { name: "mystery_tool", readOnlyHint: false }, "sum", "echo"] },
+  );
+  const biblioteca = new LibraryService(bancoDeTeste(), catalogo);
+  await biblioteca.saveProfile({
+    spec: { id: "x", name: "X", model: modelo, connections: [{ connectionId: "fx", tools: { "fx/sum": "read", "fx/echo": true } }] },
+  });
+  const resolvido = await biblioteca.resolveProfile("x");
+  assert.deepEqual(nomes(resolvido.tools), ["fx.pid", "fx.sum"]);
+  assert.deepEqual(nomes(resolvido.confirmar), ["fx.echo"]);
+});
+
+test("a escolha por servidor e ferramenta separa instâncias que a chave antiga, só pelo nome, não separa", async () => {
+  const catalogo = catalogoCom(
+    { grafana: ["grafana-prod", "grafana-hml"] },
+    { "grafana-prod": ["create_dashboard"], "grafana-hml": ["create_dashboard"] },
+  );
+  const biblioteca = new LibraryService(bancoDeTeste(), catalogo);
+  await biblioteca.saveProfile({
+    spec: { id: "x", name: "X", model: modelo, connections: [{ connectionId: "grafana", tools: { "grafana-hml/create_dashboard": true } }] },
+  });
+  assert.deepEqual(nomes((await biblioteca.resolveProfile("x")).confirmar), ["grafana-hml.create_dashboard"]);
 });
 
 test("toolset e conexão que alcançam a mesma ferramenta não a repetem", async () => {
@@ -91,10 +173,9 @@ test("toolset e conexão que alcançam a mesma ferramenta não a repetem", async
       connections: [{ connectionId: "github" }],
     },
   });
-  assert.deepEqual(nomes((await biblioteca.resolveProfile("revisor")).tools), [
-    "github.get_issue",
-    "github.list_commits",
-  ]);
+  const { tools } = await biblioteca.resolveProfile("revisor");
+  assert.equal(tools.filter((t) => t.tool === "get_issue").length, 1);
+  assert.equal(tools.filter((t) => t.tool === "list_commits").length, 1);
 });
 
 test("versão gravada antes das conexões, das skills e do orçamento continua abrindo", async () => {
