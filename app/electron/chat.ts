@@ -7,7 +7,8 @@ import { join } from "node:path";
 import { conversarPeloClaude, type EventoDoChat } from "../src/chat/claude-chat.js";
 import type { McpServerConfig } from "../src/config/types.js";
 import { appHome } from "../src/db/path.js";
-import { claudeAccountService, ehLeitura, prefixoDoServidor } from "../src/runtimes/claude-account.js";
+import { claudeAccountService, prefixoDoServidor } from "../src/runtimes/claude-account.js";
+import { ehLeituraDa } from "../src/config/leitura.js";
 import { claudeBinary } from "../src/runtimes/claude-binary.js";
 import { mcpConfigJson } from "../src/runtimes/claude-code.js";
 import { initiativeService } from "../src/services/initiative-service.js";
@@ -117,9 +118,8 @@ async function leiturasDe(cfg: McpServerConfig): Promise<string[]> {
   const guardado = leiturasPorServidor.get(cfg.name);
   if (guardado && Date.now() - guardado.em < 10 * 60 * 1000) return guardado.nomes;
   const nomes = (await mcpService.listTools(cfg.name).catch(() => []))
-    .map((f) => f.name)
-    .filter((nome) => ehLeitura(nome))
-    .map((nome) => `${prefixoDoServidor(cfg.name)}${nome}`);
+    .filter((f) => ehLeituraDa(f))
+    .map(({ name: nome }) => `${prefixoDoServidor(cfg.name)}${nome}`);
   leiturasPorServidor.set(cfg.name, { em: Date.now(), nomes });
   return nomes;
 }

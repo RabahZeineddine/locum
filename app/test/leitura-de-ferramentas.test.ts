@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ehLeitura, ehLeituraDa, escolhaDe } from "../src/config/leitura.js";
+import { ehLeitura, ehLeituraDa, escolhaDe, escolhaInicial } from "../src/config/leitura.js";
 
 /** Nomes reais dos servidores que o Locum mais liga: GitHub, Atlassian e Grafana. */
 
@@ -72,4 +72,41 @@ test("a anotação de leitura não vale para nome que escreve, mesmo local", () 
   }
   assert.equal(ehLeituraDa({ name: "copilot-retrieve", readOnlyHint: true }), true);
   assert.equal(ehLeituraDa({ name: "get_settings", readOnlyHint: true }), true);
+});
+
+const ESCRITA_DE_SUBSTANTIVO = [
+  "drop-schema", "clear-logs", "purge-history", "grant-access-policy", "destroy-resource", "subscribe-events",
+  "acknowledge-events", "snooze-events", "export-report", "lock-documents", "kill-process-tree", "reset-status",
+  "drop_schema", "clear_logs", "purge_history",
+];
+
+test("verbo de escrita antes de substantivo de leitura continua escrita, com ou sem hífen", () => {
+  for (const nome of ESCRITA_DE_SUBSTANTIVO) {
+    assert.equal(ehLeitura(nome), false, nome);
+    assert.equal(ehLeituraDa({ name: nome }), false, nome);
+  }
+});
+
+test("composto com hífen só é leitura com verbo de leitura na frente", () => {
+  for (const nome of ["list-chats", "get-settings", "list-updates", "search-created"]) {
+    assert.equal(ehLeitura(nome), true, nome);
+  }
+  for (const nome of ["events-feed", "schema-tree", "report-status"]) assert.equal(ehLeitura(nome), false, nome);
+});
+
+test("só o verbo inicial ou to-file e upload derrubam a anotação de leitura", () => {
+  for (const nome of ["get-update-status", "list-update-history", "get-send-status", "get-data-set"]) {
+    assert.equal(ehLeituraDa({ name: nome, readOnlyHint: true }), true, nome);
+  }
+  assert.equal(ehLeituraDa({ name: "download-bytes-to-file", readOnlyHint: true }), false);
+  assert.equal(ehLeituraDa({ name: "send-mail", readOnlyHint: true }), false);
+});
+
+test("a escolha ao adicionar a conexão grava as leituras ligadas e não depende de regra reavaliada", () => {
+  const pequeno = escolhaInicial([{ nome: "gh", ferramentas: [{ name: "get_issue" }, { name: "create_issue" }] }]);
+  assert.deepEqual(pequeno, { tools: { "gh/get_issue": true } });
+
+  const grande = Array.from({ length: 31 }, (_, i) => ({ name: `get_item_${i}` }));
+  assert.deepEqual(escolhaInicial([{ nome: "ms", ferramentas: grande }]), { tools: {}, leituraPadrao: "limitada" });
+  assert.deepEqual(escolhaInicial([{ nome: "novo", ferramentas: null }]), { tools: {}, leituraPadrao: "limitada" });
 });
