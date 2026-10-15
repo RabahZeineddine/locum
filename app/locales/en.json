@@ -256,6 +256,49 @@
     "systemInitiativeFolder": "The initiative folder is {{folder}}: start from its context.md when the question is about the initiative. You only read: code changes happen in the initiative terminal, and anything that goes out (comment, message, card) goes as an automation, through the approval queue. Propose the text and say where to do it.",
     "reset": "Start over"
   },
+  "agentChat": {
+    "title": "Chat",
+    "version": "version {{version}}",
+    "reset": "Clear conversation",
+    "empty": {
+      "title": "Talk to this agent",
+      "body": "It answers with the instructions, model, skills and read tools you configured. To write anything, it asks for your click."
+    },
+    "placeholder": "Ask or hand a task to this agent",
+    "placeholderPending": "Decide the card above to continue",
+    "note": "Reads run straight away. Each write shows up as a card and only goes out when you click Run. Outside the Queue: this is testing, not automation.",
+    "saveFirst": "Save the agent to talk to it.",
+    "unsaved": "The chat uses the saved version. Changes you have not saved yet apply after Save.",
+    "noServer": "The connection {{connection}} has no server right now: {{reason}}. The agent talks without its tools.",
+    "card": {
+      "title": {
+        "pendente": "Write waiting",
+        "executando": "Running",
+        "executado": "Run",
+        "falhou": "Failed",
+        "recusado": "Refused",
+        "expirado": "Expired"
+      },
+      "run": "Run",
+      "refuse": "Refuse",
+      "result": "Result",
+      "expiredHint": "The conversation was cleared or interrupted, or the app closed, before the click. Nothing was run."
+    },
+    "scopes": {
+      "run": "per-run",
+      "day": "daily"
+    },
+    "errors": {
+      "busy": "The agent is still answering.",
+      "pending": "Decide the write that is waiting for your click first.",
+      "expired": "That card expired: the conversation was cleared or interrupted, or the app closed before the click.",
+      "budget": "This agent's {{scope}} budget is spent: limit {{limit}}, spent {{spent}}. Adjust it under Budget, on the agent page.",
+      "codex": "The agent chat does not run with a Codex model: it does not stream text. Pick another model in the Model tab.",
+      "noApiModel": "The provider \"{{provider}}\" does not expose an API model.",
+      "noResult": "The tool did not answer: the turn ended before the result."
+    },
+    "accountIgnored": "{{count}} Claude account tool(s) are left out: Claude account connectors do not enter the agent chat for safety, because your account settings could allow writes without your click."
+  },
   "bridge": {
     "loading": "reading through the bridge...",
     "refused": "the bridge refused {{channel}}: {{message}}",
@@ -2337,13 +2380,6 @@
       "perDayTokens": "Per day (tokens)",
       "perDayTokensHint": "The same cap, in tokens, for the day.",
       "noLimit": "no cap"
-    },
-    "chat": {
-      "title": "Chat",
-      "soon": "coming in the next version",
-      "placeholder": "Ask or hand a task to this agent",
-      "send": "Send",
-      "note": "The chat uses the model, connections and skills from this page. A write on a connection asks for your confirmation before it goes out."
     }
   },
   "digest": {

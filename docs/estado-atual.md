@@ -4,6 +4,57 @@ Projeto renomeado de Agent Watchers para Locum em 19 de setembro de 2026.
 
 Atualizado em 15 de outubro de 2026.
 
+## Agent do conceito v3, fatia B: o chat do agent (15/10/2026)
+
+A aba Conversar do agent conversa com o que `resolveProfile` entrega: system,
+modelo, leitura liberada, skills e orçamento. O motor é
+`app/src/agent-chat/conversas.ts` (testável fora do Electron), ligado em
+`app/electron/agent-chat.ts`, nos canais `agentChat.*` e na aba
+(`app/renderer/src/agent-chat.tsx`). Streaming, cancelar e limpar. As falas
+ficam em `chat.falas.agent:<id>` (200 no máximo), a sessão do Claude Code em
+`chat.sessao.agent:<id>`, e o histórico do modelo é compactado como o do
+assistente (`compactarHistorico`). Depois de reiniciar, o modelo por API relê as
+falas guardadas.
+
+- Leitura roda direto. Escrita ligada na conexão (`confirmar`) para num cartão
+  com servidor, ferramenta e argumentos em JSON, e só roda no clique em
+  Executar. Recusar devolve ao modelo que a pessoa recusou. O cartão vive no
+  processo principal, então trocar de tela não o perde; limpar, cancelar ou
+  fechar o app o deixam "expirado" e o clique atrasado não roda nada. Com cartão
+  pendente a conversa não aceita mensagem nova. Nada disso vai para a Fila.
+- Por API (AI SDK 6): as escritas entram no `ToolSet` por
+  `McpRegistry.toolsComAprovacao`, marcadas com `needsApproval`. O `streamText`
+  para no `tool-approval-request`; o clique vira uma mensagem `tool` com
+  `tool-approval-response` e uma nova chamada de `streamText` executa só a
+  aprovada (a recusada chega ao modelo como `execution-denied`). Com duas
+  escritas na mesma volta, a continuação espera as duas decisões. Ferramenta
+  fora do agent cai em `NoSuchToolError`, sem cartão. As ferramentas da conta
+  Claude ficam de fora com modelo por API.
+- Pela assinatura (`claude-code/...`): `--allowedTools` leva só a leitura e
+  `--permission-prompt-tool` aponta para a ferramenta `aprovar` de um servidor
+  MCP local (HTTP em 127.0.0.1, token por volta, em
+  `servidor-de-aprovacao.ts`). O Claude Code a chama a cada ferramenta não
+  liberada e espera `allow` ou `deny`; ela só abre cartão para a escrita ligada
+  neste agent e nega o resto sem perguntar. Sem ferramenta de arquivo
+  (`--tools ""`) e com `--permission-mode default`, porque em `dontAsk` o CLI
+  nega sozinho e nunca chama a ferramenta. Conferido com o `claude` 2.1.300 de
+  verdade, com espera de 4 s, permitindo e negando. Codex fica de fora: não
+  entrega texto aos pedaços.
+- Orçamento: `assertWithinBudget` antes de cada volta (inclusive a que continua
+  depois do clique) e `recordSpend` depois, na chave `biblioteca:<id>`. Estourar
+  mostra o limite e o gasto na conversa. Conexão sem servidor aparece como aviso
+  no topo, e a conversa segue sem as ferramentas dela.
+- O contador "N de escrita ligadas" e a recusa de liberar escrita pelo MCP agora
+  olham a anotação do cache do servidor (`LibraryService.ehEscritaLigada`), e o
+  nome só quando não há anotação.
+- A fumaça conversa com `src/fixtures/modelo-falso.ts` (roteiro `[[chama
+  ferramenta {json}]]`) e as ferramentas do servidor de brinquedo: leitura
+  direta, cartão, Executar, Recusar, voltar à tela com cartão pendente e limpar.
+
+O que ficou de fora: o caminho do Claude Code com a escrita aprovada só tem
+teste do motor com um executor falso e a conferência manual acima, sem fumaça
+com o CLI de verdade.
+
 ## Agent do conceito v3, fatia A (15/10/2026)
 
 Item 3 do ADR 0005, sem o chat. O agent nasce do perfil da Biblioteca
@@ -37,7 +88,7 @@ migração: o spec é JSON versionado e os campos novos têm padrão).
   que o teto é do agent e onde mudar.
 - Tela Agents (rota `agents`, `app/renderer/src/telas/agents.tsx`) com lista,
   duplicar, criar, remover e as seções Instruções, Modelo, Conexões e
-  ferramentas, Skills, Orçamento, Conversar (reservado, desabilitado) e Onde é
+  ferramentas, Skills, Orçamento, Conversar e Onde é
   usado. Toolsets viraram a aba "Toolsets (atalhos)". `library`,
   `library/<id>` e `library/toolsets` são aliases em `ROTAS_ANTIGAS`; o
   marketplace de agents é o de Automações.
