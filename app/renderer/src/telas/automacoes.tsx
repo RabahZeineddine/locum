@@ -14,6 +14,7 @@ import { appDoGatilho, resumoDoGatilho, Selo, tituloDoGatilho } from "../automac
 import { InstalacaoDeTemplate } from "../instalar-template";
 import { AutomacoesLegado } from "./automacoes-legado";
 import type { TelaProps } from "../rotas";
+import { useAcaoDaTela } from "@/lib/acao-da-tela";
 
 type Linha = ReadResult<"agents.overview">[number];
 type Template = ReadResult<"agents.templates">[number];
@@ -193,6 +194,7 @@ function ListaDeAutomacoes({ navegar }: Pick<TelaProps, "navegar">) {
   const inicial = useRead("agents.overview");
   const [relida, setRelida] = useState<Linha[] | null>(null);
   const [criando, setCriando] = useState(false);
+  useAcaoDaTela("nova-automacao", () => setCriando(true));
   const lista = relida ?? inicial.data ?? [];
   const reler = (): void => {
     read("agents.overview").then(setRelida, () => undefined);
