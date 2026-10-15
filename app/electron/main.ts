@@ -1,11 +1,12 @@
 // Primeiro import de propósito: com `--mcp`, desvia o log do stdout antes que
 // qualquer outro módulo escreva nele.
 import { modoFerramentas, modoMcp } from "./mcp-stdout.js";
+import { ehComandoDeCofre, politicaDoDock } from "./dock-policy.js";
 import { app, BrowserWindow, shell } from "electron";
 import { captureDeepLinks } from "./deep-link.js";
 import { VERSAO } from "./versao.js";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, writeSync } from "node:fs";
 import { aplicarIdioma, idiomaAtual, iniciarI18n, t } from "./i18n.js";
 import en from "../locales/en.json";
 import ptBR from "../locales/pt-BR.json";
@@ -76,10 +77,9 @@ if (pastaDaFumaca) {
 // Servidor MCP e comando de cofre ficam fora da trava de instância única: o
 // Claude Code abre o `--mcp` com o Locum já aberto na bandeja, e a trava faria
 // o processo sair calado, sem responder ao primeiro pedido.
-const comandoDeLinha =
-  modoMcp || process.argv.includes("--set-secret") || process.argv.includes("--remove-secret");
+const comandoDeLinha = modoMcp || ehComandoDeCofre(process.argv);
 captureDeepLinks({
-  singleInstance: !smoke && !comandoDeLinha,
+  singleInstance: !smoke && !comandoDeLinha && !process.argv.includes("--diagnostico-dock"),
   ...(modoMcp ? { encaminhar: abrirOAppDeVerdade } : {}),
 });
 
@@ -103,6 +103,17 @@ function abrirOAppDeVerdade(url?: string): void {
   const env = { ...process.env };
   delete env.ELECTRON_RUN_AS_NODE;
   void import("node:child_process").then(({ spawn }) => {
+    // Empacotado no macOS, quem abre é o LaunchServices (`open -a`), como um
+    // clique no Finder: o app sobe ativo, com foco e barra de menu. Um `spawn`
+    // direto de um processo `LSUIElement` sobe o filho em segundo plano. A URL
+    // vai como argumento do `open`, que a entrega pelo `open-url`; as bandeiras
+    // só valem num lançamento novo, e com o app no ar o `open` o ativa.
+    if (app.isPackaged && process.platform === "darwin") {
+      const bundle = dirname(dirname(dirname(process.execPath)));
+      const aberto = [bundle, ...(url === undefined ? [] : [url]), ...(args.length > 0 ? ["--args", ...args] : [])];
+      spawn("/usr/bin/open", ["-a", ...aberto], { detached: true, stdio: "ignore", env }).unref();
+      return;
+    }
     spawn(process.execPath, url === undefined ? args : [...args, url], { detached: true, stdio: "ignore", env }).unref();
   });
 }
@@ -6469,11 +6480,38 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
   console.log(`capturas em ${destino}`);
 }
 
+/**
+ * O pacote nasce `LSUIElement` (sem Dock), e só o modo com janela é promovido
+ * a app comum, antes de qualquer janela. Os modos sem janela ficam `accessory`
+ * também em desenvolvimento, onde o Info.plist é o do Electron.
+ */
+async function aplicarPoliticaDoDock(): Promise<void> {
+  if (process.platform !== "darwin") return;
+  const politica = politicaDoDock(process.argv);
+  app.setActivationPolicy(politica);
+  if (politica !== "regular") {
+    app.dock?.hide();
+    return;
+  }
+  await app.dock?.show();
+  // Com `LSUIElement` o processo sobe sem ativar, e nem `setActivationPolicy`
+  // nem `dock.show()` ativam um app que não está ativo: a janela abriria atrás
+  // e a barra de menu ficaria presa no app anterior. Quando quem subiu o
+  // processo foi o login, roubar o foco seria o erro contrário.
+  if (!app.getLoginItemSettings().wasOpenedAtLogin) app.focus({ steal: true });
+}
+
 async function main(): Promise<void> {
   await app.whenReady();
-  // Servidor MCP não tem janela nem ícone no dock: quem o abre é o Claude Code,
-  // a cada sessão, e um ícone pulando a cada sessão nova seria ruído.
-  if (modoMcp) app.dock?.hide();
+  await aplicarPoliticaDoDock();
+  if (process.argv.includes("--diagnostico-dock")) {
+    // Para a fumaça do pacote: o que o macOS enxerga deste processo, sem subir
+    // nada. `writeSync`, porque o `app.exit` não espera o stream esvaziar e,
+    // no `--mcp`, o `console.log` vai para o stderr.
+    writeSync(1, `dock-visivel=${app.dock?.isVisible() ?? false}\n`);
+    app.exit(0);
+    return;
+  }
 
   // Antes de tudo que lê o banco, inclusive do idioma, que mora em `settings`.
   const esquema = await migrarEsquema();
@@ -6583,10 +6621,10 @@ async function main(): Promise<void> {
   });
 
   if (smoke) {
-    // Sem dock e sem janela: o loop de verificacao roda sem ninguem olhando, e
-    // uma janela aberta travaria a iteracao esperando um clique. A bandeja
-    // continua valendo, porque ela nao pede clique de ninguem para existir.
-    app.dock?.hide();
+    // Sem dock e sem janela (politica `accessory`, ver `aplicarPoliticaDoDock`):
+    // o loop de verificacao roda sem ninguem olhando, e uma janela aberta
+    // travaria a iteracao esperando um clique. A bandeja continua valendo,
+    // porque ela nao pede clique de ninguem para existir.
     // A pasta de rascunho nasce vazia, e boa parte da bateria parte do agent
     // semente. Numa pasta que já o tem, `upsert` com o mesmo spec não grava nada.
     const { agentService } = await import("../src/services/agent-service.js");

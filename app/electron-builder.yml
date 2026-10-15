@@ -91,6 +91,12 @@ mac:
   # Runtime endurecido com assinatura ad-hoc barra o carregamento do módulo
   # nativo do SQLite, que não tem a mesma assinatura do app.
   hardenedRuntime: false
+  # Todo processo do pacote nasce sem Dock. O Claude Code sobe `Locum --mcp` e
+  # `--ferramentas` a cada sessão, e um `dock.hide()` depois do `ready` chega
+  # tarde: o macOS já registrou o ícone e o pôs em "recentes". O modo com
+  # janela se promove a `regular` em `electron/dock-policy.ts`.
+  extendInfo:
+    LSUIElement: true
   target:
     - target: dmg
       arch:

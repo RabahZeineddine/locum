@@ -1466,6 +1466,14 @@ processo, sem janela. Agora o `--mcp` que recebe `activate` (passados 5 s do
 lançamento, para não confundir com a subida) ou `open-url` sobe o app de
 verdade, e o app no ar traz a janela para a frente no `second-instance`.
 
+**Um ícone a mais no Dock a cada sessão do Claude Code.** O `--mcp` e o
+`--ferramentas` nasciam como app comum e só escondiam o Dock depois do `ready`,
+tarde para o macOS, que já tinha registrado o ícone e o posto em recentes. Agora
+o `Info.plist` do pacote leva `LSUIElement` (nenhum processo nasce com Dock) e o
+modo com janela se promove a `regular` logo depois do `ready`, antes da janela
+(`electron/dock-policy.ts`). Os modos sem janela ficam `accessory`. A fumaça do
+pacote confere o plist e pergunta o Dock por `--diagnostico-dock`.
+
 **Editor do agent em abas.** O formulário único virou quatro abas: Geral
 (nome, descrição, modelo, temperatura, teto de passos), Instruções (contexto
 e instruções, em campos maiores), Ferramentas e Onde é usado. Ferramentas
