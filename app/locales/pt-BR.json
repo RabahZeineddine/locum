@@ -774,19 +774,11 @@
       "order": "ordem {{order}}"
     },
     "servers": {
-      "title": "Servidores MCP",
-      "description": "Os servidores que agents e passos usam, separados pela origem. Importado entra desligado: confira o comando ou o endereço e ligue.",
-      "empty": "Nenhum servidor cadastrado.",
-      "enabled": "habilitado",
-      "disabled": "desabilitado",
       "turnOn": "Ligar",
       "turnOff": "Desligar",
       "test": "Testar",
       "testing": "testando...",
-      "list": "Ferramentas",
-      "listing": "listando...",
       "noTools": "nenhuma ferramenta",
-      "tool": "{{name}} · {{tokens}} tok",
       "refused": "a ponte recusou: {{message}}",
       "ok_one": "conectou em {{elapsed}}ms e expõe {{count}} ferramenta",
       "ok_other": "conectou em {{elapsed}}ms e expõe {{count}} ferramentas",
@@ -798,7 +790,6 @@
         "failed": "falhou {{when}}",
         "ok": "respondeu {{when}}"
       },
-      "search": "Buscar servidor",
       "authorize": "Autorizar",
       "scopeRead": "leitura",
       "scopeWrite": "escrita",
@@ -807,13 +798,7 @@
         "user": "Do Claude Code",
         "plugin": "Plugin {{name}}",
         "tool": "Do {{name}}",
-        "apps": "Cadastrados pelos apps",
-        "count_zero": "{{on}} de {{count}} ligados",
-        "count_one": "{{on}} de {{count}} ligado",
-        "count_other": "{{on}} de {{count}} ligados",
-        "problems_one": "{{count}} com problema",
-        "problems_other": "{{count}} com problema",
-        "problems_zero": "{{count}} com problema"
+        "apps": "Cadastrados pelos apps"
       },
       "dot": {
         "off": "desligado",
@@ -822,17 +807,8 @@
         "ok": "respondendo",
         "untested": "ligado, ainda sem teste"
       },
-      "testAll": "Testar ligados",
-      "testingAll": "testando {{done}} de {{total}}",
-      "none": "Nenhum servidor neste filtro.",
       "reauthorize": "Autorizar de novo",
-      "filter": {
-        "label": "Filtrar por estado",
-        "todos": "Todos",
-        "problema": "Com problema",
-        "ligados": "Ligados",
-        "desligados": "Desligados"
-      },
+      "filter": {},
       "tags": {
         "internal": "rede interna",
         "usedBy_one": "{{count}} iniciativa",
@@ -859,8 +835,6 @@
         "tokens_one": "{{count}} tok",
         "tokens_other": "{{count}} tok",
         "tokens_zero": "{{count}} tok",
-        "usedBy": "Usado por",
-        "unused": "Nenhuma iniciativa usa este servidor.",
         "reload": "Listar de novo"
       }
     },
@@ -1527,7 +1501,6 @@
       "waiting": "Autorize na janela do navegador que abriu. Esta tela atualiza sozinha quando voltar."
     },
     "custom": {
-      "open": "Adicionar servidor MCP",
       "title": "Servidor MCP próprio",
       "description": "Qualquer servidor MCP remoto, pelo endereço. Se ele pedir OAuth com registro automático, o navegador abre para você autorizar; se não pedir, ele só entra no cadastro.",
       "name": "Nome",
@@ -1625,7 +1598,6 @@
       }
     },
     "import": {
-      "open": "Importar de outras ferramentas",
       "title": "Importar de outras ferramentas",
       "description": "Os servidores MCP já configurados nesta máquina: no Claude Code (os seus e os dos plugins ligados), no opencode, no Cursor, no VS Code e no Claude Desktop. Importados, passam a ser do Locum e rodam com qualquer modelo, mesmo sem a ferramenta de origem. Entram desligados; a credencial vai para o cofre. Os conectores do claude.ai não aparecem aqui: eles só existem pela conta Claude.",
       "empty": "Nenhum servidor MCP no Claude Code, opencode, Cursor, VS Code ou Claude Desktop desta máquina.",

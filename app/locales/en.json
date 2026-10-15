@@ -746,19 +746,11 @@
       "order": "order {{order}}"
     },
     "servers": {
-      "title": "MCP servers",
-      "description": "Servers that agents and steps use, grouped by origin. Imported servers start off: check the command or URL and turn them on.",
-      "empty": "No server registered.",
-      "enabled": "enabled",
-      "disabled": "disabled",
       "turnOn": "Turn on",
       "turnOff": "Turn off",
       "test": "Test",
       "testing": "testing...",
-      "list": "Tools",
-      "listing": "listing...",
       "noTools": "no tool",
-      "tool": "{{name}} · {{tokens}} tok",
       "refused": "the bridge refused: {{message}}",
       "ok_one": "connected in {{elapsed}}ms and exposes {{count}} tool",
       "ok_other": "connected in {{elapsed}}ms and exposes {{count}} tools",
@@ -769,7 +761,6 @@
         "failed": "failed {{when}}",
         "ok": "responded {{when}}"
       },
-      "search": "Search servers",
       "authorize": "Authorize",
       "scopeRead": "read",
       "scopeWrite": "write",
@@ -778,13 +769,7 @@
         "user": "From Claude Code",
         "plugin": "{{name}} plugin",
         "tool": "From {{name}}",
-        "apps": "Registered by apps",
-        "count_zero": "{{on}} of {{count}} on",
-        "count_one": "{{on}} of {{count}} on",
-        "count_other": "{{on}} of {{count}} on",
-        "problems_one": "{{count}} with problems",
-        "problems_other": "{{count}} with problems",
-        "problems_zero": "{{count}} with problems"
+        "apps": "Registered by apps"
       },
       "dot": {
         "off": "off",
@@ -793,17 +778,8 @@
         "ok": "responding",
         "untested": "on, not tested yet"
       },
-      "testAll": "Test enabled",
-      "testingAll": "testing {{done}} of {{total}}",
-      "none": "No server matches this filter.",
       "reauthorize": "Authorize again",
-      "filter": {
-        "label": "Filter by state",
-        "todos": "All",
-        "problema": "With problems",
-        "ligados": "On",
-        "desligados": "Off"
-      },
+      "filter": {},
       "tags": {
         "internal": "internal network",
         "usedBy_one": "{{count}} initiative",
@@ -830,8 +806,6 @@
         "tokens_one": "{{count}} tok",
         "tokens_other": "{{count}} tok",
         "tokens_zero": "{{count}} tok",
-        "usedBy": "Used by",
-        "unused": "No initiative uses this server.",
         "reload": "List again"
       }
     },
@@ -1489,7 +1463,6 @@
       "waiting": "Authorize in the browser window that opened. This screen updates by itself when you come back."
     },
     "custom": {
-      "open": "Add MCP server",
       "title": "Your own MCP server",
       "description": "Any remote MCP server, by address. If it asks for OAuth with dynamic registration, the browser opens for you to authorize; if not, it is just registered.",
       "name": "Name",
@@ -1587,7 +1560,6 @@
       }
     },
     "import": {
-      "open": "Import from other tools",
       "title": "Import from other tools",
       "description": "The MCP servers already set up on this machine: in Claude Code (your own and the ones from enabled plugins), opencode, Cursor, VS Code and Claude Desktop. Once imported they belong to Locum and run with any model, even without the original tool. They come in disabled; credentials go to the vault. claude.ai connectors are not listed: they only exist through the Claude account.",
       "empty": "No MCP server in this machine's Claude Code, opencode, Cursor, VS Code or Claude Desktop.",
