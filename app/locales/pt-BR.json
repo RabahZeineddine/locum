@@ -2402,7 +2402,15 @@
     "loading": "Carregando...",
     "notFound": "Agent não encontrado.",
     "back": "Agents",
-    "empty": "Nenhum agent na biblioteca ainda. Crie um por assunto: chamados, parcerias, revisão de PR.",
+    "empty": "Crie um por assunto: chamados, parcerias, revisão de PR.",
+    "emptyTitle": "Nenhum agent na biblioteca ainda",
+    "versionShort": "v{{version}}",
+    "row": {
+      "noConnections": "sem conexões",
+      "writes_one": "{{count}} de escrita",
+      "writes_other": "{{count}} de escrita",
+      "writes_zero": "{{count}} de escrita"
+    },
     "tabs": {
       "agents": "Agents",
       "toolsets": "Toolsets (atalhos)"
@@ -2482,7 +2490,8 @@
     "toolsets": {
       "lead": "Um toolset junta ferramentas de um ou mais apps. O agent que inclui o toolset ganha todas elas.",
       "new": "Novo toolset",
-      "empty": "Nenhum toolset ainda. Exemplo: \"Jira leitura\" com busca e leitura de issue.",
+      "empty": "Exemplo: \"Jira leitura\" com busca e leitura de issue.",
+      "emptyTitle": "Nenhum toolset ainda",
       "name": "Nome",
       "description": "Descrição",
       "tools": "Ferramentas",
@@ -2509,6 +2518,7 @@
     },
     "connections": {
       "none": "Nenhuma conexão escolhida. Sem elas o agent só usa as ferramentas do Locum.",
+      "internal": "Ferramentas do Locum",
       "noneToAdd": "Todas as conexões com servidor já estão aqui. Conecte outras na tela Conexões.",
       "add": "Adicionar conexão",
       "remove": "Tirar {{name}}",

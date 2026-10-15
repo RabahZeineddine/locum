@@ -2353,7 +2353,14 @@
     "loading": "Loading...",
     "notFound": "Agent not found.",
     "back": "Agents",
-    "empty": "No agent in the library yet. Create one per subject: tickets, partnerships, PR review.",
+    "empty": "Create one per subject: tickets, partnerships, PR review.",
+    "emptyTitle": "No agent in the library yet",
+    "versionShort": "v{{version}}",
+    "row": {
+      "noConnections": "no connections",
+      "writes_one": "{{count}} write",
+      "writes_other": "{{count}} write"
+    },
     "tabs": {
       "agents": "Agents",
       "toolsets": "Toolsets (shortcuts)"
@@ -2430,7 +2437,8 @@
     "toolsets": {
       "lead": "A toolset groups tools from one or more apps. An agent that includes the toolset gets all of them.",
       "new": "New toolset",
-      "empty": "No toolset yet. Example: \"Jira read\" with issue search and read.",
+      "empty": "Example: \"Jira read\" with issue search and read.",
+      "emptyTitle": "No toolset yet",
       "name": "Name",
       "description": "Description",
       "tools": "Tools",
@@ -2455,6 +2463,7 @@
     },
     "connections": {
       "none": "No connection chosen. Without them the agent only uses Locum's own tools.",
+      "internal": "Locum tools",
       "noneToAdd": "Every connection with a server is already here. Connect others in the Connections screen.",
       "add": "Add connection",
       "remove": "Remove {{name}}",

@@ -10,8 +10,8 @@ import { useTranslation } from "react-i18next";
 export function AvisoDeEscrita({ count, texto, className }: { count?: number; texto?: string; className?: string }) {
   const { t } = useTranslation();
   return (
-    <span className={cn("inline-flex items-center gap-1.5 text-xs text-muted-foreground", className)} data-locum-aviso-de-escrita="">
-      <StatusDot estado="aviso" />
+    <span className={cn("inline-flex items-start gap-1.5 text-xs text-muted-foreground", className)} data-locum-aviso-de-escrita="">
+      <StatusDot className="mt-[5px]" estado="aviso" />
       {texto ?? t("library.card.writes", { count: count ?? 0 })}
     </span>
   );
