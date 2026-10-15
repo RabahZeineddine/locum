@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { stepCountIs, streamText, type LanguageModel, type ModelMessage, type ToolSet } from "ai";
 import { SERVIDOR_CONTA, type ToolRef } from "../config/types.js";
+import { selectSkills, skillsPreamble, type LoadedSkill } from "../skills/loader.js";
 import { BudgetExceeded, type assertWithinBudget, type recordSpend } from "../executor/budget.js";
 import type { McpRegistry } from "../mcp/registry.js";
 import { prefixoDoServidor } from "../runtimes/claude-account.js";
@@ -22,7 +23,7 @@ import {
 const FALAS_GUARDADAS = 200;
 
 /** O que o cartão mostra do resultado da ferramenta. */
-const TETO_DO_RESULTADO = 600;
+const TETO_DO_RESULTADO = 4_000;
 
 export type ModeloEscolhido =
   | { via: "api"; provedor: string; modelo: string; model: LanguageModel }
@@ -38,7 +39,7 @@ export interface PedidoDaAssinatura {
   sessao: string | undefined;
   perfil: ResolvedProfile;
   /** Chamado quando o Claude Code quer usar uma ferramenta que não estava liberada. Espera o clique. */
-  aprovar: (nome: string, entrada: unknown) => Promise<DecisaoDaAssinatura>;
+  aprovar: (nome: string, entrada: unknown, usoId?: string) => Promise<DecisaoDaAssinatura>;
   emitir: (evento: EventoDoAgent) => void;
   sinal: AbortSignal;
 }
@@ -62,6 +63,8 @@ export interface DepsDoChat {
   texto: (chave: string, variaveis?: Record<string, unknown>) => string;
   /** Teto do histórico mandado ao modelo. */
   teto?: number;
+  /** Skills disponíveis. Ausente varre o disco. */
+  skills?: Map<string, LoadedSkill>;
 }
 
 type Decisao = "executar" | "recusar";
@@ -82,6 +85,8 @@ interface Conversa {
   chamadas: Map<string, string>;
   respondendo: boolean;
   resumido: boolean;
+  /** O que a conversa já gastou, para o teto por execução valer sobre ela inteira. */
+  gasto: Gasto;
   seq: number;
   /** Sobe quando a conversa é limpa: o que a volta antiga ainda emitir não vale mais. */
   geracao: number;
@@ -95,8 +100,17 @@ function cortar(texto: string): string {
   return texto.length > TETO_DO_RESULTADO ? `${texto.slice(0, TETO_DO_RESULTADO)}...` : texto;
 }
 
-function emTexto(valor: unknown): string {
-  return typeof valor === "string" ? valor : JSON.stringify(valor) ?? "";
+/** O resultado de uma ferramenta como a pessoa lê: o texto do `content` do MCP, ou o JSON quando não há texto. */
+export function legivel(valor: unknown): string {
+  if (typeof valor === "string") return cortar(valor);
+  const conteudo = (valor as { content?: unknown } | null)?.content;
+  if (Array.isArray(conteudo)) {
+    const textos = (conteudo as { type?: string; text?: unknown }[]).flatMap((p) =>
+      p?.type === "text" && typeof p.text === "string" ? [p.text] : [],
+    );
+    if (textos.length > 0) return cortar(textos.join("\n"));
+  }
+  return cortar(JSON.stringify(valor, null, 2) ?? "");
 }
 
 /**
@@ -126,6 +140,7 @@ export class ConversasDeAgent {
       respondendo: conversa.respondendo,
       resumido: conversa.resumido,
       semServidor: perfil.semServidor,
+      contaIgnorada: perfil.tools.filter((t) => t.server === SERVIDOR_CONTA).length,
       seq: conversa.seq,
     };
   }
@@ -150,8 +165,11 @@ export class ConversasDeAgent {
     const conversa = await this.obter(id);
     const pendente = conversa.pendentes.get(cartao);
     if (pendente === undefined) throw new Error(this.deps.texto("agentChat.errors.expired"));
+    // No caminho por API o cartão só vale com a volta terminada: antes, o passo ainda corre.
+    if (pendente.resolver === undefined && conversa.respondendo) throw new Error(this.deps.texto("agentChat.errors.busy"));
 
-    this.emitir(conversa, { tipo: "cartao-estado", id: cartao, estado: decisao === "executar" ? "executado" : "recusado" });
+    // "Executado" só depois que a ferramenta responde; até lá, executando.
+    this.emitir(conversa, { tipo: "cartao-estado", id: cartao, estado: decisao === "executar" ? "executando" : "recusado" });
     if (pendente.resolver !== undefined) {
       conversa.pendentes.delete(cartao);
       pendente.resolver(decisao);
@@ -192,6 +210,8 @@ export class ConversasDeAgent {
     conversa.historico = [];
     conversa.resumido = false;
     conversa.respondendo = false;
+    conversa.gasto = { usd: 0, tokens: 0 };
+    conversa.chamadas.clear();
     await this.deps.settings.set(chaveDasFalas(id), "[]");
     await this.deps.settings.set(chaveDaSessao(id), "");
   }
@@ -216,12 +236,12 @@ export class ConversasDeAgent {
         texto: f.texto ?? "",
         ferramentas: f.ferramentas ?? [],
         // Memória nova, cartão velho: quem decidiria já não está esperando.
-        cartoes: (f.cartoes ?? []).map((c) => (c.estado === "pendente" ? { ...c, estado: "expirado" as const } : c)),
+        cartoes: (f.cartoes ?? []).map((c) => (c.estado === "pendente" || c.estado === "executando" ? { ...c, estado: "expirado" as const } : c)),
       }));
     } catch {
       falas = [];
     }
-    return { id, falas, historico: null, pendentes: new Map(), chamadas: new Map(), respondendo: false, resumido: false, seq: 0, geracao: 0 };
+    return { id, falas, historico: null, pendentes: new Map(), chamadas: new Map(), respondendo: false, resumido: false, gasto: { usd: 0, tokens: 0 }, seq: 0, geracao: 0 };
   }
 
   private async salvar(conversa: Conversa): Promise<void> {
@@ -277,19 +297,25 @@ export class ConversasDeAgent {
       if (evento.tipo === "fim") terminou = true;
       if (conversa.geracao === geracao) this.emitir(conversa, evento);
     };
+    // Os cartões da volta por API só aparecem quando ela termina.
+    const cartoesNovos: Cartao[] = [];
     try {
       const perfil = await this.deps.library.resolveProfile(conversa.id);
       const spec = perfil.version.spec;
       const modelo = await this.deps.modelo(spec.model);
       // Antes de cada volta, e não só da conversa: a continuação depois do clique também gasta.
-      await this.deps.orcamento.checar(`biblioteca:${spec.id}`, { usd: 0, tokens: 0 }, spec.budget, spec.name);
+      // O teto por execução vale sobre a conversa inteira desde que foi limpa pela última vez.
+      await this.deps.orcamento.checar(`biblioteca:${spec.id}`, conversa.gasto, spec.budget, spec.name);
 
       const novaMensagem = "texto" in entrada;
       const gasto =
         modelo.via === "claude-code"
           ? await this.pelaAssinatura(conversa, perfil, modelo.modelo, "texto" in entrada ? entrada.texto : "", controle.signal, emitir)
-          : await this.pelaApi(conversa, perfil, modelo, entrada, controle.signal, emitir);
-      if (gasto !== null) await this.deps.orcamento.gastar(`biblioteca:${spec.id}`, gasto, novaMensagem);
+          : await this.pelaApi(conversa, perfil, modelo, entrada, controle.signal, emitir, (c) => cartoesNovos.push(c));
+      if (gasto !== null) {
+        conversa.gasto = { usd: conversa.gasto.usd + gasto.usd, tokens: conversa.gasto.tokens + gasto.tokens };
+        await this.deps.orcamento.gastar(`biblioteca:${spec.id}`, gasto, novaMensagem);
+      }
     } catch (err) {
       emitir({ tipo: "erro", mensagem: this.mensagemDeErro(err) });
     } finally {
@@ -298,9 +324,32 @@ export class ConversasDeAgent {
       if (conversa.geracao === geracao) {
         conversa.respondendo = false;
         if (conversa.cancelar === controle) conversa.cancelar = undefined;
+        // O Claude Code terminou (ou morreu) com cartão à espera: ninguém mais recebe o clique.
+        this.expirarDoClaude(conversa);
+        // A volta terminou: agora o cartão pode ser decidido.
+        for (const cartao of cartoesNovos) {
+          conversa.pendentes.set(cartao.id, {});
+          this.emitir(conversa, { tipo: "cartao", cartao });
+        }
         await this.salvar(conversa);
       }
     }
+  }
+
+  /** Expira só o que esperava o processo do Claude Code, que já não está lá. */
+  private expirarDoClaude(conversa: Conversa): void {
+    for (const [id, p] of conversa.pendentes) {
+      if (p.resolver === undefined) continue;
+      this.emitir(conversa, { tipo: "cartao-estado", id, estado: "expirado" });
+      p.resolver("expirou");
+      conversa.pendentes.delete(id);
+    }
+  }
+
+  private systemDe(perfil: ResolvedProfile): string {
+    // Sem evento por trás, só valem as skills de regra "sempre", como na consulta entre agents.
+    const skills = selectSkills(perfil.version.spec.skills, { repo: "", changedFiles: [] }, this.deps.skills);
+    return [perfil.system, skillsPreamble(skills, true)].filter((p) => p.length > 0).join("\n\n");
   }
 
   private mensagemDeErro(err: unknown): string {
@@ -323,8 +372,10 @@ export class ConversasDeAgent {
     entrada: { texto: string } | { continuacao: ModelMessage },
     sinal: AbortSignal,
     emitir: (e: EventoDoAgent) => void,
+    guardarCartao: (c: Cartao) => void,
   ): Promise<Gasto | null> {
     const spec = perfil.version.spec;
+    const system = this.systemDe(perfil);
     const historico = await this.historicoDe(conversa);
     if ("texto" in entrada) {
       historico.push({ role: "user", content: entrada.texto });
@@ -351,7 +402,7 @@ export class ConversasDeAgent {
 
       const resultado = streamText({
         model: modelo.model,
-        ...(perfil.system === "" ? {} : { system: perfil.system }),
+        ...(system === "" ? {} : { system }),
         messages: mensagens,
         tools,
         stopWhen: stepCountIs(spec.maxSteps),
@@ -384,32 +435,34 @@ export class ConversasDeAgent {
             argumentos: parte.toolCall.input,
             estado: "pendente",
           };
-          conversa.pendentes.set(cartao.id, {});
           conversa.chamadas.set(parte.toolCall.toolCallId, cartao.id);
           pediuAprovacao = true;
-          emitir({ tipo: "cartao", cartao });
+          guardarCartao(cartao);
         } else if (parte.type === "tool-result") {
           emitir({ tipo: "resultado", nome: parte.toolName });
-          this.resultadoDoCartao(conversa, parte.toolCallId, cortar(emTexto(parte.output)), emitir);
+          this.resultadoDoCartao(conversa, parte.toolCallId, "executado", legivel(parte.output), emitir);
         } else if (parte.type === "tool-error") {
           emitir({ tipo: "resultado", nome: parte.toolName });
-          this.resultadoDoCartao(conversa, parte.toolCallId, cortar(emTexto(parte.error instanceof Error ? parte.error.message : parte.error)), emitir);
+          this.resultadoDoCartao(conversa, parte.toolCallId, "falhou", legivel(parte.error instanceof Error ? parte.error.message : parte.error), emitir);
         } else if (parte.type === "abort") cancelado = true;
         else if (parte.type === "error") emitir({ tipo: "erro", mensagem: String(parte.error) });
       }
+      const gastoDaVolta = async (): Promise<Gasto> => {
+        const uso = await resultado.totalUsage;
+        const entrou = uso.inputTokens ?? 0;
+        const saiu = uso.outputTokens ?? 0;
+        const preco = await this.deps.preco(modelo.provedor, modelo.modelo);
+        return { usd: preco === undefined ? 0 : costOf(preco, entrou, saiu), tokens: entrou + saiu };
+      };
       if (cancelado || sinal.aborted) {
         emitir({ tipo: "fim", motivo: "cancelado" });
-        return null;
+        // O que já foi consumido conta, quando o provedor chegou a dizer.
+        return gastoDaVolta().catch(() => null);
       }
 
       mensagens.push(...(await resultado.response).messages);
       emitir({ tipo: "fim", motivo: pediuAprovacao ? "aguardando" : await resultado.finishReason });
-
-      const uso = await resultado.totalUsage;
-      const entrou = uso.inputTokens ?? 0;
-      const saiu = uso.outputTokens ?? 0;
-      const preco = await this.deps.preco(modelo.provedor, modelo.modelo);
-      return { usd: preco === undefined ? 0 : costOf(preco, entrou, saiu), tokens: entrou + saiu };
+      return gastoDaVolta();
     } finally {
       escritas?.release();
       lidas.release();
@@ -417,10 +470,16 @@ export class ConversasDeAgent {
   }
 
   /** O que a ferramenta devolveu, no cartão que a pediu. */
-  private resultadoDoCartao(conversa: Conversa, chamada: string, resultado: string, emitir: (e: EventoDoAgent) => void): void {
+  private resultadoDoCartao(
+    conversa: Conversa,
+    chamada: string,
+    estado: "executado" | "falhou",
+    resultado: string,
+    emitir: (e: EventoDoAgent) => void,
+  ): void {
     const id = conversa.chamadas.get(chamada);
     const cartao = conversa.falas.at(-1)?.cartoes.find((c) => c.id === id);
-    if (cartao !== undefined) emitir({ tipo: "cartao-estado", id: cartao.id, estado: cartao.estado, resultado });
+    if (cartao !== undefined) emitir({ tipo: "cartao-estado", id: cartao.id, estado, resultado });
   }
 
   /** Pela assinatura do Claude Code: o CLI faz o laço, e aqui só o clique das escritas. */
@@ -436,13 +495,14 @@ export class ConversasDeAgent {
     if (assinatura === undefined) throw new Error(this.deps.texto("agentChat.errors.noClaude"));
     const nomes = new Map(perfil.confirmar.map((ref) => [`${prefixoDoServidor(ref.server)}${ref.tool}`, ref]));
 
-    const aprovar = async (nome: string, entrada: unknown): Promise<DecisaoDaAssinatura> => {
+    const aprovar = async (nome: string, entrada: unknown, usoId?: string): Promise<DecisaoDaAssinatura> => {
       const ref = nomes.get(nome);
       // Só a escrita que a pessoa ligou neste agent pede clique: o resto é negado sem incomodar.
       if (ref === undefined) return { permitir: false, mensagem: `A ferramenta ${nome} não faz parte deste agent.` };
       if (sinal.aborted) return { permitir: false, mensagem: "A conversa foi interrompida." };
 
       const cartao: Cartao = { id: randomUUID(), servidor: ref.server, ferramenta: ref.tool, argumentos: entrada, estado: "pendente" };
+      if (usoId !== undefined) conversa.chamadas.set(usoId, cartao.id);
       const decisao = await new Promise<Decisao | "expirou">((resolver) => {
         conversa.pendentes.set(cartao.id, { resolver });
         emitir({ tipo: "cartao", cartao });
@@ -457,9 +517,30 @@ export class ConversasDeAgent {
       };
     };
 
+    // O que a ferramenta devolveu chega no fluxo, ligado à chamada pelo id: é aí que o cartão vira executado.
+    const daVolta = (evento: EventoDoAgent): void => {
+      if (evento.tipo === "resultado" && evento.id !== undefined) {
+        const cartao = conversa.chamadas.get(evento.id);
+        if (cartao !== undefined) {
+          emitir({ tipo: "cartao-estado", id: cartao, estado: evento.erro === true ? "falhou" : "executado", resultado: cortar(evento.texto ?? "") });
+        }
+      }
+      emitir(evento);
+    };
+
     const sessao = (await this.deps.settings.get(chaveDaSessao(conversa.id))) || undefined;
-    const { sessao: nova, gasto } = await assinatura({ texto, modelo, system: perfil.system, sessao, perfil, aprovar, emitir, sinal });
+    const { sessao: nova, gasto } = await assinatura({
+      texto,
+      modelo,
+      system: this.systemDe(perfil),
+      sessao,
+      perfil,
+      aprovar,
+      emitir: daVolta,
+      sinal,
+    });
     if (nova) await this.deps.settings.set(chaveDaSessao(conversa.id), nova);
-    return sinal.aborted ? null : gasto;
+    // Volta cancelada também gastou o que o CLI chegou a contar.
+    return gasto.usd > 0 || gasto.tokens > 0 ? gasto : sinal.aborted ? null : gasto;
   }
 }

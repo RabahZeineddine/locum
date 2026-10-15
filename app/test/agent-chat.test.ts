@@ -1,7 +1,7 @@
 import { before, test } from "node:test";
 import assert from "node:assert/strict";
 import { jsonSchema, tool, type ToolSet } from "ai";
-import { ConversasDeAgent, type DepsDoChat } from "../src/agent-chat/conversas.js";
+import { ConversasDeAgent, legivel, type DepsDoChat } from "../src/agent-chat/conversas.js";
 import { chaveDoAgent, type EventoDaConversa } from "../src/agent-chat/tipos.js";
 import { AgentProfile, type ToolRef } from "../src/config/types.js";
 import { migrateDb } from "../src/db/migrate.js";
@@ -36,12 +36,13 @@ function perfilDe(id: string, extra: Partial<ResolvedProfile> = {}, budget: Reco
 }
 
 /** O registro de mentira entrega as mesmas ferramentas que o de verdade: a de escrita já marcada para aprovação. */
-function registroDeMentira(chamadas: { tool: string; entrada: unknown }[]) {
+function registroDeMentira(chamadas: { tool: string; entrada: unknown }[], demoraDaLeituraMs = 0) {
   const feita = (nome: string, aprovacao: boolean) => {
     const f = tool({
       description: nome,
       inputSchema: jsonSchema({ type: "object", additionalProperties: true }),
       execute: async (entrada: unknown) => {
+        if (!aprovacao) await new Promise((r) => setTimeout(r, demoraDaLeituraMs));
         chamadas.push({ tool: nome, entrada });
         return `${nome} feito`;
       },
@@ -67,7 +68,7 @@ interface Cenario {
   settings: SettingsService;
 }
 
-function montar(id: string, opcoes: { perfil?: ResolvedProfile; roteiro?: Roteiro; deps?: Partial<DepsDoChat>; settings?: SettingsService; modelo?: ModeloFalso } = {}): Cenario {
+function montar(id: string, opcoes: { demoraDaLeituraMs?: number; perfil?: ResolvedProfile; roteiro?: Roteiro; deps?: Partial<DepsDoChat>; settings?: SettingsService; modelo?: ModeloFalso } = {}): Cenario {
   const eventos: EventoDaConversa[] = [];
   const chamadas: { tool: string; entrada: unknown }[] = [];
   const gastos: { chave: string; usd: number; tokens: number }[] = [];
@@ -76,7 +77,7 @@ function montar(id: string, opcoes: { perfil?: ResolvedProfile; roteiro?: Roteir
   const perfil = opcoes.perfil ?? perfilDe(id);
   const conversas = new ConversasDeAgent({
     library: { resolveProfile: async () => perfil },
-    mcp: async () => registroDeMentira(chamadas),
+    mcp: async () => registroDeMentira(chamadas, opcoes.demoraDaLeituraMs),
     modelo: async () => ({ via: "api", provedor: "falso", modelo: "roteiro", model: modelo }),
     settings,
     orcamento: {
@@ -290,13 +291,17 @@ test("cancelar com cartão pendente expira o cartão e a conversa pode seguir", 
 
 test("pela assinatura do Claude Code, a escrita pede o clique no cartão e o resto é negado sem cartão", async () => {
   let decisoes: { dentro: unknown; fora: unknown } | undefined;
-  const c = montar("assina", {
+  let estadoAntes: string | undefined;
+  const c: Cenario = montar("assina", {
     deps: {
       modelo: async () => ({ via: "claude-code", modelo: "sonnet" }),
       assinatura: async (pedido) => {
-        const fora = await pedido.aprovar("mcp__painel__drop_table", {});
-        const dentro = await pedido.aprovar("mcp__painel__echo", { text: "oi" });
+        const fora = await pedido.aprovar("mcp__painel__drop_table", {}, "uso-0");
+        const dentro = await pedido.aprovar("mcp__painel__echo", { text: "oi" }, "uso-1");
         decisoes = { dentro, fora };
+        // O resultado só chega depois da execução, ligado à chamada pelo id.
+        estadoAntes = (await c.conversas.estado("assina")).falas.at(-1)?.cartoes[0]?.estado;
+        pedido.emitir({ tipo: "resultado", nome: "", id: "uso-1", texto: "oi" });
         pedido.emitir({ tipo: "texto", delta: "pronto" });
         pedido.emitir({ tipo: "fim", motivo: "success" });
         return { sessao: "sessao-1", gasto: { usd: 0.5, tokens: 30 } };
@@ -314,7 +319,9 @@ test("pela assinatura do Claude Code, a escrita pede o clique no cartão e o res
   await turno;
   assert.deepEqual(decisoes?.dentro, { permitir: true, entrada: { text: "oi" } });
   assert.equal((decisoes?.fora as { permitir: boolean }).permitir, false);
-  assert.equal((await c.conversas.estado("assina")).falas.at(-1)?.cartoes[0]?.estado, "executado");
+  assert.equal(estadoAntes, "executando", "até a ferramenta responder, o cartão só está executando");
+  const executado = (await c.conversas.estado("assina")).falas.at(-1)?.cartoes[0];
+  assert.deepEqual([executado?.estado, executado?.resultado], ["executado", "oi"]);
   assert.deepEqual(c.gastos, [{ chave: "biblioteca:assina", usd: 0.5, tokens: 30 }]);
   assert.equal(await c.settings.get(`chat.sessao.${chaveDoAgent("assina")}`), "sessao-1");
 });
@@ -339,3 +346,106 @@ test("pela assinatura, Recusar nega a chamada com a explicação para o modelo",
   assert.match(decisao?.mensagem ?? "", /recusou/);
 });
 
+
+test("leitura lenta e escrita no mesmo passo: o cartão só aparece quando a volta termina", async () => {
+  const c = montar("lenta", { demoraDaLeituraMs: 80 });
+  const turno = c.conversas.enviar("lenta", '[[chama painel__pid]] [[chama painel__echo {"text":"x"}]]');
+  await new Promise((r) => setTimeout(r, 30));
+  // O SDK já pediu a aprovação no meio do passo, mas a leitura ainda corre: nada de cartão ainda.
+  assert.equal(cartoes(c.eventos).length, 0);
+  assert.deepEqual((await c.conversas.estado("lenta")).falas.at(-1)?.cartoes, []);
+  await turno;
+
+  const tipos = c.eventos.map((e) => e.tipo);
+  assert.ok(tipos.indexOf("cartao") > tipos.indexOf("fim"), "o cartão vem depois do fim da volta");
+  const estado = await c.conversas.estado("lenta");
+  assert.equal(estado.respondendo, false);
+  const cartao = estado.falas.at(-1)!.cartoes[0]!;
+  assert.equal(cartao.estado, "pendente");
+  await c.conversas.decidir("lenta", cartao.id, "executar");
+  assert.deepEqual(c.chamadas.map((x) => x.tool).sort(), ["echo", "pid"]);
+});
+
+test("o cartão fica executando até a ferramenta responder, e mostra o resultado como texto legível", async () => {
+  const c = montar("estados");
+  await c.conversas.enviar("estados", '[[chama painel__echo {"text":"oi"}]]');
+  const id = cartoes(c.eventos)[0]!.id;
+  await c.conversas.decidir("estados", id, "executar");
+  const sequencia = c.eventos.flatMap((e) => (e.tipo === "cartao-estado" ? [e.estado] : []));
+  assert.deepEqual(sequencia, ["executando", "executado"]);
+  assert.equal((await c.conversas.estado("estados")).falas.at(-1)?.cartoes[0]?.resultado, "echo feito");
+});
+
+test("o resultado do MCP vira o texto do content, e JSON só quando não há texto", () => {
+  assert.equal(legivel({ content: [{ type: "text", text: "a" }, { type: "text", text: "b" }], isError: false }), "a\nb");
+  assert.equal(legivel("já é texto"), "já é texto");
+  assert.equal(legivel({ ok: true }), '{\n  "ok": true\n}');
+});
+
+test("o Claude Code que morre com cartão pendente expira o cartão, e o clique não marca executado", async () => {
+  const c = montar("morre", {
+    deps: {
+      modelo: async () => ({ via: "claude-code", modelo: "sonnet" }),
+      assinatura: async (pedido) => {
+        // O cartão abre e o CLI sai sem esperar a resposta.
+        void pedido.aprovar("mcp__painel__echo", { text: "oi" }, "uso-1");
+        await new Promise((r) => setTimeout(r, 10));
+        return { sessao: undefined, gasto: { usd: 0, tokens: 0 } };
+      },
+    },
+  });
+  await c.conversas.enviar("morre", "faz");
+  const cartao = (await c.conversas.estado("morre")).falas.at(-1)!.cartoes[0]!;
+  assert.equal(cartao.estado, "expirado");
+  await assert.rejects(c.conversas.decidir("morre", cartao.id, "executar"), /errors\.expired/);
+  assert.ok(!c.eventos.some((e) => e.tipo === "cartao-estado" && (e.estado === "executando" || e.estado === "executado")));
+});
+
+test("as skills do agent entram no system, como na consulta entre agents", async () => {
+  const skills = new Map([["estilo", { name: "estilo", description: "d", body: "Responda sempre em haicai.", origin: "teste", hash: "h" }]]);
+  const perfil = perfilDe("com-skill");
+  perfil.version.spec.skills = [{ skill: "estilo", when: { always: true } }];
+  const c = montar("com-skill", { perfil, deps: { skills } });
+  await c.conversas.enviar("com-skill", "oi");
+  const system = JSON.stringify(c.modelo.recebidos[0]);
+  assert.match(system, /Você é o agent de teste\./);
+  assert.match(system, /Skill: estilo/);
+  assert.match(system, /Responda sempre em haicai\./);
+});
+
+test("o teto por execução vale sobre a conversa: o gasto acumulado entra na checagem de cada volta", async () => {
+  const vistos: unknown[] = [];
+  const c = montar("acumula", { deps: { orcamento: { checar: async (_c, run) => void vistos.push({ ...run }), gastar: async () => undefined } } });
+  await c.conversas.enviar("acumula", "um");
+  await c.conversas.enviar("acumula", "dois");
+  assert.deepEqual(vistos, [{ usd: 0, tokens: 0 }, { usd: 0, tokens: 15 }]);
+  await c.conversas.limpar("acumula");
+  await c.conversas.enviar("acumula", "três");
+  assert.deepEqual(vistos.at(-1), { usd: 0, tokens: 0 }, "limpar zera o acumulado");
+});
+
+test("a volta cancelada grava o que o Claude Code já tinha contado", async () => {
+  const c = montar("cancelada", {
+    deps: {
+      modelo: async () => ({ via: "claude-code", modelo: "sonnet" }),
+      assinatura: async (pedido) => {
+        await new Promise<void>((r) => pedido.sinal.addEventListener("abort", () => r()));
+        return { sessao: undefined, gasto: { usd: 0.01, tokens: 7 } };
+      },
+    },
+  });
+  const turno = c.conversas.enviar("cancelada", "faz");
+  await new Promise((r) => setTimeout(r, 10));
+  c.conversas.cancelar("cancelada");
+  await turno;
+  assert.deepEqual(c.gastos, [{ chave: "biblioteca:cancelada", usd: 0.01, tokens: 7 }]);
+});
+
+test("as ferramentas da conta Claude não entram no chat, e a tela é avisada", async () => {
+  const c = montar("conta", {
+    perfil: perfilDe("conta", { tools: [LEITURA, { server: "claude-conta", tool: "mcp__github__list_issues", class: "read" }] }),
+  });
+  assert.equal((await c.conversas.estado("conta")).contaIgnorada, 1);
+  await c.conversas.enviar("conta", "oi [[chama painel__pid]]");
+  assert.match(await textoDoAssistente(c, "conta"), /Voltou: pid feito/);
+});

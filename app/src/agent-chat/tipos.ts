@@ -7,9 +7,12 @@ export interface Cartao {
   servidor: string;
   ferramenta: string;
   argumentos: unknown;
-  /** `expirado`: a conversa foi limpa, interrompida ou o app fechou antes do clique. */
-  estado: "pendente" | "executado" | "recusado" | "expirado";
-  /** O que a ferramenta devolveu, cortado, quando já rodou. */
+  /**
+   * `executando`: a pessoa clicou e a ferramenta ainda não respondeu.
+   * `expirado`: a conversa foi limpa, interrompida ou o app fechou antes do clique.
+   */
+  estado: "pendente" | "executando" | "executado" | "falhou" | "recusado" | "expirado";
+  /** O que a ferramenta devolveu, como texto e cortado, quando já respondeu. */
   resultado?: string;
 }
 
@@ -27,8 +30,8 @@ export interface FalaDoAgent {
  */
 export type EventoDoAgent =
   | { tipo: "texto"; delta: string }
-  | { tipo: "ferramenta"; nome: string; entrada: unknown }
-  | { tipo: "resultado"; nome: string }
+  | { tipo: "ferramenta"; nome: string; entrada: unknown; id?: string }
+  | { tipo: "resultado"; nome: string; id?: string; texto?: string; erro?: boolean }
   | { tipo: "fim"; motivo: string }
   | { tipo: "resumido" }
   | { tipo: "erro"; mensagem: string }
@@ -51,6 +54,8 @@ export interface EstadoDaConversa {
   resumido: boolean;
   /** Conexões do agent sem servidor agora: avisa, e não impede de conversar. */
   semServidor: ConexaoSemServidor[];
+  /** Quantas ferramentas da conta Claude o agent tem e ficam de fora do chat. */
+  contaIgnorada: number;
   /** O `seq` do último evento já refletido nas falas. */
   seq: number;
 }

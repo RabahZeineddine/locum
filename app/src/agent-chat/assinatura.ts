@@ -40,11 +40,10 @@ export async function rodarPelaAssinatura(
   const cadastrados = await (deps.configs ?? (() => mcpService.enabledConfigs()))();
   const servidores = cadastrados.filter((c) => nomes.has(c.name));
 
-  const doConector = p.perfil.tools.filter((t) => t.server === SERVIDOR_CONTA).map((t) => t.tool);
-  const permitidas = [
-    ...p.perfil.tools.filter((t) => t.server !== SERVIDOR_CONTA).map((t) => `${prefixoDoServidor(t.server)}${t.tool}`),
-    ...doConector,
-  ];
+  // Os conectores da conta Claude não entram: para tê-los o CLI precisa carregar as
+  // configurações da pessoa, e as regras `allow` delas liberariam escrita antes da
+  // ferramenta de permissão. O chat roda isolado, só com os servidores do agent.
+  const permitidas = p.perfil.tools.filter((t) => t.server !== SERVIDOR_CONTA).map((t) => `${prefixoDoServidor(t.server)}${t.tool}`);
 
   const cwd = join(appHome(), "chat-agents");
   mkdirSync(cwd, { recursive: true });
@@ -70,8 +69,9 @@ export async function rodarPelaAssinatura(
         ...(p.sessao === undefined ? {} : { sessao: p.sessao }),
         mcpConfigPath,
         permitidas,
-        conta: doConector.length > 0,
+        conta: false,
         internas: [],
+        maxTurns: p.perfil.version.spec.maxSteps,
         aprovacaoPor: APROVACAO_NO_CLAUDE,
       },
       p.emitir,

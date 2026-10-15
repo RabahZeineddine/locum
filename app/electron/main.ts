@@ -1598,6 +1598,11 @@ async function conversarComOAgentNoSmoke(window: BrowserWindow, id: string, aoMe
     if (!/Voltou: .*\d+/.test(lida)) throw new Error(`a leitura nao voltou com o pid: "${lida}"`);
     const cartoesDaLeitura = (await window.webContents.executeJavaScript(`document.querySelectorAll("[data-locum-agent-cartao]").length`)) as number;
     if (cartoesDaLeitura !== 0) throw new Error("a leitura virou cartao de escrita");
+    // O campo de envio fica sempre à vista: a conversa rola por dentro.
+    const campoVisivel = (await window.webContents.executeJavaScript(
+      `(() => { const c = document.querySelector("[data-locum-agent-chat] textarea").getBoundingClientRect(); return c.bottom <= window.innerHeight && c.top >= 0; })()`,
+    )) as boolean;
+    if (!campoVisivel) throw new Error("o campo de envio do chat saiu da janela");
     await aoMeio?.("resposta");
 
     // Escrita: o cartão aparece com os argumentos e o campo fica travado.
@@ -1628,6 +1633,12 @@ async function conversarComOAgentNoSmoke(window: BrowserWindow, id: string, aoMe
     await esperarProbe(window, "cartao-executado", `${estadoDoCartao("echo")} === "executado" ? true : null`);
     const executada = await esperarProbe<string>(window, "resposta-da-escrita", `(() => { const t = ${ULTIMA_RESPOSTA}; return t.includes("escrito pelo smoke") ? t : null; })()`);
     if (!executada.includes("Voltou:")) throw new Error(`o modelo nao recebeu o resultado da escrita: "${executada}"`);
+    const resultadoDoCartao = (await window.webContents.executeJavaScript(
+      `document.querySelector("[data-locum-agent-cartao-resultado]")?.textContent ?? ""`,
+    )) as string;
+    if (!resultadoDoCartao.includes("escrito pelo smoke") || resultadoDoCartao.includes("isError")) {
+      throw new Error(`o cartao nao mostrou o resultado como texto legivel: "${resultadoDoCartao}"`);
+    }
     await aoMeio?.("executado");
 
     // Recusar: nada roda e o modelo fica sabendo.

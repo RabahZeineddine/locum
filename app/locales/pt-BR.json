@@ -280,17 +280,18 @@
     "unsaved": "A conversa usa a versão salva. As mudanças ainda não salvas valem depois de Salvar.",
     "noServer": "A conexão {{connection}} está sem servidor agora: {{reason}}. O agent conversa sem as ferramentas dela.",
     "card": {
-      "title": "Escrita à espera",
+      "title": {
+        "pendente": "Escrita à espera",
+        "executando": "Executando",
+        "executado": "Executado",
+        "falhou": "Falhou",
+        "recusado": "Recusada",
+        "expirado": "Expirou"
+      },
       "run": "Executar",
       "refuse": "Recusar",
       "result": "Resultado",
-      "expiredHint": "A conversa foi limpa ou interrompida, ou o app fechou, antes do clique. Nada foi executado.",
-      "state": {
-        "executado": "Executado",
-        "recusado": "Recusado",
-        "expirado": "Expirou",
-        "pendente": "Pendente"
-      }
+      "expiredHint": "A conversa foi limpa ou interrompida, ou o app fechou, antes do clique. Nada foi executado."
     },
     "scopes": {
       "run": "da execução",
@@ -303,7 +304,8 @@
       "budget": "O orçamento {{scope}} deste agent acabou: limite {{limit}}, gasto {{spent}}. Ajuste em Orçamento, na página do agent.",
       "codex": "O chat do agent não roda com modelo do Codex: ele não entrega o texto aos pedaços. Escolha outro modelo na aba Modelo.",
       "noApiModel": "O provedor \"{{provider}}\" não expõe modelo de API."
-    }
+    },
+    "accountIgnored": "{{count}} ferramenta(s) da conta Claude ficam de fora: conectores da conta Claude não entram no chat do agent por segurança, porque as configurações da sua conta poderiam liberar escrita sem o seu clique."
   },
   "bridge": {
     "loading": "lendo pela ponte...",

@@ -31,6 +31,7 @@ export function ChatDoAgent({ id, modelo, versao, naoSalvo }: { id: string; mode
   const [respondendo, setRespondendo] = useState(false);
   const [resumido, setResumido] = useState(false);
   const [semServidor, setSemServidor] = useState<ConexaoSemServidor[]>([]);
+  const [contaIgnorada, setContaIgnorada] = useState(0);
   const [carregado, setCarregado] = useState(false);
   const [rascunho, setRascunho] = useState("");
   const [falha, setFalha] = useState<string | null>(null);
@@ -67,6 +68,7 @@ export function ChatDoAgent({ id, modelo, versao, naoSalvo }: { id: string; mode
         setRespondendo(estado.respondendo);
         setResumido(estado.resumido);
         setSemServidor(estado.semServidor);
+        setContaIgnorada(estado.contaIgnorada);
         setCarregado(true);
         for (const evento of guardados) if (evento.seq > estado.seq) aplicar(evento);
       },
@@ -81,7 +83,9 @@ export function ChatDoAgent({ id, modelo, versao, naoSalvo }: { id: string; mode
   }, [id]);
 
   const aguardando = falas.some((f) => f.cartoes.some((c) => c.estado === "pendente"));
+  // Nome da conexão pelo id dela, e pelo nome de cada servidor que ela tem: o cartão traz o servidor.
   const nomes = new Map((conexoes.data ?? []).map((c) => [c.id, c.name]));
+  const nomesPorServidor = new Map((conexoes.data ?? []).flatMap((c) => c.servers.map((s) => [s, c.name] as const)));
 
   async function enviar(): Promise<void> {
     const texto = rascunho.trim();
@@ -115,7 +119,7 @@ export function ChatDoAgent({ id, modelo, versao, naoSalvo }: { id: string; mode
   }
 
   return (
-    <div className="border-border flex h-[640px] flex-col rounded-lg border" data-locum-agent-chat="">
+    <div className="border-border flex h-[calc(100dvh-26rem)] min-h-[420px] flex-col rounded-lg border" data-locum-agent-chat="">
       <div className="border-border flex items-center gap-2 border-b px-3 py-2">
         <Bot className="text-muted-foreground size-4" aria-hidden />
         <span className="text-sm font-medium">{t("agentChat.title")}</span>
@@ -134,7 +138,7 @@ export function ChatDoAgent({ id, modelo, versao, naoSalvo }: { id: string; mode
         ) : null}
       </div>
 
-      {semServidor.length === 0 && !naoSalvo ? null : (
+      {semServidor.length === 0 && !naoSalvo && contaIgnorada === 0 ? null : (
         <div className="border-border flex flex-col gap-1 border-b px-3 py-2 text-xs" data-locum-agent-chat-avisos="">
           {semServidor.map((c) => (
             <p className="flex items-start gap-1.5 text-amber-400" key={c.connectionId}>
@@ -142,6 +146,12 @@ export function ChatDoAgent({ id, modelo, versao, naoSalvo }: { id: string; mode
               {t("agentChat.noServer", { connection: nomes.get(c.connectionId) ?? c.connectionId, reason: c.motivo })}
             </p>
           ))}
+          {contaIgnorada === 0 ? null : (
+            <p className="flex items-start gap-1.5 text-amber-400" data-locum-agent-chat-conta="">
+              <AlertTriangle className="mt-0.5 size-3 shrink-0" aria-hidden />
+              {t("agentChat.accountIgnored", { count: contaIgnorada })}
+            </p>
+          )}
           {naoSalvo ? <p className="text-muted-foreground">{t("agentChat.unsaved")}</p> : null}
         </div>
       )}
@@ -183,7 +193,7 @@ export function ChatDoAgent({ id, modelo, versao, naoSalvo }: { id: string; mode
                     cartao={cartao}
                     decidir={(d) => void decidir(cartao, d)}
                     key={cartao.id}
-                    nomeDaConexao={nomes.get(cartao.servidor)}
+                    nomeDaConexao={nomesPorServidor.get(cartao.servidor)}
                   />
                 ))}
               </MessageContent>
@@ -251,26 +261,18 @@ function CartaoDeEscrita({ cartao, decidir, nomeDaConexao }: { cartao: Cartao; d
       data-locum-agent-cartao={cartao.ferramenta}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <AlertTriangle className="size-3.5 text-amber-400" aria-hidden />
-        <span className="text-xs font-medium">{t("agentChat.card.title")}</span>
-        <span className="font-mono text-xs">
-          {nomeDaConexao ?? cartao.servidor} · {cartao.ferramenta}
+        <AlertTriangle className={cn("size-3.5", pendente ? "text-amber-400" : "text-muted-foreground")} aria-hidden />
+        <span className="text-xs font-medium" data-locum-agent-cartao-titulo="">
+          {t(`agentChat.card.title.${cartao.estado}`)}
         </span>
-        {pendente ? null : (
-          <Badge className="ml-auto" variant="outline">
-            {t(`agentChat.card.state.${cartao.estado}`)}
-          </Badge>
-        )}
+        <span className="font-mono text-xs font-semibold">{cartao.ferramenta}</span>
+        <span className="text-muted-foreground text-[11px]">{nomeDaConexao ?? cartao.servidor}</span>
       </div>
       <pre className="bg-background/60 max-h-48 overflow-auto rounded-md p-2 font-mono text-[11px] leading-relaxed" data-locum-agent-cartao-argumentos="">
         {JSON.stringify(cartao.argumentos, null, 2)}
       </pre>
       {cartao.estado === "expirado" ? <p className="text-muted-foreground text-xs">{t("agentChat.card.expiredHint")}</p> : null}
-      {cartao.resultado === undefined ? null : (
-        <p className="text-muted-foreground text-xs break-words" data-locum-agent-cartao-resultado="">
-          {t("agentChat.card.result")}: {cartao.resultado}
-        </p>
-      )}
+      {cartao.resultado === undefined ? null : <ResultadoDaFerramenta texto={cartao.resultado} />}
       {pendente ? (
         <div className="flex gap-2">
           <Button className="cursor-pointer" data-locum-agent-cartao-executar="" onClick={() => decidir("executar")} size="sm">
@@ -287,7 +289,30 @@ function CartaoDeEscrita({ cartao, decidir, nomeDaConexao }: { cartao: Cartao; d
   );
 }
 
-/** `mcp__claude_ai_Microsoft_365__teams_list_chats` vira `teams_list_chats`. */
+/** O que a ferramenta devolveu: JSON formatado quando é JSON, texto puro no resto, e recolhido quando é longo. */
+function ResultadoDaFerramenta({ texto }: { texto: string }) {
+  const { t } = useTranslation();
+  let formatado: string | null = null;
+  try {
+    const lido: unknown = JSON.parse(texto);
+    if (lido !== null && typeof lido === "object") formatado = JSON.stringify(lido, null, 2);
+  } catch {
+    formatado = null;
+  }
+  return (
+    <details className="text-xs" data-locum-agent-cartao-resultado="" open={texto.length <= 240}>
+      <summary className="text-muted-foreground cursor-pointer select-none">{t("agentChat.card.result")}</summary>
+      {formatado === null ? (
+        <p className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words">{texto}</p>
+      ) : (
+        <pre className="bg-background/60 mt-1 max-h-48 overflow-auto rounded-md p-2 font-mono text-[11px] leading-relaxed">{formatado}</pre>
+      )}
+    </details>
+  );
+}
+
+/** `mcp__claude_ai_Microsoft_365__teams_list_chats` e `servidor__teams_list_chats` viram `teams_list_chats`. */
 function nomeCurto(nome: string): string {
-  return nome.replace(/^mcp__.+?__/, "");
+  // `servidor__ferramenta` e `mcp__servidor__ferramenta` viram só a ferramenta.
+  return nome.replace(/^mcp__.+?__/, "").replace(/^.+?__/, "");
 }

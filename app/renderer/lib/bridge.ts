@@ -159,7 +159,7 @@ export type ReadChannel = (typeof READ_CHANNELS)[number];
  * so faria um hook de leitura alcancar escrita por descuido.
  *
  * Fora da lista, e pela mesma emenda 5 do ADR 0003 que rege a de leitura:
- * `approvals.decide`. Ela nao e uma acao da janela, e o clique de uma pessoa
+ * `approvals.decide` e `agentChat.decide` (o clique do cartão de escrita do chat do agent). Ela nao e uma acao da janela, e o clique de uma pessoa
  * na inbox, e chega ao processo principal por um caminho que a inbox monta,
  * nao por um catalogo que qualquer tela enxerga.
  *
@@ -342,7 +342,7 @@ export type ReadResult<C extends AnyChannel> = Awaited<ReturnType<LocumApi[C]>>;
  * `READ_CHANNELS`, o `Extract` deixa de ser `never` e o `npm run build` para
  * antes de a janela enxergar o canal.
  */
-type SemDecisao = [Extract<AnyChannel, "approvals.decide" | "approvals.settleStuck">] extends [never]
+type SemDecisao = [Extract<AnyChannel, "approvals.decide" | "approvals.settleStuck" | "agentChat.decide">] extends [never]
   ? true
   : never;
 const _semDecisao: SemDecisao = true;

@@ -35,7 +35,7 @@ const BATIDA_MS = 30_000;
  * eventos, e a batida mantém o cliente de HTTP do CLI de desistir por silêncio.
  */
 export async function abrirServidorDeAprovacao(
-  decidir: (nome: string, entrada: unknown) => Promise<DecisaoDaAssinatura>,
+  decidir: (nome: string, entrada: unknown, usoId?: string) => Promise<DecisaoDaAssinatura>,
 ): Promise<ServidorDeAprovacao> {
   const token = randomBytes(24).toString("hex");
   const esperado = Buffer.from(`Bearer ${token}`);
@@ -52,8 +52,8 @@ export async function abrirServidorDeAprovacao(
           tool_use_id: z.string().optional(),
         },
       },
-      async ({ tool_name, input }) => {
-        const decisao = await decidir(tool_name, input);
+      async ({ tool_name, input, tool_use_id }) => {
+        const decisao = await decidir(tool_name, input, tool_use_id);
         const resposta = decisao.permitir
           ? { behavior: "allow", updatedInput: decisao.entrada }
           : { behavior: "deny", message: decisao.mensagem };

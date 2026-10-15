@@ -5,8 +5,8 @@ import { flagsDaConta } from "../runtimes/claude-account.js";
 /** O que o chat mostra enquanto a resposta chega. O mesmo formato do assistente. */
 export type EventoDoChat =
   | { tipo: "texto"; delta: string }
-  | { tipo: "ferramenta"; nome: string; entrada: unknown }
-  | { tipo: "resultado"; nome: string }
+  | { tipo: "ferramenta"; nome: string; entrada: unknown; id?: string }
+  | { tipo: "resultado"; nome: string; id?: string; texto?: string; erro?: boolean }
   | { tipo: "fim"; motivo: string }
   | { tipo: "resumido" }
   | { tipo: "erro"; mensagem: string };
@@ -37,6 +37,8 @@ export interface PedidoDoChat {
    * de negar sozinho: o Claude Code a chama e espera a resposta.
    */
   aprovacaoPor?: string;
+  /** Teto de voltas do modelo, para o laço de ferramentas não passar do que o agent aceita. */
+  maxTurns?: number;
 }
 
 /** O gasto da volta, como o resultado do fluxo conta. */
@@ -70,7 +72,11 @@ export function argsDoChat(p: PedidoDoChat): string[] {
   args.push("--allowedTools", [...internas, ...p.permitidas].join(","));
 
   const ajustes = p.negar !== undefined && p.negar.length > 0 ? { permissions: { deny: p.negar } } : undefined;
-  if (p.conta) {
+  // Com a ferramenta de permissão, as regras `allow` do settings da pessoa e os
+  // conectores da conta liberariam escrita antes dela: o isolamento é sempre o total.
+  const conta = p.conta && p.aprovacaoPor === undefined;
+  if (p.maxTurns !== undefined) args.push("--max-turns", String(p.maxTurns));
+  if (conta) {
     args.push(...flagsDaConta({ internas, ...(ajustes ? { ajustes } : {}) }));
   } else {
     args.push("--strict-mcp-config", "--setting-sources", "", "--permission-mode", "dontAsk", "--tools", internas.join(","));
@@ -104,8 +110,27 @@ export function lerLinha(linha: string): { evento?: EventoDoChat; sessao?: strin
   if (d.type === "assistant") {
     const conteudo = (d.message as { content?: { type?: string; name?: string; input?: unknown }[] } | undefined)?.content ?? [];
     const uso = conteudo.find((c) => c.type === "tool_use" && typeof c.name === "string");
-    if (uso !== undefined) return { evento: { tipo: "ferramenta", nome: uso.name!, entrada: uso.input } };
+    if (uso !== undefined) {
+      const id = (uso as { id?: unknown }).id;
+      return { evento: { tipo: "ferramenta", nome: uso.name!, entrada: uso.input, ...(typeof id === "string" ? { id } : {}) } };
+    }
     return {};
+  }
+  if (d.type === "user") {
+    // O que a ferramenta devolveu, ligado à chamada pelo id.
+    const conteudo = (d.message as { content?: unknown } | undefined)?.content;
+    const volta = Array.isArray(conteudo)
+      ? (conteudo as { type?: string; tool_use_id?: string; content?: unknown; is_error?: boolean }[]).find(
+          (c) => c.type === "tool_result" && typeof c.tool_use_id === "string",
+        )
+      : undefined;
+    if (volta === undefined) return {};
+    const texto = Array.isArray(volta.content)
+      ? (volta.content as { type?: string; text?: string }[]).flatMap((c) => (c.type === "text" && typeof c.text === "string" ? [c.text] : [])).join("\n")
+      : typeof volta.content === "string"
+        ? volta.content
+        : JSON.stringify(volta.content ?? "");
+    return { evento: { tipo: "resultado", nome: "", id: volta.tool_use_id!, texto, erro: volta.is_error === true } };
   }
   if (d.type === "result") {
     const uso = d.usage as { input_tokens?: number; output_tokens?: number } | undefined;

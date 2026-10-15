@@ -17,7 +17,11 @@ const perfil: ResolvedProfile = {
     note: null,
     createdAt: 0,
   },
-  tools: [{ server: "painel", tool: "pid", class: "read" }],
+  tools: [
+    { server: "painel", tool: "pid", class: "read" },
+    // Conector da conta Claude: não entra no chat do agent.
+    { server: "claude-conta", tool: "mcp__github__list_issues", class: "read" },
+  ],
   confirmar: [{ server: "painel", tool: "echo", class: "external_write" }],
   semServidor: [],
   fixas: [],
@@ -72,6 +76,10 @@ test("a escrita não entra nas liberadas: o Claude Code a leva à ferramenta de 
   assert.equal(valor("--permission-prompt-tool"), "mcp__locum-aprovacao__aprovar");
   assert.equal(valor("--permission-mode"), "default");
   assert.equal(valor("--tools"), "");
+  assert.equal(valor("--setting-sources"), "");
+  assert.ok(args.includes("--strict-mcp-config"));
+  assert.equal(valor("--max-turns"), String(perfil.version.spec.maxSteps));
+  assert.ok(!args.join(" ").includes("mcp__github"), "o conector da conta não é liberado");
   assert.equal(valor("--resume"), "s0");
 
   const mcp = (JSON.parse(configuracao) as { mcpServers: Record<string, { type?: string; url?: string; headers?: Record<string, string> }> }).mcpServers;
