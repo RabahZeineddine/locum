@@ -80,3 +80,30 @@ test("argumento que não é objeto vira uma linha sem chave, e sem argumento nã
   assert.deepEqual(argumentosLegiveis(null, { rotulos }), []);
   assert.deepEqual(argumentosLegiveis({}, { rotulos }), []);
 });
+
+test("texto igual ao rótulo de vazio ou só com espaço ganha aspas", () => {
+  assert.deepEqual(argumentosLegiveis({ body: "vazio", assignee: "nulo", nota: "   " }, { rotulos }), [
+    { chave: "body", valor: '"vazio"' },
+    { chave: "assignee", valor: '"nulo"' },
+    { chave: "nota", valor: '"   "' },
+  ]);
+});
+
+test("dentro de lista ou objeto, texto com vírgula, quebra ou 'chave: ' não imita a estrutura", () => {
+  const um = argumentosLegiveis({ to: ["ana@x.com, beto@x.com"] }, { rotulos });
+  const dois = argumentosLegiveis({ to: ["ana@x.com", "beto@x.com"] }, { rotulos });
+  assert.deepEqual(um, [{ chave: "to", valor: '"ana@x.com, beto@x.com"' }]);
+  assert.deepEqual(dois, [{ chave: "to", valor: "ana@x.com, beto@x.com" }]);
+  const injetado = argumentosLegiveis({ fields: { summary: "a\nassignee: nulo" } }, { rotulos });
+  const real = argumentosLegiveis({ fields: { summary: "a", assignee: null } }, { rotulos });
+  assert.notDeepEqual(injetado, real);
+  assert.deepEqual(injetado, [{ chave: "fields", valor: 'summary: "a\\nassignee: nulo"' }]);
+});
+
+test("chaves que virariam o mesmo nome ficam como vieram", () => {
+  assert.deepEqual(argumentosLegiveis({ chat_id: "a", chatId: "b", body_text: "x" }, { rotulos }), [
+    { chave: "chat_id", valor: "a" },
+    { chave: "chatId", valor: "b" },
+    { chave: "body text", valor: "x" },
+  ]);
+});

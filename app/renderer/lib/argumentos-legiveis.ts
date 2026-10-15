@@ -19,6 +19,8 @@ export interface OpcoesDeArgumentos {
 const MAIOR_PROFUNDIDADE = 4;
 const ROTULOS_PADRAO: RotulosDeVazio = { nulo: "null", vazio: "" };
 
+type Contexto = Required<Pick<OpcoesDeArgumentos, "rotulos">> & Pick<OpcoesDeArgumentos, "omitirVazios">;
+
 function ehObjeto(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
@@ -32,17 +34,27 @@ function emPalavras(chave: string): string {
     .toLowerCase();
 }
 
+/** Duas chaves que virariam o mesmo nome (`chat_id` e `chatId`) ficam como vieram. */
+function chaveLegivel(chave: string, todas: [string, unknown][]): string {
+  const nome = emPalavras(chave);
+  return todas.some(([k]) => k !== chave && emPalavras(k) === nome) ? chave : nome;
+}
+
 function semConteudo(v: unknown): boolean {
   return v === null || v === undefined || v === "" || (Array.isArray(v) && v.length === 0) || (ehObjeto(v) && Object.keys(v).length === 0);
 }
 
-/** Texto que lido sem aspas passaria por número, booleano ou nulo ganha aspas, para não se confundir com eles. */
-function textoComAspas(s: string): string {
-  const ambiguo = s.trim() !== "" && (Number.isFinite(Number(s)) || s === "true" || s === "false" || s === "null");
-  return ambiguo ? JSON.stringify(s) : s;
+/**
+ * Texto que lido sem aspas passaria por outra coisa ganha aspas: número,
+ * booleano, nulo, o próprio rótulo de vazio, só espaço, e, dentro de lista ou
+ * objeto, vírgula, quebra de linha ou "chave: " que imitariam a estrutura.
+ */
+function textoComAspas(s: string, profundidade: number, c: Contexto): string {
+  const pareceValor = s.trim() !== "" && (Number.isFinite(Number(s)) || s === "true" || s === "false" || s === "null");
+  const pareceVazio = s === c.rotulos.nulo || s === c.rotulos.vazio || s.trim() === "" || s.trim() !== s;
+  const pareceEstrutura = profundidade > 0 && /[,\n]|: /.test(s);
+  return pareceValor || pareceVazio || pareceEstrutura ? JSON.stringify(s) : s;
 }
-
-type Contexto = Required<Pick<OpcoesDeArgumentos, "rotulos">> & Pick<OpcoesDeArgumentos, "omitirVazios">;
 
 function vazioEscrito(v: unknown, c: Contexto): string {
   return v === null || v === undefined ? c.rotulos.nulo : c.rotulos.vazio;
@@ -51,7 +63,7 @@ function vazioEscrito(v: unknown, c: Contexto): string {
 /** Um valor em texto corrido: sem chaves, aspas de JSON nem colchetes. */
 function texto(v: unknown, profundidade: number, c: Contexto): string {
   if (semConteudo(v)) return vazioEscrito(v, c);
-  if (typeof v === "string") return textoComAspas(v);
+  if (typeof v === "string") return textoComAspas(v, profundidade, c);
   if (typeof v === "number" || typeof v === "boolean" || typeof v === "bigint") return String(v);
   if (profundidade >= MAIOR_PROFUNDIDADE) return JSON.stringify(v) ?? "";
   if (Array.isArray(v)) {
@@ -61,7 +73,7 @@ function texto(v: unknown, profundidade: number, c: Contexto): string {
   }
   if (ehObjeto(v)) {
     const partes = (c.omitirVazios === true ? Object.entries(v).filter(([, x]) => !semConteudo(x)) : Object.entries(v)).map(
-      ([k, x]) => `${emPalavras(k)}: ${texto(x, profundidade + 1, c)}`,
+      ([k, x], _, todas) => `${chaveLegivel(k, todas)}: ${texto(x, profundidade + 1, c)}`,
     );
     // Dentro de lista o objeto cabe numa linha; no topo, uma chave por linha.
     return profundidade === 1 ? partes.join(", ") : partes.join("\n");
@@ -83,5 +95,5 @@ export function argumentosLegiveis(argumentos: unknown, opcoes: OpcoesDeArgument
   }
   return Object.entries(argumentos)
     .filter(([, v]) => c.omitirVazios !== true || !semConteudo(v))
-    .map(([chave, v]) => ({ chave: emPalavras(chave), valor: texto(v, 0, c) }));
+    .map(([chave, v], _, todas) => ({ chave: chaveLegivel(chave, todas), valor: texto(v, 0, c) }));
 }
