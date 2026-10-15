@@ -1,13 +1,22 @@
+import { AvisoDeEscrita } from "@/components/aviso-de-escrita";
 import { CabecalhoDaTela } from "@/components/cabecalho-da-tela";
 import { MarcaLogo } from "@/components/marca-logo";
+import { SeloDeAcesso } from "@/components/selo-de-acesso";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Input } from "@/components/ui/input";
+import { ListGroup, ListRow } from "@/components/ui/list-row";
+import { Select } from "@/components/ui/select";
+import { StatusDot, type Estado as EstadoDoPonto } from "@/components/ui/status-dot";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { call, invalidateReads, read, useRead, type ReadResult } from "@/lib/bridge";
 import { rotuloDoModelo } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
 import { ChatDoAgent } from "../agent-chat";
-import { ArrowLeft, Bot, Copy, Loader2, Plus, RefreshCw, Search, Trash2, Workflow, Wrench, X } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { ArrowLeft, Bot, Copy, Loader2, Plug, Plus, RefreshCw, Search, Trash2, Workflow, Wrench, X } from "lucide-react";
+import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { ehLeitura, ehLeituraDa, escolhaDe, escolhaInicial, ligadaPorPadrao, type EscolhaDeFerramenta } from "../../../src/config/leitura.js";
 import { agruparPorArea, filtrarFerramentas, LIMITE_PARA_AGRUPAR } from "@/lib/ferramentas-do-agent";
@@ -18,9 +27,6 @@ import type { TelaProps } from "../rotas";
 type ResumoDoAgent = ReadResult<"library.profiles">[number];
 type ResumoDoToolset = ReadResult<"library.toolsets">[number];
 type Conexao = ReadResult<"connections.list">[number];
-
-const CAMPO =
-  "border-border bg-background focus-visible:ring-ring w-full rounded-md border px-3 py-1.5 text-sm outline-none focus-visible:ring-1";
 
 /** O detalhe que abre a aba de toolsets, e não um agent. */
 const ABA_TOOLSETS = "toolsets";
@@ -82,23 +88,22 @@ export function Agents({ detalhe, navegar }: TelaProps) {
         descricao={t("library.lead")}
         titulo={t("library.title")}
       />
-      <div className="border-border flex gap-1 border-b">
-        {(["agents", "toolsets"] as const).map((a) => (
-          <button
-            aria-pressed={aba === a}
-            className={cn(
-              "-mb-px cursor-pointer border-b-2 px-3 py-2 text-sm transition-colors",
-              aba === a ? "border-primary text-foreground" : "text-muted-foreground hover:text-foreground border-transparent",
-            )}
-            data-locum-agents-aba={a}
-            key={a}
-            onClick={() => (a === "agents" ? navegar("agents") : navegar("agents", ABA_TOOLSETS))}
-            type="button"
-          >
-            {t(`library.tabs.${a}`)}
-          </button>
-        ))}
-      </div>
+      <Tabs onValueChange={(a) => (a === "agents" ? navegar("agents") : navegar("agents", ABA_TOOLSETS))} value={aba}>
+        <TabsList>
+          {(["agents", "toolsets"] as const).map((a) => (
+            <TabsTrigger
+              className="cursor-pointer"
+              data-locum-agents-aba={a}
+              key={a}
+              // O clique sintético (a fumaça) não passa pelo onValueChange do Radix, que reage ao mouse down; só age se a aba mudou.
+              onClick={() => a !== aba && (a === "agents" ? navegar("agents") : navegar("agents", ABA_TOOLSETS))}
+              value={a}
+            >
+              {t(`library.tabs.${a}`)}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
       {aba === "agents" ? <ListaDeAgents abrir={(id) => navegar("agents", id)} /> : <ListaDeToolsets />}
     </div>
   );
@@ -120,7 +125,7 @@ function ListaDeAgents({ abrir }: { abrir: (id: string) => void }) {
   const lista = useRead("library.profiles");
   const conexoes = useRead("connections.list");
   const [erro, setErro] = useState<string | null>(null);
-  if (lista.status === "loading") return <p className="text-muted-foreground text-sm">{t("library.loading")}</p>;
+  if (lista.status === "loading") return <p className="text-muted-foreground text-[13px]">{t("library.loading")}</p>;
   const agents = lista.data ?? [];
   const nomes = new Map((conexoes.data ?? []).map((c) => [c.id, c.name]));
   const urls = new Map((conexoes.data ?? []).map((c) => [c.id, c.url]));
@@ -136,27 +141,35 @@ function ListaDeAgents({ abrir }: { abrir: (id: string) => void }) {
 
   if (agents.length === 0) {
     return (
-      <div className="border-border text-muted-foreground flex flex-col items-start gap-3 rounded-lg border border-dashed p-6 text-sm">
-        {t("library.empty")}
-        <Button className="cursor-pointer" onClick={() => abrir(NOVO)} size="sm" variant="outline">
-          {t("library.newAgent")}
-        </Button>
-      </div>
+      <EmptyState
+        acao={
+          <Button className="cursor-pointer" data-locum-agent-novo-vazio="" onClick={() => abrir(NOVO)} size="sm" variant="outline">
+            <Plus aria-hidden />
+            {t("library.newAgent")}
+          </Button>
+        }
+        descricao={t("library.empty")}
+        icone={<Bot aria-hidden />}
+        titulo={t("library.emptyTitle")}
+      />
     );
   }
   return (
     <div className="flex flex-col gap-3">
       {erro === null ? null : <p className="text-destructive text-xs">{erro}</p>}
-      <ul className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-3" data-locum-biblioteca-total={agents.length}>
+      <ListGroup data-locum-biblioteca-total={agents.length}>
         {agents.map((a) => (
-          <CartaoDoAgent agent={a} abrir={() => abrir(a.id)} copiar={() => copiar(a.id)} key={a.id} nomes={nomes} urls={urls} />
+          <LinhaDoAgent agent={a} abrir={() => abrir(a.id)} copiar={() => copiar(a.id)} key={a.id} nomes={nomes} urls={urls} />
         ))}
-      </ul>
+      </ListGroup>
     </div>
   );
 }
 
-function CartaoDoAgent({
+/** Quantas marcas cabem na linha antes do "+N". */
+const MARCAS_NA_LINHA = 4;
+
+function LinhaDoAgent({
   agent,
   abrir,
   copiar,
@@ -170,58 +183,60 @@ function CartaoDoAgent({
   urls: Map<string, string | undefined>;
 }) {
   const { t } = useTranslation();
+  const nomesDasConexoes = agent.connections.map((id) => nomes.get(id) ?? id).join(", ");
+  // As marcas são só imagem: o que elas dizem vai no nome acessível da linha.
+  const rotuloDaLinha = [
+    agent.name,
+    agent.description,
+    agent.connections.length === 0 ? t("library.card.noConnections") : t("library.card.uses", { list: nomesDasConexoes }),
+    agent.writes > 0 ? t("library.card.writes", { count: agent.writes }) : "",
+  ]
+    .filter((p) => p !== "")
+    .join(". ");
   return (
-    <li className="relative">
-      <button
-        className="border-border superficie hover:border-foreground/30 flex h-full w-full cursor-pointer flex-col gap-2 rounded-lg border p-4 text-left transition-colors"
-        data-locum-agent-da-biblioteca={agent.id}
-        onClick={abrir}
-        type="button"
-      >
-        <span className="flex items-center gap-2.5 pr-8">
-          <span aria-hidden className="ia-gradiente text-primary-foreground flex size-8 shrink-0 items-center justify-center rounded-md">
-            <Bot className="size-4" />
-          </span>
-          <span className="flex min-w-0 flex-col">
-            <span className="truncate font-medium text-sm">{agent.name}</span>
-            <span className="text-muted-foreground truncate text-xs">{rotuloDoModelo(agent.model)}</span>
-          </span>
+    <ListRow className="min-h-11" data-locum-agent-da-biblioteca={agent.id} onClick={abrir} rotulo={rotuloDaLinha}>
+      <span aria-hidden className="flex size-7 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground">
+        <Bot className="size-3.5" />
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="flex items-center gap-2">
+          <span className="truncate font-medium">{agent.name}</span>
+          <span className="num shrink-0 text-[11px] text-muted-foreground">{t("library.versionShort", { version: agent.version })}</span>
         </span>
-        {agent.description === "" ? null : <span className="text-muted-foreground line-clamp-2 text-xs">{agent.description}</span>}
-        {/* O que ele alcança, em palavras: as conexões e o que cada uma deixa fazer. */}
-        <span className="flex flex-col gap-0.5 text-xs" data-locum-agent-alcance={agent.id}>
-          <span className="flex flex-wrap items-center gap-1.5">
-            {agent.connections.slice(0, 6).map((id) => (
-              <MarcaLogo fonte={{ name: id, url: urls.get(id) }} key={id} tamanho="sm" />
-            ))}
-            {agent.connections.length === 0
-              ? t("library.card.noConnections")
-              : t("library.card.uses", { list: agent.connections.map((id) => nomes.get(id) ?? id).join(", ") })}
-          </span>
-          {agent.connections.length === 0 ? null : (
-            <span className={agent.writes > 0 ? "text-amber-400" : "text-muted-foreground"}>
-              {agent.writes > 0 ? t("library.card.writes", { count: agent.writes }) : t("library.card.readOnly")}
-            </span>
-          )}
-        </span>
-        <span className="text-muted-foreground mt-auto flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
-          <span>{t("library.toolsetsCount", { count: agent.toolsets.length })}</span>
-          <span>{t("library.card.skills", { count: agent.skills })}</span>
-          <span>{t("library.usedBy", { count: agent.usedBy.length })}</span>
-          <span>{t("library.version", { version: agent.version })}</span>
-        </span>
-      </button>
-      <button
+        {agent.description === "" ? null : <span className="truncate text-xs text-muted-foreground">{agent.description}</span>}
+      </span>
+      <span className="hidden w-48 shrink-0 truncate text-xs text-muted-foreground lg:block">
+        {rotuloDoModelo(agent.model)}
+      </span>
+      {/* O que ele alcança: as marcas das conexões, e os nomes por extenso para o leitor de tela e a dica. */}
+      <span className="flex w-32 shrink-0 items-center gap-1 text-xs text-muted-foreground" data-locum-agent-alcance={agent.id}>
+        {agent.connections.slice(0, MARCAS_NA_LINHA).map((id) => (
+          <MarcaLogo fonte={{ name: id, url: urls.get(id) }} key={id} tamanho="sm" />
+        ))}
+        {agent.connections.length > MARCAS_NA_LINHA ? <span className="num">+{agent.connections.length - MARCAS_NA_LINHA}</span> : null}
+        {agent.connections.length === 0 ? <span>{t("library.row.noConnections")}</span> : null}
+        <span className="sr-only">{nomesDasConexoes}</span>
+      </span>
+      <span className="flex w-32 shrink-0 items-center justify-end">
+        {agent.writes > 0 ? <AvisoDeEscrita texto={t("library.row.writes", { count: agent.writes })} /> : null}
+      </span>
+      <span className="num w-28 shrink-0 text-right text-xs text-muted-foreground">{t("library.usedBy", { count: agent.usedBy.length })}</span>
+      <Button
         aria-label={t("library.duplicate")}
-        className="text-muted-foreground hover:text-foreground hover:bg-accent absolute top-3 right-3 cursor-pointer rounded-md p-1.5"
+        className="shrink-0"
         data-locum-agent-duplicar={agent.id}
-        onClick={copiar}
+        onClick={(e) => {
+          // A linha inteira abre o agent; o botão só duplica.
+          e.stopPropagation();
+          copiar();
+        }}
+        size="icon-sm"
         title={t("library.duplicate")}
-        type="button"
+        variant="ghost"
       >
-        <Copy className="size-3.5" />
-      </button>
-    </li>
+        <Copy />
+      </Button>
+    </ListRow>
   );
 }
 
@@ -246,11 +261,11 @@ function EditorDoAgent({
     if (deAutomacao) navegar("automations", `legacy/${id}`);
   }, [deAutomacao, id, navegar]);
   if (deAutomacao) return null;
-  if (id !== null && (lido.status === "loading" || (lido.data === null && automacoes.status === "loading"))) return <p className="text-muted-foreground pt-6 text-sm">{t("library.loading")}</p>;
+  if (id !== null && (lido.status === "loading" || (lido.data === null && automacoes.status === "loading"))) return <p className="pt-6 text-[13px] text-muted-foreground">{t("library.loading")}</p>;
   if (id !== null && (lido.status === "error" || lido.data === null)) {
     return (
       <div className="flex flex-col items-start gap-3 pt-6">
-        <p className="text-sm">{lido.error?.message ?? t("library.notFound")}</p>
+        <p className="text-[13px]">{lido.error?.message ?? t("library.notFound")}</p>
         <Button className="cursor-pointer" onClick={voltar} size="sm" variant="outline">
           {t("library.back")}
         </Button>
@@ -344,32 +359,32 @@ function FormularioDoAgent({
   // As seções ficam todas montadas e só a escolhida aparece: o que se digitou
   // numa não some ao trocar, e o salvar vale para o agent inteiro.
   return (
-    <div className="flex max-w-4xl flex-col gap-5 pt-2" data-locum-probe="agent-da-biblioteca">
-      <div className="flex flex-wrap items-center gap-2">
-        <Button className="cursor-pointer" onClick={voltar} size="sm" variant="ghost">
-          <ArrowLeft className="size-4" />
-          {t("library.back")}
-        </Button>
-      </div>
-
+    <Tabs className="mx-auto w-full max-w-4xl gap-5 pt-1" data-locum-probe="agent-da-biblioteca" onValueChange={(a) => setSecao(a as Secao)} value={secao}>
       {/* Título, salvar e seções ficam presos no topo: a lista de ferramentas do ms365 é longa. */}
-      <div className="bg-background/95 sticky top-0 z-10 -mx-2 flex flex-col gap-4 px-2 pt-2 backdrop-blur">
-        <div className="flex flex-wrap items-start gap-4">
-          <span aria-hidden className="ia-gradiente text-primary-foreground flex size-11 shrink-0 items-center justify-center rounded-lg">
-            <Bot className="size-5" />
+      <div className="sticky top-0 z-10 -mx-2 flex flex-col gap-3 bg-background/95 px-2 pt-1 backdrop-blur">
+        <div className="flex items-center gap-3">
+          <Button className="-ml-2 cursor-pointer text-muted-foreground" onClick={voltar} size="sm" variant="ghost">
+            <ArrowLeft aria-hidden />
+            {t("library.back")}
+          </Button>
+          <span aria-hidden className="text-muted-foreground">/</span>
+          <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground" aria-hidden>
+            <Bot className="size-3.5" />
           </span>
-          <div className="flex min-w-0 flex-1 flex-col gap-1">
-            <h1 className="truncate text-xl font-semibold">{spec.name.trim() === "" ? t("library.editor.untitled") : spec.name}</h1>
-            <p className="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-              <span>{rotuloDoModelo(spec.model)}</span>
-              {salvo === null ? null : <span>{t("library.version", { version: salvo.version })}</span>}
-              {!novo && mudou ? <Badge variant="outline">{t("library.editor.unsaved")}</Badge> : null}
-            </p>
-            {spec.description === "" ? null : <p className="text-muted-foreground text-sm">{spec.description}</p>}
+          <div className="flex min-w-0 flex-1 items-baseline gap-2">
+            <h1 className="truncate text-[15px] font-semibold">{spec.name.trim() === "" ? t("library.editor.untitled") : spec.name}</h1>
+            <span className="shrink-0 truncate text-xs text-muted-foreground">{rotuloDoModelo(spec.model)}</span>
+            {salvo === null ? null : <span className="num shrink-0 text-xs text-muted-foreground">{t("library.version", { version: salvo.version })}</span>}
+            {!novo && mudou ? (
+              <Badge variant="outline">
+                <StatusDot estado="aviso" />
+                {t("library.editor.unsaved")}
+              </Badge>
+            ) : null}
           </div>
           {novo ? null : (
             <Button className="cursor-pointer" data-locum-agent-duplicar-aqui="" disabled={ocupado || mudou} onClick={copiar} variant="outline">
-              <Copy className="size-4" />
+              <Copy aria-hidden />
               {t("library.duplicate")}
             </Button>
           )}
@@ -383,37 +398,29 @@ function FormularioDoAgent({
           </Button>
         </div>
 
-        <div className="border-border flex flex-wrap gap-1 border-b" role="tablist">
+        <TabsList className="flex-wrap">
           {SECOES.map((a) => (
-            <button
-              aria-selected={secao === a}
-              className={cn(
-                "-mb-px flex cursor-pointer items-center gap-1.5 border-b-2 px-3 py-2 text-sm transition-colors",
-                secao === a ? "border-primary text-foreground" : "text-muted-foreground hover:text-foreground border-transparent",
-              )}
-              data-locum-agent-aba={a}
-              key={a}
-              onClick={() => setSecao(a)}
-              role="tab"
-              type="button"
-            >
+            <TabsTrigger className="cursor-pointer" data-locum-agent-aba={a} key={a} onClick={() => a !== secao && setSecao(a)} value={a}>
               {t(`library.editor.tabs.${a}`)}
               {contagem[a] === undefined || contagem[a] === 0 ? null : (
-                <span className="bg-muted text-muted-foreground rounded-full px-1.5 text-[11px] tabular-nums">{contagem[a]}</span>
+                <span className="num rounded-full bg-muted px-1.5 text-[11px] text-muted-foreground">{contagem[a]}</span>
               )}
-            </button>
+            </TabsTrigger>
           ))}
-        </div>
+        </TabsList>
         {aviso === null ? null : (
-          <p className={cn("-mt-2 text-xs", aviso.tipo === "erro" ? "text-sev-critical" : "text-emerald-400")}>{aviso.texto}</p>
+          <p className="-mt-1 flex items-center gap-1.5 text-xs text-muted-foreground" data-locum-agent-aviso={aviso.tipo} role="status">
+            <StatusDot estado={aviso.tipo === "erro" ? "erro" : "ok"} />
+            {aviso.texto}
+          </p>
         )}
       </div>
 
-      <section className="flex flex-col gap-5" hidden={secao !== "instructions"} role="tabpanel">
+      <TabsContent className="flex flex-col gap-5" forceMount value="instructions">
         <Pergunta texto={t("library.editor.leads.instructions")} />
         <Campo rotulo={t("library.editor.name")}>
-          <input
-            className={cn(CAMPO, "font-medium")}
+          <Input
+            className="font-medium"
             data-locum-agent-nome=""
             onChange={(e) => trocar("name", e.target.value)}
             placeholder={t("library.editor.namePlaceholder")}
@@ -421,41 +428,40 @@ function FormularioDoAgent({
           />
         </Campo>
         <Campo rotulo={t("library.editor.description")}>
-          <input
-            className={CAMPO}
+          <Input
             onChange={(e) => trocar("description", e.target.value)}
             placeholder={t("library.editor.descriptionPlaceholder")}
             value={spec.description}
           />
         </Campo>
         <Campo dica={t("library.editor.contextHint")} rotulo={t("library.editor.context")}>
-          <textarea
-            className={cn(CAMPO, "min-h-40 resize-y font-mono text-[12.5px] leading-relaxed")}
+          <Textarea
+            className="min-h-40 font-mono text-[12.5px] leading-relaxed"
             onChange={(e) => trocar("context", e.target.value)}
             value={spec.context}
           />
         </Campo>
         <Campo dica={t("library.editor.instructionsHint")} rotulo={t("library.editor.instructions")}>
-          <textarea
-            className={cn(CAMPO, "min-h-[22rem] resize-y font-mono text-[12.5px] leading-relaxed")}
+          <Textarea
+            className="min-h-[22rem] font-mono text-[12.5px] leading-relaxed"
             data-locum-agent-instrucoes=""
             onChange={(e) => trocar("instructions", e.target.value)}
             value={spec.instructions}
           />
         </Campo>
-      </section>
+      </TabsContent>
 
-      <section className="flex flex-col gap-5" hidden={secao !== "model"} role="tabpanel">
+      <TabsContent className="flex flex-col gap-5" forceMount value="model">
         <Pergunta texto={t("library.editor.leads.model")} />
         <div className="grid gap-5 sm:grid-cols-2">
           <Campo rotulo={t("library.editor.model")}>
-            <SeletorDeModelo catalogo={catalogo} trocar={(v) => trocar("model", v)} valor={spec.model} />
+            <SeletorDeModelo catalogo={catalogo} larguraTotal trocar={(v) => trocar("model", v)} valor={spec.model} />
           </Campo>
           <Campo dica={t("library.editor.temperatureHint")} rotulo={t("library.editor.temperature")}>
-            <div className="flex items-center gap-3">
+            <div className="flex h-8 items-center gap-3">
               <input
                 aria-label={t("library.editor.temperature")}
-                className="accent-primary flex-1 cursor-pointer"
+                className="flex-1 cursor-pointer accent-primary"
                 disabled={spec.temperature === undefined}
                 max={1}
                 min={0}
@@ -464,13 +470,13 @@ function FormularioDoAgent({
                 type="range"
                 value={spec.temperature ?? 0.7}
               />
-              <span className="w-8 text-right font-mono text-xs tabular-nums">
+              <span className="num w-8 text-right font-mono text-xs">
                 {spec.temperature === undefined ? "" : spec.temperature.toFixed(1)}
               </span>
-              <label className="flex cursor-pointer items-center gap-1.5 text-xs">
+              <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
                 <input
                   checked={spec.temperature === undefined}
-                  className="accent-primary cursor-pointer"
+                  className="cursor-pointer accent-primary"
                   onChange={(e) =>
                     setSpec((s) => {
                       const { temperature: _antiga, ...resto } = s;
@@ -485,8 +491,8 @@ function FormularioDoAgent({
           </Campo>
         </div>
         <Campo dica={t("library.editor.maxStepsHint")} rotulo={t("library.editor.maxSteps")}>
-          <input
-            className={cn(CAMPO, "w-28")}
+          <Input
+            className="num w-28"
             min={1}
             onChange={(e) => {
               const n = Number.parseInt(e.target.value, 10);
@@ -496,32 +502,32 @@ function FormularioDoAgent({
             value={spec.maxSteps}
           />
         </Campo>
-      </section>
+      </TabsContent>
 
-      <section className="flex flex-col gap-6" data-locum-agent-secao="tools" hidden={secao !== "tools"} role="tabpanel">
+      <TabsContent className="flex flex-col gap-6" data-locum-agent-secao="tools" forceMount value="tools">
         <Pergunta texto={t("library.editor.leads.tools")} />
         <ConexoesDoAgent conexoes={spec.connections} trocar={(v) => trocar("connections", v)} />
-        <details className="border-border rounded-md border p-3" open={spec.toolsets.length + spec.tools.length > 0}>
-          <summary className="cursor-pointer text-sm font-medium">{t("library.editor.shortcuts")}</summary>
+        <details className="rounded-lg border border-border bg-card px-3 py-2.5" open={spec.toolsets.length + spec.tools.length > 0}>
+          <summary className="cursor-pointer text-[13px] font-medium">{t("library.editor.shortcuts")}</summary>
           <div className="mt-4 flex flex-col gap-6">
-            <p className="text-muted-foreground text-xs">{t("library.editor.shortcutsHint")}</p>
+            <p className="text-xs text-muted-foreground">{t("library.editor.shortcutsHint")}</p>
             <FerramentasEscolhidas
               remover={(r) => trocar("tools", spec.tools.filter((x) => x.server !== r.server || x.tool !== r.tool))}
               tools={spec.tools}
             />
             <Campo dica={t("library.editor.toolsetsHint")} rotulo={t("library.editor.toolsets")}>
               {(toolsets.data ?? []).length === 0 ? (
-                <p className="text-muted-foreground text-xs">{t("library.editor.toolsetsNone")}</p>
+                <p className="text-xs text-muted-foreground">{t("library.editor.toolsetsNone")}</p>
               ) : (
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-1.5">
                   {(toolsets.data ?? []).map((ts) => {
                     const marcado = spec.toolsets.includes(ts.id);
                     return (
                       <button
                         aria-pressed={marcado}
                         className={cn(
-                          "border-border flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors",
-                          marcado ? "border-primary bg-primary/10" : "hover:border-foreground/30",
+                          "flex h-7 cursor-pointer items-center gap-1.5 rounded-md border px-2 text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+                          marcado ? "border-primary bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:bg-accent hover:text-foreground",
                         )}
                         data-locum-agent-toolset={ts.id}
                         key={ts.id}
@@ -529,9 +535,9 @@ function FormularioDoAgent({
                         title={ts.description}
                         type="button"
                       >
-                        <Wrench className="size-3" />
+                        <Wrench aria-hidden className="size-3" />
                         {ts.name}
-                        <span className="text-muted-foreground">{t("library.toolsCount", { count: ts.tools.length })}</span>
+                        <span className="num text-muted-foreground">{t("library.toolsCount", { count: ts.tools.length })}</span>
                       </button>
                     );
                   })}
@@ -543,56 +549,50 @@ function FormularioDoAgent({
             </Campo>
           </div>
         </details>
-      </section>
+      </TabsContent>
 
-      <section className="flex flex-col gap-5" hidden={secao !== "skills"} role="tabpanel">
+      <TabsContent className="flex flex-col gap-5" forceMount value="skills">
         <Pergunta texto={t("library.editor.leads.skills")} />
         <SkillsDoAgent skills={spec.skills} trocar={(v) => trocar("skills", v)} />
-      </section>
+      </TabsContent>
 
-      <section className="flex flex-col gap-5" hidden={secao !== "budget"} role="tabpanel">
+      <TabsContent className="flex flex-col gap-5" forceMount value="budget">
         <Pergunta texto={t("library.editor.leads.budget")} />
         <OrcamentoDoAgent orcamento={spec.budget} trocar={(v) => trocar("budget", v)} />
-      </section>
+      </TabsContent>
 
-      <section className="flex flex-col gap-5" data-locum-agent-secao="chat" hidden={secao !== "chat"} role="tabpanel">
+      <TabsContent className="flex flex-col gap-5" data-locum-agent-secao="chat" forceMount value="chat">
         <Pergunta texto={t("library.editor.leads.chat")} />
         {novo ? (
-          <p className="text-muted-foreground text-sm" data-locum-agent-chat-salvar="">
+          <p className="text-[13px] text-muted-foreground" data-locum-agent-chat-salvar="">
             {t("agentChat.saveFirst")}
           </p>
         ) : secao === "chat" ? (
           // Só monta com a aba aberta: o retrato da conversa pede ao serviço as ferramentas do agent.
           <ChatDoAgent id={spec.id} modelo={salvo.spec.model} naoSalvo={mudou} versao={salvo.version} />
         ) : null}
-      </section>
+      </TabsContent>
 
-      <section className="flex flex-col gap-5" hidden={secao !== "usage"} role="tabpanel">
+      <TabsContent className="flex flex-col gap-5" forceMount value="usage">
         <Pergunta texto={t("library.editor.leads.usage")} />
         <Campo dica={t("library.editor.usageHint")} rotulo={t("library.editor.usage")}>
           {usadoPor.length === 0 ? (
-            <p className="text-muted-foreground text-sm">{t("library.editor.usageNone")}</p>
+            <p className="text-[13px] text-muted-foreground">{t("library.editor.usageNone")}</p>
           ) : (
-            <ul className="flex flex-col gap-2">
+            <ListGroup>
               {usadoPor.map((id) => (
-                <li key={id}>
-                  <button
-                    className="border-border superficie hover:border-foreground/30 flex w-full cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors"
-                    onClick={() => navegar("automations", id)}
-                    type="button"
-                  >
-                    <Workflow className="text-muted-foreground size-4" />
-                    <span className="font-mono text-xs">{id}</span>
-                    <span className="text-muted-foreground ml-auto text-xs">{t("library.editor.openAutomation")}</span>
-                  </button>
-                </li>
+                <ListRow data-locum-agent-usado-em={id} key={id} onClick={() => navegar("automations", id)} rotulo={id}>
+                  <Workflow aria-hidden className="size-4 text-muted-foreground" />
+                  <span className="font-mono text-xs">{id}</span>
+                  <span className="ml-auto text-xs text-muted-foreground">{t("library.editor.openAutomation")}</span>
+                </ListRow>
               ))}
-            </ul>
+            </ListGroup>
           )}
         </Campo>
         {novo ? null : (
-          <div className="border-sev-critical/30 flex flex-wrap items-center gap-3 rounded-md border p-3">
-            <span className="text-muted-foreground flex-1 text-xs">
+          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border px-3 py-2.5">
+            <span className="flex-1 text-xs text-muted-foreground">
               {usadoPor.length > 0 ? t("library.editor.inUse", { list: usadoPor.join(", ") }) : t("library.editor.removeHint")}
             </span>
             <Button
@@ -603,30 +603,30 @@ function FormularioDoAgent({
               size="sm"
               variant="ghost"
             >
-              <Trash2 className="size-4" />
+              <Trash2 aria-hidden />
               {t("library.editor.remove")}
             </Button>
           </div>
         )}
-      </section>
+      </TabsContent>
 
       {novo ? null : (
-        <div className="border-border flex flex-wrap items-center gap-2 border-t pt-4">
-          <input
-            className={cn(CAMPO, "min-w-56 flex-1")}
+        <div className="flex flex-wrap items-center gap-2 border-t border-border pt-4">
+          <Input
+            className="min-w-56 flex-1"
             onChange={(e) => setNota(e.target.value)}
             placeholder={t("library.editor.note")}
             value={nota}
           />
         </div>
       )}
-    </div>
+    </Tabs>
   );
 }
 
 /** A frase que abre cada seção: a pergunta que ela responde. */
 function Pergunta({ texto }: { texto: string }) {
-  return <p className="text-muted-foreground text-sm">{texto}</p>;
+  return <p className="text-[13px] text-muted-foreground">{texto}</p>;
 }
 
 /* ------------------------------------------------------------- conexões */
@@ -657,12 +657,12 @@ function ConexoesDoAgent({ conexoes, trocar }: { conexoes: AgentConnection[]; tr
   return (
     <div className="flex flex-col gap-3" data-locum-agent-conexoes={conexoes.length}>
       {conexoes.length === 0 ? (
-        <p className="border-border text-muted-foreground rounded-md border border-dashed p-3 text-sm">{t("library.connections.none")}</p>
+        <EmptyState className="py-5" icone={<Plug aria-hidden />} titulo={t("library.connections.none")} />
       ) : (
         <ul className="flex flex-col gap-3">
           {conexoes.map((c) => (
             <li key={c.connectionId}>
-              <CartaoDaConexao
+              <BlocoDaConexao
                 conexao={todas.find((x) => x.id === c.connectionId)}
                 escolha={c}
                 mudar={(depois) => mudar(c.connectionId, depois)}
@@ -673,11 +673,11 @@ function ConexoesDoAgent({ conexoes, trocar }: { conexoes: AgentConnection[]; tr
       )}
       <div className="flex flex-wrap items-center gap-2">
         {livres.length === 0 ? (
-          <span className="text-muted-foreground text-xs">{t("library.connections.noneToAdd")}</span>
+          <span className="text-xs text-muted-foreground">{t("library.connections.noneToAdd")}</span>
         ) : (
-          <select
+          <Select
             aria-label={t("library.connections.add")}
-            className={cn(CAMPO, "w-auto min-w-56 cursor-pointer")}
+            className="w-auto min-w-56"
             data-locum-agent-conexao-adicionar=""
             onChange={(e) => {
               if (e.target.value !== "") void adicionar(e.target.value);
@@ -690,7 +690,7 @@ function ConexoesDoAgent({ conexoes, trocar }: { conexoes: AgentConnection[]; tr
                 {c.name}
               </option>
             ))}
-          </select>
+          </Select>
         )}
       </div>
     </div>
@@ -715,7 +715,7 @@ function useGuardadas(servidores: string[]): Record<string, ReadResult<"mcp.tool
   return porServidor;
 }
 
-function CartaoDaConexao({
+function BlocoDaConexao({
   conexao,
   escolha,
   mudar,
@@ -737,44 +737,52 @@ function CartaoDaConexao({
     const achada = (corte < 0 ? servidores : [chave.slice(0, corte)]).map((s) => guardadas[s]?.find((f) => f.name === nome)).find((f) => f !== undefined);
     return achada === undefined ? !ehLeitura(nome) : !ehLeituraDa(achada);
   }).length;
+  const nomeDaConexao = conexao?.name ?? escolha.connectionId;
   return (
-    <div className="border-border superficie flex flex-col gap-3 rounded-lg border p-3" data-locum-agent-conexao={escolha.connectionId}>
-      <div className="flex flex-wrap items-center gap-2">
+    <div className="overflow-hidden rounded-lg border border-border bg-card" data-locum-agent-conexao={escolha.connectionId}>
+      <div className="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5">
         <MarcaLogo fonte={{ name: escolha.connectionId, url: conexao?.url }} tamanho="sm" />
-        <span className="text-sm font-medium">{interno ? t("library.connections.internal") : (conexao?.name ?? escolha.connectionId)}</span>
+        <span className="text-[13px] font-medium">{interno ? t("library.connections.internal") : nomeDaConexao}</span>
         {conexao === undefined ? null : (
-          <Badge variant="outline">
-            {t(
-              conexao.state === "connected" && conexao.reason === "untested"
-                ? "connections.state.untested"
-                : conexao.state === "off"
-                  ? "connections.state.off"
-                  : `connections.state.${conexao.state}`,
-            )}
-          </Badge>
+          <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+            <StatusDot estado={pontoDaConexao(conexao)} />
+            {t(`connections.state.${estadoDaConexao(conexao)}`)}
+          </span>
         )}
-        <span className="text-muted-foreground text-xs">{t("library.connections.default")}</span>
-        {ligadas === 0 ? null : (
-          <Badge className="text-amber-400" variant="outline">
-            {t("library.card.writes", { count: ligadas })}
-          </Badge>
-        )}
-        <button
-          aria-label={t("library.connections.remove", { name: conexao?.name ?? escolha.connectionId })}
-          className="hover:bg-accent ml-auto cursor-pointer rounded-md p-1"
+        <span className="text-xs text-muted-foreground">{t("library.connections.default")}</span>
+        {ligadas === 0 ? null : <AvisoDeEscrita count={ligadas} />}
+        <Button
+          aria-label={t("library.connections.remove", { name: nomeDaConexao })}
+          className="ml-auto cursor-pointer"
           onClick={() => mudar(null)}
-          type="button"
+          size="icon-sm"
+          variant="ghost"
         >
-          <X className="size-4" />
-        </button>
+          <X aria-hidden />
+        </Button>
       </div>
-      {servidores.length === 0 ? (
-        <p className="text-muted-foreground text-xs">{t("library.connections.noServer")}</p>
-      ) : (
-        servidores.map((servidor) => <FerramentasDoServidor escolha={escolha} key={servidor} mudar={mudar} servidor={servidor} />)
-      )}
+      <div className="flex flex-col gap-4 border-t border-border px-3 py-3">
+        {servidores.length === 0 ? (
+          <p className="text-xs text-muted-foreground">{t("library.connections.noServer")}</p>
+        ) : (
+          servidores.map((servidor) => <FerramentasDoServidor escolha={escolha} key={servidor} mudar={mudar} servidor={servidor} />)
+        )}
+      </div>
     </div>
   );
+}
+
+/** O estado que a lista de conexões mostra: ligada sem teste e desligada têm palavra própria e ponto neutro. */
+function estadoDaConexao(c: Conexao): string {
+  return c.state === "connected" && c.reason === "untested" ? "untested" : c.state;
+}
+
+function pontoDaConexao(c: Conexao): EstadoDoPonto {
+  if (c.state === "off" || (c.state === "connected" && c.reason === "untested")) return "ocioso";
+  if (c.state === "connected") return "ok";
+  if (c.state === "attention") return "aviso";
+  if (c.state === "available" || c.state === "soon") return "ocioso";
+  return "erro";
 }
 
 function FerramentasDoServidor({
@@ -854,33 +862,24 @@ function FerramentasDoServidor({
   const linha = (f: Ferramenta) => {
     const { ligada, leitura, declarada } = efetiva(f);
     return (
-      <li className="hover:bg-muted/40 flex items-center gap-2 rounded-md px-2 py-1" key={f.name}>
-        <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
+      <ListRow className="min-h-9 py-1" key={f.name}>
+        <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5">
           <input
             checked={ligada}
-            className="accent-primary cursor-pointer"
+            className="cursor-pointer accent-primary"
             data-locum-agent-ferramenta={`${servidor}/${f.name}`}
             onChange={(e) => definir(f, e.target.checked ? (declarada ? "read" : true) : false)}
             type="checkbox"
           />
-          <span className="font-mono text-xs">{f.name}</span>
-          <span
-            className={cn(
-              "rounded border px-1.5 text-[10px] leading-4",
-              leitura ? "border-border text-muted-foreground" : "border-sev-medium/40 text-sev-medium",
-            )}
-          >
-            {t(leitura ? "library.editor.read" : "library.editor.write")}
-          </span>
-          {f.description === "" ? null : (
-            <span className="text-muted-foreground line-clamp-1 min-w-0 flex-1 text-xs">{f.description}</span>
-          )}
+          <span className="shrink-0 font-mono text-xs">{f.name}</span>
+          <SeloDeAcesso leitura={leitura} />
+          {f.description === "" ? null : <span className="line-clamp-1 min-w-0 flex-1 text-xs text-muted-foreground">{f.description}</span>}
         </label>
         {ehLeituraDa(f) || !ligada ? null : (
-          <label className="text-muted-foreground flex shrink-0 cursor-pointer items-center gap-1 text-[11px]" title={t("library.connections.declareReadHint")}>
+          <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-[11px] text-muted-foreground" title={t("library.connections.declareReadHint")}>
             <input
               checked={declarada}
-              className="accent-primary cursor-pointer"
+              className="cursor-pointer accent-primary"
               data-locum-agent-declarar-leitura={`${servidor}/${f.name}`}
               onChange={(e) => definir(f, e.target.checked ? "read" : true)}
               type="checkbox"
@@ -888,19 +887,20 @@ function FerramentasDoServidor({
             {t("library.connections.declareRead")}
           </label>
         )}
-      </li>
+      </ListRow>
     );
   };
 
   return (
-    <div className="flex flex-col gap-2" data-locum-agent-servidor={servidor}>
+    <div className="flex flex-col gap-3" data-locum-agent-servidor={servidor}>
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-mono text-xs">{servidor}</span>
         {ferramentas === null ? null : (
-          <span className="text-muted-foreground text-xs" data-locum-agent-ligadas={`${ligadasNoTotal}/${todas.length}`}>
+          <span className="num text-xs text-muted-foreground" data-locum-agent-ligadas={`${ligadasNoTotal}/${todas.length}`}>
             {t("library.connections.ligadas", { on: ligadasNoTotal, total: todas.length })}
           </span>
         )}
+        <span className="flex-1" />
         {ferramentas === null || todas.length === 0 ? null : (
           <>
             <Button
@@ -924,65 +924,70 @@ function FerramentasDoServidor({
           </>
         )}
         <Button
-          className="ml-auto cursor-pointer"
+          className="cursor-pointer"
           data-locum-agent-carregar={servidor}
           disabled={lendo}
           onClick={carregar}
           size="sm"
           variant="ghost"
         >
-          {lendo ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+          {lendo ? <Loader2 aria-hidden className="animate-spin" /> : <RefreshCw aria-hidden />}
           {t(ferramentas === null ? "library.connections.load" : "library.connections.reload")}
         </Button>
       </div>
       {grande && ligadasNoTotal === 0 ? (
-        <p className="text-muted-foreground text-xs" data-locum-agent-escolha-as-que-precisa="">
+        <p className="text-xs text-muted-foreground" data-locum-agent-escolha-as-que-precisa="">
           {t("library.connections.pickThem")}
         </p>
       ) : null}
       {ferramentas !== null && todas.length > 8 ? (
-        <label className="border-border bg-card focus-within:ring-ring flex h-8 max-w-sm items-center gap-2 rounded-md border px-2 focus-within:ring-2">
-          <Search aria-hidden className="text-muted-foreground size-3.5" />
-          <input
+        <div className="relative max-w-sm">
+          <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
             aria-label={t("library.connections.search")}
-            className="placeholder:text-muted-foreground w-full bg-transparent text-xs outline-none"
+            className="pl-8"
             data-locum-agent-ferramentas-busca={servidor}
             onChange={(e) => setBusca(e.target.value)}
             placeholder={t("library.connections.search")}
             value={busca}
           />
-        </label>
+        </div>
       ) : null}
-      {erro === null ? null : <p className="text-destructive text-xs">{erro}</p>}
+      {erro === null ? null : (
+        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <StatusDot estado="erro" />
+          {erro}
+        </p>
+      )}
       {ferramentas === null ? (
-        <p className="text-muted-foreground text-xs">{t("library.connections.notListed")}</p>
+        <p className="text-xs text-muted-foreground">{t("library.connections.notListed")}</p>
       ) : visiveis.length === 0 && busca.trim() !== "" ? (
-        <p className="text-muted-foreground text-xs">{t("library.connections.noMatch", { termo: busca.trim() })}</p>
+        <p className="text-xs text-muted-foreground">{t("library.connections.noMatch", { termo: busca.trim() })}</p>
       ) : (
         grupos.map((g) => (
-          <div className="flex flex-col gap-0.5" data-locum-agent-grupo={g.area ?? ""} key={g.area ?? "todas"}>
+          <div className="flex flex-col gap-1.5" data-locum-agent-grupo={g.area ?? ""} key={g.area ?? "todas"}>
             {g.area === null ? null : (
               <div className="mt-1 flex items-center gap-2">
-                <span className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
+                <span className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
                   {t(`library.connections.areas.${g.area}`)}
                 </span>
-                <span className="text-muted-foreground text-[11px]">
+                <span className="num text-[11px] text-muted-foreground">
                   {t("library.connections.ligadas", { on: g.itens.filter((f) => efetiva(f).ligada).length, total: g.itens.length })}
                 </span>
-                <Button className="ml-auto cursor-pointer" onClick={() => ligarLeituras(g.itens)} size="sm" variant="ghost">
+                <Button className="ml-auto cursor-pointer" onClick={() => ligarLeituras(g.itens)} size="xs" variant="ghost">
                   {t("library.connections.enableReads")}
                 </Button>
-                <Button className="cursor-pointer" onClick={() => desligar(g.itens)} size="sm" variant="ghost">
+                <Button className="cursor-pointer" onClick={() => desligar(g.itens)} size="xs" variant="ghost">
                   {t("library.connections.disableAll")}
                 </Button>
               </div>
             )}
-            <ul className="flex flex-col gap-0.5">{g.itens.map(linha)}</ul>
+            <ListGroup className="bg-transparent">{g.itens.map(linha)}</ListGroup>
           </div>
         ))
       )}
       {escritas.some((f) => efetiva(f).ligada && !efetiva(f).leitura) ? (
-        <p className="text-amber-400 text-xs">{t("library.connections.writeNote")}</p>
+        <AvisoDeEscrita texto={t("library.connections.writeNote")} />
       ) : null}
     </div>
   );
@@ -999,29 +1004,33 @@ function SkillsDoAgent({ skills, trocar }: { skills: AgentProfile["skills"]; tro
   return (
     <div className="flex flex-col gap-3" data-locum-agent-skills={skills.length}>
       {skills.length === 0 ? (
-        <p className="border-border text-muted-foreground rounded-md border border-dashed p-3 text-sm">{t("library.skills.none")}</p>
+        <p className="rounded-lg border border-dashed border-border px-3 py-3 text-[13px] text-muted-foreground">{t("library.skills.none")}</p>
       ) : (
-        <ul className="flex flex-wrap gap-1.5">
+        <ListGroup>
           {skills.map((s) => (
-            <li className="border-border flex items-center gap-1.5 rounded-full border py-0.5 pr-1 pl-2.5 text-xs" key={s.skill}>
-              <span className="font-mono">{s.skill}</span>
+            <ListRow className="min-h-9 py-1" data-locum-agent-skill={s.skill} key={s.skill}>
+              <span className="font-mono text-xs">{s.skill}</span>
               {achadas.status === "ready" && !noDisco.has(s.skill) ? (
-                <span className="text-amber-400 text-[10px]">{t("library.skills.missing")}</span>
+                <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <StatusDot estado="aviso" />
+                  {t("library.skills.missing")}
+                </span>
               ) : null}
-              <button
+              <Button
                 aria-label={t("library.skills.remove", { name: s.skill })}
-                className="hover:bg-accent cursor-pointer rounded-full p-0.5"
+                className="ml-auto cursor-pointer"
                 onClick={() => trocar(skills.filter((x) => x.skill !== s.skill))}
-                type="button"
+                size="icon-xs"
+                variant="ghost"
               >
-                <X className="size-3" />
-              </button>
-            </li>
+                <X aria-hidden />
+              </Button>
+            </ListRow>
           ))}
-        </ul>
+        </ListGroup>
       )}
       {livres.length === 0 ? (
-        <span className="text-muted-foreground text-xs">{t("library.skills.noneToAdd")}</span>
+        <span className="text-xs text-muted-foreground">{t("library.skills.noneToAdd")}</span>
       ) : (
         <CampoComBusca
           aoEscolher={(nome) => trocar([...skills, { skill: nome, when: { always: true } }])}
@@ -1053,6 +1062,7 @@ function CampoComBusca({
   const [termo, setTermo] = useState("");
   const [aberto, setAberto] = useState(false);
   const [ativa, setAtiva] = useState(0);
+  const idDaLista = useId();
   const achadas = useMemo(() => filtrarFerramentas(opcoes, termo).slice(0, 40), [opcoes, termo]);
   const escolher = (nome: string): void => {
     aoEscolher(nome);
@@ -1062,11 +1072,14 @@ function CampoComBusca({
   };
   return (
     <div className="relative w-full max-w-sm" data-locum-campo-com-busca="">
-      <input
+      <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+      <Input
+        aria-activedescendant={aberto && achadas[ativa] !== undefined ? `${idDaLista}-${ativa}` : undefined}
         aria-autocomplete="list"
+        aria-controls={idDaLista}
         aria-expanded={aberto}
         aria-label={rotulo}
-        className={CAMPO}
+        className="pl-8"
         onBlur={() => setTimeout(() => setAberto(false), 120)}
         onChange={(e) => {
           setTermo(e.target.value);
@@ -1096,25 +1109,28 @@ function CampoComBusca({
       />
       {aberto ? (
         <ul
-          className="border-border bg-popover absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-md border p-1 shadow-lg"
+          className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-md border border-border bg-popover p-1 shadow-lg"
+          id={idDaLista}
           role="listbox"
         >
           {achadas.length === 0 ? (
-            <li className="text-muted-foreground px-2 py-1.5 text-xs">{semResultado}</li>
+            <li className="px-2 py-1.5 text-xs text-muted-foreground">{semResultado}</li>
           ) : (
             achadas.map((o, i) => (
               <li
                 aria-selected={i === ativa}
-                className={cn("flex cursor-pointer flex-col gap-0.5 rounded px-2 py-1", i === ativa && "bg-muted")}
+                className={cn("flex cursor-pointer flex-col gap-0.5 rounded px-2 py-1", i === ativa && "bg-accent")}
+                id={`${idDaLista}-${i}`}
                 key={o.name}
                 onMouseDown={(e) => {
                   e.preventDefault();
                   escolher(o.name);
                 }}
+                onMouseEnter={() => setAtiva(i)}
                 role="option"
               >
                 <span className="font-mono text-xs">{o.name}</span>
-                {o.description ? <span className="text-muted-foreground line-clamp-1 text-[11px]">{o.description}</span> : null}
+                {o.description ? <span className="line-clamp-1 text-[11px] text-muted-foreground">{o.description}</span> : null}
               </li>
             ))
           )}
@@ -1162,8 +1178,8 @@ function LimiteDoOrcamento({
   };
   return (
     <Campo dica={t(`library.budget.${campo}Hint`)} rotulo={t(`library.budget.${campo}`)}>
-      <input
-        className={cn(CAMPO, "w-40")}
+      <Input
+        className="num w-40"
         data-locum-agent-limite={campo}
         inputMode={dinheiro ? "decimal" : "numeric"}
         onChange={(e) => mudar(e.target.value)}
@@ -1181,45 +1197,30 @@ function LimiteDoOrcamento({
  */
 function FerramentasEscolhidas({ tools, remover }: { tools: ToolRef[]; remover: (r: ToolRef) => void }) {
   const { t } = useTranslation();
-  const porServidor = new Map<string, ToolRef[]>();
-  for (const r of tools) porServidor.set(r.server, [...(porServidor.get(r.server) ?? []), r]);
   return (
     <div className="flex flex-col gap-2">
-      <span className="text-muted-foreground text-xs">{t("library.editor.chosenTools")}</span>
+      <span className="text-xs text-muted-foreground">{t("library.editor.chosenTools")}</span>
       {tools.length === 0 ? (
-        <p className="border-border text-muted-foreground rounded-md border border-dashed p-3 text-sm">{t("library.editor.chosenNone")}</p>
+        <p className="rounded-lg border border-dashed border-border px-3 py-3 text-[13px] text-muted-foreground">{t("library.editor.chosenNone")}</p>
       ) : (
-        <ul className="flex flex-col gap-2" data-locum-agent-escolhidas={tools.length}>
-          {[...porServidor].map(([servidor, refs]) => (
-            <li className="border-border superficie flex flex-col gap-2 rounded-md border p-3" key={servidor}>
-              <span className="font-mono text-xs">{servidor}</span>
-              <span className="flex flex-wrap gap-1.5">
-                {refs.map((r) => {
-                  const leitura = ehLeitura(r.tool);
-                  return (
-                    <span
-                      className="border-border flex items-center gap-1.5 rounded-full border py-0.5 pr-1 pl-2.5 text-xs"
-                      key={r.tool}
-                    >
-                      <span className="font-mono">{r.tool}</span>
-                      <span className={cn("text-[10px]", leitura ? "text-muted-foreground" : "text-amber-400")}>
-                        {t(leitura ? "library.editor.read" : "library.editor.write")}
-                      </span>
-                      <button
-                        aria-label={t("library.editor.removeTool", { tool: r.tool })}
-                        className="hover:bg-accent cursor-pointer rounded-full p-0.5"
-                        onClick={() => remover(r)}
-                        type="button"
-                      >
-                        <X className="size-3" />
-                      </button>
-                    </span>
-                  );
-                })}
-              </span>
-            </li>
+        <ListGroup data-locum-agent-escolhidas={tools.length}>
+          {tools.map((r) => (
+            <ListRow className="min-h-9 py-1" key={`${r.server}/${r.tool}`}>
+              <span className="font-mono text-xs">{r.tool}</span>
+              <SeloDeAcesso leitura={ehLeitura(r.tool)} />
+              <span className="min-w-0 flex-1 truncate text-right font-mono text-[11px] text-muted-foreground">{r.server}</span>
+              <Button
+                aria-label={t("library.editor.removeTool", { tool: r.tool })}
+                className="cursor-pointer"
+                onClick={() => remover(r)}
+                size="icon-xs"
+                variant="ghost"
+              >
+                <X aria-hidden />
+              </Button>
+            </ListRow>
           ))}
-        </ul>
+        </ListGroup>
       )}
     </div>
   );
@@ -1240,9 +1241,9 @@ function ListaDeToolsets() {
   return (
     <div className="flex flex-col gap-3" data-locum-probe="toolsets" data-total={lista.length}>
       <div className="flex items-center gap-3">
-        <p className="text-muted-foreground flex-1 text-sm">{t("library.toolsets.lead")}</p>
+        <p className="flex-1 text-[13px] text-muted-foreground">{t("library.toolsets.lead")}</p>
         <Button className="cursor-pointer" data-locum-toolset-novo="" onClick={() => setAberto(NOVO)} size="sm" variant="outline">
-          <Plus className="size-4" />
+          <Plus aria-hidden />
           {t("library.toolsets.new")}
         </Button>
       </div>
@@ -1257,41 +1258,40 @@ function ListaDeToolsets() {
         />
       ) : null}
       {lista.length === 0 && aberto !== NOVO ? (
-        <p className="border-border text-muted-foreground rounded-lg border border-dashed p-6 text-sm">{t("library.toolsets.empty")}</p>
-      ) : (
-        <ul className="flex flex-col gap-2">
+        <EmptyState descricao={t("library.toolsets.empty")} icone={<Wrench aria-hidden />} titulo={t("library.toolsets.emptyTitle")} />
+      ) : lista.length === 0 ? null : (
+        <div className="flex flex-col gap-2">
           {lista.map((ts) =>
             aberto === ts.id ? (
-              <li key={ts.id}>
-                <EditorDoToolset
-                  fechar={() => setAberto(null)}
-                  inicial={ts}
-                  aoGravar={() => {
-                    setAberto(null);
-                    reler();
-                  }}
-                />
-              </li>
-            ) : (
-              <li key={ts.id}>
-                <button
-                  className="border-border superficie hover:border-foreground/30 flex w-full cursor-pointer items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors"
-                  data-locum-toolset={ts.id}
-                  onClick={() => setAberto(ts.id)}
-                  type="button"
-                >
-                  <Wrench className="text-muted-foreground size-4 shrink-0" />
-                  <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate font-medium text-sm">{ts.name}</span>
-                    {ts.description === "" ? null : <span className="text-muted-foreground truncate text-xs">{ts.description}</span>}
-                  </span>
-                  <span className="text-muted-foreground text-xs">{t("library.toolsCount", { count: ts.tools.length })}</span>
-                  <span className="text-muted-foreground text-xs">{t("library.toolsets.usedBy", { count: ts.usedBy.length })}</span>
-                </button>
-              </li>
-            ),
+              <EditorDoToolset
+                aoGravar={() => {
+                  setAberto(null);
+                  reler();
+                }}
+                fechar={() => setAberto(null)}
+                inicial={ts}
+                key={ts.id}
+              />
+            ) : null,
           )}
-        </ul>
+          <ListGroup>
+            {lista
+              .filter((ts) => aberto !== ts.id)
+              .map((ts) => (
+                <ListRow className="min-h-11" data-locum-toolset={ts.id} key={ts.id} onClick={() => setAberto(ts.id)} rotulo={ts.name}>
+                  <span aria-hidden className="flex size-7 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground">
+                    <Wrench className="size-3.5" />
+                  </span>
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate font-medium">{ts.name}</span>
+                    {ts.description === "" ? null : <span className="truncate text-xs text-muted-foreground">{ts.description}</span>}
+                  </span>
+                  <span className="num shrink-0 text-xs text-muted-foreground">{t("library.toolsCount", { count: ts.tools.length })}</span>
+                  <span className="num w-24 shrink-0 text-right text-xs text-muted-foreground">{t("library.toolsets.usedBy", { count: ts.usedBy.length })}</span>
+                </ListRow>
+              ))}
+          </ListGroup>
+        </div>
       )}
     </div>
   );
@@ -1335,19 +1335,18 @@ function EditorDoToolset({
   };
 
   return (
-    <section className="border-primary/40 superficie flex flex-col gap-4 rounded-lg border p-4" data-locum-probe="toolset-editor">
+    <section className="flex flex-col gap-4 rounded-lg border border-primary/40 bg-card p-4" data-locum-probe="toolset-editor">
       <div className="grid gap-4 sm:grid-cols-2">
         <Campo rotulo={t("library.toolsets.name")}>
-          <input
+          <Input
             autoFocus
-            className={CAMPO}
             data-locum-toolset-nome=""
             onChange={(e) => setToolset((s) => ({ ...s, name: e.target.value }))}
             value={toolset.name}
           />
         </Campo>
         <Campo rotulo={t("library.toolsets.description")}>
-          <input className={CAMPO} onChange={(e) => setToolset((s) => ({ ...s, description: e.target.value }))} value={toolset.description} />
+          <Input onChange={(e) => setToolset((s) => ({ ...s, description: e.target.value }))} value={toolset.description} />
         </Campo>
       </div>
       <Campo dica={t("library.toolsets.toolsHint")} rotulo={t("library.toolsets.tools")}>
@@ -1375,7 +1374,12 @@ function EditorDoToolset({
           </Button>
         )}
       </div>
-      {erro === null ? null : <p className="text-sev-critical text-xs">{erro}</p>}
+      {erro === null ? null : (
+        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <StatusDot estado="erro" />
+          {erro}
+        </p>
+      )}
     </section>
   );
 }
@@ -1398,9 +1402,9 @@ function EscolhaDeFerramentas({ valor, trocar }: { valor: ToolRef[]; trocar: (v:
 function Campo({ rotulo, dica, children }: { rotulo: string; dica?: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <span className="text-muted-foreground text-xs">{rotulo}</span>
+      <span className="text-xs text-muted-foreground">{rotulo}</span>
       {children}
-      {dica === undefined ? null : <span className="text-muted-foreground text-[11px]">{dica}</span>}
+      {dica === undefined ? null : <span className="text-[11px] text-muted-foreground">{dica}</span>}
     </div>
   );
 }

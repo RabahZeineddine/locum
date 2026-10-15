@@ -282,6 +282,8 @@
       },
       "run": "Run",
       "refuse": "Refuse",
+      "argNull": "null",
+      "argEmpty": "empty",
       "result": "Result",
       "expiredHint": "The conversation was cleared or interrupted, or the app closed, before the click. Nothing was run."
     },
@@ -1592,6 +1594,7 @@
     },
     "state": {
       "connected": "connected",
+      "available": "not connected",
       "off": "off",
       "untested": "not tested",
       "attention": "needs attention",
@@ -2353,7 +2356,14 @@
     "loading": "Loading...",
     "notFound": "Agent not found.",
     "back": "Agents",
-    "empty": "No agent in the library yet. Create one per subject: tickets, partnerships, PR review.",
+    "empty": "Create one per subject: tickets, partnerships, PR review.",
+    "emptyTitle": "No agent in the library yet",
+    "versionShort": "v{{version}}",
+    "row": {
+      "noConnections": "no connections",
+      "writes_one": "{{count}} write",
+      "writes_other": "{{count}} write"
+    },
     "tabs": {
       "agents": "Agents",
       "toolsets": "Toolsets (shortcuts)"
@@ -2430,7 +2440,8 @@
     "toolsets": {
       "lead": "A toolset groups tools from one or more apps. An agent that includes the toolset gets all of them.",
       "new": "New toolset",
-      "empty": "No toolset yet. Example: \"Jira read\" with issue search and read.",
+      "empty": "Example: \"Jira read\" with issue search and read.",
+      "emptyTitle": "No toolset yet",
       "name": "Name",
       "description": "Description",
       "tools": "Tools",
@@ -2455,6 +2466,7 @@
     },
     "connections": {
       "none": "No connection chosen. Without them the agent only uses Locum's own tools.",
+      "internal": "Locum tools",
       "noneToAdd": "Every connection with a server is already here. Connect others in the Connections screen.",
       "add": "Add connection",
       "remove": "Remove {{name}}",
@@ -2477,7 +2489,7 @@
           "other": "Other"
       },
       "counts": "{{read}} read, {{write}} write",
-      "writeNote": "A write that is on does not run by itself: it only goes through the agent's chat, with your confirmation (coming in the next version). In an automation, writing is an action node with approval.",
+      "writeNote": "A write that is on does not run by itself: in the agent's chat it only runs after you click Run. In an automation, writing is an action node with approval.",
       "declareRead": "is a read",
       "declareReadHint": "Tick it when the name or the server classifies the tool as a write but it only reads. It then runs by itself."
     },

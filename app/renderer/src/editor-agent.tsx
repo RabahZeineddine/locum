@@ -1,4 +1,9 @@
+import { SeloDeAcesso } from "@/components/selo-de-acesso";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { ListGroup, ListRow } from "@/components/ui/list-row";
+import { Select } from "@/components/ui/select";
+import { StatusDot } from "@/components/ui/status-dot";
 import { call, read, useRead } from "@/lib/bridge";
 import { comContexto, diffJson, type LinhaDoDiff } from "@/lib/diff";
 import { salvarAgent } from "@/lib/editar-agent";
@@ -336,10 +341,13 @@ export function SeletorDeModelo({
   catalogo,
   trocar,
   valor,
+  larguraTotal = false,
 }: {
   catalogo: Catalogo | null;
   trocar: (v: string) => void;
   valor: string;
+  /** Ocupa a largura da coluna (Agents). Sem isto o seletor tem a largura do conteúdo, e o aviso fica ao lado. */
+  larguraTotal?: boolean;
 }) {
   const { t } = useTranslation();
 
@@ -363,9 +371,9 @@ export function SeletorDeModelo({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <select
+      <Select
         aria-label={t("agents.editor.step.model")}
-        className="border-border bg-background focus-visible:ring-ring max-w-md cursor-pointer rounded-md border px-2 py-1.5 text-sm outline-none focus-visible:ring-1"
+        className={cn("max-w-md", larguraTotal && "w-full")}
         onChange={(e) => trocar(e.target.value)}
         title={valor}
         value={valor}
@@ -380,8 +388,13 @@ export function SeletorDeModelo({
             ))}
           </optgroup>
         ))}
-      </select>
-      {desligado && <span className="text-sev-medium text-xs">{t("agents.editor.step.notInCatalog")}</span>}
+      </Select>
+      {desligado && (
+        <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+          <StatusDot estado="aviso" />
+          {t("agents.editor.step.notInCatalog")}
+        </span>
+      )}
       {comModelo.length === 0 && (
         <span className="text-muted-foreground text-xs">{t("agents.editor.step.catalogEmpty")}</span>
       )}
@@ -481,9 +494,9 @@ export function ServidoresComBusca({
     <div className="flex flex-col gap-2">
       <div className="relative">
         <Search aria-hidden className="text-muted-foreground absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
-        <input
+        <Input
           aria-label={t("agents.editor.tools.search")}
-          className="border-border bg-background focus-visible:ring-ring w-full rounded-md border py-1.5 pr-3 pl-8 text-sm outline-none focus-visible:ring-1"
+          className="pl-8"
           data-locum-busca-ferramentas=""
           onChange={(e) => setFiltro(e.target.value)}
           placeholder={t("agents.editor.tools.search")}
@@ -569,9 +582,9 @@ export function FerramentasDoServidor({
   if (busca !== "" && visiveis !== null && visiveis.length === 0 && !atualizando) return null;
 
   return (
-    <div className="border-border rounded-md border" data-locum-servidor-ferramentas={servidor}>
+    <div className="overflow-hidden rounded-lg border border-border bg-card" data-locum-servidor-ferramentas={servidor}>
       <button
-        className="hover:bg-accent/40 flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-xs"
+        className="flex min-h-9 w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-xs outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         onClick={() => setAberto((a) => !a)}
         type="button"
       >
@@ -586,27 +599,27 @@ export function FerramentasDoServidor({
         )}
         {atualizando && ferramentas !== null ? <Loader2 aria-label={t("agents.editor.tools.refreshing")} className="text-muted-foreground size-3 animate-spin" /> : null}
         {marcadas.length > 0 && (
-          <span className="text-muted-foreground ml-auto">
+          <span className="num ml-auto text-muted-foreground">
             {t("agents.editor.tools.total", { count: marcadas.length, tokens })}
           </span>
         )}
       </button>
 
       {aberto && (
-        <div className="border-border border-t px-3 py-2">
+        <div className="border-t border-border">
           {visiveis === null ? (
-            <p className="text-muted-foreground flex items-center gap-1.5 text-xs">
+            <p className="flex items-center gap-1.5 px-3 py-2 text-xs text-muted-foreground">
               <Loader2 className="size-3 animate-spin" aria-hidden />
               {t("agents.editor.tools.loading")}
             </p>
           ) : (
-            <ul className="flex max-h-72 flex-col gap-1 overflow-y-auto pr-1">
+            <ListGroup className="max-h-72 overflow-y-auto rounded-none border-0">
               {visiveis.map((f) => (
-                <li key={f.name}>
-                  <label className="flex cursor-pointer items-baseline gap-2 text-xs">
+                <ListRow className="min-h-9 py-1" key={f.name}>
+                  <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5">
                     <input
                       checked={marcadasPorNome.has(f.name)}
-                      className="accent-primary cursor-pointer"
+                      className="cursor-pointer accent-primary"
                       onChange={(e) =>
                         trocar(
                           e.target.checked
@@ -616,20 +629,18 @@ export function FerramentasDoServidor({
                       }
                       type="checkbox"
                     />
-                    <span className="font-mono">{f.name}</span>
-                    {ehLeitura(f.name) ? null : (
-                      <span className="shrink-0 text-[10px] text-amber-400">{t("agents.editor.tools.write")}</span>
-                    )}
-                    <span className="text-muted-foreground min-w-0 flex-1 truncate" title={f.description}>
+                    <span className="shrink-0 font-mono text-xs">{f.name}</span>
+                    <SeloDeAcesso leitura={ehLeitura(f.name)} />
+                    <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground" title={f.description}>
                       {f.description}
                     </span>
-                    <span className="text-muted-foreground shrink-0 font-mono tabular-nums">
+                    <span className="num shrink-0 font-mono text-[11px] text-muted-foreground">
                       {t("agents.editor.tools.tokens", { tokens: f.estimatedTokens })}
                     </span>
                   </label>
-                </li>
+                </ListRow>
               ))}
-            </ul>
+            </ListGroup>
           )}
         </div>
       )}
