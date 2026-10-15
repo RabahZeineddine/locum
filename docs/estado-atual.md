@@ -2,7 +2,42 @@
 
 Projeto renomeado de Agent Watchers para Locum em 19 de setembro de 2026.
 
-Atualizado em 2 de outubro de 2026.
+Atualizado em 15 de outubro de 2026.
+
+## Agent do conceito v3, fatia A (15/10/2026)
+
+Item 3 do ADR 0005, sem o chat. O agent nasce do perfil da Biblioteca
+(`AgentProfile`, tabelas `agent_profiles` e `agent_profile_versions`, sem
+migração: o spec é JSON versionado e os campos novos têm padrão).
+
+- `connections`: lista de `{ connectionId, tools }`. Em cada conexão a leitura
+  vem ligada e a escrita desligada; `tools` liga (true) ou desliga (false) uma
+  ferramenta pelo nome. A classe é a da tela de conexão (`ehLeitura`, por nome).
+  Toolsets e ferramentas avulsas continuam valendo e se somam.
+- `skills` (nome ou regra, reaproveitando `SkillRule`) e `budget`
+  (`AgentBudget`).
+- `resolveProfile` expande cada conexão em todos os servidores dela. A escrita
+  ligada não entra em `tools`: vem em `confirmar`, como `external_write`, porque
+  escrita externa não roda sem alguém ver. Quem confirma é o chat do agent, que
+  é a fatia B. `semServidor` lista conexões sem servidor nesta máquina.
+- O executor e o `ask_agent` aplicam o teto do agent na chave `biblioteca:<id>`
+  e põem as skills dele no system. O executor grava o gasto do passo nessa
+  chave além da do fluxo, então a linha `biblioteca:<id>` de `usage_daily`
+  repete o que o fluxo já contou. O teto por execução vale por trecho do run.
+- Tela Agents (rota `agents`, `app/renderer/src/telas/agents.tsx`) com lista,
+  duplicar, criar, remover e as seções Instruções, Modelo, Conexões e
+  ferramentas, Skills, Orçamento, Conversar (reservado, desabilitado) e Onde é
+  usado. Toolsets viraram a aba "Toolsets (atalhos)". `library`,
+  `library/<id>` e `library/toolsets` são aliases em `ROTAS_ANTIGAS`; o
+  marketplace de agents é o de Automações.
+- As automações do modelo antigo, antes em `agents`, ficam em
+  `automations/legacy` (link "Legado" em Automações), só leitura.
+- MCP: `upsert_library_agent` e `get_library_agent` aceitam e devolvem os campos
+  novos, e `upsert_library_agent` recusa ligar escrita numa conexão.
+- Smoke: `checkAgentsDoConceito` cobre a tela, os aliases, um agent salvo com
+  conexão (servidor de brinquedo), duplicar, criar e remover.
+- Não feito: chat do agent com confirmação de escrita (fatia B), recusa de
+  conexão nova a servidor de escopo write pelo MCP, e o item 4 (automação v2).
 
 ## Iniciativas: onde parou em 27/09/2026
 

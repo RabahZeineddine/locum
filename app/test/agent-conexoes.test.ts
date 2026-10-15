@@ -128,3 +128,20 @@ test("skill aceita o nome puro ou a regra completa", () => {
     { skill: "ts", when: { filesMatch: ["**/*.ts"] } },
   ]);
 });
+
+test("a lista resume o que cada agent alcança, com a escrita ligada contada à parte", async () => {
+  const biblioteca = new LibraryService(bancoDeTeste(), github);
+  await biblioteca.saveProfile({
+    spec: {
+      id: "revisor",
+      name: "Revisor",
+      model: modelo,
+      skills: ["revisao"],
+      connections: [{ connectionId: "github", tools: { create_comment: true, merge_branch: true, get_issue: true, list_commits: false } }],
+    },
+  });
+  const [resumo] = await biblioteca.listProfiles();
+  assert.deepEqual(resumo?.connections, ["github"]);
+  assert.equal(resumo?.writes, 2);
+  assert.equal(resumo?.skills, 1);
+});

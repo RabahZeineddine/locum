@@ -973,7 +973,7 @@ function Vazio({ navegar }: { navegar?: TelaProps["navegar"] }) {
           </Button>
           <Button
             className="h-7 cursor-pointer text-xs"
-            onClick={() => navegar("agents")}
+            onClick={() => navegar("automations")}
             size="sm"
             variant="ghost"
           >

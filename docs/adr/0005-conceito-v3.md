@@ -134,3 +134,12 @@ ou descartar.
   Modelos e Configuração; Agent com o chat; Automação v2 com o canvas, o nó de
   aprovação e o pacote; Fila e Hoje; Iniciativa e Sessões com o orquestrador.
   Conexões vem antes do Agent porque a permissão do agent é dada por conexão.
+
+## Notas de implementação
+
+- Item 3, fatia A (15/10/2026): o agent novo é o perfil da Biblioteca, com
+  `connections`, `skills` e `budget` opcionais. Escrita ligada numa conexão
+  não vira ferramenta que o agent chama sozinho em automação: fica à espera da
+  confirmação do chat (fatia B), de acordo com "mecanismo, não política" e com a
+  regra de que escrita externa pede aprovação. Ligar escrita é decisão de quem
+  usa a tela; o MCP continua recusando.

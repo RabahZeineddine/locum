@@ -504,13 +504,12 @@
     "queue": "Queue",
     "initiatives": "Initiatives",
     "runs": "Runs",
-    "agents": "Flow as list",
+    "agents": "Agents",
     "settings": "Settings",
     "version": "version {{version}}",
     "versionHint": "Updates, in Settings",
     "sessions": "Sessions",
     "automations": "Automations",
-    "library": "Agents",
     "sectionCockpit": "Cockpit",
     "sectionOperations": "Operations",
     "sectionResources": "Resources",
@@ -2142,11 +2141,15 @@
         "configuracao": "configuration error, {{when}}:",
         "batida": "last scan failed, {{when}}:"
       }
+    },
+    "legacy": {
+      "title": "Automations from the old model",
+      "link": "Legacy (read only)"
     }
   },
   "library": {
     "title": "Agents",
-    "lead": "Reusable specialties. Each agent knows one subject and has its own tools; the automation says when it works and on what.",
+    "lead": "Who does the work: instructions, model, what it can use in each connection, skills and budget. The automation says when it works and what to do with the output.",
     "newAgent": "New agent",
     "loading": "Loading...",
     "notFound": "Agent not found.",
@@ -2154,13 +2157,10 @@
     "empty": "No agent in the library yet. Create one per subject: tickets, partnerships, PR review.",
     "tabs": {
       "agents": "Agents",
-      "marketplace": "Marketplace",
-      "toolsets": "Toolsets"
+      "toolsets": "Toolsets (shortcuts)"
     },
     "toolsetsCount_one": "{{count}} toolset",
     "toolsetsCount_other": "{{count}} toolsets",
-    "coupled_one": "coupled to {{count}} automation",
-    "coupled_other": "coupled to {{count}} automations",
     "usedBy_one": "in {{count}} automation",
     "usedBy_other": "in {{count}} automations",
     "toolsCount_one": "{{count}} tool",
@@ -2197,10 +2197,13 @@
       "untitled": "Untitled agent",
       "maxStepsHint": "How many tool calls it can make in one task before stopping.",
       "tabs": {
-        "general": "General",
         "instructions": "Instructions",
-        "tools": "Tools",
-        "usage": "Where it is used"
+        "tools": "Connections and tools",
+        "usage": "Where it is used",
+        "model": "Model",
+        "skills": "Skills",
+        "budget": "Budget",
+        "chat": "Chat"
       },
       "chosenTools": "Tools it can already use",
       "chosenNone": "No standalone tools yet. Pick them below, by server.",
@@ -2212,7 +2215,18 @@
       "usageHint": "The agent does the work; the automation says when and with which task.",
       "usageNone": "No automation uses this agent yet.",
       "openAutomation": "Open automation",
-      "removeHint": "Removing deletes the agent from the library, with every version."
+      "removeHint": "Removing deletes the agent from the library, with every version.",
+      "leads": {
+        "instructions": "Who is this agent and how does it work? The context and instructions open every task it receives.",
+        "model": "Which model runs this agent, and how freely? The automation does not choose: the model comes from here.",
+        "tools": "What can it use outside Locum? Pick connections; in each one reads are on and writes off, and you can adjust tool by tool.",
+        "skills": "What extra knowledge does it carry? Each chosen skill goes into the instructions text, as in automations.",
+        "budget": "How much can it spend? The cap holds in every automation that uses it and when another agent asks it. Empty means no cap.",
+        "chat": "How do I test it outside an automation? A direct conversation with this agent, with confirmation before any write.",
+        "usage": "Where does it work today? The automations that call it, and removal, which only works when unused."
+      },
+      "shortcuts": "Shortcuts: toolsets and extra tools",
+      "shortcutsHint": "The older way of giving tools. It still works and adds to the connections. Read only: anything that writes outside is an action node in the automation."
     },
     "toolsets": {
       "lead": "A toolset groups tools from one or more apps. An agent that includes the toolset gets all of them.",
@@ -2227,6 +2241,56 @@
       "cancel": "Cancel",
       "usedBy_one": "in {{count}} agent",
       "usedBy_other": "in {{count}} agents"
+    },
+    "copySuffix": "(copy)",
+    "duplicate": "Duplicate",
+    "card": {
+      "noConnections": "No connections: it only uses Locum's own tools.",
+      "uses": "Uses {{list}}",
+      "readOnly": "Read only",
+      "writes_one": "{{count}} write tool on",
+      "writes_other": "{{count}} write tools on",
+      "skills_one": "{{count}} skill",
+      "skills_other": "{{count}} skills",
+      "skills_zero": "no skills"
+    },
+    "connections": {
+      "none": "No connection chosen. Without them the agent only uses Locum's own tools.",
+      "noneToAdd": "Every connection with a server is already here. Connect others in the Connections screen.",
+      "add": "Add connection",
+      "remove": "Remove {{name}}",
+      "default": "reads on, writes off",
+      "noServer": "This connection has no server on this machine. Connect it in the Connections screen.",
+      "load": "Show tools",
+      "reload": "Refresh",
+      "notListed": "Tools have not been listed yet. Use \"Show tools\" to pick one by one; until then the default applies.",
+      "counts": "{{read}} read, {{write}} write",
+      "writeNote": "A write that is on does not run by itself: it only goes through the agent's chat, with your confirmation (coming in the next version). In an automation, writing is an action node with approval."
+    },
+    "skills": {
+      "none": "No skill chosen.",
+      "noneToAdd": "No other skill found on this computer.",
+      "add": "Add skill",
+      "remove": "Remove {{name}}",
+      "missing": "not found"
+    },
+    "budget": {
+      "perRunUsd": "Per run (USD)",
+      "perRunUsdHint": "Stops the next step once the agent has spent this in the run.",
+      "perDayUsd": "Per day (USD)",
+      "perDayUsdHint": "Adds up the whole day, across every automation and query.",
+      "perRunTokens": "Per run (tokens)",
+      "perRunTokensHint": "Protects models without a registered price, which never show in dollars.",
+      "perDayTokens": "Per day (tokens)",
+      "perDayTokensHint": "The same cap, in tokens, for the day.",
+      "noLimit": "no cap"
+    },
+    "chat": {
+      "title": "Chat",
+      "soon": "coming in the next version",
+      "placeholder": "Ask or hand a task to this agent",
+      "send": "Send",
+      "note": "The chat uses the model, connections and skills from this page. A write on a connection asks for your confirmation before it goes out."
     }
   },
   "digest": {

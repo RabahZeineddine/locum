@@ -12,29 +12,34 @@ import type { TriggerConfig } from "../../../src/config/types";
 import { EditorDeAutomacao } from "../automacoes/editor";
 import { appDoGatilho, resumoDoGatilho, Selo, tituloDoGatilho } from "../automacoes/visual";
 import { InstalacaoDeTemplate } from "../instalar-template";
-import { Biblioteca } from "./biblioteca";
+import { AutomacoesLegado } from "./automacoes-legado";
 import type { TelaProps } from "../rotas";
 
 type Linha = ReadResult<"agents.overview">[number];
 type Template = ReadResult<"agents.templates">[number];
 
-/** As abas da tela unificada de Agents, na ordem em que aparecem. */
-const ABAS = ["agents", "marketplace", "specialties"] as const;
+/** As abas da tela de Automações, na ordem em que aparecem. */
+const ABAS = ["agents", "marketplace"] as const;
+
+/** O detalhe que abre as automações do modelo antigo, só leitura. */
+export const LEGADO = "legacy";
 type Aba = (typeof ABAS)[number];
 
 /**
- * Agents: a tela unificada. Três abas respondem as três perguntas de quem usa:
- * o que tenho instalado, o que posso trazer do marketplace, e as especialidades
- * reutilizáveis que as automações acoplam.
+ * Automações: o que roda sozinho. Duas abas respondem o que tenho instalado e
+ * o que posso trazer do marketplace. O agent que trabalha dentro de um passo
+ * mora na tela Agents.
  *
- * O detalhe continua abrindo o canvas da automação, como sempre abriu; e o
- * detalhe que veio com o prefixo "library/" abre o editor de especialidade,
- * para os atalhos antigos de dentro do canvas não quebrarem.
+ * O detalhe abre o canvas da automação. `legacy` e `legacy/<id>` abrem as
+ * automações do modelo antigo, só leitura, que a tela de Agents deixou de
+ * mostrar na rota `agents`.
  */
 export function Automacoes({ detalhe, navegar }: TelaProps) {
-  if (detalhe?.startsWith("library/")) {
-    const alvo = detalhe.slice("library/".length);
-    return <Biblioteca detalhe={alvo} navegar={navegar} />;
+  if (detalhe === LEGADO || detalhe?.startsWith(`${LEGADO}/`)) {
+    // Por dentro a tela legada ainda chama `agents`; aqui vira o destino dela.
+    const dentro: TelaProps["navegar"] = (id, resto) =>
+      id === "agents" ? navegar("automations", resto === undefined ? LEGADO : `${LEGADO}/${resto}`) : navegar(id, resto);
+    return <AutomacoesLegado detalhe={detalhe === LEGADO ? null : detalhe.slice(LEGADO.length + 1)} navegar={dentro} />;
   }
   if (detalhe !== null) {
     // `<agent>/gatilho/<id>` abre o editor com aquele gatilho escolhido, e
@@ -78,10 +83,17 @@ function TelaDeAgents({ navegar }: Pick<TelaProps, "navegar">) {
             {t(`agents.tabs.${candidata}`)}
           </button>
         ))}
+        <button
+          className="text-muted-foreground hover:text-foreground -mb-px ml-auto cursor-pointer px-3 py-2 text-sm transition-colors"
+          data-locum-automacoes-legado=""
+          onClick={() => navegar("automations", LEGADO)}
+          type="button"
+        >
+          {t("automations.legacy.link")}
+        </button>
       </div>
       {aba === "agents" ? <ListaDeAutomacoes navegar={navegar} /> : null}
       {aba === "marketplace" ? <Marketplace navegar={navegar} /> : null}
-      {aba === "specialties" ? <Biblioteca detalhe={null} navegar={navegar} /> : null}
     </div>
   );
 }

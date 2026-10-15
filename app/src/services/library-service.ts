@@ -32,6 +32,9 @@ export interface ProfileSummary {
   toolsets: string[];
   /** Ids das conexões que o agent alcança. */
   connections: string[];
+  /** Quantas ferramentas de escrita estão ligadas nas conexões. */
+  writes: number;
+  skills: number;
   /** Fluxos que referenciam este agent na versão mais recente deles. */
   usedBy: string[];
 }
@@ -168,6 +171,11 @@ export class LibraryService {
         version: ultima.version,
         toolsets: ultima.spec.toolsets,
         connections: ultima.spec.connections.map((c) => c.connectionId),
+        writes: ultima.spec.connections.reduce(
+          (n, c) => n + Object.entries(c.tools).filter(([tool, ligada]) => ligada && !ehLeitura(tool)).length,
+          0,
+        ),
+        skills: ultima.spec.skills.length,
         usedBy: usos.get(perfil.id) ?? [],
       });
     }

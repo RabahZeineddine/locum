@@ -20,6 +20,7 @@ import { agentService } from "../src/services/agent-service.js";
 import { approvalService } from "../src/services/approval-service.js";
 import { automationService } from "../src/services/automation-service.js";
 import { libraryService } from "../src/services/library-service.js";
+import { discoverSkills } from "../src/skills/loader.js";
 import { claudeCodeService } from "../src/services/claude-code-service.js";
 import { opencodeService } from "../src/services/opencode-service.js";
 import { grafanaService } from "../src/services/grafana-service.js";
@@ -231,6 +232,10 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "library.saveToolset": (input) => libraryService.saveToolset(input),
     "library.removeToolset": (id) => libraryService.removeToolset(id),
     "library.suggestId": (nome, tipo) => libraryService.suggestId(nome, tipo),
+    "skills.list": async () =>
+      [...discoverSkills().values()]
+        .map(({ name, description }) => ({ name, description }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
 
     "approvals.listPending": () => approvalService.listPending(),
     "approvals.listStuck": () => approvalService.listStuck(),

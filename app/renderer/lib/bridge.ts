@@ -131,6 +131,7 @@ export const READ_CHANNELS = [
   "library.profile",
   "library.profileVersions",
   "library.toolsets",
+  "skills.list",
   // Cadastro e agenda, sem bater em gatilho nenhum: ler quando foi a última
   // varredura não dispara a próxima.
   "triggers.schedule",
