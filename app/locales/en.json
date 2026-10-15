@@ -953,7 +953,19 @@
       "answered": "answered {{login}} · {{scopes}}",
       "missing": "no token to check: store one above or export GITHUB_TOKEN",
       "failed": "GitHub refused: {{error}}",
-      "refused": "the bridge refused: {{message}}"
+      "refused": "the bridge refused: {{message}}",
+      "howToConnect": "How to connect",
+      "ghAccount": "gh account: {{login}} on {{host}}",
+      "recommended": "recommended",
+      "use": "Use",
+      "noGh": "No gh account found. If you use gh, run gh auth login; if the account lives in a separate config, enter its folder below.",
+      "configDir": "gh config folder (GH_CONFIG_DIR)",
+      "configDirPlaceholder": "alternative GH_CONFIG_DIR, if any",
+      "detect": "Find accounts",
+      "ssh": "SSH does not work here: an SSH key only authenticates git (clone, push), and Locum talks to the GitHub API.",
+      "tokenOption": "Token (PAT), pasted below and kept in the keychain",
+      "linked": "linked to the gh account {{login}} on {{host}}; the token is requested from gh on every use and never copied",
+      "permissions": "Recommended permissions: a fine-grained token with Pull requests read (write only to publish a review on GitHub), Contents read, Metadata read and, for the team filter, organization Members read; or a classic token with repo and read:org. When the organization enforces SSO, authorize the token for it."
     },
     "watched": {
       "title": "Watched repositories",

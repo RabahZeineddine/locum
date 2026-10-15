@@ -1,4 +1,5 @@
 import type { Authorship } from "../config/types.js";
+import { contasDoGh, lerRef, serializarRef, tokenDoGh, type GhConta, type GhRef } from "./gh-cli.js";
 import { secretService, type SecretService } from "./secret-service.js";
 import { settingsService, type SettingsService } from "./settings-service.js";
 
@@ -46,6 +47,9 @@ const DIFF_MAX_CHARS_KEY = "github:diffMaxChars";
  * `GITHUB_TOKEN` esquecido no shell de onde o app subiu. O ambiente continua
  * atrás porque é o caminho da linha de comando, onde não há keychain.
  *
+ * O que o cofre guarda pode ser o token ou o vínculo com uma conta do `gh`
+ * (`GhIndisponivelError` quando ela não responde).
+ *
  * É síncrona porque o cofre é síncrono, e quem chama, o `octokit()` do source,
  * também é.
  */
@@ -54,7 +58,12 @@ export function githubToken(
   ref: string = GITHUB_CREDENTIAL_REF,
 ): string | undefined {
   const guardado = secrets.get(ref);
-  if (guardado !== undefined && guardado.length > 0) return guardado;
+  if (guardado !== undefined && guardado.length > 0) {
+    // Vínculo com o gh: o token é pedido ao gh agora. Se ele não responde, o
+    // erro sobe em vez de cair no ambiente, porque a escolha foi explícita.
+    const vinculo = lerRef(guardado);
+    return vinculo === undefined ? guardado : tokenDoGh(vinculo);
+  }
 
   const ambiente = process.env[GITHUB_TOKEN_ENV];
   return ambiente !== undefined && ambiente.length > 0 ? ambiente : undefined;
@@ -88,6 +97,10 @@ export interface GithubStatus {
   stored: boolean;
   /** Este processo alcança o keychain, isto é, dá para gravar e ler valor. */
   vault: boolean;
+  /** A conta do gh a que a conexão está vinculada, quando é esse o caminho escolhido. */
+  vinculo: { host: string; login: string; configDir?: string } | null;
+  /** O gh vinculado não respondeu agora: a mensagem clara, nunca a saída dele. */
+  erro: string | null;
   /** Existe `GITHUB_TOKEN` no ambiente, que é o caminho de trás. */
   env: boolean;
   /** Segundos desde a época, ou nulo quando nunca foi conferido. */
@@ -161,8 +174,22 @@ export class GithubService {
 
     const ambiente = process.env[GITHUB_TOKEN_ENV];
 
+    const guardado = this.secrets.has(this.ref) ? this.secrets.get(this.ref) : undefined;
+    const ref = guardado === undefined ? undefined : lerRef(guardado);
+
+    let erro: string | null = null;
+    if (ref !== undefined) {
+      try {
+        tokenDoGh(ref);
+      } catch (e) {
+        erro = e instanceof Error ? e.message : String(e);
+      }
+    }
+
     return {
       ref: this.ref,
+      erro,
+      vinculo: ref === undefined ? null : { host: ref.host, login: ref.login, ...(ref.configDir === undefined ? {} : { configDir: ref.configDir }) },
       stored: this.secrets.has(this.ref),
       vault: this.secrets.available,
       env: ambiente !== undefined && ambiente.length > 0,
@@ -195,6 +222,30 @@ export class GithubService {
     await this.esquecerConferencia();
   }
 
+  /** As contas que o gh tem nesta máquina, para a pessoa escolher. Nunca o token. */
+  async contasDoGh(configDir?: string): Promise<GhConta[]> {
+    return contasDoGh(configDir);
+  }
+
+  /**
+   * Vincula a conexão a uma conta do gh. Guarda só a referência, nunca o token,
+   * e joga fora a conferência da credencial anterior pelo mesmo motivo do `setToken`.
+   */
+  async usarGh(ref: GhRef): Promise<void> {
+    const host = ref.host.trim();
+    const login = ref.login.trim();
+    const configDir = ref.configDir?.trim();
+    // Vão como argumento do gh: nada que ele leia como opção.
+    if (host.length === 0 || login.length === 0 || host.startsWith("-") || login.startsWith("-")) {
+      throw new Error("host e login do gh precisam ser preenchidos e não podem começar com hífen");
+    }
+    this.secrets.set(
+      this.ref,
+      serializarRef({ origem: "gh", host, login, ...(configDir === undefined || configDir.length === 0 ? {} : { configDir }) }),
+    );
+    await this.esquecerConferencia();
+  }
+
   /** Devolve se havia algo para apagar. */
   async clearToken(): Promise<boolean> {
     const havia = this.secrets.remove(this.ref);
@@ -203,7 +254,12 @@ export class GithubService {
   }
 
   async check(): Promise<GithubCheck> {
-    const token = githubToken(this.secrets, this.ref);
+    let token: string | undefined;
+    try {
+      token = githubToken(this.secrets, this.ref);
+    } catch (erro) {
+      return { ok: false, reason: "refused", message: erro instanceof Error ? erro.message : String(erro) };
+    }
     if (token === undefined) return { ok: false, reason: "missing" };
 
     try {

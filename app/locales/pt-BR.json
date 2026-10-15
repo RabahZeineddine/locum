@@ -983,7 +983,19 @@
       "answered": "respondeu {{login}} · {{scopes}}",
       "missing": "não há token para conferir: guarde um acima ou exporte GITHUB_TOKEN",
       "failed": "o GitHub recusou: {{error}}",
-      "refused": "a ponte recusou: {{message}}"
+      "refused": "a ponte recusou: {{message}}",
+      "howToConnect": "Como conectar",
+      "ghAccount": "Conta do gh: {{login}} em {{host}}",
+      "recommended": "recomendada",
+      "use": "Usar",
+      "noGh": "Nenhuma conta do gh encontrada. Se você usa o gh, rode gh auth login; se a conta fica numa config separada, informe a pasta abaixo.",
+      "configDir": "pasta de configuração do gh (GH_CONFIG_DIR)",
+      "configDirPlaceholder": "GH_CONFIG_DIR alternativo, se houver",
+      "detect": "Procurar contas",
+      "ssh": "SSH não serve aqui: a chave SSH só autentica o git (clone, push), e o Locum fala com a API do GitHub.",
+      "tokenOption": "Token (PAT), colado abaixo e guardado no keychain",
+      "linked": "vinculado à conta {{login}} do gh em {{host}}; o token é pedido ao gh a cada uso e nunca é copiado",
+      "permissions": "Permissões recomendadas: token de escopo fino com Pull requests em leitura (escrita só para publicar review no GitHub), Contents em leitura, Metadata em leitura e, para o filtro por time, Members da organização em leitura; ou token clássico com repo e read:org. Quando a organização exige SSO, autorize o token nela."
     },
     "watched": {
       "title": "Repositórios observados",

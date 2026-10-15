@@ -100,6 +100,7 @@ export const READ_CHANNELS = [
   // Mesma razão de `credentials.overview`: responde endereço, sim ou não e o
   // que a última conferência descobriu. O token não volta por canal nenhum.
   "github.status",
+  "github.ghAccounts",
   // Se o Claude Code enxerga o Locum: lê o cadastro e procura o `claude`, sem
   // escrever nada. Ligar é o `claudeCode.connect`, que mora entre as ações.
   "claudeCode.status",
@@ -185,6 +186,7 @@ export const ACTION_CHANNELS = [
   // Conferir sai para a rede e responde quem é a conta, então fica atrás de um
   // clique pelo mesmo motivo de `mcp.test`: abrir a tela não é pedir exame.
   "github.check",
+  "github.useGh",
   // Cadastrar o Locum no Claude Code roda o `claude mcp add`: processo e
   // escrita no cadastro de outro programa, atrás de um clique.
   "claudeCode.connect",

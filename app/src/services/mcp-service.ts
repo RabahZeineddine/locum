@@ -604,7 +604,14 @@ export class McpService {
    */
   private doServico(config: McpServerConfig): string | undefined {
     if (!ehDoGithub(config)) return undefined;
-    const token = githubToken(this.secrets);
+    let token: string | undefined;
+    try {
+      token = githubToken(this.secrets);
+    } catch {
+      // O gh vinculado não respondeu: o servidor fica sem credencial e a
+      // vitrine avisa "falta", sem derrubar quem lista os servidores.
+      return undefined;
+    }
     return token === undefined || /^(bearer|basic|token)\s/i.test(token) ? token : `Bearer ${token}`;
   }
 

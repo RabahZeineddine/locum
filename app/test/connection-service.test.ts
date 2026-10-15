@@ -703,3 +703,24 @@ test("Teams sem login nativo vem pelo servidor MCP, por nome ou pelas ferramenta
   }
   assert.equal((await servico.list()).find((c) => c.id === "teams")!.via, undefined);
 });
+
+test("conta do gh vinculada que não responde deixa a conexão GitHub em erro, com a mensagem clara", async () => {
+  const mcp = new McpService(undefined, new SecretService(mkdtempSync(join(tmpdir(), "locum-gh-erro-"))));
+  const servico = new ConnectionService({
+    mcp,
+    oauth: { status: () => ({ connected: false, expiresAt: null, renewable: false }) } as unknown as McpOAuthService,
+    github: {
+      status: async () => ({
+        stored: true,
+        env: false,
+        identity: null,
+        erro: "a conta octo do gh não respondeu; rode gh auth login ou troque a conexão",
+      }),
+    } as unknown as GithubService,
+    slack: { get: async () => ({ server: null }) } as unknown as SlackService,
+  });
+  const github = (await servico.list()).find((c) => c.id === "github");
+  assert.equal(github?.state, "error");
+  assert.equal(github?.reason, "failing");
+  assert.match(github?.detail ?? "", /a conta octo do gh não respondeu/);
+});

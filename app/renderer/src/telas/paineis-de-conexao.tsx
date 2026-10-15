@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next";
 
 type EstadoDoGithub = ReadResult<"github.status">;
 type ConferenciaDoGithub = ReadResult<"github.check">;
+type ContaDoGh = ReadResult<"github.ghAccounts">[number];
 type Tracker = ReadResult<"trackers.list">[number];
 type TesteDoTracker = ReadResult<"trackers.test">;
 type CadastroDoSlack = ReadResult<"slack.get">;
@@ -157,12 +158,39 @@ export function Grafana() {
 export function Github({ embutido = false }: { embutido?: boolean } = {}) {
   const { i18n, t } = useTranslation();
   const inicial = useRead("github.status");
+  const contasIniciais = useRead("github.ghAccounts");
   const [recarregado, setRecarregado] = useState<EstadoDoGithub | null>(null);
   const [token, setToken] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [conferencia, setConferencia] = useState<Conferencia>({ fase: "parado" });
 
   const estado = recarregado ?? inicial.data ?? null;
+  const [configDir, setConfigDir] = useState("");
+  const [contasAlternativas, setContasAlternativas] = useState<ContaDoGh[] | null>(null);
+  const contas = contasAlternativas ?? contasIniciais.data ?? [];
+
+  const procurarContas = (): void => {
+    read("github.ghAccounts", configDir.trim() || undefined).then(setContasAlternativas, () => setContasAlternativas([]));
+  };
+
+  const usarGh = (conta: ContaDoGh): void => {
+    setSalvando(true);
+    const dir = configDir.trim();
+    call("github.useGh", {
+      origem: "gh",
+      host: conta.host,
+      login: conta.login,
+      ...(contasAlternativas !== null && dir.length > 0 ? { configDir: dir } : {}),
+    })
+      .then(recarregar, () => undefined)
+      .finally(() => {
+        setSalvando(false);
+        invalidateReads("connections.list");
+        invalidateReads("mcp.list");
+        // Escolhida a conta, a conferência de sempre mostra login e escopos.
+        conferir();
+      });
+  };
 
   const recarregar = (): Promise<void> =>
     read("github.status").then(setRecarregado, () => undefined);
@@ -265,6 +293,12 @@ export function Github({ embutido = false }: { embutido?: boolean } = {}) {
         </div>
       </div>
 
+      {estado?.vinculo == null ? null : (
+        <p className="text-muted-foreground text-xs" data-locum-github-vinculo="">
+          {t("settings.github.linked", { login: estado.vinculo.login, host: estado.vinculo.host })}
+        </p>
+      )}
+
       {estado?.identity == null ? null : (
         <p className="text-muted-foreground text-xs" data-locum-github-identidade="">
           {t("settings.github.identity", {
@@ -277,6 +311,55 @@ export function Github({ embutido = false }: { embutido?: boolean } = {}) {
           {conferidoEm === null ? null : ` · ${t("settings.github.when", { when: conferidoEm })}`}
         </p>
       )}
+
+      <div className="flex flex-col gap-2" data-locum-github-como-conectar="">
+        <p className="text-xs font-medium">{t("settings.github.howToConnect")}</p>
+        {contas.map((conta, i) => (
+          <div
+            className="flex flex-wrap items-center gap-2 text-sm"
+            data-locum-github-conta-gh={`${conta.host}/${conta.login}`}
+            key={`${conta.host}/${conta.login}`}
+          >
+            <span>{t("settings.github.ghAccount", { login: conta.login, host: conta.host })}</span>
+            {i === 0 ? <Badge variant="secondary">{t("settings.github.recommended")}</Badge> : null}
+            {conta.scopes.length === 0 ? null : (
+              <span className="text-muted-foreground text-xs">{conta.scopes}</span>
+            )}
+            <Button
+              data-locum-github-usar-gh=""
+              disabled={salvando}
+              onClick={() => usarGh(conta)}
+              size="sm"
+              variant="secondary"
+            >
+              {t("settings.github.use")}
+            </Button>
+          </div>
+        ))}
+        {contas.length === 0 ? (
+          <p className="text-muted-foreground text-xs" data-locum-github-sem-gh="">
+            {t("settings.github.noGh")}
+          </p>
+        ) : null}
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            aria-label={t("settings.github.configDir")}
+            autoComplete="off"
+            className="border-border bg-background focus-visible:ring-ring min-w-64 flex-1 rounded-md border px-3 py-1.5 font-mono text-xs outline-none focus-visible:ring-1"
+            data-locum-github-config-dir=""
+            onChange={(evento) => setConfigDir(evento.target.value)}
+            placeholder={t("settings.github.configDirPlaceholder")}
+            spellCheck={false}
+            type="text"
+            value={configDir}
+          />
+          <Button onClick={procurarContas} size="sm" variant="ghost">
+            {t("settings.github.detect")}
+          </Button>
+        </div>
+        <p className="text-muted-foreground max-w-[68ch] text-xs">{t("settings.github.ssh")}</p>
+        <p className="text-xs font-medium">{t("settings.github.tokenOption")}</p>
+      </div>
 
       <div className="flex flex-wrap items-center gap-2">
         {/*
@@ -308,6 +391,9 @@ export function Github({ embutido = false }: { embutido?: boolean } = {}) {
 
       <p className="text-muted-foreground max-w-[68ch] text-xs">
         {t("settings.github.howTo")}
+      </p>
+      <p className="text-muted-foreground max-w-[68ch] text-xs" data-locum-github-permissoes="">
+        {t("settings.github.permissions")}
       </p>
 
       <ResultadoDoGithub conferencia={conferencia} />

@@ -586,6 +586,17 @@ export class ConnectionService {
         const s = await this.deps.github.status();
         const token = s.stored || s.env;
         const conta = s.identity?.login ?? null;
+        // Conta do gh vinculada que não responde: erro, e não "conectado" por haver algo guardado.
+        if (s.erro != null) {
+          return {
+            ...base,
+            state: "error",
+            reason: "failing",
+            detail: s.erro,
+            account: conta,
+            partes: { token: "missing", servidor: null, nome: principal?.config.name ?? null, outros: [] },
+          };
+        }
         if (principal === undefined) {
           return {
             ...base,
