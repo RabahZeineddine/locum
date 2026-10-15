@@ -195,7 +195,7 @@ function LinhaDoAgent({
         </span>
         {agent.description === "" ? null : <span className="truncate text-xs text-muted-foreground">{agent.description}</span>}
       </span>
-      <span className="hidden w-36 shrink-0 truncate text-xs text-muted-foreground lg:block" title={agent.model}>
+      <span className="hidden w-48 shrink-0 truncate text-xs text-muted-foreground lg:block" title={agent.model}>
         {rotuloDoModelo(agent.model)}
       </span>
       {/* O que ele alcança: as marcas das conexões, e os nomes por extenso para o leitor de tela e a dica. */}

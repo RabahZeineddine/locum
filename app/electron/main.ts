@@ -7234,7 +7234,12 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
     // itens, os toolsets, o editor em cada aba, a conexão grande com busca e o
     // chat com o cartão de escrita à espera.
     {
-      const { FIXTURE_SERVER } = await import("../src/fixtures/mcp-fixture.js");
+      const { ensureFixtureServer, FIXTURE_SERVER } = await import("../src/fixtures/mcp-fixture.js");
+      // O bloco dos atritos removeu todos os servidores: o de brinquedo volta para o chat ter ferramenta.
+      await ensureFixtureServer({
+        command: [process.execPath, foraDoAsar(join(__dirname, "mcp-fixture-server.mjs"))],
+        env: { ELECTRON_RUN_AS_NODE: "1" },
+      });
       const ids = ["captura-triagem", "captura-revisor", "captura-resumo"];
       await claudeImportService.importar(["ms365"]).catch(() => undefined);
       await (mcpService as unknown as { guardarFerramentas(n: string, t: unknown[]): Promise<void> }).guardarFerramentas("ms365", ferramentas);
@@ -7248,7 +7253,6 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
           instructions: "Resuma em cinco linhas. Cite o número do chamado. Nunca invente prazo.",
           connections: [{ connectionId: FIXTURE_SERVER, tools: { echo: true } }],
           skills: [{ skill: "revisao-que-nao-existe", when: { always: true } }],
-          toolsets: ["captura-leitura-teams"],
           budget: { perDayUsd: 2 },
         },
       });

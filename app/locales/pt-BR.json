@@ -1630,6 +1630,7 @@
     },
     "state": {
       "connected": "conectado",
+      "available": "não conectado",
       "off": "desligado",
       "untested": "não testado",
       "attention": "precisa de atenção",

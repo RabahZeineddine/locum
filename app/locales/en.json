@@ -1592,6 +1592,7 @@
     },
     "state": {
       "connected": "connected",
+      "available": "not connected",
       "off": "off",
       "untested": "not tested",
       "attention": "needs attention",
