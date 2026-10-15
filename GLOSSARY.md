@@ -70,8 +70,11 @@ faz sozinho é configurado na iniciativa.
 **Sessão**: trabalho no Claude Code com estado e próximo passo, solta ou ligada
 a uma iniciativa.
 
-**Pacote**: JSON exportado de uma automação, com o fluxo, os agents e as
-dependências, sem segredo. É também o formato do template do marketplace.
+**Pacote**: arquivo `.locum.json` exportado de uma automação, com o fluxo, os
+agents e as dependências (conexões, servidores MCP por nome, provedor), sem
+segredo, canal, chat ou conta. Importar mostra uma prévia e a pessoa liga cada
+dependência ao que tem; gatilho entra desligado. É também o formato do template
+do marketplace.
 
 **Legado**: automação ou agent do modelo anterior ao ADR 0005, só leitura.
 
