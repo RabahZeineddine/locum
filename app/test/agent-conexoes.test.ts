@@ -9,7 +9,7 @@ import { bancoDeTeste } from "./helpers/db.js";
 
 const modelo = "anthropic/claude-sonnet-5";
 
-type Oferecida = string | { name: string; readOnlyHint?: boolean };
+type Oferecida = string | { name: string; readOnlyHint?: boolean; destructiveHint?: boolean };
 
 /** Catálogo de mentira: servidores por conexão (ligados salvo `desligados`) e ferramentas por servidor. */
 function catalogoCom(
@@ -24,6 +24,10 @@ function catalogoCom(
       if (lista === undefined) throw new Error("não listou");
       if (lista instanceof Error) throw lista;
       return lista.map((f) => (typeof f === "string" ? { name: f } : f));
+    },
+    guardadasDe: async (servidor) => {
+      const lista = ferramentas[servidor];
+      return lista === undefined || lista instanceof Error ? null : lista.map((f) => (typeof f === "string" ? { name: f } : f));
     },
   };
 }
@@ -225,4 +229,23 @@ test("a lista resume o que cada agent alcança, com a escrita ligada contada à 
   assert.deepEqual(resumo?.connections, ["github"]);
   assert.equal(resumo?.writes, 2);
   assert.equal(resumo?.skills, 1);
+});
+
+test("a contagem de escrita ligada segue a anotação do servidor, e o nome só quando ele não anotou", async () => {
+  const anotado = catalogoCom(
+    { painel: ["painel"] },
+    { painel: [{ name: "get_report", readOnlyHint: false }, { name: "get_data", destructiveHint: true }, { name: "pid", readOnlyHint: true }, "create_note"] },
+  );
+  const biblioteca = new LibraryService(bancoDeTeste(), anotado);
+  await biblioteca.saveProfile({
+    spec: {
+      id: "anotado",
+      name: "Anotado",
+      model: modelo,
+      // `get_report` e `get_data` leem pelo nome e escrevem pela anotação; `pid` é o contrário.
+      connections: [{ connectionId: "painel", tools: { get_report: true, get_data: true, pid: true, create_note: true } }],
+    },
+  });
+  const [resumo] = await biblioteca.listProfiles();
+  assert.equal(resumo?.writes, 3);
 });

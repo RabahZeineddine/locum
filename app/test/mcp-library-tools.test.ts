@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { db, schema } from "../src/db/index.js";
 import { migrateDb } from "../src/db/migrate.js";
 import { libraryService } from "../src/services/library-service.js";
 import { mcpService } from "../src/services/mcp-service.js";
@@ -210,6 +211,40 @@ test("pelo MCP, escolha \"read\" nova é recusada mesmo em nome de leitura, e a 
     await client.callTool({
       name: "upsert_library_agent",
       arguments: { spec: { ...base, instructions: "x", connections: [{ connectionId: "github", tools: { "github/get_report": "read" } }] } },
+    }),
+  );
+});
+
+test("pelo MCP, ligar ferramenta que o servidor anotou como escrita é recusado mesmo com nome de leitura", async () => {
+  const client = await ligarCliente();
+  const sufixo = randomUUID().slice(0, 8);
+  const servidor = `anotado-${sufixo}`;
+  await mcpService.register({ name: servidor, transport: "http", url: "http://127.0.0.1:9/mcp", scope: "read" });
+  // O que a última leitura do servidor guardou: nome de leitura anotado como escrita, e o inverso.
+  await db.insert(schema.settings).values({
+    key: `mcp.ferramentas.${servidor}`,
+    value: JSON.stringify({
+      at: Date.now(),
+      tools: [
+        { name: "get_report", description: "", estimatedTokens: 0, readOnlyHint: false },
+        { name: "pid", description: "", estimatedTokens: 0, readOnlyHint: true },
+      ],
+    }),
+  });
+  const base = { id: `anot-${sufixo}`, name: "A", model: "a/b" };
+
+  const escreve = await client.callTool({
+    name: "upsert_library_agent",
+    arguments: { spec: { ...base, connections: [{ connectionId: servidor, tools: { get_report: true } }] } },
+  });
+  assert.equal(escreve.isError, true);
+  assert.match(texto(escreve), /get_report/);
+
+  // Anotada como leitura, passa, ainda que o nome não diga.
+  resultado(
+    await client.callTool({
+      name: "upsert_library_agent",
+      arguments: { spec: { ...base, connections: [{ connectionId: servidor, tools: { pid: true } }] } },
     }),
   );
 });

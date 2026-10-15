@@ -682,6 +682,24 @@ function ConexoesDoAgent({ conexoes, trocar }: { conexoes: AgentConnection[]; tr
   );
 }
 
+/** A última lista de ferramentas guardada de cada servidor, sem subir nenhum. */
+function useGuardadas(servidores: string[]): Record<string, ReadResult<"mcp.tools">> {
+  const [porServidor, setPorServidor] = useState<Record<string, ReadResult<"mcp.tools">>>({});
+  const chave = servidores.join("\u0000");
+  useEffect(() => {
+    let vivo = true;
+    for (const servidor of chave === "" ? [] : chave.split("\u0000")) {
+      void read("mcp.toolsCached", servidor).then((guardada) => {
+        if (vivo && guardada !== null) setPorServidor((atual) => ({ ...atual, [servidor]: guardada.tools }));
+      });
+    }
+    return () => {
+      vivo = false;
+    };
+  }, [chave]);
+  return porServidor;
+}
+
 function CartaoDaConexao({
   conexao,
   escolha,
@@ -693,7 +711,15 @@ function CartaoDaConexao({
 }) {
   const { t } = useTranslation();
   const servidores = conexao?.servers ?? [];
-  const ligadas = Object.entries(escolha.tools).filter(([chave, e]) => e === true && !ehLeitura(chave.slice(chave.lastIndexOf("/") + 1))).length;
+  const guardadas = useGuardadas(servidores);
+  // A anotação que o servidor deixou no cache manda; o nome só decide sem ela.
+  const ligadas = Object.entries(escolha.tools).filter(([chave, e]) => {
+    if (e !== true) return false;
+    const corte = chave.indexOf("/");
+    const nome = chave.slice(corte + 1);
+    const achada = (corte < 0 ? servidores : [chave.slice(0, corte)]).map((s) => guardadas[s]?.find((f) => f.name === nome)).find((f) => f !== undefined);
+    return achada === undefined ? !ehLeitura(nome) : !ehLeituraDa(achada);
+  }).length;
   return (
     <div className="border-border superficie flex flex-col gap-3 rounded-lg border p-3" data-locum-agent-conexao={escolha.connectionId}>
       <div className="flex flex-wrap items-center gap-2">
