@@ -4,6 +4,44 @@ Projeto renomeado de Agent Watchers para Locum em 19 de setembro de 2026.
 
 Atualizado em 15 de outubro de 2026.
 
+## Atritos da jornada: Hoje, Conexões, Agent e Automações (15/10/2026)
+
+Lote de uma jornada real no app empacotado.
+
+- **Hoje**: o guia "Comece por aqui" tem quatro passos (modelo, conexão, agent,
+  automação) e só marca conexão real (`renderer/lib/comece-aqui.ts`): o servidor
+  interno e o importado desligado ou sem teste não contam. O texto não promete
+  que toda saída para na fila. O rodapé conta os agents do conceito novo
+  (`library.profiles`), e o cartão virou "Gatilhos ligados", neutro quando zero.
+- **Conexões**: `locum-ferramentas` não é mais conexão (funciona por baixo, e
+  some do seletor do agent). O estado vazio traz "Importar do Claude Code". A
+  importação diz que é vínculo com a origem, não vem nada marcado, agrupa por
+  origem legível ("plugin akad"), mostra o ícone de marca e avisa em nome ou
+  endereço de produção (`renderer/lib/importacao-origem.ts`). Servidor
+  desligado (o importado entra assim) é neutro, com Ligar no cartão; o cartão
+  diz "N ferramentas" ou "teste para listar" em vez de "1 ação". O detalhe do
+  importado diz a origem, e a lista de ferramentas mostra a guardada na hora e a
+  mantém quando subir o servidor falha (antes um erro a trocava por lista vazia).
+- **GitHub**: botão para ligar o servidor MCP oficial
+  (`ConnectionService.ligarServidorDoGithub`, não sobrescreve um `github` em
+  outro endereço), o token mora só na parte "Token do GitHub", e o tracker do
+  detalhe fala só de GitHub Issues.
+- **Classificação**: `ehLeituraDa` normaliza hífen (o ms365 usa `list-chats`) e
+  nome com `to-file`, `upload`, `create`, `delete`, `send`, `set`, `update` ou
+  `move` nunca é leitura, nem com `readOnlyHint`. Resumo e lista usam a mesma.
+- **Agent**: skills em campo com busca. Dentro da conexão: busca, "Ligar todas de
+  leitura", "Desligar todas", grupos por área (Teams, E-mail, Agenda, Arquivos,
+  Outras) acima de 30 ferramentas, e "X de Y ligadas". Servidor com mais de 30
+  leituras começa sem nenhuma ligada (`ligadaPorPadrao`, usada na tela e em
+  `expandirConexoes`): agent que dependia do padrão num servidor desse tamanho
+  precisa escolher as ferramentas.
+- **Automações**: a aba "Meus Agents" listava automações e passou a "Minhas
+  automações". Modelos novos de revisão de PR (link no Teams, e PR aberto no
+  GitHub), e o fluxo em branco chama o primeiro agent criado.
+- Fica de fora: busca e agrupamento por equipe na lista de canais do gatilho do
+  Teams (depende do PR do Teams pelo ms365), e o nó de reação no Teams, que não
+  é ação nativa: o modelo traz um `mcp.call` do ms365 para escolher a ferramenta.
+
 ## Conexões: busca, GitHub numa conexão só e ícones de marca (15/10/2026)
 
 Atritos de uso real da tela de Conexões.

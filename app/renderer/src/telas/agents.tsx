@@ -2,7 +2,7 @@ import { CabecalhoDaTela } from "@/components/cabecalho-da-tela";
 import { MarcaLogo } from "@/components/marca-logo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { call, read, useRead, type ReadResult } from "@/lib/bridge";
+import { call, invalidateReads, read, useRead, type ReadResult } from "@/lib/bridge";
 import { rotuloDoModelo } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
 import { ChatDoAgent } from "../agent-chat";
@@ -109,6 +109,7 @@ async function duplicar(spec: AgentProfile, sufixo: string): Promise<string> {
   const nome = `${spec.name} ${sufixo}`;
   const id = await call("library.suggestId", nome, "profile");
   const gravado = await call("library.saveProfile", { spec: { ...spec, id, name: nome }, create: true, note: sufixo });
+  invalidateReads("library.profiles");
   return gravado.profileId;
 }
 
@@ -295,6 +296,7 @@ function FormularioDoAgent({
         note: nota.trim() || (novo ? t("library.editor.created") : t("library.editor.edited")),
         create: novo,
       });
+      invalidateReads("library.profiles");
       setSalvo(gravado);
       setSpec(gravado.spec);
       setNota("");
@@ -318,10 +320,16 @@ function FormularioDoAgent({
 
   const remover = (): void => {
     setOcupado(true);
-    call("library.removeProfile", spec.id).then(voltar, (e: unknown) => {
-      setOcupado(false);
-      setAviso({ tipo: "erro", texto: e instanceof Error ? e.message : String(e) });
-    });
+    call("library.removeProfile", spec.id).then(
+      () => {
+        invalidateReads("library.profiles");
+        voltar();
+      },
+      (e: unknown) => {
+        setOcupado(false);
+        setAviso({ tipo: "erro", texto: e instanceof Error ? e.message : String(e) });
+      },
+    );
   };
 
   const ferramentasNoTotal =
@@ -723,7 +731,17 @@ function CartaoDaConexao({
       <div className="flex flex-wrap items-center gap-2">
         <MarcaLogo fonte={{ name: escolha.connectionId, url: conexao?.url }} tamanho="sm" />
         <span className="text-sm font-medium">{conexao?.name ?? escolha.connectionId}</span>
-        {conexao === undefined ? null : <Badge variant="outline">{t(conexao.state === "connected" && conexao.reason === "untested" ? "connections.state.untested" : `connections.state.${conexao.state}`)}</Badge>}
+        {conexao === undefined ? null : (
+          <Badge variant="outline">
+            {t(
+              conexao.state === "connected" && conexao.reason === "untested"
+                ? "connections.state.untested"
+                : conexao.state === "attention" && conexao.reason === "disabled"
+                  ? "connections.state.off"
+                  : `connections.state.${conexao.state}`,
+            )}
+          </Badge>
+        )}
         <span className="text-muted-foreground text-xs">{t("library.connections.default")}</span>
         {ligadas === 0 ? null : (
           <Badge className="text-amber-400" variant="outline">
@@ -877,7 +895,7 @@ function FerramentasDoServidor({
             <Button
               className="cursor-pointer"
               data-locum-agent-ligar-leituras={servidor}
-              onClick={() => ligarLeituras(todas)}
+              onClick={() => ligarLeituras(busca.trim() === "" ? todas : visiveis)}
               size="sm"
               variant="outline"
             >
@@ -886,7 +904,7 @@ function FerramentasDoServidor({
             <Button
               className="cursor-pointer"
               data-locum-agent-desligar-todas={servidor}
-              onClick={() => desligar(todas)}
+              onClick={() => desligar(busca.trim() === "" ? todas : visiveis)}
               size="sm"
               variant="outline"
             >
