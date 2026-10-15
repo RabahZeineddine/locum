@@ -13,7 +13,7 @@ export interface PassoDoComeco {
 }
 
 /**
- * Conexão de verdade: respondeu a um teste ou foi autorizada. O servidor
+ * Conexão de verdade: está conectada e já respondeu a um teste ou foi autorizada (sem `untested`). O servidor
  * interno do Locum vem junto de qualquer perfil, e um servidor importado
  * desligado ou nunca testado ainda não trouxe trabalho de lugar nenhum.
  */
