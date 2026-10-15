@@ -74,7 +74,7 @@ export function limparTexto(texto: string, home: string = homedir()): Limpeza {
  * servidor, ferramenta) é estrutura: mexer nele quebraria o fluxo, e o formato
  * já não carrega nada sensível nele.
  */
-const TEXTO_LIVRE = new Set(["prompt", "instructions", "context", "description", "input", "value", "against", "title", "path"]);
+const TEXTO_LIVRE = new Set(["prompt", "instructions", "context", "description", "input", "value", "against", "title", "path", "cases", "name", "repoMatch", "labels"]);
 
 /** Limpa as strings dos campos de texto livre, em profundidade, sem mexer no resto. */
 export function limparValor<T>(valor: T, home?: string): { valor: T; removidos: number } {
@@ -88,10 +88,16 @@ export function limparValor<T>(valor: T, home?: string): { valor: T; removidos: 
     if (Array.isArray(v)) return v.map(limpar);
     return v;
   };
+  const limparTudo = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(limparTudo);
+    if (typeof v === "object" && v !== null) return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, limparTudo(x)]));
+    return limpar(v);
+  };
   const percorrer = (v: unknown): unknown => {
     if (Array.isArray(v)) return v.map(percorrer);
     if (typeof v === "object" && v !== null) {
-      return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, TEXTO_LIVRE.has(k) ? limpar(x) : percorrer(x)]));
+      // `labels` tem a forma `{ include, exclude }`: o que está dentro também é texto.
+      return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, TEXTO_LIVRE.has(k) ? limparTudo(x) : percorrer(x)]));
     }
     return v;
   };

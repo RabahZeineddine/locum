@@ -23,7 +23,7 @@ import { bancoDeTeste } from "./helpers/db.js";
 const SEGREDO_DO_COFRE = "cofre-valor-que-nunca-sai-1f9c";
 /** Junta pedaços: um token de mentira inteiro no código acende a proteção de push do GitHub. */
 const j = (...partes: string[]): string => partes.join("");
-const TOKEN_NO_ENV = "ghp_abcdefghijklmnopqrstuvwxyz0123456789";
+const TOKEN_NO_ENV = j("gh", "p_abcdefghijklmnopqrstuvwxyz0123456789");
 const TOKEN_NO_CABECALHO = "bearer-secreto-do-cabecalho-77aa";
 const CANAL_DO_SLACK = "C0123ABCD45";
 const CHAT_DO_TEAMS = "19:abcdef0123456789abcdef0123456789@thread.v2";
@@ -592,18 +592,26 @@ test("a classe de ferramenta do arquivo não vale: a prévia calcula aqui e a im
   const bruno = maquina();
   const previa = await bruno.pacotes.previa(texto);
   const de = (dono: string, ferramenta: string) => previa.ferramentas.find((f) => f.dono === dono && f.ferramenta === ferramenta);
-  assert.deepEqual(de("agent:ag", "merge_pull_request"), { dono: "agent:ag", servidor: "github", ferramenta: "merge_pull_request", classe: "escrita", declarada: "leitura" });
+  assert.deepEqual(de("agent:ag", "merge_pull_request"), { dono: "agent:ag", servidor: "github", ferramenta: "merge_pull_request", classe: "escrita", origem: "avulsa", removida: true, declarada: "leitura" });
   assert.equal(de("passo:a", "send_message")?.classe, "escrita");
   assert.equal(de("automacao", "merge_pull_request")?.classe, "escrita");
   assert.equal(de("passo:a", "get_pull_request")?.classe, "leitura");
   assert.equal(de("passo:a", "get_pull_request")?.declarada, undefined);
+  // Na conexão do agent a escrita entra, e só roda com confirmação: a prévia a mostra como escrita da conexão, não removida.
+  const naConexao = previa.ferramentas.find((f) => f.origem === "conexao" && f.ferramenta === "merge_pull_request");
+  assert.deepEqual([naConexao?.classe, naConexao?.removida, naConexao?.declarada], ["escrita", false, "leitura"]);
 
   const r = await bruno.pacotes.importar(texto);
   const spec = (await bruno.automations.get("hostil"))!.version.spec;
   const passo = spec.steps[0]!;
   const classes = passo.type === "model" ? passo.tools?.map((t) => [t.tool, t.class]) : [];
-  assert.deepEqual(classes, [["send_message", "external_write"], ["get_pull_request", "read"]]);
-  assert.deepEqual(spec.defaultTools.map((t) => t.class), ["external_write"]);
+  // Escrita avulsa não entra: a execução a recusaria, e a pessoa fica sabendo na importação.
+  assert.deepEqual(classes, [["get_pull_request", "read"]]);
+  assert.deepEqual(spec.defaultTools, []);
+  assert.ok(r.pendencias.some((p) => p.codigo === "escrita-removida" && p.onde === "passo:a"));
+  assert.ok(r.pendencias.some((p) => p.codigo === "escrita-removida" && p.onde === "automacao"));
+  assert.ok(previa.ferramentas.filter((f) => f.removida).length === 3, "a prévia marca o que será removido");
+  assert.equal(de("agent:ag", "merge_pull_request")?.removida, true);
   // No agent, escrita externa não entra como ferramenta: sai, e a pessoa é avisada.
   const agent = (await bruno.library.getProfile("ag"))!.spec;
   assert.deepEqual(agent.tools.map((t) => t.tool), ["get_pull_request"]);
@@ -633,7 +641,7 @@ test("a anotação do servidor, quando há cache, manda sobre o nome, e nunca de
 test("URL de http.request sai só com esquema e host, e volta como a preencher", async () => {
   const urls = [
     j("https://hooks.sl", "ack.com/services/T01ABCDEF/B02GHIJKL/abcdefghijklmnopqrstuvwx"),
-    "https://discord.com/api/webhooks/123456789/tokenSecretoDoDiscord",
+    j("https://discord.com/api/web", "hooks/123456789/tokenSecretoDoDiscord"),
     "https://contoso.webhook.office.com/webhookb2/aaa-bbb@ccc/IncomingWebhook/segredoTeams/ddd",
     "https://n8n.exemplo.com/webhook/segredo-n8n?token=abc",
     "https://hooks.zapier.com/hooks/catch/123/segredoZapier/",
@@ -712,8 +720,13 @@ test("a limpeza só toca texto livre: id, chave, servidor e ligações ficam com
     id: "C0123ABCD45", key: "U01ABCDE2F", needs: ["C0123ABCD45"], when: { step: "U01ABCDE2F", branch: "x" },
     server: "C0123ABCD45", connectionId: "U01ABCDE2F",
     prompt: "fale com U01ABCDE2F", instructions: "veja C0123ABCD45", context: "a@b.com", description: "x@y.com",
-    input: "C0123ABCD45", value: "C0123ABCD45", against: "C0123ABCD45", title: "C0123ABCD45", path: "/hook/ghp_abcdefghijklmnopqrstuvwxyz0123456789",
+    input: "C0123ABCD45", value: "C0123ABCD45", against: "C0123ABCD45", title: "C0123ABCD45", path: j("/hook/gh", "p_abcdefghijklmnopqrstuvwxyz0123456789"),
   };
+  const { valor: extra } = limparValor(
+    { cases: ["a@b.com", "ok"], name: "Fluxo de a@b.com", repoMatch: "u@x.com-.*", filters: { labels: { include: ["c@d.com"], exclude: [] } } },
+    "/Users/fulano",
+  );
+  assert.deepEqual(extra, { cases: ["[e-mail removido]", "ok"], name: "Fluxo de [e-mail removido]", repoMatch: "[e-mail removido]-.*", filters: { labels: { include: ["[e-mail removido]"], exclude: [] } } });
   const { valor } = limparValor(entrada, "/Users/fulano");
   for (const campo of ["id", "key", "needs", "when", "server", "connectionId"] as const) assert.deepEqual(valor[campo], entrada[campo], `${campo} foi alterado`);
   for (const campo of ["prompt", "instructions", "context", "description", "input", "value", "against", "title", "path"] as const) {

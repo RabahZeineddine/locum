@@ -2612,9 +2612,11 @@
         "leitura": "read",
         "escrita": "write"
       },
-      "declaredRead": "the file said read",
+      "declaredRead": "the file said read, the classification here wins. To use it, turn the tool on in the agent's connection (Tools tab): each use will ask for confirmation.",
       "urlFill": "The address of step {{passo}} is not in the package: fill it in the automation.",
-      "urlFillHost": "The address of step {{passo}} is not in the package: fill it in the automation (it was on {{host}})."
+      "urlFillHost": "The address of step {{passo}} is not in the package: fill it in the automation (it was on {{host}}).",
+      "toolRemoved": "left out: writes do not run as loose tools. To write, use an action node in the automation, which goes through the queue.",
+      "toolAsks": "comes in and asks for confirmation on each use"
     }
   }
 }

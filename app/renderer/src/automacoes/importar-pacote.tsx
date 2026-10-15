@@ -223,7 +223,9 @@ export function ImportarPacote({
                     <span className="min-w-32 truncate">{f.dono}</span>
                     <span className="font-mono">{f.servidor === null ? f.ferramenta : `${f.servidor}/${f.ferramenta}`}</span>
                     <Badge variant="outline">{t(`pacote.import.toolClass.${f.classe}`)}</Badge>
-                    {f.declarada === undefined ? null : <span>{t("pacote.import.declaredRead")}</span>}
+                    {f.removida ? <span className="text-muted-foreground">{t("pacote.import.toolRemoved")}</span> : null}
+                    {f.declarada === undefined ? null : <span className="text-muted-foreground">{t("pacote.import.declaredRead")}</span>}
+                    {f.classe === "escrita" && !f.removida && f.declarada === undefined ? <span className="text-muted-foreground">{t("pacote.import.toolAsks")}</span> : null}
                   </li>
                 ))}
               </ul>

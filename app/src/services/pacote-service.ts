@@ -125,6 +125,10 @@ export interface FerramentaNaPrevia {
   ferramenta: string;
   /** Calculada nesta máquina, pela anotação do servidor ou pelo nome. O que o arquivo declara não vale. */
   classe: "leitura" | "escrita";
+  /** `conexao`: ferramenta ligada na conexão do agent. `avulsa`: lista de ferramentas do agent, do passo ou da automação. */
+  origem: "conexao" | "avulsa";
+  /** Escrita avulsa não entra na importação: fica de fora e vira pendência. Na conexão ela entra e pede confirmação. */
+  removida: boolean;
   /** O que o arquivo declarava, quando divergia da calculada. */
   declarada?: "leitura";
 }
@@ -603,9 +607,9 @@ export class PacoteService {
   private async ferramentasDoPacote(pacote: Pacote): Promise<FerramentaNaPrevia[]> {
     const lista: FerramentaNaPrevia[] = [];
     const cache = new Map<string, FerramentaClassificavel[] | null>();
-    const adicionar = async (dono: string, servidor: string | null, ferramenta: string, declaradaLeitura: boolean): Promise<void> => {
+    const adicionar = async (dono: string, servidor: string | null, ferramenta: string, declaradaLeitura: boolean, origem: "conexao" | "avulsa" = "avulsa"): Promise<void> => {
       const classe = await this.classificar(servidor, ferramenta, cache);
-      lista.push({ dono, servidor, ferramenta, classe, ...(declaradaLeitura && classe === "escrita" ? { declarada: "leitura" as const } : {}) });
+      lista.push({ dono, servidor, ferramenta, classe, origem, removida: origem === "avulsa" && classe === "escrita", ...(declaradaLeitura && classe === "escrita" ? { declarada: "leitura" as const } : {}) });
     };
     for (const t of pacote.automacao.spec.defaultTools) await adicionar("automacao", t.server, t.tool, t.class === "read");
     for (const p of pacote.automacao.spec.steps) {
@@ -618,7 +622,7 @@ export class PacoteService {
         for (const [chave, escolha] of Object.entries(c.tools)) {
           if (escolha === false) continue;
           const corte = chave.indexOf("/");
-          await adicionar(`agent:${a.id}`, corte > 0 ? chave.slice(0, corte) : null, chave.slice(corte + 1), escolha === "read");
+          await adicionar(`agent:${a.id}`, corte > 0 ? chave.slice(0, corte) : null, chave.slice(corte + 1), escolha === "read", "conexao");
         }
       }
     }
@@ -813,6 +817,13 @@ export class PacoteService {
       );
     }
 
+    // Escrita avulsa (passo, automação) não entra: a execução a recusaria na primeira vez.
+    const soLeitura = async (tools: readonly ToolRef[], onde: string): Promise<ToolRef[]> => {
+      const todas = await this.reclassificar(tools, servidor);
+      const leituras = todas.filter((t) => t.class === "read");
+      if (leituras.length < todas.length) pendencias.push({ codigo: "escrita-removida", onde });
+      return leituras;
+    };
     const passos: Step[] = [];
     for (const p of pacote.automacao.spec.steps) {
       if (p.type === "model") {
@@ -820,7 +831,7 @@ export class PacoteService {
         passos.push({
           ...resto,
           model: modelo(`passo:${p.key}`, p.model),
-          ...(p.tools === undefined ? {} : { tools: await this.reclassificar(p.tools, servidor) }),
+          ...(p.tools === undefined ? {} : { tools: await soLeitura(p.tools, `passo:${p.key}`) }),
           requiresServers: p.requiresServers.map(servidor),
           ...(profile === undefined ? {} : { profile: destino.get(profile)!.id }),
         });
@@ -837,7 +848,7 @@ export class PacoteService {
     const spec = AgentSpec.parse({
       id: automacaoId,
       name: pacote.automacao.spec.name,
-      defaultTools: await this.reclassificar(pacote.automacao.spec.defaultTools, servidor),
+      defaultTools: await soLeitura(pacote.automacao.spec.defaultTools, "automacao"),
       skills: pacote.automacao.spec.skills,
       steps: passos,
       budget: pacote.automacao.spec.budget,

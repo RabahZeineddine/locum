@@ -2669,9 +2669,11 @@
         "leitura": "leitura",
         "escrita": "escrita"
       },
-      "declaredRead": "o arquivo dizia leitura",
+      "declaredRead": "o arquivo dizia leitura, vale a classificação daqui. Para usar, ligue a ferramenta na conexão do agent (aba Ferramentas): cada uso vai pedir confirmação.",
       "urlFill": "O endereço do passo {{passo}} não vem no pacote: preencha na automação.",
-      "urlFillHost": "O endereço do passo {{passo}} não vem no pacote: preencha na automação (era em {{host}})."
+      "urlFillHost": "O endereço do passo {{passo}} não vem no pacote: preencha na automação (era em {{host}}).",
+      "toolRemoved": "não entra: escrita não roda como ferramenta avulsa. Para escrever, use um nó de ação da automação, que passa pela fila.",
+      "toolAsks": "entra e pede confirmação a cada uso"
     }
   }
 }
