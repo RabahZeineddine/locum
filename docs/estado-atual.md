@@ -27,12 +27,17 @@ fluxo, os agents que ele usa e os requisitos da outra máquina.
   que omitiu em `omitidos`.
 - **Importar** (`PacoteService.previa` e `importar`, botão em Automações e
   arrastar o arquivo para a lista): a prévia diz o que será criado e cada
-  dependência (conexão, servidor, provedor) como ok, falta conectar ou ausente,
+  dependência (conexão, servidor, provedor, skill) como ok, falta conectar ou ausente,
   com o atalho para Conexões, Modelos ou "Importar do Claude Code". A pessoa liga
   modelo de cada agent, servidor e conexão equivalentes. Gatilho entra
   desligado, o de canal do Slack fica de fora e canais ficam para escolher.
-  Ação em `auto` entra em aprovação. Agent de mesmo id vira versão nova, igual
-  não cria versão, e nome igual com id diferente exige escolha. Automação de
+  Ação em `auto` entra em aprovação. Agent de mesmo id com conteúdo diferente
+  mostra a diferença e, por padrão, é criado ao lado (a automação aponta para o
+  novo); "atualizar o meu" é escolha explícita e lista as automações afetadas.
+  Igual não cria versão, e nome igual com id diferente exige escolha.
+  A classe das ferramentas do arquivo não vale: é recalculada pela anotação do
+  servidor (cache) ou pelo nome, e escrita sai de agent da biblioteca. O
+  endereço de `http.request` sai só com esquema e host e volta "a preencher". Automação de
   mesmo id ganha id livre.
 - **Modelo do Teams**: com agents, o passo de revisão usa o de nome parecido
   com revisor ou review (senão o primeiro), e o editor avisa, com atalho para
