@@ -224,13 +224,13 @@ test("estourou o orçamento: a mensagem diz o limite, o modelo não é chamado e
         },
         gastar: async () => assert.fail("não gasta quando nem chamou"),
       },
-      texto: (chave, vars) => `${chave}:${JSON.stringify(vars)}`,
+      texto: (chave, vars) => (vars === undefined ? chave : `${chave}:${JSON.stringify(vars)}`),
     },
   });
   await c.conversas.enviar("estourou", "oi");
   assert.equal(c.modelo.recebidos.length, 0);
   const erro = c.eventos.find((e) => e.tipo === "erro");
-  assert.equal(erro?.tipo === "erro" ? erro.mensagem : "", 'agentChat.errors.budget:{"scope":"day","unit":"tokens","limit":100,"spent":120}');
+  assert.equal(erro?.tipo === "erro" ? erro.mensagem : "", 'agentChat.errors.budget:{"scope":"agentChat.scopes.day","limit":"100 tokens","spent":"120 tokens"}');
 });
 
 test("o gasto da volta, em tokens e dólar, entra na chave do agent da biblioteca", async () => {

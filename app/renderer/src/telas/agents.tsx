@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { call, read, useRead, type ReadResult } from "@/lib/bridge";
 import { rotuloDoModelo } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, Bot, Copy, Loader2, MessageSquare, Plus, RefreshCw, Trash2, Workflow, Wrench, X } from "lucide-react";
+import { ChatDoAgent } from "../agent-chat";
+import { ArrowLeft, Bot, Copy, Loader2, Plus, RefreshCw, Trash2, Workflow, Wrench, X } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { ehLeitura, ehLeituraDa, escolhaDe, type EscolhaDeFerramenta } from "../../../src/config/leitura.js";
@@ -540,25 +541,14 @@ function FormularioDoAgent({
 
       <section className="flex flex-col gap-5" data-locum-agent-secao="chat" hidden={secao !== "chat"} role="tabpanel">
         <Pergunta texto={t("library.editor.leads.chat")} />
-        <div className="border-border flex flex-col gap-3 rounded-lg border border-dashed p-4 opacity-70" data-locum-agent-chat="">
-          <span className="flex items-center gap-2 text-sm font-medium">
-            <MessageSquare className="size-4" />
-            {t("library.chat.title")}
-            <Badge variant="outline">{t("library.chat.soon")}</Badge>
-          </span>
-          <textarea
-            aria-label={t("library.chat.title")}
-            className={cn(CAMPO, "min-h-24 resize-none")}
-            disabled
-            placeholder={t("library.chat.placeholder")}
-          />
-          <div>
-            <Button disabled size="sm">
-              {t("library.chat.send")}
-            </Button>
-          </div>
-          <p className="text-muted-foreground text-xs">{t("library.chat.note")}</p>
-        </div>
+        {novo ? (
+          <p className="text-muted-foreground text-sm" data-locum-agent-chat-salvar="">
+            {t("agentChat.saveFirst")}
+          </p>
+        ) : secao === "chat" ? (
+          // Só monta com a aba aberta: o retrato da conversa pede ao serviço as ferramentas do agent.
+          <ChatDoAgent id={spec.id} modelo={salvo.spec.model} naoSalvo={mudou} versao={salvo.version} />
+        ) : null}
       </section>
 
       <section className="flex flex-col gap-5" hidden={secao !== "usage"} role="tabpanel">

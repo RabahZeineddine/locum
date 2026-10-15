@@ -265,6 +265,46 @@
     "systemInitiativeFolder": "A pasta da iniciativa é {{folder}}: comece pelo context.md dela quando a pergunta for sobre a iniciativa. Você só lê: mudança em código é no terminal da iniciativa, e o que sai para fora (comentário, mensagem, card) vai como automação, pela fila de aprovação. Proponha o texto e diga onde fazer.",
     "reset": "Recomeçar conversa"
   },
+  "agentChat": {
+    "title": "Conversar",
+    "version": "versão {{version}}",
+    "reset": "Limpar conversa",
+    "empty": {
+      "title": "Converse com este agent",
+      "body": "Ele responde com as instruções, o modelo, as skills e as ferramentas de leitura que você configurou. Para escrever, ele pede o seu clique."
+    },
+    "placeholder": "Pergunte ou peça uma tarefa a este agent",
+    "placeholderPending": "Decida o cartão acima para continuar",
+    "note": "A leitura roda direto. Cada escrita aparece como um cartão e só sai quando você clica em Executar. Fora da Fila: isto é teste, não automação.",
+    "saveFirst": "Salve o agent para conversar com ele.",
+    "unsaved": "A conversa usa a versão salva. As mudanças ainda não salvas valem depois de Salvar.",
+    "noServer": "A conexão {{connection}} está sem servidor agora: {{reason}}. O agent conversa sem as ferramentas dela.",
+    "card": {
+      "title": "Escrita à espera",
+      "run": "Executar",
+      "refuse": "Recusar",
+      "result": "Resultado",
+      "expiredHint": "A conversa foi limpa ou interrompida, ou o app fechou, antes do clique. Nada foi executado.",
+      "state": {
+        "executado": "Executado",
+        "recusado": "Recusado",
+        "expirado": "Expirou",
+        "pendente": "Pendente"
+      }
+    },
+    "scopes": {
+      "run": "da execução",
+      "day": "do dia"
+    },
+    "errors": {
+      "busy": "O agent ainda está respondendo.",
+      "pending": "Decida primeiro a escrita que está esperando o seu clique.",
+      "expired": "Esse cartão expirou: a conversa foi limpa ou interrompida, ou o app fechou antes do clique.",
+      "budget": "O orçamento {{scope}} deste agent acabou: limite {{limit}}, gasto {{spent}}. Ajuste em Orçamento, na página do agent.",
+      "codex": "O chat do agent não roda com modelo do Codex: ele não entrega o texto aos pedaços. Escolha outro modelo na aba Modelo.",
+      "noApiModel": "O provedor \"{{provider}}\" não expõe modelo de API."
+    }
+  },
   "bridge": {
     "loading": "lendo pela ponte...",
     "refused": "a ponte recusou {{channel}}: {{message}}",
@@ -2341,13 +2381,6 @@
       "perDayTokens": "Por dia (tokens)",
       "perDayTokensHint": "O mesmo teto, em tokens, para o dia.",
       "noLimit": "sem teto"
-    },
-    "chat": {
-      "title": "Conversar",
-      "soon": "chega na próxima versão",
-      "placeholder": "Pergunte ou peça uma tarefa a este agent",
-      "send": "Enviar",
-      "note": "A conversa usa o modelo, as conexões e as skills desta página. Escrita em conexão pede a sua confirmação antes de sair."
     }
   },
   "digest": {

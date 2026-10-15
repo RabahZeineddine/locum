@@ -1539,6 +1539,114 @@ async function irParaPeloAlias(window: BrowserWindow, hash: string, esperado: st
   throw new Error(`o alias ${hash} levou a "${ultimo}" e nao a "${esperado}"`);
 }
 
+/** Escreve no campo do chat do agent e envia, como a pessoa faria. */
+async function enviarNoChatDoAgent(window: BrowserWindow, texto: string): Promise<void> {
+  await esperarProbe(
+    window,
+    "campo-do-chat",
+    `(() => { const c = document.querySelector("[data-locum-agent-chat] textarea"); return c !== null && !c.disabled ? true : null; })()`,
+  );
+  await window.webContents.executeJavaScript(`(() => {
+    const campo = document.querySelector("[data-locum-agent-chat] textarea");
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(campo, ${JSON.stringify(texto)});
+    campo.dispatchEvent(new Event("input", { bubbles: true }));
+    return null;
+  })()`);
+  await esperarProbe(
+    window,
+    "enviar-do-chat",
+    `(() => { const b = document.querySelector("[data-locum-agent-chat-enviar]"); return b !== null && !b.disabled ? true : null; })()`,
+  );
+  await window.webContents.executeJavaScript(`(document.querySelector("[data-locum-agent-chat-enviar]")?.click(), null)`);
+}
+
+/** O estado do cartão de escrita de uma ferramenta, ou nulo enquanto ele não existe. */
+function estadoDoCartao(ferramenta: string, ultimo = true): string {
+  return `(() => {
+    const cartoes = [...document.querySelectorAll('[data-locum-agent-cartao="${ferramenta}"]')];
+    const c = cartoes.${ultimo ? "at(-1)" : "at(0)"};
+    return c === undefined ? null : c.dataset.estado;
+  })()`;
+}
+
+/** O texto da última resposta do agent na conversa. */
+const ULTIMA_RESPOSTA = `(() => [...document.querySelectorAll("[data-locum-agent-chat-resposta]")].at(-1)?.textContent ?? "")()`;
+
+/**
+ * Conversa com o agent de teste pela tela, com um modelo de mentira que obedece
+ * ao que a pessoa escreve. Prova o que a decisão do chat promete: leitura roda
+ * direto, escrita para num cartão com os argumentos, e só o clique em Executar a
+ * roda; Recusar devolve a recusa ao modelo; o cartão pendente sobrevive a trocar
+ * de tela; limpar a conversa zera tudo.
+ *
+ * O modelo e falso para o exame não sair para a rede nem gastar assinatura. As
+ * ferramentas são as do servidor de brinquedo, de verdade.
+ */
+async function conversarComOAgentNoSmoke(window: BrowserWindow, id: string, aoMeio?: (momento: "resposta" | "cartao" | "executado") => Promise<void>): Promise<void> {
+  const { usarModeloDoAgentChat, agentChat } = await import("./agent-chat.js");
+  const { modeloFalso } = await import("../src/fixtures/modelo-falso.js");
+  const clicar = (seletor: string): Promise<unknown> =>
+    window.webContents.executeJavaScript(`(document.querySelector(${JSON.stringify(seletor)})?.click(), null)`);
+
+  usarModeloDoAgentChat(async () => ({ via: "api", provedor: "falso", modelo: "roteiro", model: modeloFalso() }));
+  try {
+    await clicar("[data-locum-agent-aba=chat]");
+
+    // Leitura: roda sozinha e a resposta traz o que a ferramenta devolveu.
+    await enviarNoChatDoAgent(window, "oi [[chama locum-fixture__pid]]");
+    const lida = await esperarProbe<string>(window, "resposta-de-leitura", `(() => { const t = ${ULTIMA_RESPOSTA}; return t.includes("Voltou:") ? t : null; })()`);
+    if (!/Voltou: .*\d+/.test(lida)) throw new Error(`a leitura nao voltou com o pid: "${lida}"`);
+    const cartoesDaLeitura = (await window.webContents.executeJavaScript(`document.querySelectorAll("[data-locum-agent-cartao]").length`)) as number;
+    if (cartoesDaLeitura !== 0) throw new Error("a leitura virou cartao de escrita");
+    await aoMeio?.("resposta");
+
+    // Escrita: o cartão aparece com os argumentos e o campo fica travado.
+    await enviarNoChatDoAgent(window, '[[chama locum-fixture__echo {"text":"escrito pelo smoke"}]]');
+    await esperarProbe(window, "cartao-pendente", `${estadoDoCartao("echo")} === "pendente" ? true : null`);
+    const argumentos = (await window.webContents.executeJavaScript(
+      `document.querySelector("[data-locum-agent-cartao-argumentos]")?.textContent ?? ""`,
+    )) as string;
+    if (!argumentos.includes("escrito pelo smoke")) throw new Error(`o cartao nao mostrou os argumentos: "${argumentos}"`);
+    if ((await window.webContents.executeJavaScript(`document.querySelector("[data-locum-agent-chat] textarea").disabled`)) !== true) {
+      throw new Error("o campo do chat nao travou com o cartao pendente");
+    }
+    await aoMeio?.("cartao");
+
+    // O cartão vive no processo principal: sair da tela e voltar não o perde.
+    await irPara(window, "agents");
+    await irPara(window, "agents", id);
+    await clicar("[data-locum-agent-aba=chat]");
+    await esperarProbe(window, "cartao-depois-de-voltar", `${estadoDoCartao("echo")} === "pendente" ? true : null`);
+
+    // Executar roda aquela chamada, e o modelo recebe o resultado.
+    await clicar("[data-locum-agent-cartao-executar]");
+    await esperarProbe(window, "cartao-executado", `${estadoDoCartao("echo")} === "executado" ? true : null`);
+    const executada = await esperarProbe<string>(window, "resposta-da-escrita", `(() => { const t = ${ULTIMA_RESPOSTA}; return t.includes("escrito pelo smoke") ? t : null; })()`);
+    if (!executada.includes("Voltou:")) throw new Error(`o modelo nao recebeu o resultado da escrita: "${executada}"`);
+    await aoMeio?.("executado");
+
+    // Recusar: nada roda e o modelo fica sabendo.
+    await enviarNoChatDoAgent(window, '[[chama locum-fixture__echo {"text":"nao deve sair"}]]');
+    await esperarProbe(window, "segundo-cartao", `${estadoDoCartao("echo")} === "pendente" ? true : null`);
+    await clicar("[data-locum-agent-cartao-recusar]");
+    await esperarProbe(window, "cartao-recusado", `${estadoDoCartao("echo")} === "recusado" ? true : null`);
+    const recusada = await esperarProbe<string>(window, "resposta-da-recusa", `(() => { const t = ${ULTIMA_RESPOSTA}; return t.includes("recusado") ? t : null; })()`);
+    if (recusada.includes("nao deve sair")) throw new Error("a escrita recusada chegou ao modelo como feita");
+
+    // O histórico é por agent e guardado: o que foi dito está no serviço.
+    const guardadas = (await agentChat.estado(id)).falas;
+    if (guardadas.filter((f) => f.de === "user").length !== 3) throw new Error(`o historico do agent guardou ${guardadas.length} falas`);
+
+    // Limpar zera a conversa.
+    await clicar("[data-locum-agent-chat-limpar]");
+    await esperarProbe(window, "conversa-limpa", `document.querySelectorAll("[data-locum-agent-chat-resposta]").length === 0 ? true : null`);
+    if ((await agentChat.estado(id)).falas.length !== 0) throw new Error("limpar nao zerou a conversa guardada");
+  } finally {
+    usarModeloDoAgentChat(null);
+    await agentChat.limpar(id).catch(() => undefined);
+  }
+}
+
 /**
  * Confere o Agent do conceito v3: a tela `agents` lista os agents da
  * biblioteca, os aliases de `library` chegam nela, um agent salvo com conexão
@@ -1639,12 +1747,8 @@ async function checkAgentsDoConceito(window: BrowserWindow): Promise<void> {
     }
     if (resolvido.tools.some((t) => t.tool === "echo")) throw new Error("a escrita ligada entrou nas ferramentas que rodam sozinhas");
 
-    // O lugar do chat existe e está desabilitado.
-    await clicar("[data-locum-agent-aba=chat]");
-    const chat = (await window.webContents.executeJavaScript(
-      `document.querySelector("[data-locum-agent-chat] textarea")?.disabled ?? null`,
-    )) as boolean | null;
-    if (chat !== true) throw new Error("o espaco reservado do chat nao esta desabilitado");
+    // O chat do agent: leitura direto, escrita num cartão que só roda no clique.
+    await conversarComOAgentNoSmoke(window, id);
 
     // Duplicar pela lista e remover pelo editor da cópia.
     await irPara(window, "agents");
@@ -6457,9 +6561,12 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
       await new Promise((resolve) => setTimeout(resolve, 400));
       writeFileSync(join(destino, "agents-editor-orcamento.png"), (await janela.webContents.capturePage()).toPNG());
 
-      await clicar("[data-locum-agent-aba=chat]");
-      await new Promise((resolve) => setTimeout(resolve, 400));
-      writeFileSync(join(destino, "agents-chat-reservado.png"), (await janela.webContents.capturePage()).toPNG());
+      // O chat: a resposta, o cartão de escrita à espera e o resultado depois do clique.
+      await conversarComOAgentNoSmoke(janela, id, async (momento) => {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        const arquivo = { resposta: "agents-chat-1-resposta", cartao: "agents-chat-2-cartao-pendente", executado: "agents-chat-3-executado" }[momento];
+        writeFileSync(join(destino, `${arquivo}.png`), (await janela.webContents.capturePage()).toPNG());
+      });
     } finally {
       await libraryService.removeProfile(id).catch(() => undefined);
     }

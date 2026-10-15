@@ -272,7 +272,9 @@ export class ConversasDeAgent {
     const controle = new AbortController();
     conversa.cancelar = controle;
     conversa.respondendo = true;
+    let terminou = false;
     const emitir = (evento: EventoDoAgent): void => {
+      if (evento.tipo === "fim") terminou = true;
       if (conversa.geracao === geracao) this.emitir(conversa, evento);
     };
     try {
@@ -291,6 +293,8 @@ export class ConversasDeAgent {
     } catch (err) {
       emitir({ tipo: "erro", mensagem: this.mensagemDeErro(err) });
     } finally {
+      // Quem escuta espera um fim; erro do Claude Code ou falha antes do modelo não o trazem.
+      if (!terminou) emitir({ tipo: "fim", motivo: "erro" });
       if (conversa.geracao === geracao) {
         conversa.respondendo = false;
         if (conversa.cancelar === controle) conversa.cancelar = undefined;
@@ -301,7 +305,12 @@ export class ConversasDeAgent {
 
   private mensagemDeErro(err: unknown): string {
     if (err instanceof BudgetExceeded) {
-      return this.deps.texto("agentChat.errors.budget", { scope: err.scope, unit: err.unit, limit: err.limit, spent: err.spent });
+      const valor = (n: number): string => (err.unit === "usd" ? `${n.toFixed(2)} USD` : `${Math.round(n)} tokens`);
+      return this.deps.texto("agentChat.errors.budget", {
+        scope: this.deps.texto(`agentChat.scopes.${err.scope}`),
+        limit: valor(err.limit),
+        spent: valor(err.spent),
+      });
     }
     return err instanceof Error ? err.message : String(err);
   }
