@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ehLeitura, ehLeituraDa, escolhaDe, escolhaInicial } from "../src/config/leitura.js";
+import { ehLeitura, ehLeituraDa, escolhaDe, escolhaInicial, ligadaPorPadrao } from "../src/config/leitura.js";
 
 /** Nomes reais dos servidores que o Locum mais liga: GitHub, Atlassian e Grafana. */
 
@@ -109,4 +109,33 @@ test("a escolha ao adicionar a conexão grava as leituras ligadas e não depende
   const grande = Array.from({ length: 31 }, (_, i) => ({ name: `get_item_${i}` }));
   assert.deepEqual(escolhaInicial([{ nome: "ms", ferramentas: grande }]), { tools: {}, leituraPadrao: "limitada" });
   assert.deepEqual(escolhaInicial([{ nome: "novo", ferramentas: null }]), { tools: {}, leituraPadrao: "limitada" });
+});
+
+test("run e request depois de and, then, or ou colados no verbo de leitura são ação", () => {
+  for (const nome of ["list-and-run", "get-and-run", "analyze_and_run", "retrieve_then_request", "preview_run", "count_and_request", "query_and_run_job", "get_and_execute"]) {
+    assert.equal(ehLeitura(nome), false, nome);
+  }
+  for (const nome of [
+    "get-settings", "list-updates", "search-created", "get-asset", "list-datasets", "get-offset", "get-update-status",
+    "list-update-history", "get-send-status", "get-data-set", "list-chats", "get_pull_request", "get_workflow_run_logs", "pull_request_read",
+  ]) {
+    assert.equal(ehLeituraDa({ name: nome, readOnlyHint: true }), true, nome);
+  }
+  for (const nome of ["get-settings", "list-updates", "search-created", "get-asset", "list-datasets", "get-offset", "list-chats"]) {
+    assert.equal(ehLeitura(nome), true, nome);
+  }
+});
+
+test("connect só pesa como verbo inicial: get_code_connect_map lê", () => {
+  assert.equal(ehLeitura("get_code_connect_map"), true);
+  assert.equal(ehLeitura("get_code_connect_suggestions"), true);
+  assert.equal(ehLeitura("connect-account"), false);
+  assert.equal(ehLeitura("disconnect_session"), false);
+});
+
+test("limitada nunca liga nada por padrão, e sem modo toda leitura liga", () => {
+  assert.equal(ligadaPorPadrao({ name: "get_issue" }, "limitada"), false);
+  assert.equal(ligadaPorPadrao({ name: "get_issue" }, undefined), true);
+  assert.equal(ligadaPorPadrao({ name: "get_issue" }, "todas"), true);
+  assert.equal(ligadaPorPadrao({ name: "create_issue" }, undefined), false);
 });

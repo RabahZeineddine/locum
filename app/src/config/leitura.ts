@@ -2,7 +2,7 @@
 // ferramenta como leitura ou escrita na tela de servidores.
 
 const VERBOS_DE_ESCRITA =
-  /(^|_)(send|create|delete|update|modify|move|rename|upload|copy|trash|untrash|forward|respond|reply|set|add|remove|ack|resolve|close|cancel|declare|assign|transition|link|unlink|publish|merge|push|fork|write|edit|execute|run|login|rotate|revoke|complete|reopen|post|schedule|share|restore|sync|request|emit|change|batch|import|invite|approve|submit|start|stop|trigger|draft|mark|archive|pin|unpin|enable|disable|graphql|call|drop|purge|clear|destroy|kill|lock|unlock|grant|snooze|subscribe|unsubscribe|acknowledge|export|reset|truncate|wipe|erase|deploy|rollback|revert|disconnect|connect|reopen)(_|$)/i;
+  /(^|_)(send|create|delete|update|modify|move|rename|upload|copy|trash|untrash|forward|respond|reply|set|add|remove|ack|resolve|close|cancel|declare|assign|transition|link|unlink|publish|merge|push|fork|write|edit|execute|run|login|rotate|revoke|complete|reopen|post|schedule|share|restore|sync|request|emit|change|batch|import|invite|approve|submit|start|stop|trigger|draft|mark|archive|pin|unpin|enable|disable|graphql|call|drop|purge|clear|destroy|kill|lock|unlock|grant|snooze|subscribe|unsubscribe|acknowledge|export|reset|truncate|wipe|erase|deploy|rollback|revert)(_|$)/i;
 
 /** Verbos de escrita que, sozinhos, não pesam quando o nome abre com verbo de leitura: `get_pull_request`, `get_workflow_run`. */
 const VERBOS_FRACOS = new Set(["request", "run"]);
@@ -18,6 +18,8 @@ function normalizar(ferramenta: string): string {
 function escreveNoNome(curto: string): boolean {
   if (/(^|_)(to_file|upload)(_|$)/.test(curto)) return true;
   const primeiro = curto.split("_")[0] ?? "";
+  // `connect` e `disconnect` só pesam na frente: `get_code_connect_map` lê.
+  if (primeiro === "connect" || primeiro === "disconnect") return true;
   return VERBOS_DE_ESCRITA.test(primeiro) && !VERBOS_FRACOS.has(primeiro);
 }
 
@@ -37,7 +39,15 @@ export function ehLeitura(ferramenta: string): boolean {
   // `get_pull_request` e `pull_request_read` leem, mesmo com `request` no nome.
   // Verbo de escrita de verdade (`get_and_delete`) ainda ganha da regra.
   if (PREFIXOS_DE_LEITURA.test(curto) || curto.endsWith("_read")) {
-    return !curto.split("_").some((p) => VERBOS_DE_ESCRITA.test(p) && !VERBOS_FRACOS.has(p));
+    const partes = curto.split("_");
+    if (partes.some((p) => VERBOS_DE_ESCRITA.test(p) && !VERBOS_FRACOS.has(p))) return false;
+    // `run` e `request` só passam como substantivo (`get_workflow_run`, `get_pull_request`):
+    // depois de `and`/`then`/`or` ou colados no verbo de leitura (`preview_run`) são ação.
+    if (PREFIXOS_DE_LEITURA.test(curto)) {
+      const fraco = (i: number) => VERBOS_FRACOS.has(partes[i] ?? "");
+      if (fraco(1) || partes.some((p, i) => i > 0 && fraco(i) && ["and", "then", "or"].includes(partes[i - 1] ?? ""))) return false;
+    }
+    return true;
   }
   return false;
 }
@@ -66,16 +76,15 @@ export const LIMITE_DE_LEITURA_PADRAO = 30;
 
 /**
  * Se a ferramenta vem ligada quando a pessoa não escolheu nada. Leitura liga
- * sozinha, a não ser na conexão de modo `limitada` com servidor grande (ms365
- * tem mais de cem), onde ligar tudo gasta contexto. O agent salvo antes não
- * tem modo e segue com toda leitura ligada.
+ * sozinha. Na conexão de modo `limitada`, que a tela grava ao adicionar a um
+ * servidor grande (ms365 tem mais de cem), nada liga por padrão: só o que está
+ * em `tools`. O agent salvo antes não tem modo e segue com toda leitura ligada.
  */
 export function ligadaPorPadrao(
   f: FerramentaClassificavel,
-  leiturasDoServidor: number,
   modo: "todas" | "limitada" | undefined,
 ): boolean {
-  if (modo === "limitada" && leiturasDoServidor > LIMITE_DE_LEITURA_PADRAO) return false;
+  if (modo === "limitada") return false;
   return ehLeituraDa(f);
 }
 
@@ -84,7 +93,7 @@ export function ligadaPorPadrao(
  * conhecida e de até `LIMITE_DE_LEITURA_PADRAO` leituras: cada leitura vira
  * escolha explícita, e nenhuma regra reavaliada depois tira o que estava
  * ligado. Servidor grande, ou sem lista guardada ainda, fica em `limitada`: nada
- * ligado até a pessoa escolher.
+ * ligado por padrão, só o que a pessoa escolher.
  */
 export function escolhaInicial(
   servidores: readonly { nome: string; ferramentas: readonly FerramentaClassificavel[] | null }[],
