@@ -641,8 +641,13 @@ test("Teams sem login nativo vem pelo servidor MCP, por nome ou pelas ferramenta
   const chave = "mcp.ferramentas.casa-do-teams";
   await mcp.register({ name: "ms365", transport: "stdio", command: ["npx", "-y", "@softeria/ms-365-mcp-server"] });
   try {
+    // Sem ferramentas de Teams listadas a caixa não lê por ele: dá o estado, não o "pelo".
+    const sem = (await servico.list()).find((c) => c.id === "teams")!;
+    assert.deepEqual([sem.servers, sem.via], [["ms365"], undefined]);
+    await db.insert(schema.settings).values({ key: "mcp.ferramentas.ms365", value: JSON.stringify({ at: 1, tools: ferramentas }) });
     assert.equal((await servico.list()).find((c) => c.id === "teams")!.via, "ms365");
   } finally {
+    await db.delete(schema.settings).where(eq(schema.settings.key, "mcp.ferramentas.ms365"));
     await mcp.remove("ms365");
   }
 

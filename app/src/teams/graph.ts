@@ -20,6 +20,12 @@ export interface TeamsGraph {
   post(caminho: string, corpo: unknown, recusa: string): Promise<void>;
   /** Nulo é o login nativo; senão, o nome do servidor MCP. */
   servidor: string | null;
+  /**
+   * A conta do servidor MCP que esta sessão usa, quando ele atende mais de uma.
+   * Vai gravada no evento, para a resposta e a reação saírem pela mesma conta
+   * que leu, mesmo que a conta padrão do servidor mude no meio do caminho.
+   */
+  conta(): string | null;
   /** Solta o que a sessão segurou (o servidor MCP aberto para a batida). */
   close(): Promise<void>;
 }
@@ -35,6 +41,18 @@ export interface TeamsGraphOptions {
   mcp?: Pick<McpService, "list" | "cachedTools">;
   /** Quem chama a ferramenta do servidor. Ausente sobe o servidor cadastrado. */
   call?: McpCaller;
+  /** A conta do servidor MCP com que o evento foi lido. Sem ela vale a padrão do servidor. */
+  account?: string;
+  /** Se o login nativo está guardado, mesmo que o token não renove. Existe para o teste trocar. */
+  nativoGuardado?: () => boolean;
+  /** Abre a sessão do servidor. Ausente é a sessão curta compartilhada no registro. Existe para o teste trocar. */
+  abrir?: (servidor: string) => Promise<SessaoMcp>;
+}
+
+/** Quem chama as ferramentas de um servidor e o solta quando acaba. */
+export interface SessaoMcp {
+  call: McpCaller;
+  close: () => Promise<void>;
 }
 
 /** O Graph pelo login nativo do Teams. */
@@ -46,6 +64,7 @@ export function graphNativo(token: string, fetchFn: typeof fetch, graphUrl: stri
   };
   return {
     servidor: null,
+    conta: () => null,
     async close() {},
     async get(caminho) {
       const url = caminho.startsWith("https://") ? caminho : `${graphUrl}${caminho}`;
@@ -118,14 +137,47 @@ export async function teamsNoMcp(
   return desligado;
 }
 
+
+type Prop = Record<string, unknown>;
+
 /** Normaliza nome de parâmetro: `chat-id`, `chatId` e `$top` viram `chatid` e `top`. */
 const chaveDe = (nome: string) => nome.replace(/^\$/, "").replace(/[^a-z0-9]/gi, "").toLowerCase();
 
-/** O nome que o servidor deu ao parâmetro, lido do esquema; sem esquema, o padrão do ms365. */
-function nomeDoArg(tool: McpToolInfo | undefined, chave: string, padrao: string): string | null {
-  const props = (tool?.inputSchema as { properties?: Record<string, unknown> } | undefined)?.properties;
-  if (props === undefined) return padrao;
-  return Object.keys(props).find((n) => chaveDe(n) === chave) ?? null;
+/** O parâmetro como o servidor o chamou, lido do esquema; sem esquema, o padrão do ms365. */
+function achar(tool: McpToolInfo | undefined, chave: string, padrao: string): { nome: string; prop?: Prop } | null {
+  const props = (tool?.inputSchema as { properties?: Record<string, Prop> } | undefined)?.properties;
+  if (props === undefined) return { nome: padrao };
+  const nome = Object.keys(props).find((n) => chaveDe(n) === chave);
+  return nome === undefined ? null : { nome, prop: props[nome] as Prop };
+}
+
+/** Os tipos que o esquema aceita, entrando nos `anyOf`, `oneOf` e `allOf`. */
+function tiposDe(prop: Prop, achados = new Set<string>()): Set<string> {
+  const tipo = prop.type;
+  for (const t of Array.isArray(tipo) ? tipo : tipo === undefined ? [] : [tipo]) achados.add(String(t));
+  for (const chave of ["anyOf", "oneOf", "allOf"]) {
+    const lista = prop[chave];
+    if (Array.isArray(lista)) for (const item of lista) tiposDe(item as Prop, achados);
+  }
+  return achados;
+}
+
+/**
+ * O valor da URL (sempre texto) no tipo que o esquema pede: `$top` e `$skip`
+ * são inteiros no ms365, e texto ali volta como `invalid_query_parameter`.
+ * Onde o esquema aceita texto, o texto vale.
+ */
+function noTipoDe(valor: unknown, prop: Prop | undefined): unknown {
+  if (typeof valor !== "string" || prop === undefined) return valor;
+  const tipos = tiposDe(prop);
+  if (tipos.size === 0 || tipos.has("string")) return valor;
+  if (tipos.has("integer") || tipos.has("number")) {
+    const n = Number(valor);
+    return valor.trim() !== "" && Number.isFinite(n) ? n : valor;
+  }
+  if (tipos.has("boolean")) return valor === "true";
+  if (tipos.has("array")) return [valor];
+  return valor;
 }
 
 /** Valor de cada argumento pela chave normalizada, com o nome que o ms365 usa. */
@@ -145,18 +197,23 @@ function comoHtml(corpo: unknown): unknown {
   return { ...(corpo as object), body: { contentType: "html", content: html } };
 }
 
+const SEM_LOGIN = /login|authenticat|unauthori[sz]ed|\b401\b|no accounts found|token/i;
+
 /**
  * O Graph traduzido para as ferramentas de um servidor MCP do Teams (as do
- * `@softeria/ms-365-mcp-server`). Os nomes dos argumentos saem do esquema que o
- * Locum guardou, não de uma lista fixa.
+ * `@softeria/ms-365-mcp-server`). Os nomes e os tipos dos argumentos saem do
+ * esquema que o Locum guardou, não de uma lista fixa.
  */
 export function graphPeloMcp(
   servidor: string,
   ferramentas: McpToolInfo[],
   chamar: McpCaller,
   fechar: () => Promise<void> = async () => {},
+  contaDada: string | null = null,
 ): TeamsGraph {
   const porNome = new Map(ferramentas.map((t) => [t.name, t]));
+  const multiConta = ferramentas.some((t) => achar(t, "account", "account")?.prop !== undefined);
+  let conta = contaDada;
 
   const acionar = async (nome: string, valores: Valores, escrita = false) => {
     const tool = porNome.get(nome);
@@ -167,21 +224,36 @@ export function graphPeloMcp(
     }
     const args: Record<string, unknown> = {};
     for (const [chave, { valor, padrao }] of Object.entries(valores)) {
-      const arg = nomeDoArg(tool, chave, padrao);
-      if (arg !== null) args[arg] = valor;
+      const arg = achar(tool, chave, padrao);
+      if (arg !== null) args[arg.nome] = noTipoDe(valor, arg.prop);
     }
     // O ms365 pede confirmação em toda escrita; quando o Locum chega aqui a
     // pessoa já aprovou na Fila (ou é o 👀 que a regra da reação autoriza).
-    const confirmar = escrita ? nomeDoArg(tool, "confirm", "confirm") : null;
-    if (confirmar !== null) args[confirmar] = true;
+    const confirmar = escrita ? achar(tool, "confirm", "confirm") : null;
+    if (confirmar !== null) args[confirmar.nome] = true;
+    // Com mais de uma conta no servidor, a padrão muda quando a pessoa troca de
+    // conta em outro lugar: a conta da leitura vai em toda chamada seguinte.
+    const daConta = conta === null ? null : achar(tool, "account", "account");
+    if (daConta?.prop !== undefined) args[daConta.nome] = conta;
+
+    let bruto: unknown;
     try {
-      return unwrap(await chamar(servidor, nome, args));
+      bruto = await chamar(servidor, nome, args);
     } catch (err) {
       const motivo = err instanceof Error ? err.message : String(err);
       throw new Error(
-        `O Teams vem pelo servidor "${servidor}", e ele não respondeu (${motivo.slice(0, 200)}). ` +
+        `O Teams vem pelo servidor "${servidor}", que não respondeu (${motivo.slice(0, 200)}). ` +
           `Em Conexões, confira se ele está ligado e com login.`,
       );
+    }
+    try {
+      return unwrap(bruto);
+    } catch (err) {
+      const motivo = err instanceof Error ? err.message : String(err);
+      if (SEM_LOGIN.test(motivo)) {
+        throw new Error(`O servidor "${servidor}" está sem login no Microsoft 365. Refaça o login dele em Conexões.`);
+      }
+      throw new Error(`O servidor "${servidor}" recusou o pedido do Teams: ${motivo.slice(0, 200)}`);
     }
   };
 
@@ -194,11 +266,17 @@ export function graphPeloMcp(
 
   const lista = async (nome: string, valores: Valores) => {
     const resposta = await acionar(nome, valores);
-    return (resposta !== null && typeof resposta === "object" ? resposta : {}) as Record<string, unknown>;
+    if (resposta === null || typeof resposta !== "object") {
+      throw new Error(
+        `O servidor "${servidor}" responde num formato que o Locum não lê. Desligue o modo toon dele e tente de novo.`,
+      );
+    }
+    return resposta as Record<string, unknown>;
   };
 
   return {
     servidor,
+    conta: () => conta,
     close: fechar,
 
     async get(caminho) {
@@ -206,14 +284,20 @@ export function graphPeloMcp(
       const rota = decodeURIComponent(url.pathname.replace(/^\/v1\.0/, ""));
       const q = consulta(url);
 
-      if (rota === "/me") return lista("get-current-user", q);
+      if (rota === "/me") {
+        const eu = await lista("get-current-user", q);
+        // A primeira resposta diz de que conta o servidor falou, para as outras
+        // chamadas e para o evento.
+        if (conta === null && multiConta && typeof eu.userPrincipalName === "string") conta = eu.userPrincipalName;
+        return eu;
+      }
       if (rota === "/me/chats") return lista("list-chats", q);
       const chat = rota.match(/^\/chats\/([^/]+)\/messages$/);
       if (chat) return lista("list-chat-messages", { chatid: v(chat[1], "chatId"), ...q });
 
       const canal = rota.match(ROTA_DO_CANAL);
       if (canal) {
-        const { expand: _expand, ...resto } = q;
+        const { expand, ...resto } = q;
         const raizes = await lista("list-channel-messages", {
           teamid: v(canal[1], "teamId"),
           channelid: v(canal[2], "channelId"),
@@ -221,7 +305,7 @@ export function graphPeloMcp(
         });
         // O `$expand=replies` do Graph vira uma leitura de respostas por thread:
         // o servidor MCP não promete o expand.
-        if (_expand?.valor !== "replies" || !Array.isArray(raizes.value)) return raizes;
+        if (expand?.valor !== "replies" || !Array.isArray(raizes.value)) return raizes;
         const value: unknown[] = [];
         for (const raiz of raizes.value) {
           const id = (raiz as { id?: unknown } | null)?.id;
@@ -272,7 +356,11 @@ export function graphPeloMcp(
         );
         return;
       }
-      const reacaoCanal = rota.match(/^\/teams\/([^/]+)\/channels\/([^/]+)\/messages\/([^/]+)\/(set|unset)Reaction$/);
+      // O ms365 só reage na mensagem de canal, não na resposta de uma thread:
+      // a reação de quem veio numa resposta fica na raiz da thread.
+      const reacaoCanal = rota.match(
+        /^\/teams\/([^/]+)\/channels\/([^/]+)\/messages\/([^/]+)(?:\/replies\/[^/]+)?\/(set|unset)Reaction$/,
+      );
       if (reacaoCanal) {
         await acionar(
           `${reacaoCanal[4]}-channel-message-reaction`,
@@ -291,12 +379,58 @@ export function graphPeloMcp(
   };
 }
 
-/** Sobe o servidor cadastrado uma vez para a sessão e o encerra no `close`. */
-async function sessaoNoServidor(
-  servidor: string,
-): Promise<{ call: McpCaller; close: () => Promise<void> }> {
-  const configs = await mcpService.enabledConfigs();
-  const registry = McpRegistry.fromList(configs);
+/** Quanto a sessão do servidor MCP fica de pé depois da última operação. */
+const OCIOSA_MS = 20_000;
+
+let viva: { servidor: string; sessao: Promise<SessaoMcp>; usos: number; timer: NodeJS.Timeout | null } | null = null;
+
+/**
+ * A sessão do servidor MCP, reaproveitada entre operações próximas: a batida, o
+ * `unset` e o `set` do fim do review e a resposta aprovada pegam o mesmo
+ * processo em vez de subir um do ms365 cada um. Fecha depois de `OCIOSA_MS` sem uso.
+ */
+export async function compartilhar(servidor: string, abrir: (s: string) => Promise<SessaoMcp>): Promise<SessaoMcp> {
+  if (viva !== null && viva.servidor !== servidor) return abrir(servidor);
+  const atual = (viva ??= { servidor, sessao: abrir(servidor), usos: 0, timer: null });
+  if (atual.timer !== null) clearTimeout(atual.timer);
+  atual.timer = null;
+  atual.usos++;
+  let sessao: SessaoMcp;
+  try {
+    sessao = await atual.sessao;
+  } catch (err) {
+    atual.usos--;
+    if (viva === atual) viva = null;
+    throw err;
+  }
+  let solta = false;
+  return {
+    call: sessao.call,
+    close: async () => {
+      if (solta) return;
+      solta = true;
+      if (--atual.usos > 0) return;
+      atual.timer = setTimeout(() => {
+        if (viva === atual) viva = null;
+        void sessao.close().catch(() => undefined);
+      }, OCIOSA_MS);
+      atual.timer.unref();
+    },
+  };
+}
+
+/** Fecha já a sessão compartilhada, se houver. */
+export async function soltarSessoes(): Promise<void> {
+  const atual = viva;
+  viva = null;
+  if (atual === null) return;
+  if (atual.timer !== null) clearTimeout(atual.timer);
+  await (await atual.sessao).close().catch(() => undefined);
+}
+
+/** Sobe o servidor cadastrado, só se estiver habilitado. */
+async function abrirNoRegistro(servidor: string): Promise<SessaoMcp> {
+  const registry = McpRegistry.fromList(await mcpService.enabledConfigs());
   if (!registry.has(servidor)) {
     return {
       call: async () => {
@@ -317,6 +451,20 @@ export async function abrirTeams(options: TeamsGraphOptions = {}): Promise<Teams
   const token = await (options.token ?? (() => mcpOAuthService.accessToken(TEAMS_SERVER)))();
   if (token !== null) return graphNativo(token, options.fetchFn ?? clienteHttp, options.graphUrl ?? GRAPH_URL);
 
+  // Login guardado que não renovou: cair no servidor MCP falaria por outra
+  // conta, e o "eu" da caixa mudaria no mesmo cursor.
+  const guardado = options.nativoGuardado ??
+    (() => {
+      try {
+        return mcpOAuthService.status(TEAMS_SERVER).connected;
+      } catch {
+        return false;
+      }
+    });
+  if (guardado()) {
+    throw new Error("O login do Teams venceu e não renovou. Refaça o login do Teams em Conexões.");
+  }
+
   const mcp = options.mcp ?? mcpService;
   const achado = await teamsNoMcp(mcp);
   if (achado === null) {
@@ -327,9 +475,9 @@ export async function abrirTeams(options: TeamsGraphOptions = {}): Promise<Teams
   if (!achado.ligado) {
     throw new Error(`O Teams vem pelo servidor "${achado.server}", que está desligado. Ligue em Conexões.`);
   }
-  const guardado = await mcp.cachedTools(achado.server);
-  const ferramentas = guardado?.tools ?? [];
-  if (options.call !== undefined) return graphPeloMcp(achado.server, ferramentas, options.call);
-  const sessao = await sessaoNoServidor(achado.server);
-  return graphPeloMcp(achado.server, ferramentas, sessao.call, sessao.close);
+  const ferramentas = (await mcp.cachedTools(achado.server))?.tools ?? [];
+  const conta = options.account ?? null;
+  if (options.call !== undefined) return graphPeloMcp(achado.server, ferramentas, options.call, undefined, conta);
+  const sessao = await compartilhar(achado.server, options.abrir ?? abrirNoRegistro);
+  return graphPeloMcp(achado.server, ferramentas, sessao.call, sessao.close, conta);
 }

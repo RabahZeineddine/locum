@@ -171,7 +171,7 @@ async function varrer(
     await acolher(
       await pollMcpServer(
         { server: TEAMS_SERVER, tool: "inbox", args: { since: CURSOR_TOKEN } },
-        { db, call: caixa(graph), shape: inboxShape(vigia, eu, chave) },
+        { db, call: caixa(graph), shape: inboxShape(vigia, eu, chave, teams.conta) },
       ),
       "inbox",
     );
@@ -189,7 +189,7 @@ async function varrer(
       await acolher(
         await pollMcpServer(
           { server: TEAMS_SERVER, tool: "channel", args: { since: CURSOR_TOKEN } },
-          { db, call: doCanal(graph, canal), shape: canalShape(canal, eu, vigia, `${antiga}${sufixo}`) },
+          { db, call: doCanal(graph, canal), shape: canalShape(canal, eu, vigia, `${antiga}${sufixo}`, teams.conta) },
         ),
         "channel",
         canal.label ?? canal.channelId,
@@ -461,7 +461,13 @@ export function channelRepo(teamId: string, channelId: string, threadId: string)
   return `${TEAMS_CHANNEL_PREFIX}${teamId}/${channelId}/${threadId}`;
 }
 
-function canalShape(canal: TeamsChannelRef, eu: string, watch: TeamsInboxWatch, chave: string): McpPollShape {
+function canalShape(
+  canal: TeamsChannelRef,
+  eu: string,
+  watch: TeamsInboxWatch,
+  chave: string,
+  conta: () => string | null,
+): McpPollShape {
   const traduzir = (item: unknown) => {
     const bruto = (item ?? {}) as Record<string, unknown>;
     const pr = prDoItem(item);
@@ -497,6 +503,7 @@ function canalShape(canal: TeamsChannelRef, eu: string, watch: TeamsInboxWatch, 
         messageId: mensagem.messageId,
         webUrl: mensagem.webUrl,
         item,
+        ...daConta(conta),
         ...(pr === null
           ? {}
           : {
@@ -514,7 +521,7 @@ function canalShape(canal: TeamsChannelRef, eu: string, watch: TeamsInboxWatch, 
 
 /** Quem é a pessoa dona do token, para tirar o que ela mesma escreveu. */
 async function quemSou(graph: GraphGet): Promise<string> {
-  const resposta = await graph("/me?$select=id");
+  const resposta = await graph("/me?$select=id,userPrincipalName");
   if (typeof resposta.id !== "string" || resposta.id === "") {
     throw new Error("o Graph não disse de quem é o token");
   }
@@ -687,6 +694,9 @@ function antesDaAtivacao(bruto: Record<string, unknown>, watch: TeamsInboxWatch)
   return criada === null || criada < watch.prDesde;
 }
 
+/** A conta do servidor MCP que leu a mensagem, para a resposta e a reação saírem por ela. */
+const daConta = (conta: () => string | null) => (conta() === null ? {} : { teamsAccount: conta() });
+
 function prDoItem(item: unknown): ParsedGithubPr | null {
   const pr = (item as { prLink?: ParsedGithubPr } | null)?.prLink;
   return pr ?? null;
@@ -746,7 +756,7 @@ export function semHtml(html: string): string {
     .trim();
 }
 
-function inboxShape(watch: TeamsInboxWatch, eu: string, chave: string): McpPollShape {
+function inboxShape(watch: TeamsInboxWatch, eu: string, chave: string, conta: () => string | null): McpPollShape {
   const tipo = (item: unknown): TeamsInboxKind =>
     prDoItem(item) !== null ? "pr" : (kindOf(item, eu, watch) ?? "dm");
   return {
@@ -775,6 +785,7 @@ function inboxShape(watch: TeamsInboxWatch, eu: string, chave: string): McpPollS
         messageId: mensagem.messageId,
         webUrl: mensagem.webUrl,
         item,
+        ...daConta(conta),
         ...(pr === null ? {} : { ...camposDoPr(pr), teamsChatId: mensagem.chatId, teamsMessageId: mensagem.messageId }),
       };
     },

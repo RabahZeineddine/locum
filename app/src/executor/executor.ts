@@ -718,7 +718,7 @@ async function lerContextoDaIniciativa(initiativeId: string): Promise<string | n
 /** Quantos acontecimentos de um passo ficam guardados; os mais velhos saem. */
 const TETO_DE_ATIVIDADES = 300;
 
-const TEAMS_REACAO = ["teamsChatId", "teamsTeamId", "teamsChannelId", "teamsMessageId", "teamsReplyToId"] as const;
+const TEAMS_REACAO = ["teamsChatId", "teamsTeamId", "teamsChannelId", "teamsMessageId", "teamsReplyToId", "teamsAccount"] as const;
 
 const DESTINO = ["owner", "repo", "pull", "headSha", ...TEAMS_REACAO] as const;
 

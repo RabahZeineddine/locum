@@ -11,9 +11,13 @@ export const REACAO_DO_VEREDITO = {
 } as const;
 
 /** A mensagem do Teams onde o Locum reage. */
-export type AlvoDaReacao =
+export type AlvoDaReacao = (
   | { tipo: "chat"; chatId: string; messageId: string }
-  | { tipo: "canal"; teamId: string; channelId: string; messageId: string; replyToId?: string };
+  | { tipo: "canal"; teamId: string; channelId: string; messageId: string; replyToId?: string }
+) & {
+  /** A conta do servidor MCP que leu a mensagem; ausente no login nativo. */
+  account?: string;
+};
 
 export type TeamsReactionOptions = TeamsGraphOptions;
 
@@ -28,13 +32,15 @@ export function alvoDaReacao(payload: unknown): AlvoDaReacao | null {
   const p = (payload ?? {}) as Record<string, unknown>;
   const messageId = texto(p.teamsMessageId);
   if (messageId === null) return null;
+  const account = texto(p.teamsAccount);
+  const conta = account === null ? {} : { account };
   const chatId = texto(p.teamsChatId);
-  if (chatId !== null) return { tipo: "chat", chatId, messageId };
+  if (chatId !== null) return { tipo: "chat", chatId, messageId, ...conta };
   const teamId = texto(p.teamsTeamId);
   const channelId = texto(p.teamsChannelId);
   if (teamId === null || channelId === null) return null;
   const replyToId = texto(p.teamsReplyToId);
-  return { tipo: "canal", teamId, channelId, messageId, ...(replyToId === null ? {} : { replyToId }) };
+  return { tipo: "canal", teamId, channelId, messageId, ...(replyToId === null ? {} : { replyToId }), ...conta };
 }
 
 function caminhoDe(alvo: AlvoDaReacao): string {
@@ -68,7 +74,7 @@ export async function reagirNoTeams(
   emoji: string,
   options: TeamsReactionOptions = {},
 ): Promise<void> {
-  const teams = await abrirTeams(options);
+  const teams = await abrirTeams(alvo.account === undefined ? options : { ...options, account: alvo.account });
   try {
     await teams.post(`${caminhoDe(alvo)}/${acao}Reaction`, { reactionType: emoji }, "a reação");
   } finally {

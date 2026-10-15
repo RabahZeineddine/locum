@@ -42,6 +42,8 @@ export const TeamsPostProposal = z.object({
   subject: z.string(),
   author: z.string().nullable(),
   webUrl: z.string().nullable(),
+  /** A conta do servidor MCP que leu a conversa, para a resposta sair por ela. */
+  account: z.string().min(1).optional(),
   channel: z
     .object({
       teamId: z.string().min(1),
@@ -149,7 +151,9 @@ export function teamsPostHandler(options: TeamsPostHandlerOptions = {}): ActionH
 
     async publish(payload) {
       const proposta = TeamsPostProposal.parse(payload);
-      const teams = await abrirTeams(options);
+      const teams = await abrirTeams(
+        proposta.account === undefined ? options : { ...options, account: proposta.account },
+      );
       try {
         const canal = proposta.channel;
         const caminho =
@@ -169,7 +173,7 @@ export function teamsPostHandler(options: TeamsPostHandlerOptions = {}): ActionH
 async function ultimaLida(
   db: Db,
   chatId: string,
-): Promise<{ subject: string; author: string | null; webUrl: string | null } | null> {
+): Promise<{ subject: string; author: string | null; webUrl: string | null; account?: string } | null> {
   const linhas = await db
     .select({ payload: schema.events.payload })
     .from(schema.events)
@@ -184,6 +188,7 @@ async function ultimaLida(
       subject: String(corpo.text ?? ""),
       author: typeof corpo.author === "string" ? corpo.author : null,
       webUrl: typeof corpo.webUrl === "string" ? corpo.webUrl : null,
+      ...(typeof corpo.teamsAccount === "string" && corpo.teamsAccount !== "" ? { account: corpo.teamsAccount } : {}),
     };
   }
   return null;
@@ -197,7 +202,7 @@ async function ultimaLida(
 async function ultimaDoCanal(
   db: Db,
   destino: { teamId: string; channelId: string; threadId: string },
-): Promise<{ subject: string; author: string | null; webUrl: string | null; label: string | null } | null> {
+): Promise<{ subject: string; author: string | null; webUrl: string | null; label: string | null; account?: string } | null> {
   const linhas = await db
     .select({ payload: schema.events.payload })
     .from(schema.events)
@@ -213,6 +218,7 @@ async function ultimaDoCanal(
       subject: String(corpo.text ?? ""),
       author: typeof corpo.author === "string" ? corpo.author : null,
       webUrl: typeof corpo.webUrl === "string" ? corpo.webUrl : null,
+      ...(typeof corpo.teamsAccount === "string" && corpo.teamsAccount !== "" ? { account: corpo.teamsAccount } : {}),
       label: typeof corpo.channel === "string" ? corpo.channel : null,
     };
   }

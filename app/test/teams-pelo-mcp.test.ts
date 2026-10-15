@@ -5,7 +5,8 @@ import { schema } from "../src/db/index.js";
 import { pollTeamsInbox } from "../src/sources/teams-inbox.js";
 import { teamsPostHandler } from "../src/teams/action.js";
 import { reagirNoTeams, REACAO_PEGOU } from "../src/teams/reaction.js";
-import { capacidadesDoTeams, teamsNoMcp } from "../src/teams/graph.js";
+import { alvoDaReacao } from "../src/teams/reaction.js";
+import { capacidadesDoTeams, compartilhar, soltarSessoes, teamsNoMcp } from "../src/teams/graph.js";
 import { bancoDeTeste as bancoVazio } from "./helpers/db.js";
 
 const agoraMenos = (minutos: number) => new Date(Date.now() - minutos * 60_000).toISOString();
@@ -13,15 +14,35 @@ const PR = "https://github.com/acme/api/pull/7";
 const EQUIPE = "equipe-1";
 const CANAL = "19:geral@thread.tacv2";
 
-/** O esquema das ferramentas como o ms365 as publica: ids em camelCase, OData com `$`. */
+/**
+ * O esquema das ferramentas como o ms365 as publica (0.155.0 e 0.166.1): ids em
+ * camelCase, `$top` e `$skip` inteiros, `$select`, `$orderby` e `$expand` texto
+ * ou lista, `$filter` e `skiptoken` texto. Texto onde devia ser inteiro volta
+ * do servidor como `invalid_query_parameter`.
+ */
+const TEXTO = { type: "string" };
+const INTEIRO = { type: "integer", minimum: 0 };
+const TEXTO_OU_LISTA = { anyOf: [{ type: "string" }, { type: "array", items: { type: "string" } }] };
+const TIPOS: Record<string, unknown> = {
+  $top: INTEIRO,
+  $skip: INTEIRO,
+  $select: TEXTO_OU_LISTA,
+  $orderby: TEXTO_OU_LISTA,
+  $expand: TEXTO_OU_LISTA,
+  body: { type: "object" },
+  confirm: { type: "boolean" },
+};
 const esquema = (...campos: string[]) => ({
   type: "object",
-  properties: Object.fromEntries(campos.map((c) => [c, { type: "string" }])),
+  properties: Object.fromEntries(campos.map((c) => [c, TIPOS[c] ?? TEXTO])),
 });
 const consulta = ["$top", "$skip", "$filter", "$orderby", "$select", "$expand", "skiptoken"];
 const FERRAMENTAS = [
   { name: "get-current-user", inputSchema: esquema("$select") },
-  { name: "list-chats", inputSchema: esquema(...consulta) },
+  {
+    name: "list-chats",
+    inputSchema: { ...esquema(...consulta), properties: { ...esquema(...consulta).properties, $top: { allOf: [INTEIRO, { maximum: 50 }] } } },
+  },
   { name: "list-chat-messages", inputSchema: esquema("chatId", ...consulta) },
   { name: "list-channel-messages", inputSchema: esquema("teamId", "channelId", ...consulta) },
   { name: "list-channel-message-replies", inputSchema: esquema("teamId", "channelId", "chatMessageId", ...consulta) },
@@ -30,6 +51,7 @@ const FERRAMENTAS = [
   { name: "set-chat-message-reaction", inputSchema: esquema("chatId", "chatMessageId", "body", "confirm") },
   { name: "set-channel-message-reaction", inputSchema: esquema("teamId", "channelId", "chatMessageId", "body", "confirm") },
   { name: "unset-chat-message-reaction", inputSchema: esquema("chatId", "chatMessageId", "body", "confirm") },
+  { name: "unset-channel-message-reaction", inputSchema: esquema("teamId", "channelId", "chatMessageId", "body", "confirm") },
 ].map((t) => ({ ...t, description: "", estimatedTokens: 0 }));
 
 /** O servidor MCP cadastrado, do jeito que `McpService` o devolve. */
@@ -68,10 +90,18 @@ function servidorFalso(dados: {
   const chats = dados.chats ?? [];
   const call = async (_server: string, tool: string, args: Record<string, unknown>) => {
     chamadas.push({ tool, args });
+    // O servidor real recusa o que não bate com o esquema.
+    for (const [nome, valor] of Object.entries(args)) {
+      if (nome === "$top" || nome === "$skip") {
+        if (typeof valor !== "number") {
+          return { isError: true, content: [{ type: "text", text: JSON.stringify({ error: "invalid_query_parameter", parameter: nome }) }] };
+        }
+      }
+    }
     if (dados.falha !== undefined) return { isError: true, content: [{ type: "text", text: dados.falha }] };
     switch (tool) {
       case "get-current-user":
-        return texto({ id: "EU" });
+        return texto({ id: "EU", userPrincipalName: "eu@empresa.com" });
       case "list-chats": {
         const pagina = args.skiptoken === "p2" ? chats.slice(1) : chats.slice(0, 1);
         const proxima =
@@ -143,11 +173,11 @@ test("sem login nativo, a caixa lê pelo servidor MCP: quem sou, conversas e men
   assert.deepEqual(resultado.errors, []);
   assert.deepEqual((await eventos(db)).map((e) => [e.messageId, e.kind, e.text]), [["m1", "dm", "oi"]]);
   const euMesmo = chamadas[0]!;
-  assert.deepEqual([euMesmo.tool, euMesmo.args], ["get-current-user", { $select: "id" }]);
+  assert.deepEqual([euMesmo.tool, euMesmo.args], ["get-current-user", { $select: "id,userPrincipalName" }]);
   const leitura = chamadas.find((c) => c.tool === "list-chat-messages")!;
   assert.equal(leitura.args.chatId, "dm");
   assert.match(String(leitura.args.$filter), /^lastModifiedDateTime gt /);
-  assert.equal(leitura.args.$top, "50");
+  assert.equal(leitura.args.$top, 50);
 });
 
 test("a lista de conversas pagina pelo nextLink, que vira o skiptoken da ferramenta", async () => {
@@ -222,7 +252,7 @@ test("o login nativo tem precedência: o servidor MCP nem é chamado", async () 
   const db = bancoDeTeste();
   const { call, chamadas } = servidorFalso({});
   const fetchFn = (async (entrada: string | URL) =>
-    new Response(JSON.stringify(String(entrada).endsWith("/me?$select=id") ? { id: "EU" } : { value: [] }))) as typeof fetch;
+    new Response(JSON.stringify(String(entrada).includes("/me?") ? { id: "EU" } : { value: [] }))) as typeof fetch;
 
   await pollTeamsInbox(
     { mentions: false, dms: true },
@@ -257,16 +287,49 @@ test("servidor desligado ou ausente: erro que diz o que fazer e onde, sem jargã
   );
 });
 
-test("servidor sem login ou fora do ar: o erro aponta Conexões e não vaza o corpo cru inteiro", async () => {
-  const { call } = servidorFalso({ falha: "Authentication required " + "x".repeat(500) });
-  const resultado = await pollTeamsInbox(
+test("servidor fora do ar, sem login ou recusando: cada um com a mensagem certa, sem o corpo cru inteiro", async () => {
+  const rodar = async (call: Parameters<typeof pollTeamsInbox>[1] extends infer O ? NonNullable<O>["call"] : never) => {
+    const r = await pollTeamsInbox(
+      { mentions: false, dms: true },
+      { db: bancoDeTeste(), token: semLogin, mcp: cadastro("ms365"), call, ...semGithub },
+    );
+    return r.errors[0]!.error;
+  };
+  const fora = await rodar(async () => {
+    throw new Error("spawn npx ENOENT " + "x".repeat(500));
+  });
+  assert.match(fora, /servidor "ms365", que não respondeu/);
+  assert.match(fora, /Em Conexões, confira se ele está ligado e com login\./);
+  assert.ok(fora.length < 400);
+
+  const semLoginNoServidor = await rodar(servidorFalso({ falha: "No accounts found. Please login first." }).call);
+  assert.equal(semLoginNoServidor, 'O servidor "ms365" está sem login no Microsoft 365. Refaça o login dele em Conexões.');
+
+  const recusa = await rodar(servidorFalso({ falha: '{"error":"Graph API error: 403 Forbidden"}' }).call);
+  assert.match(recusa, /^O servidor "ms365" recusou o pedido do Teams: .*403/);
+});
+
+test("resposta que não é JSON (modo toon) vira erro claro, e não uma caixa vazia", async () => {
+  const call = async (_s: string, tool: string) => ({
+    content: [{ type: "text", text: tool === "get-current-user" ? "id: EU" : "value[0]:" }],
+  });
+  const r = await pollTeamsInbox(
     { mentions: false, dms: true },
     { db: bancoDeTeste(), token: semLogin, mcp: cadastro("ms365"), call, ...semGithub },
   );
-  const [erro] = resultado.errors;
-  assert.match(erro!.error, /servidor "ms365", e ele não respondeu/);
-  assert.match(erro!.error, /Em Conexões, confira se ele está ligado e com login\./);
-  assert.ok(erro!.error.length < 400);
+  assert.match(r.errors[0]!.error, /formato que o Locum não lê\. Desligue o modo toon/);
+});
+
+test("login nativo guardado que não renovou: erro de refazer o login, sem cair no servidor MCP", async () => {
+  const { call, chamadas } = servidorFalso({});
+  await assert.rejects(
+    pollTeamsInbox(
+      { mentions: false, dms: true },
+      { db: bancoDeTeste(), token: semLogin, nativoGuardado: () => true, mcp: cadastro("ms365"), call, ...semGithub },
+    ),
+    /Refaça o login do Teams em Conexões/,
+  );
+  assert.equal(chamadas.length, 0);
 });
 
 test("responder numa conversa: send-chat-message com o texto em HTML e a confirmação do ms365", async () => {
@@ -319,11 +382,11 @@ test("a falha da ferramenta estoura no publish, para a pendência não fechar", 
   const handler = teamsPostHandler({ db: bancoDeTeste(), token: semLogin, mcp: cadastro("ms365"), call });
   await assert.rejects(
     handler.publish({ chatId: "c", text: "oi", subject: "x", author: null, webUrl: null }, "id"),
-    /não respondeu \(boom\)/,
+    /recusou o pedido do Teams: boom/,
   );
 });
 
-test("reagir: chat e canal usam a ferramenta de cada um; o que o servidor não tem, estoura", async () => {
+test("reagir: chat e canal usam a ferramenta de cada um; a ferramenta que o servidor não tem estoura", async () => {
   const { call, chamadas } = servidorFalso({});
   const opcoes = { token: semLogin, mcp: cadastro("ms365"), call };
 
@@ -334,14 +397,88 @@ test("reagir: chat e canal usam a ferramenta de cada um; o que o servidor não t
   assert.equal((chamadas[1]!.args.body as { reactionType: string }).reactionType, "✅");
 
   await assert.rejects(
-    reagirNoTeams({ tipo: "canal", teamId: EQUIPE, channelId: CANAL, messageId: "m", replyToId: "t" }, "set", "👀", opcoes),
-    /não reage nem responde/,
-  );
-  await assert.rejects(
     reagirNoTeams({ tipo: "chat", chatId: "c", messageId: "m" }, "set", "👀", {
       ...opcoes,
       mcp: cadastro("ms365", true, FERRAMENTAS.filter((t) => !t.name.includes("reaction"))),
     }),
     /não oferece o que o Teams pede aqui \(set-chat-message-reaction\)/,
   );
+});
+
+/** As ferramentas de um ms365 com mais de uma conta: todas ganham o campo `account`. */
+const MULTICONTA = FERRAMENTAS.map((t) => ({
+  ...t,
+  inputSchema: { ...t.inputSchema, properties: { ...t.inputSchema.properties, account: { type: "string" } } },
+}));
+
+test("ms365 com mais de uma conta: a conta da leitura vai em toda chamada, no evento e na resposta aprovada", async () => {
+  const db = bancoDeTeste();
+  const { call, chamadas } = servidorFalso({
+    chats: [{ id: "g", chatType: "group", mensagens: [mensagem("m1", 2, `<p>${PR}</p>`)] }],
+  });
+  const mcp = cadastro("ms365", true, MULTICONTA);
+
+  await pollTeamsInbox({ mentions: false, dms: false, prLinks: true }, { db, token: semLogin, mcp, call, ...semGithub });
+
+  assert.equal(chamadas[0]!.args.account, undefined, "a primeira chamada ainda não sabe a conta");
+  for (const c of chamadas.slice(1)) assert.equal(c.args.account, "eu@empresa.com", c.tool);
+  const [evento] = await eventos(db);
+  assert.equal(evento?.teamsAccount, "eu@empresa.com");
+
+  // O 👀 e a resposta saem pela conta gravada, não pela padrão do servidor naquele dia.
+  const alvo = alvoDaReacao(evento);
+  assert.equal(alvo?.account, "eu@empresa.com");
+  const depois = servidorFalso({});
+  await reagirNoTeams(alvo!, "set", "✅", { token: semLogin, mcp, call: depois.call });
+  await teamsPostHandler({ db, token: semLogin, mcp, call: depois.call }).publish(
+    { chatId: "g", text: "ok", subject: "x", author: null, webUrl: null, account: "eu@empresa.com" },
+    "id",
+  );
+  assert.deepEqual(depois.chamadas.map((c) => c.args.account), ["eu@empresa.com", "eu@empresa.com"]);
+});
+
+test("servidor de uma conta só não recebe account, e o evento não leva conta", async () => {
+  const db = bancoDeTeste();
+  const { call, chamadas } = servidorFalso({
+    chats: [{ id: "d", chatType: "oneOnOne", mensagens: [mensagem("m1", 2, "oi")] }],
+  });
+  await pollTeamsInbox({ mentions: false, dms: true }, { db, token: semLogin, mcp: cadastro("ms365"), call, ...semGithub });
+  assert.ok(chamadas.every((c) => !("account" in c.args)));
+  assert.equal((await eventos(db))[0]?.teamsAccount, undefined);
+});
+
+test("reação em resposta de thread de canal fica na raiz da thread, nas duas pontas", async () => {
+  const { call, chamadas } = servidorFalso({});
+  const alvo = { tipo: "canal", teamId: EQUIPE, channelId: CANAL, messageId: "r1", replyToId: "t1" } as const;
+  const opcoes = { token: semLogin, mcp: cadastro("ms365"), call };
+
+  await reagirNoTeams(alvo, "unset", "👀", opcoes);
+  await reagirNoTeams(alvo, "set", "✅", opcoes);
+
+  assert.deepEqual(chamadas.map((c) => [c.tool, c.args.chatMessageId]), [
+    ["unset-channel-message-reaction", "t1"],
+    ["set-channel-message-reaction", "t1"],
+  ]);
+});
+
+test("operações próximas reaproveitam a sessão do servidor, e ela fecha depois de solta", async () => {
+  let abertas = 0;
+  let fechadas = 0;
+  const abrir = async () => {
+    abertas++;
+    return { call: async () => ({}), close: async () => void fechadas++ };
+  };
+  try {
+    const a = await compartilhar("ms365", abrir);
+    const b = await compartilhar("ms365", abrir);
+    await a.close();
+    await b.close();
+    const c = await compartilhar("ms365", abrir);
+    await c.close();
+    assert.equal(abertas, 1);
+    assert.equal(fechadas, 0, "ociosa, mas ainda de pé para a próxima operação");
+  } finally {
+    await soltarSessoes();
+  }
+  assert.equal(fechadas, 1);
 });
