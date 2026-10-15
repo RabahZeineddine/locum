@@ -486,6 +486,8 @@ interface ServiceApi {
   "updates.check": () => Promise<UpdaterState>;
   /** Fecha, troca e reabre. Devolve `false` quando não há versão baixada. */
   "updates.apply": () => Promise<boolean>;
+  /** Lembra, até o app fechar, que a pessoa disse "Depois" para esta versão; `null` desfaz. */
+  "updates.dismiss": (version: string | null) => Promise<void>;
 
   /**
    * Em que idioma a janela fala.
@@ -702,6 +704,7 @@ export const BRIDGE_CHANNELS = [
   "updates.setEnabled",
   "updates.check",
   "updates.apply",
+  "updates.dismiss",
   "i18n.state",
   "i18n.setPreference",
   "window.inboxTarget",

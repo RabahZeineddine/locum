@@ -40,6 +40,8 @@ let erro: string | null = null;
 let tipoDoErro: UpdaterState["errorKind"] = null;
 let deNovo: ReturnType<typeof setTimeout> | null = null;
 let progresso: number | null = null;
+/** Guardada aqui e não na janela: fechar e reabrir a janela não reabre o modal. */
+let dispensada: string | null = null;
 /** Só o smoke define: o estado que a janela vê no lugar do real. */
 let deExemplo: Partial<UpdaterState> | null = null;
 let disponivel: { version: string; notes: string } | null = null;
@@ -79,6 +81,7 @@ async function planoReal(): Promise<UpdaterState> {
     detail: null,
     phase: fase,
     progress: progresso,
+    dismissedVersion: dispensada,
     lastCheckAt: conferidaEm,
     available: disponivel,
     error: erro,
@@ -167,7 +170,7 @@ export const conferir = umaDeCadaVez(async (): Promise<void> => {
     await mkdir(pasta, { recursive: true });
     const zip = join(pasta, "pacote.zip");
     await baixarConferindo(nova.zipUrl, zip, nova.sha512, buscar, (recebidos, total) => {
-      const novo = progressoDoDownload(recebidos, total ?? nova.size);
+      const novo = progressoDoDownload(recebidos, total, nova.size);
       if (novo === progresso) return;
       progresso = novo;
       avisarJanelas();
@@ -215,6 +218,12 @@ export function avisarJanelas(): void {
     },
     (err: unknown) => console.error("atualização: não deu para avisar a janela", err),
   );
+}
+
+/** "Depois" no modal (`null` desfaz, que é o link do rodapé). */
+export function dispensarVersao(versao: string | null): void {
+  dispensada = versao;
+  avisarJanelas();
 }
 
 /**

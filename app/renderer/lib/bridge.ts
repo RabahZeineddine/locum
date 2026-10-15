@@ -296,6 +296,7 @@ export const ACTION_CHANNELS = [
   "updates.setEnabled",
   "updates.check",
   "updates.apply",
+  "updates.dismiss",
   // Gravar o limite de dias parados e um clique na secao geral da
   // configuracao, nao uma leitura que dispara ao montar a tela.
   "initiatives.setStaleDays",

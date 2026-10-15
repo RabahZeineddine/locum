@@ -12,18 +12,21 @@ import { rodapeDaAtualizacao, versaoParaOModal } from "../../src/update/rodape.j
  * abre quando a versão fica baixada.
  *
  * A regra de o que mostrar mora em `src/update/rodape.ts`; aqui só se desenha.
- * "Depois" guarda a versão dispensada em memória: nesta sessão o modal não
- * reabre para ela, e o link do rodapé limpa a dispensa e reabre.
+ * "Depois" grava a versão dispensada no processo principal: nesta sessão do app
+ * o modal não reabre para ela, nem com a janela fechada e reaberta, e o link do
+ * rodapé limpa a dispensa e reabre.
  */
 export function AtualizacaoNoRodape() {
   const { t } = useTranslation();
   const [estado] = useAtualizacao();
-  const [dispensada, setDispensada] = useState<string | null>(null);
   const [aplicando, setAplicando] = useState(false);
 
   if (estado === undefined) return null;
   const rodape = rodapeDaAtualizacao(estado);
-  const doModal = versaoParaOModal(estado, dispensada);
+  const doModal = versaoParaOModal(estado);
+
+  // O estado volta empurrado pelo main, então a janela não guarda a dispensa.
+  const dispensar = (versao: string | null): void => void call("updates.dismiss", versao).catch(() => undefined);
 
   const reiniciar = (): void => {
     setAplicando(true);
@@ -65,14 +68,14 @@ export function AtualizacaoNoRodape() {
         <button
           className="text-primary px-3 text-left text-[11px] hover:underline"
           data-locum-rodape-pronta={rodape.version}
-          onClick={() => setDispensada(null)}
+          onClick={() => dispensar(null)}
           type="button"
         >
           {t("update.footer.ready", { version: rodape.version })}
         </button>
       ) : null}
 
-      <Dialog onOpenChange={(aberto) => (aberto || aplicando ? undefined : setDispensada(doModal))} open={doModal !== null}>
+      <Dialog onOpenChange={(aberto) => (aberto || aplicando ? undefined : dispensar(doModal))} open={doModal !== null}>
         <DialogContent aria-describedby={undefined} data-locum-probe="atualizacao-modal" data-locum-modal-versao={doModal ?? ""}>
           <DialogHeader>
             <DialogTitle>{t("update.modal.title", { version: doModal ?? "" })}</DialogTitle>
@@ -88,7 +91,7 @@ export function AtualizacaoNoRodape() {
             )}
           </div>
           <DialogFooter>
-            <Button data-locum-modal-depois disabled={aplicando} onClick={() => setDispensada(doModal)} variant="ghost">
+            <Button data-locum-modal-depois disabled={aplicando} onClick={() => dispensar(doModal)} variant="ghost">
               {t("update.modal.later")}
             </Button>
             <Button data-locum-modal-reiniciar disabled={aplicando} onClick={reiniciar}>

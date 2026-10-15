@@ -5464,7 +5464,9 @@ async function recarregar(window: BrowserWindow): Promise<void> {
  * baixando e pronta como passaria numa atualização de verdade.
  */
 async function checkAtualizacaoNaTela(window: BrowserWindow): Promise<string> {
-  const { usarEstadoDeExemplo } = await import("./updater.js");
+  const { usarEstadoDeExemplo, dispensarVersao } = await import("./updater.js");
+  const { espiarRede } = await import("./updater.js");
+  const espia = espiarRede();
   const destino = capturas ? (flagValue("--capturas-em") ?? join(process.cwd(), "capturas")) : null;
   if (destino !== null) mkdirSync(destino, { recursive: true });
   const foto = async (nome: string): Promise<void> => {
@@ -5527,13 +5529,28 @@ async function checkAtualizacaoNaTela(window: BrowserWindow): Promise<string> {
     if (aindaFechado.modal !== null) throw new Error("o modal reabriu sozinho para a versão dispensada");
     await foto("rodape-pronta");
 
+    // Recarregar a janela (o mesmo que fechar e reabrir, ou Cmd+R) não pode
+    // reabrir o modal: a dispensa mora no processo principal.
+    window.webContents.reload();
+    await esperar("rodape-depois-de-recarregar", `v.tipo === "pronta"`);
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    const recarregada = (await window.webContents.executeJavaScript(rodape())) as Visto;
+    if (recarregada.modal !== null) throw new Error("recarregar a janela reabriu o modal da versão dispensada");
+
     await clicar("[data-locum-rodape-pronta]");
     await esperar("modal-reaberto", `v.modal === "9.9.9"`);
     await clicar("[data-locum-modal-depois]");
     await esperar("modal-fechado", `v.modal === null`);
 
+    const saidas = espia.vistas();
+    if (saidas.length > 0) {
+      throw new Error(`o rodapé da atualização saiu para a rede: ${saidas.map((v) => `${v.via} ${v.destino}`).join(", ")}`);
+    }
+
     return t("smoke.updateScreen");
   } finally {
+    espia.parar();
+    dispensarVersao(null);
     usarEstadoDeExemplo(null);
   }
 }
