@@ -196,6 +196,7 @@ export const ACTION_CHANNELS = [
   "connections.connect",
   "connections.disconnect",
   "connections.addCustom",
+  "connections.ligarServidorDoGithub",
   "claudeImport.list",
   "claudeImport.apply",
   "connections.connectSlack",

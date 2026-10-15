@@ -371,6 +371,33 @@ test("servidor github desligado aparece na conexão GitHub como desligado, em ve
   }
 });
 
+test("ligar o servidor do GitHub cadastra o oficial, com o token guardado como credencial", async () => {
+  const { servico, mcp } = montarFusao({ stored: true });
+  try {
+    const conexao = await servico.ligarServidorDoGithub();
+    assert.deepEqual(conexao.servers, ["github"]);
+    const servidor = await mcp.get("github");
+    assert.equal(servidor?.config.url, "https://api.githubcopilot.com/mcp/");
+    assert.equal(servidor?.config.transport, "http");
+    assert.equal(servidor?.enabled, true);
+    assert.equal(conexao.partes?.servidor, "untested");
+    assert.equal(await mcp.credencialDoServidor("github"), "ok");
+  } finally {
+    await mcp.remove("github");
+  }
+});
+
+test("ligar o servidor do GitHub não sobrescreve um servidor github que aponta para outro lugar", async () => {
+  const { servico, mcp } = montarFusao({ stored: true });
+  await mcp.register({ name: "github", transport: "http", url: "https://outro.example.com/mcp" });
+  try {
+    await assert.rejects(() => servico.ligarServidorDoGithub(), /outro endereço/);
+    assert.equal((await mcp.get("github"))?.config.url, "https://outro.example.com/mcp");
+  } finally {
+    await mcp.remove("github");
+  }
+});
+
 test("com token e servidor desligado, a conexão não diz conectado", async () => {
   const { servico, mcp } = montarFusao();
   await mcp.register(SERVIDOR_GITHUB);

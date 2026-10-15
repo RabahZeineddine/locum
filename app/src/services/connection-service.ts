@@ -1,4 +1,5 @@
 import { ehLeituraDa } from "../config/leitura.js";
+import { SERVIDOR_NATIVO } from "../config/types.js";
 import { temCredencialLiteral } from "./mcp-credencial.js";
 import { CATALOG, conexaoDoServidor, type CatalogEntry } from "./conexao-catalogo.js";
 import { IMAGEM_DO_GRAFANA } from "./grafana-service.js";
@@ -138,6 +139,9 @@ export interface Connection extends CatalogEntry {
   via?: string;
 }
 
+/** O servidor MCP oficial do GitHub, que usa o token da conexão. */
+const URL_DO_SERVIDOR_DO_GITHUB = "https://api.githubcopilot.com/mcp/";
+
 /** Que tipo de tracker mora em qual conexão. */
 const CONEXAO_DO_TRACKER: Readonly<Record<string, string>> = {
   jira: "atlassian",
@@ -220,6 +224,8 @@ export class ConnectionService {
     const proprios: Connection[] = await Promise.all(
       servidores
         .filter((s) => conexaoDoServidor(s.config) === undefined)
+        // O servidor interno do Locum funciona por baixo e não é uma conexão da pessoa.
+        .filter((s) => s.config.name !== SERVIDOR_NATIVO)
         // As instâncias do Grafana moram no cartão dele, e não cada uma no seu.
         .filter((s) => !ehDoGrafana(s.config))
         .map(async (s) => ({
@@ -506,6 +512,23 @@ export class ConnectionService {
     await this.deps.mcp.register({ name, transport: "http", url: url.toString() });
     if (sonda.oauth) await this.deps.oauth.connect(name);
     return this.um(name);
+  }
+
+  /**
+   * Cadastra o servidor MCP oficial do GitHub, sem a pessoa digitar nada: ele
+   * usa o token guardado na conexão. Um servidor `github` que já aponta para
+   * outro endereço fica como está, e a tela mostra o que há.
+   */
+  async ligarServidorDoGithub(): Promise<Connection> {
+    const atual = await this.deps.mcp.get("github");
+    if (atual === undefined) {
+      await this.deps.mcp.register({ name: "github", transport: "http", url: URL_DO_SERVIDOR_DO_GITHUB });
+    } else if (atual.config.url !== URL_DO_SERVIDOR_DO_GITHUB) {
+      throw new Error('já existe um servidor "github" com outro endereço: ligue ou edite esse');
+    } else {
+      await this.deps.mcp.setEnabled("github", true);
+    }
+    return this.um("github");
   }
 
   private async um(id: string): Promise<Connection> {

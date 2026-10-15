@@ -888,6 +888,8 @@
         "save": "Guardar e testar",
         "tools": "Ferramentas",
         "toolsCount": "{{read}} de leitura, {{write}} de escrita",
+        "toolsCached": "Lista guardada da última vez. Atualizando.",
+        "toolsCachedOff": "Lista guardada da última vez. O servidor está desligado: use Recarregar para subir e atualizar.",
         "toolsOff": "Ligue o servidor para listar as ferramentas, ou use Ferramentas para subir agora.",
         "tokens_one": "{{count}} tok",
         "tokens_other": "{{count}} tok",
@@ -1017,6 +1019,8 @@
     "trackers": {
       "title": "Trackers de tarefa",
       "description": "Onde a tarefa vai parar quando um achado virar trabalho: um Jira ou um repositório de issues do GitHub. A credencial fica no keychain, e a tela mostra se existe e o que o último teste alcançou, nunca o valor.",
+      "emptyGithub": "nenhum repositório de issues cadastrado",
+      "howToGithub": "Cadastre o repositório (dono/repo) onde as tarefas vão parar e guarde um token com escrita em Issues nele. Esse token é separado do que lê pull request, de propósito. Cadastrar não abre issue nenhuma: quem abre é o passo de ação, que para na fila até você aprovar.",
       "empty": "nenhum tracker cadastrado",
       "kind": "tipo de tracker",
       "kindJiraAtlassian": "Jira pela conexão Atlassian",
@@ -1610,6 +1614,7 @@
     },
     "state": {
       "connected": "conectado",
+      "off": "desligado",
       "untested": "não testado",
       "attention": "precisa de atenção",
       "soon": "em breve",
@@ -1718,9 +1723,15 @@
     },
     "import": {
       "title": "Importar de outras ferramentas",
-      "description": "Os servidores MCP já configurados nesta máquina: no Claude Code (os seus e os dos plugins ligados), no opencode, no Cursor, no VS Code e no Claude Desktop. Importados, passam a ser do Locum e rodam com qualquer modelo, mesmo sem a ferramenta de origem. Entram desligados; a credencial vai para o cofre. Os conectores do claude.ai não aparecem aqui: eles só existem pela conta Claude.",
+      "description": "Os servidores MCP já configurados nesta máquina: no Claude Code (os seus e os dos plugins ligados), no opencode, no Cursor, no VS Code e no Claude Desktop. O Locum não copia: cada servidor fica vinculado à origem e lê a configuração de lá na hora do uso. Se a origem mudar comando, endereço ou variáveis, o Locum pede o seu aceite antes de valer. Entram desligados, e nada vem marcado: escolha o que importar. Os conectores do claude.ai não aparecem aqui, eles só existem pela conta Claude.",
       "empty": "Nenhum servidor MCP no Claude Code, opencode, Cursor, VS Code ou Claude Desktop desta máquina.",
-      "exists": "já cadastrado; importar substitui",
+      "exists": "já cadastrado; importar vincula de novo à origem",
+      "production": "O nome ou o endereço indica produção. Importe só se é isso mesmo que você quer ter por aqui.",
+      "origin": {
+        "plugin": "plugin {{name}}",
+        "usuario": "Claude Code, seus servidores",
+        "ferramenta": "{{name}}"
+      },
       "oauth": "autoriza pelo navegador depois",
       "missing": "falta {{names}}: entra, mas não conecta sem isso",
       "submit_one": "Importar {{count}}",
@@ -1731,6 +1742,7 @@
     "yours": {
       "title": "Suas conexões",
       "search": "Buscar por nome, origem ou ferramenta",
+      "importFromClaude": "Importar do Claude Code",
       "clearSearch": "Limpar a busca",
       "fromCatalog": "No catálogo, ainda não ligadas",
       "addFromCatalog": "Adicionar",
@@ -1766,12 +1778,12 @@
         "title": "Token do GitHub",
         "offers": "Libera os gatilhos de pull request e a prévia do diff nas automações.",
         "ok": "guardado",
-        "missing": "não guardado",
-        "save": "Guardar token"
+        "missing": "não guardado"
       },
       "server": {
         "title": "Servidor MCP do GitHub",
         "offers": "Libera as ferramentas de pull request, issue e código para os agents.",
+        "enable": "Ligar o servidor MCP do GitHub",
         "none": "Nenhum servidor MCP do GitHub cadastrado. Os agents ainda não têm essas ferramentas.",
         "turnOn": "Ligar servidor",
         "turnOff": "Desligar servidor",
@@ -1796,6 +1808,7 @@
       "actions_other": "{{count}} ações",
       "tools_one": "{{count}} ferramenta",
       "tools_other": "{{count}} ferramentas",
+      "testToList": "teste para listar",
       "none": "Ainda sem ferramentas listadas. Teste a conexão para o Locum descobrir.",
       "toolsSplit": "{{reads}} de leitura, {{writes}} de escrita",
       "trigger": "gatilho",
@@ -1810,7 +1823,9 @@
     "detail": {
       "missing": "Não há conexão \"{{id}}\" nesta máquina. Pode ter sido removida.",
       "account": "conta {{account}}",
-      "customDescription": "Servidor MCP cadastrado por você ou importado de outra ferramenta. Os agents usam as ferramentas dele quando uma automação o cita.",
+      "customDescription": "Servidor MCP cadastrado por você. Os agents usam as ferramentas dele quando uma automação o cita.",
+      "teamsViaServer": "Teams pelo servidor MCP {{servidor}}{{origem}}, com a conta dele. Os agents leem e respondem pelas ferramentas dele; o que sai com o seu nome continua passando pela sua aprovação.",
+      "linkedDescription": "Servidor MCP que vem {{origem}}: o Locum segue a origem e pede o seu aceite quando ela muda. Os agents usam as ferramentas dele quando uma automação o cita.",
       "offersHint": "O que dá para montar numa automação com esta conexão.",
       "tools": "Ferramentas",
       "toolsHint": "O que um agent pode chamar. Leitura só consulta; escrita muda algo no serviço, e fica num passo de ação que passa pela Fila.",

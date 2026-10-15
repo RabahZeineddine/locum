@@ -369,6 +369,7 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "connections.connect": (id) => connectionService.connect(id),
     "connections.disconnect": (id) => connectionService.disconnect(id),
     "connections.addCustom": (input) => connectionService.addCustom(input),
+    "connections.ligarServidorDoGithub": () => connectionService.ligarServidorDoGithub(),
     "claudeImport.list": () => claudeImportService.listar(),
     "claudeImport.apply": (nomes) => claudeImportService.importar(nomes),
     "claudeImport.origins": () => claudeImportService.origens(),

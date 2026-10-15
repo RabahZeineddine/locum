@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { migrateDb } from "../src/db/migrate.js";
 import { saudeDoServidor } from "../src/services/conexao-estado.js";
 import type { FontesDeUso } from "../src/services/conexao-uso.js";
-import { AgentSpec } from "../src/config/types.js";
+import { AgentSpec, SERVIDOR_NATIVO } from "../src/config/types.js";
 import { IMAGEM_DO_GRAFANA } from "../src/services/grafana-service.js";
 import { CATALOG, ConnectionService } from "../src/services/connection-service.js";
 import type { GithubService } from "../src/services/github-service.js";
@@ -111,6 +111,17 @@ test("falha depois do último sucesso vira erro com o texto da falha", async () 
     assert.equal((await achar(servico, "sentry"))?.state, "connected");
   } finally {
     await mcp.remove("sentry");
+  }
+});
+
+test("o servidor interno do Locum não aparece como conexão", async () => {
+  const { servico, mcp } = montar();
+  await mcp.register({ name: SERVIDOR_NATIVO, transport: "stdio", command: ["locum", "--ferramentas"] });
+  try {
+    const lista = await servico.list();
+    assert.ok(!lista.some((c) => c.id === SERVIDOR_NATIVO || c.servers.includes(SERVIDOR_NATIVO)));
+  } finally {
+    await mcp.remove(SERVIDOR_NATIVO);
   }
 });
 
