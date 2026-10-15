@@ -39,6 +39,18 @@ Atritos de uso real da tela de Conexões.
   copiadas para `renderer/src/marcas.ts` (só as usadas, 19 KB no arquivo; o pacote
   inteiro passa de 5 MB). Slack, Microsoft, Canva e Amplitude não existem no
   pacote: glifo (Slack, Teams) ou inicial, com a cor da marca.
+- **Desconectar** remove só o servidor de nome igual ao id (o que a vitrine
+  cadastrou); o importado com outro nome só perde a credencial, e o vinculado a
+  uma origem não se toca. A tela pede confirmação listando o que sai
+  (`Connection.desligar`).
+- **O token do GitHub só vai a host do GitHub** (`itemDoHost`, https): um servidor
+  que apenas se chama `github` em outro endereço não recebe o token nem o
+  `GITHUB_TOKEN` do ambiente.
+- **Estado do item**: a pior instância entre os `servers` decide (OAuth, Teams,
+  Slack, GitHub). Servidor importado no host do item vale como não testado em vez
+  de "precisa autorizar". Ligada e nunca testada mostra selo neutro "não testado"
+  com Testar no cartão; verde só depois de teste ok. GitHub com servidor de pé e
+  sem token é atenção (`no-token`).
 - Fica de fora: ícone em Modelos (provedores de modelo não são conexões), o
   seletor nativo de "adicionar conexão" do agent (um `<select>` não tem ícone) e
   a marca de servidor stdio próprio por pacote (a conexão não expõe o comando,

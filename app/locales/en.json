@@ -1546,6 +1546,12 @@
     "reconnect": "Reconnect",
     "connecting": "connecting...",
     "disconnect": "Disconnect",
+    "disconnectConfirm": "Confirm disconnect",
+    "disconnectPlan": {
+      "remove": "Removed from the registry: {{names}}.",
+      "forget": "Only the credential is forgotten, and it stays registered: {{names}}.",
+      "keep": "Left as is, because it comes from an origin: {{names}}."
+    },
     "soon": "Coming soon",
     "close": "Close",
     "categories": {
@@ -1558,6 +1564,7 @@
     },
     "state": {
       "connected": "connected",
+      "untested": "not tested",
       "attention": "needs attention",
       "soon": "coming soon",
       "error": "error"
@@ -1700,6 +1707,7 @@
     "reason": {
       "needs-auth": "Needs authorization, or the authorization expired. Reconnect.",
       "no-credential": "This server is missing its credential. Paste the token in the connection so it can start.",
+      "no-token": "The GitHub token is missing: triggers and the pull request preview do not work without it.",
       "disabled": "Turned off: no automation uses this connection while it stays like this.",
       "failing": "The last connection attempt failed.",
       "untested": "On and authorized, but not tested yet. Use Test to check."
@@ -1719,6 +1727,7 @@
         "offers": "Unlocks the pull request, issue and code tools for agents.",
         "none": "No GitHub MCP server registered. Agents do not have those tools yet.",
         "turnOn": "Turn on server",
+        "turnOff": "Turn off server",
         "state": {
           "ok": "responded",
           "untested": "on, not tested yet",
@@ -1738,6 +1747,7 @@
       "tools_one": "{{count}} tool",
       "tools_other": "{{count}} tools",
       "none": "No tools listed yet. Test the connection so Locum finds out.",
+      "toolsSplit": "{{reads}} read, {{writes}} write",
       "trigger": "trigger",
       "action": "action",
       "tool": "tool"

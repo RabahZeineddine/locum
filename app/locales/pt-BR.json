@@ -1584,6 +1584,12 @@
     "reconnect": "Reconectar",
     "connecting": "conectando...",
     "disconnect": "Desconectar",
+    "disconnectConfirm": "Confirmar desconexão",
+    "disconnectPlan": {
+      "remove": "Tira do cadastro: {{names}}.",
+      "forget": "Esquece só a credencial, e continua cadastrado: {{names}}.",
+      "keep": "Fica como está, porque vem de uma origem: {{names}}."
+    },
     "soon": "Em breve",
     "close": "Fechar",
     "categories": {
@@ -1596,6 +1602,7 @@
     },
     "state": {
       "connected": "conectado",
+      "untested": "não testado",
       "attention": "precisa de atenção",
       "soon": "em breve",
       "error": "com erro"
@@ -1739,6 +1746,7 @@
     "reason": {
       "needs-auth": "Falta autorizar, ou a autorização venceu. Reconecte.",
       "no-credential": "Falta a credencial deste servidor. Cole o token na conexão para ele subir.",
+      "no-token": "Falta o token do GitHub: os gatilhos e a prévia de pull request não funcionam sem ele.",
       "disabled": "Desligada: nenhuma automação usa esta conexão enquanto estiver assim.",
       "failing": "A última tentativa de conexão falhou.",
       "untested": "Ligada e autorizada, mas ainda sem teste. Use Testar para conferir."
@@ -1758,6 +1766,7 @@
         "offers": "Libera as ferramentas de pull request, issue e código para os agents.",
         "none": "Nenhum servidor MCP do GitHub cadastrado. Os agents ainda não têm essas ferramentas.",
         "turnOn": "Ligar servidor",
+        "turnOff": "Desligar servidor",
         "state": {
           "ok": "respondeu",
           "untested": "ligado, ainda sem teste",
@@ -1777,6 +1786,7 @@
       "tools_one": "{{count}} ferramenta",
       "tools_other": "{{count}} ferramentas",
       "none": "Ainda sem ferramentas listadas. Teste a conexão para o Locum descobrir.",
+      "toolsSplit": "{{reads}} de leitura, {{writes}} de escrita",
       "trigger": "gatilho",
       "action": "ação",
       "tool": "ferramenta",

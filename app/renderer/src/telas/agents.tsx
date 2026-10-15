@@ -722,7 +722,7 @@ function CartaoDaConexao({
       <div className="flex flex-wrap items-center gap-2">
         <MarcaLogo fonte={{ name: escolha.connectionId, url: conexao?.url }} tamanho="sm" />
         <span className="text-sm font-medium">{conexao?.name ?? escolha.connectionId}</span>
-        {conexao === undefined ? null : <Badge variant="outline">{t(`connections.state.${conexao.state}`)}</Badge>}
+        {conexao === undefined ? null : <Badge variant="outline">{t(conexao.state === "connected" && conexao.reason === "untested" ? "connections.state.untested" : `connections.state.${conexao.state}`)}</Badge>}
         <span className="text-muted-foreground text-xs">{t("library.connections.default")}</span>
         {ligadas === 0 ? null : (
           <Badge className="text-amber-400" variant="outline">
