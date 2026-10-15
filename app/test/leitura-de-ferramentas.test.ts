@@ -54,3 +54,22 @@ test("a escolha por servidor e ferramenta vale sobre a chave antiga, só pelo no
   assert.equal(escolhaDe(tools, "b", "sum"), "read");
   assert.equal(escolhaDe(tools, "c", "sum"), undefined);
 });
+
+/** Nomes do servidor ms365: hífen em vez de sublinhado, e as anotações que ele entrega. */
+test("nome com hífen é classificado como o com sublinhado", () => {
+  for (const nome of ["list-chats", "get-chat-message", "list-calendar-events", "search-query"]) {
+    assert.equal(ehLeitura(nome), true, nome);
+  }
+  assert.equal(ehLeitura("list-chats"), true);
+  assert.equal(ehLeitura("send-chat-message"), false);
+  assert.equal(ehLeitura("delete-calendar-event"), false);
+});
+
+test("a anotação de leitura não vale para nome que escreve, mesmo local", () => {
+  assert.equal(ehLeituraDa({ name: "download-bytes-to-file", readOnlyHint: true }), false);
+  for (const nome of ["upload-file", "create-draft-email", "delete-chat", "send-mail", "set-presence", "update-event", "move-mail-message"]) {
+    assert.equal(ehLeituraDa({ name: nome, readOnlyHint: true }), false, nome);
+  }
+  assert.equal(ehLeituraDa({ name: "copilot-retrieve", readOnlyHint: true }), true);
+  assert.equal(ehLeituraDa({ name: "get_settings", readOnlyHint: true }), true);
+});
