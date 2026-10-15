@@ -103,7 +103,7 @@ export function ImportarPacote({
   return (
     <section className="border-border bg-card flex flex-col gap-4 rounded-lg border p-4 text-[13px]" data-locum-probe="pacote-previa">
       <div className="flex items-center gap-2">
-        <span className="flex-1 truncate font-medium text-sm">{t("pacote.import.title", { arquivo: arquivo.nome })}</span>
+        <span className="flex-1 truncate font-medium text-[13px]">{t("pacote.import.title", { arquivo: arquivo.nome })}</span>
         <Button className="cursor-pointer" data-locum-pacote-fechar="" onClick={() => { invalidateReads(); fechar(); }} size="sm" variant="ghost">
           {t(feito === null ? "pacote.import.cancel" : "pacote.import.close")}
         </Button>
@@ -117,7 +117,7 @@ export function ImportarPacote({
       )}
 
       {feito !== null ? (
-        <div className="flex flex-col gap-2 text-sm" data-locum-pacote-feito={feito.id}>
+        <div className="flex flex-col gap-2 text-[13px]" data-locum-pacote-feito={feito.id}>
           <p>{t("pacote.import.done")}</p>
           {feito.pendencias > 0 ? <p className="text-muted-foreground text-xs">{t("pacote.import.donePending")}</p> : null}
           <Button className="w-fit cursor-pointer" onClick={() => navegar("automations", feito.id)} size="sm">
@@ -126,14 +126,14 @@ export function ImportarPacote({
         </div>
       ) : previa === null ? (
         erro === null ? (
-          <p className="text-muted-foreground flex items-center gap-2 text-sm">
+          <p className="text-muted-foreground flex items-center gap-2 text-[13px]">
             <Loader2 className="size-4 animate-spin" />
             {t("pacote.import.reading")}
           </p>
         ) : null
       ) : (
         <>
-          <div className="flex flex-col gap-1 text-sm">
+          <div className="flex flex-col gap-1 text-[13px]">
             <span className="text-muted-foreground text-xs">{t("pacote.import.willCreate")}</span>
             <span>
               {t("pacote.import.automation", { nome: previa.automacao.nome })}
@@ -198,7 +198,7 @@ export function ImportarPacote({
             <div className="flex flex-col gap-2">
               <span className="text-muted-foreground text-xs">{t("pacote.import.models")}</span>
               {todosModelos.map((m) => (
-                <label className="flex flex-wrap items-center gap-2 text-sm" key={m.chave}>
+                <label className="flex flex-wrap items-center gap-2 text-[13px]" key={m.chave}>
                   <span className="min-w-40">{m.rotulo}</span>
                   <ModeloSelect
                     aoMudar={(v) => setModelos((x) => ({ ...x, [m.chave]: v }))}

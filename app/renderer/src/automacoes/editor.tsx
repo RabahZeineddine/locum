@@ -2,6 +2,8 @@ import { Canvas } from "@/components/ai-elements/canvas";
 import { Controls } from "@/components/ai-elements/controls";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { StatusDot } from "@/components/ui/status-dot";
 import {
   adicionarPasso,
   arestas,
@@ -42,7 +44,7 @@ import {
   useNodesInitialized,
   useReactFlow,
 } from "@xyflow/react";
-import { AlertTriangle, ArrowLeft, Download, List, Loader2, Play, Power } from "lucide-react";
+import { ArrowLeft, Download, List, Loader2, Play } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { RotaId } from "../rotas";
@@ -306,22 +308,22 @@ function EditorCarregado({
   }
 
   return (
-    <div className="flex h-[calc(100vh-5.25rem)] min-h-[520px] flex-col gap-3 pt-2" data-locum-probe="automacao-editor" data-locum-versao={versao}>
-      <header className="flex flex-wrap items-center gap-2">
+    <div className="flex h-[calc(100vh-5.25rem)] min-h-[520px] flex-col gap-2 pt-1" data-locum-probe="automacao-editor" data-locum-versao={versao}>
+      <header className="flex flex-wrap items-center gap-1.5">
         <Button className="cursor-pointer" onClick={voltar} size="sm" variant="ghost">
-          <ArrowLeft className="size-4" />
+          <ArrowLeft />
           {t("automations.editor.back")}
         </Button>
-        <input
+        <Input
           aria-label={t("automations.panel.name")}
-          className="border-border bg-background focus-visible:ring-ring min-w-48 flex-1 rounded-md border px-3 py-1.5 font-medium text-sm outline-none focus-visible:ring-1"
+          className="min-w-48 max-w-md flex-1 font-medium"
           onChange={(e) => setRascunho((r) => ({ ...r, spec: { ...r.spec, name: e.target.value } }))}
           value={rascunho.spec.name}
         />
-        <span className="text-muted-foreground text-xs">{t("automations.editor.version", { version: versao })}</span>
+        <span className="text-muted-foreground num mr-auto text-xs">{t("automations.editor.version", { version: versao })}</span>
         {mudou ? <Badge variant="outline">{t("automations.editor.unsaved")}</Badge> : null}
         <Button className="cursor-pointer" onClick={() => navegar("automations", `legacy/${agentId}`)} size="sm" variant="ghost">
-          <List className="size-4" />
+          <List />
           {t("automations.editor.asList")}
         </Button>
         <Button
@@ -333,15 +335,15 @@ function EditorCarregado({
           title={mudou ? t("pacote.export.saveFirst") : t("pacote.export.hint")}
           variant="ghost"
         >
-          <Download className="size-4" />
+          <Download />
           {t("pacote.export.button")}
         </Button>
         <Button className="cursor-pointer" disabled={ocupado !== null} onClick={executar} size="sm" variant="outline">
-          {ocupado === "rodar" ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
+          {ocupado === "rodar" ? <Loader2 className="animate-spin" /> : <Play />}
           {t("automations.editor.runNow")}
         </Button>
         <Button
-          className={cn("cursor-pointer", ligada && "text-emerald-400")}
+          className="cursor-pointer"
           data-locum-automacao-ligar=""
           disabled={ocupado !== null || salvo.gatilhos.length === 0}
           onClick={alternar}
@@ -349,15 +351,15 @@ function EditorCarregado({
           title={t("automations.editor.enabledHint")}
           variant="outline"
         >
-          <Power className="size-4" />
+          <StatusDot estado={ligada ? "ok" : "ocioso"} />
           {t(ligada ? "automations.editor.disable" : "automations.editor.enable")}
         </Button>
       </header>
 
       {mudou ? (
-        <div className="flex flex-wrap items-center gap-2">
-          <input
-            className="border-border bg-background focus-visible:ring-ring min-w-64 flex-1 rounded-md border px-3 py-1.5 text-sm outline-none focus-visible:ring-1"
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Input
+            className="min-w-64 flex-1"
             onChange={(e) => setNota(e.target.value)}
             placeholder={t("automations.editor.note")}
             value={nota}
@@ -380,21 +382,24 @@ function EditorCarregado({
       ) : null}
 
       {aviso === null ? null : (
-        <p className={cn("text-xs", aviso.tipo === "erro" ? "text-sev-critical" : "text-emerald-400")}>{aviso.texto}</p>
+        <p className="text-muted-foreground flex items-center gap-1.5 text-xs">
+          <StatusDot estado={aviso.tipo === "erro" ? "erro" : "ok"} />
+          {aviso.texto}
+        </p>
       )}
 
       {lista.length > 0 ? (
         <details className="text-xs" data-locum-problemas={lista.length}>
-          <summary className={cn("cursor-pointer", bloqueado ? "text-sev-critical" : "text-amber-500")}>
-            <AlertTriangle className="mr-1 inline size-3.5" />
+          <summary className="text-muted-foreground hover:text-foreground flex w-fit cursor-pointer items-center gap-1.5">
+            <StatusDot estado={bloqueado ? "erro" : "aviso"} />
             {t("automations.editor.problems", { count: lista.length })}
             {bloqueado ? ` · ${t("automations.editor.blocked")}` : ""}
           </summary>
-          <ul className="mt-1 flex flex-col gap-0.5 pl-5">
+          <ul className="mt-1 flex flex-col gap-0.5 pl-3">
             {lista.map((p, i) => (
               <li key={i}>
                 <button
-                  className={cn("cursor-pointer text-left hover:underline", p.bloqueia ? "text-sev-critical" : "text-muted-foreground")}
+                  className="text-muted-foreground hover:text-foreground cursor-pointer text-left hover:underline"
                   onClick={() => p.no !== undefined && setSelecionado(p.no)}
                   type="button"
                 >
@@ -477,20 +482,21 @@ function Paleta({
   const Item = ({ app, id, titulo, onClick }: { app: AppDoComponente; id: string; titulo: string; onClick: () => void }) => (
     <li>
       <button
-        className="hover:bg-muted flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors"
+        className="hover:bg-accent flex min-h-8 w-full cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-left text-[13px] transition-colors"
+        title={titulo}
         data-locum-paleta={id}
         onClick={onClick}
         type="button"
       >
         <Selo app={app} id={id} tamanho="sm" />
         <span className="flex min-w-0 flex-col">
-          <span className="truncate">{titulo}</span>
+          <span className="line-clamp-2 leading-4">{titulo}</span>
           {appsLigados[app] ? (
             app === "teams" && viaDoTeams !== undefined ? (
-              <span className="text-muted-foreground text-[10px]">{t("automations.palette.viaServer", { server: viaDoTeams })}</span>
+              <span className="text-muted-foreground text-[11px]">{t("automations.palette.viaServer", { server: viaDoTeams })}</span>
             ) : null
           ) : (
-            <span className="text-muted-foreground text-[10px]">{t("automations.palette.needsApp")}</span>
+            <span className="text-muted-foreground text-[11px]">{t("automations.palette.needsApp")}</span>
           )}
         </span>
       </button>
@@ -498,10 +504,10 @@ function Paleta({
   );
 
   return (
-    <aside className="border-border superficie flex w-56 shrink-0 flex-col gap-3 overflow-y-auto rounded-lg border p-2" data-locum-probe="automacao-paleta">
+    <aside className="border-border bg-card flex w-60 shrink-0 flex-col gap-2 overflow-y-auto rounded-lg border p-1.5" data-locum-probe="automacao-paleta">
       <p className="text-muted-foreground px-2 pt-1 text-[11px]">{t("automations.palette.hint")}</p>
       <section>
-        <h3 className="text-muted-foreground px-2 pb-1 text-[11px] font-medium uppercase tracking-wide">
+        <h3 className="text-muted-foreground px-1.5 pb-0.5 text-[11px] font-medium">
           {t("automations.palette.triggers")}
         </h3>
         <ul>
@@ -511,7 +517,7 @@ function Paleta({
         </ul>
       </section>
       <section>
-        <h3 className="text-muted-foreground px-2 pb-1 text-[11px] font-medium uppercase tracking-wide">
+        <h3 className="text-muted-foreground px-1.5 pb-0.5 text-[11px] font-medium">
           {t("automations.palette.agents")}
         </h3>
         <ul>
@@ -525,7 +531,7 @@ function Paleta({
         </button>
       </section>
       <section>
-        <h3 className="text-muted-foreground px-2 pb-1 text-[11px] font-medium uppercase tracking-wide">
+        <h3 className="text-muted-foreground px-1.5 pb-0.5 text-[11px] font-medium">
           {t("automations.palette.steps")}
         </h3>
         <ul>
@@ -535,7 +541,7 @@ function Paleta({
         </ul>
       </section>
       <section>
-        <h3 className="text-muted-foreground px-2 pb-1 text-[11px] font-medium uppercase tracking-wide">
+        <h3 className="text-muted-foreground px-1.5 pb-0.5 text-[11px] font-medium">
           {t("automations.palette.logic")}
         </h3>
         <ul>
@@ -754,30 +760,37 @@ function NoDoComponente({ data, selected }: NodeProps<NoDoCanvas>) {
   return (
     <div
       className={cn(
-        "bg-card w-[248px] rounded-lg border px-3 py-2.5 shadow-sm transition-shadow",
-        selected ? "border-primary ring-primary/40 ring-2" : "border-border",
-        data.problema === "bloqueia" && !selected && "border-destructive/70",
-        data.problema === "aviso" && !selected && "border-amber-500/60",
+        "bg-card w-[232px] rounded-lg border px-3 py-2 transition-colors",
+        selected ? "border-primary" : "border-border",
       )}
       data-locum-no-automacao={data.chave}
     >
       {data.gatilho ? null : <Handle position={Position.Left} type="target" />}
-      <div className="flex items-center gap-2.5">
-        <Selo app={data.app} id={data.componente} />
-        <div className="flex min-w-0 flex-col">
+      <div className="flex items-center gap-2">
+        <Selo app={data.app} id={data.componente} tamanho="sm" />
+        <div className="flex min-w-0 flex-1 flex-col">
           <span className="text-muted-foreground truncate text-[11px]">{data.tipo}</span>
-          <span className="truncate font-medium text-sm">{data.titulo}</span>
+          <span className="truncate text-[13px] font-medium">{data.titulo}</span>
         </div>
+        {data.problema === null ? null : <StatusDot data-locum-no-problema={data.problema} estado={data.problema === "bloqueia" ? "erro" : "aviso"} />}
       </div>
-      {data.subtitulo === "" ? null : <p className="text-muted-foreground mt-1.5 truncate text-xs">{data.subtitulo}</p>}
-      <div className="mt-1 flex flex-wrap gap-2 text-[11px]">
-        {data.aprovacao ? <span className="text-amber-500">{t("automations.canvas.approval")}</span> : null}
-        {data.gatilho ? (
-          <span className={data.desligado ? "text-muted-foreground" : "text-emerald-400"}>
-            {t(data.desligado ? "automations.list.off" : "automations.list.on")}
-          </span>
-        ) : null}
-      </div>
+      {data.subtitulo === "" ? null : <p className="text-muted-foreground mt-1 truncate text-xs">{data.subtitulo}</p>}
+      {data.aprovacao || data.gatilho ? (
+        <div className="text-muted-foreground mt-1 flex flex-wrap gap-x-3 text-[11px]">
+          {data.aprovacao ? (
+            <span className="flex items-center gap-1.5">
+              <StatusDot estado="aviso" />
+              {t("automations.canvas.approval")}
+            </span>
+          ) : null}
+          {data.gatilho ? (
+            <span className="flex items-center gap-1.5">
+              <StatusDot estado={data.desligado ? "ocioso" : "ok"} />
+              {t(data.desligado ? "automations.list.off" : "automations.list.on")}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
       {data.caminhos.length === 0 ? (
         <Handle position={Position.Right} type="source" />
       ) : (
