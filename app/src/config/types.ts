@@ -412,6 +412,40 @@ export const WebhookTrigger = z.object({
 export const Authorship = z.enum(["any", "mine", "others"]);
 export type Authorship = z.infer<typeof Authorship>;
 
+/** Login do GitHub, ou `@me` para a conta do token. */
+const LoginOuEu = z.string().trim().min(1);
+
+/** Time no formato `org/slug`. */
+const TimeDoGithub = z.string().trim().regex(/^[\w.-]+\/[\w.-]+$/, "time no formato org/slug");
+
+const Texto = z.string().trim().min(1);
+const Lista = <T extends z.ZodTypeAny>(item: T) => z.array(item).max(50);
+
+/**
+ * Filtros do gatilho de varredura do GitHub, além do repositório.
+ *
+ * Entre filtros diferentes vale E (o pull request precisa passar em todos);
+ * dentro de uma lista vale OU, e as listas de exclusão derrubam se qualquer
+ * item bater. Tudo opcional: gatilho gravado sem `filters` se comporta como
+ * antes, e `authorship` continua valendo ao lado deles.
+ */
+export const PollFilters = z.object({
+  /** `@me` é a conta do token. Com `include`, só entra quem está na lista. */
+  authors: z.object({ include: Lista(LoginOuEu).optional(), exclude: Lista(LoginOuEu).optional() }).optional(),
+  /** Review pedido a uma pessoa ou a um time. Com os dois, basta um dos pedidos. */
+  reviewRequested: z.object({ users: Lista(LoginOuEu).optional(), teams: Lista(TimeDoGithub).optional() }).optional(),
+  /** O autor é membro de algum destes times. Precisa de `read:org` no token. */
+  teamMembers: Lista(TimeDoGithub).optional(),
+  labels: z.object({ include: Lista(Texto).optional(), exclude: Lista(Texto).optional() }).optional(),
+  /** Glob da branch de destino: `main`, `release/*`. */
+  baseBranches: Lista(Texto).optional(),
+  /** Glob dos arquivos alterados: `src/**`. Um `!` na frente vale como exclusão. */
+  paths: z.object({ include: Lista(Texto).optional(), exclude: Lista(Texto).optional() }).optional(),
+  /** Teto de additions mais deletions. */
+  maxChangedLines: z.number().int().min(1).optional(),
+});
+export type PollFilters = z.infer<typeof PollFilters>;
+
 export const PollTrigger = z.object({
   kind: z.literal("poll"),
   /** Fonte cadastrada, hoje so `github`. */
@@ -439,6 +473,8 @@ export const PollTrigger = z.object({
    * mudar.
    */
   includeDrafts: z.boolean().default(false),
+  /** Ver `PollFilters`. Ausente, a varredura se comporta como antes dele existir. */
+  filters: PollFilters.optional(),
   everyMinutes: z.number().int().min(1).default(15),
   workingHours: WorkingHoursConfig.optional(),
 });

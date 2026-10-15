@@ -25,12 +25,11 @@ import { parseCron, proximaOcorrencia } from "../../../src/triggers/cron";
 import { descreverCron } from "@/lib/descricao-do-cron";
 import { SeletorDeFerramentas, SeletorDeModelo, useCatalogo } from "../editor-agent";
 import type { RotaId } from "../rotas";
+import { Alternador, Campo, CAMPO, Minutos } from "./campos";
+import { GatilhoDoGithub } from "./gatilho-github";
 import { appDoGatilho, appDoPasso, Selo, tituloDoGatilho, tituloDoPasso } from "./visual";
 
 type Tracker = ReadResult<"trackers.list">[number];
-
-const CAMPO =
-  "border-border bg-background focus-visible:ring-ring w-full rounded-md border px-2.5 py-1.5 text-sm outline-none focus-visible:ring-1";
 
 const PRESETS_DE_CRON = [
   ["weekdays9", "0 9 * * 1-5"],
@@ -84,7 +83,10 @@ export function PainelDoNo({
 
   return (
     <aside
-      className="border-border superficie flex w-80 shrink-0 flex-col gap-4 overflow-y-auto rounded-lg border p-3"
+      className={cn(
+        "border-border superficie flex shrink-0 flex-col gap-4 overflow-y-auto rounded-lg border p-3",
+        gatilho?.config.kind === "poll" ? "w-[26rem]" : "w-80",
+      )}
       data-locum-probe="automacao-painel"
       data-locum-painel={chave}
     >
@@ -114,7 +116,7 @@ export function PainelDoNo({
       {gatilho !== undefined ? (
         <>
           <p className="text-muted-foreground text-xs">{t(`automations.triggers.${gatilho.config.kind}.help`, { defaultValue: "" })}</p>
-          <ConfigDoGatilho config={gatilho.config} trocar={trocarGatilho} />
+          <ConfigDoGatilho config={gatilho.config} key={chave} trocar={trocarGatilho} triggerId={gatilho.id} />
           <Alternador
             ligado={gatilho.enabled}
             rotulo={t("automations.panel.enabled")}
@@ -139,7 +141,7 @@ export function PainelDoNo({
         <ConfigDaAcao passo={passo as PassoDeAcao} rascunho={rascunho} setRascunho={setRascunho} trackers={trackers} />
       )}
 
-      <Button className="mt-auto cursor-pointer self-start" onClick={remover} size="sm" variant="ghost">
+      <Button className="mt-auto cursor-pointer self-start" data-locum-painel-remover="" onClick={remover} size="sm" variant="ghost">
         <Trash2 className="size-4" />
         {t("automations.panel.remove")}
       </Button>
@@ -149,7 +151,15 @@ export function PainelDoNo({
 
 /* ----------------------------------------------------------------- gatilho */
 
-function ConfigDoGatilho({ config, trocar }: { config: TriggerConfig; trocar: (c: TriggerConfig) => void }) {
+function ConfigDoGatilho({
+  config,
+  trocar,
+  triggerId,
+}: {
+  config: TriggerConfig;
+  trocar: (c: TriggerConfig) => void;
+  triggerId?: string;
+}) {
   const { t } = useTranslation();
   switch (config.kind) {
     case "cron":
@@ -193,38 +203,7 @@ function ConfigDoGatilho({ config, trocar }: { config: TriggerConfig; trocar: (c
         </>
       );
     case "poll":
-      return (
-        <>
-          <Campo rotulo={t("automations.triggers.poll.owner")}>
-            <input
-              className={CAMPO}
-              onChange={(e) => {
-                const owner = e.target.value.trim();
-                const { owner: _antigo, ...resto } = config;
-                trocar(owner === "" ? resto : { ...resto, owner });
-              }}
-              value={config.owner ?? ""}
-            />
-          </Campo>
-          <Campo rotulo={t("automations.triggers.poll.repoMatch")}>
-            <input className={CAMPO} onChange={(e) => trocar({ ...config, repoMatch: e.target.value || ".*" })} value={config.repoMatch} />
-          </Campo>
-          <Campo rotulo={t("automations.triggers.poll.authorship")}>
-            <select
-              className={CAMPO}
-              onChange={(e) => trocar({ ...config, authorship: e.target.value as typeof config.authorship })}
-              value={config.authorship}
-            >
-              {(["any", "mine", "others"] as const).map((a) => (
-                <option key={a} value={a}>
-                  {t(`automations.triggers.poll.${a}`)}
-                </option>
-              ))}
-            </select>
-          </Campo>
-          <Minutos rotulo={t("automations.panel.everyMinutes")} valor={config.everyMinutes} trocar={(everyMinutes) => trocar({ ...config, everyMinutes })} />
-        </>
-      );
+      return <GatilhoDoGithub config={config} key={triggerId ?? "novo"} trocar={trocar} triggerId={triggerId} />;
     default:
       return null;
   }
@@ -1206,38 +1185,3 @@ function ConfigDoHttp({
 }
 
 /* ------------------------------------------------------------------ campos */
-
-function Campo({ rotulo, children }: { rotulo: string; children: ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <span className="text-muted-foreground text-xs">{rotulo}</span>
-      {children}
-    </div>
-  );
-}
-
-function Minutos({ rotulo, valor, trocar }: { rotulo: string; valor: number; trocar: (n: number) => void }) {
-  return (
-    <Campo rotulo={rotulo}>
-      <input
-        className={cn(CAMPO, "w-28")}
-        min={1}
-        onChange={(e) => {
-          const n = Number.parseInt(e.target.value, 10);
-          if (Number.isFinite(n) && n >= 1) trocar(n);
-        }}
-        type="number"
-        value={valor}
-      />
-    </Campo>
-  );
-}
-
-function Alternador({ ligado, rotulo, trocar }: { ligado: boolean; rotulo: string; trocar: (v: boolean) => void }) {
-  return (
-    <label className="flex cursor-pointer items-center gap-2 text-sm">
-      <input checked={ligado} className="accent-primary size-4 cursor-pointer" onChange={(e) => trocar(e.target.checked)} type="checkbox" />
-      {rotulo}
-    </label>
-  );
-}

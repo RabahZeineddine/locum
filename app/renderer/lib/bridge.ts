@@ -130,6 +130,10 @@ export const READ_CHANNELS = [
   // Cadastro e agenda, sem bater em gatilho nenhum: ler quando foi a última
   // varredura não dispara a próxima.
   "triggers.schedule",
+  // O que cada gatilho viu e deixou passar, com o motivo. Lê o registro da
+  // varredura, sem bater em nada.
+  "triggers.discards",
+  "triggers.lastError",
   "scheduler.getWorkingHours",
   "startup.get",
   "app.version",
@@ -260,6 +264,9 @@ export const ACTION_CHANNELS = [
   "triggers.remove",
   "triggers.setEnabled",
   "triggers.tick",
+  // A prévia é um clique: pergunta ao GitHub quais pull requests abertos
+  // entrariam com a configuração da tela, e não grava nada.
+  "triggers.previewGithub",
   "scheduler.setWorkingHours",
   // Instalar um template do marketplace é clique de quem está usando, e
   // grava um agent como o importar de arquivo faria.

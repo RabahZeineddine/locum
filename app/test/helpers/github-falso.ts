@@ -1,0 +1,130 @@
+import type { PollClient } from "../../src/sources/github.js";
+
+export type Pr = {
+  number: number;
+  repo?: string;
+  sha?: string;
+  author?: string;
+  labels?: string[];
+  base?: string;
+  reviewers?: string[];
+  teams?: string[];
+  files?: string[];
+  additions?: number;
+  deletions?: number;
+  draft?: boolean;
+};
+
+export type Membros = Record<string, string[] | { status: number; message?: string; headers?: Record<string, string> }>;
+
+/** Existe no GitHub de mentira: quem escreve PR, mais o que o teste acrescentar. */
+export type Mundo = { usuarios?: string[]; times?: string[] };
+
+/**
+ * Um GitHub de mentira para os filtros. A busca ignora os qualificadores de
+ * propósito: o que o teste prova é o filtro em código, que é quem decide, e
+ * os qualificadores ficam anotados para conferir o que a consulta pediu.
+ */
+export function githubFalso(prs: Pr[], membros: Membros = {}, mundo: Mundo = {}) {
+  const chamadas = { buscas: [] as string[], listFiles: 0, get: 0, membros: [] as string[] };
+  const pr = (n: number) => prs.find((p) => p.number === n)!;
+  const usuarios = new Set([...prs.map((p) => (p.author ?? "autora").toLowerCase()), ...(mundo.usuarios ?? []).map((u) => u.toLowerCase())]);
+  const times = new Set([...Object.keys(membros), ...(mundo.times ?? [])].map((t) => t.toLowerCase()));
+  const erro422 = () => Object.assign(new Error("Validation Failed"), { status: 422 });
+
+  const rest = {
+    search: {
+      issuesAndPullRequests: async (params: { q: string; per_page?: number }) => {
+        chamadas.buscas.push(params.q);
+        // Como o GitHub: login que não existe ou time inválido derruba a busca inteira.
+        for (const [, login] of params.q.matchAll(/(?:^|\s)-?(?:author|review-requested):(\S+)/g)) {
+          if (!usuarios.has(login!.toLowerCase())) throw erro422();
+        }
+        for (const [, time] of params.q.matchAll(/(?:^|\s)team-review-requested:(\S+)/g)) {
+          if (!times.has(time!.toLowerCase())) throw erro422();
+        }
+        return {
+          data: {
+            total_count: prs.length,
+            items: prs.slice(0, params.per_page ?? prs.length).map((p) => ({
+              number: p.number,
+              title: `PR ${p.number}`,
+              html_url: `https://example.invalid/pr/${p.number}`,
+              repository_url: `https://api.github.com/repos/o/${p.repo ?? "api"}`,
+              updated_at: "2026-09-22T10:00:00Z",
+              draft: p.draft ?? false,
+              user: { login: p.author ?? "autora" },
+              labels: (p.labels ?? []).map((name) => ({ name })),
+            })),
+          },
+        };
+      },
+    },
+    pulls: {
+      get: async ({ pull_number }: { pull_number: number }) => {
+        chamadas.get++;
+        const p = pr(pull_number);
+        return {
+          data: {
+            number: p.number,
+            title: `PR ${p.number}`,
+            body: "",
+            head: { sha: p.sha ?? `sha${p.number}`, ref: "feat/x" },
+            base: { ref: p.base ?? "main" },
+            user: { login: p.author ?? "autora" },
+            html_url: `https://example.invalid/pr/${p.number}`,
+            additions: p.additions ?? 1,
+            deletions: p.deletions ?? 0,
+            draft: p.draft ?? false,
+            requested_reviewers: (p.reviewers ?? []).map((login) => ({ login })),
+            requested_teams: (p.teams ?? []).map((slug) => ({ slug })),
+          },
+        };
+      },
+      listFiles: async () => ({}),
+    },
+    checks: { listForRef: async () => ({}) },
+    teams: {
+      listMembersInOrg: async () => ({}),
+      getByName: async ({ org, team_slug }: { org: string; team_slug: string }) => {
+        if (!times.has(`${org}/${team_slug}`.toLowerCase())) throw Object.assign(new Error("Not Found"), { status: 404 });
+        return { data: {} };
+      },
+    },
+    users: {
+      getByUsername: async ({ username }: { username: string }) => {
+        if (!usuarios.has(username.toLowerCase())) throw Object.assign(new Error("Not Found"), { status: 404 });
+        return { data: {} };
+      },
+    },
+  };
+
+  const paginate = async (rota: unknown, params: Record<string, unknown>) => {
+    if (rota === rest.pulls.listFiles) {
+      chamadas.listFiles++;
+      const p = pr(params.pull_number as number);
+      return (p.files ?? ["src/a.ts"]).map((filename) => ({ filename, status: "modified", additions: 1, deletions: 0, patch: "+x" }));
+    }
+    if (rota === rest.checks.listForRef) return [];
+    if (rota === rest.search.issuesAndPullRequests) {
+      const { data } = await rest.search.issuesAndPullRequests(params as { q: string; per_page?: number });
+      return data.items;
+    }
+    if (rota === rest.teams.listMembersInOrg) {
+      const chave = `${params.org}/${params.team_slug}`;
+      chamadas.membros.push(chave);
+      const m = membros[chave];
+      if (m === undefined || !Array.isArray(m)) {
+        const falha = m as { status: number; message?: string; headers?: Record<string, string> } | undefined;
+        throw Object.assign(new Error(falha?.message ?? "Not Found"), {
+          status: falha?.status ?? 404,
+          response: { headers: falha?.headers ?? {} },
+        });
+      }
+      return m.map((login) => ({ login }));
+    }
+    throw new Error("rota inesperada");
+  };
+
+  return { client: { rest, paginate } as unknown as PollClient, chamadas };
+}

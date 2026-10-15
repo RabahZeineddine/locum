@@ -877,22 +877,11 @@
     },
     "watched": {
       "title": "Repositórios observados",
-      "description": "O que este agent varre e de quanto em quanto tempo. O gatilho nasce parado: cadastrar não liga nada, e ligar é o segundo clique.",
-      "empty": "Nenhum repositório observado. Enquanto não houver um gatilho ligado, o Locum só roda quando alguém pede.",
-      "agent": "agent que vai revisar",
-      "owner": "dono da organização ou da conta",
-      "ownerHint": "organização",
-      "repo": "nome do repositório",
-      "repoHint": "meu-servico, api-*",
-      "authorship": "de quem são os pull requests",
+      "description": "Os gatilhos do GitHub da automação deste agent, só para ler. Filtros, prévia e pull requests descartados se editam na automação.",
+      "empty": "Nenhuma automação observa repositórios com este agent.",
       "authorshipAny": "de qualquer pessoa",
       "authorshipMine": "meus",
       "authorshipOthers": "do time",
-      "cadence": "cadência em minutos",
-      "add": "Observar",
-      "enable": "ligar",
-      "disable": "desligar",
-      "remove": "Remover",
       "on": "ligado",
       "off": "parado",
       "target": "{{owner}} · {{repo}}",
@@ -903,11 +892,13 @@
       "beats": "última varredura {{last}} · próxima {{next}}",
       "never": "nunca",
       "parked": "nenhuma, o gatilho está parado",
-      "howTo": "Escreva o nome do repositório, vários separados por vírgula, ou use * para pegar todos que começam igual (api-*). A varredura usa o token do GitHub de Apps > GitHub. Nada vira comentário sozinho: o achado para na fila e espera o seu clique.",
       "refused": "a ponte recusou: {{message}}",
       "every_zero": "a cada {{count}} minutos",
-      "advanced": "Quero usar expressão regular",
-      "advancedHow": "Se o texto tiver ^, $, parênteses ou |, ele vale como expressão regular aplicada ao nome, sem mudança: \"^api-\" pega todos que começam assim. Filtrar por autoria precisa do token conferido, porque é a conta dele que diz quais pull requests são seus."
+      "create": "Criar gatilho do GitHub",
+      "edit": "Editar na automação",
+      "filters_one": "{{count}} filtro",
+      "filters_other": "{{count}} filtros",
+      "filters_zero": "{{count}} filtros"
     },
     "slack": {
       "title": "Slack observado",
@@ -1218,7 +1209,7 @@
     "screens": "inbox escrevendo \"{{inbox}}\", execuções escrevendo \"{{runs}}\", agents escrevendo \"{{agents}}\" e configuração escrevendo \"{{budget}}\", todas batendo com o dicionário nos dois idiomas",
     "picker": "configuração trocando o idioma por clique, \"{{pt}}\" e \"{{en}}\" sem recarregar, e a bandeja indo junto na mesma batida: \"{{tray}}\"",
     "schema": "migrações aplicadas: {{count}}",
-    "watched": "gatilho de {{target}} cadastrado parado, ligado com a próxima batida em {{next}}, e removido",
+    "watched": "observados: gatilho do GitHub de {{target}} criado no editor com a prévia respondendo, parado, ligado pelo editor com a próxima batida em {{next}}, e removido pelo editor",
     "trackers": "trackers: {{service}} no Jira pelo serviço e {{window}} no GitHub pela tela, credencial do cofre, {{projects}} destinos visíveis, tarefa existente reencontrada pelo pull request, nenhum canal que abra tarefa",
     "authorship": "gatilho de {{mine}} acordou só com o pull request de {{viewer}}, e o de {{others}} só com o de outra pessoa",
     "mcpPoll": "consulta ao {{fixture}} pela ferramenta {{tool}} virou {{events}} evento(s) normalizado(s), a segunda varredura não reprocessou nenhum, e o cursor não andou com a chamada falhando",
@@ -1909,7 +1900,8 @@
         "authorship": "De quem",
         "any": "Todos",
         "mine": "Só os meus",
-        "others": "Só os do time"
+        "others": "Só os do time",
+        "help": "Acorda o agent a cada pull request aberto nos repositórios observados que passa nos filtros abaixo."
       },
       "webhook": {
         "title": "Webhook",
@@ -2063,6 +2055,82 @@
       "noUrl": "Informe o endereço da API, começando com http:// ou https://.",
       "noValue": "Diga o que este passo olha, com uma variável.",
       "noCases": "Acrescente pelo menos um caso ao switch."
+    },
+    "github": {
+      "repos": {
+        "title": "Repositórios",
+        "help": "Quais repositórios da organização este gatilho varre.",
+        "names": "Nomes dos repositórios",
+        "hint": "meu-servico, api-*",
+        "advanced": "Quero usar expressão regular",
+        "advancedHow": "Nomes separados por vírgula, com * para qualquer coisa (api-*). Texto com ^, $, parênteses ou | vale como expressão regular aplicada ao nome do repositório, sem mudança. Vazio observa a organização inteira. Padrão sem / casa só o nome do repositório, e com / é testado contra dono/nome."
+      },
+      "people": {
+        "title": "Pessoas e times",
+        "help": "De quem são os pull requests que acordam o agent. Filtros diferentes combinam com E, e os itens de uma mesma lista com OU.",
+        "authorsInclude": "Só estes autores",
+        "authorsHint": "@me, ana, bia",
+        "authorsExclude": "Nunca estes autores",
+        "review": "Review pedido para",
+        "reviewHint": "@me, ana, acme/backend",
+        "teamMembers": "Autor é membro do time",
+        "teamsHint": "acme/backend (pede read:org no token)"
+      },
+      "labels": {
+        "title": "Labels",
+        "help": "Pull requests com qualquer uma das labels listadas, e nunca com uma label do segundo campo.",
+        "include": "Tem alguma das labels",
+        "hint": "bug, help wanted",
+        "exclude": "Não tem nenhuma das labels"
+      },
+      "base": {
+        "title": "Branch base",
+        "help": "Só pull requests que apontam para estas branches.",
+        "branches": "Branches",
+        "hint": "main, release/*"
+      },
+      "files": {
+        "title": "Arquivos e tamanho",
+        "help": "O que o pull request altera: deixa de fora o que só mexe no que você exclui, ou que é grande demais.",
+        "include": "Só arquivos em",
+        "includeHint": "src/**, !**/*.md",
+        "exclude": "Ignorar arquivos em",
+        "excludeHint": "docs/**, **/*.md",
+        "maxLines": "Maior mudança (linhas adicionadas mais removidas)",
+        "noLimit": "sem limite"
+      },
+      "drafts": {
+        "title": "Rascunhos",
+        "help": "Rascunho é o pull request que o autor ainda não pediu para revisar.",
+        "include": "Incluir rascunhos"
+      },
+      "frequency": {
+        "title": "Frequência",
+        "help": "De quanto em quanto tempo o Locum olha o GitHub para este gatilho."
+      },
+      "preview": {
+        "title": "Prévia",
+        "help": "Pergunta ao GitHub quais pull requests abertos entrariam com o que está na tela agora. Nada é salvo nem executado.",
+        "button": "Ver quais PRs entrariam agora",
+        "loading": "Olhando o GitHub...",
+        "summary": "{{enter}} de {{total}} entrariam.",
+        "cut": "Só os atualizados mais recentemente aparecem.",
+        "empty": "Nenhum pull request aberto nesses repositórios.",
+        "enters": "entra",
+        "skipped": "não entra",
+        "failed": "não deu para ler: {{message}}",
+        "warning": "aviso: {{message}}"
+      },
+      "discards": {
+        "title": "Últimos pull requests descartados",
+        "help": "O que as varreduras de verdade viram e deixaram de fora, com o motivo. Salvar outro filtro não roda de novo o que já rodou.",
+        "empty": "Nada descartado até agora.",
+        "unsaved": "Salve a automação e deixe o gatilho rodar para ver o que ele descarta."
+      },
+      "error": {
+        "configuracao": "erro de configuração, {{when}}:",
+        "batida": "a última varredura falhou, {{when}}:"
+      }
     }
   },
   "apps": {

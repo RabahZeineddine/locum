@@ -37,7 +37,19 @@ export function Automacoes({ detalhe, navegar }: TelaProps) {
     return <Biblioteca detalhe={alvo} navegar={navegar} />;
   }
   if (detalhe !== null) {
-    return <EditorDeAutomacao agentId={detalhe} voltar={() => navegar("automations")} navegar={navegar} />;
+    // `<agent>/gatilho/<id>` abre o editor com aquele gatilho escolhido, e
+    // `<agent>/gatilho/novo` com um gatilho do GitHub novo no rascunho.
+    const [agentId = detalhe, ...resto] = detalhe.split("/");
+    const gatilho = resto[0] === "gatilho" ? resto[1] : undefined;
+    return (
+      <EditorDeAutomacao
+        abrirGatilho={gatilho}
+        agentId={agentId}
+        key={detalhe}
+        navegar={navegar}
+        voltar={() => navegar("automations")}
+      />
+    );
   }
   return <TelaDeAgents navegar={navegar} />;
 }

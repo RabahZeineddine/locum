@@ -3,11 +3,28 @@ import { Octokit } from "octokit";
 import { and, eq } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
 import type { ActionHandler } from "../approval/gate.js";
-import type { ReviewFinding, ReviewVerdict } from "../config/types.js";
+import type { Authorship, PollFilters, ReviewFinding, ReviewVerdict } from "../config/types.js";
 import type { EventPayload } from "../executor/executor.js";
 import { GITHUB_TOKEN_ENV, githubService, githubToken } from "../services/github-service.js";
 import { fetchCiStatus, type ChecksClient, type CiStatus } from "./ci-status.js";
 import { limitDiff, type OmittedFile } from "./diff-limit.js";
+import {
+  avaliarArquivos,
+  avaliarAutoria,
+  avaliarItem,
+  avaliarPr,
+  avaliarReview,
+  avaliarTimes,
+  chaveDosFiltros,
+  leitorDeTimes,
+  montarConsulta,
+  resolverFiltros,
+  temFiltroDeArquivos,
+  type ClienteDeTimes,
+  type Descarte,
+  type FiltrosResolvidos,
+  type ItemDaBusca,
+} from "./github-filtros.js";
 import {
   alvoDaReacao,
   reagirNoTeams,
@@ -92,15 +109,31 @@ async function reagirNoSlack(p: ReviewPayload & OrigemDoReview): Promise<void> {
  * repetir a decisão aqui faria um desses três caminhos ficar para trás no dia
  * em que ela mudasse.
  */
-export function octokit(): Octokit {
+export function octokit(opcoes: { timeoutMs?: number; fetch?: typeof fetch } = {}): Octokit {
   const auth = githubToken();
   if (auth === undefined) {
     throw new Error(
       `sem token do GitHub: guarde um na configuração ou exporte ${GITHUB_TOKEN_ENV}`,
     );
   }
-  return new Octokit({ auth });
+  const { timeoutMs } = opcoes;
+  const base = opcoes.fetch ?? globalThis.fetch;
+  // Cada chamada ganha o próprio prazo no `fetch`: uma promessa pendurada do
+  // GitHub não pode prender a trava do gatilho para sempre. Sem retry nesse
+  // modo, porque o aborto vira 500 e seria repetido: a próxima batida refaz.
+  const comPrazo: typeof fetch = (url, init) =>
+    base(url, { ...init, signal: init?.signal ?? AbortSignal.timeout(timeoutMs as number) });
+  const cliente = new Octokit({
+    auth,
+    ...(timeoutMs === undefined
+      ? opcoes.fetch === undefined ? {} : { request: { fetch: opcoes.fetch } }
+      : { request: { fetch: comPrazo }, retry: { enabled: false } }),
+  });
+  return cliente;
 }
+
+/** Prazo de cada chamada ao GitHub numa varredura ou prévia. */
+export const PRAZO_DA_CHAMADA_MS = 30_000;
 
 /** O pedaço do cliente que a ação de review usa. Existe para o teste trocar. */
 export type ReviewClient = { rest: { pulls: Pick<Octokit["rest"]["pulls"], "createReview" | "listReviews"> } };
@@ -154,6 +187,13 @@ export type PrClient = ChecksClient & {
   rest: ChecksClient["rest"] & { pulls: Pick<Octokit["rest"]["pulls"], "get" | "listFiles"> };
 };
 
+/** Um arquivo como o GitHub devolve no `pulls.listFiles`. */
+type ArquivoDoPr = Awaited<ReturnType<Octokit["rest"]["pulls"]["listFiles"]>>["data"][number];
+
+function listarArquivos(gh: PrClient, owner: string, repo: string, pull: number): Promise<ArquivoDoPr[]> {
+  return gh.paginate(gh.rest.pulls.listFiles, { owner, repo, pull_number: pull, per_page: 100 });
+}
+
 /** O pull request como o GitHub devolve no `pulls.get`. */
 type PullData = Awaited<ReturnType<Octokit["rest"]["pulls"]["get"]>>["data"];
 
@@ -182,9 +222,10 @@ async function contextFromPr(
   repo: string,
   pr: PullData,
   diffMaxChars?: number,
+  lidos?: ArquivoDoPr[],
 ): Promise<PrContext> {
   const pull = pr.number;
-  const files = await gh.paginate(gh.rest.pulls.listFiles, { owner, repo, pull_number: pull, per_page: 100 });
+  const files = lidos ?? (await listarArquivos(gh, owner, repo, pull));
   const ci = await fetchCiStatus(gh, owner, repo, pr.head.sha);
 
   const { diff, omittedFiles, omittedSummary } = limitDiff(
@@ -220,12 +261,24 @@ async function contextFromPr(
 
 /** O pedaço do cliente que a varredura usa. Existe para o teste trocar. */
 export type PollClient = PrClient & {
-  rest: PrClient["rest"] & { search: Pick<Octokit["rest"]["search"], "issuesAndPullRequests"> };
+  rest: PrClient["rest"] & {
+    search: Pick<Octokit["rest"]["search"], "issuesAndPullRequests">;
+    teams: Pick<Octokit["rest"]["teams"], "listMembersInOrg" | "getByName">;
+    users: Pick<Octokit["rest"]["users"], "getByUsername">;
+  };
 };
 
 export type PollOptions = {
   /** Rascunho fica fora por padrão: revisar o que o autor ainda não pediu é gasto sem leitor. */
   includeDrafts?: boolean;
+  /** Filtros do gatilho além do repositório. Ausente, a varredura não filtra nada. */
+  filters?: PollFilters;
+  /** Autoria do gatilho. Faz parte do mesmo exame que os filtros, para a prévia e a batida dizerem o mesmo. */
+  authorship?: Authorship;
+  /** O gatilho que varre, para a chave de cursor nova herdar a do que ele já tinha. */
+  triggerId?: string;
+  /** A conta do token, para trocar `@me`. Nulo é "nunca conferida". */
+  viewer?: string | null;
   client?: PollClient;
   db?: typeof defaultDb;
   /** Relógio da janela inicial, para teste. */
@@ -285,6 +338,161 @@ export interface PullRequestScan {
   eventIds: string[];
   /** Só os que esta varredura gravou. */
   created: string[];
+  /** O que a varredura viu e não virou evento, cada um com o motivo. */
+  descartes?: Descarte[];
+  /** Erros de configuração do gatilho, como um time que o token não consegue ler. A batida seguiu sem eles. */
+  configuracao?: string[];
+}
+
+/**
+ * O padrão casa com o repositório.
+ *
+ * O padrão sem barra é só do nome (o que a tela monta, `^api-.*$`) e vale
+ * contra o nome sozinho; com barra leva o dono (`^dono/api$`,
+ * `^(?!acme/legacy-)`) e vale só contra `dono/repo`, como sempre valeu. Testar
+ * o nome sozinho num padrão com dono mudaria o que ele pega.
+ */
+function casaRepo(filtro: RegExp, owner: string, repo: string): boolean {
+  return filtro.source.includes("/") ? filtro.test(`${owner}/${repo}`) : filtro.test(repo);
+}
+
+/** Quantos descartes uma varredura devolve; o resto some para não inchar a batida. */
+const TETO_DE_DESCARTES = 200;
+
+/** O que `examinar` decidiu sobre um pull request da busca. */
+type Exame =
+  | {
+      entra: true;
+      pr: PullData;
+      repo: string;
+      /** Arquivos já lidos para os filtros, para a ingestão não paginar de novo. */
+      arquivos?: ArquivoDoPr[];
+      /** O evento que este commit já tem, se tem. */
+      conhecido?: string;
+    }
+  | { entra: false; descarte: Descarte };
+
+type ContextoDoExame = {
+  gh: PollClient;
+  db: typeof defaultDb;
+  owner: string;
+  repoFilter: RegExp;
+  includeDrafts: boolean;
+  filtros: FiltrosResolvidos;
+  authorship: Authorship;
+  viewer: string | null;
+  membrosDe: ReturnType<typeof leitorDeTimes>;
+  /** Times que não deu para ler, sem repetir: erro de configuração do gatilho. */
+  configuracao: Set<string>;
+};
+
+function contextoDoExame(owner: string, repoFilter: RegExp, deps: PollOptions) {
+  const gh = deps.client ?? (octokit({ timeoutMs: PRAZO_DA_CHAMADA_MS }) as unknown as PollClient);
+  return {
+    gh,
+    db: deps.db ?? defaultDb,
+    owner,
+    repoFilter,
+    includeDrafts: deps.includeDrafts ?? false,
+    // `@me` sem conta conferida estoura aqui, antes de qualquer chamada.
+    filtros: resolverFiltros(deps.filters, deps.viewer ?? null),
+    authorship: deps.authorship ?? "any",
+    viewer: deps.viewer ?? null,
+    membrosDe: leitorDeTimes(gh as unknown as ClienteDeTimes),
+    configuracao: new Set<string>(),
+  } satisfies ContextoDoExame;
+}
+
+/**
+ * Decide se um pull request da busca entra, do filtro mais barato ao mais caro.
+ *
+ * É o único lugar onde os filtros são aplicados: a varredura grava evento com
+ * o que entra e a prévia só lê, e as duas passam por aqui para dizerem a mesma
+ * coisa. Nulo é pull request de outro repositório, que não é descarte e sim
+ * fora do que o gatilho observa.
+ */
+async function examinar(ctx: ContextoDoExame, item: ItemDaBusca & { repository_url: string }): Promise<Exame | null> {
+  const repo = item.repository_url.split("/").pop()!;
+  if (!casaRepo(ctx.repoFilter, ctx.owner, repo)) return null;
+
+  const ref = `${ctx.owner}/${repo}#${item.number}`;
+  const autor = item.user?.login ?? undefined;
+  const fora = (motivo: string): Exame => ({
+    entra: false,
+    descarte: { pr: ref, titulo: item.title, autor, url: item.html_url, motivo },
+  });
+
+  if (item.draft && !ctx.includeDrafts) return fora("draft");
+  const daAutoria = avaliarAutoria(ctx.authorship, autor, ctx.viewer);
+  if (daAutoria !== null) return fora(daAutoria);
+  const doItem = avaliarItem(ctx.filtros, item);
+  if (doItem !== null) return fora(doItem);
+  const dosTimes = await avaliarTimes(ctx.filtros, autor, ctx.membrosDe, (e) => ctx.configuracao.add(e.message));
+  if (dosTimes !== null) return fora(dosTimes);
+
+  const { data: pr } = await ctx.gh.rest.pulls.get({ owner: ctx.owner, repo, pull_number: item.number });
+  // Virou rascunho entre a busca e a leitura: vale o estado mais novo.
+  if (pr.draft && !ctx.includeDrafts) return fora("draft");
+  const doPr = avaliarPr(ctx.filtros, pr);
+  if (doPr !== null) return fora(doPr);
+  const doReview = await avaliarReview(ctx.filtros, pr, ctx.owner, ctx.membrosDe, (e) => ctx.configuracao.add(e.message));
+  if (doReview !== null) return fora(doReview);
+
+  const externalId = `pr:${ctx.owner}/${repo}#${item.number}:sha:${pr.head.sha}`;
+  const [known] = await ctx.db
+    .select({ id: schema.events.id, payload: schema.events.payload })
+    .from(schema.events)
+    .where(and(eq(schema.events.source, "github"), eq(schema.events.externalId, externalId)));
+
+  let arquivos: ArquivoDoPr[] | undefined;
+  let nomes: string[] | undefined;
+  if (temFiltroDeArquivos(ctx.filtros)) {
+    // O evento já guarda a lista do commit: não vale uma ida ao GitHub por batida.
+    const guardados = (known?.payload as { changedFiles?: unknown } | undefined)?.changedFiles;
+    if (Array.isArray(guardados) && guardados.every((a) => typeof a === "string")) {
+      nomes = guardados as string[];
+    } else {
+      arquivos = await listarArquivos(ctx.gh, ctx.owner, repo, item.number);
+      nomes = arquivos.map((a) => a.filename);
+    }
+    const dosArquivos = avaliarArquivos(ctx.filtros, nomes);
+    if (dosArquivos !== null) return fora(dosArquivos);
+  }
+
+  return { entra: true, pr, repo, arquivos, conhecido: known?.id };
+}
+
+/** Fonte do registro da chave de cursor que cada gatilho usou por último. */
+const ULTIMA_CHAVE = "gatilho-cursor";
+
+async function valorDoCursor(db: typeof defaultDb, fonte: string, key: string): Promise<string | undefined> {
+  const [row] = await db
+    .select({ value: schema.cursors.value })
+    .from(schema.cursors)
+    .where(and(eq(schema.cursors.source, fonte), eq(schema.cursors.key, key)));
+  return row?.value;
+}
+
+/** O cursor da chave, ou o herdado: o da chave anterior do gatilho, ou o do escopo. */
+async function cursorDe(db: typeof defaultDb, key: string, base: string, triggerId?: string): Promise<string | undefined> {
+  const proprio = await valorDoCursor(db, "github", key);
+  if (proprio !== undefined) return proprio;
+  if (triggerId !== undefined) {
+    const anterior = await valorDoCursor(db, ULTIMA_CHAVE, triggerId);
+    const herdado = anterior === undefined || anterior === key ? undefined : await valorDoCursor(db, "github", anterior);
+    if (herdado !== undefined) return herdado;
+  }
+  return key === base ? undefined : valorDoCursor(db, "github", base);
+}
+
+async function lembrarChave(db: typeof defaultDb, triggerId: string, key: string): Promise<void> {
+  await db
+    .insert(schema.cursors)
+    .values({ source: ULTIMA_CHAVE, key: triggerId, value: key })
+    .onConflictDoUpdate({
+      target: [schema.cursors.source, schema.cursors.key],
+      set: { value: key, updatedAt: Math.floor(Date.now() / 1000) },
+    });
 }
 
 export async function scanOpenPullRequests(
@@ -292,65 +500,65 @@ export async function scanOpenPullRequests(
   repoFilter: RegExp,
   deps: PollOptions = {},
 ): Promise<PullRequestScan> {
-  const gh = deps.client ?? octokit();
-  const db = deps.db ?? defaultDb;
-  const includeDrafts = deps.includeDrafts ?? false;
+  const ctx = contextoDoExame(owner, repoFilter, deps);
+  const { gh, db, includeDrafts } = ctx;
   const source = "github";
   const exact = exactRepo(owner, repoFilter);
 
   // Cada escopo de consulta tem o próprio cursor. Com o repositório dentro da
   // consulta, um cursor dividido entre dois gatilhos avançaria pelo que um viu
   // e faria o outro pular o que ainda não tinha visto. O escopo aberto guarda
-  // a chave antiga para não perder a posição de quem já varria assim.
+  // a chave antiga para não perder a posição de quem já varria assim. O mesmo
+  // vale para filtros e autoria: o que um recusa, o outro quer ver, então cada
+  // combinação tem o seu cursor, e sem nenhuma a chave é a de sempre.
   const scope = repoFilter.source === ".*" ? "" : `:${repoFilter.source}`;
-  const key = `prs:${owner}${scope}${includeDrafts ? ":rascunhos" : ""}`;
+  const base = `prs:${owner}${scope}${includeDrafts ? ":rascunhos" : ""}`;
+  const key = `${base}${chaveDosFiltros(deps.filters, ctx.authorship)}`;
 
-  const [cursor] = await db
-    .select()
-    .from(schema.cursors)
-    .where(and(eq(schema.cursors.source, source), eq(schema.cursors.key, key)));
-
-  const since = searchTimestamp(cursor?.value ?? new Date((deps.now ?? Date.now()) - 24 * 3600 * 1000).toISOString());
-  const query = [
-    "is:pr",
-    "is:open",
-    exact ? `repo:${exact}` : `org:${owner}`,
-    includeDrafts ? null : "draft:false",
-    `updated:>=${since}`,
-  ]
-    .filter(Boolean)
-    .join(" ");
+  // Chave nova começa onde a anterior do mesmo gatilho parou, e na falta dela
+  // onde o escopo parou: cursor parado não é teto, e um pull request aberto
+  // antes de o app ficar dias fechado entra na primeira batida. Só o hash que
+  // nunca teve cursor olha as últimas 24h.
+  const doCursor = await cursorDe(db, key, base, deps.triggerId);
+  const umDiaAtras = new Date((deps.now ?? Date.now()) - 24 * 3600 * 1000).toISOString();
+  const since = searchTimestamp(doCursor ?? umDiaAtras);
+  const query = montarConsulta(
+    [
+      "is:pr",
+      "is:open",
+      exact ? `repo:${exact}` : `org:${owner}`,
+      includeDrafts ? null : "draft:false",
+      `updated:>=${since}`,
+    ].filter((p): p is string => p !== null),
+    ctx.filtros,
+  );
   const items = await gh.paginate(gh.rest.search.issuesAndPullRequests, { q: query, per_page: 100 });
 
   const created: string[] = [];
   const eventIds: string[] = [];
+  const descartes: Descarte[] = [];
   let newest = since;
 
   for (const item of items) {
     if (item.updated_at > newest) newest = item.updated_at;
-    const repo = item.repository_url.split("/").pop()!;
-    if (!repoFilter.test(`${owner}/${repo}`)) continue;
-    if (item.draft && !includeDrafts) continue;
-
-    const { data: pr } = await gh.rest.pulls.get({ owner, repo, pull_number: item.number });
-    // Virou rascunho entre a busca e a leitura: vale o estado mais novo.
-    if (pr.draft && !includeDrafts) continue;
-
-    const externalId = `pr:${owner}/${repo}#${item.number}:sha:${pr.head.sha}`;
-    const [known] = await db
-      .select({ id: schema.events.id })
-      .from(schema.events)
-      .where(and(eq(schema.events.source, source), eq(schema.events.externalId, externalId)));
-    if (known) {
-      eventIds.push(known.id);
+    const exame = await examinar(ctx, item);
+    if (exame === null) continue;
+    if (!exame.entra) {
+      if (descartes.length < TETO_DE_DESCARTES) descartes.push(exame.descarte);
+      continue;
+    }
+    if (exame.conhecido !== undefined) {
+      eventIds.push(exame.conhecido);
       continue;
     }
 
-    const ctx = await contextFromPr(gh, owner, repo, pr, deps.diffMaxChars);
+    const { pr, repo } = exame;
+    const externalId = `pr:${owner}/${repo}#${item.number}:sha:${pr.head.sha}`;
+    const context = await contextFromPr(gh, owner, repo, pr, deps.diffMaxChars, exame.arquivos);
     const id = randomUUID();
     const inserted = await db
       .insert(schema.events)
-      .values({ id, source, externalId, payload: ctx as object })
+      .values({ id, source, externalId, payload: context as object })
       .onConflictDoNothing()
       .returning({ id: schema.events.id });
 
@@ -369,7 +577,111 @@ export async function scanOpenPullRequests(
       set: { value: newest, updatedAt: Math.floor(Date.now() / 1000) },
     });
 
-  return { eventIds, created };
+  if (deps.triggerId !== undefined) await lembrarChave(db, deps.triggerId, key);
+  return { eventIds, created, descartes, configuracao: [...ctx.configuracao] };
+}
+
+/** Quantos pull requests a prévia examina. */
+export const TETO_DA_PREVIA = 50;
+
+/** Um pull request da prévia: se a varredura o aceitaria agora, e por quê. */
+export type PreviaDoPr = {
+  /** `org/repo#123`. */
+  pr: string;
+  titulo: string;
+  autor?: string;
+  url?: string;
+  entra: boolean;
+  /** O motivo do descarte; para quem entra, a frase que diz isso. */
+  motivo: string;
+  /** Entra, mas este commit já é um evento: a varredura não grava de novo. */
+  jaVirouEvento?: boolean;
+};
+
+export type PreviaDaVarredura = {
+  itens: PreviaDoPr[];
+  cortada: boolean;
+  /** Login ou time citado nos filtros que o GitHub não conhece ou não deixa ver. Não bloqueia. */
+  avisos: string[];
+};
+
+/**
+ * Confere os logins e os times que os filtros citam. O que o GitHub responde
+ * com 404 vira aviso: o filtro com ele nunca casaria, e quem edita precisa
+ * saber. Outra falha (limite, rede) não vira aviso, porque não diz nada sobre o nome.
+ */
+async function avisosDosCitados(ctx: ContextoDoExame, filters: PollFilters | undefined): Promise<string[]> {
+  const f = ctx.filtros;
+  const logins = [...new Set([...f.authorsInclude, ...f.authorsExclude, ...f.reviewUsers])].filter(
+    (l) => !l.endsWith("[bot]") && l.toLowerCase() !== ctx.viewer?.toLowerCase(),
+  );
+  const times = [...new Set([...f.reviewTeams, ...f.teamMembers, ...(filters?.reviewRequested?.teams ?? [])])];
+  const avisos: string[] = [];
+  const naoExiste = (err: unknown) => (err as { status?: number }).status === 404;
+  for (const login of logins) {
+    try {
+      await ctx.gh.rest.users.getByUsername({ username: login });
+    } catch (err) {
+      if (naoExiste(err)) avisos.push(`login ${login} não existe ou não está visível`);
+    }
+  }
+  for (const time of new Set(times)) {
+    const [org = "", slug = ""] = time.split("/");
+    try {
+      await ctx.gh.rest.teams.getByName({ org, team_slug: slug });
+    } catch (err) {
+      if (naoExiste(err)) avisos.push(`time ${time} não encontrado ou sem acesso`);
+    }
+  }
+  return avisos;
+}
+
+/**
+ * O que a varredura faria agora, sem fazer.
+ *
+ * Passa pelo mesmo `examinar` da varredura, então a resposta é a dela. Difere
+ * em três pontos de propósito: não tem janela de cursor (a prévia olha o que
+ * está aberto, e não só o que mudou desde a última batida), a busca vai sem os
+ * qualificadores dos filtros (quem não entra precisa aparecer com o motivo) e
+ * nada é gravado: nem cursor, nem evento, nem descarte.
+ */
+export async function previewOpenPullRequests(
+  owner: string,
+  repoFilter: RegExp,
+  deps: PollOptions = {},
+): Promise<PreviaDaVarredura> {
+  const ctx = contextoDoExame(owner, repoFilter, deps);
+  const exact = exactRepo(owner, repoFilter);
+  const query = ["is:pr", "is:open", exact ? `repo:${exact}` : `org:${owner}`].join(" ");
+  const { data } = await ctx.gh.rest.search.issuesAndPullRequests({
+    q: query,
+    sort: "updated",
+    order: "desc",
+    per_page: TETO_DA_PREVIA,
+  });
+
+  const itens: PreviaDoPr[] = [];
+  for (const item of data.items) {
+    const exame = await examinar(ctx, item);
+    if (exame === null) continue;
+    if (!exame.entra) {
+      const d = exame.descarte;
+      itens.push({ pr: d.pr, titulo: d.titulo ?? "", autor: d.autor, url: d.url, entra: false, motivo: d.motivo });
+      continue;
+    }
+    const conhecido = exame.conhecido !== undefined;
+    itens.push({
+      pr: `${owner}/${exame.repo}#${item.number}`,
+      titulo: exame.pr.title,
+      autor: exame.pr.user?.login,
+      url: exame.pr.html_url,
+      entra: true,
+      motivo: conhecido ? "passa nos filtros, mas este commit já virou evento" : "passa em todos os filtros",
+      ...(conhecido ? { jaVirouEvento: true } : {}),
+    });
+  }
+  const cortada = data.items.length >= TETO_DA_PREVIA && (data.total_count ?? 0) > data.items.length;
+  return { itens, cortada, avisos: await avisosDosCitados(ctx, deps.filters) };
 }
 
 /**

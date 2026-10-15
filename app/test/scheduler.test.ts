@@ -90,26 +90,20 @@ test("gatilho que falha anda o relógio do mesmo jeito, e webhook não entra na 
   assert.equal(seguinte.outcomes[0]?.status, "waiting");
 });
 
-test("filtro de autoria acorda só os pull requests da pessoa e conta os descartados", async () => {
-  const { db, scheduler, iniciados } = montar({
+test("o gatilho entrega a autoria e a conta do token à varredura, que é quem filtra", async () => {
+  const recebido: unknown[] = [];
+  const { scheduler } = montar({
     gatilhos: [
       gatilho("meus", { kind: "poll", source: "github", owner: "org", repoMatch: ".", authorship: "mine", includeDrafts: false, everyMinutes: 15 } as TriggerConfig),
     ],
-    poll: async () => {
-      await db.insert(schema.events).values([
-        { id: "e1", source: "github", externalId: "pr-1", payload: { author: "eu" } },
-        { id: "e2", source: "github", externalId: "pr-2", payload: { author: "outra" } },
-      ]);
-      return { eventIds: ["e1", "e2"], created: ["e1", "e2"] };
+    poll: async (_owner, _repo, options) => {
+      recebido.push(options);
+      return { eventIds: [], created: [] };
     },
   });
 
-  const batida = await scheduler.tick({ at: T0 });
-  const resultado = batida.outcomes[0];
-  assert.equal(resultado?.status, "fired");
-  assert.equal(resultado?.events, 2);
-  assert.deepEqual(iniciados.map((i) => i.eventId), ["e1"]);
-  assert.match(resultado?.detail ?? "", /1 evento\(s\) fora do filtro/);
+  await scheduler.tick({ at: T0 });
+  assert.deepEqual(recebido, [{ includeDrafts: false, authorship: "mine", triggerId: "meus", viewer: "eu" }]);
 });
 
 test("duas batidas juntas no mesmo banco disparam o gatilho uma vez só", async () => {
@@ -266,23 +260,6 @@ test("evento que segue sem run depois de um dia sai da lista de retry", async ()
   const batida = await scheduler.tick({ at: T0 + 24 * 60 * MINUTO + 15 * MINUTO });
   assert.equal(tentativas, 3);
   assert.equal(batida.outcomes[0]?.status, "fired");
-});
-
-test("autoria sem conta conferida recusa a batida em vez de acordar todo mundo", async () => {
-  const { db, scheduler, iniciados } = montar({
-    gatilhos: [
-      gatilho("meus", { kind: "poll", source: "github", owner: "org", repoMatch: ".", authorship: "mine", includeDrafts: false, everyMinutes: 15 } as TriggerConfig),
-    ],
-    poll: async () => {
-      await db.insert(schema.events).values({ id: "e1", source: "github", externalId: "pr-1", payload: { author: "eu" } });
-      return { eventIds: ["e1"], created: ["e1"] };
-    },
-    viewer: async () => null,
-  });
-
-  const batida = await scheduler.tick({ at: T0 });
-  assert.equal(batida.outcomes[0]?.status, "failed");
-  assert.equal(iniciados.length, 0);
 });
 
 test("conferência que estoura não derruba a batida", async () => {

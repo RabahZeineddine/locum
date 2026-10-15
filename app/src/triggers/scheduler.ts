@@ -1,11 +1,14 @@
 import { and, eq } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
-import { type Authorship, type TriggerConfig, type WorkingHoursConfig } from "../config/types.js";
+import { type Authorship, type PollFilters, type TriggerConfig, type WorkingHoursConfig } from "../config/types.js";
 import { executionService, type ExecutionService } from "../services/execution-service.js";
-import { matchesAuthorship } from "../services/github-service.js";
 import { mcpService, type McpService } from "../services/mcp-service.js";
 import { pollMcpServer } from "../sources/mcp-poll.js";
 import { proximaOcorrencia } from "./cron.js";
+import { comTrava } from "./trava.js";
+import { lerErro, limparErro, registrarErro, type ErroDoGatilho } from "./erros.js";
+import { lerDescartes, registrarDescartes, type DescarteGuardado } from "./descartes.js";
+import { precisaDaConta, type Descarte } from "../sources/github-filtros.js";
 import { pollSlack, slackWatchFor, type SlackPollOutcome } from "../sources/slack.js";
 import { pollSlackInbox, type SlackInboxOutcome } from "../sources/slack-inbox.js";
 import { pollTeamsInbox } from "../sources/teams-inbox.js";
@@ -83,7 +86,7 @@ export interface TickOptions {
 export type PollFn = (
   owner: string,
   repoFilter: RegExp,
-  options?: { includeDrafts?: boolean },
+  options?: { includeDrafts?: boolean; filters?: PollFilters; authorship?: Authorship; triggerId?: string; viewer?: string | null },
 ) => Promise<PullRequestScan>;
 
 /** A conferencia de pull request fechado, trocavel pelo mesmo motivo. */
@@ -132,6 +135,8 @@ export interface TriggerSchedule {
   everyMinutes: number | null;
   /** Ultima batida deste gatilho, em epoch de milissegundos. */
   lastFireAt: number | null;
+  /** O último erro do gatilho, de configuração ou de batida, ou nulo. */
+  lastError: ErroDoGatilho | null;
   /**
    * Quando o agendador vai acordar este gatilho.
    *
@@ -293,6 +298,7 @@ export class Scheduler {
         config: trigger.config,
         everyMinutes: cadence === null ? null : cadence / 60_000,
         lastFireAt: last,
+        lastError: await lerErro(this.db, trigger.id),
         // Gatilho que nunca disparou esta vencido, e a batida dele e a proxima
         // que acontecer. Nao e o mesmo que "daqui a uma cadencia": esperar um
         // ciclo inteiro depois de habilitar faria a primeira varredura demorar
@@ -318,7 +324,17 @@ export class Scheduler {
     return times.length > 0 ? Math.min(...times) : null;
   }
 
-  private async runTrigger(
+  /** Uma batida por gatilho de cada vez: a manual espera a agendada, e vice-versa. */
+  private runTrigger(
+    trigger: TriggerEntry,
+    at: number,
+    wait: boolean,
+    globalHours?: WorkingHoursConfig,
+  ): Promise<TriggerOutcome> {
+    return comTrava(`gatilho:${trigger.id}`, () => this.runTriggerSemTrava(trigger, at, wait, globalHours));
+  }
+
+  private async runTriggerSemTrava(
     trigger: TriggerEntry,
     at: number,
     wait: boolean,
@@ -375,9 +391,13 @@ export class Scheduler {
 
     const nextDueAt = vencimento(trigger.config, at, at, globalHours);
     try {
-      const fired = await this.fire(trigger, at, wait);
+      const { configuracao, ...fired } = await this.fire(trigger, at, wait);
+      // O que a batida não conseguiu ler fica visível no gatilho; batida limpa apaga o erro.
+      if (configuracao === undefined) await limparErro(this.db, trigger.id);
+      else await registrarErro(this.db, trigger.id, { em: at, tipo: "configuracao", texto: configuracao });
       return { ...base, ...fired, status: "fired", nextDueAt };
     } catch (err) {
+      await registrarErro(this.db, trigger.id, { em: at, tipo: "batida", texto: message(err) }).catch(() => undefined);
       return { ...base, status: "failed", detail: message(err), nextDueAt };
     }
   }
@@ -386,7 +406,7 @@ export class Scheduler {
     trigger: TriggerEntry,
     at: number,
     wait: boolean,
-  ): Promise<{ events: number; runs: string[]; detail?: string }> {
+  ): Promise<{ events: number; runs: string[]; detail?: string; configuracao?: string }> {
     const config = trigger.config;
 
     switch (config.kind) {
@@ -415,21 +435,33 @@ export class Scheduler {
           throw new Error("gatilho sem dono e sem GITHUB_OWNER, a varredura precisa da org");
         }
 
+        const filters = config.filters;
         const varredura = await this.poll(owner, new RegExp(config.repoMatch), {
           includeDrafts: config.includeDrafts,
+          // Filtros e autoria são decididos na varredura, pelo mesmo exame da
+          // prévia. A conta do token só é lida quando algum deles fala nela.
+          authorship: config.authorship,
+          triggerId: trigger.id,
+          ...(filters === undefined ? {} : { filters }),
+          ...(precisaDaConta(filters, config.authorship) ? { viewer: await this.viewer() } : {}),
         });
         // A varredura devolve a janela inteira, e o que este gatilho já rodou
-        // sai antes do filtro de autoria, senão o mesmo descarte seria contado
-        // de novo a cada batida em que o pull request continua na janela.
+        // não abre run de novo.
         const pendentes = await this.notYetRan(trigger.id, varredura.eventIds);
-        const { eventIds, detail } = await this.byAuthorship(config.authorship, pendentes);
-        const runs = await this.runsFor(trigger, eventIds, at, wait);
-        const created = varredura.created;
+        const runs = await this.runsFor(trigger, pendentes, at, wait);
+        const descartes = varredura.descartes ?? [];
+        await registrarDescartes(this.db, trigger.id, descartes, at);
         // A contagem de eventos continua sendo o que a varredura trouxe, e não
         // o que sobrou do filtro: quem lê a batida precisa ver que o pull
         // request chegou e foi descartado aqui, senão a única leitura possível
         // seria a de que a varredura não achou nada.
-        return { events: created.length, runs, detail };
+        const configuracao = varredura.configuracao ?? [];
+        return {
+          events: varredura.created.length,
+          runs,
+          detail: detailDaBatida(descartes),
+          ...(configuracao.length === 0 ? {} : { configuracao: configuracao.join("; ") }),
+        };
       }
 
       case "mcp-poll": {
@@ -510,63 +542,14 @@ export class Scheduler {
     }
   }
 
-  /**
-   * Só os eventos cuja autoria este gatilho quer acordar.
-   *
-   * Mora no agendador e não na varredura porque o evento é de todo mundo: dois
-   * gatilhos apontados para a mesma organização, um para os pull requests de
-   * quem usa o Locum e outro para os do time, leem a mesma tabela. Filtrar na
-   * ingestão faria o primeiro a varrer decidir o que o segundo enxerga.
-   *
-   * A conta do token é lida uma vez por batida, e não por evento, porque ela
-   * não muda no meio de uma varredura.
-   */
-  private async byAuthorship(
-    wanted: Authorship,
-    eventIds: string[],
-  ): Promise<{ eventIds: string[]; detail?: string }> {
-    if (wanted === "any" || eventIds.length === 0) return { eventIds };
-
-    const viewer = await this.viewer();
-    if (viewer === null) {
-      // Recusar a batida inteira, e não deixar passar: o gatilho de `mine`
-      // rodaria em cima de pull request do time e o de `others` no seu, que é
-      // o contrário do que a pessoa cadastrou. O erro sobe para o `detail` do
-      // gatilho, onde a tela mostra o que fazer.
-      throw new Error(
-        "gatilho filtra por autoria e a conta do GitHub nunca foi conferida, confira o token na configuração",
-      );
-    }
-
-    const escolhidos: string[] = [];
-    let descartados = 0;
-    for (const eventId of eventIds) {
-      if (matchesAuthorship(wanted, await this.authorOf(eventId), viewer)) {
-        escolhidos.push(eventId);
-      } else {
-        descartados += 1;
-      }
-    }
-
-    return {
-      eventIds: escolhidos,
-      detail:
-        descartados === 0
-          ? undefined
-          : `${descartados} evento(s) fora do filtro de autoria "${wanted}"`,
-    };
+  /** O último erro do gatilho, de configuração ou de batida, ou nulo. */
+  async lastError(triggerId: string): Promise<ErroDoGatilho | null> {
+    return lerErro(this.db, triggerId);
   }
 
-  /** Quem abriu o pull request, do jeito que a varredura gravou no evento. */
-  private async authorOf(eventId: string): Promise<string | undefined> {
-    const [row] = await this.db
-      .select({ payload: schema.events.payload })
-      .from(schema.events)
-      .where(eq(schema.events.id, eventId))
-      .limit(1);
-
-    const author = (row?.payload as { author?: unknown } | undefined)?.author;
-    return typeof author === "string" ? author : undefined;
+  /** Os últimos pull requests que este gatilho viu e deixou passar, com o motivo. */
+  async descartes(triggerId: string): Promise<DescarteGuardado[]> {
+    return lerDescartes(this.db, triggerId);
   }
 
   /**
@@ -752,6 +735,17 @@ function slackInboxDetail(
   for (const falha of caixa.errors) partes.push(`${falha.kind}: ${falha.error}`);
   for (const d of caixa.descartes ?? []) partes.push(`PR ${d.pr} sem review: ${d.motivo}`);
   return partes.length === 0 ? undefined : partes.join("; ");
+}
+
+/** Quantos descartes o detail da batida nomeia; o resto vira contagem. */
+const NOMEADOS_NO_DETAIL = 3;
+
+/** A frase da batida sobre o que ficou de fora. */
+function detailDaBatida(descartes: Descarte[]): string | undefined {
+  if (descartes.length === 0) return undefined;
+  const nomeados = descartes.slice(0, NOMEADOS_NO_DETAIL).map((d) => `${d.pr}: ${d.motivo}`);
+  const resto = descartes.length - nomeados.length;
+  return `${descartes.length} PR(s) descartado(s) (${nomeados.join("; ")}${resto > 0 ? `; e mais ${resto}` : ""})`;
 }
 
 /** Cadencia em milissegundos. Nulo e gatilho que nao anda pelo relogio. */

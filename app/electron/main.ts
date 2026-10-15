@@ -65,6 +65,8 @@ if (pastaDaFumaca) {
   const pasta = join(pastaDaFumaca.dir, "claude");
   escreverSessoesDeExemplo(pasta, join(pastaDaFumaca.dir, "projeto"), process.pid);
   process.env.LOCUM_CLAUDE_DIR = pasta;
+  // Pelo mesmo motivo, a prévia do gatilho do GitHub lê um GitHub de exemplo.
+  process.env.LOCUM_GITHUB_FIXTURE = "1";
 }
 
 // Antes de qualquer espera: com o app fechado, o macOS sobe o processo para
@@ -3038,7 +3040,7 @@ async function checkTrackerIssue(): Promise<string> {
  */
 async function checkAuthorship(): Promise<string> {
   const { db, schema } = await import("../src/db/index.js");
-  const { and, eq, inArray } = await import("drizzle-orm");
+  const { and, eq, inArray, like } = await import("drizzle-orm");
   const { agentService } = await import("../src/services/agent-service.js");
   const { TriggerService } = await import("../src/services/trigger-service.js");
   const { ExecutionService } = await import("../src/services/execution-service.js");
@@ -3048,29 +3050,19 @@ async function checkAuthorship(): Promise<string> {
   const [agent] = await agentService.list();
   if (agent === undefined) throw new Error("nenhum agent cadastrado para filtrar por autoria");
 
-  // Dono, repositório e logins sorteados pelo mesmo motivo do `checkWatched`:
-  // um padrão que casasse com repositório de verdade deixaria para trás, caso a
-  // limpeza falhasse, um gatilho apontado para trabalho real.
+  // O dono é sorteado pelo mesmo motivo do `checkWatched`: um dono que casasse
+  // com organização de verdade deixaria para trás, caso a limpeza falhasse, um
+  // gatilho apontado para trabalho real. A varredura lê o GitHub de exemplo,
+  // cujos autores são ana, bia, caio e duda, e a conta do token é a ana.
   const dono = `locum-smoke-${randomUUID().slice(0, 8)}`;
-  const repo = `^locum-smoke-${randomUUID().slice(0, 8)}$`;
-  const eu = `locum-smoke-eu-${randomUUID().slice(0, 8)}`;
-  const outra = `locum-smoke-outra-${randomUUID().slice(0, 8)}`;
+  const eu = "ana";
   const cadencia = 7;
 
-  const meu = { eventId: `smoke-event-${randomUUID()}`, author: eu, pull: 1 };
-  const alheio = { eventId: `smoke-event-${randomUUID()}`, author: outra, pull: 2 };
-
-  for (const alvo of [meu, alheio]) {
-    await db.insert(schema.events).values({
-      id: alvo.eventId,
-      source: "github",
-      externalId: `pr:${dono}/${repo}#${alvo.pull}:sha:${randomUUID().slice(0, 7)}`,
-      payload: { owner: dono, repoName: repo, pull: alvo.pull, author: alvo.author },
-    });
-  }
+  const { scanOpenPullRequests } = await import("../src/sources/github.js");
+  const { clienteDeExemplo } = await import("../src/fixtures/github-previa.js");
 
   const triggerService = new TriggerService(db);
-  const config = { kind: "poll" as const, source: "github", owner: dono, repoMatch: repo, everyMinutes: cadencia };
+  const config = { kind: "poll" as const, source: "github", owner: dono, repoMatch: ".*", everyMinutes: cadencia };
   const doMeu = await triggerService.set(
     agent.id,
     { ...config, authorship: "mine" },
@@ -3102,10 +3094,14 @@ async function checkAuthorship(): Promise<string> {
     }
   })(db);
 
-  const varrer = async (owner: string) => {
+  // A varredura de verdade, com o filtro de autoria dentro dela, contra o GitHub de exemplo.
+  const varrer = async (
+    owner: string,
+    repoFilter: RegExp,
+    options?: Parameters<typeof scanOpenPullRequests>[2],
+  ) => {
     if (owner !== dono) throw new Error(`a varredura visitou ${owner}, que nao e o dono plantado`);
-    const ids = [meu.eventId, alheio.eventId];
-    return { eventIds: ids, created: ids };
+    return scanOpenPullRequests(owner, repoFilter, { ...options, client: clienteDeExemplo(owner), db });
   };
   const naoConferir = async () => ({
     checked: 0,
@@ -3126,6 +3122,12 @@ async function checkAuthorship(): Promise<string> {
     async () => eu,
   );
 
+  const autorDe = async (eventId: string | null): Promise<string | undefined> => {
+    if (eventId === null) return undefined;
+    const [evento] = await db.select().from(schema.events).where(eq(schema.events.id, eventId));
+    return (evento?.payload as { author?: string } | undefined)?.author;
+  };
+
   try {
     const batida = await agendador.tick({ reason: "timer" });
     const achar = (triggerId: string) => {
@@ -3134,30 +3136,25 @@ async function checkAuthorship(): Promise<string> {
       return saida;
     };
 
-    for (const [gatilho, esperado, rotulo] of [
-      [doMeu.id, meu.eventId, "mine"],
-      [doTime.id, alheio.eventId, "others"],
+    for (const [gatilho, rotulo, quantos] of [
+      [doMeu.id, "mine", 1],
+      [doTime.id, "others", 3],
     ] as const) {
       const saida = achar(gatilho);
       if (saida.status !== "fired") {
         throw new Error(`o gatilho de ${rotulo} respondeu ${saida.status}: ${saida.detail ?? ""}`);
       }
-      // A varredura trouxe os dois, e é isso que o contador de eventos diz: o
-      // que o filtro corta aparece na diferença entre eventos e execuções.
-      if (saida.events !== 2) {
-        throw new Error(`o gatilho de ${rotulo} contou ${saida.events} evento(s), e nao dois`);
-      }
       const doGatilho = pedidos.filter((p) => p.triggerId === gatilho);
-      if (doGatilho.length !== 1) {
-        throw new Error(
-          `o gatilho de ${rotulo} quis executar ${doGatilho.length} evento(s), e nao um`,
-        );
+      if (doGatilho.length !== quantos) {
+        throw new Error(`o gatilho de ${rotulo} quis executar ${doGatilho.length} evento(s), e nao ${quantos}`);
       }
-      if (doGatilho[0]?.eventId !== esperado) {
-        throw new Error(`o gatilho de ${rotulo} acordou com o evento errado`);
+      for (const pedido of doGatilho) {
+        const meuPr = (await autorDe(pedido.eventId)) === eu;
+        if (meuPr !== (rotulo === "mine")) throw new Error(`o gatilho de ${rotulo} acordou com o pull request de quem nao devia`);
       }
-      if (saida.detail === undefined) {
-        throw new Error(`o gatilho de ${rotulo} nao contou o evento que descartou`);
+      // O que o filtro corta aparece nos descartes da batida, com o motivo.
+      if (saida.detail === undefined || !saida.detail.includes("autoria")) {
+        throw new Error(`o gatilho de ${rotulo} nao contou o pull request que descartou: ${saida.detail ?? ""}`);
       }
     }
 
@@ -3192,9 +3189,8 @@ async function checkAuthorship(): Promise<string> {
     await db
       .delete(schema.cursors)
       .where(and(eq(schema.cursors.source, "scheduler"), inArray(schema.cursors.key, meus)));
-    await db
-      .delete(schema.events)
-      .where(inArray(schema.events.id, [meu.eventId, alheio.eventId]));
+    await db.delete(schema.cursors).where(and(eq(schema.cursors.source, "github"), like(schema.cursors.key, `prs:${dono}%`)));
+    await db.delete(schema.events).where(like(schema.events.externalId, `pr:${dono}/%`));
   }
 }
 
@@ -4283,13 +4279,16 @@ async function checkSlackWindow(window: BrowserWindow): Promise<string> {
 }
 
 /**
- * Confere a secao dos repositorios observados, sem varrer nada.
+ * Confere o caminho do gatilho do GitHub pela tela, sem varrer nada.
  *
- * O caminho inteiro da story cabe dentro da maquina: cadastrar pela tela,
- * conferir que o gatilho nasceu parado, liga-lo e ver o agendador calcular a
- * proxima batida, e remover. Nenhum desses passos fala com o GitHub, porque
- * quem falaria e a batida, e batida nenhuma acontece aqui: o `tick` nao e
- * chamado, e o gatilho e removido antes de o smoke sair.
+ * O gatilho se desenha num lugar so, o editor da automacao: o resumo do agent
+ * so le e leva para la. O exame cobre o caminho inteiro dentro da maquina:
+ * pelo resumo vazio, abrir o editor com um gatilho novo, preencher, salvar e
+ * ver o gatilho nascer parado com a autoria padrao nova, pedir a previa (que
+ * responde o GitHub de exemplo, sem rede), ligar e ver o agendador calcular a
+ * proxima batida e voltar do resumo para o editor. Nenhum passo fala com o
+ * GitHub, porque quem falaria e a batida, e o `tick` nao e chamado: o gatilho
+ * e removido antes de o smoke sair.
  *
  * O dono e o padrao de repositorio sao sorteados de proposito. O smoke roda no
  * banco de quem desenvolve, e um padrao que casasse com repositorio de verdade
@@ -4303,93 +4302,109 @@ async function checkWatched(window: BrowserWindow): Promise<string> {
 
   const [agent] = await agentService.list();
   if (agent === undefined) throw new Error("nenhum agent cadastrado para observar repositorio");
-  // Repositório observado é do agent, e mora no detalhe dele.
+  // O resumo do que o agent observa mora no detalhe dele.
   await irPara(window, "agents", agent.id);
 
   const dono = `locum-smoke-${randomUUID().slice(0, 8)}`;
-  const repo = `^locum-smoke-${randomUUID().slice(0, 8)}$`;
+  const nome = `locum-smoke-${randomUUID().slice(0, 8)}`;
   const cadencia = 7;
-  // Cadastrar pela tela com o filtro ligado, e não com o padrão: o que decide
-  // se o agent acorda é a autoria gravada, e um formulário que a perdesse no
-  // caminho faria a pessoa cadastrar "meus" e receber os do time inteiro.
-  const autoria = "mine";
+  const tetoDeLinhas = 300;
   const antes = (await triggerService.list()).map((gatilho) => gatilho.id);
 
-  // O detalhe monta o formulário depois de ler o agent e os gatilhos, e
-  // preencher antes disso falhava de vez em quando, sem nada errado na tela.
-  await esperarProbe<boolean>(
-    window,
-    "formulario de observar",
-    `document.querySelector("[data-locum-observar-salvar]") === null ? null : true`,
-  );
-
-  const preencheu = await window.webContents.executeJavaScript(
-    `(() => {
-      const setter = Object.getOwnPropertyDescriptor(
-        window.HTMLInputElement.prototype,
-        "value",
-      ).set;
-      const digitar = (seletor, valor) => {
-        const campo = document.querySelector(seletor);
+  const digitar = (seletor: string, valor: string): Promise<boolean> =>
+    window.webContents.executeJavaScript(
+      `(() => {
+        const campo = document.querySelector(${JSON.stringify(seletor)});
         if (campo === null) return false;
-        setter.call(campo, valor);
+        Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set.call(campo, ${JSON.stringify(valor)});
         campo.dispatchEvent(new Event("input", { bubbles: true }));
         return true;
-      };
-      const escolher = (seletor, valor) => {
-        const campo = document.querySelector(seletor);
-        if (campo === null) return false;
-        campo.value = valor;
-        campo.dispatchEvent(new Event("change", { bubbles: true }));
+      })()`,
+    );
+  const clicar = (seletor: string): Promise<boolean> =>
+    window.webContents.executeJavaScript(
+      `(() => {
+        const botao = document.querySelector(${JSON.stringify(seletor)});
+        if (botao === null || botao.disabled) return false;
+        botao.click();
         return true;
+      })()`,
+    );
+
+  // O resumo le o agente e os gatilhos antes de decidir entre lista e vazio.
+  await esperarProbe<boolean>(
+    window,
+    "resumo vazio de observados",
+    `document.querySelector("[data-locum-observados-criar]") === null ? null : true`,
+  );
+  if (!(await clicar("[data-locum-observados-criar]"))) throw new Error("a tela nao ofereceu criar o gatilho do GitHub");
+
+  // O editor abre com o gatilho novo ja escolhido, e o painel dele e o editor do GitHub.
+  // Campo por campo, para a falha dizer qual deles a tela nao ofereceu.
+  for (const [seletor, valor] of [
+    ["[data-locum-gh-dono]", dono],
+    ["[data-locum-gh-linhas]", String(tetoDeLinhas)],
+    ["[data-locum-minutos]", String(cadencia)],
+  ] as const) {
+    // O editor remonta o painel uma vez ao escolher o gatilho novo, entao o
+    // campo pode sumir por um instante entre achar e digitar.
+    await esperarDoServico(`campo ${seletor}`, async () => ((await digitar(seletor, valor)) ? true : undefined), 5_000);
+  }
+
+  // A previa responde o GitHub de exemplo, e por isso vem antes do nome do
+  // repositorio: com a organizacao inteira ela enxerga o exemplo todo. Entra o
+  // que cabe no teto, e o de 345 linhas fica de fora com o motivo.
+  if (!(await clicar("[data-locum-previa-ver]"))) throw new Error("o editor nao ofereceu a previa");
+  const previa = await esperarProbe<{ entram: number; fora: number; motivo: string }>(
+    window,
+    "previa do gatilho",
+    `(() => {
+      if (document.querySelector('[data-locum-previa="pronta"]') === null) return null;
+      const linhas = [...document.querySelectorAll('[data-locum-previa] [data-locum-pr]')];
+      const fora = linhas.filter((l) => l.dataset.locumPrEntra === "nao");
+      return {
+        entram: linhas.filter((l) => l.dataset.locumPrEntra === "sim").length,
+        fora: fora.length,
+        motivo: fora.map((l) => l.textContent).join("|"),
       };
-      // Dentro do agent a lista de agents não aparece: o agent já está escolhido.
-      if (document.querySelector("[data-locum-observar-agent]") !== null) return false;
-      if (!escolher("[data-locum-observar-autoria]", ${JSON.stringify(autoria)})) return false;
-      if (!digitar("[data-locum-observar-dono]", ${JSON.stringify(dono)})) return false;
-      if (!digitar("[data-locum-observar-repo]", ${JSON.stringify(repo)})) return false;
-      if (!digitar("[data-locum-observar-cadencia]", ${JSON.stringify(String(cadencia))})) {
-        return false;
-      }
-      const botao = document.querySelector("[data-locum-observar-salvar]");
-      if (botao === null || botao.disabled) return false;
-      botao.click();
-      return true;
     })()`,
   );
-  if (preencheu !== true) throw new Error("a tela nao ofereceu o formulario de observar");
+  if (previa.entram === 0 || previa.fora === 0) {
+    throw new Error(`a previa mostrou ${previa.entram} entrando e ${previa.fora} de fora, e o exemplo tem os dois`);
+  }
+  if (!previa.motivo.includes(`345 linhas, teto ${tetoDeLinhas}`)) {
+    throw new Error(`a previa nao disse o motivo do teto de linhas: ${previa.motivo}`);
+  }
+
+  // So agora o nome sorteado, que nao casa com nada: o gatilho salvo nao aponta para trabalho real.
+  if (!(await digitar('[data-locum-campo="gh-repo"]', nome))) throw new Error("o editor nao ofereceu o campo de repositorios");
+  if (!(await clicar("[data-locum-automacao-salvar]"))) throw new Error("o editor nao deixou salvar a automacao");
 
   // O identificador so existe depois de o servico gravar, entao ele e
   // descoberto por diferenca em vez de vir da tela: assim o exame nao depende
   // de o marcador estar certo para achar o que tem que limpar depois.
   const criado = await esperarDoServico(
-    "gatilho cadastrado pela tela",
+    "gatilho cadastrado pelo editor",
     async () => (await triggerService.list()).find((gatilho) => !antes.includes(gatilho.id)),
   );
 
   try {
-    // A recusa da ponte vira mensagem daqui antes de virar espera estourada:
-    // "o marcador nao ficou pronto" nao diz por que a linha nao apareceu.
-    const recusa = (await window.webContents.executeJavaScript(
-      `document.querySelector("[data-locum-observados-erro]")
-        ?.dataset.locumObservadosErro ?? null`,
-    )) as string | null;
-    if (recusa !== null) throw new Error(`a secao de observados recusou: ${recusa}`);
-
     if (criado.enabled) throw new Error("o gatilho cadastrado pela tela nasceu habilitado");
     if (criado.config.kind !== "poll") {
       throw new Error(`a tela cadastrou um gatilho do tipo ${criado.config.kind}`);
     }
-    if (criado.config.owner !== dono || criado.config.repoMatch !== repo) {
-      throw new Error(
-        `a tela gravou ${criado.config.owner}/${criado.config.repoMatch} e nao ${dono}/${repo}`,
-      );
+    if (criado.config.owner !== dono || criado.config.repoMatch !== `^${nome}$`) {
+      throw new Error(`a tela gravou ${criado.config.owner}/${criado.config.repoMatch} e nao ${dono}/^${nome}$`);
     }
-    if (criado.config.authorship !== autoria) {
-      throw new Error(`a tela gravou a autoria ${criado.config.authorship} e nao ${autoria}`);
+    // O padrao novo e um so: o review de pull request proprio ja e bloqueado.
+    if (criado.config.authorship !== "others") {
+      throw new Error(`a tela gravou a autoria ${criado.config.authorship} e nao others`);
     }
     if (criado.config.everyMinutes !== cadencia) {
       throw new Error(`a cadencia gravada foi ${criado.config.everyMinutes} e nao ${cadencia}`);
+    }
+    if (criado.config.filters?.maxChangedLines !== tetoDeLinhas) {
+      throw new Error(`o teto de linhas gravado foi ${criado.config.filters?.maxChangedLines} e nao ${tetoDeLinhas}`);
     }
 
     const parado = (await scheduler.schedule()).find((s) => s.triggerId === criado.id);
@@ -4400,63 +4415,69 @@ async function checkWatched(window: BrowserWindow): Promise<string> {
       throw new Error(`o gatilho parado disse que bate em ${parado.nextDueAt}`);
     }
 
-    const naTela = await esperarProbe<{
-      habilitado: string;
-      alvo: string;
-      autoria: string;
-      proxima: string;
-    }>(
-      window,
-      "gatilho na tela",
-      `(() => {
-        const linha = document.querySelector('[data-locum-gatilho="${criado.id}"]');
-        if (linha === null) return null;
-        return {
-          habilitado: linha.dataset.locumGatilhoHabilitado,
-          alvo: linha.dataset.locumGatilhoAlvo,
-          autoria: linha.dataset.locumGatilhoAutoria,
-          proxima: linha.dataset.locumGatilhoProxima,
-        };
-      })()`,
-    );
-    if (naTela.habilitado !== "nao") throw new Error("a tela mostrou o gatilho novo como ligado");
-    if (naTela.alvo !== `${dono}/${repo}`) {
-      throw new Error(`a tela mostrou o alvo ${naTela.alvo} e o cadastro diz ${dono}/${repo}`);
+    // De volta ao resumo do agent: a linha le o cadastro, e e so leitura.
+    const abrirResumo = async (): Promise<void> => {
+      await irPara(window, "automations");
+      await irPara(window, "agents", agent.id);
+    };
+    await abrirResumo();
+    const lerLinha = (): Promise<{ habilitado: string; alvo: string; autoria: string; filtros: string; proxima: string } | null> =>
+      window.webContents.executeJavaScript(
+        `(() => {
+          const linha = document.querySelector('[data-locum-gatilho="${criado.id}"]');
+          if (linha === null) return null;
+          return {
+            habilitado: linha.dataset.locumGatilhoHabilitado,
+            alvo: linha.dataset.locumGatilhoAlvo,
+            autoria: linha.dataset.locumGatilhoAutoria,
+            filtros: linha.dataset.locumGatilhoFiltros,
+            proxima: linha.dataset.locumGatilhoProxima,
+          };
+        })()`,
+      );
+    const naTela = await esperarDoServico("gatilho no resumo", async () => (await lerLinha()) ?? undefined);
+    if (naTela.habilitado !== "nao") throw new Error("o resumo mostrou o gatilho novo como ligado");
+    if (naTela.alvo !== `${dono}/^${nome}$`) {
+      throw new Error(`o resumo mostrou o alvo ${naTela.alvo} e o cadastro diz ${dono}/^${nome}$`);
     }
-    if (naTela.autoria !== autoria) {
-      throw new Error(`a tela mostrou a autoria ${naTela.autoria} e o cadastro diz ${autoria}`);
+    if (naTela.autoria !== "others" || naTela.filtros !== "1") {
+      throw new Error(`o resumo mostrou autoria ${naTela.autoria} e ${naTela.filtros} filtro(s)`);
     }
     if (naTela.proxima !== "") {
-      throw new Error(`a tela anunciou a batida ${naTela.proxima} de um gatilho parado`);
+      throw new Error(`o resumo anunciou a batida ${naTela.proxima} de um gatilho parado`);
     }
+    // A recusa da ponte vira mensagem daqui antes de virar espera estourada.
+    const recusa = (await window.webContents.executeJavaScript(
+      `document.querySelector("[data-locum-observados-erro]")?.dataset.locumObservadosErro ?? null`,
+    )) as string | null;
+    if (recusa !== null) throw new Error(`o resumo de observados recusou: ${recusa}`);
 
-    // O clique que a story cobra: ligado, ele aparece no agendador com a
-    // proxima batida calculada. Ligar nao varre; quem varreria e o `tick`, que
-    // este exame nao chama.
+    // O resumo e o caminho para o editor: o link abre a automacao com o gatilho escolhido.
+    const abrirNoEditor = async (): Promise<void> => {
+      if (!(await clicar(`[data-locum-gatilho-editar="${criado.id}"]`))) {
+        throw new Error("o resumo nao ofereceu editar na automacao");
+      }
+      const donoNoEditor = await esperarProbe<string>(
+        window,
+        "gatilho aberto no editor",
+        `document.querySelector("[data-locum-gh-dono]")?.value ?? null`,
+      );
+      if (donoNoEditor !== dono) throw new Error(`o editor abriu o dono ${donoNoEditor} e nao ${dono}`);
+    };
+    await abrirNoEditor();
+
+    // Ligar pelo editor nao varre; quem varreria e o `tick`, que este exame
+    // nao chama. O relogio e passado de fora para que as perguntas abaixo
+    // respondam sobre o mesmo instante: gatilho que nunca disparou esta
+    // vencido agora.
     const cliquei = Date.now();
-    const ligou = await window.webContents.executeJavaScript(
-      `(() => {
-        const botao = document.querySelector('[data-locum-gatilho-ligar="${criado.id}"]');
-        if (botao === null) return false;
-        botao.click();
-        return true;
-      })()`,
+    await esperarDoServico("botao de ligar do editor", async () => ((await clicar("[data-locum-automacao-ligar]")) ? true : undefined), 5_000);
+    await esperarDoServico("gatilho ligado pelo editor", async () =>
+      (await triggerService.list()).find((g) => g.id === criado.id && g.enabled),
     );
-    if (ligou !== true) throw new Error("a tela nao ofereceu botao de ligar o gatilho");
-
-    await esperarProbe<true>(
-      window,
-      "gatilho ligado pela tela",
-      `document.querySelector('[data-locum-gatilho="${criado.id}"]')
-        ?.dataset.locumGatilhoHabilitado === "sim" ? true : null`,
-    );
-
-    // O relogio e passado de fora para que as duas perguntas abaixo respondam
-    // sobre o mesmo instante: gatilho que nunca disparou esta vencido agora, e
-    // com dois `Date.now()` a comparacao viraria uma corrida de milissegundos.
     const agora = Date.now();
     const ligado = (await scheduler.schedule(agora)).find((s) => s.triggerId === criado.id);
-    if (ligado?.enabled !== true) throw new Error("o gatilho ligado na tela continuou parado");
+    if (ligado?.enabled !== true) throw new Error("o gatilho ligado continuou parado");
     if (ligado.nextDueAt === null) {
       throw new Error("o agendador nao calculou a proxima batida do gatilho ligado");
     }
@@ -4473,51 +4494,34 @@ async function checkWatched(window: BrowserWindow): Promise<string> {
       throw new Error("a batida do gatilho novo ficou de fora da proxima batida do agendador");
     }
 
-    const naTelaLigado = await esperarProbe<string>(
-      window,
-      "batida do gatilho na tela",
-      `(() => {
-        const linha = document.querySelector('[data-locum-gatilho="${criado.id}"]');
-        const proxima = linha?.dataset.locumGatilhoProxima;
-        return proxima === undefined || proxima === "" ? null : proxima;
-      })()`,
-    );
-    // A tela leu com o relogio dela, entao o que da para exigir e a janela: a
-    // batida anunciada caiu entre o clique de ligar e agora, que e o que
-    // "vencido" quer dizer. Igualdade exata aqui seria exigir que os dois lados
-    // tivessem lido o relogio no mesmo milissegundo.
-    const anunciada = Number(naTelaLigado);
+    // O resumo anuncia a batida: dentro da janela entre o clique e agora, que
+    // e o que "vencido" quer dizer. Igualdade exata exigiria que os dois lados
+    // lessem o relogio no mesmo milissegundo.
+    await abrirResumo();
+    const naTelaLigado = await esperarDoServico("gatilho ligado no resumo", async () => {
+      const linha = await lerLinha();
+      return linha?.habilitado === "sim" && linha.proxima !== "" ? linha : undefined;
+    });
+    const anunciada = Number(naTelaLigado.proxima);
     if (!Number.isFinite(anunciada) || anunciada < cliquei || anunciada > Date.now()) {
-      throw new Error(`a tela anunciou a batida ${naTelaLigado}, fora da janela do clique`);
+      throw new Error(`o resumo anunciou a batida ${naTelaLigado.proxima}, fora da janela do clique`);
     }
 
-    const removeu = await window.webContents.executeJavaScript(
-      `(() => {
-        const botao = document.querySelector('[data-locum-gatilho-remover="${criado.id}"]');
-        if (botao === null) return false;
-        botao.click();
-        return true;
-      })()`,
+    // Remover tambem e pelo editor: tira o no, salva, e o cadastro perde o gatilho.
+    await abrirNoEditor();
+    await esperarDoServico("botao de remover do painel", async () => ((await clicar("[data-locum-painel-remover]")) ? true : undefined), 5_000);
+    await esperarDoServico("botao de salvar depois de remover", async () => ((await clicar("[data-locum-automacao-salvar]")) ? true : undefined), 5_000);
+    await esperarDoServico("gatilho removido pelo editor", async () =>
+      (await triggerService.list()).some((g) => g.id === criado.id) ? undefined : true,
     );
-    if (removeu !== true) throw new Error("a tela nao ofereceu botao de remover o gatilho");
-
-    await esperarProbe<true>(
-      window,
-      "gatilho removido pela tela",
-      `document.querySelector('[data-locum-gatilho="${criado.id}"]') === null ? true : null`,
-    );
-    if ((await triggerService.list()).some((gatilho) => gatilho.id === criado.id)) {
-      throw new Error("o gatilho sobreviveu ao remover da tela");
-    }
 
     return t("smoke.watched", {
-      target: `${dono}/${repo}`,
+      target: `${dono}/${nome}`,
       next: new Date(ligado.nextDueAt).toISOString(),
     });
   } finally {
-    // O clique de remover pode nao ter chegado, e um gatilho de varredura
-    // habilitado sobrevivendo ao smoke faria a proxima subida do app sair
-    // varrendo uma organizacao que nao existe.
+    // Um gatilho de varredura habilitado sobrevivendo ao smoke faria a proxima
+    // subida do app sair varrendo uma organizacao que nao existe.
     await triggerService.remove(criado.id);
   }
 }
@@ -6091,14 +6095,73 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
   writeFileSync(join(destino, "library-novo-tools-rolado.png"), (await janela.webContents.capturePage()).toPNG());
 
   // O que vigia e quanto gasta ficam abaixo dos passos, fora da primeira foto.
+  // Primeiro sem gatilho, com o convite para criar, e depois com um gatilho do
+  // GitHub que tem filtros e descartes de exemplo, que e o que o editor mostra.
   if (primeiroAgent) {
-    await irPara(janela, "agents", primeiroAgent);
-    await new Promise((resolve) => setTimeout(resolve, 1200));
-    await janela.webContents.executeJavaScript(
-      `(document.querySelector("[data-locum-probe=observados]")?.scrollIntoView({ block: "start" }), null)`,
-    );
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    writeFileSync(join(destino, "agents-vigia.png"), (await janela.webContents.capturePage()).toPNG());
+    const rolarParaObservados = async (arquivo: string): Promise<void> => {
+      // Sai e volta: o resumo le o cadastro ao montar.
+      await irPara(janela, "automations");
+      await irPara(janela, "agents", primeiroAgent);
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      await janela.webContents.executeJavaScript(
+        `(document.querySelector("[data-locum-probe=observados]")?.scrollIntoView({ block: "start" }), null)`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      writeFileSync(join(destino, arquivo), (await janela.webContents.capturePage()).toPNG());
+    };
+    await rolarParaObservados("agents-vigia-vazio.png");
+
+    const { triggerService } = await import("../src/services/trigger-service.js");
+    const { registrarDescartes } = await import("../src/triggers/descartes.js");
+    const { db } = await import("../src/db/index.js");
+    const gatilho = await triggerService.set(primeiroAgent, {
+      kind: "poll",
+      source: "github",
+      owner: "acme",
+      repoMatch: "^(checkout|contratos|portal)$",
+      authorship: "others",
+      includeDrafts: false,
+      everyMinutes: 15,
+      filters: {
+        authors: { exclude: ["dependabot[bot]", "fantasma-bot"] },
+        labels: { include: ["bug", "feature"] },
+        baseBranches: ["main", "release/*"],
+        paths: { include: ["src/**"], exclude: ["**/*.md"] },
+        maxChangedLines: 300,
+      },
+    });
+    try {
+      await registrarDescartes(
+        db,
+        gatilho.id,
+        [
+          { pr: "acme/portal#377", titulo: "Atualiza as dependências", autor: "dependabot[bot]", motivo: "autor dependabot[bot] na lista de exclusão" },
+          { pr: "acme/checkout#391", titulo: "Novo painel de cobrança (em andamento)", autor: "ana", motivo: "draft" },
+          { pr: "acme/contratos#366", titulo: "Reescreve o cálculo de prêmio", autor: "bia", motivo: "412 linhas, teto 300" },
+        ],
+        Date.now(),
+      );
+      await rolarParaObservados("agents-vigia.png");
+
+      await irPara(janela, "automations", `${primeiroAgent}/gatilho/${gatilho.id}`);
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      writeFileSync(join(destino, "gatilho-github.png"), (await janela.webContents.capturePage()).toPNG());
+
+      await janela.webContents.executeJavaScript(`(document.querySelector("[data-locum-previa-ver]")?.click(), null)`);
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+      await janela.webContents.executeJavaScript(
+        `(document.querySelector("[data-locum-previa]")?.scrollIntoView({ block: "start" }), null)`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      writeFileSync(join(destino, "gatilho-github-previa.png"), (await janela.webContents.capturePage()).toPNG());
+      await janela.webContents.executeJavaScript(
+        `(document.querySelector("[data-locum-descartes]")?.scrollIntoView({ block: "end" }), null)`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      writeFileSync(join(destino, "gatilho-github-descartes.png"), (await janela.webContents.capturePage()).toPNG());
+    } finally {
+      await triggerService.remove(gatilho.id);
+    }
   }
 
   // O painel de ação do canvas só aparece com um nó escolhido: a captura
