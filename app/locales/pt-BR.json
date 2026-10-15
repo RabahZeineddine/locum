@@ -291,6 +291,8 @@
       },
       "run": "Executar",
       "refuse": "Recusar",
+      "argNull": "nulo",
+      "argEmpty": "vazio",
       "result": "Resultado",
       "expiredHint": "A conversa foi limpa ou interrompida, ou o app fechou, antes do clique. Nada foi executado."
     },
@@ -2542,7 +2544,7 @@
           "other": "Outras"
       },
       "counts": "{{read}} de leitura, {{write}} de escrita",
-      "writeNote": "Escrita ligada não roda sozinha: só passa pelo chat do agent, com a sua confirmação (chega na próxima versão). Numa automação, escrever é um nó de ação com aprovação.",
+      "writeNote": "Escrita ligada não roda sozinha: no chat do agent ela só roda depois do seu Executar. Numa automação, escrever é um nó de ação com aprovação.",
       "declareRead": "é leitura",
       "declareReadHint": "Marque quando o nome ou o servidor classificam a ferramenta como escrita, mas ela só lê. Ela passa a rodar sozinha."
     },

@@ -282,6 +282,8 @@
       },
       "run": "Run",
       "refuse": "Refuse",
+      "argNull": "null",
+      "argEmpty": "empty",
       "result": "Result",
       "expiredHint": "The conversation was cleared or interrupted, or the app closed, before the click. Nothing was run."
     },
@@ -2487,7 +2489,7 @@
           "other": "Other"
       },
       "counts": "{{read}} read, {{write}} write",
-      "writeNote": "A write that is on does not run by itself: it only goes through the agent's chat, with your confirmation (coming in the next version). In an automation, writing is an action node with approval.",
+      "writeNote": "A write that is on does not run by itself: in the agent's chat it only runs after you click Run. In an automation, writing is an action node with approval.",
       "declareRead": "is a read",
       "declareReadHint": "Tick it when the name or the server classifies the tool as a write but it only reads. It then runs by itself."
     },

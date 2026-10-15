@@ -95,7 +95,8 @@ export function Agents({ detalhe, navegar }: TelaProps) {
               className="cursor-pointer"
               data-locum-agents-aba={a}
               key={a}
-              onClick={() => (a === "agents" ? navegar("agents") : navegar("agents", ABA_TOOLSETS))}
+              // O clique sintético (a fumaça) não passa pelo onValueChange do Radix, que reage ao mouse down; só age se a aba mudou.
+              onClick={() => a !== aba && (a === "agents" ? navegar("agents") : navegar("agents", ABA_TOOLSETS))}
               value={a}
             >
               {t(`library.tabs.${a}`)}
@@ -183,8 +184,17 @@ function LinhaDoAgent({
 }) {
   const { t } = useTranslation();
   const nomesDasConexoes = agent.connections.map((id) => nomes.get(id) ?? id).join(", ");
+  // As marcas são só imagem: o que elas dizem vai no nome acessível da linha.
+  const rotuloDaLinha = [
+    agent.name,
+    agent.description,
+    agent.connections.length === 0 ? t("library.card.noConnections") : t("library.card.uses", { list: nomesDasConexoes }),
+    agent.writes > 0 ? t("library.card.writes", { count: agent.writes }) : "",
+  ]
+    .filter((p) => p !== "")
+    .join(". ");
   return (
-    <ListRow className="min-h-11" data-locum-agent-da-biblioteca={agent.id} onClick={abrir} rotulo={agent.name}>
+    <ListRow className="min-h-11" data-locum-agent-da-biblioteca={agent.id} onClick={abrir} rotulo={rotuloDaLinha}>
       <span aria-hidden className="flex size-7 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground">
         <Bot className="size-3.5" />
       </span>
@@ -195,15 +205,11 @@ function LinhaDoAgent({
         </span>
         {agent.description === "" ? null : <span className="truncate text-xs text-muted-foreground">{agent.description}</span>}
       </span>
-      <span className="hidden w-48 shrink-0 truncate text-xs text-muted-foreground lg:block" title={agent.model}>
+      <span className="hidden w-48 shrink-0 truncate text-xs text-muted-foreground lg:block">
         {rotuloDoModelo(agent.model)}
       </span>
       {/* O que ele alcança: as marcas das conexões, e os nomes por extenso para o leitor de tela e a dica. */}
-      <span
-        className="flex w-32 shrink-0 items-center gap-1 text-xs text-muted-foreground"
-        data-locum-agent-alcance={agent.id}
-        title={agent.connections.length === 0 ? t("library.card.noConnections") : t("library.card.uses", { list: nomesDasConexoes })}
-      >
+      <span className="flex w-32 shrink-0 items-center gap-1 text-xs text-muted-foreground" data-locum-agent-alcance={agent.id}>
         {agent.connections.slice(0, MARCAS_NA_LINHA).map((id) => (
           <MarcaLogo fonte={{ name: id, url: urls.get(id) }} key={id} tamanho="sm" />
         ))}
@@ -211,7 +217,7 @@ function LinhaDoAgent({
         {agent.connections.length === 0 ? <span>{t("library.row.noConnections")}</span> : null}
         <span className="sr-only">{nomesDasConexoes}</span>
       </span>
-      <span className="flex w-32 shrink-0 items-center justify-end" title={agent.writes > 0 ? t("library.card.writes", { count: agent.writes }) : undefined}>
+      <span className="flex w-32 shrink-0 items-center justify-end">
         {agent.writes > 0 ? <AvisoDeEscrita texto={t("library.row.writes", { count: agent.writes })} /> : null}
       </span>
       <span className="num w-28 shrink-0 text-right text-xs text-muted-foreground">{t("library.usedBy", { count: agent.usedBy.length })}</span>
@@ -394,7 +400,7 @@ function FormularioDoAgent({
 
         <TabsList className="flex-wrap">
           {SECOES.map((a) => (
-            <TabsTrigger className="cursor-pointer" data-locum-agent-aba={a} key={a} onClick={() => setSecao(a)} value={a}>
+            <TabsTrigger className="cursor-pointer" data-locum-agent-aba={a} key={a} onClick={() => a !== secao && setSecao(a)} value={a}>
               {t(`library.editor.tabs.${a}`)}
               {contagem[a] === undefined || contagem[a] === 0 ? null : (
                 <span className="num rounded-full bg-muted px-1.5 text-[11px] text-muted-foreground">{contagem[a]}</span>
@@ -449,7 +455,7 @@ function FormularioDoAgent({
         <Pergunta texto={t("library.editor.leads.model")} />
         <div className="grid gap-5 sm:grid-cols-2">
           <Campo rotulo={t("library.editor.model")}>
-            <SeletorDeModelo catalogo={catalogo} trocar={(v) => trocar("model", v)} valor={spec.model} />
+            <SeletorDeModelo catalogo={catalogo} larguraTotal trocar={(v) => trocar("model", v)} valor={spec.model} />
           </Campo>
           <Campo dica={t("library.editor.temperatureHint")} rotulo={t("library.editor.temperature")}>
             <div className="flex h-8 items-center gap-3">
@@ -775,6 +781,7 @@ function pontoDaConexao(c: Conexao): EstadoDoPonto {
   if (c.state === "off" || (c.state === "connected" && c.reason === "untested")) return "ocioso";
   if (c.state === "connected") return "ok";
   if (c.state === "attention") return "aviso";
+  if (c.state === "available" || c.state === "soon") return "ocioso";
   return "erro";
 }
 

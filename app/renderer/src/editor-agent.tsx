@@ -341,10 +341,13 @@ export function SeletorDeModelo({
   catalogo,
   trocar,
   valor,
+  larguraTotal = false,
 }: {
   catalogo: Catalogo | null;
   trocar: (v: string) => void;
   valor: string;
+  /** Ocupa a largura da coluna (Agents). Sem isto o seletor tem a largura do conteúdo, e o aviso fica ao lado. */
+  larguraTotal?: boolean;
 }) {
   const { t } = useTranslation();
 
@@ -370,7 +373,7 @@ export function SeletorDeModelo({
     <div className="flex flex-wrap items-center gap-2">
       <Select
         aria-label={t("agents.editor.step.model")}
-        className="w-full max-w-md"
+        className={cn("max-w-md", larguraTotal && "w-full")}
         onChange={(e) => trocar(e.target.value)}
         title={valor}
         value={valor}

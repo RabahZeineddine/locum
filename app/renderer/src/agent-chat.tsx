@@ -263,7 +263,8 @@ const PONTO_DO_CARTAO: Record<Cartao["estado"], Estado> = {
 function CartaoDeEscrita({ cartao, decidir, marca, nomeDaConexao }: { cartao: Cartao; decidir: (d: "executar" | "recusar") => void; marca: { name: string; url?: string | undefined }; nomeDaConexao: string | undefined }) {
   const { t } = useTranslation();
   const pendente = cartao.estado === "pendente";
-  const argumentos = argumentosLegiveis(cartao.argumentos);
+  // O vazio também é efeito da ação (apagar o responsável, mandar corpo em branco): aparece escrito.
+  const argumentos = argumentosLegiveis(cartao.argumentos, { rotulos: { nulo: t("agentChat.card.argNull"), vazio: t("agentChat.card.argEmpty") } });
   return (
     <div
       className={cn("flex w-full min-w-72 flex-col gap-2.5 rounded-lg border bg-background p-3", pendente ? "border-primary/50" : "border-border")}
@@ -318,7 +319,9 @@ function ResultadoDaFerramenta({ texto }: { texto: string }) {
   let linhas: ReturnType<typeof argumentosLegiveis> | null = null;
   try {
     const lido: unknown = JSON.parse(texto);
-    if (lido !== null && typeof lido === "object") linhas = argumentosLegiveis(lido);
+    // Resultado que fica vazio depois de tirar o ruído ({}, [], {"ok":null}) volta ao texto cru.
+    if (lido !== null && typeof lido === "object") linhas = argumentosLegiveis(lido, { omitirVazios: true });
+    if (linhas?.length === 0) linhas = null;
   } catch {
     linhas = null;
   }
