@@ -2,40 +2,46 @@ import * as React from "react"
 import { cn } from "cn"
 
 /**
- * Linha de lista densa, de 36 a 44px, no lugar do cartão grande. A linha vira
- * botão quando recebe `onClick`; o fio de baixo separa uma da outra.
+ * Linha de lista densa, de 36 a 44px, no lugar do cartão grande. Com `onClick`
+ * a linha inteira é clicável por um botão posicionado por baixo (`rotulo` dá o
+ * nome dele ao leitor de tela); botões e links dentro da linha continuam
+ * independentes, e o botão da linha mostra o anel de foco.
  */
 function ListRow({
   className,
   onClick,
+  rotulo,
   children,
   ...props
-}: Omit<React.ComponentProps<"div">, "onClick"> & { onClick?: () => void }) {
+}: Omit<React.ComponentProps<"div">, "onClick"> & { onClick?: () => void; rotulo?: string }) {
   const clicavel = onClick !== undefined
   return (
     <div
       data-slot="list-row"
       className={cn(
-        "flex min-h-10 items-center gap-3 border-b border-border px-3 py-1.5 text-[13px] last:border-b-0",
-        clicavel && "cursor-pointer outline-none transition-colors hover:bg-accent focus-visible:bg-accent",
-        className
+        "relative border-b border-border text-[13px] last:border-b-0",
+        clicavel && "transition-colors hover:bg-accent"
       )}
       onClick={onClick}
-      onKeyDown={
-        clicavel
-          ? (evento) => {
-              if (evento.target === evento.currentTarget && (evento.key === "Enter" || evento.key === " ")) {
-                evento.preventDefault()
-                onClick()
-              }
-            }
-          : undefined
-      }
-      role={clicavel ? "button" : undefined}
-      tabIndex={clicavel ? 0 : undefined}
       {...props}
     >
-      {children}
+      {clicavel ? (
+        <button
+          aria-label={rotulo}
+          className="absolute inset-0 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          tabIndex={0}
+          type="button"
+        />
+      ) : null}
+      <div
+        className={cn(
+          "flex min-h-10 items-center gap-3 px-3 py-1.5",
+          clicavel && "pointer-events-none relative [&_a]:pointer-events-auto [&_button]:pointer-events-auto",
+          className
+        )}
+      >
+        {children}
+      </div>
     </div>
   )
 }

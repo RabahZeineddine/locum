@@ -39,7 +39,7 @@ export function AtualizacaoNoRodape() {
   return (
     <div data-locum-probe="atualizacao-rodape" data-locum-rodape={rodape.tipo}>
       {rodape.tipo === "procurando" || rodape.tipo === "baixando" ? (
-        <div className="flex flex-col gap-1 px-3 text-[11px] text-muted-foreground/70">
+        <div className="flex flex-col gap-1 px-3 text-[11px] text-muted-foreground">
           <div
             aria-valuemax={100}
             aria-valuemin={0}

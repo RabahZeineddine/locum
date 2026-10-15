@@ -49,7 +49,7 @@ function Ponte({
 
   return (
     <div
-      className="px-3 pt-2 pb-1 text-muted-foreground/80 text-[11px]"
+      className="px-3 pt-2 pb-1 text-muted-foreground text-[11px]"
       data-agents={agents.join(",")}
       data-erro={erro?.message ?? ""}
       data-estado={estado}
@@ -163,7 +163,7 @@ export function Layout() {
         <div className="flex-1 space-y-3 overflow-y-auto px-2 pt-1">
           {SECOES.map(({ secao, titulo }) => (
             <div className="space-y-px" key={secao}>
-              <span className="text-muted-foreground/60 block px-2 pb-1 text-[11px] font-medium">{t(titulo)}</span>
+              <span className="text-muted-foreground block px-2 pb-1 text-[11px] font-medium">{t(titulo)}</span>
               {ROTAS_DA_BARRA.filter((r) => r.secao === secao).map(({ id, rotulo, icone: Icone }) => (
                 <button
                   aria-current={id === ativa ? "page" : undefined}
@@ -203,7 +203,7 @@ export function Layout() {
           {versao.data === undefined ? null : (
             <div className="flex flex-col gap-1 pb-1">
               <button
-                className="num px-3 text-left text-[11px] text-muted-foreground/60 hover:text-muted-foreground"
+                className="num px-3 text-left text-[11px] text-muted-foreground hover:text-muted-foreground"
                 data-locum-probe="versao"
                 onClick={() => navegar("settings")}
                 title={t("nav.versionHint")}

@@ -300,7 +300,7 @@ export function Hoje({ navegar }: TelaProps) {
               const falhou = saude?.saude === "falha";
 
               return (
-                <ListRow className="min-h-11" key={g.triggerId} onClick={() => navegar("runs", g.agentId)}>
+                <ListRow className="min-h-11" key={g.triggerId} onClick={() => navegar("runs", g.agentId)} rotulo={nome}>
                   <StatusDot estado={falhou ? "erro" : "ok"} />
                   <div className="flex min-w-0 flex-1 flex-col">
                     <div className="flex items-center gap-2">
@@ -406,7 +406,7 @@ function CartaoDeEspera({
   const rotulo = iniciativa ?? (titulo.includes(pendencia.agentName) ? undefined : pendencia.agentName);
 
   return (
-    <ListRow className="min-h-12 py-2" onClick={() => navegar("inbox", pendencia.id)}>
+    <ListRow className="min-h-12 py-2" onClick={() => navegar("inbox", pendencia.id)} rotulo={titulo}>
       <span aria-hidden className="bg-muted text-muted-foreground flex size-6 shrink-0 items-center justify-center rounded">
         {ehMsg ? <MessageSquare className="size-3.5" /> : <Sparkles className="size-3.5" />}
       </span>
@@ -497,7 +497,7 @@ function LinhaTerminada({
   const quando = quandoTerminou(t, idioma, run.endedAt ?? run.createdAt);
 
   return (
-    <ListRow className="min-h-11 py-2" onClick={() => navegar("runs", run.id)}>
+    <ListRow className="min-h-11 py-2" onClick={() => navegar("runs", run.id)} rotulo={titulo}>
       <StatusDot estado="ok" />
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <div className="flex min-w-0 items-center gap-2">
