@@ -292,6 +292,12 @@ export const ACTION_CHANNELS = [
   "automations.setEnabled",
   "automations.runNow",
   "automations.suggestId",
+  // Exportar e importar pacote: cliques de quem está usando. A prévia não grava
+  // nada; importar grava o que a pessoa escolheu, e gatilho nenhum entra ligado.
+  "pacote.exportFile",
+  "pacote.chooseFile",
+  "pacote.preview",
+  "pacote.import",
   "library.saveProfile",
   "library.removeProfile",
   "library.saveToolset",

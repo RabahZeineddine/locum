@@ -134,6 +134,8 @@ export interface PreviaDoPacote {
   /** Passos de IA que não usam agent: o modelo é deles. */
   passosDeIA: ModeloNaPrevia[];
   dependencias: DependenciaDaPrevia[];
+  /** Os modelos que esta máquina oferece, como `provedor/modelo`, para ligar cada agent. */
+  modelosAqui: string[];
   /** Todos entram desligados; `precisaCanal` fica de fora até a pessoa escolher. */
   gatilhos: { tipo: string; precisaCanal: boolean }[];
   /** O que o pacote deixou de fora de propósito, para a pessoa escolher aqui. */
@@ -163,10 +165,10 @@ export interface ResultadoDaImportacao {
 }
 
 /** Falta decisão da pessoa: a mensagem diz sobre o quê. */
-export class DecisaoPendente extends Error {
+export class DecisaoPendenteError extends Error {
   constructor(mensagem: string) {
     super(mensagem);
-    this.name = "DecisaoPendente";
+    this.name = "DecisaoPendenteError";
   }
 }
 
@@ -523,6 +525,7 @@ export class PacoteService {
       agents,
       passosDeIA,
       dependencias: this.dependencias(pacote, { conexoes, servidores, provedores, disponiveis }),
+      modelosAqui: [...disponiveis].sort(),
       gatilhos: pacote.automacao.gatilhos.map((g) => ({ tipo: g.kind, precisaCanal: g.kind === "slack-channel" })),
       omitidos: pacote.omitidos,
       acoesRebaixadas: pacote.automacao.spec.steps.flatMap((p) => (p.type === "action" && p.mode === "auto" ? [p.key] : [])),
@@ -609,13 +612,13 @@ export class PacoteService {
     for (const agent of previa.agents) {
       const escolha = escolhas.agents?.[agent.id]?.acao;
       if (agent.situacao === "nome-igual" && escolha === undefined) {
-        throw new DecisaoPendente(
+        throw new DecisaoPendenteError(
           `já existe o agent "${agent.existente?.nome ?? agent.nome}" com o mesmo nome e outro id: escolha usar o que existe ou criar um novo`,
         );
       }
       const acao = escolha ?? "versao-nova";
       if (acao === "usar-existente") {
-        if (agent.situacao === "novo") throw new DecisaoPendente(`o agent "${agent.nome}" não existe aqui para ser usado`);
+        if (agent.situacao === "novo") throw new DecisaoPendenteError(`o agent "${agent.nome}" não existe aqui para ser usado`);
         destino.set(agent.id, { id: agent.situacao === "nome-igual" ? agent.existente!.id : agent.id, acao: "existente" });
         continue;
       }

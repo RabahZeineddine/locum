@@ -173,10 +173,10 @@ export type PassoDoPacote = z.infer<typeof Passo>;
 /* --------------------------------------------------------------- leitura */
 
 /** O arquivo não serve, e a mensagem diz por quê em palavras de quem importa. */
-export class PacoteInvalido extends Error {
+export class PacoteInvalidoError extends Error {
   constructor(mensagem: string) {
     super(mensagem);
-    this.name = "PacoteInvalido";
+    this.name = "PacoteInvalidoError";
   }
 }
 
@@ -203,27 +203,27 @@ function problemas(erro: z.ZodError): string {
  */
 export function lerPacote(texto: string): Pacote {
   if (Buffer.byteLength(texto) > TAMANHO_MAXIMO_DO_PACOTE) {
-    throw new PacoteInvalido("o arquivo é grande demais para ser um pacote do Locum");
+    throw new PacoteInvalidoError("o arquivo é grande demais para ser um pacote do Locum");
   }
   let bruto: unknown;
   try {
     bruto = JSON.parse(texto);
   } catch {
-    throw new PacoteInvalido("o arquivo não é um JSON válido");
+    throw new PacoteInvalidoError("o arquivo não é um JSON válido");
   }
   if (typeof bruto !== "object" || bruto === null || Array.isArray(bruto)) {
-    throw new PacoteInvalido("o arquivo não é um pacote do Locum");
+    throw new PacoteInvalidoError("o arquivo não é um pacote do Locum");
   }
   const cabecalho = bruto as { formato?: unknown; versao?: unknown };
-  if (cabecalho.formato !== NOME_DO_FORMATO) throw new PacoteInvalido("o arquivo não é um pacote do Locum");
+  if (cabecalho.formato !== NOME_DO_FORMATO) throw new PacoteInvalidoError("o arquivo não é um pacote do Locum");
   if (cabecalho.versao !== VERSAO_DO_FORMATO) {
-    throw new PacoteInvalido(
+    throw new PacoteInvalidoError(
       `o pacote usa a versão ${String(cabecalho.versao)} do formato e este Locum lê a ${VERSAO_DO_FORMATO}. ` +
         "Atualize o Locum, ou peça um pacote exportado por esta versão.",
     );
   }
   const lido = Pacote.safeParse(bruto);
-  if (!lido.success) throw new PacoteInvalido(`pacote inválido: ${problemas(lido.error)}`);
+  if (!lido.success) throw new PacoteInvalidoError(`pacote inválido: ${problemas(lido.error)}`);
   conferirReferencias(lido.data);
   return lido.data;
 }
@@ -232,17 +232,17 @@ export function lerPacote(texto: string): Pacote {
 function conferirReferencias(pacote: Pacote): void {
   const ids = new Set<string>();
   for (const agent of pacote.agents) {
-    if (ids.has(agent.id)) throw new PacoteInvalido(`pacote inválido: o agent "${agent.id}" aparece duas vezes`);
+    if (ids.has(agent.id)) throw new PacoteInvalidoError(`pacote inválido: o agent "${agent.id}" aparece duas vezes`);
     ids.add(agent.id);
   }
   for (const passo of pacote.automacao.spec.steps) {
     if (passo.type === "model" && passo.profile !== undefined && !ids.has(passo.profile)) {
-      throw new PacoteInvalido(`pacote inválido: o passo "${passo.key}" usa o agent "${passo.profile}", que não está no pacote`);
+      throw new PacoteInvalidoError(`pacote inválido: o passo "${passo.key}" usa o agent "${passo.profile}", que não está no pacote`);
     }
   }
   try {
     topoSort(pacote.automacao.spec.steps as Step[]);
   } catch (erro) {
-    throw new PacoteInvalido(`pacote inválido: ${erro instanceof Error ? erro.message : String(erro)}`);
+    throw new PacoteInvalidoError(`pacote inválido: ${erro instanceof Error ? erro.message : String(erro)}`);
   }
 }

@@ -4,12 +4,12 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentSpec } from "../src/config/types.js";
-import { lerPacote, NOME_DO_FORMATO, PacoteInvalido, VERSAO_DO_FORMATO } from "../src/pacote/formato.js";
+import { lerPacote, NOME_DO_FORMATO, PacoteInvalidoError, VERSAO_DO_FORMATO } from "../src/pacote/formato.js";
 import { AgentService } from "../src/services/agent-service.js";
 import { AutomationService } from "../src/services/automation-service.js";
 import { LibraryService } from "../src/services/library-service.js";
 import { McpService } from "../src/services/mcp-service.js";
-import { DecisaoPendente, PacoteService, pacoteDoComando, type AmbienteDoPacote } from "../src/services/pacote-service.js";
+import { DecisaoPendenteError, PacoteService, pacoteDoComando, type AmbienteDoPacote } from "../src/services/pacote-service.js";
 import { SecretService } from "../src/services/secret-service.js";
 import { TriggerService } from "../src/services/trigger-service.js";
 import { bancoDeTeste } from "./helpers/db.js";
@@ -376,7 +376,7 @@ test("nome igual com id diferente pergunta, e a resposta decide", async () => {
   const previa = await bruno.pacotes.previa(texto);
   assert.equal(previa.agents[0]!.situacao, "nome-igual");
   assert.deepEqual(previa.agents[0]!.existente, { id: "meu-revisor", nome: "Revisor" });
-  await assert.rejects(bruno.pacotes.importar(texto), DecisaoPendente);
+  await assert.rejects(bruno.pacotes.importar(texto), DecisaoPendenteError);
   assert.equal(await bruno.automations.get("revisao-de-pr"), null, "nada foi gravado sem a resposta");
 
   const usando = await bruno.pacotes.importar(texto, { agents: { revisor: { acao: "usar-existente" } } });
@@ -430,8 +430,8 @@ test("ida e volta: o fluxo importado noutro banco é equivalente ao exportado", 
 test("arquivo que não é pacote dá erro claro, sem quebrar", async () => {
   const m = maquina();
   const recusa = async (texto: string, padrao: RegExp): Promise<void> => {
-    await assert.rejects(m.pacotes.previa(texto), (e: unknown) => e instanceof PacoteInvalido && padrao.test(e.message));
-    await assert.rejects(m.pacotes.importar(texto), PacoteInvalido);
+    await assert.rejects(m.pacotes.previa(texto), (e: unknown) => e instanceof PacoteInvalidoError && padrao.test(e.message));
+    await assert.rejects(m.pacotes.importar(texto), PacoteInvalidoError);
   };
   await recusa("isto não é json", /JSON válido/);
   await recusa("[]", /não é um pacote/);
@@ -447,7 +447,7 @@ test("campo estranho, dentro ou fora, é recusado com o lugar dele", async () =>
   const recusa = (alterar: (p: Record<string, any>) => void, padrao: RegExp): void => {
     const p = structuredClone(base);
     alterar(p);
-    assert.throws(() => lerPacote(JSON.stringify(p)), (e: unknown) => e instanceof PacoteInvalido && padrao.test(e.message));
+    assert.throws(() => lerPacote(JSON.stringify(p)), (e: unknown) => e instanceof PacoteInvalidoError && padrao.test(e.message));
   };
   recusa((p) => { p.comando = "rm -rf /"; }, /campo desconhecido "comando"/);
   recusa((p) => { p.agents[0].command = ["sh", "-c", "x"]; }, /campo desconhecido "command" em agents\.0/);

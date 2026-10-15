@@ -2563,5 +2563,73 @@
   "models": {
     "title": "Modelos",
     "lead": "De onde vêm os modelos que os agents usam nesta máquina: assinatura, chave de API ou um endereço compatível com OpenAI. Chave e endereço se editam aqui, sem reiniciar."
+  },
+  "pacote": {
+    "exportTitle": "Exportar automação",
+    "importTitle": "Importar automação",
+    "tooBig": "O arquivo é grande demais para ser um pacote do Locum.",
+    "export": {
+      "button": "Exportar",
+      "hint": "Gera um arquivo .locum.json sem segredos, para outra pessoa importar",
+      "saveFirst": "Salve a automação antes de exportar",
+      "done": "Exportado para {{arquivo}}"
+    },
+    "import": {
+      "button": "Importar",
+      "title": "Importar {{arquivo}}",
+      "cancel": "Cancelar",
+      "close": "Fechar",
+      "reading": "Lendo o pacote…",
+      "willCreate": "O que vai ser criado",
+      "automation": "Automação: {{nome}}",
+      "idTaken": "já existe uma com esse id, entra como {{id}}",
+      "triggersOff_one": "{{count}} gatilho, desligado até você ligar",
+      "triggersOff_zero": "Nenhum gatilho",
+      "triggersOff_other": "{{count}} gatilhos, desligados até você ligar",
+      "chooseChannels": "Canais e chats não vêm no pacote: escolha na automação depois de importar.",
+      "downgraded": "Ação que publicava sozinha entra com aprovação.",
+      "agentState": {
+        "novo": "novo",
+        "versao-nova": "versão nova (hoje v{{version}})",
+        "igual": "já existe igual (v{{version}})",
+        "nome-igual": "nome já usado"
+      },
+      "sameName": "Você já tem o agent \"{{nome}}\" com outro id.",
+      "sameNameChoice": {
+        "usar-existente": "Usar o que eu tenho",
+        "criar-novo": "Criar um novo ao lado"
+      },
+      "usedBy": "Usado em: {{lista}}",
+      "models": "Modelo de cada agent",
+      "modelMissing": "o sugerido não existe aqui",
+      "modelChoose": "Escolha um modelo",
+      "modelFor": "Modelo no lugar de {{sugerido}}",
+      "needs": "O que a automação precisa",
+      "kind": {
+        "conexao": "Conexão",
+        "servidor": "Servidor MCP",
+        "provedor": "Provedor"
+      },
+      "state": {
+        "ok": "ok",
+        "falta-conectar": "falta conectar",
+        "ausente": "ausente"
+      },
+      "link": "Ligar {{nome}} ao que você tem",
+      "linkNone": "Ligar a outro…",
+      "shortcut": {
+        "conexoes": "Abrir Conexões",
+        "importar-do-claude": "Importar do Claude Code",
+        "modelos": "Abrir Modelos"
+      },
+      "recheck": "Conferir de novo",
+      "confirm": "Importar",
+      "answerFirst": "Responda sobre o agent de mesmo nome.",
+      "done": "Importada. Os gatilhos estão desligados.",
+      "donePending": "Ainda faltam escolhas na automação, como os canais.",
+      "open": "Abrir a automação",
+      "notJson": "Só arquivos .locum.json.",
+      "unreadable": "Não consegui ler o arquivo."
+    }
   }
 }

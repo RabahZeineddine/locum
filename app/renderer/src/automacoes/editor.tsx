@@ -27,6 +27,7 @@ import {
   type Rascunho,
 } from "@/lib/automacao";
 import { call, read, useRead, type ReadResult } from "@/lib/bridge";
+import { semPrefixoDoIpc } from "@/lib/erro-da-ponte";
 import { cn } from "@/lib/utils";
 import {
   applyNodeChanges,
@@ -41,7 +42,7 @@ import {
   useNodesInitialized,
   useReactFlow,
 } from "@xyflow/react";
-import { AlertTriangle, ArrowLeft, List, Loader2, Play, Power } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Download, List, Loader2, Play, Power } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { RotaId } from "../rotas";
@@ -144,6 +145,16 @@ function EditorCarregado({
   const lista = problemas(rascunho, ctx);
   const bloqueado = lista.some((p) => p.bloqueia);
   const ligada = salvo.gatilhos.some((g) => g.enabled);
+
+  const exportar = (): void => {
+    setAviso(null);
+    call("pacote.exportFile", agentId).then(
+      (r) => {
+        if (r !== null) setAviso({ tipo: "ok", texto: t("pacote.export.done", { arquivo: r.nomeDoArquivo }) });
+      },
+      (e: unknown) => setAviso({ tipo: "erro", texto: semPrefixoDoIpc(e instanceof Error ? e.message : String(e)) }),
+    );
+  };
 
   const salvar = (): void => {
     setOcupado("salvar");
@@ -311,6 +322,18 @@ function EditorCarregado({
         <Button className="cursor-pointer" onClick={() => navegar("automations", `legacy/${agentId}`)} size="sm" variant="ghost">
           <List className="size-4" />
           {t("automations.editor.asList")}
+        </Button>
+        <Button
+          className="cursor-pointer"
+          data-locum-automacao-exportar=""
+          disabled={ocupado !== null || mudou}
+          onClick={exportar}
+          size="sm"
+          title={mudou ? t("pacote.export.saveFirst") : t("pacote.export.hint")}
+          variant="ghost"
+        >
+          <Download className="size-4" />
+          {t("pacote.export.button")}
         </Button>
         <Button className="cursor-pointer" disabled={ocupado !== null} onClick={executar} size="sm" variant="outline">
           {ocupado === "rodar" ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}

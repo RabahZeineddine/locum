@@ -5,6 +5,7 @@ import type { ApprovalService } from "../src/services/approval-service.js";
 import type { AutomationService } from "../src/services/automation-service.js";
 import type { ConversasDeAgent } from "../src/agent-chat/conversas.js";
 import type { LibraryService } from "../src/services/library-service.js";
+import type { PacoteService } from "../src/services/pacote-service.js";
 import type { ClaudeCodeService } from "../src/services/claude-code-service.js";
 import type { OpencodeService } from "../src/services/opencode-service.js";
 import type { GrafanaService } from "../src/services/grafana-service.js";
@@ -473,6 +474,16 @@ interface ServiceApi {
   "automations.setEnabled": AutomationService["setEnabled"];
   "automations.runNow": AutomationService["runNow"];
   "automations.suggestId": AutomationService["suggestId"];
+  /**
+   * O pacote: a automação e os agents dela num `.locum.json`, sem segredo.
+   * Exportar e escolher o arquivo usam o seletor do sistema e devolvem `null`
+   * quando a pessoa cancela. A prévia só lê o texto e olha esta máquina;
+   * importar grava o que a pessoa decidiu, e gatilho nenhum entra ligado.
+   */
+  "pacote.exportFile": (agentId: string) => Promise<{ caminho: string; nomeDoArquivo: string } | null>;
+  "pacote.chooseFile": () => Promise<{ nome: string; texto: string } | null>;
+  "pacote.preview": PacoteService["previa"];
+  "pacote.import": PacoteService["importar"];
   "library.profiles": LibraryService["listProfiles"];
   "library.profile": LibraryService["getProfile"];
   "library.profileVersions": LibraryService["listProfileVersions"];
@@ -722,6 +733,10 @@ export const BRIDGE_CHANNELS = [
   "automations.setEnabled",
   "automations.runNow",
   "automations.suggestId",
+  "pacote.exportFile",
+  "pacote.chooseFile",
+  "pacote.preview",
+  "pacote.import",
   "library.profiles",
   "library.profile",
   "library.profileVersions",
