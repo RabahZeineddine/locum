@@ -149,11 +149,7 @@ export function fillCredential(
       continue;
     }
     const resolved = secret ?? (envFallback ? process.env[key] : undefined);
-    if (resolved === undefined || resolved.length === 0) continue;
-    // Token puro em `Authorization` não é aceito por servidor nenhum: sem
-    // esquema, ganha "Bearer ", e com esquema (já guardado assim) fica como está.
-    const semEsquema = !envFallback && key.toLowerCase() === "authorization" && !/^(bearer|basic|token)\s/i.test(resolved);
-    out[key] = semEsquema ? `Bearer ${resolved}` : resolved;
+    if (resolved !== undefined && resolved.length > 0) out[key] = resolved;
   }
   return out;
 }

@@ -596,9 +596,15 @@ export class McpService {
     };
   }
 
-  /** O token que a conexão do catálogo guarda e que o servidor dela pode usar. */
+  /**
+   * O token que a conexão do catálogo guarda e que o servidor dela pode usar.
+   * O cofre do servidor já guarda "Bearer ..."; o token pessoal do GitHub é
+   * guardado puro, e o servidor não o aceita sem o esquema.
+   */
   private doServico(config: McpServerConfig): string | undefined {
-    return ehDoGithub(config) ? githubToken(this.secrets) : undefined;
+    if (!ehDoGithub(config)) return undefined;
+    const token = githubToken(this.secrets);
+    return token === undefined || /^(bearer|basic|token)\s/i.test(token) ? token : `Bearer ${token}`;
   }
 
   /**

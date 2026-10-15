@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { migrateDb } from "../src/db/migrate.js";
 import { McpRegistry } from "../src/mcp/registry.js";
 import { McpService } from "../src/services/mcp-service.js";
-import { fillCredential, SecretService } from "../src/services/secret-service.js";
+import { SecretService } from "../src/services/secret-service.js";
 
 before(() => {
   migrateDb();
@@ -116,13 +116,6 @@ test("servidor sem marcador de credencial não é barrado", async () => {
   } finally {
     await mcp.remove("aberto");
   }
-});
-
-test("Authorization sem esquema ganha Bearer ao preencher, e os outros cabeçalhos ficam como vêm", () => {
-  const h = fillCredential({ Authorization: "${credential}", "X-Api-Key": "${credential}" }, "abc", { envFallback: false });
-  assert.deepEqual(h, { Authorization: "Bearer abc", "X-Api-Key": "abc" });
-  assert.deepEqual(fillCredential({ Authorization: "${credential}" }, "Basic xyz", { envFallback: false }), { Authorization: "Basic xyz" });
-  assert.deepEqual(fillCredential({ Authorization: "${credential}" }, "abc", { envFallback: true }), { Authorization: "abc" });
 });
 
 test("a recusa de credencial manda para Conexões, e não para Configuração", async () => {
