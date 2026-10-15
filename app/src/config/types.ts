@@ -548,6 +548,14 @@ export const McpPollTrigger = z.object({
   workingHours: WorkingHoursConfig.optional(),
 });
 
+/** Filtro por modelo barato nos gatilhos de conversa. Ver `filtroIa` do Teams. */
+export const FiltroIaConfig = z.object({
+  /** O que a mensagem precisa ser para acordar o agent. Ex.: "É um pedido de review de pull request?". */
+  pergunta: z.string().trim().min(1).max(1000),
+  /** `provedor/modelo`. Ausente é o Haiku do provedor que houver na máquina. */
+  modelo: z.string().trim().min(1).optional(),
+});
+
 /**
  * O que pede a atenção da pessoa no Slack: menção a ela e mensagem direta.
  *
@@ -578,6 +586,12 @@ export const TeamsInboxTrigger = z.object({
    * o gatilho já salvo seguir como estava.
    */
   prLinks: z.boolean().default(false),
+  /**
+   * Depois dos filtros acima, cada mensagem é lida por um modelo barato com a
+   * pergunta da pessoa, e só acorda o agent se a resposta for sim. Ausente é o
+   * comportamento de antes: tudo que passou nos filtros acorda.
+   */
+  filtroIa: FiltroIaConfig.optional(),
   /**
    * Canais de equipe onde menção também acorda o agent. Pede os escopos de
    * canal na conexão. Fica numa lista curta porque cada canal é uma chamada

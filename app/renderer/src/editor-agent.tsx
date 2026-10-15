@@ -342,10 +342,13 @@ export function SeletorDeModelo({
   trocar,
   valor,
   larguraTotal = false,
+  automatico,
 }: {
   catalogo: Catalogo | null;
   trocar: (v: string) => void;
   valor: string;
+  /** Texto da primeira opção, que vale `""`: a máquina escolhe. Ausente, o modelo é obrigatório. */
+  automatico?: string;
   /** Ocupa a largura da coluna (Agents). Sem isto o seletor tem a largura do conteúdo, e o aviso fica ao lado. */
   larguraTotal?: boolean;
 }) {
@@ -378,6 +381,7 @@ export function SeletorDeModelo({
         title={valor}
         value={valor}
       >
+        {automatico !== undefined && <option value="">{automatico}</option>}
         {fora && <option value={valor}>{rotuloDoModelo(valor)}</option>}
         {comModelo.map((c) => (
           <optgroup key={c.provedor} label={rotuloDoProvedor(c.provedor)}>

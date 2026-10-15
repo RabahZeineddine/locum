@@ -80,7 +80,20 @@ export interface McpPollShape {
    * comparação de texto e prenderia o cursor para sempre.
    */
   watermark?: (ms: number) => string;
+  /**
+   * Última palavra sobre um item novo, antes de gravar o evento. Só é chamada
+   * para item que ainda não tem evento, e depois de ordenar os itens do mais
+   * velho para o mais novo, para o que for adiado ser sempre o mais novo.
+   */
+  admit?: (item: unknown) => Promise<Admissao>;
 }
+
+/**
+ * `passa` segue para o evento. `descarta` pula o item sem evento, e o cursor
+ * anda por cima dele: já foi decidido. `adia` também pula, mas o cursor não
+ * passa dele, para a próxima batida decidir de novo.
+ */
+export type Admissao = { kind: "passa" } | { kind: "descarta" } | { kind: "adia" };
 
 export interface McpPollOptions {
   db?: Db;
@@ -146,17 +159,47 @@ export async function pollMcpServer(
 
   const lerItens = shape.items ?? itemsOf;
   const lerCarimbo = shape.stamp ?? stampOf;
-  const items = lerItens(unwrap(await call(input.server, input.tool, render(input.args, cursor))));
+  const recebidos = lerItens(unwrap(await call(input.server, input.tool, render(input.args, cursor))));
+  // Com admissão, do mais velho para o mais novo: o limite de avaliações e a
+  // falha adiam o fim da fila, e o cursor só precisa parar no primeiro adiado.
+  const items =
+    shape.admit === undefined
+      ? recebidos
+      : [...recebidos].sort((a, b) => {
+          const x = lerCarimbo(a);
+          const y = lerCarimbo(b);
+          return x === undefined || y === undefined || x === y ? 0 : newer(x, y) === y ? -1 : 1;
+        });
 
   const eventIds: string[] = [];
   const inWindow: string[] = [];
   let carimbado = false;
   let newest = cursor;
+  // Carimbos dos itens resolvidos e o do primeiro adiado, quando houve.
+  const resolvidos: string[] = [];
+  let adiadoEm: string | undefined;
 
   for (const item of items) {
     const at = lerCarimbo(item);
     const id = randomUUID();
     const externalId = shape.externalId(item);
+    if (shape.admit !== undefined) {
+      const conhecido = await db
+        .select({ id: schema.events.id })
+        .from(schema.events)
+        .where(and(eq(schema.events.source, source), eq(schema.events.externalId, externalId)));
+      if (conhecido.length === 0) {
+        const admissao = await shape.admit(item);
+        if (admissao.kind !== "passa") {
+          if (admissao.kind === "adia") {
+            if (at !== undefined && (adiadoEm === undefined || newer(adiadoEm, at) === adiadoEm)) adiadoEm = at;
+          } else if (at !== undefined) {
+            resolvidos.push(at);
+          }
+          continue;
+        }
+      }
+    }
     const inserted = await db
       .insert(schema.events)
       .values({
@@ -178,10 +221,21 @@ export async function pollMcpServer(
         .where(and(eq(schema.events.source, source), eq(schema.events.externalId, externalId)));
       if (known && !inWindow.includes(known.id)) inWindow.push(known.id);
     }
-    if (at !== undefined) {
-      carimbado = true;
-      newest = newer(newest, at);
-    }
+    if (at !== undefined) resolvidos.push(at);
+  }
+
+  for (const at of resolvidos) {
+    carimbado = true;
+    newest = newer(newest, at);
+  }
+  // Com item adiado, o cursor para no último carimbo anterior a ele. Sem
+  // nenhum, fica onde estava: a marca d'água pularia o item que não foi lido.
+  if (adiadoEm !== undefined) {
+    const teto = adiadoEm;
+    newest = resolvidos
+      .filter((at) => at !== teto && newer(at, teto) === teto)
+      .reduce((a, b) => newer(a, b), cursor);
+    carimbado = true;
   }
 
   // Depois de gravar, nunca antes: um crash no meio do laço deixaria o cursor

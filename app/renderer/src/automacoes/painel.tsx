@@ -29,7 +29,7 @@ import { descreverCron } from "@/lib/descricao-do-cron";
 import { SeletorDeFerramentas, SeletorDeModelo, useCatalogo } from "../editor-agent";
 import type { RotaId } from "../rotas";
 import { Alternador, Campo, CAMPO, Minutos } from "./campos";
-import { GatilhoDoGithub } from "./gatilho-github";
+import { GatilhoDoGithub, ListaDeDescartes } from "./gatilho-github";
 import { appDoGatilho, appDoPasso, Selo, tituloDoGatilho, tituloDoPasso } from "./visual";
 
 type Tracker = ReadResult<"trackers.list">[number];
@@ -207,6 +207,7 @@ function ConfigDoGatilho({
                 rotulo={t("automations.triggers.teams-inbox.prLinks")}
                 trocar={(prLinks) => trocar({ ...config, prLinks })}
               />
+              <FiltroComIa filtro={config.filtroIa} trocar={(filtroIa) => trocar(comFiltro(config, filtroIa))} />
               <ChatsDoTeams
                 chats={config.chats}
                 pendentes={config.chatsPendentes > 0}
@@ -215,6 +216,11 @@ function ConfigDoGatilho({
                 valeParaTodos={() => trocar({ ...config, chatsPendentes: 0 })}
               />
               <CanaisDoTeams canais={config.channels} trocar={(channels) => trocar({ ...config, channels })} />
+              {triggerId === undefined ? null : (
+                <Campo rotulo={t("automations.triggers.teams-inbox.discards")}>
+                  <ListaDeDescartes triggerId={triggerId} />
+                </Campo>
+              )}
             </>
           ) : null}
           <Minutos rotulo={t("automations.panel.everyMinutes")} valor={config.everyMinutes} trocar={(everyMinutes) => trocar({ ...config, everyMinutes })} />
@@ -450,6 +456,49 @@ type ChatDoTeams = Extract<TriggerConfig, { kind: "teams-inbox" }>["chats"][numb
  * "Só nestes chats": restringe o gatilho a chats em grupo e diretos. Vazio é
  * todos. A lista vem do Graph e só chega por clique, como a de canais.
  */
+type FiltroIaConfig = NonNullable<Extract<TriggerConfig, { kind: "teams-inbox" }>["filtroIa"]>;
+
+/** O gatilho com o filtro trocado. Pergunta vazia tira o filtro: o campo some do cadastro em vez de gravar texto em branco. */
+function comFiltro(
+  config: Extract<TriggerConfig, { kind: "teams-inbox" }>,
+  filtro: { pergunta: string; modelo?: string },
+): TriggerConfig {
+  const { filtroIa: _antes, ...resto } = config;
+  return filtro.pergunta.trim() === "" ? resto : { ...resto, filtroIa: filtro };
+}
+
+/**
+ * Pergunta que um modelo barato responde sobre cada mensagem que passou nos
+ * filtros acima. Pergunta vazia é sem filtro. O modelo vazio é o Haiku que a
+ * máquina tiver.
+ */
+function FiltroComIa({ filtro, trocar }: { filtro: FiltroIaConfig | undefined; trocar: (f: { pergunta: string; modelo?: string }) => void }) {
+  const { t } = useTranslation();
+  const catalogo = useCatalogo();
+  const pergunta = filtro?.pergunta ?? "";
+  const modelo = filtro?.modelo;
+  return (
+    <Campo rotulo={t("automations.triggers.teams-inbox.filtroIa")}>
+      <textarea
+        className={cn(CAMPO, "min-h-16 resize-y")}
+        data-locum-filtro-ia=""
+        onChange={(e) => trocar({ pergunta: e.target.value, ...(modelo === undefined ? {} : { modelo }) })}
+        placeholder={t("automations.triggers.teams-inbox.filtroIaPlaceholder")}
+        value={pergunta}
+      />
+      {pergunta.trim() === "" ? null : (
+        <SeletorDeModelo
+          automatico={t("automations.triggers.teams-inbox.filtroIaModeloAuto")}
+          catalogo={catalogo}
+          trocar={(m) => trocar({ pergunta, ...(m === "" ? {} : { modelo: m }) })}
+          valor={modelo ?? ""}
+        />
+      )}
+      <p className="text-muted-foreground text-[11px]">{t("automations.triggers.teams-inbox.filtroIaHint")}</p>
+    </Campo>
+  );
+}
+
 function ChatsDoTeams({
   chats,
   trocar,

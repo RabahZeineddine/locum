@@ -123,6 +123,7 @@ async function montarAutomacao(m: Maquina, id = "revisao-de-pr"): Promise<void> 
       {
         config: {
           kind: "teams-inbox", prLinks: true, mentions: false, dms: false,
+          filtroIa: { pergunta: `É um pedido de review? Veja ${HOME}/notas e escreva para ${EMAIL}`, modelo: "claude-code/haiku" },
           channels: [{ teamId: EQUIPE_DO_TEAMS, channelId: CANAL_DO_TEAMS, label: "Pagamentos" }],
           chats: [{ chatId: CHAT_DO_TEAMS, label: "Revisões" }],
         },
@@ -291,6 +292,23 @@ test("o GitHub sem token conta como falta conectar, porque o diff depende dele",
   const bruno = maquina({ ambiente: () => ({ conexoes: async () => [{ id: "github", nome: "GitHub", estado: "connected", tokenDoGithub: false }] }) });
   const previa = await bruno.pacotes.previa(texto);
   assert.equal(previa.dependencias.find((d) => d.chave === "github")?.estado, "falta-conectar");
+});
+
+test("o filtro com IA vai no pacote e volta na importação, com o texto limpo", async () => {
+  const dono = maquina();
+  await montarAutomacao(dono);
+  const { pacote, texto } = await dono.pacotes.exportar("revisao-de-pr");
+  const teams = pacote.automacao.gatilhos.find((g) => g.kind === "teams-inbox");
+  const filtro = teams?.kind === "teams-inbox" ? teams.filtroIa : undefined;
+  assert.equal(filtro?.modelo, "claude-code/haiku");
+  assert.match(filtro?.pergunta ?? "", /^É um pedido de review\?/);
+  assert.ok(!(filtro?.pergunta ?? "").includes(HOME), "o home ficou na pergunta");
+  assert.ok(!texto.includes(EMAIL), "o e-mail ficou na pergunta");
+
+  const bruno = maquina();
+  await bruno.pacotes.importar(texto);
+  const gatilho = (await bruno.automations.get("revisao-de-pr"))!.triggers.find((g) => g.config.kind === "teams-inbox")!;
+  assert.deepEqual(gatilho.config.kind === "teams-inbox" && gatilho.config.filtroIa?.modelo, "claude-code/haiku");
 });
 
 test("provedor ausente pede modelo: o padrão é um do mesmo provedor, ou nada", async () => {

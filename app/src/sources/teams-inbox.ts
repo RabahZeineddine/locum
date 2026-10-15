@@ -1,7 +1,9 @@
 import { and, eq, gte, notInArray } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
 import { TEAMS_SERVER } from "../services/teams-app.js";
-import { pollMcpServer, CURSOR_TOKEN, type McpCaller, type McpPollShape } from "./mcp-poll.js";
+import { pollMcpServer, CURSOR_TOKEN, type Admissao, type McpCaller, type McpPollShape } from "./mcp-poll.js";
+import { recordSpend, type Spend } from "../executor/budget.js";
+import { julgadorPadrao, type FiltroIa, type Julgador, type MensagemDoFiltro } from "../services/filtro-ia.js";
 import { abrirTeams, type GraphGet, type TeamsGraphOptions } from "../teams/graph.js";
 import { alvoDaReacao, reagirNoTeams, REACAO_PEGOU } from "../teams/reaction.js";
 import { githubService } from "../services/github-service.js";
@@ -62,6 +64,11 @@ export interface TeamsInboxWatch {
    * revisar a história que já estava lá.
    */
   prDesde?: string;
+  /**
+   * Pergunta que um modelo barato responde sobre cada mensagem que passou nos
+   * filtros acima. Ausente é acordar por todas, como antes.
+   */
+  filtroIa?: FiltroIa;
   /** Canais de equipe onde a menção também conta. */
   channels?: readonly TeamsChannelRef[];
   /**
@@ -92,7 +99,16 @@ export interface TeamsInboxOptions extends TeamsGraphOptions {
   triggerId?: string;
   /** Login do GitHub de quem usa o Locum. Existe para o teste trocar. */
   viewerLogin?: () => Promise<string | null>;
+  /** O modelo do `filtroIa`. Existe para o teste trocar. */
+  julgar?: Julgador;
+  /** O agent dono do gatilho: o gasto do filtro entra no dia dele em `usage_daily`. */
+  agentId?: string;
+  /** Onde o gasto do filtro é contado. Ausente grava em `usage_daily` do `agentId`. */
+  gastar?: (gasto: Spend) => Promise<void>;
 }
+
+/** Quantas mensagens o filtro com IA avalia por batida; o resto espera a próxima. */
+export const LIMITE_DO_FILTRO_IA = 20;
 
 export interface TeamsInboxOutcome {
   eventIds: string[];
@@ -100,8 +116,11 @@ export interface TeamsInboxOutcome {
   inWindow: string[];
   seen: number;
   errors: { kind: "inbox" | "channel"; channel?: string; error: string }[];
-  /** PR que a mensagem trouxe e não virou review, com o motivo, para o detail do gatilho. */
-  descartes: { pr: string; motivo: string }[];
+  /**
+   * PR que a mensagem trouxe e não virou review, com o motivo, para o detail do
+   * gatilho. Mensagem que o filtro com IA barrou entra aqui também.
+   */
+  descartes: { pr: string; motivo: string; autor?: string; url?: string }[];
 }
 
 /**
@@ -151,6 +170,7 @@ async function varrer(
   const graph = teams.get;
   const outcome: TeamsInboxOutcome = { eventIds: [], inWindow: [], seen: 0, errors: [], descartes: [] };
   const revisados = memoizar(() => carregarRevisados(db));
+  const filtro = filtroDaBatida(watch, options);
   const canais = watch.mentions || watch.prLinks ? (watch.channels ?? []) : [];
   if (!watch.mentions && !watch.dms && !watch.prLinks) return outcome;
 
@@ -179,6 +199,11 @@ async function varrer(
     }
     outcome.seen += varredura.seen;
     outcome.errors.push(...erros);
+    if (filtro !== null) {
+      const { descartes: barradas, erros: falhas } = filtro.recolher();
+      outcome.descartes.push(...barradas);
+      outcome.errors.push(...falhas.map((error) => ({ kind, ...(channel === undefined ? {} : { channel }), error })));
+    }
   };
 
   try {
@@ -188,7 +213,7 @@ async function varrer(
     await acolher(
       await pollMcpServer(
         { server: TEAMS_SERVER, tool: "inbox", args: { since: CURSOR_TOKEN } },
-        { db, call: caixa(graph, watch.chats), shape: inboxShape(vigia, eu, chave, teams.conta) },
+        { db, call: caixa(graph, watch.chats), shape: inboxShape(vigia, eu, chave, teams.conta, filtro?.admitir) },
       ),
       "inbox",
     );
@@ -206,7 +231,7 @@ async function varrer(
       await acolher(
         await pollMcpServer(
           { server: TEAMS_SERVER, tool: "channel", args: { since: CURSOR_TOKEN } },
-          { db, call: doCanal(graph, canal), shape: canalShape(canal, eu, vigia, `${antiga}${sufixo}`, teams.conta) },
+          { db, call: doCanal(graph, canal), shape: canalShape(canal, eu, vigia, `${antiga}${sufixo}`, teams.conta, filtro?.admitir) },
         ),
         "channel",
         canal.label ?? canal.channelId,
@@ -220,6 +245,104 @@ async function varrer(
     }
   }
   return outcome;
+}
+
+/**
+ * O filtro com IA de uma batida: decide cada mensagem candidata antes de ela
+ * virar evento e reação, e junta o que a tela e o detail precisam saber.
+ *
+ * Falha fechada. Erro do modelo adia a mensagem, sem evento, e o cursor não
+ * passa por ela (ver `Admissao`). Depois da primeira falha a batida não
+ * pergunta mais nada: o provedor fora do ar custaria um prazo por mensagem.
+ */
+function filtroDaBatida(watch: TeamsInboxWatch, options: TeamsInboxOptions) {
+  const filtroIa = watch.filtroIa;
+  if (filtroIa === undefined) return null;
+  const julgar = options.julgar ?? julgadorPadrao;
+  const gastar =
+    options.gastar ??
+    (options.agentId === undefined ? undefined : (gasto: Spend) => recordSpend(options.agentId!, gasto, false));
+  // Uma pergunta por mensagem: com vários links ela vira um item por PR.
+  const decisoes = new Map<string, Promise<{ admissao: Admissao; motivo?: string }>>();
+  let descartes: TeamsInboxOutcome["descartes"] = [];
+  let erros: string[] = [];
+  let avaliadas = 0;
+  let falhou = false;
+  let avisouLimite = false;
+
+  const decidir = async (bruto: Record<string, unknown>): Promise<{ admissao: Admissao; motivo?: string }> => {
+    if (falhou) return { admissao: { kind: "adia" } };
+    if (avaliadas >= LIMITE_DO_FILTRO_IA) {
+      if (!avisouLimite) {
+        avisouLimite = true;
+        erros.push(`filtro com IA: limite de ${LIMITE_DO_FILTRO_IA} mensagens por batida, o resto fica para a próxima`);
+      }
+      return { admissao: { kind: "adia" } };
+    }
+    avaliadas += 1;
+    try {
+      const raiz = (bruto.threadRoot ?? null) as Record<string, unknown> | null;
+      const veredito = await julgar({
+        filtro: filtroIa,
+        mensagem: paraOFiltro(bruto),
+        ...(raiz === null ? {} : { raiz: paraOFiltro(raiz) }),
+      });
+      try {
+        await gastar?.(veredito.gasto);
+      } catch (err) {
+        console.error(`contar o gasto do filtro com IA falhou: ${err instanceof Error ? err.message : String(err)}`);
+      }
+      return veredito.passa
+        ? { admissao: { kind: "passa" } }
+        : { admissao: { kind: "descarta" }, motivo: `filtro com IA: ${veredito.motivo}` };
+    } catch (err) {
+      falhou = true;
+      erros.push(`filtro com IA: ${err instanceof Error ? err.message : String(err)}`);
+      return { admissao: { kind: "adia" } };
+    }
+  };
+
+  return {
+    admitir: async (item: unknown): Promise<Admissao> => {
+      const bruto = (item ?? {}) as Record<string, unknown>;
+      const id = String(bruto.id);
+      let decisao = decisoes.get(id);
+      if (decisao === undefined) {
+        decisao = decidir(bruto);
+        decisoes.set(id, decisao);
+      }
+      const { admissao, motivo } = await decisao;
+      if (motivo !== undefined) {
+        const pr = prDoItem(item);
+        const autor = paraOFiltro(bruto).autor ?? undefined;
+        descartes.push({
+          pr: pr === null ? `mensagem de ${autor ?? "alguém"}` : `${pr.owner}/${pr.repo}#${pr.pull}`,
+          motivo,
+          ...(autor === undefined ? {} : { autor }),
+          ...(typeof bruto.webUrl === "string" ? { url: bruto.webUrl } : {}),
+        });
+      }
+      return admissao;
+    },
+    /** O que a batida barrou e o que falhou, e zera para a próxima conversa da mesma batida. */
+    recolher: () => {
+      const saida = { descartes, erros };
+      descartes = [];
+      erros = [];
+      return saida;
+    },
+  };
+}
+
+/** A mensagem crua do Graph, como o modelo a lê. */
+function paraOFiltro(bruto: Record<string, unknown>): MensagemDoFiltro {
+  const autor = ((bruto.from ?? {}) as { user?: { displayName?: unknown } | null }).user;
+  const corpo = (bruto.body ?? {}) as { contentType?: unknown; content?: unknown };
+  const conteudo = typeof corpo.content === "string" ? corpo.content : "";
+  return {
+    autor: texto(autor?.displayName),
+    texto: corpo.contentType === "html" ? semHtml(conteudo) : conteudo.trim(),
+  };
 }
 
 /** Idade máxima do cursor compartilhado para um gatilho herdá-lo. */
@@ -433,7 +556,12 @@ function doCanal(graph: GraphGet, canal: TeamsChannelRef): McpCaller {
         const criada = carimbo((mensagem as { createdDateTime?: unknown } | null)?.createdDateTime);
         if (criada === null || criada <= desde) continue;
         const { replies: _fora, ...sem } = mensagem as Record<string, unknown>;
-        mensagens.push({ ...sem, threadId: typeof raiz.id === "string" ? raiz.id : null });
+        mensagens.push({
+          ...sem,
+          threadId: typeof raiz.id === "string" ? raiz.id : null,
+          // A resposta sozinha não diz do que se trata: o filtro com IA lê a que abriu a thread.
+          ...(mensagem === raiz ? {} : { threadRoot: { from: raiz.from, body: raiz.body } }),
+        });
       }
     }
     return { messages: mensagens };
@@ -484,6 +612,7 @@ function canalShape(
   watch: TeamsInboxWatch,
   chave: string,
   conta: () => string | null,
+  admit?: McpPollShape["admit"],
 ): McpPollShape {
   const traduzir = (item: unknown) => {
     const bruto = (item ?? {}) as Record<string, unknown>;
@@ -498,6 +627,7 @@ function canalShape(
     source: TEAMS_SOURCE,
     key: chave,
     initialCursor: inicial(),
+    ...(admit === undefined ? {} : { admit }),
     items: (payload) => umEventoPorPr(channelMessages(payload, eu, watch), watch),
     externalId: (item) =>
       `teams:channel:${canal.channelId}:${traduzir(item).mensagem.messageId}${sufixoDoPr(prDoItem(item))}`,
@@ -775,13 +905,20 @@ export function semHtml(html: string): string {
     .trim();
 }
 
-function inboxShape(watch: TeamsInboxWatch, eu: string, chave: string, conta: () => string | null): McpPollShape {
+function inboxShape(
+  watch: TeamsInboxWatch,
+  eu: string,
+  chave: string,
+  conta: () => string | null,
+  admit?: McpPollShape["admit"],
+): McpPollShape {
   const tipo = (item: unknown): TeamsInboxKind =>
     prDoItem(item) !== null ? "pr" : (kindOf(item, eu, watch) ?? "dm");
   return {
     source: TEAMS_SOURCE,
     key: chave,
     initialCursor: inicial(),
+    ...(admit === undefined ? {} : { admit }),
     items: (payload) => umEventoPorPr(inboxMessages(payload, eu, watch), watch),
     externalId: (item) => {
       const mensagem = normalizeInbox(item, tipo(item));
