@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { AgentSpec } from "../src/config/types.js";
+import { renderPrompt } from "../src/executor/executor.js";
 import {
   adicionarPasso,
   arestas,
@@ -171,6 +172,25 @@ test("o modelo de PR no Teams revisa e só responde depois de aprovar, sem nó q
   assert.equal(resposta.type === "action" && resposta.action, "teams.post");
   assert.equal(resposta.type === "action" && resposta.mode, "approve");
   assert.deepEqual(resposta.needs, ["revisar"]);
+});
+
+test("o modelo de PR no Teams monta o prompt com o diff do evento e não exige servidor", () => {
+  const r = rascunhoDoModelo("teamsPrReview", "t", "T", null);
+  const revisar = r.spec.steps[0]!;
+  assert.equal(revisar.type, "model");
+  assert.deepEqual(revisar.type === "model" && revisar.requiresServers, []);
+  const prompt = renderPrompt(
+    revisar.type === "model" ? revisar.prompt : "",
+    {
+      repo: "acme/api", prNumber: 7, author: "ana", text: "olhem isso",
+      title: "Corrige o saldo", description: "Arredonda para baixo", diff: "@@ -1 +1 @@\n-a\n+b",
+    } as unknown as Parameters<typeof renderPrompt>[1],
+    new Map(),
+  );
+  assert.match(prompt, /Corrige o saldo/);
+  assert.match(prompt, /Arredonda para baixo/);
+  assert.match(prompt, /\+b/);
+  assert.doesNotMatch(prompt, /\{\{/);
 });
 
 test("o modelo de PR no GitHub comenta no PR só com aprovação", () => {
