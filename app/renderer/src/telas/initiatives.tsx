@@ -220,7 +220,7 @@ function DetalheDaIniciativa({
           className="border-border bg-card flex h-[calc(100vh-340px)] min-h-[420px] flex-col overflow-hidden rounded-lg border"
           data-locum-probe="initiative-chat"
         >
-          <Conversa iniciativa={slug} irParaModelos={() => navegar("settings", "models")} />
+          <Conversa iniciativa={slug} irParaModelos={() => navegar("models")} />
         </div>
       )}
       {aba === "terminal" && <AbaTerminal slug={slug} titulo={iniciativa.title} />}

@@ -289,6 +289,8 @@ interface ServiceApi {
    * ela responde de dentro da máquina, sem sair.
    */
   "providers.credentials": ProviderService["credentials"];
+  "providers.ollamaUrl": ProviderService["ollamaUrl"];
+  "providers.setOllamaUrl": ProviderService["setOllamaUrl"];
   "providers.saveSecret": ProviderService["setSecret"];
   "providers.forgetSecret": ProviderService["clearSecret"];
   "providers.checkSecret": ProviderService["check"];
@@ -341,6 +343,7 @@ interface ServiceApi {
    * endereço, e só conecta se ele pedir OAuth com registro automático.
    */
   "connections.list": ConnectionService["list"];
+  "connections.usage": ConnectionService["usage"];
   "connections.connect": ConnectionService["connect"];
   "connections.disconnect": ConnectionService["disconnect"];
   "connections.addCustom": ConnectionService["addCustom"];
@@ -614,6 +617,8 @@ export const BRIDGE_CHANNELS = [
   "providers.setEnabled",
   "providers.remove",
   "providers.credentials",
+  "providers.ollamaUrl",
+  "providers.setOllamaUrl",
   "providers.saveSecret",
   "providers.forgetSecret",
   "providers.checkSecret",
@@ -633,6 +638,7 @@ export const BRIDGE_CHANNELS = [
   "grafana.save",
   "grafana.remove",
   "connections.list",
+  "connections.usage",
   "connections.connect",
   "connections.disconnect",
   "connections.addCustom",

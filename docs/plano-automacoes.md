@@ -5,6 +5,12 @@ conectar e depois achar onde dizer "este canal acorda este agent" levou a pessoa
 por quatro telas (Conexões, Configuração → Slack, Agents, gatilho do agent), e
 nenhuma delas mostrava o fluxo inteiro.
 
+> Atualização: "Apps" voltou a se chamar **Conexões** (rota `connections`), com a
+> lista "Suas conexões", o painel "Adicionar conexão" e uma página por conexão.
+> Modelos ganhou rota própria e a Configuração ficou com Geral, Assistente e
+> Ferramentas. Onde este plano diz "app", leia "conexão". O estado de hoje está
+> em `docs/estado-atual.md`.
+
 ## O que muda para quem usa
 
 Duas palavras novas na barra lateral, no lugar de quatro lugares espalhados.

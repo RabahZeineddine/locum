@@ -859,12 +859,12 @@ function ComeceAqui({ agenda, navegar }: { agenda: Agenda[] | undefined; navegar
     {
       id: "model",
       feito: provedores.data.some((p) => p.available),
-      ir: () => navegar("settings", "models"),
+      ir: () => navegar("models"),
     },
     {
       id: "connection",
-      feito: conexoes.data.some((c) => c.state === "connected" && c.id !== "claude-code"),
-      ir: () => navegar("settings", "connections"),
+      feito: conexoes.data.some((c) => c.state === "connected"),
+      ir: () => navegar("connections"),
     },
     {
       id: "trigger",

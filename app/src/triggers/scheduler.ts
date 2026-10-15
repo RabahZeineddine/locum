@@ -512,7 +512,7 @@ export class Scheduler {
         // sobe para o detalhe do gatilho, onde a tela mostra o que fazer.
         const origem = await this.slack.get();
         if (origem.server === null) {
-          throw new Error("o Slack nao esta conectado, ligue em Apps antes de observar canal");
+          throw new Error("o Slack nao esta conectado, ligue em Conexões antes de observar canal");
         }
         const varredura = await pollSlack(
           { ...origem, channels: config.channels },

@@ -19,6 +19,8 @@ const DESTINOS = [
   { id: "inbox", rotulo: "nav.queue" },
   { id: "runs", rotulo: "nav.runs" },
   { id: "agents", rotulo: "nav.agents" },
+  { id: "connections", rotulo: "nav.connections" },
+  { id: "models", rotulo: "nav.models" },
   { id: "settings", rotulo: "nav.settings" },
 ] as const;
 

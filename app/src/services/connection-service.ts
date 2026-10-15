@@ -1,10 +1,10 @@
 import { IMAGEM_DO_GRAFANA } from "./grafana-service.js";
-import { claudeCodeService, type ClaudeCodeService } from "./claude-code-service.js";
 import { claudeImportService } from "./claude-import.js";
-import { opencodeService, type OpencodeService } from "./opencode-service.js";
+import { estadoDoServidor, type ConnectionReason, type ConnectionState } from "./conexao-estado.js";
+import { carregarFontesDeUso, quemUsa, type FontesDeUso, type UsoDaConexao } from "./conexao-uso.js";
 import { githubService, type GithubService } from "./github-service.js";
 import { chaveDoClienteOAuth, mcpOAuthService, type McpOAuthService, type PreRegisteredClient } from "./mcp-oauth-service.js";
-import { mcpService, type McpService } from "./mcp-service.js";
+import { mcpService, type McpServerEntry, type McpService } from "./mcp-service.js";
 import { settingsService, type SettingsService } from "./settings-service.js";
 import {
   SLACK_MCP_URL,
@@ -16,6 +16,7 @@ import {
   validSlackClientId,
 } from "./slack-app.js";
 import { slackService, type SlackService } from "./slack-service.js";
+import { trackerService } from "./tracker-service.js";
 import {
   TEAMS_CHANNEL_SCOPES,
   TEAMS_REDIRECT_URI,
@@ -75,16 +76,17 @@ export type ConnectionCategory = "dev" | "communication" | "work" | "observabili
 /**
  * Como cada conexão liga.
  *
- * - `claude-code`: cadastra o Locum no Claude Code.
- * - `opencode`: cadastra o Locum no opencode.
+ * Claude Code e opencode não estão aqui: são o Locum dentro da ferramenta de
+ * código, e moram na Configuração.
+ *
  * - `github`: token pessoal no cofre, pelo painel.
  * - `oauth`: servidor MCP remoto que aceita registro automático; um clique abre o navegador.
  * - `panel`: liga por um formulário do próprio Locum (Jira, Slack, Teams, Grafana).
  * - `soon`: ainda sem caminho que não exija terminal, e a tela diz o porquê.
  */
-export type ConnectionKind = "claude-code" | "opencode" | "github" | "oauth" | "panel" | "soon";
+export type ConnectionKind = "github" | "oauth" | "panel" | "soon";
 
-export type ConnectionState = "connected" | "attention" | "available" | "soon";
+export type { ConnectionReason, ConnectionState } from "./conexao-estado.js";
 
 export interface CatalogEntry {
   id: string;
@@ -106,8 +108,6 @@ export interface CatalogEntry {
  * não estão aqui como `oauth`. O Asana anuncia só no endereço `v2`.
  */
 export const CATALOG: CatalogEntry[] = [
-  { id: "claude-code", name: "Claude Code", category: "dev", kind: "claude-code", logo: "claude", color: "D97757" },
-  { id: "opencode", name: "opencode", category: "dev", kind: "opencode", logo: null, color: "211E1E" },
   { id: "github", name: "GitHub", category: "dev", kind: "github", logo: "github", color: "181717" },
   { id: "notion", name: "Notion", category: "work", kind: "oauth", url: "https://mcp.notion.com/mcp", logo: "notion", color: "000000" },
   { id: "atlassian", name: "Atlassian", category: "work", kind: "oauth", url: "https://mcp.atlassian.com/v1/mcp", logo: "atlassian", color: "0052CC" },
@@ -134,18 +134,42 @@ export interface Connection extends CatalogEntry {
   account: string | null;
   /** Servidor MCP cadastrado por fora do catálogo, mostrado como conexão própria. */
   custom: boolean;
+  /** Por que não está ok, quando não está. */
+  reason: ConnectionReason | null;
+  /** O que o servidor respondeu na última falha, para `error`. */
+  detail: string | null;
+  /** Ferramentas da última lista guardada, sem subir o servidor. Nulo quando nunca listou. */
+  toolCount: number | null;
+  /**
+   * Os servidores MCP cadastrados que esta conexão realmente usa: um para o
+   * serviço do catálogo, um para o próprio, todas as instâncias do Grafana, e
+   * o servidor escolhido como origem do Slack. Vazio quando não há nenhum.
+   */
+  servers: string[];
+  /** Trackers de tarefas ligados que moram nesta conexão (Jira, Shortcut, GitHub Issues). */
+  trackers: number;
 }
+
+/** Que tipo de tracker mora em qual conexão. */
+const CONEXAO_DO_TRACKER: Readonly<Record<string, string>> = {
+  jira: "atlassian",
+  "jira-atlassian": "atlassian",
+  shortcut: "shortcut",
+  "github-issues": "github",
+};
 
 export interface ConnectionServiceDeps {
   mcp: McpService;
   oauth: McpOAuthService;
-  claudeCode: ClaudeCodeService;
-  opencode: OpencodeService;
   github: GithubService;
   slack: SlackService;
   settings: SettingsService;
   /** App OAuth que o Claude Code declara para o servidor, quando a importação não guardou. */
   clienteDoClaude?: (nome: string) => Promise<PreRegisteredClient | undefined>;
+  /** Os trackers cadastrados, para a conexão a que cada um pertence acender. */
+  trackers?: () => Promise<{ kind: string; enabled: boolean }[]>;
+  /** De onde sai "quem usa": automações, agents e toolsets gravados. */
+  fontesDeUso?: () => Promise<FontesDeUso>;
 }
 
 /**
@@ -161,12 +185,12 @@ export class ConnectionService {
     this.deps = {
       mcp: mcpService,
       oauth: mcpOAuthService,
-      claudeCode: claudeCodeService,
-      opencode: opencodeService,
       github: githubService,
       slack: slackService,
       settings: settingsService,
       clienteDoClaude: (nome) => claudeImportService.clienteOAuth(nome),
+      fontesDeUso: carregarFontesDeUso,
+      trackers: () => trackerService.list(),
       ...deps,
     };
   }
@@ -175,28 +199,60 @@ export class ConnectionService {
     const servidores = await this.deps.mcp.list();
     const porNome = new Map(servidores.map((s) => [s.config.name, s]));
 
-    const doCatalogo = await Promise.all(CATALOG.map((entry) => this.estado(entry, porNome.has(entry.id))));
+    const ligados = new Map<string, number>();
+    for (const tracker of await this.deps.trackers!()) {
+      const dono = CONEXAO_DO_TRACKER[tracker.kind];
+      if (dono !== undefined && tracker.enabled) ligados.set(dono, (ligados.get(dono) ?? 0) + 1);
+    }
 
-    const proprios: Connection[] = servidores
-      .filter((s) => !CATALOG.some((c) => c.id === s.config.name))
-      // As instâncias do Grafana moram no cartão dele, e não cada uma no seu.
-      .filter((s) => !ehDoGrafana(s.config))
-      .map((s) => ({
-        id: s.config.name,
-        name: s.config.name,
-        category: "data",
-        kind: s.config.transport === "stdio" ? "panel" : "oauth",
-        url: s.config.url,
-        logo: null,
-        color: "64748B",
-        // Servidor próprio sem credencial é o que não pede OAuth: `addCustom`
-        // só cadastra sem conectar quando a sonda não achou autorização.
-        state: s.enabled ? "connected" : "attention",
-        account: null,
-        custom: true,
-      }));
+    const doCatalogo = await Promise.all(
+      CATALOG.map((entry) => this.estado(entry, porNome, ligados.get(entry.id) ?? 0)),
+    );
+
+    const proprios: Connection[] = await Promise.all(
+      servidores
+        .filter((s) => !CATALOG.some((c) => c.id === s.config.name))
+        // As instâncias do Grafana moram no cartão dele, e não cada uma no seu.
+        .filter((s) => !ehDoGrafana(s.config))
+        .map(async (s) => ({
+          id: s.config.name,
+          name: s.config.name,
+          category: "data" as const,
+          kind: s.config.transport === "stdio" ? ("panel" as const) : ("oauth" as const),
+          url: s.config.url,
+          logo: null,
+          color: "64748B",
+          custom: true,
+          account: null,
+          toolCount: await this.toolCount(s.config.name),
+          servers: [s.config.name],
+          trackers: 0,
+          // Servidor próprio sem credencial é o que não pede OAuth: `addCustom`
+          // só cadastra sem conectar quando a sonda não achou autorização.
+          ...estadoDoServidor(s, true),
+        })),
+    );
 
     return [...doCatalogo, ...proprios];
+  }
+
+  /** Automações e agents que dependem do servidor desta conexão. */
+  async usage(id: string): Promise<UsoDaConexao[]> {
+    const conexao = (await this.list()).find((c) => c.id === id);
+    const fontes = await this.deps.fontesDeUso!();
+    const porId = new Map<string, UsoDaConexao>();
+    for (const servidor of conexao?.servers ?? []) {
+      for (const uso of quemUsa(servidor, fontes)) {
+        const chave = `${uso.tipo}:${uso.id}`;
+        const antes = porId.get(chave);
+        porId.set(chave, antes === undefined ? uso : { ...antes, como: [...new Set([...antes.como, ...uso.como])] });
+      }
+    }
+    return [...porId.values()];
+  }
+
+  private async toolCount(nome: string): Promise<number | null> {
+    return (await this.deps.mcp.cachedTools(nome))?.tools.length ?? null;
   }
 
   /**
@@ -208,14 +264,6 @@ export class ConnectionService {
    */
   async connect(id: string): Promise<Connection> {
     const entry = CATALOG.find((c) => c.id === id);
-    if (entry?.kind === "claude-code") {
-      await this.deps.claudeCode.connect();
-      return this.um(id);
-    }
-    if (entry?.kind === "opencode") {
-      await this.deps.opencode.connect();
-      return this.um(id);
-    }
 
     const atual = await this.deps.mcp.get(id);
     const url = entry?.url ?? atual?.config.url;
@@ -407,40 +455,57 @@ export class ConnectionService {
     return achada;
   }
 
-  private async estado(entry: CatalogEntry, cadastrado: boolean): Promise<Connection> {
-    const base = { ...entry, custom: false, account: null };
+  private async estado(
+    entry: CatalogEntry,
+    porNome: Map<string, McpServerEntry>,
+    trackers: number,
+  ): Promise<Connection> {
+    const cadastro = porNome.get(entry.id);
+    const base = {
+      servers: cadastro === undefined ? [] : [entry.id],
+      trackers,
+      ...entry,
+      custom: false,
+      account: null,
+      reason: null,
+      detail: null,
+      toolCount: cadastro === undefined ? null : await this.toolCount(entry.id),
+    };
     switch (entry.kind) {
-      case "claude-code": {
-        const s = await this.deps.claudeCode.status().catch(() => null);
-        const state: ConnectionState = s?.current ? "connected" : s?.registered ? "attention" : "available";
-        return { ...base, state };
-      }
-      case "opencode": {
-        const s = await this.deps.opencode.status().catch(() => null);
-        const state: ConnectionState = s?.current ? "connected" : s?.registered ? "attention" : "available";
-        return { ...base, state };
-      }
       case "github": {
         const s = await this.deps.github.status();
         return {
           ...base,
-          state: s.stored || s.env ? "connected" : "available",
+          state: s.stored || s.env || trackers > 0 ? "connected" : "available",
           account: s.identity?.login ?? null,
         };
       }
       case "oauth": {
-        if (!cadastrado) return { ...base, state: "available" };
-        const s = this.deps.oauth.status(entry.id);
-        return { ...base, state: s.connected ? "connected" : "attention" };
+        // Jira e Shortcut por token não passam por servidor MCP: o tracker já é a conexão.
+        if (cadastro === undefined) return { ...base, state: trackers > 0 ? "connected" : "available" };
+        return { ...base, ...estadoDoServidor(cadastro, this.deps.oauth.status(entry.id).connected) };
       }
       case "panel": {
         if (entry.id === "slack") {
           const s = await this.deps.slack.get();
-          return { ...base, state: s.server === null ? "available" : "connected" };
+          if (s.server === null) return { ...base, state: "available" };
+          // A conexão do Slack é o servidor que serve de origem, o oficial ou
+          // outro; a saúde e as ferramentas vêm dele.
+          const origem = porNome.get(s.server);
+          const servers = origem === undefined ? [] : [s.server];
+          const estado =
+            origem === undefined
+              ? { state: "connected" as const, reason: null, detail: null }
+              : estadoDoServidor(origem, true);
+          return { ...base, servers, toolCount: servers[0] === undefined ? null : await this.toolCount(servers[0]), ...estado };
         }
         if (entry.id === "grafana") {
-          const instancias = (await this.deps.mcp.list()).filter((s) => ehDoGrafana(s.config));
-          return { ...base, state: instancias.length > 0 ? "connected" : "available" };
+          const instancias = [...porNome.values()].filter((s) => ehDoGrafana(s.config));
+          if (instancias.length === 0) return { ...base, state: "available" };
+          // A pior instância decide: uma com falha basta para a conexão pedir olhar.
+          const estados = instancias.map((i) => estadoDoServidor(i, true));
+          const pior = estados.find((e) => e.state === "error") ?? estados.find((e) => e.state === "attention") ?? estados[0]!;
+          return { ...base, ...pior, servers: instancias.map((i) => i.config.name) };
         }
         if (entry.id === TEAMS_SERVER) {
           return { ...base, state: this.deps.oauth.status(TEAMS_SERVER).connected ? "connected" : "available" };
@@ -476,4 +541,3 @@ async function clienteGuardado(settings: Pick<SettingsService, "get">, nome: str
     return undefined;
   }
 }
-

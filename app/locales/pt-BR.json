@@ -529,12 +529,13 @@
     "versionHint": "Atualização, em Configuração",
     "sessions": "Sessões",
     "automations": "Automações",
-    "apps": "Apps",
     "library": "Agents",
     "sectionCockpit": "Cockpit",
     "sectionOperations": "Operações",
     "sectionResources": "Recursos",
-    "settingsTitle": "Configurações"
+    "settingsTitle": "Configurações",
+    "connections": "Conexões",
+    "models": "Modelos"
   },
   "notification": {
     "runFailed": {
@@ -690,11 +691,24 @@
       "missing": "defina {{requirements}} no ambiente e reabra o Locum",
       "empty": "Nenhum provedor ligado ainda. Guarde uma chave em Adicionar provedor, logo abaixo.",
       "addTitle": "Adicionar provedor",
-      "addDescription": "Guarde a chave de um destes e os modelos dele passam a aparecer acima.",
+      "addDescription": "Guarde a chave de um destes e os modelos dele passam a aparecer acima. Endereço de empresa ou gateway entra em \"Compatíveis com OpenAI\", mais abaixo.",
       "modelsLoading": "lendo os modelos...",
       "modelsNone": "o provedor não listou modelos",
       "modelsError": "não deu para ler os modelos: {{message}}",
-      "modelsMore": "+{{count}}"
+      "modelsMore": "+{{count}}",
+      "ollama": {
+        "label": "Endereço do Ollama",
+        "save": "Salvar",
+        "clear": "Apagar",
+        "hint": "O endereço da API compatível com OpenAI, como http://127.0.0.1:11434/v1. Vale na hora.",
+        "fromEnv": "Vem da variável OLLAMA_BASE_URL. Salvar um endereço aqui passa a valer no lugar dela.",
+        "invalid": "O endereço começa com http:// ou https://, como http://127.0.0.1:11434/v1.",
+        "noV1": "O endereço não termina em /v1, onde fica a API compatível com OpenAI. Confira antes de salvar."
+      },
+      "subscriptionHelp": {
+        "codex": "Usa a assinatura do ChatGPT pelo Codex CLI. Instale o Codex, rode \"codex login\" no terminal e reabra o Locum: ele fica disponível sozinho.",
+        "claude-code": "Usa a assinatura do Claude pelo Claude Code. Instale o Claude Code, entre com \"claude auth login\" no terminal e reabra o Locum."
+      }
     },
     "prices": {
       "rate": "entrada {{input}} e saída {{output}} USD por milhão de tokens",
@@ -730,8 +744,8 @@
       "lastCheck_zero": "{{count}} modelos no último catálogo, conferido em {{when}}"
     },
     "registered": {
-      "title": "Provedores compatíveis",
-      "description": "Gateway que fala o protocolo da OpenAI, cadastrado aqui: um segundo endereço da empresa, um Ollama em outra máquina, um OpenRouter.",
+      "title": "Compatíveis com OpenAI",
+      "description": "Qualquer endereço que fale o protocolo da OpenAI: o gateway ou o modelo hospedado da sua empresa (como o GLM), um segundo endereço, um Ollama em outra máquina, um OpenRouter.",
       "empty": "nenhum cadastrado, os provedores acima são os de fábrica",
       "id": "identificador do provedor",
       "idHint": "meu-gateway",
@@ -762,19 +776,11 @@
       "order": "ordem {{order}}"
     },
     "servers": {
-      "title": "Servidores MCP",
-      "description": "Os servidores que agents e passos usam, separados pela origem. Importado entra desligado: confira o comando ou o endereço e ligue.",
-      "empty": "Nenhum servidor cadastrado.",
-      "enabled": "habilitado",
-      "disabled": "desabilitado",
       "turnOn": "Ligar",
       "turnOff": "Desligar",
       "test": "Testar",
       "testing": "testando...",
-      "list": "Ferramentas",
-      "listing": "listando...",
       "noTools": "nenhuma ferramenta",
-      "tool": "{{name}} · {{tokens}} tok",
       "refused": "a ponte recusou: {{message}}",
       "ok_one": "conectou em {{elapsed}}ms e expõe {{count}} ferramenta",
       "ok_other": "conectou em {{elapsed}}ms e expõe {{count}} ferramentas",
@@ -786,7 +792,6 @@
         "failed": "falhou {{when}}",
         "ok": "respondeu {{when}}"
       },
-      "search": "Buscar servidor",
       "authorize": "Autorizar",
       "scopeRead": "leitura",
       "scopeWrite": "escrita",
@@ -795,13 +800,7 @@
         "user": "Do Claude Code",
         "plugin": "Plugin {{name}}",
         "tool": "Do {{name}}",
-        "apps": "Cadastrados pelos apps",
-        "count_zero": "{{on}} de {{count}} ligados",
-        "count_one": "{{on}} de {{count}} ligado",
-        "count_other": "{{on}} de {{count}} ligados",
-        "problems_one": "{{count}} com problema",
-        "problems_other": "{{count}} com problema",
-        "problems_zero": "{{count}} com problema"
+        "apps": "Cadastrados pelos apps"
       },
       "dot": {
         "off": "desligado",
@@ -810,17 +809,8 @@
         "ok": "respondendo",
         "untested": "ligado, ainda sem teste"
       },
-      "testAll": "Testar ligados",
-      "testingAll": "testando {{done}} de {{total}}",
-      "none": "Nenhum servidor neste filtro.",
       "reauthorize": "Autorizar de novo",
-      "filter": {
-        "label": "Filtrar por estado",
-        "todos": "Todos",
-        "problema": "Com problema",
-        "ligados": "Ligados",
-        "desligados": "Desligados"
-      },
+      "filter": {},
       "tags": {
         "internal": "rede interna",
         "usedBy_one": "{{count}} iniciativa",
@@ -847,10 +837,10 @@
         "tokens_one": "{{count}} tok",
         "tokens_other": "{{count}} tok",
         "tokens_zero": "{{count}} tok",
-        "usedBy": "Usado por",
-        "unused": "Nenhuma iniciativa usa este servidor.",
         "reload": "Listar de novo"
-      }
+      },
+      "turnOffConfirm": "Desligar mesmo assim",
+      "turnOffInUse": "Há automações ou agents usando este servidor. Desligado, eles deixam de rodar com ele. Clique de novo para desligar."
     },
     "github": {
       "title": "Credencial do GitHub",
@@ -1031,17 +1021,12 @@
     },
     "sections": {
       "general": "Geral",
-      "models": "Modelos",
       "assistant": "Assistente",
-      "trackers": "Trackers de Tarefas",
-      "tools": "Ferramentas",
-      "connections": "Conexões"
+      "tools": "Ferramentas"
     },
     "sectionLead": {
-      "general": "Idioma, atualização e onde o Locum guarda o trabalho das iniciativas.",
-      "models": "Os provedores que pensam pelos agents nesta máquina: assinatura, chave de API ou gateway compatível. Desligue o que não deve ser usado.",
+      "general": "Idioma, atualização, horário de trabalho e onde o Locum guarda o trabalho das iniciativas.",
       "assistant": "Com quem você conversa no ⌘J, e para qual modelo o Locum troca quando o escolhido não está disponível.",
-      "trackers": "Shortcut, Jira e GitHub Issues: onde as tarefas e histórias são acompanhadas e vinculadas às suas entregas.",
       "tools": "O Locum dentro das ferramentas de código que você já usa, e o terminal que abre as sessões."
     },
     "toolsLocum": {
@@ -1141,7 +1126,7 @@
     "teamsInbox": {
       "description": "Acorda um agent quando alguém menciona você ou manda mensagem num chat do Teams. O Locum lê pelo Graph, com a sua conta, as conversas que se mexeram a cada 5 minutos; a resposta que o agent propuser para na fila. Canais de equipe ainda não entram."
     },
-    "lead": "Como o Locum se comporta, com quais modelos pensa e de onde vem o trabalho.",
+    "lead": "Como o Locum se comporta: idioma, atualização, assistente e as ferramentas de código.",
     "teamsChannels": {
       "toggle": "Incluir canais de equipe",
       "toggleHint": "Menção em canal escolhido também acorda o agent, e a resposta aprovada entra na thread. Acrescenta {{scopes}} ao pedido, e ler canal exige o consentimento do administrador do tenant.",
@@ -1492,7 +1477,6 @@
   },
   "connections": {
     "title": "Conexões",
-    "description": "O que o Locum alcança fora desta máquina. Serviço com OAuth liga num clique: o navegador abre, você autoriza no próprio serviço e o token fica no keychain.",
     "search": "Buscar conexão",
     "loading": "carregando...",
     "none": "Nenhuma conexão com esse filtro.",
@@ -1500,8 +1484,6 @@
     "reconnect": "Reconectar",
     "connecting": "conectando...",
     "disconnect": "Desconectar",
-    "manage": "Gerenciar",
-    "setup": "Configurar",
     "soon": "Em breve",
     "close": "Fechar",
     "categories": {
@@ -1515,14 +1497,14 @@
     "state": {
       "connected": "conectado",
       "attention": "precisa de atenção",
-      "soon": "em breve"
+      "soon": "em breve",
+      "error": "com erro"
     },
     "oauth": {
       "how": "Abre o navegador na tela de autorização do serviço. Nada de client id nem token para copiar.",
       "waiting": "Autorize na janela do navegador que abriu. Esta tela atualiza sozinha quando voltar."
     },
     "custom": {
-      "open": "Adicionar servidor MCP",
       "title": "Servidor MCP próprio",
       "description": "Qualquer servidor MCP remoto, pelo endereço. Se ele pedir OAuth com registro automático, o navegador abre para você autorizar; se não pedir, ele só entra no cadastro.",
       "name": "Nome",
@@ -1530,16 +1512,13 @@
       "url": "Endereço",
       "urlPlaceholder": "https://exemplo.com/mcp",
       "urlHint": "Precisa ser https, exceto em localhost.",
-      "submit": "Adicionar"
+      "submit": "Adicionar",
+      "badge": "personalizado"
     },
     "catalog": {
       "grafana": {
         "tagline": "Dashboards, métricas e alertas, uma conexão por instância",
         "description": "Servidor MCP oficial do Grafana, pelo Docker. Cadastre cada instância (dev, prod) com o endereço e um token de service account."
-      },
-      "claude-code": {
-        "tagline": "Seus agents e a fila em qualquer sessão do Claude Code",
-        "description": "Cadastra o Locum como servidor MCP do Claude Code desta máquina. Qualquer sessão nova passa a ver agents, execuções e a fila, usando as credenciais guardadas aqui."
       },
       "github": {
         "tagline": "PRs, issues e repositórios observados",
@@ -1589,10 +1568,6 @@
         "tagline": "Arquivos, frames e design system",
         "description": "Servidor MCP remoto do Figma. Os agents leem frames e variáveis para comparar tela com design."
       },
-      "opencode": {
-        "tagline": "Seus agents e a fila em qualquer sessão do opencode",
-        "description": "Cadastra o Locum como servidor MCP no opencode desta máquina, no opencode.json global. Qualquer sessão nova passa a ver agents, execuções e a fila, usando as credenciais guardadas aqui."
-      },
       "shortcut": {
         "tagline": "Stories, épicos e iterações",
         "description": "Servidor MCP oficial do Shortcut. Os agents leem e atualizam stories e épicos do workspace que você autorizar."
@@ -1627,7 +1602,6 @@
       }
     },
     "import": {
-      "open": "Importar de outras ferramentas",
       "title": "Importar de outras ferramentas",
       "description": "Os servidores MCP já configurados nesta máquina: no Claude Code (os seus e os dos plugins ligados), no opencode, no Cursor, no VS Code e no Claude Desktop. Importados, passam a ser do Locum e rodam com qualquer modelo, mesmo sem a ferramenta de origem. Entram desligados; a credencial vai para o cofre. Os conectores do claude.ai não aparecem aqui: eles só existem pela conta Claude.",
       "empty": "Nenhum servidor MCP no Claude Code, opencode, Cursor, VS Code ou Claude Desktop desta máquina.",
@@ -1637,7 +1611,78 @@
       "submit_one": "Importar {{count}}",
       "submit_other": "Importar {{count}}",
       "submit_zero": "Importar {{count}}"
-    }
+    },
+    "lead": "Tudo que o Locum alcança fora desta máquina: serviços, servidores MCP e trackers de tarefas. Conecte uma vez aqui; canal, filtro e destino ficam em cada automação.",
+    "yours": {
+      "title": "Suas conexões",
+      "description": "O que está conectado ou cadastrado, com o estado de cada uma e o que ela libera nas automações.",
+      "needAttention_one": "{{count}} conexão pede atenção. Abra para ver o que fazer.",
+      "needAttention_other": "{{count}} conexões pedem atenção. Abra para ver o que fazer.",
+      "empty": "Nada conectado ainda. Conecte o GitHub, o Slack ou outro serviço para as automações terem de onde ler e onde agir.",
+      "needAttention_zero": "{{count}} conexões pedem atenção. Abra para ver o que fazer."
+    },
+    "add": {
+      "open": "Adicionar conexão",
+      "title": "Adicionar conexão",
+      "description": "Escolha o serviço. Ele abre na página dele, onde você conecta.",
+      "others": "Fora do catálogo",
+      "customHint": "Qualquer servidor MCP, pelo endereço.",
+      "importHint": "Traz os servidores MCP do Claude Code, opencode, Cursor e outros.",
+      "back": "Voltar à lista"
+    },
+    "reason": {
+      "needs-auth": "Falta autorizar, ou a autorização venceu. Reconecte.",
+      "disabled": "Desligada: nenhuma automação usa esta conexão enquanto estiver assim.",
+      "failing": "A última tentativa de conexão falhou.",
+      "untested": "Ligada e autorizada, mas ainda sem teste. Use Testar para conferir."
+    },
+    "offers": {
+      "title": "O que libera",
+      "triggers_one": "{{count}} gatilho",
+      "triggers_other": "{{count}} gatilhos",
+      "actions_one": "{{count}} ação",
+      "actions_other": "{{count}} ações",
+      "tools_one": "{{count}} ferramenta",
+      "tools_other": "{{count}} ferramentas",
+      "none": "Ainda sem ferramentas listadas. Teste a conexão para o Locum descobrir.",
+      "trigger": "gatilho",
+      "action": "ação",
+      "tool": "ferramenta",
+      "triggers_zero": "{{count}} gatilhos",
+      "actions_zero": "{{count}} ações",
+      "tools_zero": "{{count}} ferramentas"
+    },
+    "test": "Testar conexão",
+    "testing": "testando...",
+    "detail": {
+      "missing": "Não há conexão \"{{id}}\" nesta máquina. Pode ter sido removida.",
+      "account": "conta {{account}}",
+      "customDescription": "Servidor MCP cadastrado por você ou importado de outra ferramenta. Os agents usam as ferramentas dele quando uma automação o cita.",
+      "offersHint": "O que dá para montar numa automação com esta conexão.",
+      "tools": "Ferramentas",
+      "toolsHint": "O que um agent pode chamar. Leitura só consulta; escrita muda algo no serviço, e fica num passo de ação que passa pela Fila.",
+      "usedBy": "Quem usa",
+      "usedByHint": "Automações e agents que dependem desta conexão. Desligar ou remover quebra o passo deles.",
+      "unused": "Nenhuma automação nem agent usa esta conexão ainda.",
+      "kind": {
+        "automation": "Automação",
+        "agent": "Agent",
+        "initiative": "Iniciativa"
+      },
+      "how": {
+        "ferramenta": "ferramenta",
+        "exige": "exige o servidor",
+        "acao": "ação de app"
+      },
+      "settings": "Configuração",
+      "remove": "Remover",
+      "removeHint": "Tira o servidor do cadastro e esquece a credencial. Automação que o usa deixa de rodar esse passo.",
+      "removeAction": "Remover conexão",
+      "removeConfirm": "Confirmar remoção",
+      "technical": "Detalhes técnicos"
+    },
+    "connectServer": "Conectar servidor MCP",
+    "noServerHint": "Esta conexão vale para os gatilhos pelo token, mas ainda não tem o servidor MCP que dá ferramentas aos agents."
   },
   "claudeSessions": {
     "title": "Sessões",
@@ -1765,7 +1810,7 @@
       "triggers": "Gatilhos",
       "steps": "Passos",
       "hint": "Clique para acrescentar. Passo novo entra depois do nó selecionado.",
-      "needsApp": "conecte em Apps",
+      "needsApp": "conecte em Conexões",
       "agents": "Agents",
       "newAgent": "Criar agent na biblioteca",
       "agentsEmpty": "Nenhum agent ainda.",
@@ -1890,7 +1935,7 @@
         "channels": "Canais de equipe (menção ou link de PR acorda)",
         "list": "Listar canais",
         "loading": "Lendo canais...",
-        "channelsHint": "Precisa ligar os canais na conexão do Teams, em Apps. Cada canal é uma chamada ao Graph por batida."
+        "channelsHint": "Precisa ligar os canais na conexão do Teams, em Conexões. Cada canal é uma chamada ao Graph por batida."
       },
       "poll": {
         "title": "Pull request no GitHub",
@@ -1942,7 +1987,7 @@
         "title": "Abrir tarefa",
         "description": "Abre a tarefa no Jira ou no GitHub com o texto da IA.",
         "tracker": "Tracker",
-        "none": "Cadastre um tracker em Apps, no Jira ou no GitHub.",
+        "none": "Cadastre um tracker em Conexões, no Jira, no Shortcut ou no GitHub.",
         "choose": "Escolha o tracker"
       },
       "other": {
@@ -2043,8 +2088,8 @@
       "noSteps": "Acrescente pelo menos um passo.",
       "noTrigger": "Sem gatilho, ela só roda pelo botão.",
       "noChannels": "Diga qual canal do Slack observar.",
-      "slackOff": "O Slack não está conectado. Ligue em Apps.",
-      "teamsOff": "O Teams não está conectado. Ligue em Apps.",
+      "slackOff": "O Slack não está conectado. Ligue em Conexões.",
+      "teamsOff": "O Teams não está conectado. Ligue em Conexões.",
       "noPrompt": "O passo de IA está sem instrução.",
       "actionWithoutAi": "Esta ação precisa de um passo de IA antes, que escreva o texto.",
       "slackReplyNeedsSlack": "Responder no Slack precisa de um gatilho do Slack: é dele que vem a thread.",
@@ -2132,19 +2177,6 @@
         "batida": "a última varredura falhou, {{when}}:"
       }
     }
-  },
-  "apps": {
-    "title": "Apps",
-    "lead": "Os serviços que o Locum usa. Conecte uma vez aqui; canal, filtro e destino ficam em cada automação.",
-    "offers": "O que oferece nas automações",
-    "offersTrigger": "gatilho",
-    "offersStep": "passo",
-    "test": "Testar conexão",
-    "testing": "testando...",
-    "testOk_one": "Respondeu: {{count}} ferramenta em {{ms}} ms",
-    "testOk_other": "Respondeu: {{count}} ferramentas em {{ms}} ms",
-    "testOk_zero": "Respondeu, sem ferramentas, em {{ms}} ms",
-    "testFail": "Não respondeu: {{error}}"
   },
   "library": {
     "title": "Agents",
@@ -2243,5 +2275,9 @@
       "ignore": "Dá para ignorar"
     },
     "detail": "Fonte e detalhe"
+  },
+  "models": {
+    "title": "Modelos",
+    "lead": "De onde vêm os modelos que os agents usam nesta máquina: assinatura, chave de API ou um endereço compatível com OpenAI. Chave e endereço se editam aqui, sem reiniciar."
   }
 }
