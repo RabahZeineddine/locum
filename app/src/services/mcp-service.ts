@@ -2,7 +2,22 @@ import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
 import { isAuthError, McpRegistry, type McpConnectOutcome, type McpToolInfo } from "../mcp/registry.js";
-import { McpServerConfig, type McpServerInput } from "../config/types.js";
+import { McpServerConfig, McpSource, type McpServerInput } from "../config/types.js";
+import {
+  cobrirPelaCopia,
+  configMascarada,
+  ehChaveDeSegredo,
+  diferencas,
+  homeDasFerramentas,
+  impressao,
+  OrigemResolver,
+  rotuloDaOrigem,
+  semMarcadorDoLocum,
+  type MotivoDoSumico,
+  shellDeLogin,
+  type Mudanca,
+  type Resolvido,
+} from "./mcp-origem.js";
 import { CREDENTIAL_PLACEHOLDER, fillCredential, secretService, type SecretService } from "./secret-service.js";
 
 /**
@@ -42,10 +57,53 @@ export interface McpServerHealth {
 
 /** Cadastro somado ao que so interessa a quem administra, nao a quem conecta. */
 export interface McpServerEntry {
+  /**
+   * Cadastro manual: o que o Locum guarda. Vinculado: a última configuração
+   * aceita, que vale enquanto a origem muda sem aceite ou some. A efetiva, a
+   * que conecta, sai de `vinculos()`.
+   */
   config: McpServerConfig;
+  /** De onde a configuração vem; nulo é cadastro manual. */
+  source: McpSource | null;
   enabled: boolean;
   credentialRef: string | null;
   health: McpServerHealth;
+}
+
+/**
+ * O que se sabe da origem de um servidor vinculado, para a tela e para a
+ * ferramenta de leitura. `mudou` é uma mudança sensível que espera aceite, e
+ * até lá vale a anterior; `sumiu` é origem que não tem mais o servidor (plugin
+ * desligado ou removido, arquivo apagado), e vale a última aceita.
+ */
+export interface McpVinculo {
+  source: McpSource;
+  /** Como a tela chama a origem: `akad@akad`, `usuário`, `Cursor`. */
+  rotulo: string;
+  /** O arquivo onde editar, quando se sabe qual é. */
+  arquivo: string | null;
+  estado: "ok" | "mudou" | "sumiu" | "indisponivel";
+  /** Impressão da configuração que a origem tem agora; o aceite devolve esta, para valer só o que a pessoa viu. */
+  hash: string | null;
+  /** Para `sumiu`: plugin desligado no Claude Code, removido, ou só sem o servidor. */
+  motivo: MotivoDoSumico | null;
+  /** Mudança sensível que a pessoa decidiu não aceitar; fica quieta até a origem mudar de novo. */
+  mantida: boolean;
+  mudancas: Mudanca[];
+  /** O que de fato conecta agora, com o segredo mascarado. */
+  efetivo: McpServerInput;
+  /** Variável que a origem cita e esta máquina não tem. */
+  faltando: string[];
+}
+
+interface Decisao {
+  source: McpSource;
+  estado: McpVinculo["estado"];
+  /** A configuração a usar, sem o segredo no lugar do marcador. */
+  config: McpServerConfig;
+  resolvido: Resolvido | undefined;
+  mudancas: Mudanca[];
+  mantida: boolean;
 }
 
 /** Onde fica a última lista de ferramentas de cada servidor. */
@@ -65,6 +123,12 @@ export class McpService {
   constructor(
     private readonly db: Db = defaultDb,
     private readonly secrets: SecretService = secretService,
+    private readonly origem: OrigemResolver = new OrigemResolver({
+      get home() {
+        return homeDasFerramentas();
+      },
+      ambiente: shellDeLogin,
+    }),
   ) {}
 
   /**
@@ -101,7 +165,7 @@ export class McpService {
       .select()
       .from(schema.mcpServers)
       .where(eq(schema.mcpServers.enabled, true));
-    return atuais.map((row) => this.connectable(row));
+    return Promise.all(atuais.map((row) => this.connectable(row)));
   }
 
   /**
@@ -111,11 +175,35 @@ export class McpService {
    * o destino (transporte, endereco ou comando), o vinculo cai, e quem mudou
    * conecta de novo: senao bastaria regravar o nome com outra URL e o mesmo
    * marcador para o token sair para um servidor que ninguem autorizou.
+   *
+   * Servidor vinculado a uma origem não aceita outro comando, endereço, env ou
+   * cabeçalho por aqui: isso se edita na origem, ou se desvincula. O que é do
+   * Locum (escopo, tempo ocioso, o marcador da credencial) continua valendo.
+   * `vinculo` é a importação, que escolhe a origem de propósito.
    */
-  async register(config: McpServerInput): Promise<McpServerEntry> {
+  async register(config: McpServerInput, vinculo?: { source: McpSource; hash: string }): Promise<McpServerEntry> {
     const parsed = McpServerConfig.parse(config);
     const anterior = await this.row(parsed.name);
+    if (vinculo === undefined && anterior?.source != null) {
+      const source = McpSource.parse(anterior.source);
+      if (mudaOQueEDaOrigem(toEntry(anterior).config, parsed)) {
+        throw new Error(
+          `servidor MCP "${parsed.name}" está vinculado a ${rotuloDaOrigem(source)}: edite na origem` +
+            `${this.origem.arquivoDe(source) === undefined ? "" : ` (${this.origem.arquivoDe(source)})`} ou desvincule antes`,
+        );
+      }
+    }
+    return this.salvar(parsed, anterior, vinculo === undefined ? {} : { source: vinculo.source, sourceHash: vinculo.hash, sourceKeptHash: null });
+  }
+
+  private async salvar(
+    parsed: McpServerConfig,
+    anterior: McpServerRow | undefined,
+    origem: { source?: McpSource | null; sourceHash?: string | null; sourceKeptHash?: string | null },
+    preservarCredencial = false,
+  ): Promise<McpServerEntry> {
     const mudouDestino =
+      !preservarCredencial &&
       anterior !== undefined &&
       (anterior.transport !== parsed.transport ||
         (anterior.url ?? null) !== (parsed.url ?? null) ||
@@ -130,6 +218,7 @@ export class McpService {
       headers: parsed.headers ?? null,
       scope: parsed.scope,
       idleTimeoutMs: parsed.idleTimeoutMs,
+      ...origem,
     };
 
     await this.db
@@ -138,6 +227,151 @@ export class McpService {
       .onConflictDoUpdate({ target: schema.mcpServers.name, set: values });
 
     return toEntry((await this.row(parsed.name))!);
+  }
+
+  /**
+   * Liga a uma origem um servidor que já estava cadastrado como cópia, para a
+   * migração. A cópia vira a configuração aceita: o que a origem tem hoje de
+   * diferente passa pelo aceite.
+   */
+  async vincular(name: string, source: McpSource): Promise<void> {
+    const row = await this.row(name);
+    if (row === undefined) throw new Error(`servidor MCP "${name}" nao cadastrado`);
+    // O marcador de credencial que o Locum pôs na cópia (OAuth) não é da origem.
+    const origem = (await this.origem.resolver(source, name))?.config;
+    const copia = toEntry(row).config;
+    const aceita = origem === undefined ? copia : semMarcadorDoLocum(copia, origem);
+    await this.db
+      .update(schema.mcpServers)
+      .set({ source, sourceHash: impressao(aceita, source), sourceKeptHash: null })
+      .where(eq(schema.mcpServers.name, name));
+  }
+
+  /**
+   * Reparo, uma vez: servidor vinculado que ficou com o segredo em texto puro
+   * em `env` ou `headers` (a classificação de nomes antiga não o reconhecia)
+   * tem o valor movido para o cofre, e o cadastro passa a guardar o marcador. O
+   * cofre guarda um segredo por servidor, então só o primeiro se move; quem já
+   * tem credencial no cofre não é tocado. Devolve os nomes reparados.
+   */
+  async protegerSegredos(): Promise<string[]> {
+    const marca = "mcp.vinculo.segredos";
+    const [feito] = await this.db.select({ value: schema.settings.value }).from(schema.settings).where(eq(schema.settings.key, marca));
+    if (feito !== undefined) return [];
+    const reparados: string[] = [];
+    for (const row of await this.db.select().from(schema.mcpServers)) {
+      if (row.source == null || row.credentialRef !== null) continue;
+      const lida = McpSource.safeParse(row.source);
+      if (!lida.success) continue;
+      const config = toEntry(row).config;
+      const achar = (r: Record<string, string> | undefined) =>
+        Object.entries(r ?? {}).find(([k, v]) => ehChaveDeSegredo(k) && v.length > 0 && v !== CREDENTIAL_PLACEHOLDER && !v.includes("${"));
+      const emEnv = achar(config.env);
+      const emHeaders = emEnv === undefined ? achar(config.headers) : undefined;
+      const achado = emEnv ?? emHeaders;
+      if (achado === undefined) continue;
+      const ref = `mcp/${row.name}`;
+      this.secrets.set(ref, achado[1]);
+      const novo: McpServerConfig =
+        emEnv !== undefined
+          ? { ...config, env: { ...config.env, [achado[0]]: CREDENTIAL_PLACEHOLDER } }
+          : { ...config, headers: { ...config.headers, [achado[0]]: CREDENTIAL_PLACEHOLDER } };
+      await this.db
+        .update(schema.mcpServers)
+        .set({ env: novo.env ?? null, headers: novo.headers ?? null, credentialRef: ref })
+        .where(eq(schema.mcpServers.name, row.name));
+      // A impressão aceita era da cópia com o valor em claro: recalcula.
+      await this.vincular(row.name, lida.data);
+      reparados.push(row.name);
+    }
+    await this.db.insert(schema.settings).values({ key: marca, value: new Date().toISOString() });
+    return reparados;
+  }
+
+  /** Estado de cada servidor vinculado: se a origem bate com o aceito, mudou ou sumiu. */
+  async vinculos(): Promise<Record<string, McpVinculo>> {
+    // Quem pergunta pelo estado quer o de agora, e não o de até 5 s atrás.
+    this.origem.esquecer();
+    const rows = (await this.db.select().from(schema.mcpServers)).filter((r) => r.source != null);
+    const saida: Record<string, McpVinculo> = {};
+    await Promise.all(
+      rows.map(async (row) => {
+        const d = await this.decidir(row);
+        if (d === null) return;
+        saida[row.name] = {
+          source: d.source,
+          hash: d.resolvido?.hash ?? null,
+          motivo: d.estado === "sumiu" && d.resolvido === undefined ? this.origem.motivoDoSumico(d.source) : null,
+          rotulo: rotuloDaOrigem(d.source),
+          arquivo: d.resolvido?.arquivo ?? this.origem.arquivoDe(d.source) ?? null,
+          estado: d.estado,
+          mantida: d.mantida,
+          mudancas: d.mudancas,
+          efetivo: configMascarada(d.config),
+          faltando: d.resolvido?.faltando ?? [],
+        };
+      }),
+    );
+    return saida;
+  }
+
+  /**
+   * A pessoa aceita a mudança da origem: ela passa a ser a configuração aceita.
+   * `hash` é a impressão que o aviso mostrou. Se a origem releu diferente, o
+   * aceite é recusado e a tela mostra o diff novo: vale o que a pessoa viu.
+   */
+  async aceitarOrigem(name: string, hash: string): Promise<McpServerEntry> {
+    this.origem.esquecer();
+    const row = await this.row(name);
+    const d = row === undefined ? null : await this.decidir(row);
+    if (row === undefined || d === null) throw new Error(`servidor MCP "${name}" nao esta vinculado`);
+    if (d.resolvido === undefined) throw new Error(`a origem de "${name}" nao tem mais o servidor`);
+    if (d.estado === "indisponivel") throw new Error(`a origem de "${name}" cita variaveis que esta maquina nao resolveu agora (${d.resolvido.faltando.join(", ")}); tente de novo`);
+    if (d.resolvido.hash !== hash) throw new Error(`a origem de "${name}" mudou de novo desde que o aviso foi mostrado; confira o diff atualizado antes de aceitar`);
+    if (d.estado === "ok") return toEntry(row);
+    const aceita = toEntry(row).config;
+    const config = this.daOrigem(d.resolvido, aceita, row);
+    // Só os argumentos mudaram: o programa e o destino são os mesmos, e a credencial continua valendo.
+    const mesmoDestino =
+      config.transport === aceita.transport && (config.url ?? null) === (aceita.url ?? null) && (config.command?.[0] ?? null) === (aceita.command?.[0] ?? null);
+    const entry = await this.salvar(config, row, { sourceHash: d.resolvido.hash, sourceKeptHash: null }, mesmoDestino);
+    void entry;
+    // O segredo que a origem traz literal vai para o cofre, como na importação.
+    if (d.resolvido.segredo !== undefined) {
+      const ref = `mcp/${name}`;
+      this.secrets.set(ref, d.resolvido.segredo);
+      await this.setCredentialRef(name, ref);
+    }
+    return toEntry((await this.row(name))!);
+  }
+
+  /** Mantém a configuração anterior: a mudança sai do aviso, e volta se a origem mudar de novo. */
+  async manterAnterior(name: string, hash: string): Promise<void> {
+    this.origem.esquecer();
+    const row = await this.row(name);
+    const d = row === undefined ? null : await this.decidir(row);
+    if (d?.resolvido === undefined) throw new Error(`servidor MCP "${name}" nao tem mudanca da origem para manter`);
+    if (d.resolvido.hash !== hash) throw new Error(`a origem de "${name}" mudou de novo desde que o aviso foi mostrado; confira o diff atualizado`);
+    await this.db.update(schema.mcpServers).set({ sourceKeptHash: d.resolvido.hash }).where(eq(schema.mcpServers.name, name));
+  }
+
+  /**
+   * Corta o vínculo: o servidor vira cadastro manual, com a configuração que
+   * valia agora como cópia editável. É decisão de quem desvincula, e não há
+   * volta automática: importar de novo é o caminho para vincular outra vez.
+   */
+  async desvincular(name: string): Promise<McpServerEntry> {
+    this.origem.esquecer();
+    const row = await this.row(name);
+    const d = row === undefined ? null : await this.decidir(row);
+    if (row === undefined || d === null) throw new Error(`servidor MCP "${name}" nao esta vinculado`);
+    const entry = await this.salvar(d.config, row, { source: null, sourceHash: null, sourceKeptHash: null });
+    if (d.estado === "ok" && d.resolvido?.segredo !== undefined) {
+      const ref = `mcp/${name}`;
+      this.secrets.set(ref, d.resolvido.segredo);
+      await this.setCredentialRef(name, ref);
+    }
+    return entry;
   }
 
   async remove(name: string): Promise<boolean> {
@@ -302,7 +536,7 @@ export class McpService {
     await this.refreshAll([{ name }]);
     const row = (await this.row(name))!;
 
-    const registry = McpRegistry.fromList([this.connectable(row)]);
+    const registry = McpRegistry.fromList([await this.connectable(row)]);
     try {
       return await fn(registry);
     } finally {
@@ -331,15 +565,85 @@ export class McpService {
    * ferramenta de leitura sai de la, com o marcador intacto, e so o que sobe um
    * processo ou abre uma conexao passa por aqui. Assim nao ha caminho em que um
    * segredo decifrado escape por uma listagem.
+   *
+   * Servidor vinculado conecta com a configuração da origem, lida agora, e não
+   * com a cópia que ficou no banco.
    */
-  private connectable(row: McpServerRow): McpServerConfig {
-    const { config } = toEntry(row);
-    const secret = row.credentialRef ? this.secrets.get(row.credentialRef) : undefined;
+  private async connectable(row: McpServerRow): Promise<McpServerConfig> {
+    const d = await this.decidir(row);
+    const config = d === null ? toEntry(row).config : d.config;
+    // O segredo que a origem traz literal vale enquanto a origem é a aceita; o
+    // do cofre, nos outros casos e no OAuth.
+    const doCofre = row.credentialRef ? this.secrets.get(row.credentialRef) : undefined;
+    const secret = (d?.estado === "ok" ? d.resolvido?.segredo : undefined) ?? doCofre;
     return {
       ...config,
       env: fillCredential(config.env, secret, { envFallback: true }),
       headers: fillCredential(config.headers, secret, { envFallback: false }),
     };
+  }
+
+  /**
+   * Decide qual configuração vale para um servidor vinculado. Origem igual à
+   * aceita (a versão do plugin não conta) vale a da origem, e a cópia do banco
+   * acompanha; origem mudada espera aceite e vale a anterior; origem que sumiu
+   * vale a última aceita. `null` para cadastro manual.
+   */
+  private async decidir(row: McpServerRow): Promise<Decisao | null> {
+    if (row.source == null) return null;
+    const lida = McpSource.safeParse(row.source);
+    if (!lida.success) return null;
+    const source = lida.data;
+    const aceita = toEntry(row).config;
+    const daOrigem = await this.origem.resolver(source, row.name);
+    const r = daOrigem === undefined ? undefined : cobrirPelaCopia(daOrigem, aceita, source);
+    if (r === undefined) return { source, estado: "sumiu", config: aceita, resolvido: undefined, mudancas: [], mantida: false };
+
+    if (r.hash === row.sourceHash) {
+      const nova = McpServerConfig.safeParse({ ...this.daOrigem(r, aceita, row), name: row.name, scope: row.scope, idleTimeoutMs: row.idleTimeoutMs });
+      if (!nova.success) return { source, estado: "sumiu", config: aceita, resolvido: r, mudancas: [], mantida: false };
+      if (JSON.stringify(configDeCopia(nova.data)) !== JSON.stringify(configDeCopia(aceita))) {
+        // Só o caminho da versão mudou: a cópia aceita acompanha, e continua
+        // servindo se a origem sumir depois.
+        await this.db
+          .update(schema.mcpServers)
+          .set({ command: nova.data.command ?? null, env: nova.data.env ?? null, url: nova.data.url ?? null, headers: nova.data.headers ?? null })
+          .where(eq(schema.mcpServers.name, row.name));
+      }
+      return { source, estado: "ok", config: nova.data, resolvido: r, mudancas: [], mantida: false };
+    }
+    // A origem cita variável que esta máquina não resolveu agora (shell de login
+    // que falhou, por exemplo): é indisponibilidade, e não mudança a aceitar.
+    if (r.incompleto) return { source, estado: "indisponivel", config: aceita, resolvido: r, mudancas: [], mantida: false };
+    return {
+      source,
+      estado: "mudou",
+      config: aceita,
+      resolvido: r,
+      mudancas: diferencas(aceita, r.config, source, r.raiz),
+      mantida: row.sourceKeptHash === r.hash,
+    };
+  }
+
+  /**
+   * A configuração da origem como cadastro do Locum. O marcador de credencial
+   * que o Locum pôs (o OAuth, por exemplo) segue valendo onde a origem não
+   * tem a chave.
+   */
+  private daOrigem(r: Resolvido, aceita: McpServerConfig, row: McpServerRow): McpServerConfig {
+    const mapa = (nova: Record<string, string> | undefined, antes: Record<string, string> | undefined) => {
+      const saida: Record<string, string> = { ...(nova ?? {}) };
+      for (const [k, v] of Object.entries(antes ?? {})) if (v === CREDENTIAL_PLACEHOLDER && saida[k] === undefined) saida[k] = v;
+      return Object.keys(saida).length === 0 ? undefined : saida;
+    };
+    return McpServerConfig.parse({
+      ...r.config,
+      name: row.name,
+      scope: row.scope,
+      idleTimeoutMs: row.idleTimeoutMs,
+      env: mapa(r.config.env, aceita.env),
+      headers: mapa(r.config.headers, aceita.headers),
+    });
   }
 
   private async row(name: string): Promise<McpServerRow | undefined> {
@@ -368,10 +672,31 @@ function toEntry(row: McpServerRow): McpServerEntry {
       scope: row.scope,
       idleTimeoutMs: row.idleTimeoutMs,
     }),
+    source: row.source == null ? null : (McpSource.safeParse(row.source).data ?? null),
     enabled: row.enabled,
     credentialRef: row.credentialRef,
     health: healthOf(row),
   };
+}
+
+/** O que a cópia guarda de uma configuração, para saber se ela precisa acompanhar a origem. */
+function configDeCopia(c: McpServerConfig): unknown {
+  return [c.transport, c.command ?? null, c.env ?? null, c.url ?? null, c.headers ?? null];
+}
+
+/**
+ * Se `depois` muda algo que pertence à origem: transporte, comando, endereço,
+ * variável ou cabeçalho. O marcador da credencial é do Locum e fica de fora.
+ */
+function mudaOQueEDaOrigem(antes: McpServerConfig, depois: McpServerConfig): boolean {
+  const proprios = (r: Record<string, string> | undefined) =>
+    Object.entries(r ?? {})
+      .filter(([, v]) => v !== CREDENTIAL_PLACEHOLDER)
+      .sort(([a], [b]) => a.localeCompare(b));
+  return (
+    JSON.stringify([antes.transport, antes.command ?? null, antes.url ?? null, proprios(antes.env), proprios(antes.headers)]) !==
+    JSON.stringify([depois.transport, depois.command ?? null, depois.url ?? null, proprios(depois.env), proprios(depois.headers)])
+  );
 }
 
 function healthOf(row: McpServerRow): McpServerHealth {

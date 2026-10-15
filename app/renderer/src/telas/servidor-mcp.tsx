@@ -14,6 +14,7 @@ type Credencial = ReadResult<"credentials.overview">["refs"][number];
 type Servidor = ReadResult<"mcp.list">[number];
 type Ferramenta = ReadResult<"mcp.tools">[number];
 type Teste = ReadResult<"mcp.test">;
+export type Vinculo = ReadResult<"mcp.vinculos">[string];
 
 /* ---------------------------------------------------------------- servidores */
 
@@ -23,8 +24,133 @@ export type EstadoDoTeste =
   | { fase: "respondeu"; teste: Teste }
   | { fase: "recusado"; erro: string };
 
-export function destinoDe(servidor: Servidor): string {
-  return servidor.config.transport === "stdio" ? (servidor.config.command ?? []).join(" ") : (servidor.config.url ?? "");
+/** O que conecta: a configuração da origem quando o servidor é vinculado, e a cadastrada nos outros. */
+export function destinoDe(servidor: Servidor, vinculo?: Vinculo): string {
+  const config = vinculo?.efetivo ?? servidor.config;
+  return config.transport === "stdio" ? (config.command ?? []).join(" ") : (config.url ?? "");
+}
+
+/** Selo de origem: "do plugin akad (Claude Code)", "do Claude Code", "do Cursor". A configuração não é cópia, vem de lá. */
+export function SeloVinculado({ vinculo }: { vinculo: Vinculo }) {
+  const { t } = useTranslation();
+  const texto =
+    vinculo.source.kind === "claude-plugin"
+      ? t("settings.servers.link.badgePlugin", { plugin: vinculo.source.plugin })
+      : vinculo.source.kind === "claude-user"
+        ? t("settings.servers.link.badgeUser")
+        : t("settings.servers.link.badgeTool", { origem: vinculo.rotulo });
+  return (
+    <span
+      className="border-border text-muted-foreground rounded border px-1.5 py-px text-[10px] leading-4"
+      data-locum-vinculado={vinculo.rotulo}
+      title={t("settings.servers.link.badgeHint", { origem: vinculo.rotulo })}
+    >
+      {texto}
+    </span>
+  );
+}
+
+/** Rótulo do campo que mudou, na língua da tela. */
+function campoDaMudanca(m: Vinculo["mudancas"][number], t: (chave: string, opcoes?: Record<string, unknown>) => string): string {
+  return t(`settings.servers.link.changed.field.${m.campo}`, { chave: m.chave });
+}
+
+/**
+ * O aviso do vínculo: a origem mudou (com o que mudou e a escolha de aceitar ou
+ * manter a anterior) ou sumiu. Sem aviso quando a origem bate com o aceito.
+ */
+export function AvisoDaOrigem({ nome, onMudou, vinculo }: { nome: string; onMudou: () => void; vinculo: Vinculo }) {
+  const { t } = useTranslation();
+  const [ocupado, setOcupado] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  if (vinculo.estado === "ok") return null;
+
+  const agir = (fazer: () => Promise<unknown>): void => {
+    setOcupado(true);
+    setErro(null);
+    fazer().then(
+      () => {
+        setOcupado(false);
+        onMudou();
+      },
+      (falha: unknown) => {
+        setOcupado(false);
+        setErro(falha instanceof Error ? falha.message : String(falha));
+        // A origem pode ter mudado de novo: relê, e o diff novo aparece.
+        onMudou();
+      },
+    );
+  };
+
+  if (vinculo.estado === "indisponivel") {
+    return (
+      <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-400" data-locum-origem-estado="indisponivel" data-locum-origem-de={nome}>
+        <p className="font-medium">{t("settings.servers.link.unavailable.title")}</p>
+        <p>{t("settings.servers.link.unavailable.body", { origem: vinculo.rotulo, names: vinculo.faltando.join(", ") })}</p>
+      </div>
+    );
+  }
+
+  if (vinculo.estado === "sumiu") {
+    return (
+      <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-400" data-locum-origem-estado="sumiu" data-locum-origem-de={nome}>
+        <p className="font-medium">{t("settings.servers.link.gone.title")}</p>
+        <p>
+          {vinculo.motivo === "plugin-desligado"
+            ? t("settings.servers.link.goneDisabled", { origem: vinculo.rotulo })
+            : vinculo.motivo === "plugin-removido"
+              ? t("settings.servers.link.goneRemoved", { origem: vinculo.rotulo })
+              : t("settings.servers.link.gone.body", { origem: vinculo.rotulo, nome })}
+        </p>
+      </div>
+    );
+  }
+
+  const vazio = t("settings.servers.link.changed.none");
+  return (
+    <div
+      className="flex flex-col gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2.5 text-xs"
+      data-locum-origem-estado={vinculo.mantida ? "mantida" : "mudou"}
+      data-locum-origem-de={nome}
+    >
+      <p className="font-medium text-amber-400">{t("settings.servers.link.changed.title")}</p>
+      <p className="text-muted-foreground">
+        {vinculo.mantida
+          ? t("settings.servers.link.changed.kept")
+          : t("settings.servers.link.changed.body", { origem: vinculo.rotulo, nome })}
+      </p>
+      <ul className="flex flex-col gap-1.5" data-locum-origem-diff="">
+        {vinculo.mudancas.map((m) => (
+          <li className="flex flex-col gap-0.5" key={`${m.campo}:${m.chave ?? ""}`}>
+            <span className="text-foreground font-medium">{campoDaMudanca(m, t)}</span>
+            {m.protegido === true ? (
+              <span className="text-muted-foreground">{t("settings.servers.link.protectedChanged")}</span>
+            ) : (
+              <>
+                <code className="font-mono text-[11px] break-all text-red-400/90">
+                  {t("settings.servers.link.changed.before")}: {m.antes ?? vazio}
+                </code>
+                <code className="font-mono text-[11px] break-all text-emerald-400/90">
+                  {t("settings.servers.link.changed.after")}: {m.depois ?? vazio}
+                </code>
+              </>
+            )}
+          </li>
+        ))}
+      </ul>
+      <div className="flex flex-wrap gap-2">
+        <Button className="cursor-pointer" data-locum-aceitar-origem={nome} disabled={ocupado} onClick={() => agir(() => call("mcp.aceitarOrigem", nome, vinculo.hash ?? ""))} size="sm">
+          {t("settings.servers.link.changed.accept")}
+        </Button>
+        {vinculo.mantida ? null : (
+          <Button className="cursor-pointer" data-locum-manter-origem={nome} disabled={ocupado} onClick={() => agir(() => call("mcp.manterAnterior", nome, vinculo.hash ?? ""))} size="sm" variant="outline">
+            {t("settings.servers.link.changed.keep")}
+          </Button>
+        )}
+      </div>
+      {erro === null ? null : <p className="text-destructive">{erro}</p>}
+    </div>
+  );
 }
 
 /** Endereço que só a rede da casa alcança: o servidor falha fora da VPN, e a tela avisa. */
@@ -262,16 +388,20 @@ export function DetalhesTecnicos({
   onMudou,
   origem,
   servidor,
+  vinculo,
 }: {
   credencial: Credencial | undefined;
   onMudou: () => void;
   origem: string;
   servidor: Servidor;
+  vinculo?: Vinculo;
 }) {
   const { t, i18n } = useTranslation();
   const nome = servidor.config.name;
   const saude = servidor.health;
+  const efetiva = vinculo?.efetivo ?? servidor.config;
   const http = servidor.config.transport !== "stdio";
+  const [desvinculando, setDesvinculando] = useState(false);
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [campo, setCampo] = useState(http ? "Authorization" : "API_KEY");
@@ -311,14 +441,62 @@ export function DetalhesTecnicos({
             : t("settings.servers.health.ok", { when: quando(i18n.language, saude.lastOkAt / 1000) })}
         </p>
         <h3 className={titulo}>{t(http ? "settings.servers.detail.url" : "settings.servers.detail.command")}</h3>
-        <code className="bg-muted/40 rounded-md p-2 font-mono text-[11px] break-all">{destinoDe(servidor)}</code>
-        {Object.keys(servidor.config.env ?? {}).length + Object.keys(servidor.config.headers ?? {}).length > 0 ? (
+        <code className="bg-muted/40 rounded-md p-2 font-mono text-[11px] break-all" data-locum-destino="">{destinoDe(servidor, vinculo)}</code>
+        {Object.keys(efetiva.env ?? {}).length + Object.keys(efetiva.headers ?? {}).length > 0 ? (
           <p className="text-muted-foreground text-xs">
             {t(http ? "settings.servers.detail.headers" : "settings.servers.detail.env", {
-              names: Object.keys((http ? servidor.config.headers : servidor.config.env) ?? {}).join(", ") || "-",
+              names: Object.keys((http ? efetiva.headers : efetiva.env) ?? {}).join(", ") || "-",
             })}
           </p>
         ) : null}
+        {vinculo === undefined ? null : (
+          <div className="flex flex-col gap-2" data-locum-vinculo-detalhe={nome}>
+            <p className="text-muted-foreground text-xs">{t("settings.servers.link.readOnly")}</p>
+            {vinculo.faltando.length === 0 ? null : (
+              <p className="text-xs text-amber-400">{t("settings.servers.link.missing", { names: vinculo.faltando.join(", ") })}</p>
+            )}
+            <h3 className={titulo}>{t("settings.servers.link.editAtOrigin")}</h3>
+            <code className="bg-muted/40 rounded-md p-2 font-mono text-[11px] break-all" data-locum-arquivo-origem="">
+              {vinculo.arquivo ?? vinculo.rotulo}
+            </code>
+            <div className="flex flex-wrap gap-2">
+              {vinculo.arquivo === null ? null : (
+                <Button className="cursor-pointer" onClick={() => void call("mcp.mostrarOrigem", nome)} size="sm" variant="outline">
+                  {t("settings.servers.link.reveal")}
+                </Button>
+              )}
+              <Button
+                className="cursor-pointer"
+                data-locum-desvincular={nome}
+                disabled={ocupado}
+                onClick={() => {
+                  if (!desvinculando) {
+                    setDesvinculando(true);
+                    return;
+                  }
+                  setOcupado(true);
+                  setErro(null);
+                  call("mcp.desvincular", nome).then(
+                    () => {
+                      setOcupado(false);
+                      setDesvinculando(false);
+                      onMudou();
+                    },
+                    (falha: unknown) => {
+                      setOcupado(false);
+                      setErro(falha instanceof Error ? falha.message : String(falha));
+                    },
+                  );
+                }}
+                size="sm"
+                variant="outline"
+              >
+                {t(desvinculando ? "settings.servers.link.unlinkConfirm" : "settings.servers.link.unlink")}
+              </Button>
+            </div>
+            {desvinculando ? <p className="text-muted-foreground text-xs">{t("settings.servers.link.unlinkHint")}</p> : null}
+          </div>
+        )}
       </section>
 
       <section className="flex flex-col gap-2">

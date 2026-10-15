@@ -127,7 +127,7 @@ export function registerConfigTools(server: McpServer): void {
     "register_mcp_server",
     {
       description:
-        "Registers or updates an MCP server that Locum consumes as a client. The name is the key that steps reference. On update, fields left out keep their current value; changing transport, url or command unlinks the stored credential. A new server, or one whose command or url changed, is saved disabled: only a person enables it, in the app or with `locum mcp:enable`. From here a server can be disabled, never enabled.",
+        "Registers or updates an MCP server that Locum consumes as a client. The name is the key that steps reference. On update, fields left out keep their current value; changing transport, url or command unlinks the stored credential. A server linked to an origin (a plugin, Claude Code, Cursor...) refuses command, env, url and headers changes: those are edited in the origin file, or a person unlinks it in the app. A new server, or one whose command or url changed, is saved disabled: only a person enables it, in the app or with `locum mcp:enable`. From here a server can be disabled, never enabled.",
       inputSchema: {
         name: z.string().min(1),
         transport: z.enum(["stdio", "http", "sse"]),

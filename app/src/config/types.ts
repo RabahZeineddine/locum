@@ -344,6 +344,26 @@ export const McpTransport = z.enum(["stdio", "http", "sse"]);
 export type McpTransport = z.infer<typeof McpTransport>;
 
 /**
+ * De onde a configuração de um servidor MCP vem quando ela não é do Locum: a
+ * ferramenta, o arquivo ou o plugin e o servidor dentro dele. Nunca guarda um
+ * caminho com versão; o diretório do plugin se resolve na hora do uso.
+ */
+export const McpSource = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("claude-user"), server: z.string().min(1) }),
+  z.object({
+    kind: z.literal("claude-plugin"),
+    marketplace: z.string().min(1),
+    plugin: z.string().min(1),
+    server: z.string().min(1),
+  }),
+  z.object({ kind: z.literal("opencode"), server: z.string().min(1) }),
+  z.object({ kind: z.literal("cursor"), server: z.string().min(1) }),
+  z.object({ kind: z.literal("vscode"), server: z.string().min(1) }),
+  z.object({ kind: z.literal("claude-desktop"), server: z.string().min(1) }),
+]);
+export type McpSource = z.infer<typeof McpSource>;
+
+/**
  * Cadastro de um servidor MCP. Mora aqui, e nao no registro, porque a mesma
  * validacao vale para a linha de comando, para o servidor MCP proprio e para a
  * tela de configuracao.

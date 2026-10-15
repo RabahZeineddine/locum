@@ -12,7 +12,10 @@ import { MARCAS } from "../marcas";
 import type { TelaProps } from "../rotas";
 import { Github, Grafana, Slack, SlackOficial, TeamsPeloGraph, Trackers } from "./paineis-de-conexao";
 import {
+  AvisoDaOrigem,
   DetalhesTecnicos,
+  SeloVinculado,
+  type Vinculo,
   EstadoDoServidor,
   FerramentasDoServidor,
   ResultadoDoTeste,
@@ -85,6 +88,10 @@ function ligada(c: Conexao): boolean {
 function SuasConexoes({ navegar }: { navegar: TelaProps["navegar"] }) {
   const { t } = useTranslation();
   const lista = useDadosEstaveis(useRead("connections.list"));
+  const vinculos = useDadosEstaveis(useRead("mcp.vinculos"));
+  const claudeCode = useRead("claudeCode.status");
+  const [corrigindo, setCorrigindo] = useState(false);
+  const [erroAoCorrigir, setErroAoCorrigir] = useState<string | null>(null);
   const [adicionando, setAdicionando] = useState(false);
 
   const suas = (lista.data ?? []).filter(ligada);
@@ -107,6 +114,36 @@ function SuasConexoes({ navegar }: { navegar: TelaProps["navegar"] }) {
         descricao={t("connections.lead")}
         titulo={t("connections.title")}
       />
+
+      {claudeCode.status === "ready" && claudeCode.data.desatualizado !== null ? (
+        <div className="flex flex-col gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2.5 text-xs" data-locum-claude-code-desatualizado="">
+          <p className="font-medium text-amber-400">{t("connections.claudeCodeStale.title")}</p>
+          <p className="text-muted-foreground">{t("connections.claudeCodeStale.body", { motivo: t(`connections.claudeCodeStale.motivo.${claudeCode.data.desatualizado}`) })}</p>
+          <div>
+            <Button
+              className="cursor-pointer"
+              disabled={corrigindo}
+              onClick={() => {
+                setCorrigindo(true);
+                setErroAoCorrigir(null);
+                call("claudeCode.connect")
+                  .then(
+                    () => setCorrigindo(false),
+                    (falha: unknown) => {
+                      setCorrigindo(false);
+                      setErroAoCorrigir(falha instanceof Error ? falha.message : String(falha));
+                    },
+                  )
+                  .finally(() => invalidateReads("claudeCode.status"));
+              }}
+              size="sm"
+            >
+              {t(corrigindo ? "connections.claudeCodeStale.fixing" : "connections.claudeCodeStale.fix")}
+            </Button>
+          </div>
+          {erroAoCorrigir === null ? null : <p className="text-destructive">{erroAoCorrigir}</p>}
+        </div>
+      ) : null}
 
       <section className="flex flex-col gap-4" data-locum-probe="suas-conexoes">
         <header className="flex flex-col gap-1">
@@ -131,7 +168,7 @@ function SuasConexoes({ navegar }: { navegar: TelaProps["navegar"] }) {
         ) : (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-3">
             {suas.map((c) => (
-              <ConexaoNaLista conexao={c} key={c.id} onAbrir={() => navegar("connections", c.id)} />
+              <ConexaoNaLista conexao={c} key={c.id} onAbrir={() => navegar("connections", c.id)} vinculos={vinculos.data ?? {}} />
             ))}
           </div>
         )}
@@ -223,8 +260,11 @@ function Resumo({ conexao }: { conexao: Conexao }) {
   );
 }
 
-function ConexaoNaLista({ conexao, onAbrir }: { conexao: Conexao; onAbrir: () => void }) {
+function ConexaoNaLista({ conexao, onAbrir, vinculos }: { conexao: Conexao; onAbrir: () => void; vinculos: Record<string, Vinculo> }) {
   const { t } = useTranslation();
+  const vinculado = conexao.servers.map((nome) => vinculos[nome]).find((v) => v !== undefined);
+  const mudou = conexao.servers.some((nome) => vinculos[nome]?.estado === "mudou" && vinculos[nome]?.mantida === false);
+  const sumiu = conexao.servers.some((nome) => vinculos[nome]?.estado === "sumiu" || vinculos[nome]?.estado === "indisponivel");
   const porque = textoDoEstado(conexao, t);
   return (
     <button
@@ -243,12 +283,17 @@ function ConexaoNaLista({ conexao, onAbrir }: { conexao: Conexao; onAbrir: () =>
         <span className="flex min-w-0 flex-1 flex-col gap-1">
           <span className="flex items-center gap-2">
             <span className="truncate font-semibold text-sm tracking-tight text-foreground">{conexao.name}</span>
-            {conexao.custom ? (
+            {conexao.custom && vinculado === undefined ? (
               <span className="border-border text-muted-foreground rounded border px-1.5 py-px text-[10px] leading-4">
                 {t("connections.custom.badge")}
               </span>
             ) : null}
           </span>
+          {vinculado === undefined ? null : (
+            <span>
+              <SeloVinculado vinculo={vinculado} />
+            </span>
+          )}
           <Resumo conexao={conexao} />
         </span>
       </span>
@@ -259,11 +304,16 @@ function ConexaoNaLista({ conexao, onAbrir }: { conexao: Conexao; onAbrir: () =>
             <span className="text-muted-foreground min-w-0 truncate text-[11px]">{conexao.account}</span>
           )}
         </span>
-        {porque === null ? null : (
+        {porque === null || mudou || sumiu ? null : (
           <span className={cn("line-clamp-2 text-xs", conexao.state === "error" ? "text-destructive" : "text-amber-400")} title={porque}>
             {porque}
           </span>
         )}
+        {mudou || sumiu ? (
+          <span className="line-clamp-2 text-xs text-amber-400" data-locum-origem-aviso={mudou ? "mudou" : "sumiu"}>
+            {t(mudou ? "settings.servers.link.changed.title" : "settings.servers.link.gone.title")}
+          </span>
+        ) : null}
       </span>
     </button>
   );
@@ -320,6 +370,7 @@ function AdicionarConexao({
             onPronto={() => {
               invalidateReads("connections.list");
               invalidateReads("mcp.list");
+              invalidateReads("mcp.vinculos");
               onFechar();
             }}
           />
@@ -508,6 +559,7 @@ function DetalheDaConexao({ id, navegar }: { id: string; navegar: TelaProps["nav
   const { t } = useTranslation();
   const lista = useDadosEstaveis(useRead("connections.list"));
   const servidores = useDadosEstaveis(useRead("mcp.list"));
+  const vinculos = useDadosEstaveis(useRead("mcp.vinculos"));
   const credenciais = useDadosEstaveis(useRead("credentials.overview"));
   const origens = useRead("claudeImport.origins");
   const trackers = useRead("trackers.list");
@@ -542,6 +594,7 @@ function DetalheDaConexao({ id, navegar }: { id: string; navegar: TelaProps["nav
   }
 
   const doServidor = (servidores.data ?? []).filter((s) => conexao.servers.includes(s.config.name));
+  const doVinculo = vinculos.data ?? {};
   const credencial = (credenciais.data?.refs ?? []).find((r) =>
     r.users.some((u) => u.kind === "mcp" && conexao.servers.includes(u.name)),
   );
@@ -561,6 +614,7 @@ function DetalheDaConexao({ id, navegar }: { id: string; navegar: TelaProps["nav
         setLigando(false);
         invalidateReads("connections.list");
         invalidateReads("mcp.list");
+        invalidateReads("mcp.vinculos");
         depois?.();
       },
       (e: unknown) => {
@@ -586,15 +640,21 @@ function DetalheDaConexao({ id, navegar }: { id: string; navegar: TelaProps["nav
           <div className="flex flex-wrap items-center gap-2">
             <Estado conexao={conexao} />
             {conexao.custom ? (
-              <span className="border-border text-muted-foreground rounded border px-1.5 py-px text-[10px] leading-4">
-                {t("connections.custom.badge")}
-              </span>
+              doServidor.some((s) => doVinculo[s.config.name] !== undefined) ? null : (
+                <span className="border-border text-muted-foreground rounded border px-1.5 py-px text-[10px] leading-4">
+                  {t("connections.custom.badge")}
+                </span>
+              )
             ) : (
               <span className="text-muted-foreground text-xs">{t(`connections.categories.${conexao.category}`)}</span>
             )}
             {conexao.account === null ? null : (
               <span className="text-muted-foreground text-xs">{t("connections.detail.account", { account: conexao.account })}</span>
             )}
+            {doServidor.map((servidor) => {
+              const v = doVinculo[servidor.config.name];
+              return v === undefined ? null : <SeloVinculado key={servidor.config.name} vinculo={v} />;
+            })}
           </div>
         </div>
       </header>
@@ -603,7 +663,7 @@ function DetalheDaConexao({ id, navegar }: { id: string; navegar: TelaProps["nav
         {conexao.custom ? t("connections.detail.customDescription") : t(`${chave}.description`)}
       </p>
 
-      {porque === null ? null : (
+      {porque === null || (conexao.reason === "disabled" && doServidor.length > 0) ? null : (
         <p
           className={cn(
             "rounded-md border px-3 py-2 text-xs break-words",
@@ -661,6 +721,22 @@ function DetalheDaConexao({ id, navegar }: { id: string; navegar: TelaProps["nav
         <p className="border-border text-muted-foreground rounded-md border border-dashed px-3 py-2 text-xs">{t(`${chave}.soon`)}</p>
       ) : null}
 
+      {doServidor.map((servidor) => {
+        const v = doVinculo[servidor.config.name];
+        return v === undefined ? null : (
+          <AvisoDaOrigem
+            key={servidor.config.name}
+            nome={servidor.config.name}
+            onMudou={() => {
+              invalidateReads("connections.list");
+              invalidateReads("mcp.list");
+              invalidateReads("mcp.vinculos");
+            }}
+            vinculo={v}
+          />
+        );
+      })}
+
       {doServidor.map((servidor) => (
         <EstadoDoServidor
           autorizavel={conexao.custom && servidor.config.transport === "http"}
@@ -669,6 +745,7 @@ function DetalheDaConexao({ id, navegar }: { id: string; navegar: TelaProps["nav
           onMudou={() => {
             invalidateReads("connections.list");
             invalidateReads("mcp.list");
+            invalidateReads("mcp.vinculos");
           }}
           servidor={servidor}
         />
@@ -755,10 +832,12 @@ function DetalheDaConexao({ id, navegar }: { id: string; navegar: TelaProps["nav
                 onMudou={() => {
                   invalidateReads("connections.list");
                   invalidateReads("mcp.list");
+                  invalidateReads("mcp.vinculos");
                   invalidateReads("credentials.overview");
                 }}
                 origem={origem}
                 servidor={servidor}
+                vinculo={doVinculo[servidor.config.name]}
               />
             ))}
           </div>
@@ -829,6 +908,7 @@ function TesteDaConexao({ servidor }: { servidor: string }) {
         // O teste grava o desfecho no cadastro: o estado da conexão acompanha.
         invalidateReads("connections.list");
         invalidateReads("mcp.list");
+        invalidateReads("mcp.vinculos");
       },
       // `testConnection` devolve a falha como dado, então chegar aqui quer
       // dizer que a ponte recusou, e não que o servidor está fora do ar.

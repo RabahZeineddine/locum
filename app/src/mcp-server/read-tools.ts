@@ -6,7 +6,7 @@ import { mcpService } from "../services/mcp-service.js";
 import { metricsService } from "../services/metrics-service.js";
 import { providerService } from "../services/provider-service.js";
 import { runService } from "../services/run-service.js";
-import { redactServerConfig } from "./redact.js";
+import { origemParaLeitura, redactServerConfig } from "./redact.js";
 import { respond } from "./respond.js";
 
 /**
@@ -166,13 +166,20 @@ async function getRun(runId: string) {
 
 async function listMcpServers() {
   const entries = await mcpService.list();
+  const vinculos = await mcpService.vinculos();
   // O nome da credencial pode sair; o segredo mora no keychain e nunca passa
   // por aqui, e valor escrito direto no `env` ou nos `headers` sai oculto.
-  return entries.map(({ config, enabled, credentialRef }) => ({
-    ...redactServerConfig(config),
-    enabled,
-    credentialRef,
-  }));
+  return entries.map((entrada) => {
+    const vinculo = vinculos[entrada.config.name];
+    // Vinculado, o que vale é a configuração da origem, e não a cópia aceita.
+    const config = vinculo === undefined ? entrada.config : { ...entrada.config, ...(vinculo.efetivo as Partial<typeof entrada.config>) };
+    return {
+      ...redactServerConfig(config),
+      enabled: entrada.enabled,
+      credentialRef: entrada.credentialRef,
+      ...origemParaLeitura(entrada, vinculo),
+    };
+  });
 }
 
 async function listProviders(model?: string) {

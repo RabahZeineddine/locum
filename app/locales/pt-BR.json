@@ -895,7 +895,50 @@
         "reload": "Listar de novo"
       },
       "turnOffConfirm": "Desligar mesmo assim",
-      "turnOffInUse": "Há automações ou agents usando este servidor. Desligado, eles deixam de rodar com ele. Clique de novo para desligar."
+      "turnOffInUse": "Há automações ou agents usando este servidor. Desligado, eles deixam de rodar com ele. Clique de novo para desligar.",
+      "link": {
+        "badgeHint": "A configuração é lida de {{origem}} na hora de conectar. O Locum guarda só o que é dele: ligado, credencial, escopo e as escolhas dos agents.",
+        "readOnly": "Lida da origem, só leitura.",
+        "editAtOrigin": "Editar na origem",
+        "originFile": "Arquivo de origem",
+        "reveal": "Mostrar no Finder",
+        "unlink": "Desvincular",
+        "unlinkConfirm": "Desvincular mesmo assim",
+        "unlinkHint": "Vira um cadastro seu, com a configuração de hoje como cópia editável. Ela deixa de acompanhar a origem, e voltar a vincular é importar de novo.",
+        "changed": {
+          "title": "A origem mudou",
+          "body": "{{origem}} mudou a configuração de {{nome}}. Até você aceitar, o Locum continua usando a anterior.",
+          "kept": "A origem tem uma configuração diferente da aceita. O Locum continua com a anterior.",
+          "accept": "Aceitar a nova",
+          "keep": "Manter a anterior",
+          "before": "antes",
+          "after": "depois",
+          "none": "nada",
+          "field": {
+            "transport": "Transporte",
+            "command": "Programa",
+            "args": "Argumentos",
+            "url": "Endereço",
+            "env": "Variável {{chave}}",
+            "headers": "Cabeçalho {{chave}}"
+          }
+        },
+        "gone": {
+          "title": "A origem sumiu",
+          "body": "{{origem}} não tem mais o servidor {{nome}} (plugin desligado ou removido, ou o arquivo mudou). O Locum usa a última configuração aceita."
+        },
+        "missing": "A origem cita variáveis que esta máquina não tem: {{names}}.",
+        "badgePlugin": "do plugin {{plugin}} (Claude Code)",
+        "badgeUser": "do Claude Code",
+        "badgeTool": "do {{origem}}",
+        "protectedChanged": "valor protegido mudou",
+        "unavailable": {
+          "title": "Origem indisponível por enquanto",
+          "body": "{{origem}} cita variáveis que esta máquina não resolveu agora ({{names}}). O Locum usa a última configuração aceita e tenta de novo na próxima leitura."
+        },
+        "goneDisabled": "O plugin {{origem}} está desligado no Claude Code. O Locum usa a última configuração aceita; ligue o plugin lá para voltar a seguir a origem.",
+        "goneRemoved": "O plugin {{origem}} não está mais instalado no Claude Code. O Locum usa a última configuração aceita."
+      }
     },
     "github": {
       "title": "Credencial do GitHub",
@@ -1215,7 +1258,7 @@
     "low": "baixo"
   },
   "smoke": {
-    "ok": "smoke ok: banco abriu, agents: {{agents}}, {{schema}}, bandeja criada com pendências: {{pending}}, início no login com {{loginItem}}, energia com {{power}}, atualização com {{updates}}, keychain com {{secrets}}, notificação com {{notifications}}, conferência com {{reconcile}}, autoria com {{authorship}}, varredura por MCP com {{mcpPoll}}, Slack com {{slack}}, digest com {{digest}}, resposta no Slack com {{slackPost}}, tarefa com {{trackerIssue}}, deep link com {{deepLink}}, ponte com {{bridge}}, interface com {{renderer}}, processo principal com {{mainText}}",
+    "ok": "smoke ok: banco abriu, agents: {{agents}}, {{schema}}, bandeja criada com pendências: {{pending}}, início no login com {{loginItem}}, energia com {{power}}, atualização com {{updates}}, keychain com {{secrets}}, vínculo com {{vinculo}}, notificação com {{notifications}}, conferência com {{reconcile}}, autoria com {{authorship}}, varredura por MCP com {{mcpPoll}}, Slack com {{slack}}, digest com {{digest}}, resposta no Slack com {{slackPost}}, tarefa com {{trackerIssue}}, deep link com {{deepLink}}, ponte com {{bridge}}, interface com {{renderer}}, processo principal com {{mainText}}",
     "loginItem": "preferência {{decision}}, sistema {{status}}",
     "loginItemUndecided": "não decidida",
     "power": "suspend e resume registrados, uma batida depois de {{minutes}}min de sono",
@@ -1258,7 +1301,8 @@
     "slackPost": "resposta escrita virou pendência no canal {{channel}}, thread {{thread}}, com o texto do modelo palavra por palavra, canal e thread vindos do evento, carimbo inventado recusado, e a gate recusando rascunho",
     "slackWindow": "Slack: {{server}} guardado pela tela e o canal {{channel}} do cadastro antigo visível, sem canal de ponte que publique",
     "claudeSessions": "{{count}} sessões do Claude classificadas, Terminei e Reabrir de ida e volta",
-    "updateScreen": "rodapé da atualização passou por procurando, baixando 42% e pronta, com o modal e as notas, sem rede"
+    "updateScreen": "rodapé da atualização passou por procurando, baixando 42% e pronta, com o modal e as notas, sem rede",
+    "vinculo": "importado vinculado, origem mudou e pediu aceite, aceito, versão nova do plugin sem aviso"
   },
   "status": {
     "done": "concluído",
@@ -1738,7 +1782,17 @@
       "technical": "Detalhes técnicos"
     },
     "connectServer": "Conectar servidor MCP",
-    "noServerHint": "Esta conexão vale para os gatilhos pelo token, mas ainda não tem o servidor MCP que dá ferramentas aos agents."
+    "noServerHint": "Esta conexão vale para os gatilhos pelo token, mas ainda não tem o servidor MCP que dá ferramentas aos agents.",
+    "claudeCodeStale": {
+      "title": "O Claude Code aponta para outra cópia do Locum",
+      "body": "O Locum cadastrado no Claude Code não é este app instalado ({{motivo}}). Corrigir recadastra o comando; se falhar, o anterior volta.",
+      "fix": "Corrigir",
+      "fixing": "corrigindo...",
+      "motivo": {
+        "binario-sumiu": "o programa cadastrado não existe mais",
+        "outra-copia": "ele aponta para outra cópia do app"
+      }
+    }
   },
   "claudeSessions": {
     "title": "Sessões",
