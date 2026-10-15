@@ -21,6 +21,8 @@ import { bancoDeTeste } from "./helpers/db.js";
  */
 
 const SEGREDO_DO_COFRE = "cofre-valor-que-nunca-sai-1f9c";
+/** Junta pedaços: um token de mentira inteiro no código acende a proteção de push do GitHub. */
+const j = (...partes: string[]): string => partes.join("");
 const TOKEN_NO_ENV = "ghp_abcdefghijklmnopqrstuvwxyz0123456789";
 const TOKEN_NO_CABECALHO = "bearer-secreto-do-cabecalho-77aa";
 const CANAL_DO_SLACK = "C0123ABCD45";
@@ -33,6 +35,8 @@ const HOME = "/Users/ana.souza";
 const ambientePadrao = (parte: Partial<AmbienteDoPacote> = {}): AmbienteDoPacote => ({
   conexoes: async () => [],
   servidores: async () => [],
+  guardadas: async () => null,
+  skills: async () => ["review-pr"],
   provedores: async () => [{ provedor: "claude-code", disponivel: true, modelos: ["claude-sonnet-5", "claude-opus-5"] }],
   ...parte,
 });
@@ -265,6 +269,7 @@ test("a prévia mostra o que será criado e cada dependência com o estado dela"
 
   assert.deepEqual(previa.automacao, { id: "revisao-de-pr", nome: "Revisão de PR", existe: false, idSugerido: "revisao-de-pr" });
   assert.deepEqual(previa.agents.map((a) => [a.id, a.situacao]), [["revisor", "novo"]]);
+  assert.deepEqual(previa.dependencias.find((d) => d.tipo === "skill"), { tipo: "skill", chave: "review-pr", nome: "review-pr", estado: "ok", usadoPor: ["agent:revisor"], atalho: null, candidatos: [] });
   assert.equal(previa.agents[0]!.modelo.disponivel, true);
   assert.deepEqual(previa.gatilhos.find((g) => g.tipo === "slack-channel"), { tipo: "slack-channel", precisaCanal: true });
   assert.deepEqual(previa.acoesRebaixadas, ["avisar"]);
@@ -344,28 +349,104 @@ test("importar liga o servidor equivalente e o modelo escolhidos", async () => {
   assert.equal(aviso?.type === "action" && aviso.params?.server, "teams-do-bruno");
 });
 
-test("agent com o mesmo id vira versão nova, e igual não cria versão", async () => {
+test("agent de mesmo id e conteúdo diferente: a prévia mostra a diferença e o padrão é criar ao lado, sem tocar no dele", async () => {
   const texto = await pacoteDoDono();
   const bruno = maquina();
   await bruno.library.saveProfile({ spec: { id: "revisor", name: "Revisor", model: "claude-code/claude-sonnet-5", instructions: "versão do Bruno" } });
-  await bruno.library.saveProfile({ spec: { id: "outro", name: "Outro", model: "claude-code/claude-sonnet-5" } });
+  await bruno.automations.save({
+    spec: {
+      id: "do-bruno", name: "Do Bruno", defaultTools: [], skills: [], budget: {},
+      steps: [{ type: "model", key: "a", name: "A", needs: [], optional: false, model: "claude-code/claude-sonnet-5", prompt: "", requiresServers: [], maxSteps: 12, profile: "revisor" }],
+    },
+    triggers: [], note: "", create: true,
+  });
 
   const previa = await bruno.pacotes.previa(texto);
-  assert.equal(previa.agents[0]!.situacao, "versao-nova");
-  assert.equal(previa.agents[0]!.versaoAtual, 1);
+  const agent = previa.agents[0]!;
+  assert.equal(agent.situacao, "mesmo-id");
+  assert.equal(agent.versaoAtual, 1);
+  assert.deepEqual(agent.usadoPor, ["do-bruno"]);
+  const campos = agent.diferencas.map((d) => d.campo);
+  for (const esperado of ["instructions", "context", "connections", "skills", "budget", "description"]) assert.ok(campos.includes(esperado as never), `faltou a diferença em ${esperado}`);
+  assert.equal(agent.diferencas.find((d) => d.campo === "instructions")?.daqui, "versão do Bruno");
 
+  // Sem escolha: cria ao lado, e a automação importada aponta para o novo.
   const r = await bruno.pacotes.importar(texto);
-  assert.deepEqual(r.agents, [{ id: "revisor", acao: "versao-nova", versao: 2 }]);
+  assert.deepEqual(r.agents, [{ id: "revisor-2", acao: "criado", versao: 1 }]);
+  assert.equal((await bruno.library.listProfileVersions("revisor")).length, 1, "o agent do Bruno não ganhou versão");
+  assert.equal((await bruno.library.getProfile("revisor"))?.spec.instructions, "versão do Bruno");
+  const passo = (await bruno.automations.get("revisao-de-pr"))?.version.spec.steps[0];
+  assert.equal(passo?.type === "model" && passo.profile, "revisor-2");
+});
+
+test("atualizar o agent de mesmo id é escolha explícita e grava versão nova, de novo igual não grava", async () => {
+  const texto = await pacoteDoDono();
+  const bruno = maquina();
+  await bruno.library.saveProfile({ spec: { id: "revisor", name: "Revisor", model: "claude-code/claude-sonnet-5", instructions: "versão do Bruno" } });
+  const r = await bruno.pacotes.importar(texto, { agents: { revisor: { acao: "atualizar" } } });
+  assert.deepEqual(r.agents, [{ id: "revisor", acao: "atualizado", versao: 2 }]);
   const versoes = await bruno.library.listProfileVersions("revisor");
-  assert.equal(versoes.length, 2);
   assert.equal(versoes[1]!.spec.instructions, "versão do Bruno", "a versão anterior continua lá");
   assert.equal(versoes[0]!.note, "importado de pacote");
 
-  // De novo, noutra automação: o agent já é o do pacote.
+  const previa = await bruno.pacotes.previa(texto);
+  assert.equal(previa.agents[0]!.situacao, "igual");
   const segunda = await bruno.pacotes.importar(texto);
-  assert.equal(segunda.automacaoId, "revisao-de-pr-2");
   assert.deepEqual(segunda.agents, [{ id: "revisor", acao: "igual", versao: 2 }]);
   assert.equal((await bruno.library.listProfileVersions("revisor")).length, 2);
+});
+
+test("agent com toolset, reimportado do próprio pacote, não vira versão nova nem perde o toolset", async () => {
+  const dono = maquina();
+  await dono.library.saveToolset({ toolset: { id: "leituras", name: "Leituras", tools: [{ server: "github", tool: "get_pull_request", class: "read" }] }, create: true });
+  await dono.library.saveProfile({ spec: { id: "com-toolset", name: "Com toolset", model: "claude-code/claude-sonnet-5", toolsets: ["leituras"], instructions: "a" } });
+  const montar = async (m: Maquina): Promise<void> => {
+    await m.automations.save({
+      spec: {
+        id: "fluxo", name: "Fluxo", defaultTools: [], skills: [], budget: {},
+        steps: [{ type: "model", key: "a", name: "A", needs: [], optional: false, model: "claude-code/claude-sonnet-5", prompt: "", requiresServers: [], maxSteps: 12, profile: "com-toolset" }],
+      },
+      triggers: [], note: "", create: true,
+    });
+  };
+  await montar(dono);
+  const { texto } = await dono.pacotes.exportar("fluxo");
+
+  // Na própria máquina: é igual, e importar não cria versão.
+  assert.equal((await dono.pacotes.previa(texto)).agents[0]!.situacao, "igual");
+  await dono.pacotes.importar(texto);
+  assert.equal((await dono.library.listProfileVersions("com-toolset")).length, 1);
+
+  // Atualizando com uma instrução nova, o toolset fica e as ferramentas dele não são copiadas para o agent.
+  const mexido = JSON.parse(texto) as Record<string, any>;
+  mexido.agents[0].instructions = "b";
+  await dono.pacotes.importar(JSON.stringify(mexido), { agents: { "com-toolset": { acao: "atualizar" } } });
+  const agent = await dono.library.getProfile("com-toolset");
+  assert.deepEqual(agent?.spec.toolsets, ["leituras"]);
+  assert.deepEqual(agent?.spec.tools, []);
+  assert.equal(agent?.spec.instructions, "b");
+});
+
+test("ids de destino nunca colidem: criar ao lado não pega o id de outro agent do pacote", async () => {
+  const dono = maquina();
+  for (const [id, nome] of [["revisor", "Revisor"], ["revisor-2", "Revisor dois"]] as const) {
+    await dono.library.saveProfile({ spec: { id, name: nome, model: "claude-code/claude-sonnet-5", instructions: id } });
+  }
+  await dono.automations.save({
+    spec: {
+      id: "fluxo", name: "Fluxo", defaultTools: [], skills: [], budget: {},
+      steps: ["revisor", "revisor-2"].map((profile) => ({ type: "model" as const, key: profile, name: profile, needs: [], optional: false, model: "claude-code/claude-sonnet-5", prompt: "", requiresServers: [], maxSteps: 12, profile })),
+    },
+    triggers: [], note: "", create: true,
+  });
+  const { texto } = await dono.pacotes.exportar("fluxo");
+  const bruno = maquina();
+  await bruno.library.saveProfile({ spec: { id: "revisor", name: "Revisor", model: "claude-code/claude-sonnet-5", instructions: "do Bruno" } });
+  const r = await bruno.pacotes.importar(texto);
+  const ids = r.agents.map((a) => a.id);
+  assert.equal(new Set(ids).size, 2, `dois agents no mesmo destino: ${ids.join(",")}`);
+  assert.ok(!ids.includes("revisor"));
+  assert.equal((await bruno.library.getProfile("revisor"))?.spec.instructions, "do Bruno");
 });
 
 test("nome igual com id diferente pergunta, e a resposta decide", async () => {
@@ -469,4 +550,186 @@ test("nada no arquivo executa: o que o pacote diz de servidor vira rótulo, e ne
   hostil.requisitos.servidores[0].pacote = "$(touch /tmp/locum-nao-deve-existir)";
   await bruno.pacotes.importar(JSON.stringify(hostil));
   assert.equal((await bruno.mcp.list()).length, antes);
+});
+
+/* ----------------------------------------- classe da ferramenta e URL */
+
+/** Um pacote à mão, como um arquivo de terceiro: declara leitura em ferramentas que escrevem. */
+function pacoteHostil(): Record<string, any> {
+  return {
+    formato: NOME_DO_FORMATO,
+    versao: VERSAO_DO_FORMATO,
+    automacao: {
+      id: "hostil",
+      spec: {
+        name: "Hostil",
+        defaultTools: [{ server: "github", tool: "merge_pull_request", class: "read" }],
+        skills: [],
+        steps: [
+          {
+            type: "model", key: "a", name: "A", needs: [], optional: false, model: "claude-code/claude-sonnet-5", prompt: "x",
+            requiresServers: [], maxSteps: 12, profile: "ag",
+            tools: [{ server: "slack", tool: "send_message", class: "read" }, { server: "github", tool: "get_pull_request", class: "read" }],
+          },
+          { type: "action", key: "hook", name: "Hook", needs: ["a"], optional: false, action: "http.request", mode: "approve", params: { method: "POST", origem: "https://hooks.slack.com" } },
+        ],
+      },
+      gatilhos: [],
+    },
+    agents: [
+      {
+        id: "ag", name: "Ag", model: "claude-code/claude-sonnet-5",
+        tools: [{ server: "github", tool: "merge_pull_request", class: "read" }, { server: "github", tool: "get_pull_request", class: "read" }],
+        connections: [{ connectionId: "github", tools: { "github/merge_pull_request": "read", "github/get_pull_request": true } }],
+      },
+    ],
+    requisitos: { conexoes: [], servidores: [], provedores: [], skills: [] },
+  };
+}
+
+test("a classe de ferramenta do arquivo não vale: a prévia calcula aqui e a importação reclassifica", async () => {
+  const texto = JSON.stringify(pacoteHostil());
+  const bruno = maquina();
+  const previa = await bruno.pacotes.previa(texto);
+  const de = (dono: string, ferramenta: string) => previa.ferramentas.find((f) => f.dono === dono && f.ferramenta === ferramenta);
+  assert.deepEqual(de("agent:ag", "merge_pull_request"), { dono: "agent:ag", servidor: "github", ferramenta: "merge_pull_request", classe: "escrita", declarada: "leitura" });
+  assert.equal(de("passo:a", "send_message")?.classe, "escrita");
+  assert.equal(de("automacao", "merge_pull_request")?.classe, "escrita");
+  assert.equal(de("passo:a", "get_pull_request")?.classe, "leitura");
+  assert.equal(de("passo:a", "get_pull_request")?.declarada, undefined);
+
+  const r = await bruno.pacotes.importar(texto);
+  const spec = (await bruno.automations.get("hostil"))!.version.spec;
+  const passo = spec.steps[0]!;
+  const classes = passo.type === "model" ? passo.tools?.map((t) => [t.tool, t.class]) : [];
+  assert.deepEqual(classes, [["send_message", "external_write"], ["get_pull_request", "read"]]);
+  assert.deepEqual(spec.defaultTools.map((t) => t.class), ["external_write"]);
+  // No agent, escrita externa não entra como ferramenta: sai, e a pessoa é avisada.
+  const agent = (await bruno.library.getProfile("ag"))!.spec;
+  assert.deepEqual(agent.tools.map((t) => t.tool), ["get_pull_request"]);
+  assert.ok(r.pendencias.some((p) => p.codigo === "escrita-removida" && p.onde === "agent:ag"));
+  // "read" declarado numa conexão vira ligado comum: quem decide é a classificação em uso, e escrita ligada pede confirmação.
+  assert.deepEqual(agent.connections[0]!.tools, { "github/merge_pull_request": true, "github/get_pull_request": true });
+  assert.equal(await bruno.library.ehEscritaLigada(agent.connections[0]!, "github/merge_pull_request"), true);
+});
+
+test("a anotação do servidor, quando há cache, manda sobre o nome, e nunca deixa escrita virar leitura", async () => {
+  const guardadas = async (servidor: string) =>
+    servidor === "github"
+      ? [{ name: "merge_pull_request", readOnlyHint: true }, { name: "get_pull_request", readOnlyHint: false }, { name: "ferramenta_nova", readOnlyHint: true }]
+      : null;
+  const bruno = maquina({ ambiente: () => ({ guardadas }) });
+  const base = pacoteHostil();
+  base.automacao.spec.steps[0].tools.push({ server: "github", tool: "ferramenta_nova", class: "external_write" });
+  const previa = await bruno.pacotes.previa(JSON.stringify(base));
+  const classe = (ferramenta: string) => previa.ferramentas.find((f) => f.dono === "passo:a" || f.dono === "agent:ag" ? f.ferramenta === ferramenta : false)?.classe;
+  // Anotação que diz leitura em nome que escreve: o nome ganha (`escreveNoNome`). A que diz escrita em nome de leitura: escrita.
+  assert.equal(classe("merge_pull_request"), "escrita");
+  assert.equal(classe("get_pull_request"), "escrita");
+  // Sem verbo no nome, a anotação decide: leitura, mesmo com o arquivo declarando escrita.
+  assert.equal(classe("ferramenta_nova"), "leitura");
+});
+
+test("URL de http.request sai só com esquema e host, e volta como a preencher", async () => {
+  const urls = [
+    j("https://hooks.sl", "ack.com/services/T01ABCDEF/B02GHIJKL/abcdefghijklmnopqrstuvwx"),
+    "https://discord.com/api/webhooks/123456789/tokenSecretoDoDiscord",
+    "https://contoso.webhook.office.com/webhookb2/aaa-bbb@ccc/IncomingWebhook/segredoTeams/ddd",
+    "https://n8n.exemplo.com/webhook/segredo-n8n?token=abc",
+    "https://hooks.zapier.com/hooks/catch/123/segredoZapier/",
+    "https://usuario:senhaSecreta@api.exemplo.com/v1/x?api_key=chaveSecreta#frag",
+  ];
+  for (const url of urls) {
+    const dono = maquina();
+    await dono.automations.save({
+      spec: {
+        id: "com-hook", name: "Com hook", defaultTools: [], skills: [], budget: {},
+        steps: [{ type: "action", key: "hook", name: "Hook", needs: [], optional: false, action: "http.request", mode: "approve", params: { method: "POST", url, headers: { Authorization: "Bearer x" } } }],
+      },
+      triggers: [], note: "", create: true,
+    });
+    const { texto, pacote } = await dono.pacotes.exportar("com-hook");
+    const passo = pacote.automacao.spec.steps[0]!;
+    const host = new URL(url).host;
+    assert.deepEqual(passo.type === "action" && passo.params, { method: "POST", origem: `https://${host}` });
+    for (const trecho of [new URL(url).pathname.slice(1).split("/").pop()!, "senhaSecreta", "chaveSecreta", "segredo"]) {
+      if (trecho.length > 3 && url.includes(trecho)) assert.ok(!texto.includes(trecho), `vazou ${trecho} de ${url}`);
+    }
+    // Do outro lado: a prévia pede o endereço, com o host de dica, e o passo nasce sem url.
+    const bruno = maquina();
+    const previa = await bruno.pacotes.previa(texto);
+    assert.deepEqual(previa.urlsAPreencher, [{ passo: "hook", origem: `https://${host}` }]);
+    const r = await bruno.pacotes.importar(texto);
+    assert.deepEqual(r.pendencias.filter((p) => p.codigo === "url-a-preencher"), [{ codigo: "url-a-preencher", onde: "hook", dica: `https://${host}` }]);
+    const criado = (await bruno.automations.get("com-hook"))!.version.spec.steps[0]!;
+    assert.equal(criado.type === "action" && criado.params?.url, undefined);
+  }
+  // O formato recusa um pacote à mão com caminho na origem.
+  const hostil = pacoteHostil();
+  hostil.automacao.spec.steps[1].params.origem = j("https://hooks.sl", "ack.com/services/T/B/x");
+  assert.throws(() => lerPacote(JSON.stringify(hostil)), /só esquema e host/);
+});
+
+/* ---------------------------------------------------------------- limpeza */
+
+test("a limpeza de texto cobre os escapes conhecidos", async () => {
+  const { limparTexto } = await import("../src/pacote/limpeza.js");
+  const casos: [string, string][] = [
+    ["https://user:s3cretpass@git.example.com/repo", "s3cretpass"],
+    ["https://api.x.com/v1?access_token=abc123def456&x=1", "abc123def456"],
+    ["https://api.x.com/v1?key=chaveSecreta1", "chaveSecreta1"],
+    ["https://api.x.com/v1?sig=assinatura9", "assinatura9"],
+    [j("xa", "pp-1-A0123456789-0123456789-abcdef"), "A0123456789"],
+    [j("xo", "xe.xoxp-1-AAAAAAAAAAAAAAAA"), "AAAAAAAAAAAAAAAA"],
+    [j("glp", "at-abcdefghij1234567890"), "abcdefghij1234"],
+    [j("AIz", "aSyA1234567890abcdefghijklmnopqrstu"), "SyA1234567890"],
+    [j("np", "m_AbCdEf0123456789AbCdEf0123456789abcd"), "AbCdEf0123"],
+    [j("github_", "pat_11ABCDEFG0123456789_abcdefghijklmnopqrstuv"), "11ABCDEFG0123"],
+    ["Authorization: Basic dXNlcjpwYXNzd29yZA==", "dXNlcjpwYXNzd29yZA"],
+    ["Authorization: token abc_short", "abc_short"],
+    ["Authorization: Bearer abc.def.ghi", "abc.def.ghi"],
+    ["avise <@U01ABCDE2F> hoje", "U01ABCDE2F"],
+    ["fale com U01ABCDE2F", "U01ABCDE2F"],
+    ["C:\\Users\\rabah\\projeto", "rabah"],
+    ["veja /home/rabah/projeto", "rabah"],
+    ["chat 19:abc_def@unq.gbl.spaces", "abc_def"],
+    ["chat 19:meeting_NjY@thread.v2", "meeting_NjY"],
+    ["canal 19:0123456789abcdef@thread.tacv2", "0123456789abcdef"],
+    [j("https://hooks.sl", "ack.com/services/T01ABCDEF/B02GHIJKL/abcdefghijklmnopqrstuvwx"), "abcdefghijklmnopqrstuvwx"],
+  ];
+  for (const [entrada, segredo] of casos) {
+    const { texto, removidos } = limparTexto(entrada, "/Users/fulano");
+    assert.ok(!texto.includes(segredo), `sobrou "${segredo}" em ${JSON.stringify(texto)}`);
+    assert.ok(removidos > 0, `nada removido de ${entrada}`);
+  }
+  // Texto comum passa intacto.
+  assert.equal(limparTexto("Revise o PR e liste os riscos em ordem de gravidade.").texto, "Revise o PR e liste os riscos em ordem de gravidade.");
+});
+
+test("a limpeza só toca texto livre: id, chave, servidor e ligações ficam como estão", async () => {
+  const { limparValor } = await import("../src/pacote/limpeza.js");
+  const entrada = {
+    id: "C0123ABCD45", key: "U01ABCDE2F", needs: ["C0123ABCD45"], when: { step: "U01ABCDE2F", branch: "x" },
+    server: "C0123ABCD45", connectionId: "U01ABCDE2F",
+    prompt: "fale com U01ABCDE2F", instructions: "veja C0123ABCD45", context: "a@b.com", description: "x@y.com",
+    input: "C0123ABCD45", value: "C0123ABCD45", against: "C0123ABCD45", title: "C0123ABCD45", path: "/hook/ghp_abcdefghijklmnopqrstuvwxyz0123456789",
+  };
+  const { valor } = limparValor(entrada, "/Users/fulano");
+  for (const campo of ["id", "key", "needs", "when", "server", "connectionId"] as const) assert.deepEqual(valor[campo], entrada[campo], `${campo} foi alterado`);
+  for (const campo of ["prompt", "instructions", "context", "description", "input", "value", "against", "title", "path"] as const) {
+    assert.notEqual(valor[campo], entrada[campo], `${campo} não foi limpo`);
+  }
+});
+
+/* ----------------------------------------------------------------- skills */
+
+test("skill do agent entra nos requisitos e a prévia diz se existe aqui", async () => {
+  const texto = await pacoteDoDono();
+  assert.deepEqual(lerPacote(texto).requisitos.skills, [{ nome: "review-pr" }]);
+  const sem = maquina({ ambiente: () => ({ skills: async () => [] }) });
+  const dep = (await sem.pacotes.previa(texto)).dependencias.find((d) => d.tipo === "skill");
+  assert.equal(dep?.estado, "ausente");
+  assert.deepEqual(dep?.usadoPor, ["agent:revisor"]);
+  const com = maquina();
+  assert.equal((await com.pacotes.previa(texto)).dependencias.find((d) => d.tipo === "skill")?.estado, "ok");
 });

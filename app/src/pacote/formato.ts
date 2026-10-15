@@ -57,7 +57,8 @@ const PassoDeAcao = ActionStep.omit({ target: true, params: true })
         server: z.string().min(1).optional(),
         tool: z.string().min(1).optional(),
         method: z.string().min(1).optional(),
-        url: z.string().min(1).optional(),
+        /** Só esquema e host (`https://hooks.slack.com`): o caminho de um webhook é o segredo dele. */
+        origem: z.string().regex(/^https?:\/\/[^\s/?#@]+$/, "só esquema e host, sem caminho").optional(),
       })
       .strict()
       .optional(),
@@ -138,10 +139,12 @@ const ServidorRequerido = z
   })
   .strict();
 
+const SkillRequerida = z.object({ nome: z.string().min(1) }).strict();
+
 const ProvedorRequerido = z.object({ provedor: z.string().min(1), modelos: z.array(z.string().min(1)) }).strict();
 
 /** O que a exportação deixou de fora de propósito, para a prévia pedir à pessoa. */
-export const CodigoOmitido = z.enum(["canais", "gatilho-sem-canal", "filtros-de-pessoa", "dono-do-github", "tracker", "argumentos", "texto-limpo"]);
+export const CodigoOmitido = z.enum(["canais", "gatilho-sem-canal", "filtros-de-pessoa", "dono-do-github", "tracker", "argumentos", "texto-limpo", "url-a-preencher", "escrita-removida"]);
 export type CodigoOmitido = z.infer<typeof CodigoOmitido>;
 const Omitido = z.object({ codigo: CodigoOmitido, onde: z.string().min(1), quantos: z.number().int().positive().optional() }).strict();
 
@@ -162,6 +165,7 @@ export const Pacote = z
         conexoes: z.array(ConexaoRequerida),
         servidores: z.array(ServidorRequerido),
         provedores: z.array(ProvedorRequerido),
+        skills: z.array(SkillRequerida).default([]),
       })
       .strict(),
     omitidos: z.array(Omitido).default([]),

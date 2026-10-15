@@ -25,6 +25,7 @@ import {
   type PassoDoPacote,
 } from "../pacote/formato.js";
 import { limparValor } from "../pacote/limpeza.js";
+import { ehLeitura, ehLeituraDa, type FerramentaClassificavel } from "../config/leitura.js";
 
 /**
  * Exportar e importar uma automação em pacote (ADR 0005, decisão 7).
@@ -48,9 +49,22 @@ export interface AmbienteDoPacote {
   servidores(): Promise<{ nome: string; ligado: boolean; url?: string; command?: string[] }[]>;
   /** Provedores conhecidos, com os modelos de quem está disponível. */
   provedores(): Promise<{ provedor: string; disponivel: boolean; modelos: string[] }[]>;
+  /** A última lista boa de ferramentas do servidor, com as anotações dele. Nula sem cache. */
+  guardadas(servidor: string): Promise<FerramentaClassificavel[] | null>;
+  /** Nomes das skills que esta máquina tem. */
+  skills(): Promise<string[]>;
 }
 
 const ambientePadrao: AmbienteDoPacote = {
+  guardadas: async (servidor) => {
+    const { mcpService } = await import("./mcp-service.js");
+    const guardada = await mcpService.cachedTools(servidor);
+    return guardada?.tools.map(({ name, readOnlyHint, destructiveHint }) => ({ name, readOnlyHint, destructiveHint })) ?? null;
+  },
+  skills: async () => {
+    const { discoverSkills } = await import("../skills/loader.js");
+    return [...discoverSkills().keys()];
+  },
   conexoes: async () => {
     const { connectionService } = await import("./connection-service.js");
     return (await connectionService.list({ incluirInternos: true })).map((c) => ({
@@ -86,7 +100,7 @@ const ambientePadrao: AmbienteDoPacote = {
 export type EstadoDaDependencia = "ok" | "falta-conectar" | "ausente";
 
 export interface DependenciaDaPrevia {
-  tipo: "conexao" | "servidor" | "provedor";
+  tipo: "conexao" | "servidor" | "provedor" | "skill";
   /** Id da conexão, nome do servidor ou nome do provedor, como o pacote os cita. */
   chave: string;
   nome: string;
@@ -101,7 +115,26 @@ export interface DependenciaDaPrevia {
   candidatos: { valor: string; rotulo: string }[];
 }
 
-export type SituacaoDoAgent = "novo" | "versao-nova" | "igual" | "nome-igual";
+export type SituacaoDoAgent = "novo" | "mesmo-id" | "igual" | "nome-igual";
+
+/** Uma ferramenta que o pacote liga a um agent ou passo, com a classe calculada aqui. */
+export interface FerramentaNaPrevia {
+  /** `agent:<id>` ou `passo:<chave>`. */
+  dono: string;
+  servidor: string | null;
+  ferramenta: string;
+  /** Calculada nesta máquina, pela anotação do servidor ou pelo nome. O que o arquivo declara não vale. */
+  classe: "leitura" | "escrita";
+  /** O que o arquivo declarava, quando divergia da calculada. */
+  declarada?: "leitura";
+}
+
+/** Um campo do agent que difere entre o do pacote e o daqui. Texto, já resumido a um tamanho que cabe na tela. */
+export interface DiferencaDoAgent {
+  campo: "description" | "context" | "instructions" | "model" | "temperature" | "tools" | "connections" | "skills" | "budget" | "maxSteps";
+  daqui: string;
+  pacote: string;
+}
 
 export interface ModeloNaPrevia {
   /** Chave da escolha: `agent:<id>` ou `passo:<chave>`. */
@@ -122,10 +155,12 @@ export interface AgentNaPrevia {
   versaoAtual?: number;
   /** O agent daqui com o mesmo nome e outro id, em `nome-igual`. */
   existente?: { id: string; nome: string };
-  /** Automações daqui que usam o agent que virá em versão nova. */
+  /** Automações daqui que usam o agent, e que passariam a rodar o texto do pacote em `atualizar`. */
   usadoPor: string[];
   idSugerido: string;
   modelo: ModeloNaPrevia;
+  /** Em `mesmo-id`: o que muda se a pessoa escolher atualizar o dela. */
+  diferencas: DiferencaDoAgent[];
 }
 
 export interface PreviaDoPacote {
@@ -134,6 +169,10 @@ export interface PreviaDoPacote {
   /** Passos de IA que não usam agent: o modelo é deles. */
   passosDeIA: ModeloNaPrevia[];
   dependencias: DependenciaDaPrevia[];
+  /** Toda ferramenta que o pacote liga, com a classe calculada aqui. Escrita vem destacada pela tela. */
+  ferramentas: FerramentaNaPrevia[];
+  /** Passos `http.request`: o endereço não vem no pacote, só o host como dica. */
+  urlsAPreencher: { passo: string; origem?: string }[];
   /** Os modelos que esta máquina oferece, como `provedor/modelo`, para ligar cada agent. */
   modelosAqui: string[];
   /** Todos entram desligados; `precisaCanal` fica de fora até a pessoa escolher. */
@@ -147,7 +186,11 @@ export interface PreviaDoPacote {
 export interface EscolhasDaImportacao {
   automacaoId?: string;
   /** Por id do agent no pacote. */
-  agents?: Record<string, { acao: "versao-nova" | "criar-novo" | "usar-existente" }>;
+  /**
+   * O padrão, sem escolha, é `criar-novo`: agent de mesmo id nunca é reescrito
+   * por omissão. `atualizar` só vale em `mesmo-id` e só por escolha explícita.
+   */
+  agents?: Record<string, { acao: "atualizar" | "criar-novo" | "usar-existente" }>;
   /** Nome do servidor no pacote para o nome do equivalente cadastrado aqui. */
   servidores?: Record<string, string>;
   /** Id de conexão no pacote para o id da conexão daqui. */
@@ -158,10 +201,10 @@ export interface EscolhasDaImportacao {
 
 export interface ResultadoDaImportacao {
   automacaoId: string;
-  agents: { id: string; acao: "criado" | "versao-nova" | "igual" | "existente"; versao: number }[];
+  agents: { id: string; acao: "criado" | "atualizado" | "igual" | "existente"; versao: number }[];
   gatilhos: number;
   /** O que a pessoa ainda precisa escolher na automação criada. */
-  pendencias: { codigo: CodigoOmitido; onde: string }[];
+  pendencias: { codigo: CodigoOmitido; onde: string; dica?: string }[];
 }
 
 /** Falta decisão da pessoa: a mensagem diz sobre o quê. */
@@ -211,13 +254,17 @@ function hostDe(url: string | undefined): string | undefined {
   }
 }
 
-/** O endereço sem credencial, consulta nem âncora: nome da rota, e só. */
-function urlSemSegredo(url: string): string {
+/**
+ * Só esquema e host. O caminho de um webhook (Slack, Discord, Teams, n8n,
+ * Zapier) é o segredo dele, e usuário, senha e consulta também: nada disso sai.
+ */
+export function origemDaUrl(url: string): string | undefined {
   try {
     const u = new URL(url);
-    return `${u.protocol}//${u.host}${u.pathname}`;
+    if (u.protocol !== "https:" && u.protocol !== "http:") return undefined;
+    return `${u.protocol}//${u.host}`;
   } catch {
-    return url.split(/[?#]/)[0] ?? "";
+    return undefined;
   }
 }
 
@@ -320,7 +367,12 @@ export class PacoteService {
   private async agentParaPacote(id: string): Promise<AgentDoPacote> {
     const versao = await this.library.getProfile(id);
     if (versao === null) throw new Error(`o agent "${id}", usado pela automação, não existe`);
-    const s = versao.spec;
+    return this.perfilParaPacote(versao.spec);
+  }
+
+  /** O agent na forma do pacote: o toolset vira ferramentas avulsas dele. */
+  private async perfilParaPacote(s: AgentProfile): Promise<AgentDoPacote> {
+    const id = s.id;
     // O toolset vira ferramentas do próprio agent: o pacote não carrega conjuntos compartilhados.
     const doToolset: ToolRef[] = [];
     for (const toolsetId of s.toolsets) {
@@ -355,7 +407,10 @@ export class PacoteService {
         if (typeof valor === "string" && valor !== "") mantidos[chave] = valor;
         else descartados += 1;
       } else if (chave === "url" && typeof valor === "string" && valor !== "") {
-        mantidos.url = urlSemSegredo(valor);
+        const origem = origemDaUrl(valor.replace(/\{\{[^}]*\}\}/g, "x"));
+        if (origem === undefined) descartados += 1;
+        else mantidos.origem = origem;
+        omitir("url-a-preencher", passo.key);
       } else {
         descartados += 1;
       }
@@ -446,6 +501,10 @@ export class PacoteService {
       }
     }
 
+    const skills = new Set<string>();
+    for (const k of spec.skills) skills.add(k.skill);
+    for (const agent of agents) for (const k of agent.skills) skills.add(k.skill);
+
     const cadastrados = new Map((await this.ambiente.servidores()).map((s) => [s.nome, s]));
     const requeridos: Pacote["requisitos"]["servidores"] = [];
     for (const nome of [...servidores].sort()) {
@@ -466,6 +525,7 @@ export class PacoteService {
       conexoes: [...conexoes].sort().map((id) => ({ id, nome: CATALOGO.get(id)?.name ?? id })),
       servidores: requeridos,
       provedores: [...modelos].sort(([a], [b]) => a.localeCompare(b)).map(([provedor, lista]) => ({ provedor, modelos: [...lista].sort() })),
+      skills: [...skills].sort().map((nome) => ({ nome })),
     };
   }
 
@@ -473,11 +533,12 @@ export class PacoteService {
 
   async previa(texto: string): Promise<PreviaDoPacote> {
     const pacote = lerPacote(texto);
-    const [conexoes, servidores, provedores, existentes] = await Promise.all([
+    const [conexoes, servidores, provedores, existentes, skills] = await Promise.all([
       this.ambiente.conexoes(),
       this.ambiente.servidores(),
       this.ambiente.provedores(),
       this.library.listProfiles(),
+      this.ambiente.skills(),
     ]);
     const disponiveis = new Set(provedores.flatMap((p) => p.modelos.map((m) => `${p.provedor}/${m}`)));
     const provedorDaMaquina = new Map(provedores.map((p) => [p.provedor, p]));
@@ -501,13 +562,15 @@ export class PacoteService {
     for (const agent of pacote.agents) {
       const atual = await this.library.getProfile(agent.id);
       const mesmoNome = existentes.find((e) => e.id !== agent.id && norm(e.name) === norm(agent.name));
+      const diferencas = atual === null ? [] : diferencasDoAgent(await this.perfilParaPacote(atual.spec), agent);
       let situacao: SituacaoDoAgent = "novo";
-      if (atual !== null) situacao = igual(atual.spec, agent) ? "igual" : "versao-nova";
+      if (atual !== null) situacao = diferencas.length === 0 ? "igual" : "mesmo-id";
       else if (mesmoNome !== undefined) situacao = "nome-igual";
       agents.push({
         id: agent.id,
         nome: agent.name,
         situacao,
+        diferencas,
         ...(atual === null ? {} : { versaoAtual: atual.version }),
         ...(situacao === "nome-igual" && mesmoNome !== undefined ? { existente: { id: mesmoNome.id, nome: mesmoNome.name } } : {}),
         usadoPor: existentes.find((e) => e.id === agent.id)?.usedBy ?? [],
@@ -524,12 +587,67 @@ export class PacoteService {
       automacao: { id: pacote.automacao.id, nome: pacote.automacao.spec.name, existe: automacaoExiste, idSugerido },
       agents,
       passosDeIA,
-      dependencias: this.dependencias(pacote, { conexoes, servidores, provedores, disponiveis }),
+      dependencias: this.dependencias(pacote, { conexoes, servidores, provedores, disponiveis, skills }),
+      ferramentas: await this.ferramentasDoPacote(pacote),
+      urlsAPreencher: pacote.automacao.spec.steps.flatMap((p) =>
+        p.type === "action" && p.action === "http.request" ? [{ passo: p.key, ...(p.params?.origem === undefined ? {} : { origem: p.params.origem }) }] : [],
+      ),
       modelosAqui: [...disponiveis].sort(),
       gatilhos: pacote.automacao.gatilhos.map((g) => ({ tipo: g.kind, precisaCanal: g.kind === "slack-channel" })),
       omitidos: pacote.omitidos,
       acoesRebaixadas: pacote.automacao.spec.steps.flatMap((p) => (p.type === "action" && p.mode === "auto" ? [p.key] : [])),
     };
+  }
+
+  /** Toda ferramenta que o pacote liga, com a classe calculada aqui, nunca a do arquivo. */
+  private async ferramentasDoPacote(pacote: Pacote): Promise<FerramentaNaPrevia[]> {
+    const lista: FerramentaNaPrevia[] = [];
+    const cache = new Map<string, FerramentaClassificavel[] | null>();
+    const adicionar = async (dono: string, servidor: string | null, ferramenta: string, declaradaLeitura: boolean): Promise<void> => {
+      const classe = await this.classificar(servidor, ferramenta, cache);
+      lista.push({ dono, servidor, ferramenta, classe, ...(declaradaLeitura && classe === "escrita" ? { declarada: "leitura" as const } : {}) });
+    };
+    for (const t of pacote.automacao.spec.defaultTools) await adicionar("automacao", t.server, t.tool, t.class === "read");
+    for (const p of pacote.automacao.spec.steps) {
+      if (p.type !== "model") continue;
+      for (const t of p.tools ?? []) await adicionar(`passo:${p.key}`, t.server, t.tool, t.class === "read");
+    }
+    for (const a of pacote.agents) {
+      for (const t of a.tools) await adicionar(`agent:${a.id}`, t.server, t.tool, t.class === "read");
+      for (const c of a.connections) {
+        for (const [chave, escolha] of Object.entries(c.tools)) {
+          if (escolha === false) continue;
+          const corte = chave.indexOf("/");
+          await adicionar(`agent:${a.id}`, corte > 0 ? chave.slice(0, corte) : null, chave.slice(corte + 1), escolha === "read");
+        }
+      }
+    }
+    return lista;
+  }
+
+  /**
+   * Leitura ou escrita desta ferramenta nesta máquina: a anotação do servidor
+   * quando há cache, senão o nome. O que o arquivo declara não entra.
+   */
+  private async classificar(servidor: string | null, ferramenta: string, cache: Map<string, FerramentaClassificavel[] | null>): Promise<"leitura" | "escrita"> {
+    if (servidor !== null) {
+      if (!cache.has(servidor)) cache.set(servidor, await this.ambiente.guardadas(servidor));
+      const achada = cache.get(servidor)?.find((f) => f.name === ferramenta);
+      if (achada !== undefined) return ehLeituraDa(achada) ? "leitura" : "escrita";
+    }
+    return ehLeitura(ferramenta) ? "leitura" : "escrita";
+  }
+
+  /** A classe de cada ferramenta recalculada: ou leitura, ou escrita externa, que passa pela aprovação. */
+  private async reclassificar(tools: readonly ToolRef[], servidor: (nome: string) => string): Promise<ToolRef[]> {
+    const cache = new Map<string, FerramentaClassificavel[] | null>();
+    const saida: ToolRef[] = [];
+    for (const t of tools) {
+      const server = servidor(t.server);
+      const classe = await this.classificar(server, t.tool, cache);
+      saida.push({ server, tool: t.tool, class: classe === "leitura" ? "read" : "external_write" });
+    }
+    return saida;
   }
 
   private dependencias(
@@ -539,6 +657,7 @@ export class PacoteService {
       servidores: Awaited<ReturnType<AmbienteDoPacote["servidores"]>>;
       provedores: Awaited<ReturnType<AmbienteDoPacote["provedores"]>>;
       disponiveis: Set<string>;
+      skills: string[];
     },
   ): DependenciaDaPrevia[] {
     const usos = usosDasDependencias(pacote);
@@ -594,6 +713,19 @@ export class PacoteService {
         candidatos: disponivel ? [] : [...local.disponiveis].sort().map((m) => ({ valor: m, rotulo: m })),
       });
     }
+
+    for (const req of pacote.requisitos.skills) {
+      const aqui = local.skills.includes(req.nome);
+      lista.push({
+        tipo: "skill",
+        chave: req.nome,
+        nome: req.nome,
+        estado: aqui ? "ok" : "ausente",
+        usadoPor: usos.skills.get(req.nome) ?? [],
+        atalho: null,
+        candidatos: [],
+      });
+    }
     return lista;
   }
 
@@ -608,7 +740,8 @@ export class PacoteService {
 
     // Toda decisão que falta aparece antes da primeira gravação.
     const destino = new Map<string, { id: string; acao: ResultadoDaImportacao["agents"][number]["acao"] }>();
-    const idsLivres = new Set<string>();
+    const ocupados = new Set<string>();
+    const adiados: AgentNaPrevia[] = [];
     for (const agent of previa.agents) {
       const escolha = escolhas.agents?.[agent.id]?.acao;
       if (agent.situacao === "nome-igual" && escolha === undefined) {
@@ -616,74 +749,101 @@ export class PacoteService {
           `já existe o agent "${agent.existente?.nome ?? agent.nome}" com o mesmo nome e outro id: escolha usar o que existe ou criar um novo`,
         );
       }
-      const acao = escolha ?? "versao-nova";
-      if (acao === "usar-existente") {
-        if (agent.situacao === "novo") throw new DecisaoPendenteError(`o agent "${agent.nome}" não existe aqui para ser usado`);
-        destino.set(agent.id, { id: agent.situacao === "nome-igual" ? agent.existente!.id : agent.id, acao: "existente" });
-        continue;
+      if (agent.situacao === "novo") {
+        if (escolha === "usar-existente") throw new DecisaoPendenteError(`o agent "${agent.nome}" não existe aqui para ser usado`);
+        destino.set(agent.id, { id: agent.id, acao: "criado" });
+      } else if (agent.situacao === "igual") {
+        destino.set(agent.id, { id: agent.id, acao: "igual" });
+      } else if (agent.situacao === "nome-igual") {
+        if (escolha === "atualizar") throw new DecisaoPendenteError(`o agent "${agent.nome}" tem outro id aqui: só dá para usar o que existe ou criar um novo`);
+        if (escolha === "usar-existente") destino.set(agent.id, { id: agent.existente!.id, acao: "existente" });
+        else adiados.push(agent);
+      } else {
+        // Mesmo id com conteúdo diferente: o padrão é criar ao lado, e reescrever o dele só por escolha explícita.
+        if (escolha === "atualizar") destino.set(agent.id, { id: agent.id, acao: "atualizado" });
+        else if (escolha === "usar-existente") destino.set(agent.id, { id: agent.id, acao: "existente" });
+        else adiados.push(agent);
       }
-      if (acao === "criar-novo") {
-        let id = agent.situacao === "novo" ? agent.id : agent.idSugerido;
-        for (let n = 2; idsLivres.has(id); n++) id = `${agent.idSugerido}-${n}`;
-        idsLivres.add(id);
-        destino.set(agent.id, { id, acao: "criado" });
-        continue;
-      }
-      destino.set(agent.id, { id: agent.id, acao: agent.situacao === "igual" ? "igual" : agent.situacao === "novo" ? "criado" : "versao-nova" });
+    }
+    for (const { id } of destino.values()) ocupados.add(id);
+    for (const agent of adiados) {
+      let id = agent.idSugerido;
+      for (let n = 2; ocupados.has(id) || (await this.library.getProfile(id)) !== null; n++) id = `${agent.idSugerido}-${n}`;
+      ocupados.add(id);
+      destino.set(agent.id, { id, acao: "criado" });
     }
 
     const automacaoId = escolhas.automacaoId ?? previa.automacao.idSugerido;
     if (!ID_DE_AGENT.test(automacaoId)) throw new Error("identificador em minúsculas, números e hífen, de 2 a 63 caracteres");
     if ((await this.agents.get(automacaoId)) !== undefined) throw new Error(`já existe uma automação "${automacaoId}"`);
 
-    // Validação completa antes de gravar qualquer agent.
-    const specsDosAgents = pacote.agents.flatMap((agent) => {
+    const pendencias: ResultadoDaImportacao["pendencias"] = pacote.omitidos
+      .filter((o) => o.codigo !== "texto-limpo" && o.codigo !== "url-a-preencher")
+      .map((o) => ({ codigo: o.codigo, onde: o.onde }));
+
+    // Validação completa antes de gravar qualquer agent. A classe das
+    // ferramentas é recalculada aqui: a do arquivo nunca vale.
+    const specsDosAgents = new Map<string, AgentProfile>();
+    for (const agent of pacote.agents) {
       const alvo = destino.get(agent.id)!;
-      if (alvo.acao === "existente") return [];
-      const mapeadas = agent.connections.map((c) => mapearConexao(c, conexao, servidor));
-      return [
+      if (alvo.acao === "existente" || alvo.acao === "igual") continue;
+      const todas = await this.reclassificar(agent.tools, servidor);
+      const leituras = todas.filter((t) => t.class === "read");
+      if (leituras.length < todas.length) pendencias.push({ codigo: "escrita-removida", onde: `agent:${alvo.id}` });
+      let toolsets: string[] = [];
+      let tools = leituras;
+      if (alvo.acao === "atualizado") {
+        // Atualizar o agent daqui não congela o toolset dele em ferramentas avulsas.
+        const atual = (await this.library.getProfile(alvo.id))!.spec;
+        toolsets = atual.toolsets;
+        const doToolset = new Set<string>();
+        for (const id of toolsets) for (const t of (await this.library.getToolset(id))?.tools ?? []) doToolset.add(chaveDaFerramenta(t));
+        tools = leituras.filter((t) => !doToolset.has(chaveDaFerramenta(t)));
+      }
+      specsDosAgents.set(
+        alvo.id,
         AgentProfile.parse({
           ...agent,
           id: alvo.id,
           model: modelo(`agent:${agent.id}`, agent.model),
-          toolsets: [],
-          tools: agent.tools.map((t) => ({ ...t, server: servidor(t.server) })),
-          connections: mapeadas,
+          toolsets,
+          tools,
+          connections: agent.connections.map((c) => mapearConexao(c, conexao, servidor)),
         }),
-      ];
-    });
+      );
+    }
 
-    const rebaixadas: string[] = [];
-    const passos = pacote.automacao.spec.steps.map((p): Step => {
+    const passos: Step[] = [];
+    for (const p of pacote.automacao.spec.steps) {
       if (p.type === "model") {
         const { profile, ...resto } = p;
-        return {
+        passos.push({
           ...resto,
           model: modelo(`passo:${p.key}`, p.model),
-          ...(p.tools === undefined ? {} : { tools: p.tools.map((t) => ({ ...t, server: servidor(t.server) })) }),
+          ...(p.tools === undefined ? {} : { tools: await this.reclassificar(p.tools, servidor) }),
           requiresServers: p.requiresServers.map(servidor),
           ...(profile === undefined ? {} : { profile: destino.get(profile)!.id }),
-        };
-      }
-      if (p.type === "action") {
+        });
+      } else if (p.type === "action") {
+        const { origem, ...resto } = p.params ?? {};
+        if (p.action === "http.request") pendencias.push({ codigo: "url-a-preencher", onde: p.key, ...(origem === undefined ? {} : { dica: origem }) });
+        const params = { ...resto, ...(resto.server === undefined ? {} : { server: servidor(resto.server) }) };
         // Ação em `auto` publicaria sem que ninguém tenha dito que pode: entra em aprovação.
-        if (p.mode === "auto") rebaixadas.push(p.key);
-        const params = p.params === undefined ? undefined : { ...p.params, ...(p.params.server === undefined ? {} : { server: servidor(p.params.server) }) };
-        return { ...p, mode: p.mode === "auto" ? "approve" : p.mode, ...(params === undefined ? {} : { params }) };
+        passos.push({ ...p, mode: p.mode === "auto" ? "approve" : p.mode, ...(p.params === undefined ? {} : { params }) });
+      } else {
+        passos.push(p);
       }
-      return p;
-    });
+    }
     const spec = AgentSpec.parse({
       id: automacaoId,
       name: pacote.automacao.spec.name,
-      defaultTools: pacote.automacao.spec.defaultTools.map((t) => ({ ...t, server: servidor(t.server) })),
+      defaultTools: await this.reclassificar(pacote.automacao.spec.defaultTools, servidor),
       skills: pacote.automacao.spec.skills,
       steps: passos,
       budget: pacote.automacao.spec.budget,
       ...(pacote.automacao.spec.layout === undefined ? {} : { layout: pacote.automacao.spec.layout }),
     });
 
-    const pendencias: ResultadoDaImportacao["pendencias"] = pacote.omitidos.filter((o) => o.codigo !== "texto-limpo").map((o) => ({ codigo: o.codigo, onde: o.onde }));
     const gatilhos: { config: TriggerConfigInput; enabled: false }[] = [];
     for (const g of pacote.automacao.gatilhos) {
       const config = gatilhoParaCadastro(g, servidor);
@@ -699,15 +859,14 @@ export class PacoteService {
     const resultado: ResultadoDaImportacao["agents"] = [];
     for (const agent of pacote.agents) {
       const alvo = destino.get(agent.id)!;
-      if (alvo.acao === "existente") {
-        const atual = await this.library.getProfile(alvo.id);
-        resultado.push({ id: alvo.id, acao: "existente", versao: atual?.version ?? 0 });
+      const antes = await this.library.getProfile(alvo.id);
+      const novoSpec = specsDosAgents.get(alvo.id);
+      if (novoSpec === undefined) {
+        resultado.push({ id: alvo.id, acao: alvo.acao === "igual" ? "igual" : "existente", versao: antes?.version ?? 0 });
         continue;
       }
-      const spec = specsDosAgents.find((s) => s.id === alvo.id)!;
-      const antes = await this.library.getProfile(alvo.id);
-      const salvo = await this.library.saveProfile({ spec, note: "importado de pacote", ...(antes === null ? { create: true } : {}) });
-      resultado.push({ id: alvo.id, acao: antes === null ? "criado" : salvo.version === antes.version ? "igual" : "versao-nova", versao: salvo.version });
+      const salvo = await this.library.saveProfile({ spec: novoSpec, note: "importado de pacote", ...(antes === null ? { create: true } : {}) });
+      resultado.push({ id: alvo.id, acao: antes === null ? "criado" : salvo.version === antes.version ? "igual" : "atualizado", versao: salvo.version });
     }
     await this.automations.save({ spec, triggers: gatilhos, note: "importada de pacote", create: true });
 
@@ -732,10 +891,34 @@ function canonico(v: unknown): string {
   return JSON.stringify(v);
 }
 
-/** O agent daqui já é o do pacote. Toolset não entra na conta: o pacote o traz como ferramentas avulsas. */
-function igual(atual: AgentProfile, agent: AgentDoPacote): boolean {
-  const { toolsets, ...resto } = atual;
-  return toolsets.length === 0 && canonico({ ...resto, tools: semRepetir(resto.tools) }) === canonico(agent);
+const LIMITE_DA_DIFERENCA = 1500;
+const resumir = (texto: string): string => (texto.length > LIMITE_DA_DIFERENCA ? `${texto.slice(0, LIMITE_DA_DIFERENCA)}…` : texto);
+
+/**
+ * O que difere entre o agent daqui e o do pacote, nos campos que mudam o que
+ * ele faz. Os dois já vêm na forma do pacote (toolset expandido), e a classe da
+ * ferramenta fica de fora: ela é recalculada na importação.
+ */
+export function diferencasDoAgent(daqui: AgentDoPacote, pacote: AgentDoPacote): DiferencaDoAgent[] {
+  const ferramentas = (a: AgentDoPacote): string =>
+    [...new Set(a.tools.map((t) => `${t.server}/${t.tool}`))].sort().join("\n");
+  const campos: [DiferencaDoAgent["campo"], (a: AgentDoPacote) => string][] = [
+    ["description", (a) => a.description],
+    ["context", (a) => a.context],
+    ["instructions", (a) => a.instructions],
+    ["model", (a) => a.model],
+    ["temperature", (a) => (a.temperature === undefined ? "" : String(a.temperature))],
+    ["tools", ferramentas],
+    ["connections", (a) => canonico(a.connections.map((c) => ({ ...c, tools: Object.fromEntries(Object.entries(c.tools).map(([k, v]) => [k, v === "read" ? true : v])) })))],
+    ["skills", (a) => [...new Set(a.skills.map((k) => k.skill))].sort().join(", ")],
+    ["budget", (a) => canonico(a.budget)],
+    ["maxSteps", (a) => String(a.maxSteps)],
+  ];
+  return campos.flatMap(([campo, ler]) => {
+    const a = ler(daqui);
+    const b = ler(pacote);
+    return a === b ? [] : [{ campo, daqui: resumir(a), pacote: resumir(b) }];
+  });
 }
 
 function parecido(servidor: { nome: string; url?: string; command?: string[] }, req: { nome: string; pacote?: string; host?: string; conexao?: string }): number {
@@ -752,7 +935,8 @@ function mapearConexao(c: AgentConnection, conexao: (id: string) => string, serv
   const tools: AgentConnection["tools"] = {};
   for (const [chave, valor] of Object.entries(c.tools)) {
     const corte = chave.indexOf("/");
-    tools[corte > 0 ? `${servidor(chave.slice(0, corte))}${chave.slice(corte)}` : chave] = valor;
+    // "read" é a pessoa declarando que a ferramenta só lê, e declaração de arquivo não vale: liga como qualquer outra.
+    tools[corte > 0 ? `${servidor(chave.slice(0, corte))}${chave.slice(corte)}` : chave] = valor === "read" ? true : valor;
   }
   return { ...c, connectionId: conexao(c.connectionId), tools };
 }
@@ -762,10 +946,12 @@ function usosDasDependencias(pacote: Pacote): {
   conexoes: Map<string, string[]>;
   servidores: Map<string, string[]>;
   provedores: Map<string, string[]>;
+  skills: Map<string, string[]>;
 } {
   const conexoes = new Map<string, string[]>();
   const servidores = new Map<string, string[]>();
   const provedores = new Map<string, string[]>();
+  const skills = new Map<string, string[]>();
   const somar = (mapa: Map<string, string[]>, chave: string, quem: string): void => {
     const lista = mapa.get(chave) ?? [];
     if (!lista.includes(quem)) mapa.set(chave, [...lista, quem]);
@@ -786,6 +972,7 @@ function usosDasDependencias(pacote: Pacote): {
     }
   }
   for (const t of pacote.automacao.spec.defaultTools) servidorDe(t.server, "automacao");
+  for (const k of pacote.automacao.spec.skills) somar(skills, k.skill, "automacao");
   for (const g of pacote.automacao.gatilhos) {
     const quem = `gatilho:${g.kind}`;
     const dona = CONEXAO_DO_GATILHO[g.kind];
@@ -795,6 +982,7 @@ function usosDasDependencias(pacote: Pacote): {
   for (const agent of pacote.agents) {
     const quem = `agent:${agent.id}`;
     somar(provedores, provedorDe(agent.model), quem);
+    for (const k of agent.skills) somar(skills, k.skill, quem);
     for (const t of agent.tools) servidorDe(t.server, quem);
     for (const c of agent.connections) {
       if (CATALOGO.has(c.connectionId)) somar(conexoes, c.connectionId, quem);
@@ -805,7 +993,7 @@ function usosDasDependencias(pacote: Pacote): {
       }
     }
   }
-  return { conexoes, servidores, provedores };
+  return { conexoes, servidores, provedores, skills };
 }
 
 /** O gatilho do pacote como o cadastro o pede, ou nulo quando falta o que só a pessoa escolhe. */
