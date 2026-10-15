@@ -377,7 +377,10 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "triggers.previewGithub": async (config) => {
       const { previaDoGatilho } = await import("../src/services/trigger-preview.js");
       // Na fumaça e nas capturas não há token nem rede: responde o GitHub de exemplo.
-      if (app.isPackaged || process.env.LOCUM_GITHUB_FIXTURE !== "1") return previaDoGatilho(config);
+      // Vale só com `--smoke`, que a fumaça do pacote também passa; fora dela a
+      // variável sozinha não troca o GitHub de verdade pelo de exemplo.
+      const fumaca = process.argv.includes("--smoke");
+      if (!fumaca || process.env.LOCUM_GITHUB_FIXTURE !== "1") return previaDoGatilho(config);
       const { clienteDeExemplo } = await import("../src/fixtures/github-previa.js");
       return previaDoGatilho(config, { client: clienteDeExemplo(), viewer: async () => "ana" });
     },
