@@ -1782,6 +1782,7 @@
       }
     },
     "offers": {
+      "viaServerOff": "Teams pelo {{server}}, que está desligado. Ligue para liberar o gatilho e as ações do Teams.",
       "viaServer": "Teams pelo {{server}}: libera o gatilho e as ações do Teams.",
       "title": "O que libera",
       "triggers_one": "{{count}} gatilho",

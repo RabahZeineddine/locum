@@ -1743,6 +1743,7 @@
       }
     },
     "offers": {
+      "viaServerOff": "Teams comes through {{server}}, which is off. Turn it on to unlock the Teams trigger and actions.",
       "viaServer": "Teams comes through {{server}}: it unlocks the Teams trigger and actions.",
       "title": "What it unlocks",
       "triggers_one": "{{count}} trigger",

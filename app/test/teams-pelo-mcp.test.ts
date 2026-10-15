@@ -321,18 +321,6 @@ test("resposta que não é JSON (modo toon) vira erro claro, e não uma caixa va
   assert.match(r.errors[0]!.error, /formato que o Locum não lê\. Desligue o modo toon/);
 });
 
-test("login nativo guardado que não renovou: erro de refazer o login, sem cair no servidor MCP", async () => {
-  const { call, chamadas } = servidorFalso({});
-  await assert.rejects(
-    pollTeamsInbox(
-      { mentions: false, dms: true },
-      { db: bancoDeTeste(), token: semLogin, nativoGuardado: () => true, mcp: cadastro("ms365"), call, ...semGithub },
-    ),
-    /Refaça o login do Teams em Conexões/,
-  );
-  assert.equal(chamadas.length, 0);
-});
-
 test("responder numa conversa: send-chat-message com o texto em HTML e a confirmação do ms365", async () => {
   const { call, chamadas } = servidorFalso({});
   const handler = teamsPostHandler({ db: bancoDeTeste(), token: semLogin, mcp: cadastro("ms365"), call });
@@ -462,6 +450,8 @@ test("reação em resposta de thread de canal fica na raiz da thread, nas duas p
   ]);
 });
 
+const CONFIG = { name: "ms365", transport: "stdio", command: ["npx"] } as never;
+
 test("operações próximas reaproveitam a sessão do servidor, e ela fecha depois de solta", async () => {
   let abertas = 0;
   let fechadas = 0;
@@ -470,11 +460,11 @@ test("operações próximas reaproveitam a sessão do servidor, e ela fecha depo
     return { call: async () => ({}), close: async () => void fechadas++ };
   };
   try {
-    const a = await compartilhar("ms365", abrir);
-    const b = await compartilhar("ms365", abrir);
+    const a = await compartilhar("ms365", CONFIG, abrir);
+    const b = await compartilhar("ms365", CONFIG, abrir);
     await a.close();
     await b.close();
-    const c = await compartilhar("ms365", abrir);
+    const c = await compartilhar("ms365", CONFIG, abrir);
     await c.close();
     assert.equal(abertas, 1);
     assert.equal(fechadas, 0, "ociosa, mas ainda de pé para a próxima operação");
@@ -482,4 +472,102 @@ test("operações próximas reaproveitam a sessão do servidor, e ela fecha depo
     await soltarSessoes();
   }
   assert.equal(fechadas, 1);
+});
+
+test("servidor editado descarta a sessão viva: a que está em uso termina e fecha ao soltar, e a nova reabre", async () => {
+  let abertas = 0;
+  let fechadas = 0;
+  const abrir = async () => {
+    abertas++;
+    return { call: async () => ({}), close: async () => void fechadas++ };
+  };
+  try {
+    const velha = await compartilhar("ms365", CONFIG, abrir);
+    const nova = await compartilhar("ms365", { ...(CONFIG as object), command: ["npx", "-y"] } as never, abrir);
+    assert.equal(abertas, 2);
+    assert.equal(fechadas, 0, "a velha ainda está em uso");
+    await velha.close();
+    assert.equal(fechadas, 1);
+    await nova.close();
+  } finally {
+    await soltarSessoes();
+  }
+});
+
+test("servidor desligado entre o cadastro e a chamada: erro de ligar em Conexões, sem sessão", async () => {
+  await assert.rejects(
+    pollTeamsInbox(
+      { mentions: false, dms: true },
+      { db: bancoDeTeste(), token: semLogin, mcp: cadastro("ms365"), configDoServidor: async () => null, ...semGithub },
+    ),
+    /"ms365", que está desligado\. Ligue em Conexões\./,
+  );
+});
+
+test("a recusa que fala em skiptoken é recusa, e não falta de login", async () => {
+  const { call } = servidorFalso({ falha: '{"error":"invalid_skiptoken","tool":"list-chats"}' });
+  const r = await pollTeamsInbox(
+    { mentions: false, dms: true },
+    { db: bancoDeTeste(), token: semLogin, mcp: cadastro("ms365"), call, ...semGithub },
+  );
+  assert.match(r.errors[0]!.error, /recusou o pedido do Teams: .*invalid_skiptoken/);
+});
+
+test("a conta é a username que o list-accounts do servidor mostra, sem diferenciar maiúscula", async () => {
+  const { call: base, chamadas } = servidorFalso({
+    chats: [{ id: "d", chatType: "oneOnOne", mensagens: [mensagem("m1", 2, "oi")] }],
+  });
+  const call = async (server: string, tool: string, args: Record<string, unknown>) =>
+    tool === "list-accounts"
+      ? { content: [{ type: "text", text: JSON.stringify({ accounts: [{ email: "Eu@Empresa.com" }, { email: "outra@x.com" }] }) }] }
+      : base(server, tool, args);
+  const db = bancoDeTeste();
+  const mcp = cadastro("ms365", true, [...MULTICONTA, { name: "list-accounts", inputSchema: esquema(), description: "", estimatedTokens: 0 }]);
+
+  await pollTeamsInbox({ mentions: false, dms: true }, { db, token: semLogin, mcp, call, ...semGithub });
+
+  assert.equal((await eventos(db))[0]?.teamsAccount, "Eu@Empresa.com");
+  assert.ok(chamadas.slice(1).every((c) => c.args.account === "Eu@Empresa.com"));
+});
+
+test("várias contas e nenhuma padrão: o erro diz o que fazer; a conta da primeira batida vale nas seguintes", async () => {
+  const { call: base } = servidorFalso({
+    chats: [{ id: "d", chatType: "oneOnOne", mensagens: [mensagem("m1", 2, "oi")] }],
+  });
+  const mcp = cadastro("ms365", true, MULTICONTA);
+  const db = bancoDeTeste();
+  const semPadrao = async (server: string, tool: string, args: Record<string, unknown>) =>
+    args.account === undefined
+      ? { isError: true, content: [{ type: "text", text: "Multiple accounts configured but no default selected." }] }
+      : base(server, tool, args);
+
+  const falha = await pollTeamsInbox({ mentions: false, dms: true }, { db, token: semLogin, mcp, call: semPadrao, ...semGithub });
+  assert.match(falha.errors[0]!.error, /tem várias contas e nenhuma escolhida\. Escolha a conta padrão dele/);
+
+  // Com a conta gravada pela primeira batida boa, a padrão deixa de importar.
+  const { call: boa } = servidorFalso({
+    chats: [{ id: "d", chatType: "oneOnOne", mensagens: [mensagem("m1", 2, "oi")] }],
+  });
+  await pollTeamsInbox({ mentions: false, dms: true, }, { db, token: semLogin, mcp, call: boa, ...semGithub, triggerId: "t1" });
+  const chamadas: Chamada[] = [];
+  const registrando = async (server: string, tool: string, args: Record<string, unknown>) => {
+    chamadas.push({ tool, args });
+    return semPadrao(server, tool, args);
+  };
+  const depois = await pollTeamsInbox(
+    { mentions: false, dms: true },
+    { db, token: semLogin, mcp, call: registrando, ...semGithub, triggerId: "t1" },
+  );
+  assert.deepEqual(depois.errors, []);
+  assert.equal(chamadas[0]!.args.account, "eu@empresa.com");
+});
+
+test("pendência sem conta num servidor com várias contas não publica", async () => {
+  const { call, chamadas } = servidorFalso({});
+  const handler = teamsPostHandler({ db: bancoDeTeste(), token: semLogin, mcp: cadastro("ms365", true, MULTICONTA), call });
+  await assert.rejects(
+    handler.publish({ chatId: "c", text: "oi", subject: "x", author: null, webUrl: null }, "id"),
+    /tem várias contas e esta resposta não diz por qual sair\. Rejeite e gere a resposta de novo\./,
+  );
+  assert.equal(chamadas.length, 0);
 });

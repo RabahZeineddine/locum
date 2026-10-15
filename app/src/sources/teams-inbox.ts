@@ -117,10 +117,22 @@ export async function pollTeamsInbox(
   options: TeamsInboxOptions = {},
 ): Promise<TeamsInboxOutcome> {
   const db = options.db ?? defaultDb;
-  const teams = await abrirTeams(options);
+  // Num servidor com várias contas, a conta lida na primeira batida do gatilho
+  // vale para as seguintes: trocar a padrão em outro lugar não muda de quem se lê.
+  const chaveConta = `teams.account.${TEAMS_INBOX_CURSOR}${options.triggerId === undefined ? "" : `:${options.triggerId}`}`;
+  const guardada =
+    (await db.select({ value: schema.settings.value }).from(schema.settings).where(eq(schema.settings.key, chaveConta)))[0]
+      ?.value ?? null;
+  const teams = await abrirTeams(guardada === null || options.account !== undefined ? options : { ...options, account: guardada });
   try {
     return await varrer(watch, options, db, teams);
   } finally {
+    if (guardada === null && teams.conta() !== null) {
+      await db
+        .insert(schema.settings)
+        .values({ key: chaveConta, value: teams.conta()! })
+        .onConflictDoNothing();
+    }
     await teams.close();
   }
 }

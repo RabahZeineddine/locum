@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import type { McpServerConfig } from "../config/types.js";
 import { McpRegistry } from "../mcp/registry.js";
 import type { McpToolInfo } from "../mcp/registry.js";
 import { mcpOAuthService } from "../services/mcp-oauth-service.js";
@@ -26,6 +28,8 @@ export interface TeamsGraph {
    * que leu, mesmo que a conta padrão do servidor mude no meio do caminho.
    */
   conta(): string | null;
+  /** O servidor MCP atende mais de uma conta: a resposta precisa saber por qual sair. */
+  multiConta: boolean;
   /** Solta o que a sessão segurou (o servidor MCP aberto para a batida). */
   close(): Promise<void>;
 }
@@ -43,10 +47,10 @@ export interface TeamsGraphOptions {
   call?: McpCaller;
   /** A conta do servidor MCP com que o evento foi lido. Sem ela vale a padrão do servidor. */
   account?: string;
-  /** Se o login nativo está guardado, mesmo que o token não renove. Existe para o teste trocar. */
-  nativoGuardado?: () => boolean;
-  /** Abre a sessão do servidor. Ausente é a sessão curta compartilhada no registro. Existe para o teste trocar. */
-  abrir?: (servidor: string) => Promise<SessaoMcp>;
+  /** A configuração do servidor ligado hoje, ou nulo. Ausente é a do cadastro. Existe para o teste trocar. */
+  configDoServidor?: (servidor: string) => Promise<McpServerConfig | null>;
+  /** Abre a sessão do servidor. Ausente sobe o servidor cadastrado. Existe para o teste trocar. */
+  abrir?: (config: McpServerConfig) => Promise<SessaoMcp>;
 }
 
 /** Quem chama as ferramentas de um servidor e o solta quando acaba. */
@@ -65,6 +69,7 @@ export function graphNativo(token: string, fetchFn: typeof fetch, graphUrl: stri
   return {
     servidor: null,
     conta: () => null,
+    multiConta: false,
     async close() {},
     async get(caminho) {
       const url = caminho.startsWith("https://") ? caminho : `${graphUrl}${caminho}`;
@@ -197,7 +202,8 @@ function comoHtml(corpo: unknown): unknown {
   return { ...(corpo as object), body: { contentType: "html", content: html } };
 }
 
-const SEM_LOGIN = /login|authenticat|unauthori[sz]ed|\b401\b|no accounts found|token/i;
+const SEM_LOGIN = /\blogin\b|authenticat|unauthori[sz]ed|\b401\b|no accounts found|access token/i;
+const VARIAS_CONTAS = /multiple accounts/i;
 
 /**
  * O Graph traduzido para as ferramentas de um servidor MCP do Teams (as do
@@ -250,6 +256,11 @@ export function graphPeloMcp(
       return unwrap(bruto);
     } catch (err) {
       const motivo = err instanceof Error ? err.message : String(err);
+      if (VARIAS_CONTAS.test(motivo)) {
+        throw new Error(
+          `O servidor "${servidor}" tem várias contas e nenhuma escolhida. Escolha a conta padrão dele (select-account) e tente de novo.`,
+        );
+      }
       if (SEM_LOGIN.test(motivo)) {
         throw new Error(`O servidor "${servidor}" está sem login no Microsoft 365. Refaça o login dele em Conexões.`);
       }
@@ -262,6 +273,19 @@ export function graphPeloMcp(
     const q: Valores = {};
     for (const [nome, valor] of url.searchParams) q[chaveDe(nome)] = v(valor, nome);
     return q;
+  };
+
+  // O ms365 casa a conta pelo `username` do MSAL, que costuma ser o UPN mas não
+  // garante: com `list-accounts`, vale o e-mail dele que bate com o UPN.
+  const usernameDoServidor = async (upn: string): Promise<string> => {
+    if (!porNome.has("list-accounts")) return upn;
+    try {
+      const contas = (await acionar("list-accounts", {})) as { accounts?: { email?: unknown }[] } | null;
+      const achada = contas?.accounts?.find((c) => typeof c.email === "string" && c.email.toLowerCase() === upn.toLowerCase());
+      return typeof achada?.email === "string" ? achada.email : upn;
+    } catch {
+      return upn;
+    }
   };
 
   const lista = async (nome: string, valores: Valores) => {
@@ -277,6 +301,7 @@ export function graphPeloMcp(
   return {
     servidor,
     conta: () => conta,
+    multiConta,
     close: fechar,
 
     async get(caminho) {
@@ -288,7 +313,9 @@ export function graphPeloMcp(
         const eu = await lista("get-current-user", q);
         // A primeira resposta diz de que conta o servidor falou, para as outras
         // chamadas e para o evento.
-        if (conta === null && multiConta && typeof eu.userPrincipalName === "string") conta = eu.userPrincipalName;
+        if (conta === null && multiConta && typeof eu.userPrincipalName === "string") {
+          conta = await usernameDoServidor(eu.userPrincipalName);
+        }
         return eu;
       }
       if (rota === "/me/chats") return lista("list-chats", q);
@@ -382,16 +409,41 @@ export function graphPeloMcp(
 /** Quanto a sessão do servidor MCP fica de pé depois da última operação. */
 const OCIOSA_MS = 20_000;
 
-let viva: { servidor: string; sessao: Promise<SessaoMcp>; usos: number; timer: NodeJS.Timeout | null } | null = null;
+let viva: {
+  servidor: string;
+  marca: string;
+  sessao: Promise<SessaoMcp>;
+  usos: number;
+  timer: NodeJS.Timeout | null;
+  /** A configuração mudou: quem ainda usa termina, e a sessão fecha ao soltar a última. */
+  descartada: boolean;
+} | null = null;
+
+const marcaDe = (config: McpServerConfig) => createHash("sha1").update(JSON.stringify(config)).digest("hex");
 
 /**
  * A sessão do servidor MCP, reaproveitada entre operações próximas: a batida, o
  * `unset` e o `set` do fim do review e a resposta aprovada pegam o mesmo
  * processo em vez de subir um do ms365 cada um. Fecha depois de `OCIOSA_MS` sem uso.
+ *
+ * A sessão viva só vale enquanto a configuração do servidor for a de quando
+ * abriu: servidor desligado ou editado descarta a sessão e reabre.
  */
-export async function compartilhar(servidor: string, abrir: (s: string) => Promise<SessaoMcp>): Promise<SessaoMcp> {
-  if (viva !== null && viva.servidor !== servidor) return abrir(servidor);
-  const atual = (viva ??= { servidor, sessao: abrir(servidor), usos: 0, timer: null });
+export async function compartilhar(
+  servidor: string,
+  config: McpServerConfig,
+  abrir: (config: McpServerConfig) => Promise<SessaoMcp>,
+): Promise<SessaoMcp> {
+  const marca = marcaDe(config);
+  if (viva !== null && viva.servidor === servidor && viva.marca !== marca) {
+    const velha = viva;
+    viva = null;
+    velha.descartada = true;
+    if (velha.timer !== null) clearTimeout(velha.timer);
+    if (velha.usos === 0) void velha.sessao.then((s) => s.close()).catch(() => undefined);
+  }
+  if (viva !== null && viva.servidor !== servidor) return abrir(config);
+  const atual = (viva ??= { servidor, marca, sessao: abrir(config), usos: 0, timer: null, descartada: false });
   if (atual.timer !== null) clearTimeout(atual.timer);
   atual.timer = null;
   atual.usos++;
@@ -410,6 +462,10 @@ export async function compartilhar(servidor: string, abrir: (s: string) => Promi
       if (solta) return;
       solta = true;
       if (--atual.usos > 0) return;
+      if (atual.descartada) {
+        await sessao.close().catch(() => undefined);
+        return;
+      }
       atual.timer = setTimeout(() => {
         if (viva === atual) viva = null;
         void sessao.close().catch(() => undefined);
@@ -428,17 +484,14 @@ export async function soltarSessoes(): Promise<void> {
   await (await atual.sessao).close().catch(() => undefined);
 }
 
-/** Sobe o servidor cadastrado, só se estiver habilitado. */
-async function abrirNoRegistro(servidor: string): Promise<SessaoMcp> {
-  const registry = McpRegistry.fromList(await mcpService.enabledConfigs());
-  if (!registry.has(servidor)) {
-    return {
-      call: async () => {
-        throw new Error(`servidor MCP "${servidor}" nao esta habilitado`);
-      },
-      close: async () => {},
-    };
-  }
+/** A configuração do servidor se ele está ligado agora, ou nulo. */
+async function configLigada(servidor: string): Promise<McpServerConfig | null> {
+  return (await mcpService.enabledConfigs()).find((c) => c.name === servidor) ?? null;
+}
+
+/** Sobe o servidor da configuração dada. */
+async function abrirNoRegistro(config: McpServerConfig): Promise<SessaoMcp> {
+  const registry = McpRegistry.fromList([config]);
   return { call: (s, t, a) => registry.callTool(s, t, a), close: () => registry.closeAll() };
 }
 
@@ -450,20 +503,6 @@ export async function abrirTeams(options: TeamsGraphOptions = {}): Promise<Teams
   if (options.graph !== undefined) return options.graph;
   const token = await (options.token ?? (() => mcpOAuthService.accessToken(TEAMS_SERVER)))();
   if (token !== null) return graphNativo(token, options.fetchFn ?? clienteHttp, options.graphUrl ?? GRAPH_URL);
-
-  // Login guardado que não renovou: cair no servidor MCP falaria por outra
-  // conta, e o "eu" da caixa mudaria no mesmo cursor.
-  const guardado = options.nativoGuardado ??
-    (() => {
-      try {
-        return mcpOAuthService.status(TEAMS_SERVER).connected;
-      } catch {
-        return false;
-      }
-    });
-  if (guardado()) {
-    throw new Error("O login do Teams venceu e não renovou. Refaça o login do Teams em Conexões.");
-  }
 
   const mcp = options.mcp ?? mcpService;
   const achado = await teamsNoMcp(mcp);
@@ -478,6 +517,11 @@ export async function abrirTeams(options: TeamsGraphOptions = {}): Promise<Teams
   const ferramentas = (await mcp.cachedTools(achado.server))?.tools ?? [];
   const conta = options.account ?? null;
   if (options.call !== undefined) return graphPeloMcp(achado.server, ferramentas, options.call, undefined, conta);
-  const sessao = await compartilhar(achado.server, options.abrir ?? abrirNoRegistro);
+  // Entre o cadastro lido e a chamada o servidor pode ter sido desligado ou editado.
+  const config = await (options.configDoServidor ?? configLigada)(achado.server);
+  if (config === null) {
+    throw new Error(`O Teams vem pelo servidor "${achado.server}", que está desligado. Ligue em Conexões.`);
+  }
+  const sessao = await compartilhar(achado.server, config, options.abrir ?? abrirNoRegistro);
   return graphPeloMcp(achado.server, ferramentas, sessao.call, sessao.close, conta);
 }

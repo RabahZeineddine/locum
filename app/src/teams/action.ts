@@ -155,6 +155,13 @@ export function teamsPostHandler(options: TeamsPostHandlerOptions = {}): ActionH
         proposta.account === undefined ? options : { ...options, account: proposta.account },
       );
       try {
+        // Pendência de antes de a conta ir gravada: o servidor falaria pela
+        // conta padrão de hoje, que pode não ser a de quem leu.
+        if (teams.multiConta && proposta.account === undefined) {
+          throw new Error(
+            `O servidor "${teams.servidor}" tem várias contas e esta resposta não diz por qual sair. Rejeite e gere a resposta de novo.`,
+          );
+        }
         const canal = proposta.channel;
         const caminho =
           canal === undefined
