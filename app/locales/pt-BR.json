@@ -537,6 +537,20 @@
     "connections": "Conexões",
     "models": "Modelos"
   },
+  "update": {
+    "footer": {
+      "checking": "procurando atualização",
+      "downloading": "baixando {{version}} · {{percent}}%",
+      "downloadingUnknown": "baixando {{version}}",
+      "ready": "{{version}} pronta, reiniciar"
+    },
+    "modal": {
+      "title": "Locum {{version}} pronta",
+      "noNotes": "Esta versão não trouxe notas.",
+      "later": "Depois",
+      "restart": "Reiniciar e atualizar"
+    }
+  },
   "notification": {
     "runFailed": {
       "title": "{{agent}} falhou",
@@ -1174,7 +1188,7 @@
     "schemeRefused": "não aceito fora de app empacotado",
     "expectedRefusal": "ponte: a próxima linha de erro é a recusa esperada da gate",
     "bridge": "canais: {{channels}}, janela sem Node, valores batendo com os serviços",
-    "renderer": "página construída carregada, raiz montada, folha do Tailwind valendo, {{routes}}, {{palette}}, {{initiatives}}, {{agents}}, {{config}}, veredito da revisão trocado pela tela e gravado na pendência: {{review}}, {{sessions}}, {{runs}}, bloco de código com trechos destacados: {{spans}}, a janela lendo execuções: {{windowRuns}} e pendências: {{windowPending}} pela ponte, {{language}}",
+    "renderer": "página construída carregada, raiz montada, folha do Tailwind valendo, {{routes}}, {{palette}}, {{initiatives}}, {{agents}}, {{config}}, veredito da revisão trocado pela tela e gravado na pendência: {{review}}, {{sessions}}, {{runs}}, bloco de código com trechos destacados: {{spans}}, a janela lendo execuções: {{windowRuns}} e pendências: {{windowPending}} pela ponte, {{update}}, {{language}}",
     "routes": "destinos: {{count}}",
     "palette": "paleta abrindo e fechando pelo atalho",
     "initiatives": "iniciativas: {{initiatives}}, detalhe abrindo na aba de contexto com o título da iniciativa e trocando para a aba de agents",
@@ -1202,7 +1216,8 @@
     "digest": "conversa de {{channels}} canal(is) agrupada por assunto em {{messages}} mensagem(ns), {{dropped}} de ruído descartada(s) antes do modelo, a entrega seguinte sem repetir nada, e o digest parado na inbox como leitura, com a gate recusando rascunho, automático e digest vazio",
     "slackPost": "resposta escrita virou pendência no canal {{channel}}, thread {{thread}}, com o texto do modelo palavra por palavra, canal e thread vindos do evento, carimbo inventado recusado, e a gate recusando rascunho",
     "slackWindow": "Slack: {{server}} guardado pela tela e o canal {{channel}} do cadastro antigo visível, sem canal de ponte que publique",
-    "claudeSessions": "{{count}} sessões do Claude classificadas, Terminei e Reabrir de ida e volta"
+    "claudeSessions": "{{count}} sessões do Claude classificadas, Terminei e Reabrir de ida e volta",
+    "updateScreen": "rodapé da atualização passou por procurando, baixando 42% e pronta, com o modal e as notas, sem rede"
   },
   "status": {
     "done": "concluído",

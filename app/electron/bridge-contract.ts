@@ -778,6 +778,9 @@ export const CHAT_EVENT_CHANNEL = "chat:event";
 /** Saída e fim dos terminais embutidos, no mesmo esquema do chat. */
 export const TERMINAL_EVENT_CHANNEL = "terminal:event";
 
+/** O `UpdaterState` inteiro, empurrado a cada mudança de fase ou de porcentagem. */
+export const UPDATES_EVENT_CHANNEL = "updates:event";
+
 /** O nome sob o qual o preload pendura a ponte na janela. */
 export const BRIDGE_GLOBAL = "locum";
 

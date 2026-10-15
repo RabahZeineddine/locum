@@ -401,6 +401,7 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
       await updateService.setEnabled(enabled);
       if (enabled) await updater.setupUpdater();
       else updater.teardownUpdater();
+      updater.avisarJanelas();
       return updater.updaterState();
     },
     "updates.check": async () => {
