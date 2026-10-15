@@ -744,6 +744,8 @@
       "modelsNone": "the provider listed no models",
       "modelsError": "could not read the models: {{message}}",
       "modelsMore": "+{{count}}",
+      "modelCount_one": "{{count}} model",
+      "modelCount_other": "{{count}} models",
       "ollama": {
         "label": "Ollama address",
         "save": "Save",

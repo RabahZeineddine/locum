@@ -21,3 +21,15 @@ export const PONTOS: Record<string, Estado> = {
 export function pontoDoEstado(estado: string): Estado {
   return Object.hasOwn(PONTOS, estado) ? PONTOS[estado]! : "ocioso";
 }
+
+/** Provedor de modelo: ligado roda, desligado foi a pessoa que pediu, o resto espera chave. */
+export function pontoDoProvedor(p: { available: boolean; disabled: boolean }): Estado {
+  if (p.disabled) return "aviso";
+  return p.available ? "ok" : "ocioso";
+}
+
+/** O Locum cadastrado numa ferramenta de código: ligado, apontando para outro lugar, ou ausente. */
+export function pontoDaFerramenta(situacao: "connected" | "stale" | "absent" | null): Estado {
+  if (situacao === "connected") return "ok";
+  return situacao === "stale" ? "aviso" : "ocioso";
+}
