@@ -6760,6 +6760,21 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
     writeFileSync(join(destino, `${nome ?? `${id}${sufixo}`}.png`), imagem.toPNG());
   }
 
+  // A criação por modelo e o canvas com um nó aberto no painel, que só
+  // aparecem depois de um clique.
+  await irPara(janela, "automations");
+  await new Promise((resolve) => setTimeout(resolve, 1200));
+  await janela.webContents.executeJavaScript(`(document.querySelector("[data-locum-automacao-nova]")?.click(), null)`);
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  writeFileSync(join(destino, "automations-nova.png"), (await janela.webContents.capturePage()).toPNG());
+  if (primeiroAgent !== undefined) {
+    await irPara(janela, "automations", primeiroAgent);
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await janela.webContents.executeJavaScript(`(document.querySelector("[data-locum-no-automacao]")?.click(), null)`);
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    writeFileSync(join(destino, "automations-no.png"), (await janela.webContents.capturePage()).toPNG());
+  }
+
   // O seletor de "Adicionar conexão" abre por clique, e fecha com Esc.
   await irPara(janela, "connections");
   await new Promise((resolve) => setTimeout(resolve, 1200));

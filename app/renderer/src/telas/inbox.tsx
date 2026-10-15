@@ -30,6 +30,9 @@ const PONTO: Record<Severidade, EstadoDoPonto> = {
   low: "ocioso",
 };
 
+/** As teclas da fila; a mesma em qualquer idioma, porque é o que se aperta. */
+const TECLAS = { aprovar: "a", editar: "e", descartar: "x" } as const;
+
 function pior(achados: Achado[]): Severidade {
   for (const s of SEVERIDADES) {
     if (achados.some((a) => a.severity === s)) return s;
@@ -574,17 +577,17 @@ function Linha({
           {!emConflito && (
             <Button className="cursor-pointer" disabled={ocupada} onClick={aoAprovar} size="sm">
               {t("inbox.approve")}
-              <Kbd className="border-primary-foreground/30 bg-transparent text-primary-foreground/80">a</Kbd>
+              <Kbd className="border-primary-foreground/30 bg-transparent text-primary-foreground/80">{TECLAS.aprovar}</Kbd>
             </Button>
           )}
           <Button className="cursor-pointer" disabled={ocupada} onClick={aoEditar} size="sm" variant="outline">
             {alvo.somenteLeitura ? t("inbox.review") : t("inbox.edit")}
-            <Kbd>e</Kbd>
+            <Kbd>{TECLAS.editar}</Kbd>
           </Button>
           {!emConflito && (
             <Button className="cursor-pointer" disabled={ocupada} onClick={aoDescartar} size="sm" variant="ghost">
               {t("inbox.discard")}
-              <Kbd>x</Kbd>
+              <Kbd>{TECLAS.descartar}</Kbd>
             </Button>
           )}
         </div>
