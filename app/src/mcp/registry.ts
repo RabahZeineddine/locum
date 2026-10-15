@@ -214,9 +214,27 @@ export class McpRegistry {
    * token e piora a escolha do modelo.
    */
   async toolsFor(refs: ToolRef[]): Promise<{ tools: ToolSet; release: () => void }> {
+    for (const ref of refs) recusarEscritaExterna(ref);
+    return this.coletar(refs, false);
+  }
+
+  /**
+   * As escritas que o chat de um agent deixa a pessoa confirmar. Cada
+   * ferramenta volta marcada com `needsApproval`: o AI SDK para na chamada,
+   * devolve o pedido de aprovação e só executa quando a resposta chega com o
+   * "sim" daquela chamada. Só entra escrita externa; leitura vai por `toolsFor`.
+   */
+  async toolsComAprovacao(refs: ToolRef[]): Promise<{ tools: ToolSet; release: () => void }> {
+    const outra = refs.find((ref) => ref.class !== "external_write");
+    if (outra !== undefined) {
+      throw new Error(`"${outra.server}.${outra.tool}" nao e escrita externa: so escrita externa pede aprovacao`);
+    }
+    return this.coletar(refs, true);
+  }
+
+  private async coletar(refs: ToolRef[], aprovacao: boolean): Promise<{ tools: ToolSet; release: () => void }> {
     const wanted = new Map<string, ToolRef[]>();
     for (const ref of refs) {
-      recusarEscritaExterna(ref);
       const list = wanted.get(ref.server) ?? [];
       list.push(ref);
       wanted.set(ref.server, list);
@@ -233,7 +251,7 @@ export class McpRegistry {
       for (const ref of list) {
         const found = entry.tools[ref.tool];
         if (!found) throw new Error(`ferramenta "${ref.tool}" nao existe no servidor "${server}"`);
-        tools[`${server}__${ref.tool}`] = found;
+        tools[`${server}__${ref.tool}`] = aprovacao ? { ...found, needsApproval: true } : found;
       }
     }
 

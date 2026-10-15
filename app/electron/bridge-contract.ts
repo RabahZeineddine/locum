@@ -3,6 +3,7 @@ import type { AgentService } from "../src/services/agent-service.js";
 import type { RascunhoDeAgent } from "../src/services/agent-builder.js";
 import type { ApprovalService } from "../src/services/approval-service.js";
 import type { AutomationService } from "../src/services/automation-service.js";
+import type { ConversasDeAgent } from "../src/agent-chat/conversas.js";
 import type { LibraryService } from "../src/services/library-service.js";
 import type { ClaudeCodeService } from "../src/services/claude-code-service.js";
 import type { OpencodeService } from "../src/services/opencode-service.js";
@@ -533,6 +534,19 @@ interface ServiceApi {
   "chat.history": (context?: { initiative?: string }) => Promise<{ de: "user" | "assistant"; texto: string; ferramentas: string[] }[]>;
   /** Começa a conversa do zero. */
   "chat.reset": (context?: { initiative?: string }) => Promise<void>;
+
+  /**
+   * O chat de cada agent da biblioteca. `send` volta logo, como o do assistente,
+   * e o fluxo chega pelo mesmo canal de evento, com a chave `agent:<id>`.
+   * `decide` é o clique do cartão de escrita: fica fora do catálogo da janela,
+   * pelo mesmo motivo de `approvals.decide`, e a janela o alcança por
+   * `lib/agent-chat.ts`.
+   */
+  "agentChat.state": ConversasDeAgent["estado"];
+  "agentChat.send": ConversasDeAgent["enviar"];
+  "agentChat.decide": ConversasDeAgent["decidir"];
+  "agentChat.cancel": ConversasDeAgent["cancelar"];
+  "agentChat.reset": ConversasDeAgent["limpar"];
 }
 
 export type LocumApi = { [K in keyof ServiceApi]: Asyncify<ServiceApi[K]> };
@@ -725,6 +739,11 @@ export const BRIDGE_CHANNELS = [
   "terminal.resize",
   "terminal.close",
   "chat.reset",
+  "agentChat.state",
+  "agentChat.send",
+  "agentChat.decide",
+  "agentChat.cancel",
+  "agentChat.reset",
 ] as const satisfies readonly (keyof LocumApi)[];
 
 export type BridgeChannel = (typeof BRIDGE_CHANNELS)[number];

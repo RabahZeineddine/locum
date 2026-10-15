@@ -95,6 +95,8 @@ export interface CatalogoDeConexoes {
   servidoresDe(connectionId: string): Promise<{ nome: string; ligado: boolean }[]>;
   /** Ferramentas que o servidor oferece agora. Lança quando não dá para listar. */
   ferramentasDe(servidor: string): Promise<FerramentaDoServidor[]>;
+  /** A última lista boa do servidor, sem subi-lo. Nula quando nunca listou. */
+  guardadasDe?(servidor: string): Promise<FerramentaDoServidor[] | null>;
 }
 
 /** As conexões e ferramentas de verdade, carregadas só na primeira vez que alguém pede. */
@@ -113,6 +115,11 @@ const catalogoPadrao: CatalogoDeConexoes = {
     return (guardada?.tools ?? (await mcpService.listTools(servidor))).map(
       ({ name, readOnlyHint, destructiveHint }) => ({ name, readOnlyHint, destructiveHint }),
     );
+  },
+  guardadasDe: async (servidor) => {
+    const { mcpService } = await import("./mcp-service.js");
+    const guardada = await mcpService.cachedTools(servidor);
+    return guardada?.tools.map(({ name, readOnlyHint, destructiveHint }) => ({ name, readOnlyHint, destructiveHint })) ?? null;
   },
 };
 
@@ -222,16 +229,40 @@ export class LibraryService {
         version: ultima.version,
         toolsets: ultima.spec.toolsets,
         connections: ultima.spec.connections.map((c) => c.connectionId),
-        writes: ultima.spec.connections.reduce(
-          (n, c) =>
-            n + Object.entries(c.tools).filter(([chave, escolha]) => escolha === true && !ehLeitura(chave.split("/").pop()!)).length,
-          0,
-        ),
+        writes: await this.contarEscritaLigada(ultima.spec.connections),
         skills: ultima.spec.skills.length,
         usedBy: usos.get(perfil.id) ?? [],
       });
     }
     return lista.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  /**
+   * A ferramenta que a pessoa liberou numa conexão escreve? A anotação que o
+   * servidor deixou no cache manda, e o nome só decide quando não há cache ou
+   * a ferramenta não está nele. A chave é `servidor/ferramenta` ou só o nome.
+   */
+  async ehEscritaLigada(conexao: AgentConnection, chave: string): Promise<boolean> {
+    const corte = chave.indexOf("/");
+    const servidor = corte < 0 ? undefined : chave.slice(0, corte);
+    const nome = chave.slice(corte + 1);
+    const cadastrados = servidor === undefined ? await this.conexoes.servidoresDe(conexao.connectionId) : [{ nome: servidor }];
+    for (const { nome: candidato } of cadastrados) {
+      const guardadas = (await this.conexoes.guardadasDe?.(candidato)) ?? null;
+      const achada = guardadas?.find((f) => f.name === nome);
+      if (achada !== undefined) return !ehLeituraDa(achada);
+    }
+    return !ehLeitura(nome);
+  }
+
+  private async contarEscritaLigada(conexoes: readonly AgentConnection[]): Promise<number> {
+    let total = 0;
+    for (const c of conexoes) {
+      for (const [chave, escolha] of Object.entries(c.tools)) {
+        if (escolha === true && (await this.ehEscritaLigada(c, chave))) total += 1;
+      }
+    }
+    return total;
   }
 
   async getProfile(id: string): Promise<ProfileVersion | null> {

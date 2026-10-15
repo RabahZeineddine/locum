@@ -5,6 +5,7 @@ import { app, BrowserWindow, dialog, ipcMain, type WebContents } from "electron"
 import { readFile, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { agentBuilder, criadorDisponivel } from "./agent-builder.js";
+import { agentChat } from "./agent-chat.js";
 import { chatSession } from "./chat.js";
 import { terminalService } from "./terminal.js";
 import {
@@ -291,6 +292,18 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "terminal.resize": async (id, colunas, linhas) => terminalService.redimensionar(id, colunas, linhas),
     "terminal.close": async (id) => terminalService.fechar(id),
     "chat.reset": (context) => chatSession.limpar(context),
+
+    "agentChat.state": (id) => agentChat.estado(id),
+    // Volta logo: a resposta, o cartão e o desfecho chegam pelo canal de evento.
+    "agentChat.send": async (id, texto) => {
+      void agentChat.enviar(id, texto).catch((erro: unknown) => console.error("chat do agent:", erro));
+    },
+    "agentChat.decide": (id, cartao, decisao) => {
+      if (decisao !== "executar" && decisao !== "recusar") throw new Error(`decisao "${String(decisao)}" nao existe`);
+      return agentChat.decidir(id, cartao, decisao);
+    },
+    "agentChat.cancel": async (id) => agentChat.cancelar(id),
+    "agentChat.reset": (id) => agentChat.limpar(id),
 
     "mcp.list": () => mcpService.list(),
     "mcp.test": (name) => mcpService.testConnection(name),

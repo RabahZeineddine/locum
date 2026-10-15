@@ -3,7 +3,13 @@ import { db, schema } from "../db/index.js";
 import type { AgentBudget } from "../config/types.js";
 
 export class BudgetExceeded extends Error {
-  constructor(scope: "run" | "day", unit: "usd" | "tokens", limit: number, spent: number, agent?: string) {
+  constructor(
+    readonly scope: "run" | "day",
+    readonly unit: "usd" | "tokens",
+    readonly limit: number,
+    readonly spent: number,
+    agent?: string,
+  ) {
     const fmt = (n: number) => (unit === "usd" ? `${n.toFixed(2)} USD` : `${Math.round(n)} tokens`);
     const de = agent === undefined ? "" : `. É o teto do agent "${agent}": para mudar, abra Agents > ${agent} > Orçamento`;
     super(`orçamento de ${scope} estourado: limite ${fmt(limit)}, gasto ${fmt(spent)}${de}`);

@@ -101,3 +101,52 @@ test("conversa devolve o id e avisa quando o processo sai sem responder", async 
   assert.equal(caiu.sessao, "velha");
   assert.equal(eventos[0]?.tipo, "erro");
 });
+
+test("chat de agent: a escrita vai para a ferramenta de permissão, e o modo deixa de negar tudo sozinho", () => {
+  const args = argsDoChat({
+    ...base,
+    internas: [],
+    permitidas: ["mcp__painel__pid"],
+    aprovacaoPor: "mcp__locum-aprovacao__aprovar",
+  });
+  assert.equal(valor(args, "--permission-prompt-tool"), "mcp__locum-aprovacao__aprovar");
+  assert.equal(valor(args, "--permission-mode"), "default");
+  assert.equal(valor(args, "--allowedTools"), "mcp__painel__pid");
+  assert.equal(valor(args, "--tools"), "");
+  assert.ok(args.includes("--strict-mcp-config"));
+  assert.equal(valor(args, "--setting-sources"), "");
+
+  // Com a ferramenta de permissão o isolamento é sempre o total, mesmo pedindo a conta:
+  // `--setting-sources user` deixaria as regras allow da pessoa liberarem escrita antes dela.
+  const comConta = argsDoChat({ ...base, internas: [], conta: true, aprovacaoPor: "mcp__locum-aprovacao__aprovar", maxTurns: 6 });
+  assert.ok(comConta.includes("--strict-mcp-config"));
+  assert.equal(valor(comConta, "--setting-sources"), "");
+  assert.equal(valor(comConta, "--tools"), "");
+  assert.equal(valor(comConta, "--permission-mode"), "default");
+  assert.equal(valor(comConta, "--permission-prompt-tool"), "mcp__locum-aprovacao__aprovar");
+  assert.equal(valor(comConta, "--max-turns"), "6");
+});
+
+test("o resultado do fluxo traz o gasto da volta", () => {
+  const lido = lerLinha(
+    JSON.stringify({
+      type: "result",
+      subtype: "success",
+      session_id: "s1",
+      total_cost_usd: 0.25,
+      usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 1000 },
+    }),
+  );
+  assert.deepEqual(lido.gasto, { usd: 0.25, tokens: 15 });
+});
+
+test("o fluxo liga a ferramenta ao id da chamada e traz o que ela devolveu", () => {
+  assert.deepEqual(
+    lerLinha(JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", id: "t1", name: "mcp__x__get", input: {} }] } })).evento,
+    { tipo: "ferramenta", nome: "mcp__x__get", entrada: {}, id: "t1" },
+  );
+  const volta = (content: unknown, erro?: boolean) =>
+    lerLinha(JSON.stringify({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "t1", content, ...(erro ? { is_error: true } : {}) }] } })).evento;
+  assert.deepEqual(volta([{ type: "text", text: "feito" }]), { tipo: "resultado", nome: "", id: "t1", texto: "feito", erro: false });
+  assert.deepEqual(volta("negado", true), { tipo: "resultado", nome: "", id: "t1", texto: "negado", erro: true });
+});

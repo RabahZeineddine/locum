@@ -11,7 +11,6 @@ import {
   type ToolRef,
   type ToolsetInput,
 } from "../config/types.js";
-import { ehLeitura } from "../config/leitura.js";
 import { buildGate } from "../executor/build.js";
 import { libraryService } from "../services/library-service.js";
 import { respond } from "./respond.js";
@@ -121,9 +120,6 @@ async function ferramentasDoAgent(spec: AgentProfile): Promise<ToolRef[]> {
   return [...spec.tools, ...dosToolsets.flatMap((t) => t?.tools ?? [])];
 }
 
-/** O nome da ferramenta numa chave de escolha, que pode ser `servidor/ferramenta` ou só `ferramenta`. */
-const nomeDaChave = (chave: string): string => chave.slice(chave.lastIndexOf("/") + 1);
-
 /**
  * Liberar escrita numa conexão só pela tela. Pelo MCP, recusa:
  * - ligar uma ferramenta que o nome marca como escrita, e gravar uma escolha
@@ -142,7 +138,8 @@ async function recusarEscritaDeConexao(novo: AgentProfile, anterior: AgentProfil
       if (escolha === false || antiga?.tools[chave] === escolha) continue;
       // "read" é a pessoa dizendo que a ferramenta só lê, e vale mesmo para nome
       // de leitura: o servidor pode ter anotado escrita, e o MCP não consulta.
-      if (escolha === "read" || !ehLeitura(nomeDaChave(chave))) barradas.push(`${c.connectionId}.${chave}`);
+      // Ligar vale pela anotação que o servidor deixou no cache, e pelo nome só sem ela.
+      if (escolha === "read" || (await libraryService.ehEscritaLigada(c, chave))) barradas.push(`${c.connectionId}.${chave}`);
     }
   }
 
