@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { StatusDot, type Estado as EstadoDoPonto } from "@/components/ui/status-dot";
 import { gravarRevisao, gravarTexto, decidir, criarTarefaDoTracker } from "@/lib/aprovar";
 import { BridgeError, read, useRead, type ReadResult, type ReadState } from "@/lib/bridge";
 import { comContexto, diffLinhas, type LinhaDoDiff } from "@/lib/diff";
@@ -43,11 +44,11 @@ interface AchadoEditavel {
   incluido: boolean;
 }
 
-const REGUA: Record<Severidade, string> = {
-  critical: "bg-sev-critical",
-  high: "bg-sev-high",
-  medium: "bg-sev-medium",
-  low: "bg-sev-low",
+const PONTO: Record<Severidade, EstadoDoPonto> = {
+  critical: "erro",
+  high: "erro",
+  medium: "aviso",
+  low: "ocioso",
 };
 
 /**
@@ -166,7 +167,7 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
     return (
       <div className="mx-auto w-full max-w-3xl">
         <Voltar navegar={navegar} />
-        <p className="text-muted-foreground mt-4 text-sm">{t("review.not_found")}</p>
+        <p className="text-muted-foreground mt-4 text-[13px]">{t("review.not_found")}</p>
       </div>
     );
   }
@@ -270,7 +271,7 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
         )}
       </div>
 
-      {carga?.title && <h1 className="text-lg font-semibold tracking-tight">{carga.title}</h1>}
+      {carga?.title && <h1 className="text-base font-medium">{carga.title}</h1>}
 
       <div className="flex flex-col gap-1.5">
         <label className="text-muted-foreground flex items-center justify-between text-xs font-medium">
@@ -280,7 +281,7 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
           </span>
         </label>
         <textarea
-          className="focus:border-ring border-border bg-background w-full resize-y rounded-lg border p-3 font-mono text-xs leading-relaxed outline-none transition-colors"
+          className="focus:border-ring ia-borda w-full resize-y rounded-lg border p-3 font-mono text-xs leading-relaxed outline-none transition-colors"
           onChange={(e) => setComentarioCustom(e.target.value)}
           placeholder={t("review.customPlaceholder")}
           rows={Math.min(6, Math.max(2, Math.ceil((comentarioCustom || "").length / 80)))}
@@ -305,7 +306,7 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
       </label>
 
       {achados.length === 0 ? (
-        <div className="border-border/60 bg-muted/20 flex flex-col gap-1 rounded-lg border p-4 text-sm">
+        <div className="border-border bg-card flex flex-col gap-1 rounded-lg border p-3 text-[13px]">
           <p className="font-medium text-foreground">
             {t("review.no_findings_title", { defaultValue: "Nenhum defeito impeditivo encontrado." })}
           </p>
@@ -317,15 +318,12 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
           </p>
         </div>
       ) : (
-        <ul className="divide-border border-border superficie divide-y overflow-hidden rounded-lg border">
+        <ul className="divide-border border-border bg-card divide-y overflow-hidden rounded-lg border">
           {achados.map((achado, i) => (
             <li className={cn("relative", !achado.incluido && "opacity-45")} key={i}>
-              <span
-                aria-hidden
-                className={cn("absolute top-0 bottom-0 left-0 w-[3px]", REGUA[achado.severity])}
-              />
-              <div className="py-3 pr-4 pl-5">
+              <div className="px-3 py-2.5">
                 <div className="flex flex-wrap items-center gap-2">
+                  <StatusDot estado={PONTO[achado.severity]} />
                   <span className="text-muted-foreground font-mono text-xs">
                     {achado.file ?? ""}
                     {achado.line ? `:${achado.line}` : ""}
@@ -375,7 +373,7 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
 
                 <textarea
                   aria-label={t("review.body_label")}
-                  className="focus:border-ring border-border bg-background mt-2 w-full resize-y rounded border px-2.5 py-2 text-sm leading-relaxed outline-none transition-colors duration-200"
+                  className="focus:border-ring border-input mt-2 w-full resize-y rounded-md border bg-transparent px-2.5 py-2 text-[13px] leading-relaxed outline-none transition-colors duration-200"
                   onChange={(e) =>
                     setAchados((atual) =>
                       (atual ?? []).map((a, j) => (j === i ? { ...a, problem: e.target.value } : a)),
@@ -498,7 +496,7 @@ function RevisaoDeContexto({
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
       <div className="flex items-baseline gap-3">
         <Voltar navegar={navegar} />
-        <h1 className="text-lg font-semibold tracking-tight">
+        <h1 className="text-base font-medium">
           {t("inbox.context_update.target", { slug: contexto.slug })}
         </h1>
         <span className="text-muted-foreground font-mono text-xs">
@@ -511,8 +509,11 @@ function RevisaoDeContexto({
       </p>
 
       {emConflito ? (
-        <div className="border-destructive/40 bg-destructive/10 rounded-md border px-3 py-2 text-sm">
-          <p className="font-medium">{t("review.contextUpdate.conflict.title")}</p>
+        <div className="border-border bg-card rounded-lg border px-3 py-2 text-[13px]">
+          <p className="flex items-center gap-2 font-medium">
+            <StatusDot estado="erro" />
+            {t("review.contextUpdate.conflict.title")}
+          </p>
           <p className="text-muted-foreground mt-1">
             {t("review.contextUpdate.conflict.body", {
               reason: rotuloDoMotivo(t, "publish_conflict"),
@@ -521,7 +522,8 @@ function RevisaoDeContexto({
         </div>
       ) : (
         mudouPorFora && (
-          <p className="border-sev-medium/40 bg-sev-medium/10 text-sev-medium rounded-md border px-3 py-2 text-sm">
+          <p className="border-border bg-card flex items-center gap-2 rounded-lg border px-3 py-2 text-[13px]">
+            <StatusDot estado="aviso" />
             {t("review.contextUpdate.changed")}
           </p>
         )
@@ -633,18 +635,18 @@ function RevisaoDeMensagem({
       </div>
 
       {carga.assunto && (
-        <figure className="superficie border-border rounded-lg border px-4 py-3">
+        <figure className="bg-card border-border rounded-lg border px-3 py-2.5">
           <figcaption className="text-muted-foreground mb-1 text-xs">
             {carga.autor ? t("review.message.replyingToAuthor", { author: carga.autor }) : t("review.message.replyingTo")}
           </figcaption>
-          <blockquote className="text-sm leading-relaxed whitespace-pre-wrap">{carga.assunto}</blockquote>
+          <blockquote className="text-[13px] leading-relaxed whitespace-pre-wrap">{carga.assunto}</blockquote>
         </figure>
       )}
 
       <label className="flex flex-col gap-1.5">
         <span className="text-muted-foreground text-xs">{t("review.message.text")}</span>
         <textarea
-          className="focus:border-ring border-border bg-background ia-borda w-full resize-y rounded-lg border px-3 py-2.5 text-sm leading-relaxed outline-none transition-colors duration-200"
+          className="focus:border-ring ia-borda w-full resize-y rounded-lg border px-3 py-2.5 text-[13px] leading-relaxed outline-none transition-colors duration-200"
           data-locum-mensagem-texto=""
           disabled={jaResolvida}
           maxLength={3000}
@@ -739,7 +741,7 @@ function RevisaoDeDocumento({
         )}
       </div>
 
-      {digest === null && carga.titulo && <h1 className="text-lg font-semibold tracking-tight">{carga.titulo}</h1>}
+      {digest === null && carga.titulo && <h1 className="text-base font-medium">{carga.titulo}</h1>}
 
       {digest !== null ? (
         <div className="max-h-[65vh] overflow-auto" data-locum-documento-corpo="">
@@ -747,7 +749,7 @@ function RevisaoDeDocumento({
         </div>
       ) : (
         <div
-          className="superficie border-border max-h-[60vh] overflow-auto rounded-lg border px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap"
+          className="bg-card border-border max-h-[60vh] overflow-auto rounded-lg border px-4 py-3 text-[13px] leading-relaxed whitespace-pre-wrap"
           data-locum-documento-corpo=""
         >
           {carga.corpo}
@@ -808,7 +810,7 @@ function Voltar({ navegar }: { navegar: TelaProps["navegar"] }) {
   const { t } = useTranslation();
   return (
     <button
-      className="text-muted-foreground hover:text-foreground flex cursor-pointer items-center gap-1.5 text-sm"
+      className="text-muted-foreground hover:text-foreground flex cursor-pointer items-center gap-1.5 text-[13px]"
       onClick={() => navegar("inbox")}
       type="button"
     >
