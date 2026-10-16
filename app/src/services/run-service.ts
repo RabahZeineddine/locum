@@ -93,12 +93,6 @@ export interface RunFinding {
 }
 
 /**
- * Leitura de execucoes e reexecucao de passo. Linha de comando, servidor MCP e
- * interface passam por aqui, porque zerar um passo sem zerar quem depende dele
- * deixa o run com saida velha alimentando passo novo, e essa regra nao pode
- * viver em tres lugares.
- */
-/**
  * O passo é de modelo no spec que o run executou. A saída de um passo de ação
  * (a resposta de uma ferramenta, por exemplo) pode ter qualquer campo, inclusive
  * `findings`, e não conta como achado.
@@ -111,6 +105,12 @@ function ehPassoDeModelo(runId: AnySQLiteColumn, stepKey: AnySQLiteColumn) {
   )`;
 }
 
+/**
+ * Leitura de execucoes e reexecucao de passo. Linha de comando, servidor MCP e
+ * interface passam por aqui, porque zerar um passo sem zerar quem depende dele
+ * deixa o run com saida velha alimentando passo novo, e essa regra nao pode
+ * viver em tres lugares.
+ */
 export class RunService {
   constructor(
     private readonly db: Db = defaultDb,

@@ -91,3 +91,10 @@ validações; mostrar quando cortam).
 Legítimos: D2, D3 (estado do evento e gasto, mostrar no detalhe), D9 (segurança),
 D14 (chat do agent: escrita por cartão de confirmação,
 exceção nomeada na trava).
+
+## E. Paleta por conexão (feat/paleta-por-conexao)
+
+| # | onde | o que acontece | proposta | estado |
+|---|---|---|---|---|
+| E1 | `approval/gate.ts` `submitComSaida`, `executor.ts` | no caminho `auto`, a queda entre `close(approved)` e a atualização do passo deixa o passo sem saída e a retomada pode submeter a escrita de novo | gravar a resposta na pendência antes de fechar, ou reconhecer a pendência `auto` já aprovada na retomada | pendente |
+| E2 | `renderer/lib/paleta-conexoes.ts` `desligada` | a paleta tem o ponto de encaixe para esmaecer ferramenta de escrita em conexão só de leitura, sem fonte ligada: `scope` é `read` por padrão e não há tela para mudá-lo | tela de escopo por conexão, e então ligar `desligada` e a recusa no executor | pendente |

@@ -23,7 +23,7 @@ import { discoverSkills, selectSkills, skillsAusentes, skillsIndisponiveis, skil
 import { ApprovalGate, settleStep } from "../approval/gate.js";
 import { BudgetExceeded, assertWithinBudget, recordSpend, type Spend } from "./budget.js";
 import { ehLeituraNaAcao, type FerramentaClassificavel } from "../config/leitura.js";
-import { AVISO_DE_DADO_EXTERNO, delimitarDado, ehDadoExterno } from "./dado-externo.js";
+import { avisoDeDadoExterno, delimitarDado, ehDadoExterno, novaMarca } from "./dado-externo.js";
 import { ACOES_DE_REACAO, descreverReacao, reacaoDoPasso } from "../reacao/passo.js";
 import { ACOES_DE_CONVERSA, dependenciaDeEvento, recusaSemEvento } from "./dependencia-de-evento.js";
 import { SUBSCRIPTION_RUNTIMES } from "../runtimes/types.js";
@@ -641,8 +641,8 @@ export class Executor {
       // O contexto da iniciativa entra no system: sem ele, o agent saía
       // procurando "o contexto da iniciativa" pelo disco.
       const passosDeFerramenta = new Set(spec.steps.filter((p) => p.type === "action" && p.action === "mcp.call").map((p) => p.key));
-      const { prompt: promptDoPasso, comDado } = renderPromptDeModelo(step.prompt, payload, outputs, passosDeFerramenta);
-      const system = [perfil?.system ?? "", args.contextoDaIniciativa ?? "", skillsPreamble(skills, true, runtime.id), comDado ? AVISO_DE_DADO_EXTERNO : ""]
+      const { prompt: promptDoPasso, aviso: avisoDeDado } = renderPromptDeModelo(step.prompt, payload, outputs, passosDeFerramenta);
+      const system = [perfil?.system ?? "", args.contextoDaIniciativa ?? "", skillsPreamble(skills, true, runtime.id), avisoDeDado ?? ""]
         .filter((s) => s.length > 0)
         .join("\n\n");
 
@@ -986,8 +986,8 @@ export function renderPrompt(
   template: string,
   payload: EventPayload,
   outputs: Map<string, unknown>,
-  /** Decide se o conteúdo do marcador vai entre as marcas de dado externo (só o prompt de modelo pede). */
-  externo?: (caminho: string) => boolean,
+  /** Transforma o conteúdo de cada marcador (só o prompt de modelo pede: dado de fora entra entre marcas). */
+  transformar?: (caminho: string, texto: string) => string,
 ): string {
   const texto = (value: unknown) => (typeof value === "string" ? value : JSON.stringify(value ?? null, null, 2));
 
@@ -1001,24 +1001,25 @@ export function renderPrompt(
       valor = texto(descerEm(payload, rest));
     }
     if (valor === null) return "";
-    return externo?.(path) === true ? delimitarDado(valor, path) : valor;
+    return transformar === undefined ? valor : transformar(path, valor);
   });
 }
 
-/** O prompt de um passo de modelo: o que veio de fora entra como dado, e `comDado` diz se o system precisa do aviso. */
+/** O prompt de um passo de modelo: o que veio de fora entra entre marcas com sufixo desta renderização, e `aviso` vai para o system. */
 export function renderPromptDeModelo(
   template: string,
   payload: EventPayload,
   outputs: Map<string, unknown>,
   passosDeFerramenta: ReadonlySet<string>,
-): { prompt: string; comDado: boolean } {
+): { prompt: string; aviso: string | null } {
+  const marca = novaMarca();
   let comDado = false;
-  const prompt = renderPrompt(template, payload, outputs, (caminho) => {
-    const externo = ehDadoExterno(caminho, passosDeFerramenta);
-    if (externo) comDado = true;
-    return externo;
+  const prompt = renderPrompt(template, payload, outputs, (caminho, texto) => {
+    if (!ehDadoExterno(caminho, passosDeFerramenta)) return texto;
+    comDado = true;
+    return delimitarDado(texto, caminho, marca);
   });
-  return { prompt, comDado };
+  return { prompt, aviso: comDado ? avisoDeDadoExterno(marca) : null };
 }
 
 const descerEm = (inicio: unknown, caminho: string[]) =>
@@ -1048,8 +1049,9 @@ async function escritaSemEscolha(
   guardadas: (servidor: string) => Promise<readonly FerramentaClassificavel[] | null>,
 ): Promise<boolean> {
   if (step.action !== "mcp.call" || step.mode !== "auto") return false;
+  // Lido cru, antes de renderizar: referência `{{...}}` nunca liga a escrita automática.
+  if ((step.params as Record<string, unknown> | undefined)?.autoEscrita === true) return false;
   const params = step.params === undefined ? {} : (renderParams(step.params, payload, outputs) as Record<string, unknown>);
-  if (params.autoEscrita === true) return false;
   if (typeof params.server !== "string" || typeof params.tool !== "string") return true;
   const ferramenta = (await guardadas(params.server).catch(() => null))?.find((f) => f.name === params.tool);
   return ferramenta === undefined || !ehLeituraNaAcao(ferramenta);
