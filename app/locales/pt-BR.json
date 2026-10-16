@@ -269,6 +269,8 @@
     "title": "Conversar",
     "version": "versão {{version}}",
     "reset": "Limpar conversa",
+    "take": "Tomar a conversa",
+    "otherProcessNotice": "Esta conversa está em andamento no Claude Code (o servidor MCP). Ela volta ao normal quando ele terminar.",
     "empty": {
       "title": "Converse com este agent",
       "body": "Ele responde com as instruções, o modelo, as skills e as ferramentas de leitura que você configurou. Para escrever, ele pede o seu clique."
@@ -296,7 +298,8 @@
       "argEmpty": "vazio",
       "result": "Resultado",
       "expiredHint": "A conversa foi limpa ou interrompida, ou o app fechou, antes do clique. Nada foi executado.",
-      "uncertainHint": "Você clicou em Executar e o app fechou antes de a ferramenta responder. A escrita pode ter saído: confira no serviço antes de pedir de novo."
+      "otherProcessHint": "Em andamento no Claude Code: a decisão é dada por lá.",
+      "uncertainHint": "Você clicou em Executar e o processo que executava fechou antes de a ferramenta responder. A escrita pode ter saído: confira no serviço antes de pedir de novo."
     },
     "scopes": {
       "run": "da execução",

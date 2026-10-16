@@ -22,6 +22,9 @@ import {
   type FalaDoAgent,
 } from "../../src/agent-chat/tipos";
 
+/** De quanto em quanto tempo a tela relê a conversa que o outro processo grava. */
+const RELEITURA_MS = 3_000;
+
 /**
  * A conversa com um agent da biblioteca, na aba Conversar do editor.
  *
@@ -33,6 +36,8 @@ export function ChatDoAgent({ id, modelo, versao, naoSalvo }: { id: string; mode
   const { t } = useTranslation();
   const [falas, setFalas] = useState<FalaDoAgent[]>([]);
   const [respondendo, setRespondendo] = useState(false);
+  // Outro processo do Locum (o Claude Code, pelo --mcp) está com a conversa.
+  const [outro, setOutro] = useState(false);
   const [resumido, setResumido] = useState(false);
   const [semServidor, setSemServidor] = useState<ConexaoSemServidor[]>([]);
   const [contaIgnorada, setContaIgnorada] = useState(0);
@@ -70,6 +75,7 @@ export function ChatDoAgent({ id, modelo, versao, naoSalvo }: { id: string; mode
         seq = estado.seq;
         setFalas(estado.falas);
         setRespondendo(estado.respondendo);
+        setOutro(estado.outroProcesso);
         setResumido(estado.resumido);
         setSemServidor(estado.semServidor);
         setContaIgnorada(estado.contaIgnorada);
@@ -88,21 +94,31 @@ export function ChatDoAgent({ id, modelo, versao, naoSalvo }: { id: string; mode
 
   const aguardando = falas.some((f) => f.cartoes.some((c) => c.estado === "pendente"));
 
-  // O servidor MCP (outro processo) grava na mesma conversa: ao voltar para a janela, relê o que ele deixou.
+  // O servidor MCP (outro processo) grava na mesma conversa: relê ao voltar para a janela e, com
+  // o chat aberto, a cada poucos segundos. Com o outro processo na vez ele continua lendo, para
+  // a tela voltar ao normal sozinha quando ele decide ou morre; só a volta daqui a dispensa.
   useEffect(() => {
+    let vivo = true;
     const recarregar = (): void => {
-      if (respondendo || aguardando) return;
+      if (!outro && (respondendo || aguardando)) return;
       chatDoAgent.estado(id).then(
         (estado) => {
+          if (!vivo) return;
           setFalas(estado.falas);
           setRespondendo(estado.respondendo);
+          setOutro(estado.outroProcesso);
         },
         () => undefined,
       );
     };
     window.addEventListener("focus", recarregar);
-    return () => window.removeEventListener("focus", recarregar);
-  }, [id, respondendo, aguardando]);
+    const timer = setInterval(recarregar, RELEITURA_MS);
+    return () => {
+      vivo = false;
+      window.removeEventListener("focus", recarregar);
+      clearInterval(timer);
+    };
+  }, [id, respondendo, aguardando, outro]);
   // Nome da conexão pelo id dela, e pelo nome de cada servidor que ela tem: o cartão traz o servidor.
   const nomes = new Map((conexoes.data ?? []).map((c) => [c.id, c.name]));
   const nomesPorServidor = new Map((conexoes.data ?? []).flatMap((c) => c.servers.map((s) => [s, c.name] as const)));
@@ -119,7 +135,23 @@ export function ChatDoAgent({ id, modelo, versao, naoSalvo }: { id: string; mode
     try {
       await chatDoAgent.enviar(id, texto);
     } catch (erro) {
+      // Recusada antes de a volta começar (o outro processo está com a conversa): a fala não existiu.
+      setFalas((a) => a.slice(0, -2));
+      setRascunho(texto);
       setRespondendo(false);
+      setFalha(erro instanceof Error ? erro.message : String(erro));
+    }
+  }
+
+  async function tomar(): Promise<void> {
+    setFalha(null);
+    try {
+      await chatDoAgent.tomar(id);
+      const estado = await chatDoAgent.estado(id);
+      setFalas(estado.falas);
+      setRespondendo(estado.respondendo);
+      setOutro(estado.outroProcesso);
+    } catch (erro) {
       setFalha(erro instanceof Error ? erro.message : String(erro));
     }
   }
@@ -206,6 +238,7 @@ export function ChatDoAgent({ id, modelo, versao, naoSalvo }: { id: string; mode
                   <CartaoDeEscrita
                     cartao={cartao}
                     decidir={(d) => void decidir(cartao, d)}
+                    deOutroProcesso={outro}
                     key={cartao.id}
                     marca={marcasPorServidor.get(cartao.servidor) ?? { name: cartao.servidor }}
                     nomeDaConexao={nomesPorServidor.get(cartao.servidor)}
@@ -217,6 +250,15 @@ export function ChatDoAgent({ id, modelo, versao, naoSalvo }: { id: string; mode
         </ConversationContent>
       </Conversation>
 
+      {outro ? (
+        <div className="flex flex-wrap items-center gap-2 border-t border-border px-3 py-2 text-xs text-muted-foreground" data-locum-agent-chat-outro="">
+          <StatusDot estado="aviso" />
+          <span>{t("agentChat.otherProcessNotice")}</span>
+          <Button className="ml-auto cursor-pointer" data-locum-agent-chat-tomar="" onClick={() => void tomar()} size="xs" variant="outline">
+            {t("agentChat.take")}
+          </Button>
+        </div>
+      ) : null}
       {falha === null ? null : (
         <p className="flex items-center gap-1.5 border-t border-border px-3 py-2 text-xs text-muted-foreground" data-locum-agent-chat-erro="">
           <StatusDot estado="erro" />
@@ -277,7 +319,7 @@ const PONTO_DO_CARTAO: Record<Cartao["estado"], Estado> = {
 };
 
 /** A chamada de escrita que o agent quer fazer, à espera do clique de quem conversa. */
-function CartaoDeEscrita({ cartao, decidir, marca, nomeDaConexao }: { cartao: Cartao; decidir: (d: "executar" | "recusar") => void; marca: { name: string; url?: string | undefined }; nomeDaConexao: string | undefined }) {
+function CartaoDeEscrita({ cartao, decidir, deOutroProcesso, marca, nomeDaConexao }: { cartao: Cartao; decidir: (d: "executar" | "recusar") => void; deOutroProcesso: boolean; marca: { name: string; url?: string | undefined }; nomeDaConexao: string | undefined }) {
   const { t } = useTranslation();
   const pendente = cartao.estado === "pendente";
   // O vazio também é efeito da ação (apagar o responsável, mandar corpo em branco): aparece escrito.
@@ -315,7 +357,8 @@ function CartaoDeEscrita({ cartao, decidir, marca, nomeDaConexao }: { cartao: Ca
       {cartao.estado === "expirado" ? <p className="text-xs text-muted-foreground">{t("agentChat.card.expiredHint")}</p> : null}
       {cartao.estado === "incerto" ? <p className="text-xs text-muted-foreground">{t("agentChat.card.uncertainHint")}</p> : null}
       {cartao.resultado === undefined ? null : <ResultadoDaFerramenta texto={cartao.resultado} />}
-      {pendente ? (
+      {pendente && deOutroProcesso ? <p className="text-xs text-muted-foreground" data-locum-agent-cartao-outro="">{t("agentChat.card.otherProcessHint")}</p> : null}
+      {pendente && !deOutroProcesso ? (
         <div className="flex gap-2">
           <Button className="cursor-pointer" data-locum-agent-cartao-executar="" onClick={() => decidir("executar")} size="sm">
             <Check aria-hidden />

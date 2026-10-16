@@ -260,6 +260,8 @@
     "title": "Chat",
     "version": "version {{version}}",
     "reset": "Clear conversation",
+    "take": "Take over the conversation",
+    "otherProcessNotice": "This conversation is in progress in Claude Code (the MCP server). It goes back to normal when it finishes.",
     "empty": {
       "title": "Talk to this agent",
       "body": "It answers with the instructions, model, skills and read tools you configured. To write anything, it asks for your click."
@@ -287,7 +289,8 @@
       "argEmpty": "empty",
       "result": "Result",
       "expiredHint": "The conversation was cleared or interrupted, or the app closed, before the click. Nothing was run.",
-      "uncertainHint": "You clicked Run and the app closed before the tool answered. The write may have gone out: check the service before asking again."
+      "otherProcessHint": "In progress in Claude Code: the decision is made there.",
+      "uncertainHint": "You clicked Run and the process that was running it closed before the tool answered. The write may have gone out: check the service before asking again."
     },
     "scopes": {
       "run": "per-run",

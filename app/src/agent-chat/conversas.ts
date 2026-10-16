@@ -68,10 +68,21 @@ export interface DepsDoChat {
   skills?: Map<string, LoadedSkill>;
   /** Quem é este processo e como saber se o outro ainda vive. Ausente, o pid real. */
   processo?: { pid: number; vivo: (pid: number) => boolean };
+  /** O relógio, em ms. Ausente, `Date.now`. */
+  agora?: () => number;
+  /** Prazos, em ms: do cartão à espera de clique e da trava sem renovação. */
+  prazos?: { cartaoMs?: number; travaMs?: number };
 }
 
-/** Passado este tempo o dono da trava é dado como perdido, mesmo que o pid exista (reaproveitado). */
-const VALIDADE_DA_TRAVA_MS = 6 * 60 * 60 * 1000;
+/**
+ * Passado este tempo sem renovar, o dono da trava é dado como perdido, mesmo
+ * que o pid exista (reaproveitado). O dono vivo renova a cada operação e num
+ * batimento, e por isso não vence enquanto estiver ativo.
+ */
+const VALIDADE_DA_TRAVA_MS = 15 * 60 * 1000;
+
+/** O cartão de uma volta por API que ninguém decide não segura a conversa para sempre. */
+const PRAZO_DO_CARTAO_MS = 10 * 60 * 1000;
 
 function pidVivo(pid: number): boolean {
   try {
@@ -88,6 +99,8 @@ interface Pendente {
   /** Só no caminho do Claude Code: o processo está parado esperando esta resposta. */
   resolver?: (decisao: Decisao | "expirou") => void;
   decisao?: Decisao;
+  /** Até quando o cartão espera o clique. Só no caminho por API, onde ninguém fica parado nele. */
+  ate?: number;
 }
 
 interface Conversa {
@@ -106,6 +119,8 @@ interface Conversa {
   /** Sobe quando a conversa é limpa: o que a volta antiga ainda emitir não vale mais. */
   geracao: number;
   cancelar?: AbortController;
+  /** Renova a trava enquanto a conversa é deste processo. */
+  batimento?: ReturnType<typeof setInterval>;
 }
 
 const chaveDasFalas = (id: string): string => `chat.falas.${chaveDoAgent(id)}`;
@@ -149,14 +164,25 @@ export class ConversasDeAgent {
 
   constructor(private readonly deps: DepsDoChat) {}
 
+  private agora(): number {
+    return (this.deps.agora ?? Date.now)();
+  }
+
+  private get travaMs(): number {
+    return this.deps.prazos?.travaMs ?? VALIDADE_DA_TRAVA_MS;
+  }
+
   async estado(id: string): Promise<EstadoDaConversa> {
     const conversa = await this.obter(id);
+    await this.expirarVencidos(conversa);
+    if (conversa.respondendo || conversa.pendentes.size > 0) await this.renovarTrava(conversa);
     const outro = await this.outroNaConversa(id);
     await this.reler(conversa, outro !== null);
     const perfil = await this.deps.library.resolveProfile(id);
     return {
       falas: conversa.falas.map((f) => ({ ...f, cartoes: f.cartoes.map((c) => ({ ...c })) })),
       respondendo: conversa.respondendo || outro !== null,
+      outroProcesso: outro !== null,
       resumido: conversa.resumido,
       semServidor: perfil.semServidor,
       contaIgnorada: perfil.tools.filter((t) => t.server === SERVIDOR_CONTA).length,
@@ -164,8 +190,12 @@ export class ConversasDeAgent {
     };
   }
 
-  /** Uma mensagem da pessoa. Volta quando a volta termina, ou para num cartão (caminho por API). */
-  async enviar(id: string, texto: string): Promise<void> {
+  /**
+   * Uma mensagem da pessoa. Volta quando a volta termina, ou para num cartão
+   * (caminho por API). `aoComecar` avisa que a conversa foi tomada e a volta
+   * vai correr: antes disso, recusa chega como erro de quem chamou.
+   */
+  async enviar(id: string, texto: string, aoComecar?: () => void): Promise<void> {
     const conversa = await this.obter(id);
     if (conversa.respondendo) {
       this.emitir(conversa, { tipo: "erro", mensagem: this.deps.texto("agentChat.errors.busy") });
@@ -181,12 +211,19 @@ export class ConversasDeAgent {
     conversa.falas.push({ de: "user", texto, ferramentas: [], cartoes: [] }, { de: "assistant", texto: "", ferramentas: [], cartoes: [] });
     // A pergunta fica guardada já: se o processo morrer no meio da volta, ela não some.
     await this.salvar(conversa);
+    aoComecar?.();
     await this.rodar(conversa, { texto });
   }
 
   /** O clique do cartão. Para o modelo por API, a volta continua daqui. */
   async decidir(id: string, cartao: string, decisao: Decisao): Promise<void> {
     const conversa = await this.obter(id);
+    await this.expirarVencidos(conversa);
+    // Outro processo tomou a conversa (ou o pid foi reaproveitado): o cartão que ficou aqui não vale mais.
+    if (conversa.pendentes.size > 0 && !(await this.renovarTrava(conversa))) {
+      this.expirarPendentes(conversa);
+      throw new Error(this.deps.texto("agentChat.errors.expired"));
+    }
     const pendente = conversa.pendentes.get(cartao);
     if (pendente === undefined) {
       if ((await this.outroNaConversa(id)) !== null) throw new Error(this.deps.texto("agentChat.errors.otherProcess"));
@@ -216,6 +253,22 @@ export class ConversasDeAgent {
     }));
     conversa.pendentes.clear();
     await this.rodar(conversa, { continuacao: { role: "tool", content: respostas } });
+  }
+
+  /**
+   * Toma a conversa do outro processo: o cartão que ele deixava à espera
+   * expira e a vez fica livre. É a saída quando o dono da trava não responde
+   * mais (o pid pode ter sido reaproveitado por outro programa).
+   */
+  async tomar(id: string): Promise<void> {
+    const conversa = await this.obter(id);
+    if (conversa.respondendo || conversa.pendentes.size > 0) return;
+    if ((await this.outroNaConversa(id)) === null) return;
+    conversa.falas = await this.lerFalas(id, false);
+    conversa.historico = null;
+    conversa.seq += 1;
+    await this.salvar(conversa);
+    await this.deps.settings.set(chaveDaTrava(id), "");
   }
 
   /** Interrompe a volta e expira o que ainda espera clique. */
@@ -297,7 +350,7 @@ export class ConversasDeAgent {
     try {
       const trava = JSON.parse((await this.deps.settings.get(chaveDaTrava(id))) || "null") as { pid?: number; em?: number } | null;
       if (trava === null || typeof trava.pid !== "number" || trava.pid === processo.pid) return null;
-      if (Date.now() - (trava.em ?? 0) > VALIDADE_DA_TRAVA_MS || !processo.vivo(trava.pid)) return null;
+      if (this.agora() - (trava.em ?? 0) > this.travaMs || !processo.vivo(trava.pid)) return null;
       return trava.pid;
     } catch {
       return null;
@@ -308,9 +361,47 @@ export class ConversasDeAgent {
   private async tomarTrava(conversa: Conversa): Promise<void> {
     if ((await this.outroNaConversa(conversa.id)) !== null) throw new Error(this.deps.texto("agentChat.errors.otherProcess"));
     const pid = this.deps.processo?.pid ?? process.pid;
-    await this.deps.settings.set(chaveDaTrava(conversa.id), JSON.stringify({ pid, em: Date.now() }));
+    await this.deps.settings.set(chaveDaTrava(conversa.id), JSON.stringify({ pid, em: this.agora() }));
     // Quem gravou por último vale: se o outro tomou no mesmo instante, este recua.
     if ((await this.outroNaConversa(conversa.id)) !== null) throw new Error(this.deps.texto("agentChat.errors.otherProcess"));
+    if (conversa.batimento === undefined) {
+      conversa.batimento = setInterval(() => void this.renovarTrava(conversa), Math.max(1, Math.floor(this.travaMs / 3)));
+      conversa.batimento.unref();
+    }
+  }
+
+  /**
+   * Renova a trava que este processo tem. Falso quando ela já é de outro (ou
+   * foi solta): aí a conversa deixou de ser daqui e o batimento para.
+   */
+  private async renovarTrava(conversa: Conversa): Promise<boolean> {
+    const pid = this.deps.processo?.pid ?? process.pid;
+    try {
+      const trava = JSON.parse((await this.deps.settings.get(chaveDaTrava(conversa.id))) || "null") as { pid?: number } | null;
+      if (trava?.pid === pid) {
+        await this.deps.settings.set(chaveDaTrava(conversa.id), JSON.stringify({ pid, em: this.agora() }));
+        return true;
+      }
+    } catch {
+      return false;
+    }
+    this.pararBatimento(conversa);
+    return false;
+  }
+
+  private pararBatimento(conversa: Conversa): void {
+    if (conversa.batimento !== undefined) clearInterval(conversa.batimento);
+    conversa.batimento = undefined;
+  }
+
+  /** Expira o cartão de volta por API cujo prazo passou, e solta a conversa. */
+  private async expirarVencidos(conversa: Conversa): Promise<void> {
+    const agora = this.agora();
+    if (![...conversa.pendentes.values()].some((p) => p.ate !== undefined && p.ate <= agora)) return;
+    if (this.expirarPendentes(conversa)) {
+      await this.salvar(conversa);
+      await this.soltarSeQuieta(conversa);
+    }
   }
 
   /** Sem volta em andamento nem cartão à espera, a conversa deixa de ser deste processo. */
@@ -319,6 +410,7 @@ export class ConversasDeAgent {
     const pid = this.deps.processo?.pid ?? process.pid;
     const trava = JSON.parse((await this.deps.settings.get(chaveDaTrava(conversa.id))) || "null") as { pid?: number } | null;
     if (trava?.pid === pid) await this.deps.settings.set(chaveDaTrava(conversa.id), "");
+    this.pararBatimento(conversa);
   }
 
   /**
@@ -425,10 +517,12 @@ export class ConversasDeAgent {
         if (!deuCerto && !("texto" in entrada)) this.desfazerContinuacao(conversa);
         if (deuCerto) {
           // A volta terminou bem: agora o cartão pode ser decidido.
+          const prazo = this.deps.prazos?.cartaoMs ?? PRAZO_DO_CARTAO_MS;
           for (const cartao of cartoesNovos) {
-            conversa.pendentes.set(cartao.id, {});
+            conversa.pendentes.set(cartao.id, { ate: this.agora() + prazo });
             this.emitir(conversa, { tipo: "cartao", cartao });
           }
+          if (cartoesNovos.length > 0) setTimeout(() => void this.expirarVencidos(conversa), prazo + 50).unref();
         } else if (cartoesNovos.length > 0) {
           // Parar ou falhar antes do fim: o pedido de aprovação ficou sem quem o decida, e sem resposta no histórico.
           this.tirarPedidoSemResposta(conversa);

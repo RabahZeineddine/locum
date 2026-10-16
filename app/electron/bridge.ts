@@ -311,16 +311,31 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "chat.reset": (context) => chatSession.limpar(context),
 
     "agentChat.state": (id) => agentChat.estado(id),
-    // Volta logo: a resposta, o cartão e o desfecho chegam pelo canal de evento.
-    "agentChat.send": async (id, texto) => {
-      void agentChat.enviar(id, texto).catch((erro: unknown) => console.error("chat do agent:", erro));
-    },
+    // Volta assim que a volta começa: a resposta, o cartão e o desfecho chegam pelo canal de evento.
+    // Recusa antes disso (outro processo com a conversa) chega à janela como erro.
+    "agentChat.send": (id, texto) =>
+      new Promise<void>((resolve, reject) => {
+        let comecou = false;
+        agentChat
+          .enviar(id, texto, () => {
+            comecou = true;
+            resolve();
+          })
+          .then(
+            () => resolve(),
+            (erro: unknown) => {
+              if (comecou) console.error("chat do agent:", erro);
+              else reject(erro);
+            },
+          );
+      }),
     "agentChat.decide": (id, cartao, decisao) => {
       if (decisao !== "executar" && decisao !== "recusar") throw new Error(`decisao "${String(decisao)}" nao existe`);
       return agentChat.decidir(id, cartao, decisao);
     },
     "agentChat.cancel": async (id) => agentChat.cancelar(id),
     "agentChat.reset": (id) => agentChat.limpar(id),
+    "agentChat.take": (id) => agentChat.tomar(id),
 
     "mcp.list": () => mcpService.list(),
     "mcp.test": (name) => mcpService.testConnection(name),

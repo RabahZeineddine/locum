@@ -52,6 +52,8 @@ export interface EstadoDaConversa {
   falas: FalaDoAgent[];
   /** Há um turno em andamento no processo principal. */
   respondendo: boolean;
+  /** Outro processo do Locum (o app ou o `--mcp`) está com a conversa; `respondendo` já o inclui. */
+  outroProcesso: boolean;
   resumido: boolean;
   /** Conexões do agent sem servidor agora: avisa, e não impede de conversar. */
   semServidor: ConexaoSemServidor[];

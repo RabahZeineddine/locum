@@ -94,6 +94,14 @@ export function registerAgentChatTools(server: McpServer, amb: Ambiente): void {
       return { agentId, cancelled: true };
     });
 
+  def(server, "agent_chat_take", "write",
+    "Takes the agent conversation from the other Locum process (the app or another --mcp) that holds it: the card it left waiting expires and nothing runs by it. For when that process stopped answering. Does nothing when no other process holds the conversation.",
+    { agentId: z.string().min(1) },
+    async ({ agentId }) => {
+      await conversas(amb).tomar(agentId);
+      return { agentId, taken: true };
+    });
+
   def(server, "agent_chat_reset", "danger",
     "Starts the agent conversation over: forgets the messages, the Claude Code session and any waiting card.",
     { agentId: z.string().min(1) },
