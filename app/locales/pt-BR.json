@@ -1721,7 +1721,7 @@
       },
       "teams": {
         "tagline": "Menções, chats e canais do Microsoft Teams",
-        "description": "Teams pelo Microsoft Graph, com um app registrado no Entra da sua organização. Acorda agents com menções e mensagens de chat, e a resposta proposta sai com o seu nome depois da sua aprovação."
+        "description": "Teams por um servidor MCP do Microsoft 365 (como o ms365 do Claude Code) ou por um app no Entra. Acorda agents com menções e mensagens de chat, e a resposta proposta sai com o seu nome depois da sua aprovação."
       },
       "sentry": {
         "tagline": "Erros e issues de produção",

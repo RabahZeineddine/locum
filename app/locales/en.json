@@ -1682,7 +1682,7 @@
       },
       "teams": {
         "tagline": "Microsoft Teams mentions, chats and channels",
-        "description": "Teams through Microsoft Graph, with an app registered in your organization's Entra. Wakes agents on mentions and chat messages, and a proposed reply goes out under your name after you approve it."
+        "description": "Teams through a Microsoft 365 MCP server (such as the ms365 in Claude Code) or an app in Entra. Wakes agents on mentions and chat messages, and a proposed reply goes out under your name after you approve it."
       },
       "sentry": {
         "tagline": "Production errors and issues",
