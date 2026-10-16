@@ -14,6 +14,7 @@ import {
 import { buildGate } from "../executor/build.js";
 import { libraryService } from "../services/library-service.js";
 import { respond } from "./respond.js";
+import { def } from "./tool-def.js";
 
 /**
  * Ferramentas da biblioteca e do catálogo de passos.
@@ -28,6 +29,11 @@ import { respond } from "./respond.js";
  * agent ou toolset é interno e o serviço recusa enquanto algo o usa.
  */
 export function registerLibraryTools(server: McpServer): void {
+  def(server, "suggest_library_id", "read",
+    "A free id for a new library agent or toolset, made from its name, like the editor does.",
+    { name: z.string().min(1), kind: z.enum(["profile", "toolset"]) },
+    async ({ name, kind }) => ({ id: await libraryService.suggestId(name, kind) }));
+
   server.registerTool(
     "describe_steps",
     {

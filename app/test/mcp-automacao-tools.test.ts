@@ -9,7 +9,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { db, schema } from "../src/db/index.js";
 import { migrateDb } from "../src/db/migrate.js";
 import { buildMcpServer } from "../src/mcp-server/server.js";
-import type { LeituraDeFora } from "../src/mcp-server/connection-tools.js";
+import type { Ambiente } from "../src/mcp-server/ambiente.js";
 import { agentService } from "../src/services/agent-service.js";
 import { ClaudeSessionsService } from "../src/services/claude-sessions-service.js";
 import { escreverSessoesDeExemplo } from "../src/services/claude-sessions-sample.js";
@@ -28,7 +28,7 @@ before(() => migrateDb());
 const j = (...partes: string[]): string => partes.join("");
 const TOKEN = j("gh", "p_abcdefghijklmnopqrstuvwxyz0123456789");
 
-async function ligarCliente(fora: Partial<LeituraDeFora> = {}): Promise<Client> {
+async function ligarCliente(fora: Partial<Ambiente> = {}): Promise<Client> {
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await buildMcpServer(fora).connect(serverTransport);
   const client = new Client({ name: "teste", version: "0.0.0" });
@@ -78,17 +78,17 @@ async function salvar(client: Client, agentId: string, triggers: unknown[] = [{ 
 
 const TEAMS_PR = { kind: "teams-inbox", mentions: false, dms: false, prLinks: true };
 
-test("a lista de ferramentas traz as antigas e as novas", async () => {
+test("a lista de ferramentas traz as antigas e as novas, inclusive decidir, conectar e segredo", async () => {
   const client = await ligarCliente();
   const nomes = new Set((await client.listTools()).tools.map((t) => t.name));
   const antigas = ["locum_health", "list_agents", "get_agent", "list_runs", "get_run", "list_findings", "get_metrics", "list_mcp_servers", "list_providers", "get_machine_profile", "upsert_agent", "register_mcp_server", "test_mcp_server", "list_server_tools", "set_model_fallback", "set_budget", "set_trigger", "run_agent", "rerun_step", "describe_steps", "list_library_agents", "get_library_agent", "upsert_library_agent", "list_toolsets", "upsert_toolset"];
-  const novas = ["list_automations", "get_automation", "list_triggers", "list_trigger_discards", "list_connections", "list_teams_chats", "list_teams_channels", "list_pending_approvals", "get_approval", "list_sessions", "preview_package", "save_automation", "set_automation_enabled", "set_trigger_enabled", "remove_trigger", "remove_library_agent", "remove_toolset", "export_package", "import_package", "run_automation_now"];
-  for (const nome of [...antigas, ...novas]) assert.ok(nomes.has(nome), `falta ${nome}`);
-  // Aprovar, conectar e segredo continuam fora.
-  for (const fora of ["decide_approval", "approve", "connect_teams", "save_secret", "use_gh"]) assert.equal(nomes.has(fora), false);
+  const novas = ["list_automations", "get_automation", "list_triggers", "list_trigger_discards", "list_connections", "list_teams_chats", "list_teams_channels", "list_pending_approvals", "get_approval", "list_claude_sessions", "preview_package", "save_automation", "set_automation_enabled", "set_trigger_enabled", "remove_trigger", "remove_library_agent", "remove_toolset", "export_package", "import_package", "run_automation_now"];
+  // Paridade com a tela: decidir, conectar e guardar segredo também passam pelo MCP, e o cliente confirma.
+  const daTela = ["decide_approval", "connect_teams", "save_github_token", "use_gh_account", "set_mcp_server_enabled", "save_provider_secret", "agent_chat_send"];
+  for (const nome of [...antigas, ...novas, ...daTela]) assert.ok(nomes.has(nome), `falta ${nome}`);
 });
 
-test("save_automation grava desligada, rebaixa a ação e aparece nas leituras", async () => {
+test("save_automation grava como a tela: ação em auto fica, gatilho novo desligado, e aparece nas leituras", async () => {
   const client = await ligarCliente();
   const agentId = id("auto");
   const salva = await salvar(client, agentId, [{ config: { kind: "schedule", everyMinutes: 30 } }, { config: { kind: "manual" } }]);
@@ -96,7 +96,7 @@ test("save_automation grava desligada, rebaixa a ação e aparece nas leituras",
   assert.equal(salva.triggers.length, 2);
   assert.ok(salva.triggers.every((t) => t.enabled === false));
 
-  const rebaixada = ok<Salva>(
+  const emAuto = ok<{ version: number }>(
     await client.callTool({
       name: "save_automation",
       arguments: {
@@ -106,12 +106,12 @@ test("save_automation grava desligada, rebaixa a ação e aparece nas leituras",
       },
     }),
   );
-  assert.deepEqual(rebaixada.downgrades.map((d) => d.step), ["publicar"]);
+  assert.equal(emAuto.version, 2);
 
   const lida = ok<{ spec: { steps: { key: string; mode?: string }[] }; enabled: boolean; triggers: { id: string }[] }>(
     await client.callTool({ name: "get_automation", arguments: { agentId } }),
   );
-  assert.equal(lida.spec.steps.find((s) => s.key === "publicar")?.mode, "approve");
+  assert.equal(lida.spec.steps.find((s) => s.key === "publicar")?.mode, "auto");
   assert.equal(lida.enabled, false);
   assert.equal(lida.triggers.length, 2);
 
@@ -121,29 +121,6 @@ test("save_automation grava desligada, rebaixa a ação e aparece nas leituras",
   assert.equal(linha?.enabled, false);
 
   recusa(await client.callTool({ name: "get_automation", arguments: { agentId: "nao-existe-aqui" } }), /nao cadastrada/);
-});
-
-test("save_automation recusa ligar o gatilho, id repetido e gatilho inválido sem gravar nada", async () => {
-  const client = await ligarCliente();
-  const agentId = id("auto");
-  const ligado = await client.callTool({
-    name: "save_automation",
-    arguments: { spec: spec(agentId), triggers: [{ config: { kind: "manual" }, enabled: true }], note: "x", create: true },
-  });
-  assert.equal(ligado.isError, true);
-  assert.equal(await agentService.get(agentId), undefined);
-
-  recusa(
-    await client.callTool({ name: "save_automation", arguments: { spec: spec(agentId), triggers: [{ config: { kind: "inexistente" } }], note: "x", create: true } }),
-    /./,
-  );
-  assert.equal(await agentService.get(agentId), undefined);
-
-  await salvar(client, agentId);
-  recusa(
-    await client.callTool({ name: "save_automation", arguments: { spec: spec(agentId), triggers: [], note: "x", create: true } }),
-    /já existe/,
-  );
 });
 
 test("save_automation tira o gatilho que ficou fora da lista", async () => {
@@ -158,102 +135,6 @@ test("save_automation tira o gatilho que ficou fora da lista", async () => {
     }),
   );
   assert.deepEqual(depois.triggers.map((t) => t.id), [manual.id]);
-});
-
-test("ligar gatilho pela ferramenta, e a confirmação de reação em nome da pessoa", async () => {
-  const client = await ligarCliente();
-  const agentId = id("auto");
-  const salva = await salvar(client, agentId, [{ config: { kind: "schedule", everyMinutes: 30 } }, { config: TEAMS_PR }]);
-  const relogio = salva.triggers.find((t) => t.kind === "schedule")!;
-  const teams = salva.triggers.find((t) => t.kind === "teams-inbox")!;
-
-  const ligado = ok<{ enabled: boolean }>(await client.callTool({ name: "set_trigger_enabled", arguments: { triggerId: relogio.id, enabled: true } }));
-  assert.equal(ligado.enabled, true);
-
-  recusa(await client.callTool({ name: "set_trigger_enabled", arguments: { triggerId: teams.id, enabled: true } }), /confirmo_reacoes_em_meu_nome/);
-  recusa(
-    await client.callTool({ name: "set_trigger_enabled", arguments: { triggerId: teams.id, enabled: true, confirmo_reacoes_em_meu_nome: false } }),
-    /confirmo_reacoes_em_meu_nome/,
-  );
-  assert.equal((await triggerService.get(teams.id))?.enabled, false);
-
-  const confirmado = ok<{ enabled: boolean }>(
-    await client.callTool({ name: "set_trigger_enabled", arguments: { triggerId: teams.id, enabled: true, confirmo_reacoes_em_meu_nome: true } }),
-  );
-  assert.equal(confirmado.enabled, true);
-
-  // Desligar nunca pede confirmação.
-  const desligado = ok<{ enabled: boolean }>(await client.callTool({ name: "set_trigger_enabled", arguments: { triggerId: teams.id, enabled: false } }));
-  assert.equal(desligado.enabled, false);
-
-  const descricao = (await client.listTools()).tools.find((t) => t.name === "set_trigger_enabled")?.description ?? "";
-  assert.match(descricao, /in the name of the person/);
-});
-
-test("o gatilho que o pacote deixou esperando chats não liga, nem com a confirmação", async () => {
-  const client = await ligarCliente();
-  const agentId = id("auto");
-  const salva = await salvar(client, agentId, [{ config: { ...TEAMS_PR, chatsPendentes: 2 } }]);
-  const gatilho = salva.triggers[0]!;
-  recusa(
-    await client.callTool({ name: "set_trigger_enabled", arguments: { triggerId: gatilho.id, enabled: true, confirmo_reacoes_em_meu_nome: true } }),
-    /escolha os chats/,
-  );
-  recusa(
-    await client.callTool({ name: "set_automation_enabled", arguments: { agentId, enabled: true, confirmo_reacoes_em_meu_nome: true } }),
-    /escolha os chats/,
-  );
-  const lido = ok<{ blockedUntil?: string }[]>(await client.callTool({ name: "list_triggers", arguments: { agentId } }));
-  assert.ok(lido[0]?.blockedUntil);
-
-  // set_trigger não serve de atalho: zerar a pendência sem escolher chats é recusado.
-  recusa(
-    await client.callTool({ name: "set_trigger", arguments: { agentId, triggerId: gatilho.id, config: { ...TEAMS_PR, chatsPendentes: 0 } } }),
-    /escolha os chats/,
-  );
-  // Escolhendo os chats a pendência sai e o gatilho liga, com a confirmação.
-  ok(
-    await client.callTool({
-      name: "set_trigger",
-      arguments: { agentId, triggerId: gatilho.id, config: { ...TEAMS_PR, chatsPendentes: 0, chats: [{ chatId: "19:chat@thread.v2", label: "Time" }] } },
-    }),
-  );
-  ok(await client.callTool({ name: "set_trigger_enabled", arguments: { triggerId: gatilho.id, enabled: true, confirmo_reacoes_em_meu_nome: true } }));
-});
-
-test("set_automation_enabled liga e desliga todos, e a confirmação vale para o conjunto", async () => {
-  const client = await ligarCliente();
-  const agentId = id("auto");
-  await salvar(client, agentId, [{ config: { kind: "schedule", everyMinutes: 30 } }, { config: TEAMS_PR }]);
-
-  recusa(await client.callTool({ name: "set_automation_enabled", arguments: { agentId, enabled: true } }), /confirmo_reacoes_em_meu_nome/);
-  assert.ok((await triggerService.list(agentId)).every((g) => !g.enabled));
-
-  const ligada = ok<{ enabled: boolean }[]>(
-    await client.callTool({ name: "set_automation_enabled", arguments: { agentId, enabled: true, confirmo_reacoes_em_meu_nome: true } }),
-  );
-  assert.ok(ligada.every((g) => g.enabled));
-  const lista = ok<{ id: string; enabled: boolean }[]>(await client.callTool({ name: "list_automations", arguments: {} }));
-  assert.equal(lista.find((a) => a.id === agentId)?.enabled, true);
-
-  const desligada = ok<{ enabled: boolean }[]>(await client.callTool({ name: "set_automation_enabled", arguments: { agentId, enabled: false } }));
-  assert.ok(desligada.every((g) => !g.enabled));
-
-  recusa(await client.callTool({ name: "set_automation_enabled", arguments: { agentId: "nao-existe-aqui", enabled: true } }), /nao cadastrada/);
-});
-
-test("set_trigger segue recusando ligar, e trocar a configuração de gatilho ligado desliga", async () => {
-  const client = await ligarCliente();
-  const agentId = id("auto");
-  const salva = await salvar(client, agentId);
-  const gatilho = salva.triggers[0]!;
-  recusa(await client.callTool({ name: "set_trigger", arguments: { agentId, triggerId: gatilho.id, config: { kind: "schedule", everyMinutes: 30 }, enabled: true } }), /so e ligado por uma pessoa/);
-
-  ok(await client.callTool({ name: "set_trigger_enabled", arguments: { triggerId: gatilho.id, enabled: true } }));
-  const trocado = ok<{ enabled: boolean }>(
-    await client.callTool({ name: "set_trigger", arguments: { agentId, triggerId: gatilho.id, config: { kind: "schedule", everyMinutes: 60 } } }),
-  );
-  assert.equal(trocado.enabled, false);
 });
 
 test("list_triggers e list_trigger_discards trazem o último erro e os descartes, sem segredo", async () => {
@@ -274,22 +155,6 @@ test("list_triggers e list_trigger_discards trazem o último erro e os descartes
   const descartes = ok<{ pr: string; motivo: string }[]>(await client.callTool({ name: "list_trigger_discards", arguments: { triggerId: gatilho.id } }));
   assert.deepEqual(descartes.map((d) => [d.pr, d.motivo]), [["acme/api#7", "autor excluído"]]);
   recusa(await client.callTool({ name: "list_trigger_discards", arguments: { triggerId: "nao-existe" } }), /nao cadastrado/);
-});
-
-test("remove_trigger apaga o gatilho e o que ele guardava", async () => {
-  const client = await ligarCliente();
-  const agentId = id("auto");
-  const gatilho = (await salvar(client, agentId)).triggers[0]!;
-  await registrarErro(db, gatilho.id, { em: Date.now(), tipo: "configuracao", texto: "x" });
-  assert.deepEqual(ok(await client.callTool({ name: "remove_trigger", arguments: { triggerId: gatilho.id } })), { triggerId: gatilho.id, removed: true });
-  assert.equal(await triggerService.get(gatilho.id), undefined);
-  recusa(await client.callTool({ name: "remove_trigger", arguments: { triggerId: gatilho.id } }), /nao cadastrado/);
-});
-
-test("run_automation_now recusa agent do sistema e automação que não existe", async () => {
-  const client = await ligarCliente();
-  recusa(await client.callTool({ name: "run_automation_now", arguments: { agentId: "locum-chat" } }), /./);
-  recusa(await client.callTool({ name: "run_automation_now", arguments: { agentId: "nao-existe-aqui" } }), /./);
 });
 
 test("list_connections devolve o estado sem nenhum segredo", async () => {
@@ -332,28 +197,14 @@ test("falha ao ler o Teams volta como resultado com a mensagem", async () => {
   recusa(await client.callTool({ name: "list_teams_chats", arguments: {} }), /Teams não conectado/);
 });
 
-test("list_sessions lê o leitor recebido e esconde credencial do texto", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "locum-claude-"));
-  escreverSessoesDeExemplo(dir, "/projetos/exemplo", 4242);
-  const servico = new ClaudeSessionsService({
-    claudeDir: dir,
-    settings: new SettingsService(bancoDeTeste()),
-    sessions: { terminal: async () => "terminal" },
-    isAlive: () => false,
-    gitChanges: async () => null,
-    opencodeDb: join(dir, "sem-opencode.db"),
-    scriptDir: join(dir, "scripts"),
+test("a fila sai com a credencial do payload escondida, e decidir passa pela gate que o servidor recebeu", async () => {
+  const decisoes: [string, string][] = [];
+  const client = await ligarCliente({
+    decidir: async (approvalId, decision) => {
+      decisoes.push([approvalId, decision]);
+      return { status: decision };
+    },
   });
-  const client = await ligarCliente({ sessions: async () => (await servico.list()).map((s, i) => (i === 0 ? { ...s, lastPrompt: `use ${TOKEN}` } : s)) });
-  const resposta = await client.callTool({ name: "list_sessions", arguments: {} });
-  const lista = ok<{ id: string; title: string }[]>(resposta);
-  assert.ok(lista.length >= 2);
-  assert.ok(lista.every((s) => typeof s.title === "string"));
-  assert.doesNotMatch(texto(resposta), new RegExp(TOKEN));
-});
-
-test("a fila sai só para leitura e com a credencial do payload escondida", async () => {
-  const client = await ligarCliente();
   const agentId = id("fila");
   const versao = await agentService.upsert(
     { id: agentId, name: "Fila", steps: [{ type: "model", key: "ler", name: "Ler", model: "anthropic/modelo", prompt: "x" }, { type: "action", key: "publicar", name: "Publicar", action: "slack.post", needs: ["ler"] }] } as never,
@@ -384,27 +235,13 @@ test("a fila sai só para leitura e com a credencial do payload escondida", asyn
   assert.match(uma.payload.text, /segredo removido/);
   recusa(await client.callTool({ name: "get_approval", arguments: { approvalId: "nao-existe" } }), /nao encontrada/);
 
-  // Decidir continua só da pessoa: a pendência segue pendente.
-  const nomes = (await client.listTools()).tools.map((t) => t.name);
-  assert.equal(nomes.some((n) => /approve|reject|decide/.test(n)), false);
-});
-
-test("remover agent e toolset da biblioteca recusa o que está em uso", async () => {
-  const client = await ligarCliente();
-  const sufixo = randomUUID().slice(0, 8);
-  const toolset = `ts-${sufixo}`;
-  const agent = `ag-${sufixo}`;
-  ok(await client.callTool({ name: "upsert_toolset", arguments: { toolset: { id: toolset, name: "T", tools: [{ server: "x", tool: "ler" }] }, create: true } }));
-  ok(await client.callTool({ name: "upsert_library_agent", arguments: { spec: { id: agent, name: "Ag", model: "anthropic/claude-sonnet-5", toolsets: [toolset] } } }));
-
-  recusa(await client.callTool({ name: "remove_toolset", arguments: { id: toolset } }), /em uso/);
-  ok(await client.callTool({ name: "remove_library_agent", arguments: { id: agent } }));
-  assert.equal(await libraryService.getProfile(agent), null);
-  ok(await client.callTool({ name: "remove_toolset", arguments: { id: toolset } }));
-  assert.equal(await libraryService.getToolset(toolset), null);
-
-  recusa(await client.callTool({ name: "remove_library_agent", arguments: { id: agent } }), /não existe/);
-  recusa(await client.callTool({ name: "remove_toolset", arguments: { id: toolset } }), /não existe/);
+  assert.deepEqual(ok(await client.callTool({ name: "decide_approval", arguments: { approvalId: aprovacao, decision: "rejected" } })), {
+    approvalId: aprovacao,
+    decision: "rejected",
+    status: "rejected",
+  });
+  assert.deepEqual(decisoes, [[aprovacao, "rejected"]]);
+  recusa(await client.callTool({ name: "decide_approval", arguments: { approvalId: aprovacao, decision: "talvez" } }), /./);
 });
 
 test("exportar e importar: sem segredo no texto, copia ao lado e gatilho sempre desligado", async () => {
@@ -451,6 +288,310 @@ test("entrada fora do formato volta como erro de validação", async () => {
   ] as const) {
     const res = await client.callTool({ name, arguments: args as Record<string, unknown> });
     assert.equal(res.isError, true, name);
+  }
+});
+
+
+/** O que só uma pessoa faz, pela tela: grava o spec como pessoa e liga o gatilho. */
+async function comoPessoa(agentId: string, steps: unknown[], triggers: unknown[] = [{ kind: "manual" }]) {
+  const versao = await agentService.upsert({ id: agentId, name: "Pessoa", steps } as never, "da pessoa", "human");
+  const gatilhos = [];
+  for (const config of triggers) gatilhos.push(await triggerService.set(agentId, config as never));
+  return { versao, gatilhos };
+}
+
+const ler = { type: "model", key: "ler", name: "Ler", model: "anthropic/modelo", prompt: "revise" };
+const http = (extra: Record<string, unknown> = {}) => ({
+  type: "action",
+  key: "enviar",
+  name: "Enviar",
+  action: "http.request",
+  mode: "auto",
+  needs: ["ler"],
+  params: { method: "POST", url: "https://exemplo.com/a" },
+  ...extra,
+});
+
+test("save_automation liga gatilho só com enabled true, e recusa id repetido e gatilho inválido sem gravar nada", async () => {
+  const client = await ligarCliente();
+  const agentId = id("auto");
+  recusa(
+    await client.callTool({ name: "save_automation", arguments: { spec: spec(agentId), triggers: [{ config: { kind: "inexistente" } }], note: "x", create: true } }),
+    /./,
+  );
+  assert.equal(await agentService.get(agentId), undefined);
+  const salva = ok<Salva>(
+    await client.callTool({
+      name: "save_automation",
+      arguments: { spec: spec(agentId), triggers: [{ config: { kind: "manual" }, enabled: true }, { config: { kind: "schedule", everyMinutes: 30 } }], note: "x", create: true },
+    }),
+  );
+  assert.deepEqual(salva.triggers.map((t) => [t.kind, t.enabled]).sort(), [["manual", true], ["schedule", false]]);
+  recusa(await client.callTool({ name: "save_automation", arguments: { spec: spec(agentId), triggers: [], note: "x", create: true } }), /já existe/);
+});
+
+test("ligar e desligar pela ferramenta, um gatilho ou a automação inteira, e a descrição diz o efeito", async () => {
+  const client = await ligarCliente();
+  const agentId = id("auto");
+  const salva = await salvar(client, agentId, [{ config: { kind: "schedule", everyMinutes: 30 } }, { config: TEAMS_PR }]);
+  const [relogio, teams] = [salva.triggers[0]!, salva.triggers[1]!];
+
+  assert.equal(ok<{ enabled: boolean }>(await client.callTool({ name: "set_trigger_enabled", arguments: { triggerId: relogio.id, enabled: true } })).enabled, true);
+  assert.equal((await triggerService.get(teams.id))?.enabled, false);
+
+  const todos = ok<{ enabled: boolean }[]>(await client.callTool({ name: "set_automation_enabled", arguments: { agentId, enabled: true } }));
+  assert.ok(todos.every((g) => g.enabled));
+  const nenhum = ok<{ enabled: boolean }[]>(await client.callTool({ name: "set_automation_enabled", arguments: { agentId, enabled: false } }));
+  assert.ok(nenhum.every((g) => !g.enabled));
+  recusa(await client.callTool({ name: "set_automation_enabled", arguments: { agentId: "nao-existe-aqui", enabled: false } }), /nao cadastrada/);
+
+  const ferramentas = (await client.listTools()).tools;
+  for (const nome of ["set_trigger_enabled", "set_automation_enabled"]) {
+    const descricao = ferramentas.find((t) => t.name === nome)?.description ?? "";
+    assert.match(descricao, /act by itself with your accounts/);
+    assert.match(descricao, /👀/);
+  }
+});
+
+test("set_trigger segue recusando ligar, e trocar a configuração de gatilho ligado desliga", async () => {
+  const client = await ligarCliente();
+  const agentId = id("auto");
+  const { gatilhos } = await comoPessoa(agentId, [ler], [{ kind: "schedule", everyMinutes: 30 }]);
+  const gatilho = gatilhos[0]!;
+  recusa(await client.callTool({ name: "set_trigger", arguments: { agentId, triggerId: gatilho.id, config: { kind: "schedule", everyMinutes: 30 }, enabled: true } }), /so e ligado por uma pessoa/);
+  await triggerService.setEnabled(gatilho.id, true);
+  const trocado = ok<{ enabled: boolean }>(
+    await client.callTool({ name: "set_trigger", arguments: { agentId, triggerId: gatilho.id, config: { kind: "schedule", everyMinutes: 60 } } }),
+  );
+  assert.equal(trocado.enabled, false);
+});
+
+/** `upsert_agent` grava como agent: o passo auto que mudou volta para aprovação, e a pessoa (save_automation) não rebaixa. */
+async function comoAgent(client: Client, agentId: string, steps: unknown[]) {
+  return ok<{ downgrades: { step: string }[] }>(await client.callTool({ name: "upsert_agent", arguments: { spec: { id: agentId, name: "Pessoa", steps }, note: "de fora" } }));
+}
+
+test("upsert_agent rebaixa o passo auto que mudou: params, when, optional", async () => {
+  const client = await ligarCliente();
+  const logica = { type: "logic", key: "decidir", name: "Decidir", op: "if", needs: ["ler"], input: "x", compare: "equals", against: "y" };
+  const comWhen = (extra: Record<string, unknown> = {}) => http({ needs: ["decidir"], when: { step: "decidir", branch: "true" }, ...extra });
+  const topo = async (agentId: string) => (await agentService.getLatestVersion(agentId))!.spec.steps.find((s) => s.key === "enviar") as { mode: string };
+
+  const igual = id("auto");
+  await comoPessoa(igual, [ler, logica, comWhen()]);
+  assert.deepEqual((await comoAgent(client, igual, [ler, logica, comWhen()])).downgrades, []);
+  assert.equal((await topo(igual)).mode, "auto");
+
+  for (const [nome, passos] of [
+    ["url", [ler, logica, comWhen({ params: { method: "POST", url: "https://outro.exemplo/x" } })]],
+    ["sem when", [ler, logica, http({ needs: ["decidir"] })]],
+    ["opcional", [ler, logica, comWhen({ optional: true })]],
+  ] as const) {
+    const agentId = id("auto");
+    await comoPessoa(agentId, [ler, logica, comWhen()]);
+    assert.deepEqual((await comoAgent(client, agentId, [...passos])).downgrades.map((d) => d.step), ["enviar"], nome);
+    assert.equal((await topo(agentId)).mode, "approve", nome);
+  }
+
+  // Pela save_automation, que grava como a tela, a URL nova fica em auto.
+  const agentId = id("auto");
+  await comoPessoa(agentId, [ler, http()]);
+  const salvo = ok<Salva>(
+    await client.callTool({
+      name: "save_automation",
+      arguments: { spec: { id: agentId, name: "Pessoa", steps: [ler, http({ params: { method: "POST", url: "https://outro.exemplo/y" } })] }, triggers: [{ config: { kind: "manual" } }], note: "troquei a url" },
+    }),
+  );
+  assert.ok(salvo.version > 1);
+  assert.equal((await topo(agentId)).mode, "auto");
+});
+
+test("remove_trigger tira o gatilho, ligado ou não, e save_automation tira o que ficou de fora", async () => {
+  const client = await ligarCliente();
+  const agentId = id("auto");
+  const { gatilhos } = await comoPessoa(agentId, [ler], [{ kind: "manual" }, { kind: "schedule", everyMinutes: 30 }]);
+  const [manual, relogio] = [gatilhos[0]!, gatilhos[1]!];
+  await triggerService.setEnabled(relogio.id, true);
+
+  assert.deepEqual(ok(await client.callTool({ name: "remove_trigger", arguments: { triggerId: relogio.id } })), { triggerId: relogio.id, removed: true });
+  assert.equal(await triggerService.get(relogio.id), undefined);
+  await registrarErro(db, manual.id, { em: Date.now(), tipo: "configuracao", texto: "x" });
+  const depois = ok<Salva>(
+    await client.callTool({ name: "save_automation", arguments: { spec: { id: agentId, name: "Pessoa", steps: [ler] }, triggers: [], note: "sem gatilhos" } }),
+  );
+  assert.deepEqual(depois.triggers, []);
+  recusa(await client.callTool({ name: "remove_trigger", arguments: { triggerId: manual.id } }), /nao cadastrado/);
+});
+
+test("save_automation sem id mantém o gatilho ligado quando a config é a mesma", async () => {
+  const client = await ligarCliente();
+  const agentId = id("auto");
+  const { gatilhos } = await comoPessoa(agentId, [ler], [{ kind: "schedule", everyMinutes: 30 }]);
+  await triggerService.setEnabled(gatilhos[0]!.id, true);
+  const res = ok<Salva>(
+    await client.callTool({ name: "save_automation", arguments: { spec: { id: agentId, name: "Pessoa", steps: [ler] }, triggers: [{ config: { kind: "schedule", everyMinutes: 30 } }], note: "igual" } }),
+  );
+  assert.deepEqual(res.triggers.map((g) => [g.id, g.enabled]), [[gatilhos[0]!.id, true]]);
+});
+
+test("o gatilho que o pacote deixou esperando chats só vale para todos com a confirmação explícita", async () => {
+  const client = await ligarCliente();
+  const agentId = id("auto");
+  const salva = await salvar(client, agentId, [{ config: { ...TEAMS_PR, chatsPendentes: 2 } }]);
+  const gatilho = salva.triggers[0]!;
+  const lido = ok<{ blockedUntil?: string }[]>(await client.callTool({ name: "list_triggers", arguments: { agentId } }));
+  assert.ok(lido[0]?.blockedUntil);
+  recusa(await client.callTool({ name: "set_trigger_enabled", arguments: { triggerId: gatilho.id, enabled: true } }), /escolha os chats/);
+
+  // Zerar a pendência com a lista vazia, sem confirmar, é recusado no serviço, por qualquer ferramenta.
+  recusa(await client.callTool({ name: "set_trigger", arguments: { agentId, triggerId: gatilho.id, config: { ...TEAMS_PR, chatsPendentes: 0 } } }), /escolha os chats/);
+  const refaz = (triggers: unknown[]) => client.callTool({ name: "save_automation", arguments: { spec: spec(agentId), triggers, note: "chats" } });
+  recusa(await refaz([{ id: gatilho.id, config: { ...TEAMS_PR, chatsPendentes: 0 } }]), /escolha os chats/);
+  assert.equal(((await triggerService.get(gatilho.id))?.config as { chatsPendentes: number }).chatsPendentes, 2);
+
+  // Com a confirmação, vale para todos os chats.
+  const todos = ok<{ config: { chatsPendentes: number; chats: unknown[] } }>(await client.callTool({ name: "allow_all_chats_for_trigger", arguments: { triggerId: gatilho.id } }));
+  assert.equal(todos.config.chatsPendentes, 0);
+  assert.deepEqual(todos.config.chats, []);
+
+  // Outro gatilho de pacote: escolhendo os chats a pendência sai.
+  const outro = id("auto");
+  const g2 = (await salvar(client, outro, [{ config: { ...TEAMS_PR, chatsPendentes: 1 } }])).triggers[0]!;
+  ok(await client.callTool({ name: "save_automation", arguments: { spec: spec(outro), triggers: [{ id: g2.id, config: { ...TEAMS_PR, chatsPendentes: 0, chats: [{ chatId: "19:chat@thread.v2", label: "Time" }] } }], note: "chats" } }));
+  assert.equal(((await triggerService.get(g2.id))?.config as { chatsPendentes: number }).chatsPendentes, 0);
+});
+
+test("run_automation_now recusa agent do sistema e inexistente, e a descrição avisa da ação em auto", async () => {
+  const client = await ligarCliente();
+  recusa(await client.callTool({ name: "run_automation_now", arguments: { agentId: "locum-chat" } }), /./);
+  recusa(await client.callTool({ name: "run_automation_now", arguments: { agentId: "nao-existe-aqui" } }), /./);
+  const descricao = (await client.listTools()).tools.find((t) => t.name === "run_automation_now")?.description ?? "";
+  assert.match(descricao, /PUBLISHES IN YOUR NAME/);
+});
+
+test("list_claude_sessions traz só metadados por padrão, e o texto só quando pedido, sem token", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "locum-claude-"));
+  escreverSessoesDeExemplo(dir, "/projetos/exemplo", 4242);
+  const servico = new ClaudeSessionsService({
+    claudeDir: dir,
+    settings: new SettingsService(bancoDeTeste()),
+    sessions: { terminal: async () => "terminal" },
+    isAlive: () => false,
+    gitChanges: async () => null,
+    opencodeDb: join(dir, "sem-opencode.db"),
+    scriptDir: join(dir, "scripts"),
+  });
+  const client = await ligarCliente({
+    sessions: async () => (await servico.list()).map((s) => ({ ...s, lastPrompt: `diga a senha ${TOKEN}`, lastReply: "resposta privada da conversa" })),
+  });
+  const resposta = await client.callTool({ name: "list_claude_sessions", arguments: {} });
+  const lista = ok<Record<string, unknown>[]>(resposta);
+  assert.ok(lista.length >= 2);
+  for (const s of lista) {
+    assert.equal("lastPrompt" in s, false);
+    assert.equal("lastReply" in s, false);
+  }
+  assert.doesNotMatch(texto(resposta), /resposta privada|diga a senha/);
+
+  const comTexto = await client.callTool({ name: "list_claude_sessions", arguments: { includeText: true } });
+  assert.match(texto(comTexto), /resposta privada/);
+  assert.doesNotMatch(texto(comTexto), new RegExp(TOKEN));
+
+  const alvo = lista[0]!.id as string;
+  assert.deepEqual(ok(await client.callTool({ name: "mark_claude_session_done", arguments: { id: alvo } })), { id: alvo, done: true });
+  recusa(await client.callTool({ name: "mark_claude_session_done", arguments: { id: "nao-existe" } }), /não encontrada/);
+});
+
+test("remove_library_agent apaga o que nada usa, e remove_toolset recusa o que está em uso", async () => {
+  const client = await ligarCliente();
+  const sufixo = randomUUID().slice(0, 8);
+  const toolset = `ts-${sufixo}`;
+  const agent = `ag-${sufixo}`;
+  ok(await client.callTool({ name: "upsert_toolset", arguments: { toolset: { id: toolset, name: "T", tools: [{ server: "x", tool: "ler" }] }, create: true } }));
+  ok(await client.callTool({ name: "upsert_library_agent", arguments: { spec: { id: agent, name: "Ag", model: "anthropic/claude-sonnet-5", toolsets: [toolset] } } }));
+  recusa(await client.callTool({ name: "remove_toolset", arguments: { id: toolset } }), /em uso/);
+  assert.deepEqual(ok(await client.callTool({ name: "remove_library_agent", arguments: { id: agent } })), { id: agent, removed: true });
+  assert.equal(await libraryService.getProfile(agent), null);
+  ok(await client.callTool({ name: "remove_toolset", arguments: { id: toolset } }));
+  assert.equal(await libraryService.getToolset(toolset), null);
+  recusa(await client.callTool({ name: "remove_toolset", arguments: { id: toolset } }), /não existe/);
+  recusa(await client.callTool({ name: "remove_library_agent", arguments: { id: agent } }), /não existe/);
+});
+
+test("perfil da biblioteca que alimenta ação auto muda pelo MCP como pela tela, também no import_package", async () => {
+  const client = await ligarCliente();
+  const perfil = id("perfil");
+  const modelo = { id: perfil, name: "Perfil", model: "anthropic/claude-sonnet-5", instructions: "original" };
+  ok(await client.callTool({ name: "upsert_library_agent", arguments: { spec: modelo, create: true } }));
+  const origem = id("origem");
+  await comoPessoa(origem, [{ ...ler, profile: perfil }, http()]);
+
+  ok(await client.callTool({ name: "upsert_library_agent", arguments: { spec: { ...modelo, instructions: "nova instrução" } } }));
+  assert.equal((await libraryService.getProfile(perfil))?.spec.instructions, "nova instrução");
+
+  const exportado = ok<{ text: string }>(await client.callTool({ name: "export_package", arguments: { agentId: origem } }));
+  await libraryService.saveProfile({ spec: { ...modelo, instructions: "editado pela pessoa" } as never, note: "pessoa" });
+  ok(await client.callTool({ name: "import_package", arguments: { text: exportado.text, automationId: id("copia"), agents: { [perfil]: { acao: "atualizar" } } } }));
+  assert.equal((await libraryService.getProfile(perfil))?.spec.instructions, "nova instrução");
+});
+
+test("a redação cobre token solto, linha de ambiente, JSON serializado e cookie", async () => {
+  const client = await ligarCliente();
+  const agentId = id("fila");
+  const versao = await agentService.upsert({ id: agentId, name: "Fila", steps: [ler, { type: "action", key: "publicar", name: "P", action: "slack.post", needs: ["ler"] }] } as never, undefined, "human");
+  const run = id("run");
+  const passo = id("passo");
+  const aprovacao = id("apr");
+  await db.insert(schema.runs).values({ id: run, agentVersionId: versao.id, status: "paused" });
+  await db.insert(schema.steps).values({ id: passo, runId: run, idx: 1, stepKey: "publicar", name: "P", status: "awaiting_approval" });
+  const segredos = ["valor-um-9f8e7d", "valor-dois-1a2b3c", "valor-tres-4d5e6f", "valor-quatro-7a8b9c", "valor-cinco-0a1b2c", "valor-seis-3c4d5e", "valor-sete-6f7a8b", "valor-oito-9c0d1e"];
+  await db.insert(schema.approvals).values({
+    id: aprovacao,
+    runId: run,
+    stepId: passo,
+    kind: "slack.post",
+    payload: {
+      text: [
+        `token: ${segredos[0]}`,
+        `GITHUB_TOKEN=${segredos[1]}`,
+        `API_KEY=${segredos[2]}`,
+        `{"access_token":"${segredos[3]}"}`,
+        `Cookie: sessao=${segredos[4]}; outra=1`,
+        `Set-Cookie: sid=${segredos[5]}`,
+      ].join("\n"),
+      clientSecret: segredos[6],
+      privateKey: segredos[7],
+      credential: "abc",
+      refresh_token: "r",
+      id_token: "i",
+      credentialRef: "nome-no-cofre",
+    },
+  });
+  const res = await client.callTool({ name: "get_approval", arguments: { approvalId: aprovacao } });
+  const corpo = texto(res);
+  for (const segredo of segredos) assert.doesNotMatch(corpo, new RegExp(segredo), segredo);
+  const { payload } = ok<{ payload: Record<string, string> }>(res);
+  for (const chave of ["clientSecret", "privateKey", "credential", "refresh_token", "id_token"]) assert.equal(payload[chave], "<oculto>", chave);
+  assert.equal(payload.credentialRef, "nome-no-cofre");
+});
+
+test("Teams com o acesso nativo vencido pede para abrir o Locum, sem renovar", async () => {
+  const { ambientePadrao, RENOVAR_TEAMS } = await import("../src/mcp-server/ambiente.js");
+  const { mcpOAuthService } = await import("../src/services/mcp-oauth-service.js");
+  const original = mcpOAuthService.lerSemRenovar.bind(mcpOAuthService);
+  let renovou = 0;
+  const renovar = mcpOAuthService.refreshIfNeeded.bind(mcpOAuthService);
+  mcpOAuthService.refreshIfNeeded = async () => {
+    renovou += 1;
+  };
+  mcpOAuthService.lerSemRenovar = () => ({ token: "qualquer", vencido: true });
+  try {
+    await assert.rejects(ambientePadrao.teamsChats({}), new RegExp(RENOVAR_TEAMS));
+    await assert.rejects(ambientePadrao.teamsChannels(), /abra o Locum para renovar o Teams/);
+    assert.equal(renovou, 0);
+  } finally {
+    mcpOAuthService.lerSemRenovar = original;
+    mcpOAuthService.refreshIfNeeded = renovar;
   }
 });
 

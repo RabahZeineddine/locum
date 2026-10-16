@@ -5,15 +5,23 @@ import { db, schema } from "../db/index.js";
 import { dbPath } from "../db/path.js";
 import { RESERVED_AGENT_IDS } from "../services/agent-service.js";
 import { machineId } from "../services/machine-service.js";
+import { registerAgentChatTools } from "./agent-chat-tools.js";
+import { registerAgentExtraTools } from "./agent-extra-tools.js";
+import { ambientePadrao, type Ambiente } from "./ambiente.js";
 import { registerApprovalTools } from "./approval-tools.js";
 import { registerAutomationTools } from "./automation-tools.js";
 import { registerConfigTools } from "./config-tools.js";
-import { registerConnectionTools, leituraPadrao, type LeituraDeFora } from "./connection-tools.js";
+import { registerConnectionTools } from "./connection-tools.js";
 import { registerInitiativeTools } from "./initiative-tools.js";
 import { registerLibraryTools } from "./library-tools.js";
+import { registerMcpAdminTools } from "./mcp-admin-tools.js";
 import { registerPackageTools } from "./package-tools.js";
+import { registerProviderTools } from "./provider-tools.js";
 import { registerReadTools } from "./read-tools.js";
 import { registerRunTools } from "./run-tools.js";
+import { registerSessionTools } from "./session-tools.js";
+import { registerSettingsTools } from "./settings-tools.js";
+import { exigirAnotacoes } from "./tool-def.js";
 
 export const SERVER_NAME = "locum";
 export const SERVER_VERSION = "0.1.0";
@@ -24,9 +32,14 @@ export const SERVER_VERSION = "0.1.0";
  *
  * Aqui o Locum e servidor: ele se expoe a agents externos. O `McpRegistry` e o
  * papel oposto, de cliente. O ADR 0002 pede que os dois nomes nao se misturem.
+ *
+ * O `fora` troca partes do ambiente (Teams, sessões, chat de agent, executor):
+ * o teste para nao sair da maquina, e o Electron para entregar o que so ele tem.
+ * Toda ferramenta sai com anotacao, e a montagem estoura se alguma ficar sem.
  */
-export function buildMcpServer(fora: Partial<LeituraDeFora> = {}): McpServer {
-  const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION });
+export function buildMcpServer(fora: Partial<Ambiente> = {}): McpServer {
+  const amb: Ambiente = { ...ambientePadrao, ...fora };
+  const server = exigirAnotacoes(new McpServer({ name: SERVER_NAME, version: SERVER_VERSION }));
 
   server.registerTool(
     "locum_health",
@@ -46,9 +59,15 @@ export function buildMcpServer(fora: Partial<LeituraDeFora> = {}): McpServer {
   registerInitiativeTools(server);
   registerLibraryTools(server);
   registerAutomationTools(server);
-  registerConnectionTools(server, { ...leituraPadrao, ...fora });
-  registerApprovalTools(server);
+  registerConnectionTools(server, amb);
+  registerApprovalTools(server, amb);
   registerPackageTools(server);
+  registerAgentExtraTools(server, amb);
+  registerAgentChatTools(server, amb);
+  registerProviderTools(server);
+  registerMcpAdminTools(server);
+  registerSessionTools(server, amb);
+  registerSettingsTools(server, amb);
   return server;
 }
 

@@ -3,6 +3,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { executionService } from "../services/execution-service.js";
 import { runService } from "../services/run-service.js";
 import { respond } from "./respond.js";
+import { def } from "./tool-def.js";
 
 /**
  * Ferramentas de execucao do servidor MCP.
@@ -16,6 +17,11 @@ import { respond } from "./respond.js";
  * hora e o andamento sai por `get_run`.
  */
 export function registerRunTools(server: McpServer): void {
+  def(server, "list_findings_by_run", "read",
+    "Findings of several runs in one call, by run id, as the inbox reads them.",
+    { runIds: z.array(z.string().min(1)).min(1).max(200) },
+    ({ runIds }) => runService.findingsByRun(runIds));
+
   server.registerTool(
     "run_agent",
     {

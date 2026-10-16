@@ -3,6 +3,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { InitiativeService, initiativeService } from "../services/initiative-service.js";
 import { PromptService, promptService } from "../services/prompt-service.js";
 import { respond } from "./respond.js";
+import { def } from "./tool-def.js";
 
 /**
  * Ferramentas de iniciativa e prompt do servidor MCP.
@@ -195,6 +196,30 @@ export function registerInitiativeTools(
     async ({ slug, mode, content, baseHash }) =>
       respond(() => initiatives.proposeContextUpdate({ slug, mode, content, baseHash, origin: "mcp" })),
   );
+
+  def(server, "get_initiatives_overview", "read",
+    "What the Home panel shows of each initiative: status, days since the last update and whether it counts as stale.",
+    {}, () => initiatives.overview());
+
+  def(server, "list_initiative_deliveries", "read",
+    "The deliveries of an initiative: runs of its agents and what they published.",
+    { slug: z.string() }, ({ slug }) => initiatives.deliveries(slug));
+
+  def(server, "get_initiative_settings", "read",
+    "How many days without an update make an initiative stale, and the root folder where each context folder lives.",
+    {}, async () => ({ staleDays: await initiatives.staleDays(), rootFolder: await initiatives.rootFolder() }));
+
+  def(server, "set_initiative_stale_days", "write",
+    "Sets how many days without an update make an initiative stale (1 to 90).",
+    { days: z.number().int().min(1).max(90) }, async ({ days }) => ({ staleDays: await initiatives.setStaleDays(days) }));
+
+  def(server, "set_initiatives_root", "write",
+    "Sets the root folder of the initiative context folders; null goes back to the default. Existing initiatives keep their folders.",
+    { path: z.string().min(1).nullable() }, async ({ path }) => ({ rootFolder: await initiatives.setRootFolder(path) }));
+
+  def(server, "remove_initiative_link", "write",
+    "Removes a link from an initiative, by the link id that get_initiative shows.",
+    { slug: z.string(), linkId: z.string().min(1) }, async ({ slug, linkId }) => ({ removed: await initiatives.removeLink(slug, linkId) }));
 }
 
 async function getInitiative(initiatives: InitiativeService, slug: string) {

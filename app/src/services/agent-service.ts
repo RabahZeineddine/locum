@@ -595,10 +595,11 @@ function notaComRebaixamento(note: string | undefined, downgrades: ActionDowngra
  * passo passa: significa que uma pessoa autorizou antes, e reeditar outra parte
  * do spec nao pode derrubar essa autorizacao.
  *
- * "Mesmo passo" e mesma chave, mesma acao, mesmo destino e mesma entrada. So a
- * chave nao basta: quem nao e pessoa trocaria o `github.review_comment`
- * autorizado por um `slack.post` em outro canal debaixo da mesma chave, e a
- * autorizacao dada para uma coisa passaria a valer para outra.
+ * "Mesmo passo" e o passo inteiro igual, com chave, acao, destino, entrada,
+ * parametros e condicao. So a chave nao basta: quem nao e pessoa trocaria o
+ * `github.review_comment` autorizado por um `slack.post` em outro canal debaixo
+ * da mesma chave, e a autorizacao dada para uma coisa passaria a valer para
+ * outra.
  *
  * E tambem a mesma cadeia acima: os passos de que a acao depende, direta ou
  * indiretamente, com prompt, modelo e ferramentas iguais. A pessoa autorizou
@@ -623,14 +624,10 @@ function demoteActions(
   const steps = spec.steps.map((step) => {
     if (step.type !== "action" || step.mode === "approve") return step;
     const antes = previous.get(step.key);
-    if (
-      antes !== undefined &&
-      antes.mode === step.mode &&
-      antes.action === step.action &&
-      antes.target === step.target &&
-      antes.input === step.input &&
-      mesmaCadeia(step.key)
-    ) {
+    // O passo inteiro, e não só alguns campos: `params` (a URL de um
+    // `http.request`), `when`, `optional` e o resto mudam para onde e quando a
+    // ação sai, e a autorização dada antes não cobre isso.
+    if (antes !== undefined && JSON.stringify(antes) === JSON.stringify(step) && mesmaCadeia(step.key)) {
       return step;
     }
 

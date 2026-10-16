@@ -10,6 +10,8 @@ type Db = typeof defaultDb;
 
 /** Gatilho de pacote restrito a chats cujos chats ninguém escolheu: vazio valeria para todos. */
 export const MOTIVO_CHATS = "este gatilho era restrito a chats; escolha os chats antes de ligar";
+export const MOTIVO_VALER_PARA_TODOS =
+  "este gatilho era restrito a chats; escolha os chats, ou confirme de forma explícita que vale para todos os chats";
 export const esperaChats = (c: TriggerConfig): boolean => c.kind === "teams-inbox" && c.chatsPendentes > 0 && c.chats.length === 0;
 
 export type TriggerRow = typeof schema.triggers.$inferSelect;
@@ -67,7 +69,7 @@ export class TriggerService {
   async set(
     agentId: string,
     config: TriggerConfigInput,
-    options: { id?: string; enabled?: boolean; fromTool?: boolean } = {},
+    options: { id?: string; enabled?: boolean; fromTool?: boolean; valerParaTodosOsChats?: boolean } = {},
   ): Promise<TriggerEntry> {
     // Ligar é o passo que deixa o agent acordar e gastar sozinho, e só uma
     // pessoa dá esse passo, pela interface ou pela linha de comando.
@@ -86,6 +88,17 @@ export class TriggerService {
       ? await this.requireRow(options.id, agentId)
       : await this.sameConfigRow(agentId, parsed);
     if (esperaChats(parsed) && (options.enabled ?? existing?.enabled ?? false)) throw new Error(MOTIVO_CHATS);
+    // Zerar a pendência sem escolher chats faz o gatilho valer para todos: só com o aviso explícito.
+    if (
+      existing !== undefined &&
+      esperaChats(toEntry(existing).config) &&
+      parsed.kind === "teams-inbox" &&
+      parsed.chatsPendentes === 0 &&
+      parsed.chats.length === 0 &&
+      options.valerParaTodosOsChats !== true
+    ) {
+      throw new Error(MOTIVO_VALER_PARA_TODOS);
+    }
 
     if (existing) {
       const [updated] = await this.db

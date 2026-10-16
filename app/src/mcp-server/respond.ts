@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { limparSegredos } from "../pacote/limpeza.js";
+import { redactSecrets } from "./redact.js";
 
 /**
  * Resposta de ferramenta no formato do protocolo.
@@ -13,13 +15,15 @@ import { z } from "zod";
  */
 export async function respond(produce: () => Promise<unknown>) {
   try {
-    const value = await produce();
+    // Toda saída passa pela redação: nenhuma ferramenta devolve credencial,
+    // mesmo a que lê texto livre (payload da fila, erro de gatilho, conversa).
+    const value = redactSecrets(await produce());
     return {
       content: [{ type: "text" as const, text: JSON.stringify(value ?? null, null, 2) }],
     };
   } catch (err) {
     return {
-      content: [{ type: "text" as const, text: describe(err) }],
+      content: [{ type: "text" as const, text: limparSegredos(describe(err)) }],
       isError: true,
     };
   }

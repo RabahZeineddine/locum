@@ -73,8 +73,15 @@ export function origemParaLeitura(entrada: McpServerEntry, vinculo: McpVinculo |
   };
 }
 
-/** Chave que, pelo nome, guarda credencial. `perRunTokens` e `maxTokens` são contagem e não entram. */
-const CHAVE_SECRETA = /(token|secret|password|senha|authorization|api[_-]?key|cookie)$/i;
+/**
+ * Chave que, pelo nome, guarda credencial. Ancorada no fim: `perRunTokens` e
+ * `maxTokens` são contagem, e `credentialRef` é o nome no cofre.
+ */
+const CHAVE_SECRETA =
+  /(token|secret|password|senha|authorization|api[_-]?key|cookie|credential|private[_-]?key|client[_-]?secret|refresh[_-]?token|id[_-]?token)$/i;
+
+/** O que um campo `credential` diz sobre o cofre sem ser o segredo: estado, e o marcador. */
+const ESTADO_DE_CREDENCIAL = /^(ok|falta|dispensa|true|false)$/;
 
 /**
  * Passa pelo valor inteiro, em profundidade, antes de ele sair numa ferramenta
@@ -91,7 +98,7 @@ export function redactSecrets<T>(valor: T): T {
       return Object.fromEntries(
         Object.entries(v).map(([chave, x]) => [
           chave,
-          typeof x === "string" && CHAVE_SECRETA.test(chave) && x !== CREDENTIAL_PLACEHOLDER && x !== ""
+          typeof x === "string" && CHAVE_SECRETA.test(chave) && x !== CREDENTIAL_PLACEHOLDER && x !== "" && !ESTADO_DE_CREDENCIAL.test(x)
             ? HIDDEN_VALUE
             : passar(x),
         ]),

@@ -29,7 +29,13 @@ const PADROES_DE_SEGREDO: readonly [RegExp, string][] = [
   [/\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@:?#]+(?::[^\s/@?#]*)?@/gi, "$1"],
   // Segredo na query.
   [/([?&](?:access_token|refresh_token|id_token|token|api[_-]?key|key|secret|client_secret|password|sig|signature|code)=)[^&\s"')<>]+/gi, `$1${SEGREDO}`],
-  [/\b(?:senha|password|passwd|pwd|secret|segredo)\s*[:=]\s*\S+/gi, SEGREDO],
+  // JSON serializado: "access_token":"...", "clientSecret": "...".
+  [/("(?:[\w.-]*(?:token|secret|password|passwd|senha|api[_-]?key|private[_-]?key|credential)[\w.-]*)"\s*:\s*")[^"]+"/gi, `$1${SEGREDO}"`],
+  // Linha de ambiente: NOME_TOKEN=..., API_KEY=..., CLIENT_SECRET=...
+  [/\b[A-Z][A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|PASSWD|API_?KEY|PRIVATE_?KEY|CREDENTIAL)S?\s*=\s*\S+/g, SEGREDO],
+  // Cookie e Set-Cookie, a linha inteira.
+  [/\b(?:Set-)?Cookie\s*:[^\n]+/gi, `Cookie: ${SEGREDO}`],
+  [/\b(?:senha|password|passwd|pwd|secret|segredo|(?:access|refresh|id|api|auth)[_-]?token|token|api[_-]?key)\s*[:=]\s*\S+/gi, SEGREDO],
   [/\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}\b/g, SEGREDO],
   [/\bgithub_pat_[A-Za-z0-9_]{20,}\b/g, SEGREDO],
   [/\bglpat-[A-Za-z0-9_-]{20,}/g, SEGREDO],

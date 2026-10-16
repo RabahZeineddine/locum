@@ -96,6 +96,16 @@ A lição vale para o resto do projeto: a invariante não é "não existe ferram
 de aprovar", é "nada sai sem uma pessoa ter dito que sai". Cada capacidade nova
 precisa ser conferida contra a segunda formulação, não contra a primeira.
 
+### 7. Paridade total com a tela, e a confirmação é do cliente
+
+Emenda de 15 de outubro de 2026: por decisão do usuário, o MCP tem paridade
+total com a tela; a confirmação de cada escrita é do cliente (Claude Code) pelas
+anotações das ferramentas. Ele usa o Locum só pelo Claude Code, e o servidor que
+recusava o que a tela faz decidia por ele. A decisão 4 fica substituída nisso:
+`decide_approval` existe, pela mesma gate do executor, anotada como destrutiva e
+de mundo aberto, e o Claude Code pergunta antes de cada chamada. A regra que
+continua valendo é a mesma: nada sai sem uma pessoa ter dito que sai.
+
 ## Consequências
 
 O cadastro de servidores MCP sai da lista fixa em `src/cli.ts` e passa para o

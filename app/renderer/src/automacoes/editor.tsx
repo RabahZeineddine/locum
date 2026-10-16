@@ -93,6 +93,23 @@ export function EditorDeAutomacao({
   return <EditorCarregado abrirGatilho={abrirGatilho} automacao={lida.data} navegar={navegar} voltar={voltar} />;
 }
 
+/**
+ * O botão "valer para todos os chats": o gatilho gravado esperava a escolha de
+ * chats e a pessoa zerou a pendência sem escolher nenhum. O serviço só aceita
+ * isso com o aviso explícito.
+ */
+function valeParaTodosOsChats(g: GatilhoNoCanvas, gravados: readonly GatilhoNoCanvas[]): boolean {
+  const antes = gravados.find((x) => x.id !== undefined && x.id === g.id)?.config;
+  return (
+    antes?.kind === "teams-inbox" &&
+    antes.chatsPendentes > 0 &&
+    antes.chats.length === 0 &&
+    g.config.kind === "teams-inbox" &&
+    g.config.chatsPendentes === 0 &&
+    g.config.chats.length === 0
+  );
+}
+
 function paraRascunho(a: Automacao): Rascunho {
   return { spec: a.version.spec, gatilhos: gatilhosDoCadastro(a.triggers) };
 }
@@ -168,6 +185,7 @@ function EditorCarregado({
         ...(g.id === undefined ? {} : { id: g.id }),
         config: g.config,
         enabled: g.enabled,
+        ...(valeParaTodosOsChats(g, salvo.gatilhos) ? { valerParaTodosOsChats: true } : {}),
       })),
       note: nota.trim() || t("automations.editor.noteDefault"),
     }).then(

@@ -372,6 +372,19 @@ export class McpOAuthService {
     return valor.startsWith("Bearer ") ? valor.slice("Bearer ".length) : valor;
   }
 
+  /**
+   * O token como está guardado, sem renovar e sem gravar nada. Para o processo
+   * `--mcp`, que não faz o papel do aplicativo: `vencido` diz que quem renova é
+   * o Locum aberto.
+   */
+  lerSemRenovar(name: string): { token: string | null; vencido: boolean } {
+    const valor = this.deps.secrets.get(this.tokenRef(name));
+    if (valor === undefined) return { token: null, vencido: false };
+    const grant = this.readGrant(name);
+    const vencido = grant?.expiresAt != null && grant.expiresAt <= this.deps.now();
+    return { token: valor.startsWith("Bearer ") ? valor.slice("Bearer ".length) : valor, vencido };
+  }
+
   /** Esquece token e registro. O cadastro do servidor fica, sem credencial. */
   async disconnect(name: string): Promise<void> {
     this.deps.secrets.remove(this.tokenRef(name));

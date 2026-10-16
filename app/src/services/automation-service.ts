@@ -9,6 +9,11 @@ export interface AutomationTriggerInput {
   config: TriggerConfigInput;
   /** Ausente mantém o que estava, e gatilho novo nasce desligado. */
   enabled?: boolean;
+  /**
+   * O gatilho de pacote que esperava a escolha de chats passa a valer para
+   * todos. Sem este aviso explícito, zerar a pendência com a lista vazia é recusado.
+   */
+  valerParaTodosOsChats?: boolean;
 }
 
 export interface AutomationSaveInput {
@@ -51,21 +56,11 @@ export class AutomationService {
     return { version, triggers: await this.triggers.list(agentId) };
   }
 
-  /**
-   * `actor` "agent" é o servidor MCP: o passo de ação sobe de modo só até
-   * aprovação, escrita nova de servidor `write` e teto de gasto maior são
-   * recusados, e gatilho não é ligado nem herda o ligado quando a configuração
-   * muda. Sem isso a automação gravada de fora contornaria o que o `upsert_agent`
-   * e o `set_trigger` já travam.
-   */
-  async save(input: AutomationSaveInput, actor: "human" | "agent" = "human"): Promise<Automation> {
+  async save(input: AutomationSaveInput): Promise<Automation> {
     const agentId = input.spec.id;
     // Antes de qualquer escrita: um gatilho inválido não pode deixar para
     // trás um spec novo gravado com os gatilhos antigos.
     for (const gatilho of input.triggers) TriggerConfig.parse(gatilho.config);
-    if (actor === "agent" && input.triggers.some((g) => g.enabled === true)) {
-      throw new Error("gatilho so e ligado por uma pessoa, pela interface ou pela linha de comando");
-    }
 
     let version: AgentVersion;
     if (input.create === true) {
@@ -74,12 +69,9 @@ export class AutomationService {
       }
       if ((await this.agents.get(agentId)) !== undefined) throw new Error(`já existe uma automação "${agentId}"`);
       const nota = input.note.trim() || "criada no canvas";
-      version = await this.agents.upsert(input.spec, nota, actor);
-    } else if (actor === "human") {
-      version = await this.agents.saveEdited(agentId, input.spec, input.note);
+      version = await this.agents.upsert(input.spec, nota, "human");
     } else {
-      if (!(await this.agents.get(agentId))) throw new Error(`agent "${agentId}" não existe`);
-      version = await this.agents.upsert(input.spec, input.note.trim() || undefined, actor);
+      version = await this.agents.saveEdited(agentId, input.spec, input.note);
     }
 
     const atuais = await this.triggers.list(agentId);
@@ -88,7 +80,7 @@ export class AutomationService {
       const salvo = await this.triggers.set(agentId, gatilho.config, {
         ...(gatilho.id === undefined ? {} : { id: gatilho.id }),
         ...(gatilho.enabled === undefined ? {} : { enabled: gatilho.enabled }),
-        ...(actor === "agent" ? { fromTool: true } : {}),
+        ...(gatilho.valerParaTodosOsChats === true ? { valerParaTodosOsChats: true } : {}),
       });
       mantidos.add(salvo.id);
     }

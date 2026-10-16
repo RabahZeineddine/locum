@@ -4,8 +4,8 @@ import { agentService } from "../services/agent-service.js";
 import { machineId } from "../services/machine-service.js";
 import { mcpService } from "../services/mcp-service.js";
 import { providerService } from "../services/provider-service.js";
-import { esperaChats, MOTIVO_CHATS, triggerService } from "../services/trigger-service.js";
-import { TriggerConfig, type AgentSpec, type McpServerConfig, type McpServerInput, type TriggerConfigInput } from "../config/types.js";
+import { triggerService } from "../services/trigger-service.js";
+import { type AgentSpec, type McpServerConfig, type McpServerInput, type TriggerConfigInput } from "../config/types.js";
 import { redactServerConfig, restoreHidden } from "./redact.js";
 import { respond } from "./respond.js";
 
@@ -85,7 +85,7 @@ async function exigirLigado(name: string): Promise<void> {
   const entrada = await mcpService.get(name);
   if (entrada === undefined) throw new Error(`servidor MCP "${name}" nao cadastrado`);
   if (!entrada.enabled) {
-    throw new Error(`servidor MCP "${name}" está desligado; uma pessoa habilita na tela do Locum antes do teste`);
+    throw new Error(`servidor MCP "${name}" está desligado; ligue com set_mcp_server_enabled antes do teste`);
   }
 }
 
@@ -127,7 +127,7 @@ export function registerConfigTools(server: McpServer): void {
     "register_mcp_server",
     {
       description:
-        "Registers or updates an MCP server that Locum consumes as a client. The name is the key that steps reference. On update, fields left out keep their current value; changing transport, url or command unlinks the stored credential. A server linked to an origin (a plugin, Claude Code, Cursor...) refuses command, env, url and headers changes: those are edited in the origin file, or a person unlinks it in the app. A new server, or one whose command or url changed, is saved disabled: only a person enables it, in the app or with `locum mcp:enable`. From here a server can be disabled, never enabled.",
+        "Registers or updates an MCP server that Locum consumes as a client. The name is the key that steps reference. On update, fields left out keep their current value; changing transport, url or command unlinks the stored credential. A server linked to an origin (a plugin, Claude Code, Cursor...) refuses command, env, url and headers changes: those are edited in the origin file, or a person unlinks it in the app. A new server, or one whose command or url changed, is saved disabled; turning it on is the separate set_mcp_server_enabled, which runs its command with the powers of the app.",
       inputSchema: {
         name: z.string().min(1),
         transport: z.enum(["stdio", "http", "sse"]),
@@ -146,7 +146,7 @@ export function registerConfigTools(server: McpServer): void {
         enabled: z
           .boolean()
           .optional()
-          .describe("false disables the server; true is refused, only a person enables it"),
+          .describe("false disables the server; true is refused here, use set_mcp_server_enabled"),
       },
     },
     async ({ enabled, ...config }) =>
@@ -156,7 +156,7 @@ export function registerConfigTools(server: McpServer): void {
         // por aqui cadastra, mas não liga: servidor novo, ou com outro
         // destino, nasce desligado até a pessoa ver o comando na tela.
         if (enabled === true) {
-          throw new Error("servidor MCP só é habilitado por uma pessoa, na tela do Locum ou com `locum mcp:enable`");
+          throw new Error("servidor MCP é ligado em passo separado: set_mcp_server_enabled, na tela do Locum ou com `locum mcp:enable`");
         }
         const atual = await mcpService.get(config.name);
         // Ferramenta de servidor `write` não entra em passo pelo MCP. Baixar o
@@ -174,7 +174,7 @@ export function registerConfigTools(server: McpServer): void {
           enabled: ligado,
           ...(ligado
             ? {}
-            : { aviso: "servidor gravado desligado; uma pessoa habilita na tela do Locum ou com `locum mcp:enable`" }),
+            : { aviso: "servidor gravado desligado; ligue com set_mcp_server_enabled, na tela do Locum ou com `locum mcp:enable`" }),
         };
       }),
   );
@@ -239,7 +239,7 @@ export function registerConfigTools(server: McpServer): void {
     "set_budget",
     {
       description:
-        "Adjusts an agent's spending cap. The budget lives in the spec, so this records a new version. An absent field stays as is. From here a cap can only go down or be added; raising or removing one is refused and must be done by a person in the app. The token cap is what protects a model without a registered price, whose dollar cost stays at zero.",
+        "Adjusts an agent's spending cap. The budget lives in the spec, so this records a new version. An absent field stays as is. From here a cap can only go down or be added; raising or removing one is refused here and is done with save_agent_edited, as the editor does. The token cap is what protects a model without a registered price, whose dollar cost stays at zero.",
       inputSchema: {
         agentId: z.string(),
         perRunUsd: z.number().positive().nullable().optional(),
@@ -264,7 +264,7 @@ export function registerConfigTools(server: McpServer): void {
     "set_trigger",
     {
       description:
-        "Registers or updates an agent trigger. It starts disabled; turning it on is set_trigger_enabled (enabled true is refused here). Changing the config of an enabled trigger disables it again. For teams-inbox, chats lists the group and direct chats to watch (ids from list_teams_chats; empty means all chats), chatsPendentes is the count a package left to choose (it blocks turning on until chats are chosen, so it cannot be cleared here without choosing chats), and filtroIa is the optional AI filter described below.",
+        "Registers or updates an agent trigger. It starts disabled; turning it on is set_trigger_enabled (enabled true is refused here). Changing the config of an enabled trigger disables it again. For teams-inbox, chats lists the group and direct chats to watch (ids from list_teams_chats; empty means all chats), chatsPendentes is the count a package left to choose (it blocks turning on until chats are chosen; clearing it with an empty chats list is refused, use allow_all_chats_for_trigger for that), and filtroIa is the optional AI filter described below.",
       inputSchema: {
         agentId: z.string(),
         config: z
@@ -278,7 +278,6 @@ export function registerConfigTools(server: McpServer): void {
     },
     async ({ agentId, config, triggerId, enabled }) =>
       respond(async () => {
-        await recusarSoltarChats(triggerId, config);
         return triggerService.set(agentId, config as unknown as TriggerConfigInput, {
           id: triggerId,
           enabled,
@@ -288,16 +287,3 @@ export function registerConfigTools(server: McpServer): void {
   );
 }
 
-/**
- * Gatilho do pacote que espera escolha de chats não pode ser liberado zerando a
- * pendência sem escolher: vazio vale para todos os chats, e é isso que ela evita.
- */
-async function recusarSoltarChats(triggerId: string | undefined, config: Record<string, unknown>): Promise<void> {
-  if (triggerId === undefined) return;
-  const atual = await triggerService.get(triggerId);
-  if (atual === undefined || !esperaChats(atual.config)) return;
-  const novo = TriggerConfig.safeParse(config);
-  if (novo.success && novo.data.kind === "teams-inbox" && novo.data.chats.length === 0 && novo.data.chatsPendentes === 0) {
-    throw new Error(MOTIVO_CHATS);
-  }
-}
