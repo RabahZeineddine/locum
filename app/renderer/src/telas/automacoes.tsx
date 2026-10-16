@@ -19,7 +19,8 @@ import { useTranslation } from "react-i18next";
 import type { TriggerConfig } from "../../../src/config/types";
 import { EditorDeAutomacao } from "../automacoes/editor";
 import { ImportarPacote } from "../automacoes/importar-pacote";
-import { appDoGatilho, resumoDoGatilho, Selo, tituloDoGatilho } from "../automacoes/visual";
+import { linhaDoGatilho } from "@/lib/titulo-do-gatilho";
+import { appDoGatilho, resumoDoGatilho, Selo } from "../automacoes/visual";
 import { InstalacaoDeTemplate } from "../instalar-template";
 import { AutomacoesLegado } from "./automacoes-legado";
 import type { TelaProps } from "../rotas";
@@ -357,8 +358,8 @@ export function LinhaDaAutomacao({
             >
               <Selo app={appDoGatilho(g.config.kind)} id={g.config.kind} tamanho="sm" />
               <StatusDot estado={g.enabled ? "ok" : "ocioso"} />
-              <span className="truncate" title={`${tituloDoGatilho(t, g.config)} · ${resumoDoGatilho(t, g.config, i18n.language)}`}>
-                {tituloDoGatilho(t, g.config)} · {resumoDoGatilho(t, g.config, i18n.language)}
+              <span className="truncate" title={linhaDoGatilho(t, g.config, resumoDoGatilho(t, g.config, i18n.language))}>
+                {linhaDoGatilho(t, g.config, resumoDoGatilho(t, g.config, i18n.language))}
               </span>
             </span>
           ))

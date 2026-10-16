@@ -2217,13 +2217,17 @@
       },
       "slack-inbox": {
         "title": "Menção ou DM no Slack",
-        "summary": "menções e DMs",
         "mentions": "Menções a você",
-        "dms": "Mensagens diretas"
+        "dms": "Mensagens diretas",
+        "titles": {
+          "m": "Menção no Slack",
+          "d": "DM no Slack",
+          "md": "Menção ou DM no Slack",
+          "none": "Slack sem nenhum modo ligado"
+        }
       },
       "teams-inbox": {
         "title": "Menção ou DM no Teams",
-        "summary": "menções e conversas",
         "mentions": "Menções a você",
         "dms": "Conversas diretas",
         "prLinks": "Mensagem com link de PR",
@@ -2246,7 +2250,6 @@
         "listChats": "Listar chats",
         "loadingChats": "Lendo chats...",
         "chatsHint": "Vazio vale para todos os chats em grupo e diretos. Com chats marcados, mensagem direta, link de PR e menção só contam neles, os outros nem são lidos, e menção em chat de reunião deixa de contar.",
-        "summaryChats": "menções e conversas · {{count}} chats",
         "reloadChats": "Recarregar lista",
         "chatsMax": "O máximo é {{max}} chats. Desmarque um para escolher outro.",
         "chatsPending": "Este gatilho era restrito a chats no pacote. Escolha os chats antes de ligar: vazio valeria para todos.",
@@ -2254,6 +2257,25 @@
         "chatType": {
           "oneOnOne": "1:1",
           "group": "grupo"
+        },
+        "titles": {
+          "m": "Menção no Teams",
+          "d": "DM no Teams",
+          "md": "Menção ou DM no Teams",
+          "p": "Link de PR no Teams",
+          "mp": "Menção ou link de PR no Teams",
+          "dp": "DM ou link de PR no Teams",
+          "mdp": "Menção, DM ou link de PR no Teams",
+          "none": "Teams sem nenhum modo ligado"
+        },
+        "scope": {
+          "all": "todas as conversas",
+          "channels_one": "{{count}} canal",
+          "channels_other": "{{count}} canais",
+          "chats_one": "{{count}} chat",
+          "chats_other": "{{count}} chats",
+          "chats_zero": "{{count}} chats",
+          "channels_zero": "{{count}} canais"
         }
       },
       "poll": {

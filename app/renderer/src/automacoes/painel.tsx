@@ -31,6 +31,7 @@ import { SeletorDeFerramentas, SeletorDeModelo, useCatalogo } from "../editor-ag
 import type { RotaId } from "../rotas";
 import { Alternador, Campo, CAMPO, Minutos } from "./campos";
 import { GatilhoDoGithub, ListaDeDescartes } from "./gatilho-github";
+import { escopoDoGatilho } from "@/lib/titulo-do-gatilho";
 import { appDoGatilho, appDoPasso, Selo, tituloDoGatilho, tituloDoPasso } from "./visual";
 
 type Tracker = ReadResult<"trackers.list">[number];
@@ -79,10 +80,10 @@ export function PainelDoNo({
 
   const cabecalho =
     gatilho !== undefined
-      ? { app: appDoGatilho(gatilho.config.kind), id: gatilho.config.kind, titulo: tituloDoGatilho(t, gatilho.config) }
+      ? { app: appDoGatilho(gatilho.config.kind), id: gatilho.config.kind, titulo: tituloDoGatilho(t, gatilho.config), escopo: escopoDoGatilho(t, gatilho.config) }
       : (() => {
           const id = componenteDoPasso(passo!);
-          return { app: appDoPasso(id), id, titulo: tituloDoPasso(t, id) };
+          return { app: appDoPasso(id), id, titulo: tituloDoPasso(t, id), escopo: "" };
         })();
 
   const trocarGatilho = (config: TriggerConfig): void =>
@@ -99,7 +100,16 @@ export function PainelDoNo({
     >
       <div className="flex items-center gap-2">
         <Selo app={cabecalho.app} id={cabecalho.id} tamanho="sm" />
-        <span className="flex-1 truncate text-[13px] font-medium">{cabecalho.titulo}</span>
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate text-[13px] font-medium" title={cabecalho.titulo}>
+            {cabecalho.titulo}
+          </span>
+          {cabecalho.escopo === "" ? null : (
+            <span className="text-muted-foreground truncate text-[11px]" title={cabecalho.escopo}>
+              {cabecalho.escopo}
+            </span>
+          )}
+        </span>
         <button
           aria-label={t("automations.panel.close")}
           className="text-muted-foreground hover:text-foreground cursor-pointer rounded p-1"

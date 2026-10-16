@@ -2167,13 +2167,17 @@
       },
       "slack-inbox": {
         "title": "Slack mention or DM",
-        "summary": "mentions and DMs",
         "mentions": "Mentions of you",
-        "dms": "Direct messages"
+        "dms": "Direct messages",
+        "titles": {
+          "m": "Mention in Slack",
+          "d": "DM in Slack",
+          "md": "Mention or DM in Slack",
+          "none": "Slack with no mode on"
+        }
       },
       "teams-inbox": {
         "title": "Teams mention or DM",
-        "summary": "mentions and chats",
         "mentions": "Mentions of you",
         "dms": "Direct chats",
         "prLinks": "Message with a PR link",
@@ -2196,7 +2200,6 @@
         "listChats": "List chats",
         "loadingChats": "Reading chats...",
         "chatsHint": "Empty means every group and direct chat. With chats picked, direct messages, PR links and mentions only count in them, the others are not even read, and mentions in meeting chats stop counting.",
-        "summaryChats": "mentions and chats · {{count}} chats",
         "reloadChats": "Reload list",
         "chatsMax": "The maximum is {{max}} chats. Untick one to pick another.",
         "chatsPending": "This trigger was limited to chats in the package. Pick the chats before turning it on: empty would mean all of them.",
@@ -2204,6 +2207,25 @@
         "chatType": {
           "oneOnOne": "1:1",
           "group": "group"
+        },
+        "titles": {
+          "m": "Mention in Teams",
+          "d": "DM in Teams",
+          "md": "Mention or DM in Teams",
+          "p": "PR link in Teams",
+          "mp": "Mention or PR link in Teams",
+          "dp": "DM or PR link in Teams",
+          "mdp": "Mention, DM or PR link in Teams",
+          "none": "Teams with no mode on"
+        },
+        "scope": {
+          "all": "all conversations",
+          "channels_one": "{{count}} channel",
+          "channels_other": "{{count}} channels",
+          "chats_one": "{{count}} chat",
+          "chats_other": "{{count}} chats",
+          "chats_zero": "{{count}} chats",
+          "channels_zero": "{{count}} channels"
         }
       },
       "poll": {
