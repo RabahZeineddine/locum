@@ -10,6 +10,8 @@ type Db = typeof defaultDb;
 
 /** Gatilho de pacote restrito a chats cujos chats ninguém escolheu: vazio valeria para todos. */
 export const MOTIVO_CHATS = "este gatilho era restrito a chats; escolha os chats antes de ligar";
+export const MOTIVO_VALER_PARA_TODOS =
+  "este gatilho era restrito a chats; escolha os chats, ou confirme de forma explícita que vale para todos os chats";
 export const esperaChats = (c: TriggerConfig): boolean => c.kind === "teams-inbox" && c.chatsPendentes > 0 && c.chats.length === 0;
 
 export type TriggerRow = typeof schema.triggers.$inferSelect;
@@ -32,6 +34,31 @@ export interface TriggerEntry {
  * Quem consome isto e o agendador em `triggers/scheduler.ts`, que so bate
  * gatilho habilitado.
  */
+/**
+ * O que a gravação de um gatilho recusa por regra de chats, dado o gatilho que
+ * já existe (se existe): ligar um que espera a escolha de chats, ou zerar a
+ * pendência sem escolher chats, o que o faria valer para todos. Quem grava
+ * vários de uma vez confere tudo por aqui antes de tocar em qualquer um.
+ */
+export function recusaDaGravacao(
+  existing: { config: TriggerConfig; enabled: boolean } | undefined,
+  parsed: TriggerConfig,
+  options: { enabled?: boolean; valerParaTodosOsChats?: boolean },
+): string | null {
+  if (esperaChats(parsed) && (options.enabled ?? existing?.enabled ?? false)) return MOTIVO_CHATS;
+  if (
+    existing !== undefined &&
+    esperaChats(existing.config) &&
+    parsed.kind === "teams-inbox" &&
+    parsed.chatsPendentes === 0 &&
+    parsed.chats.length === 0 &&
+    options.valerParaTodosOsChats !== true
+  ) {
+    return MOTIVO_VALER_PARA_TODOS;
+  }
+  return null;
+}
+
 export class TriggerService {
   constructor(private readonly db: Db = defaultDb) {}
 
@@ -67,7 +94,7 @@ export class TriggerService {
   async set(
     agentId: string,
     config: TriggerConfigInput,
-    options: { id?: string; enabled?: boolean; fromTool?: boolean } = {},
+    options: { id?: string; enabled?: boolean; fromTool?: boolean; valerParaTodosOsChats?: boolean } = {},
   ): Promise<TriggerEntry> {
     // Ligar é o passo que deixa o agent acordar e gastar sozinho, e só uma
     // pessoa dá esse passo, pela interface ou pela linha de comando.
@@ -85,7 +112,8 @@ export class TriggerService {
     const existing = options.id
       ? await this.requireRow(options.id, agentId)
       : await this.sameConfigRow(agentId, parsed);
-    if (esperaChats(parsed) && (options.enabled ?? existing?.enabled ?? false)) throw new Error(MOTIVO_CHATS);
+    const recusa = recusaDaGravacao(existing === undefined ? undefined : toEntry(existing), parsed, options);
+    if (recusa !== null) throw new Error(recusa);
 
     if (existing) {
       const [updated] = await this.db

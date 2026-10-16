@@ -21,9 +21,31 @@ import { createInterface } from "node:readline";
 const TETO_MS = 60_000;
 
 const ESPERADAS = {
-  "--mcp": ["run_agent", "list_agents", "get_run", "describe_steps", "upsert_library_agent"],
+  "--mcp": [
+    "run_agent",
+    "list_agents",
+    "get_run",
+    "describe_steps",
+    "upsert_library_agent",
+    "list_automations",
+    "save_automation",
+    "set_trigger_enabled",
+    "list_connections",
+    "list_pending_approvals",
+    "export_package",
+    "import_package",
+    "decide_approval",
+    "set_mcp_server_enabled",
+    "save_provider_secret",
+    "list_claude_sessions",
+    "agent_chat_send",
+    "set_working_hours",
+  ],
   "--ferramentas": ["http_get", "json_query", "ask_agent"],
 };
+
+/** Quantas ferramentas o servidor do Locum tem hoje; ferramenta que some é regressão de paridade. */
+const MINIMO_DO_MCP = 189;
 
 export async function examinarMcp(binario, argumentos = [], modo = "--mcp") {
   const pasta = mkdtempSync(join(tmpdir(), "locum-mcp-"));
@@ -91,6 +113,12 @@ export async function examinarMcp(binario, argumentos = [], modo = "--mcp") {
     const nomes = tools.map((ferramenta) => ferramenta.name);
     for (const esperado of ESPERADAS[modo]) {
       if (!nomes.includes(esperado)) throw new Error(`ferramenta ${esperado} ausente; vieram ${nomes.join(", ")}`);
+    }
+    if (modo === "--mcp") {
+      // Paridade com a tela: a contagem só cresce, e toda ferramenta diz ao cliente o que faz.
+      if (nomes.length < MINIMO_DO_MCP) throw new Error(`só ${nomes.length} ferramentas, esperava ao menos ${MINIMO_DO_MCP}`);
+      const semAnotacao = tools.filter((ferramenta) => typeof ferramenta.annotations?.readOnlyHint !== "boolean").map((f) => f.name);
+      if (semAnotacao.length > 0) throw new Error(`ferramentas sem anotação: ${semAnotacao.join(", ")}`);
     }
     if (saude !== null) {
       const corpo = JSON.parse(saude.content[0].text);

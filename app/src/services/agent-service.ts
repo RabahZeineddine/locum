@@ -238,7 +238,7 @@ export class AgentService {
     const latest = await this.latestRow(parsed.id);
     if (actor !== "human") {
       refuseLooserBudget((latest?.spec as AgentSpec | undefined)?.budget, parsed.budget);
-      await this.refuseNewWriteServerTools(parsed, latest?.spec);
+      this.refuseWriteByAccount(parsed);
     }
     const guarded = actor === "human" ? { spec: parsed, downgrades: [] } : demoteActions(parsed, latest?.spec);
 
@@ -508,34 +508,12 @@ export class AgentService {
    * agent sem iniciativa (`initiativeId` nulo) nao tem iniciativa para checar.
    */
   /**
-   * Quem não é pessoa não põe em passo ferramenta nova de servidor `write`.
-   *
-   * A classe da ferramenta no passo é declarada por quem grava, e só
-   * `external_write` é barrada em `toolsFor`. Sem esta trava, uma sessão do
-   * servidor MCP declararia como `read` a ferramenta que comenta num PR e ela
-   * rodaria sem passar pela fila. O servidor `write` é o que a pessoa marcou
-   * como capaz de mudar estado; ferramenta dele que já estava no spec gravado
-   * passa, porque alguém a pôs ali antes, e a nova fica para a tela.
+   * Quem não é pessoa não grava escrita pela conta Claude num passo de modelo:
+   * escrita externa vai como passo de ação, pela fila de aprovação. Ferramenta
+   * de servidor `write` entra como na tela, e o cliente MCP confirma a chamada.
    */
-  private async refuseNewWriteServerTools(spec: AgentSpec, stored: unknown): Promise<void> {
+  private refuseWriteByAccount(spec: AgentSpec): void {
     recusarEscritaDaConta(toolRefs(spec));
-    const escrita = new Set(
-      (await this.db.select({ name: schema.mcpServers.name, scope: schema.mcpServers.scope }).from(schema.mcpServers))
-        .filter((linha) => linha.scope === "write")
-        .map((linha) => linha.name),
-    );
-    if (escrita.size === 0) return;
-
-    const anterior = AgentSpec.safeParse(stored);
-    const jaEstavam = new Set(anterior.success ? toolRefs(anterior.data).map(chaveDaTool) : []);
-    const novas = toolRefs(spec).filter((ref) => escrita.has(ref.server) && !jaEstavam.has(chaveDaTool(ref)));
-    if (novas.length === 0) return;
-
-    const nomes = [...new Set(novas.map(chaveDaTool))].join(", ");
-    throw new Error(
-      `${nomes} é de servidor com escopo write; ferramenta assim só entra em passo pela tela do Locum, onde a pessoa decide. ` +
-        `Escrita externa vai como passo de ação, pela fila de aprovação.`,
-    );
   }
 
   private async assertWithinInitiativeScope(spec: AgentSpec): Promise<void> {
@@ -595,10 +573,11 @@ function notaComRebaixamento(note: string | undefined, downgrades: ActionDowngra
  * passo passa: significa que uma pessoa autorizou antes, e reeditar outra parte
  * do spec nao pode derrubar essa autorizacao.
  *
- * "Mesmo passo" e mesma chave, mesma acao, mesmo destino e mesma entrada. So a
- * chave nao basta: quem nao e pessoa trocaria o `github.review_comment`
- * autorizado por um `slack.post` em outro canal debaixo da mesma chave, e a
- * autorizacao dada para uma coisa passaria a valer para outra.
+ * "Mesmo passo" e o passo inteiro igual, com chave, acao, destino, entrada,
+ * parametros e condicao. So a chave nao basta: quem nao e pessoa trocaria o
+ * `github.review_comment` autorizado por um `slack.post` em outro canal debaixo
+ * da mesma chave, e a autorizacao dada para uma coisa passaria a valer para
+ * outra.
  *
  * E tambem a mesma cadeia acima: os passos de que a acao depende, direta ou
  * indiretamente, com prompt, modelo e ferramentas iguais. A pessoa autorizou
@@ -623,14 +602,10 @@ function demoteActions(
   const steps = spec.steps.map((step) => {
     if (step.type !== "action" || step.mode === "approve") return step;
     const antes = previous.get(step.key);
-    if (
-      antes !== undefined &&
-      antes.mode === step.mode &&
-      antes.action === step.action &&
-      antes.target === step.target &&
-      antes.input === step.input &&
-      mesmaCadeia(step.key)
-    ) {
+    // O passo inteiro, e não só alguns campos: `params` (a URL de um
+    // `http.request`), `when`, `optional` e o resto mudam para onde e quando a
+    // ação sai, e a autorização dada antes não cobre isso.
+    if (antes !== undefined && JSON.stringify(antes) === JSON.stringify(step) && mesmaCadeia(step.key)) {
       return step;
     }
 
@@ -670,7 +645,6 @@ function toolRefs(spec: AgentSpec): ToolRef[] {
   return [...spec.defaultTools, ...spec.steps.flatMap((step) => (step.type === "model" ? (step.tools ?? []) : []))];
 }
 
-const chaveDaTool = (ref: ToolRef): string => `${ref.server}.${ref.tool}`;
 
 /**
  * O lado gravado passa pelo zod antes da comparacao porque o JSON so bate se as

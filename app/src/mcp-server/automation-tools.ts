@@ -1,0 +1,195 @@
+import { z } from "zod";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { db } from "../db/index.js";
+import { agentService } from "../services/agent-service.js";
+import { automationService } from "../services/automation-service.js";
+import { esperaChats, triggerService, type TriggerEntry } from "../services/trigger-service.js";
+import { scheduler } from "../triggers/scheduler.js";
+import { lerDescartes } from "../triggers/descartes.js";
+import { lerErro } from "../triggers/erros.js";
+import type { AgentSpec, TriggerConfigInput } from "../config/types.js";
+import { specAtual } from "./config-tools.js";
+import { restoreSpec } from "./redact.js";
+import { limparSegredos } from "../pacote/limpeza.js";
+import { def } from "./tool-def.js";
+
+/**
+ * Automações e gatilhos: o que o canvas faz.
+ *
+ * A automação não tem tabela, é o agent de fluxo mais os gatilhos dele. Gravar
+ * pelo `save_automation` é o que a tela faz ao salvar: como pessoa, e por isso
+ * o passo de ação pode ficar em `auto`. Ligar um gatilho é o que faz o app agir
+ * sozinho com a conta da pessoa, e as ferramentas que ligam ou disparam dizem
+ * isso na descrição e na anotação para o cliente perguntar antes.
+ */
+
+const EFEITO_DE_LIGAR =
+  "Turning on makes the app act by itself with your accounts: it polls, spends model budget and starts runs, and an action step in auto mode publishes without asking. A Teams trigger with prLinks also reacts with 👀 (then ✅, ⚠️ or 💬 by the review verdict) on Teams messages in your name.";
+
+/** O erro do gatilho é texto de fora (resposta de API, mensagem de rede), que só se lê: pode trazer token colado. */
+function semSegredo<E extends { texto: string }>(erro: E | null): E | null {
+  return erro === null ? null : { ...erro, texto: limparSegredos(erro.texto) };
+}
+
+async function paraLeitura(entrada: TriggerEntry) {
+  return {
+    id: entrada.id,
+    agentId: entrada.agentId,
+    kind: entrada.config.kind,
+    enabled: entrada.enabled,
+    config: entrada.config,
+    lastError: semSegredo(await lerErro(db, entrada.id)),
+    ...(esperaChats(entrada.config) ? { blockedUntil: "chats are chosen: set the chats of the trigger, or allow_all_chats_for_trigger" } : {}),
+  };
+}
+
+async function listAutomations() {
+  const agents = await agentService.list();
+  return Promise.all(
+    agents.map(async (agent) => {
+      const latest = await agentService.getLatestVersion(agent.id);
+      const triggers = await Promise.all((await triggerService.list(agent.id)).map(paraLeitura));
+      return {
+        id: agent.id,
+        name: agent.name,
+        latestVersion: latest?.version ?? null,
+        stepCount: latest?.spec.steps.length ?? 0,
+        enabled: triggers.some((t) => t.enabled),
+        triggers,
+      };
+    }),
+  );
+}
+
+async function getAutomation(agentId: string) {
+  const automacao = await automationService.get(agentId);
+  if (automacao === null) throw new Error(`automacao "${agentId}" nao cadastrada`);
+  return {
+    id: agentId,
+    name: automacao.version.spec.name,
+    version: automacao.version.version,
+    note: automacao.version.note,
+    spec: automacao.version.spec,
+    enabled: automacao.triggers.some((t) => t.enabled),
+    triggers: await Promise.all(automacao.triggers.map(paraLeitura)),
+  };
+}
+
+export function registerAutomationTools(server: McpServer): void {
+  def(server, "list_automations", "read",
+    "Lists the automations (a flow agent plus its triggers) with the latest version, the step count, whether any trigger is on, and each trigger with kind, enabled state and last error.",
+    {}, listAutomations);
+
+  def(server, "get_automation", "read",
+    "An automation with the spec of its latest version and its triggers (config, enabled state and last error of each).",
+    { agentId: z.string().describe("automation id, as shown by list_automations") },
+    ({ agentId }) => getAutomation(agentId));
+
+  def(server, "list_triggers", "read",
+    "Triggers of every automation, or of one, with config, enabled state and last error (configuration or poll). A Teams trigger from a package that still waits for its chats says so and cannot be turned on.",
+    { agentId: z.string().optional().describe("only the triggers of this automation") },
+    async ({ agentId }) => Promise.all((await triggerService.list(agentId)).map(paraLeitura)));
+
+  def(server, "list_trigger_discards", "read",
+    "The latest pull requests a trigger saw and did not turn into an event, with the reason of each, newest first. Reads what the polling already recorded.",
+    { triggerId: z.string().min(1) },
+    async ({ triggerId }) => {
+      if ((await triggerService.get(triggerId)) === undefined) throw new Error(`gatilho ${triggerId} nao cadastrado`);
+      return lerDescartes(db, triggerId);
+    });
+
+  def(server, "get_trigger_schedule", "read",
+    "Every trigger with its schedule: when it last fired and when the scheduler will wake it next (null for a disabled trigger, and for a webhook).",
+    {}, () => scheduler.schedule());
+
+  def(server, "suggest_automation_id", "read",
+    "A free automation id derived from a name, for a new automation.",
+    { name: z.string().min(1) }, ({ name }) => automationService.suggestId(name));
+
+  def(server, "preview_github_trigger", "read-external",
+    "What the GitHub polling would do now with a poll trigger config, which may not be saved: each open pull request with whether it enters or not and why. Reads GitHub with your token and writes no cursor, event or discard.",
+    { config: z.record(z.string(), z.unknown()).describe('a {"kind":"poll","source":"github",...} config, as in set_trigger') },
+    async ({ config }) => (await import("../services/trigger-preview.js")).previaDoGatilho(config as unknown as TriggerConfigInput));
+
+  def(server, "save_automation", "publish",
+    "Records an automation as the app screen does when it saves: the flow spec (AgentSpec, as in upsert_agent) as a new immutable version, and its triggers in one call. Triggers with an id update that trigger, the ones without id are new, and existing triggers left out of the list are removed. Saved as a person: an action step can be set to auto here, and then it publishes without approval once the automation runs (upsert_agent, in contrast, lowers actions to approval). A new trigger starts disabled unless enabled is true, which turns it on (so this tool acts like set_automation_enabled: " + EFEITO_DE_LIGAR + "). A Teams trigger from a package that waits for its chats refuses to be saved empty unless valerParaTodosOsChats is true. Without create the automation must already exist; with create the id must be free.",
+    {
+      spec: z.record(z.string(), z.unknown()).describe("full AgentSpec: id, name, steps and the rest of the get_agent format"),
+      triggers: z
+        .array(
+          z.object({
+            id: z.string().optional().describe("an existing trigger of this automation, to update it"),
+            config: z.record(z.string(), z.unknown()).describe("trigger config, in the formats of set_trigger"),
+            enabled: z.boolean().optional().describe("true turns the trigger on: " + EFEITO_DE_LIGAR),
+            valerParaTodosOsChats: z.boolean().optional().describe("the trigger that waited for the choice of chats now covers all chats"),
+          }),
+        )
+        .describe("the whole list of triggers the automation should have"),
+      note: z.string().describe("what changed, stored with the version"),
+      create: z.boolean().optional().describe("true for a new automation: refused when the id already exists"),
+    },
+    async ({ spec, triggers, note, create }) => {
+      const { spec: inteiro, semValor } = restoreSpec(await specAtual(spec), spec);
+      const salvo = await automationService.save({
+        spec: inteiro as unknown as AgentSpec,
+        triggers: triggers.map((t) => ({
+          ...(t.id === undefined ? {} : { id: t.id }),
+          config: t.config as unknown as TriggerConfigInput,
+          ...(t.enabled === undefined ? {} : { enabled: t.enabled }),
+          ...(t.valerParaTodosOsChats === undefined ? {} : { valerParaTodosOsChats: t.valerParaTodosOsChats }),
+        })),
+        note,
+        ...(create === undefined ? {} : { create }),
+      });
+      return {
+        agentId: salvo.version.agentId,
+        version: salvo.version.version,
+        ...(semValor.length > 0 ? { hiddenWithoutValue: semValor } : {}),
+        triggers: await Promise.all(salvo.triggers.map(paraLeitura)),
+      };
+    });
+
+  def(server, "set_automation_enabled", "publish",
+    "Turns every trigger of an automation on or off. " + EFEITO_DE_LIGAR + " Turning off stops it waking by itself; the agent can still run by hand. A Teams trigger from a package that still waits for its chats blocks turning on.",
+    { agentId: z.string(), enabled: z.boolean() },
+    async ({ agentId, enabled }) => {
+      if (!(await agentService.get(agentId))) throw new Error(`automacao "${agentId}" nao cadastrada`);
+      return Promise.all((await automationService.setEnabled(agentId, enabled)).map(paraLeitura));
+    });
+
+  def(server, "set_trigger_enabled", "publish",
+    "Turns one trigger on or off. " + EFEITO_DE_LIGAR + " A Teams trigger from a package that still waits for its chats (chatsPendentes) blocks turning on until the chats are chosen.",
+    { triggerId: z.string().min(1), enabled: z.boolean() },
+    async ({ triggerId, enabled }) => paraLeitura(await triggerService.setEnabled(triggerId, enabled)));
+
+  def(server, "remove_trigger", "danger",
+    "Removes a trigger, with its recorded discards and last error. The automation stays and can still run by hand. Irreversible.",
+    { triggerId: z.string().min(1) },
+    async ({ triggerId }) => {
+      if ((await triggerService.get(triggerId)) === undefined) throw new Error(`gatilho ${triggerId} nao cadastrado`);
+      return { triggerId, removed: await triggerService.remove(triggerId) };
+    });
+
+  def(server, "allow_all_chats_for_trigger", "danger",
+    "The 'valid for all chats' button of a Teams trigger that came from a package and waits for its chats to be chosen: it clears the pending choice and leaves the chats list empty, so the trigger watches ALL group and direct chats of the account. To watch only some chats, use set_trigger with the chats list instead (ids from list_teams_chats).",
+    { triggerId: z.string().min(1) },
+    async ({ triggerId }) => {
+      const atual = await triggerService.get(triggerId);
+      if (atual === undefined) throw new Error(`gatilho ${triggerId} nao cadastrado`);
+      if (atual.config.kind !== "teams-inbox") throw new Error("so o gatilho do Teams escolhe chats");
+      const salvo = await triggerService.set(atual.agentId, { ...atual.config, chatsPendentes: 0, chats: [] } as TriggerConfigInput, {
+        id: triggerId,
+        valerParaTodosOsChats: true,
+      });
+      return paraLeitura(salvo);
+    });
+
+  def(server, "run_automation_now", "publish",
+    "Runs an automation once, without an event, like the Run now button. Returns the run id at once; follow it with get_run. An action step in approval mode stops at the approval queue; an action step in auto mode PUBLISHES IN YOUR NAME without asking (GitHub comment, Slack or Teams message, task in the tracker, external call).",
+    { agentId: z.string() },
+    ({ agentId }) => automationService.runNow(agentId));
+
+  def(server, "tick_triggers", "publish",
+    "Runs one polling round now over every enabled trigger, as the Check now button does, without waiting for the runs to finish. It reads GitHub, Slack or Teams with your accounts and starts runs (an action in auto mode publishes in your name; a Teams prLinks trigger reacts 👀 on messages in your name). Returns what each trigger did.",
+    {}, () => scheduler.tick({ reason: "manual", wait: false }));
+}

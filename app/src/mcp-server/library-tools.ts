@@ -1,7 +1,6 @@
 import { recusarEscritaDaConta } from "../runtimes/claude-account.js";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { db, schema } from "../db/index.js";
 import {
   AgentProfile,
   LogicCompare,
@@ -14,6 +13,7 @@ import {
 import { buildGate } from "../executor/build.js";
 import { libraryService } from "../services/library-service.js";
 import { respond } from "./respond.js";
+import { def } from "./tool-def.js";
 
 /**
  * Ferramentas da biblioteca e do catálogo de passos.
@@ -21,13 +21,16 @@ import { respond } from "./respond.js";
  * Com elas um assistente externo monta o que a tela monta: agent reutilizável,
  * toolset e fluxo com decisão e conversão. A gravação sai do `libraryService`,
  * o mesmo da tela, e herda as travas dele (escrita externa não entra como
- * ferramenta, toolset precisa existir).
- *
- * Por cima vale a mesma regra do `upsert_agent`: ferramenta nova de servidor
- * `write` só entra pela tela, onde a pessoa vê o que está ligando. Remover
- * agent ou toolset também fica para a tela, porque apaga o histórico.
+ * ferramenta, toolset precisa existir). Ferramenta de escrita nova entra como
+ * na tela, e a anotação destrutiva é o aviso ao cliente. Remover agent ou
+ * toolset é interno e o serviço recusa enquanto algo o usa.
  */
 export function registerLibraryTools(server: McpServer): void {
+  def(server, "suggest_library_id", "read",
+    "A free id for a new library agent or toolset, made from its name, like the editor does.",
+    { name: z.string().min(1), kind: z.enum(["profile", "toolset"]) },
+    async ({ name, kind }) => ({ id: await libraryService.suggestId(name, kind) }));
+
   server.registerTool(
     "describe_steps",
     {
@@ -63,27 +66,35 @@ export function registerLibraryTools(server: McpServer): void {
       }),
   );
 
-  server.registerTool(
-    "upsert_library_agent",
+  def(server, "upsert_library_agent", "danger",
+    "Records a library agent as a new version. A spec identical to the latest records nothing. Fields: id (lowercase, digits and dashes), name, description, context, instructions, model (provider/model), temperature (0 to 2, optional), toolsets (ids), tools ([{server, tool, class}]), connections ([{connectionId, tools: {toolName: true|false}}]: reads are on by default, writes off, and `tools` overrides per tool), skills (names or {skill, when}), budget ({perRunUsd, perDayUsd, perRunTokens, perDayTokens}), maxSteps. Adds write tools to the agent when it lists tools of a write-scope server or turns on a write tool of a connection: the automations that use it can then write there. Tools that write externally through the Claude account are refused: writing goes in an action step.",
     {
-      description:
-        "Records a library agent as a new version. A spec identical to the latest records nothing. Fields: id (lowercase, digits and dashes), name, description, context, instructions, model (provider/model), temperature (0 to 2, optional), toolsets (ids), tools ([{server, tool, class}]), connections ([{connectionId, tools: {toolName: true|false}}]: reads are on by default, writes off, and `tools` overrides per tool), skills (names or {skill, when}), budget ({perRunUsd, perDayUsd, perRunTokens, perDayTokens}), maxSteps. Tools that write externally are refused: writing goes in an action step. A tool from a write-scope server that the latest version did not already have is refused, and so is turning on a write tool of a connection that the latest version did not already have on: only a person adds it, in the app.",
-      inputSchema: {
-        spec: z.record(z.string(), z.unknown()).describe("full agent spec, as get_library_agent returns it in `spec`"),
-        note: z.string().optional().describe("reason for the change, stored with the version"),
-        create: z.boolean().optional().describe("true refuses an id that already exists"),
-      },
+      spec: z.record(z.string(), z.unknown()).describe("full agent spec, as get_library_agent returns it in `spec`"),
+      note: z.string().optional().describe("reason for the change, stored with the version"),
+      create: z.boolean().optional().describe("true refuses an id that already exists"),
     },
-    async ({ spec, note, create }) =>
-      respond(async () => {
-        const novo = AgentProfile.parse(spec);
-        const anterior = await libraryService.getProfile(novo.id);
-        await recusarEscritaNova(await ferramentasDoAgent(novo), anterior === null ? [] : await ferramentasDoAgent(anterior.spec));
-        await recusarEscritaDeConexao(novo, anterior?.spec);
-        const versao = await libraryService.saveProfile({ spec: novo as AgentProfileInput, note, create });
-        return { id: versao.profileId, version: versao.version, note: versao.note };
-      }),
-  );
+    async ({ spec, note, create }) => {
+      const novo = AgentProfile.parse(spec);
+      recusarEscritaDaConta(await ferramentasDoAgent(novo));
+      const versao = await libraryService.saveProfile({ spec: novo as AgentProfileInput, note, create });
+      return { id: versao.profileId, version: versao.version, note: versao.note };
+    });
+
+  def(server, "list_library_agent_versions", "read",
+    "Every version of a library agent, newest first, each with its full spec, note and date (get_library_agent lists the versions without the spec).",
+    { id: z.string().min(1) }, ({ id }) => libraryService.listProfileVersions(id));
+
+  def(server, "restore_library_agent_version", "danger",
+    "Restores an old version of a library agent by recording its spec as a NEW version: the current one stays in the history. The tools and toolsets of the old version come back with it, so the automations that use the agent run with them from the next run. Read the versions with list_library_agent_versions.",
+    { id: z.string().min(1), version: z.number().int().positive(), note: z.string().optional() },
+    async ({ id, version, note }) => {
+      const antiga = await libraryService.getProfileVersion(id, version);
+      if (antiga === null) throw new Error(`agent "${id}" não tem a versão ${version} na biblioteca`);
+      const spec = AgentProfile.parse(antiga.spec);
+      recusarEscritaDaConta(await ferramentasDoAgent(spec));
+      const v = await libraryService.saveProfile({ spec: spec as AgentProfileInput, note: note ?? `restaurada da versão ${version}` });
+      return { id: v.profileId, version: v.version, note: v.note };
+    });
 
   server.registerTool(
     "list_toolsets",
@@ -94,22 +105,45 @@ export function registerLibraryTools(server: McpServer): void {
     async () => respond(() => libraryService.listToolsets()),
   );
 
+  def(server, "upsert_toolset", "danger",
+    "Records a toolset: id, name, description and tools ([{server, tool, class}]). Has no versions: the change applies to the next run of every agent that includes it. Adding a write tool widens what every agent that includes the toolset can write. Tools that write externally through the Claude account are refused.",
+    {
+      toolset: z.record(z.string(), z.unknown()),
+      create: z.boolean().optional().describe("true refuses an id that already exists"),
+    },
+    async ({ toolset, create }) => {
+      const novo = Toolset.parse(toolset);
+      recusarEscritaDaConta(novo.tools);
+      return libraryService.saveToolset({ toolset: novo as ToolsetInput, create });
+    });
+
   server.registerTool(
-    "upsert_toolset",
+    "remove_library_agent",
     {
       description:
-        "Records a toolset: id, name, description and tools ([{server, tool, class}]). Has no versions: the change applies to the next run of every agent that includes it. Same refusals as upsert_library_agent for external write and for new tools of a write-scope server.",
-      inputSchema: {
-        toolset: z.record(z.string(), z.unknown()),
-        create: z.boolean().optional().describe("true refuses an id that already exists"),
-      },
+        "Deletes a library agent and all its versions. Irreversible: the version history goes with it. Refused while any automation still uses it; the error lists them.",
+      inputSchema: { id: z.string().min(1) },
     },
-    async ({ toolset, create }) =>
+    async ({ id }) =>
       respond(async () => {
-        const novo = Toolset.parse(toolset);
-        const anterior = await libraryService.getToolset(novo.id);
-        await recusarEscritaNova(novo.tools, anterior?.tools ?? []);
-        return libraryService.saveToolset({ toolset: novo as ToolsetInput, create });
+        if ((await libraryService.getProfile(id)) === null) throw new Error(`agent "${id}" não existe na biblioteca`);
+        await libraryService.removeProfile(id);
+        return { id, removed: true };
+      }),
+  );
+
+  server.registerTool(
+    "remove_toolset",
+    {
+      description:
+        "Deletes a toolset. Refused while any library agent still includes it; the error lists them.",
+      inputSchema: { id: z.string().min(1) },
+    },
+    async ({ id }) =>
+      respond(async () => {
+        if ((await libraryService.getToolset(id)) === null) throw new Error(`toolset "${id}" não existe`);
+        await libraryService.removeToolset(id);
+        return { id, removed: true };
       }),
   );
 }
@@ -118,78 +152,6 @@ export function registerLibraryTools(server: McpServer): void {
 async function ferramentasDoAgent(spec: AgentProfile): Promise<ToolRef[]> {
   const dosToolsets = await Promise.all(spec.toolsets.map((id) => libraryService.getToolset(id)));
   return [...spec.tools, ...dosToolsets.flatMap((t) => t?.tools ?? [])];
-}
-
-/**
- * Liberar escrita numa conexão só pela tela. Pelo MCP, recusa:
- * - ligar uma ferramenta que o nome marca como escrita, e gravar uma escolha
- *   "read" nova, seja qual for o nome;
- * - conexão nova cujo servidor tem escopo write, e qualquer escolha que
- *   libere ferramenta de conexão assim (ligar uma, ou tirar o desligar).
- * O que a versão anterior já tinha continua valendo.
- */
-async function recusarEscritaDeConexao(novo: AgentProfile, anterior: AgentProfile | undefined): Promise<void> {
-  const barradas: string[] = [];
-  const antes = new Map((anterior?.connections ?? []).map((c) => [c.connectionId, c]));
-
-  for (const c of novo.connections) {
-    const antiga = antes.get(c.connectionId);
-    for (const [chave, escolha] of Object.entries(c.tools)) {
-      if (escolha === false || antiga?.tools[chave] === escolha) continue;
-      // "read" é a pessoa dizendo que a ferramenta só lê, e vale mesmo para nome
-      // de leitura: o servidor pode ter anotado escrita, e o MCP não consulta.
-      // Ligar vale pela anotação que o servidor deixou no cache, e pelo nome só sem ela.
-      if (escolha === "read" || (await libraryService.ehEscritaLigada(c, chave))) barradas.push(`${c.connectionId}.${chave}`);
-    }
-  }
-
-  const escopoWrite = new Set(
-    (await db.select({ name: schema.mcpServers.name, scope: schema.mcpServers.scope }).from(schema.mcpServers))
-      .filter((s) => s.scope === "write")
-      .map((s) => s.name),
-  );
-  if (escopoWrite.size > 0) {
-    const { connectionService } = await import("../services/connection-service.js");
-    const conexoes = await connectionService.list();
-    for (const c of novo.connections) {
-      if (!(conexoes.find((x) => x.id === c.connectionId)?.servers ?? []).some((s) => escopoWrite.has(s))) continue;
-      const antiga = antes.get(c.connectionId);
-      if (antiga === undefined) {
-        barradas.push(`${c.connectionId} (conexão nova)`);
-        continue;
-      }
-      for (const [chave, escolha] of Object.entries(c.tools)) {
-        if (escolha !== false && antiga.tools[chave] !== escolha) barradas.push(`${c.connectionId}.${chave}`);
-      }
-      for (const [chave, escolha] of Object.entries(antiga.tools)) {
-        if (escolha === false && c.tools[chave] !== false) barradas.push(`${c.connectionId}.${chave}`);
-      }
-    }
-  }
-
-  if (barradas.length > 0) {
-    throw new Error(
-      `${[...new Set(barradas)].join(", ")}: liberar escrita, ou abrir conexão de servidor com escopo write, só pela tela do Locum, onde a pessoa decide.`,
-    );
-  }
-}
-
-async function recusarEscritaNova(novas: readonly ToolRef[], jaEstavam: readonly ToolRef[]): Promise<void> {
-  recusarEscritaDaConta(novas);
-  const escrita = new Set(
-    (await db.select({ name: schema.mcpServers.name, scope: schema.mcpServers.scope }).from(schema.mcpServers))
-      .filter((s) => s.scope === "write")
-      .map((s) => s.name),
-  );
-  if (escrita.size === 0) return;
-  const chave = (t: ToolRef) => `${t.server}.${t.tool}`;
-  const antes = new Set(jaEstavam.map(chave));
-  const barradas = [...new Set(novas.filter((t) => escrita.has(t.server) && !antes.has(chave(t))).map(chave))];
-  if (barradas.length > 0) {
-    throw new Error(
-      `${barradas.join(", ")} é de servidor com escopo write; ferramenta assim só entra pela tela do Locum, onde a pessoa decide.`,
-    );
-  }
 }
 
 function catalogo() {
@@ -216,7 +178,7 @@ function catalogo() {
           "for mcp.call: { server, tool, args }; for http.request: { method, url, headers, body }. Accept markers and go on top of the input step output.",
         target: "tracker.create_issue: id of the registered tracker",
         modes:
-          "approve stops in the queue for a person; auto publishes on its own; draft prepares without publishing. Recorded from here, every action step starts in approve: only a person raises the mode, in the app.",
+          "approve stops in the queue for a person; auto publishes on its own; draft prepares without publishing. upsert_agent lowers every action step to approve. save_automation, save_agent_edited, import_agent and restore_agent_version record the mode as given, like the editor, so an auto action recorded there publishes without asking; the client confirms each of those calls.",
       },
       logic: {
         fields: "op, value, compare, against, cases, title",
@@ -227,7 +189,7 @@ function catalogo() {
     },
     actions: buildGate().describe(),
     triggers:
-      "Automation triggers are recorded with set_trigger and start disabled; a person enables them in the app.",
+      "Automation triggers are recorded with set_trigger (always disabled) or with the triggers of save_automation; turning one on is set_trigger_enabled or set_automation_enabled, which the client confirms because the app then acts by itself with your accounts.",
   };
 }
 

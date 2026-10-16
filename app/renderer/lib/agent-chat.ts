@@ -15,6 +15,7 @@ interface PonteDoChatDoAgent {
     decide: (id: string, cartao: string, decisao: "executar" | "recusar") => Promise<void>;
     cancel: (id: string) => Promise<void>;
     reset: (id: string) => Promise<void>;
+    take: (id: string) => Promise<void>;
   };
   chat: { onEvent: (ouvinte: (evento: EventoDaConversa) => void) => () => void };
 }
@@ -31,6 +32,7 @@ export const chatDoAgent = {
   decidir: (id: string, cartao: string, decisao: "executar" | "recusar") => ponte().agentChat.decide(id, cartao, decisao),
   cancelar: (id: string) => ponte().agentChat.cancel(id),
   limpar: (id: string) => ponte().agentChat.reset(id),
+  tomar: (id: string) => ponte().agentChat.take(id),
   /** O fluxo de todas as conversas; cada evento diz de qual é. */
   assinar: (ouvinte: (evento: EventoDaConversa) => void): (() => void) => ponte().chat.onEvent(ouvinte),
 };

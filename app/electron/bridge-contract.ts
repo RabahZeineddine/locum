@@ -594,6 +594,7 @@ interface ServiceApi {
   "agentChat.decide": ConversasDeAgent["decidir"];
   "agentChat.cancel": ConversasDeAgent["cancelar"];
   "agentChat.reset": ConversasDeAgent["limpar"];
+  "agentChat.take": ConversasDeAgent["tomar"];
 }
 
 export type LocumApi = { [K in keyof ServiceApi]: Asyncify<ServiceApi[K]> };
@@ -810,6 +811,7 @@ export const BRIDGE_CHANNELS = [
   "agentChat.decide",
   "agentChat.cancel",
   "agentChat.reset",
+  "agentChat.take",
 ] as const satisfies readonly (keyof LocumApi)[];
 
 export type BridgeChannel = (typeof BRIDGE_CHANNELS)[number];

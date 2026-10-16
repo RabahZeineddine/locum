@@ -49,7 +49,7 @@ import { updateService } from "../src/services/update-service.js";
 import { trackerService } from "../src/services/tracker-service.js";
 import { triggerService } from "../src/services/trigger-service.js";
 import { settingsService } from "../src/services/settings-service.js";
-import { validarSubstituicoes } from "../src/config/escolha-de-modelo.js";
+import { instalarTemplate } from "../src/services/template-install.js";
 import { TemplateSource } from "../src/services/template-source.js";
 import { scheduler } from "../src/triggers/scheduler.js";
 import { refreshTray } from "./tray.js";
@@ -156,22 +156,7 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     // Listar e instalar leem da mesma fonte (`TemplateSource`): o repositório
     // remoto, e a cópia empacotada se ele não responder.
     "agents.templates": () => fonteDeTemplates().listar(),
-    "agents.importTemplate": async (id, substituicoes) => {
-      const bruto = (await fonteDeTemplates().ler(id)) as { steps?: { model?: string }[] };
-      // A troca de modelo acontece antes da validação do importar, e só vale
-      // para o que esta máquina oferece: escolha fora do catálogo é erro, não
-      // descarte, senão o agent nasceria com o modelo do template sem aviso.
-      if (substituicoes && Object.keys(substituicoes).length > 0) {
-        const passos = Array.isArray(bruto.steps) ? bruto.steps : [];
-        validarSubstituicoes(passos, substituicoes, await providerService.listAllModels({ assinatura: true }));
-        for (const [indice, modelo] of Object.entries(substituicoes)) passos[Number(indice)]!.model = modelo;
-      }
-      const { version, created } = await agentService.importSpec(
-        JSON.stringify(bruto),
-        `marketplace:${id}`,
-      );
-      return { agentId: version.agentId, version: version.version, created };
-    },
+    "agents.importTemplate": (id, substituicoes) => instalarTemplate(fonteDeTemplates(), id, substituicoes),
     "agents.installReply": async (service) => {
       const { REPLY_SPECS } = await import("../src/examples/agents.js");
       const spec = REPLY_SPECS[service];
@@ -326,16 +311,31 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "chat.reset": (context) => chatSession.limpar(context),
 
     "agentChat.state": (id) => agentChat.estado(id),
-    // Volta logo: a resposta, o cartão e o desfecho chegam pelo canal de evento.
-    "agentChat.send": async (id, texto) => {
-      void agentChat.enviar(id, texto).catch((erro: unknown) => console.error("chat do agent:", erro));
-    },
+    // Volta assim que a volta começa: a resposta, o cartão e o desfecho chegam pelo canal de evento.
+    // Recusa antes disso (outro processo com a conversa) chega à janela como erro.
+    "agentChat.send": (id, texto) =>
+      new Promise<void>((resolve, reject) => {
+        let comecou = false;
+        agentChat
+          .enviar(id, texto, () => {
+            comecou = true;
+            resolve();
+          })
+          .then(
+            () => resolve(),
+            (erro: unknown) => {
+              if (comecou) console.error("chat do agent:", erro);
+              else reject(erro);
+            },
+          );
+      }),
     "agentChat.decide": (id, cartao, decisao) => {
       if (decisao !== "executar" && decisao !== "recusar") throw new Error(`decisao "${String(decisao)}" nao existe`);
       return agentChat.decidir(id, cartao, decisao);
     },
     "agentChat.cancel": async (id) => agentChat.cancelar(id),
     "agentChat.reset": (id) => agentChat.limpar(id),
+    "agentChat.take": (id) => agentChat.tomar(id),
 
     "mcp.list": () => mcpService.list(),
     "mcp.test": (name) => mcpService.testConnection(name),

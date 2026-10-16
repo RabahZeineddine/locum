@@ -1,7 +1,7 @@
 import { TriggerConfig, type AgentSpec, type TriggerConfigInput } from "../config/types.js";
 import { agentService, ID_DE_AGENT, isReserved, type AgentService, type AgentVersion } from "./agent-service.js";
 import { executionService, type ExecutionService } from "./execution-service.js";
-import { esperaChats, MOTIVO_CHATS, triggerService, type TriggerEntry, type TriggerService } from "./trigger-service.js";
+import { esperaChats, MOTIVO_CHATS, recusaDaGravacao, triggerService, type TriggerEntry, type TriggerService } from "./trigger-service.js";
 
 /** Um gatilho como o canvas manda: com `id` quando já existia. */
 export interface AutomationTriggerInput {
@@ -9,6 +9,11 @@ export interface AutomationTriggerInput {
   config: TriggerConfigInput;
   /** Ausente mantém o que estava, e gatilho novo nasce desligado. */
   enabled?: boolean;
+  /**
+   * O gatilho de pacote que esperava a escolha de chats passa a valer para
+   * todos. Sem este aviso explícito, zerar a pendência com a lista vazia é recusado.
+   */
+  valerParaTodosOsChats?: boolean;
 }
 
 export interface AutomationSaveInput {
@@ -56,6 +61,24 @@ export class AutomationService {
     // Antes de qualquer escrita: um gatilho inválido não pode deixar para
     // trás um spec novo gravado com os gatilhos antigos.
     for (const gatilho of input.triggers) TriggerConfig.parse(gatilho.config);
+    const atuais = await this.triggers.list(agentId);
+    const triggers = herdarPendenciaDeChats(atuais, input.triggers);
+    // Também antes de gravar: tudo o que a gravação dos gatilhos vai recusar
+    // (ligar um que espera chats, zerar a pendência sem o aviso) recusa a
+    // gravação inteira, e não deixa o spec novo para trás.
+    for (const gatilho of triggers) {
+      const parsed = TriggerConfig.parse(gatilho.config);
+      const existente =
+        gatilho.id === undefined
+          ? atuais.find((a) => JSON.stringify(a.config) === JSON.stringify(parsed))
+          : atuais.find((a) => a.id === gatilho.id);
+      if (gatilho.id !== undefined && existente === undefined) throw new Error(`gatilho ${gatilho.id} nao cadastrado`);
+      const recusa = recusaDaGravacao(existente, parsed, {
+        ...(gatilho.enabled === undefined ? {} : { enabled: gatilho.enabled }),
+        ...(gatilho.valerParaTodosOsChats === true ? { valerParaTodosOsChats: true } : {}),
+      });
+      if (recusa !== null) throw new Error(recusa);
+    }
 
     let version: AgentVersion;
     if (input.create === true) {
@@ -69,12 +92,12 @@ export class AutomationService {
       version = await this.agents.saveEdited(agentId, input.spec, input.note);
     }
 
-    const atuais = await this.triggers.list(agentId);
     const mantidos = new Set<string>();
-    for (const gatilho of input.triggers) {
+    for (const gatilho of triggers) {
       const salvo = await this.triggers.set(agentId, gatilho.config, {
         ...(gatilho.id === undefined ? {} : { id: gatilho.id }),
         ...(gatilho.enabled === undefined ? {} : { enabled: gatilho.enabled }),
+        ...(gatilho.valerParaTodosOsChats === true ? { valerParaTodosOsChats: true } : {}),
       });
       mantidos.add(salvo.id);
     }
@@ -144,3 +167,23 @@ export class AutomationService {
 }
 
 export const automationService = new AutomationService();
+
+/**
+ * A pendência de chats vale pela automação, e não pelo id do gatilho. Um
+ * gatilho do Teams que o pacote deixou esperando chats e some da lista (ou é
+ * trocado por outro, sem id) passa a pendência ao gatilho novo que escuta todos
+ * os chats; sem isso, salvar sem id seria o caminho para ligar o que a pessoa
+ * ainda não escolheu. O aviso explícito de valer para todos desfaz a herança.
+ */
+function herdarPendenciaDeChats(atuais: TriggerEntry[], novos: AutomationSaveInput["triggers"]): AutomationSaveInput["triggers"] {
+  const mantidos = new Set(novos.flatMap((g) => (g.id === undefined ? [] : [g.id])));
+  const perdidas = atuais.filter((g) => !mantidos.has(g.id) && esperaChats(g.config));
+  const pendentes = Math.max(0, ...perdidas.map((g) => (g.config.kind === "teams-inbox" ? g.config.chatsPendentes : 0)));
+  if (pendentes === 0) return novos;
+  return novos.map((g) => {
+    if (g.id !== undefined || g.valerParaTodosOsChats === true) return g;
+    const config = TriggerConfig.parse(g.config);
+    if (config.kind !== "teams-inbox" || config.chats.length > 0 || config.chatsPendentes > 0) return g;
+    return { ...g, config: { ...config, chatsPendentes: pendentes } as TriggerConfigInput };
+  });
+}

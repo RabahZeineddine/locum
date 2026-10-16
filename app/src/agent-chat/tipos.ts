@@ -10,8 +10,9 @@ export interface Cartao {
   /**
    * `executando`: a pessoa clicou e a ferramenta ainda não respondeu.
    * `expirado`: a conversa foi limpa, interrompida ou o app fechou antes do clique.
+   * `incerto`: houve o clique, o processo morreu antes do fim e não se sabe se a escrita saiu.
    */
-  estado: "pendente" | "executando" | "executado" | "falhou" | "recusado" | "expirado";
+  estado: "pendente" | "executando" | "executado" | "falhou" | "recusado" | "expirado" | "incerto";
   /** O que a ferramenta devolveu, como texto e cortado, quando já respondeu. */
   resultado?: string;
 }
@@ -51,6 +52,8 @@ export interface EstadoDaConversa {
   falas: FalaDoAgent[];
   /** Há um turno em andamento no processo principal. */
   respondendo: boolean;
+  /** Outro processo do Locum (o app ou o `--mcp`) está com a conversa; `respondendo` já o inclui. */
+  outroProcesso: boolean;
   resumido: boolean;
   /** Conexões do agent sem servidor agora: avisa, e não impede de conversar. */
   semServidor: ConexaoSemServidor[];

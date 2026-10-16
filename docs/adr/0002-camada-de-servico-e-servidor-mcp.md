@@ -96,6 +96,25 @@ A lição vale para o resto do projeto: a invariante não é "não existe ferram
 de aprovar", é "nada sai sem uma pessoa ter dito que sai". Cada capacidade nova
 precisa ser conferida contra a segunda formulação, não contra a primeira.
 
+### 7. Paridade total com a tela, e a confirmação é do cliente
+
+Emenda de 15 de outubro de 2026: por decisão do usuário, o MCP tem paridade
+total com a tela; a confirmação de cada escrita é do cliente (Claude Code) pelas
+anotações das ferramentas. Ele usa o Locum só pelo Claude Code, e o servidor que
+recusava o que a tela faz decidia por ele. A decisão 4 fica substituída nisso:
+`decide_approval` existe, pela mesma gate do executor, anotada como destrutiva e
+de mundo aberto, e o Claude Code pergunta antes de cada chamada. A regra que
+continua valendo é a mesma: nada sai sem uma pessoa ter dito que sai.
+
+O rebaixamento do `upsert_agent` (passo de ação gravado como agent nasce em
+`approve`) deixou de ser uma garantia do servidor. A classe da ferramenta é
+declarada por quem grava, e `save_agent_edited`, `save_automation`,
+`import_agent` e `restore_agent_version` gravam como a tela, com `auto`
+preservado. Quem segura é a confirmação do cliente: cada uma sai anotada como
+destrutiva (e, quando liga gatilho ou sai para a rede, de mundo aberto), e
+`decide_approval` e `agent_chat_decide` exigem o hash do conteúdo que o cliente
+viu, para a confirmação ficar amarrada a ele.
+
 ## Consequências
 
 O cadastro de servidores MCP sai da lista fixa em `src/cli.ts` e passa para o

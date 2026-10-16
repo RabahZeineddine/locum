@@ -20,35 +20,18 @@ const spec = (id: string, tools: { server: string; tool: string }[]) =>
     steps: [{ type: "model", key: "ler", name: "Ler", model: "ollama/modelo", prompt: "revise", tools }],
   });
 
-test("quem não é pessoa não põe em passo ferramenta nova de servidor write, mas mantém a que já estava", async () => {
+test("upsert_agent grava ferramenta nova de servidor write, como a tela", async () => {
   const escrita = `srv-${randomUUID().slice(0, 8)}`;
-  const leitura = `srv-${randomUUID().slice(0, 8)}`;
   await mcpService.register({ name: escrita, transport: "stdio", command: ["true"], scope: "write" });
-  await mcpService.register({ name: leitura, transport: "stdio", command: ["true"] });
   const agents = new AgentService();
   const id = `agente-${randomUUID()}`;
 
-  await assert.rejects(
-    agents.upsert(spec(id, [{ server: escrita, tool: "comment" }]), undefined, "agent"),
-    /escopo write/,
-  );
-  await agents.upsert(spec(id, [{ server: leitura, tool: "ler" }]), undefined, "agent");
-
-  // A pessoa põe; daí em diante a edição pelo MCP pode manter a ferramenta.
-  await agents.upsert(spec(id, [{ server: escrita, tool: "comment" }]), undefined, "human");
-  const mantida = await agents.upsert(
-    { ...spec(id, [{ server: escrita, tool: "comment" }]), name: "Revisor 2" },
-    undefined,
-    "agent",
-  );
-  assert.equal(mantida.spec.name, "Revisor 2");
-  await assert.rejects(
-    agents.upsert(spec(id, [{ server: escrita, tool: "comment" }, { server: escrita, tool: "merge" }]), undefined, "agent"),
-    new RegExp(`${escrita}\\.merge`),
-  );
+  await agents.upsert(spec(id, [{ server: escrita, tool: "comment" }]), undefined, "agent");
+  const mais = await agents.upsert(spec(id, [{ server: escrita, tool: "comment" }, { server: escrita, tool: "merge" }]), undefined, "agent");
+  assert.equal(mais.version, 2);
 });
 
-test("pelo MCP servidor write não baixa para read", async () => {
+test("pelo MCP servidor write baixa para read, e register_mcp_server é destrutiva", async () => {
   const name = `srv-${randomUUID().slice(0, 8)}`;
   await mcpService.register({ name, transport: "stdio", command: ["true"], scope: "write" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -57,7 +40,9 @@ test("pelo MCP servidor write não baixa para read", async () => {
   await client.connect(clientTransport);
 
   const baixar = await client.callTool({ name: "register_mcp_server", arguments: { name, transport: "stdio", scope: "read" } });
-  assert.equal(baixar.isError, true);
-  assert.equal((await mcpService.get(name))?.config.scope, "write");
+  assert.notEqual(baixar.isError, true);
+  assert.equal((await mcpService.get(name))?.config.scope, "read");
+  const { tools } = await client.listTools();
+  assert.equal(tools.find((t) => t.name === "register_mcp_server")?.annotations?.destructiveHint, true);
   await client.close();
 });

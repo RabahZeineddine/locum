@@ -19,7 +19,8 @@ const SEGREDO = "[segredo removido]";
 
 const ID = "[id removido]";
 
-const PADROES: readonly [RegExp, string][] = [
+/** Só o que é credencial: token, senha, cabeçalho de autorização, webhook e senha em URL. */
+const PADROES_DE_SEGREDO: readonly [RegExp, string][] = [
   // Cabeçalho de autorização inteiro, qualquer esquema.
   [/\bAuthorization\s*[:=]\s*(?:Basic|Bearer|token|Digest)\s+\S+/gi, `Authorization: ${SEGREDO}`],
   // Webhook de entrada: o caminho é o segredo.
@@ -28,7 +29,13 @@ const PADROES: readonly [RegExp, string][] = [
   [/\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@:?#]+(?::[^\s/@?#]*)?@/gi, "$1"],
   // Segredo na query.
   [/([?&](?:access_token|refresh_token|id_token|token|api[_-]?key|key|secret|client_secret|password|sig|signature|code)=)[^&\s"')<>]+/gi, `$1${SEGREDO}`],
-  [/\b(?:senha|password|passwd|pwd|secret|segredo)\s*[:=]\s*\S+/gi, SEGREDO],
+  // JSON serializado: "access_token":"...", "clientSecret": "...".
+  [/("(?:[\w.-]*(?:token|secret|password|passwd|senha|api[_-]?key|private[_-]?key|credential)[\w.-]*)"\s*:\s*")[^"]+"/gi, `$1${SEGREDO}"`],
+  // Linha de ambiente: NOME_TOKEN=..., API_KEY=..., CLIENT_SECRET=...
+  [/\b[A-Z][A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|PASSWD|API_?KEY|PRIVATE_?KEY|CREDENTIAL)S?\s*=\s*\S+/g, SEGREDO],
+  // Cookie e Set-Cookie, a linha inteira.
+  [/\b(?:Set-)?Cookie\s*:[^\n]+/gi, `Cookie: ${SEGREDO}`],
+  [/\b(?:senha|password|passwd|pwd|secret|segredo|(?:access|refresh|id|api|auth)[_-]?token|token|api[_-]?key)\s*[:=]\s*\S+/gi, SEGREDO],
   [/\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}\b/g, SEGREDO],
   [/\bgithub_pat_[A-Za-z0-9_]{20,}\b/g, SEGREDO],
   [/\bglpat-[A-Za-z0-9_-]{20,}/g, SEGREDO],
@@ -40,6 +47,10 @@ const PADROES: readonly [RegExp, string][] = [
   [/\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g, SEGREDO],
   [/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,}/g, SEGREDO],
   [/\bBearer\s+[A-Za-z0-9._~+/-]{16,}=*/gi, `Bearer ${SEGREDO}`],
+];
+
+/** Identificadores, e-mail e caminho do home: dado pessoal, que não é credencial. */
+const PADROES_PESSOAIS: readonly [RegExp, string][] = [
   // Teams, explícitos: chat e canal (`@thread.v2`, `@thread.tacv2`), reunião e DM (`@unq.gbl.spaces`).
   [/\b19:[A-Za-z0-9_.=-]+@(?:thread\.[A-Za-z0-9]+|unq\.gbl\.spaces)/g, "[chat removido]"],
   [/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, ID],
@@ -52,6 +63,27 @@ const PADROES: readonly [RegExp, string][] = [
 
 function escapar(texto: string): string {
   return texto.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+const PADROES: readonly [RegExp, string][] = [...PADROES_DE_SEGREDO, ...PADROES_PESSOAIS];
+
+/** Webhook de entrada e segredo na query: o que numa URL é credencial, sem mexer no resto do texto. */
+export function ocultarCredencialDeUrl(url: string, marcador: string): string {
+  return url
+    .replace(PADROES_DE_SEGREDO[1]![0], marcador)
+    .replace(PADROES_DE_SEGREDO[3]![0], `$1${marcador}`);
+}
+
+/**
+ * Só as credenciais, sem tocar em id, e-mail nem caminho. Para o que sai de uma
+ * leitura em que o id é o que a pessoa procura, como a fila de aprovação.
+ */
+export function limparSegredos(texto: string): string {
+  let saida = texto;
+  for (const [padrao, por] of PADROES_DE_SEGREDO) {
+    saida = saida.replace(padrao, (...args: unknown[]) => por.replace(/\$(\d)/g, (_, n: string) => String(args[Number(n)])));
+  }
+  return saida;
 }
 
 export function limparTexto(texto: string, home: string = homedir()): Limpeza {

@@ -63,6 +63,7 @@ As perguntas que este ADR responde: o que um agent de iniciativa enxerga; onde m
 - Justificativa diante da emenda 5 do ADR 0003: ela proíbe catálogo derivado dos canais da ponte e `approvals.decide`. Nada disso muda. Nenhuma das entradas novas publica fora, decide pendência, roda agent ou gasta cota, e o contexto continua passando pela fila.
 - Risco que sobra: um conteúdo lido pelo chat pode induzir uma mudança de configuração do Locum, como ligar um servidor a uma frente. A mudança aparece na conversa e é reversível.
 - Aprovar e abrir sessão no terminal ficam fora do chat e do MCP, só por clique.
+  - Emenda de 15 de outubro de 2026: pela decisão de paridade total do [ADR 0002](0002-camada-de-servico-e-servidor-mcp.md), aprovar (`decide_approval`) e abrir sessão (`open_initiative_session`, `resume_claude_session`) agora existem no MCP, anotadas para o cliente perguntar antes. O chat do assistente continua sem elas.
 
 ### 6. A sessão no terminal recebe a iniciativa por artefato derivado
 

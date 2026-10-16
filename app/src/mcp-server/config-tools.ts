@@ -5,8 +5,8 @@ import { machineId } from "../services/machine-service.js";
 import { mcpService } from "../services/mcp-service.js";
 import { providerService } from "../services/provider-service.js";
 import { triggerService } from "../services/trigger-service.js";
-import type { AgentSpec, McpServerConfig, McpServerInput, TriggerConfigInput } from "../config/types.js";
-import { redactServerConfig, restoreHidden } from "./redact.js";
+import { type AgentSpec, type McpServerConfig, type McpServerInput, type TriggerConfigInput } from "../config/types.js";
+import { redactServerConfig, restoreCommand, restoreHidden, restoreSpec } from "./redact.js";
 import { respond } from "./respond.js";
 
 /**
@@ -33,7 +33,10 @@ import { respond } from "./respond.js";
  * que o OAuth tinha posto. Com transporte novo, comando e endereco do antigo
  * nao fazem sentido e nao sao herdados.
  */
-export function mergeRegistration(atual: McpServerConfig | undefined, novo: McpServerInput): McpServerInput {
+export function mergeRegistration(atual: McpServerConfig | undefined, enviado: McpServerInput): McpServerInput {
+  // Argumento que voltou oculto (`--api-key <oculto>`) é o do cadastro, na mesma posição.
+  const novo =
+    enviado.command === undefined ? enviado : { ...enviado, command: restoreCommand(atual?.transport === enviado.transport ? atual.command : undefined, enviado.command) };
   if (atual === undefined) return novo;
   const herda = <K extends keyof McpServerInput>(campo: K, deAtual: McpServerInput[K]) =>
     novo[campo] === undefined && deAtual !== undefined ? { [campo]: deAtual } : {};
@@ -71,6 +74,12 @@ function semOcultos(valores: Record<string, string>): Record<string, string> {
   return restoreHidden(undefined, valores) ?? {};
 }
 
+/** O spec da versão mais recente do agent que o spec novo diz ser, de onde voltam os valores ocultos. */
+export async function specAtual(spec: unknown): Promise<unknown> {
+  const id = (spec as { id?: unknown } | null)?.id;
+  return typeof id === "string" ? (await agentService.getLatestVersion(id))?.spec : undefined;
+}
+
 /** Mesmo critério do serviço para desfazer a credencial: outro destino. */
 function mudouDestino(antes: McpServerConfig, depois: McpServerConfig): boolean {
   return (
@@ -85,7 +94,7 @@ async function exigirLigado(name: string): Promise<void> {
   const entrada = await mcpService.get(name);
   if (entrada === undefined) throw new Error(`servidor MCP "${name}" nao cadastrado`);
   if (!entrada.enabled) {
-    throw new Error(`servidor MCP "${name}" está desligado; uma pessoa habilita na tela do Locum antes do teste`);
+    throw new Error(`servidor MCP "${name}" está desligado; ligue com set_mcp_server_enabled antes do teste`);
   }
 }
 
@@ -94,7 +103,7 @@ export function registerConfigTools(server: McpServer): void {
     "upsert_agent",
     {
       description:
-        "Records an AgentSpec (an automation: steps plus triggers set with set_trigger) as a new immutable version. Steps are model, action and logic, with decisions and paths through `when`; read describe_steps for the catalog. A spec identical to the latest returns the existing version. An invalid spec records nothing. Action steps recorded here start in approval mode: draft and auto are downgraded, and the response reports the downgrade. A step tool from a server with write scope that the latest version did not already use is refused: only a person adds it, in the app.",
+        "Records an AgentSpec (an automation: steps plus triggers set with set_trigger) as a new immutable version. Steps are model, action and logic, with decisions and paths through `when`; read describe_steps for the catalog. A spec identical to the latest returns the existing version. An invalid spec records nothing. Action steps recorded here start in approval mode: draft and auto are downgraded, and the response reports the downgrade. A step tool from a server with write scope is recorded like the app does: it adds a write tool to the automation.",
       inputSchema: {
         spec: z
           .record(z.string(), z.unknown())
@@ -107,8 +116,10 @@ export function registerConfigTools(server: McpServer): void {
         // "agent" e o teto: passo de acao gravado daqui nasce em aprovacao, e
         // qualquer tentativa de subir para rascunho ou automatico volta
         // rebaixada, com o rebaixamento declarado na resposta.
-        const version = await agentService.upsert(spec as unknown as AgentSpec, note, "agent");
+        const { spec: inteiro, semValor } = restoreSpec(await specAtual(spec), spec);
+        const version = await agentService.upsert(inteiro as unknown as AgentSpec, note, "agent");
         return {
+          ...(semValor.length > 0 ? { hiddenWithoutValue: semValor } : {}),
           agentId: version.agentId,
           version: version.version,
           note: version.note,
@@ -127,7 +138,7 @@ export function registerConfigTools(server: McpServer): void {
     "register_mcp_server",
     {
       description:
-        "Registers or updates an MCP server that Locum consumes as a client. The name is the key that steps reference. On update, fields left out keep their current value; changing transport, url or command unlinks the stored credential. A server linked to an origin (a plugin, Claude Code, Cursor...) refuses command, env, url and headers changes: those are edited in the origin file, or a person unlinks it in the app. A new server, or one whose command or url changed, is saved disabled: only a person enables it, in the app or with `locum mcp:enable`. From here a server can be disabled, never enabled.",
+        "Registers or updates an MCP server that Locum consumes as a client. The name is the key that steps reference. On update, fields left out keep their current value; changing transport, url or command unlinks the stored credential. A server linked to an origin (a plugin, Claude Code, Cursor...) refuses command, env, url and headers changes: those are edited in the origin file, or a person unlinks it in the app. A new server, or one whose command or url changed, is saved disabled; turning it on is the separate set_mcp_server_enabled, which runs its command with the powers of the app.",
       inputSchema: {
         name: z.string().min(1),
         transport: z.enum(["stdio", "http", "sse"]),
@@ -141,12 +152,12 @@ export function registerConfigTools(server: McpServer): void {
         scope: z
           .enum(["read", "write"])
           .optional()
-          .describe("write does not allow external writes without approval. Tools of a write server only enter agent steps through a person, and a write server is not lowered to read from here"),
+          .describe("write does not allow external writes without approval. Tools of a write server enter agent steps as write tools"),
         idleTimeoutMs: z.number().int().positive().optional(),
         enabled: z
           .boolean()
           .optional()
-          .describe("false disables the server; true is refused, only a person enables it"),
+          .describe("false disables the server; true is refused here, use set_mcp_server_enabled"),
       },
     },
     async ({ enabled, ...config }) =>
@@ -156,14 +167,9 @@ export function registerConfigTools(server: McpServer): void {
         // por aqui cadastra, mas não liga: servidor novo, ou com outro
         // destino, nasce desligado até a pessoa ver o comando na tela.
         if (enabled === true) {
-          throw new Error("servidor MCP só é habilitado por uma pessoa, na tela do Locum ou com `locum mcp:enable`");
+          throw new Error("servidor MCP é ligado em passo separado: set_mcp_server_enabled, na tela do Locum ou com `locum mcp:enable`");
         }
         const atual = await mcpService.get(config.name);
-        // Ferramenta de servidor `write` não entra em passo pelo MCP. Baixar o
-        // escopo daqui desfaria essa trava num passo só.
-        if (atual?.config.scope === "write" && config.scope === "read") {
-          throw new Error(`servidor "${config.name}" é write; baixar o escopo é decisão de uma pessoa, na tela do Locum`);
-        }
         const junto = mergeRegistration(atual?.config, config as McpServerInput);
         const entry = await mcpService.register(junto);
         const desligar = enabled === false || atual === undefined || mudouDestino(atual.config, entry.config);
@@ -174,7 +180,7 @@ export function registerConfigTools(server: McpServer): void {
           enabled: ligado,
           ...(ligado
             ? {}
-            : { aviso: "servidor gravado desligado; uma pessoa habilita na tela do Locum ou com `locum mcp:enable`" }),
+            : { aviso: "servidor gravado desligado; ligue com set_mcp_server_enabled, na tela do Locum ou com `locum mcp:enable`" }),
         };
       }),
   );
@@ -239,7 +245,7 @@ export function registerConfigTools(server: McpServer): void {
     "set_budget",
     {
       description:
-        "Adjusts an agent's spending cap. The budget lives in the spec, so this records a new version. An absent field stays as is. From here a cap can only go down or be added; raising or removing one is refused and must be done by a person in the app. The token cap is what protects a model without a registered price, whose dollar cost stays at zero.",
+        "Adjusts an agent's spending cap. The budget lives in the spec, so this records a new version. An absent field stays as is. From here a cap can only go down or be added; raising or removing one is refused here and is done with save_agent_edited, as the editor does. The token cap is what protects a model without a registered price, whose dollar cost stays at zero.",
       inputSchema: {
         agentId: z.string(),
         perRunUsd: z.number().positive().nullable().optional(),
@@ -264,7 +270,7 @@ export function registerConfigTools(server: McpServer): void {
     "set_trigger",
     {
       description:
-        "Registers or updates an agent trigger. It starts disabled, and only a person enables it, in the app or the command line. Changing the config of an enabled trigger disables it again.",
+        "Registers or updates an agent trigger. It starts disabled; turning it on is set_trigger_enabled (enabled true is refused here). Changing the config of an enabled trigger disables it again. For teams-inbox, chats lists the group and direct chats to watch (ids from list_teams_chats; empty means all chats), chatsPendentes is the count a package left to choose (it blocks turning on until chats are chosen; clearing it with an empty chats list is refused, use allow_all_chats_for_trigger for that), and filtroIa is the optional AI filter described below.",
       inputSchema: {
         agentId: z.string(),
         config: z
@@ -277,12 +283,13 @@ export function registerConfigTools(server: McpServer): void {
       },
     },
     async ({ agentId, config, triggerId, enabled }) =>
-      respond(() =>
-        triggerService.set(agentId, config as unknown as TriggerConfigInput, {
+      respond(async () => {
+        return triggerService.set(agentId, config as unknown as TriggerConfigInput, {
           id: triggerId,
           enabled,
           fromTool: true,
-        }),
-      ),
+        });
+      }),
   );
 }
+

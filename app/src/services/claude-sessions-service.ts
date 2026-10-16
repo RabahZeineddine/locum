@@ -40,6 +40,8 @@ export interface SessaoDoClaude {
   /** De qual ferramenta é a conversa: muda o comando de retomar e o selo na tela. */
   tool: "claude-code" | "opencode";
   title: string;
+  /** O título é o começo do primeiro pedido, e não um título que o Claude deu: quem esconde o texto da conversa esconde o título também. */
+  titleFromText?: true;
   cwd: string;
   branch: string | null;
   state: EstadoDaSessao;
@@ -226,6 +228,7 @@ export function resumirConversa(cabeca: Linha[], cauda: Linha[]) {
 
   return {
     titulo: titulo ?? trecho(primeiroPedido),
+    tituloDoPedido: titulo === null && primeiroPedido !== null,
     entrada,
     cwd,
     branch,
@@ -403,6 +406,7 @@ export class ClaudeSessionsService {
           id: c.id,
           tool: "claude-code" as const,
           title: resumo.titulo ?? c.id.slice(0, 8),
+          ...(resumo.tituloDoPedido ? { titleFromText: true as const } : {}),
           cwd,
           branch: resumo.branch,
           state: estado,

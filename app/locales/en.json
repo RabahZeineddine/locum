@@ -260,6 +260,8 @@
     "title": "Chat",
     "version": "version {{version}}",
     "reset": "Clear conversation",
+    "take": "Take over the conversation",
+    "otherProcessNotice": "This conversation is in progress in Claude Code (the MCP server). It goes back to normal when it finishes.",
     "empty": {
       "title": "Talk to this agent",
       "body": "It answers with the instructions, model, skills and read tools you configured. To write anything, it asks for your click."
@@ -278,14 +280,17 @@
         "executado": "Run",
         "falhou": "Failed",
         "recusado": "Refused",
-        "expirado": "Expired"
+        "expirado": "Expired",
+        "incerto": "Unknown if it went out"
       },
       "run": "Run",
       "refuse": "Refuse",
       "argNull": "null",
       "argEmpty": "empty",
       "result": "Result",
-      "expiredHint": "The conversation was cleared or interrupted, or the app closed, before the click. Nothing was run."
+      "expiredHint": "The conversation was cleared or interrupted, or the app closed, before the click. Nothing was run.",
+      "otherProcessHint": "In progress in Claude Code: the decision is made there.",
+      "uncertainHint": "You clicked Run and the process that was running it closed before the tool answered. The write may have gone out: check the service before asking again."
     },
     "scopes": {
       "run": "per-run",
@@ -294,6 +299,7 @@
     "errors": {
       "busy": "The agent is still answering.",
       "pending": "Decide the write that is waiting for your click first.",
+      "otherProcess": "Another Locum process (the open app or the MCP server) is in the middle of a message of this agent. Wait for it to finish or decide the card there.",
       "expired": "That card expired: the conversation was cleared or interrupted, or the app closed before the click.",
       "budget": "This agent's {{scope}} budget is spent: limit {{limit}}, spent {{spent}}. Adjust it under Budget, on the agent page.",
       "codex": "The agent chat does not run with a Codex model: it does not stream text. Pick another model in the Model tab.",

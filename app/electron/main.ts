@@ -6734,7 +6734,19 @@ async function serveMcp(): Promise<void> {
   process.stdin.on("end", sair);
   process.stdin.on("close", sair);
 
-  const server = buildMcpServer();
+  // O que só o processo do app tem: a versão, o idioma do sistema, a cópia
+  // empacotada do marketplace e o chat de agent, que sobe modelo e cartão aqui.
+  const { agentChat } = await import("./agent-chat.js");
+  const { TemplateSource } = await import("../src/services/template-source.js");
+  const templates = new TemplateSource({
+    pastaLocal: app.isPackaged ? join(__dirname, "agents") : join(app.getAppPath(), "examples", "agents"),
+  });
+  const server = buildMcpServer({
+    agentChat,
+    templates: () => templates,
+    systemLocale: () => app.getLocale(),
+    appVersion: () => VERSAO,
+  });
   await server.connect(new StdioServerTransport());
   console.error("servidor MCP do locum no ar, pelo aplicativo");
 }
