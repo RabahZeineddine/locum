@@ -10,7 +10,7 @@ import {
   type ToolRef,
   type ToolsetInput,
 } from "../config/types.js";
-import { ehLeitura, ehLeituraDa, escolhaDe, ligadaPorPadrao } from "../config/leitura.js";
+import { ehLeitura, ehLeituraDa, escolhaDe, fixarLista, ligadaPorPadrao } from "../config/leitura.js";
 
 type Db = typeof defaultDb;
 
@@ -35,6 +35,8 @@ export interface ProfileSummary {
   /** Quantas ferramentas de escrita estão ligadas nas conexões. */
   writes: number;
   skills: number;
+  /** Conexões que ainda valem pela regra antiga (leitura toda, ferramenta nova entra ligada) por falta de lista em cache. */
+  listaImplicita: string[];
   /** Fluxos que referenciam este agent na versão mais recente deles. */
   usedBy: string[];
 }
@@ -232,6 +234,7 @@ export class LibraryService {
         connections: ultima.spec.connections.map((c) => c.connectionId),
         writes: await this.contarEscritaLigada(ultima.spec.connections),
         skills: ultima.spec.skills.length,
+        listaImplicita: ultima.spec.connections.filter((c) => c.leituraPadrao !== "limitada").map((c) => c.connectionId),
         usedBy: usos.get(perfil.id) ?? [],
       });
     }
@@ -304,7 +307,8 @@ export class LibraryService {
    * que já existe, para o "novo agent" não sobrescrever outro de mesmo nome.
    */
   async saveProfile(input: { spec: AgentProfileInput; note?: string; create?: boolean }): Promise<ProfileVersion> {
-    const spec = AgentProfile.parse(input.spec);
+    const lido = AgentProfile.parse(input.spec);
+    const spec = { ...lido, connections: await this.comListaExplicita(lido.connections) };
     recusarEscrita(spec.tools, `O agent "${spec.name}"`);
     const conhecidos = new Set((await this.db.select({ id: schema.toolsets.id }).from(schema.toolsets)).map((r) => r.id));
     const faltando = spec.toolsets.filter((t) => !conhecidos.has(t));
@@ -332,6 +336,41 @@ export class LibraryService {
         .get();
     });
     return this.parse(row);
+  }
+
+  /**
+   * Cada conexão com a lista do servidor em cache passa a guardar a lista
+   * explícita: o que fica ligado é o que está no mapa, e a ferramenta que o
+   * servidor ganhar depois nasce desligada. Sem cache a conexão segue como veio.
+   */
+  private async comListaExplicita(conexoes: readonly AgentConnection[]): Promise<AgentConnection[]> {
+    const saida: AgentConnection[] = [];
+    for (const conexao of conexoes) {
+      const servidores = await this.conexoes.servidoresDe(conexao.connectionId);
+      const catalogo = await Promise.all(
+        servidores.map(async ({ nome }) => ({ nome, ferramentas: (await this.conexoes.guardadasDe?.(nome)) ?? null })),
+      );
+      saida.push(fixarLista(conexao, catalogo));
+    }
+    return saida;
+  }
+
+  /**
+   * Passa os agents que já existem para a lista explícita, gravando versão
+   * nova só onde algo muda. Quem não tem lista em cache fica em `pendentes`,
+   * com o comportamento antigo, até alguém abrir e salvar.
+   */
+  async migrarListasExplicitas(): Promise<{ migrados: string[]; pendentes: string[] }> {
+    const migrados: string[] = [];
+    const pendentes: string[] = [];
+    for (const perfil of await this.db.select().from(schema.agentProfiles)) {
+      const atual = await this.latestProfile(perfil.id);
+      if (atual === undefined) continue;
+      const nova = await this.saveProfile({ spec: atual.spec, note: "lista de ferramentas explícita" });
+      if (nova.version !== atual.version) migrados.push(perfil.id);
+      if (nova.spec.connections.some((c) => c.leituraPadrao !== "limitada")) pendentes.push(perfil.id);
+    }
+    return { migrados, pendentes };
   }
 
   /** Remove o agent e as versões. Recusa enquanto algum fluxo o usar. */

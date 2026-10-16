@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ehLeitura, ehLeituraDa, escolhaDe, escolhaInicial, ligadaPorPadrao } from "../src/config/leitura.js";
+import { ehLeitura, ehLeituraDa, escolhaDe, escolhaInicial, fixarLista, ligadaPorPadrao } from "../src/config/leitura.js";
 
 /** Nomes reais dos servidores que o Locum mais liga: GitHub, Atlassian e Grafana. */
 
@@ -104,10 +104,11 @@ test("só o verbo inicial ou to-file e upload derrubam a anotação de leitura",
 
 test("a escolha ao adicionar a conexão grava as leituras ligadas e não depende de regra reavaliada", () => {
   const pequeno = escolhaInicial([{ nome: "gh", ferramentas: [{ name: "get_issue" }, { name: "create_issue" }] }]);
-  assert.deepEqual(pequeno, { tools: { "gh/get_issue": true } });
+  assert.deepEqual(pequeno, { tools: { "gh/get_issue": true, "gh/create_issue": false }, leituraPadrao: "limitada" });
 
   const grande = Array.from({ length: 31 }, (_, i) => ({ name: `get_item_${i}` }));
-  assert.deepEqual(escolhaInicial([{ nome: "ms", ferramentas: grande }]), { tools: {}, leituraPadrao: "limitada" });
+  const todasDesligadas = Object.fromEntries(grande.map((f) => [`ms/${f.name}`, false]));
+  assert.deepEqual(escolhaInicial([{ nome: "ms", ferramentas: grande }]), { tools: todasDesligadas, leituraPadrao: "limitada" });
   assert.deepEqual(escolhaInicial([{ nome: "novo", ferramentas: null }]), { tools: {}, leituraPadrao: "limitada" });
 });
 
@@ -138,4 +139,24 @@ test("limitada nunca liga nada por padrão, e sem modo toda leitura liga", () =>
   assert.equal(ligadaPorPadrao({ name: "get_issue" }, undefined), true);
   assert.equal(ligadaPorPadrao({ name: "get_issue" }, "todas"), true);
   assert.equal(ligadaPorPadrao({ name: "create_issue" }, undefined), false);
+});
+
+test("fixar a lista liga o que hoje vale ligado, desliga o resto e fecha a porta para ferramenta nova", () => {
+  const catalogo = [{ nome: "gh", ferramentas: [{ name: "get_issue" }, { name: "list_commits" }, { name: "create_comment" }, { name: "get_pr" }] }];
+  const antes = { connectionId: "github", tools: { "gh/get_pr": false, create_comment: true } };
+  const depois = fixarLista(antes, catalogo);
+  assert.deepEqual(depois, {
+    connectionId: "github",
+    leituraPadrao: "limitada",
+    tools: { "gh/get_issue": true, "gh/list_commits": true, "gh/create_comment": true, "gh/get_pr": false },
+  });
+  // Ferramenta que o servidor ganhar depois não está no mapa, e na lista explícita ausente é desligada.
+  assert.equal(ligadaPorPadrao({ name: "get_nova" }, depois.leituraPadrao), false);
+  assert.deepEqual(fixarLista(depois, catalogo), depois, "fixar de novo não muda nada");
+});
+
+test("sem lista guardada de algum servidor a conexão fica como estava", () => {
+  const antes = { connectionId: "github", tools: { "gh/get_pr": false } };
+  assert.equal(fixarLista(antes, [{ nome: "gh", ferramentas: null }]), antes);
+  assert.equal(fixarLista(antes, []), antes);
 });

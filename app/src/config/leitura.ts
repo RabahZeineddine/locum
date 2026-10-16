@@ -89,30 +89,51 @@ export function ligadaPorPadrao(
 }
 
 /**
- * O que a tela grava ao adicionar a conexão a um agent. Servidor com lista
- * conhecida e de até `LIMITE_DE_LEITURA_PADRAO` leituras: cada leitura vira
- * escolha explícita, e nenhuma regra reavaliada depois tira o que estava
- * ligado. Servidor grande, ou sem lista guardada ainda, fica em `limitada`: nada
- * ligado por padrão, só o que a pessoa escolher.
+ * O que a tela grava ao adicionar a conexão a um agent: sempre a lista
+ * explícita. Servidor com lista conhecida e de até `LIMITE_DE_LEITURA_PADRAO`
+ * leituras liga cada leitura; o resto fica desligado e registrado. Servidor
+ * grande, ou sem lista guardada ainda, não liga nada: a pessoa escolhe. A
+ * ferramenta que o servidor ganhar depois não está no mapa, e ausente é desligada.
  */
 export function escolhaInicial(
   servidores: readonly { nome: string; ferramentas: readonly FerramentaClassificavel[] | null }[],
-): { tools: Record<string, boolean>; leituraPadrao?: "limitada" } {
+): { tools: Record<string, boolean>; leituraPadrao: "limitada" } {
   const tools: Record<string, boolean> = {};
-  let limitada = false;
   for (const { nome, ferramentas } of servidores) {
-    if (ferramentas === null) {
-      limitada = true;
-      continue;
-    }
-    const leituras = ferramentas.filter(ehLeituraDa).length;
-    if (leituras > LIMITE_DE_LEITURA_PADRAO) {
-      limitada = true;
-      continue;
-    }
-    for (const f of ferramentas) if (ehLeituraDa(f)) tools[`${nome}/${f.name}`] = true;
+    if (ferramentas === null) continue;
+    const ligar = ferramentas.filter(ehLeituraDa).length <= LIMITE_DE_LEITURA_PADRAO;
+    for (const f of ferramentas) tools[`${nome}/${f.name}`] = ligar && ehLeituraDa(f);
   }
-  return limitada ? { tools, leituraPadrao: "limitada" } : { tools };
+  return { tools, leituraPadrao: "limitada" };
+}
+
+/** O que `fixarLista` precisa de uma conexão: o mapa e o modo, que `AgentConnection` tem. */
+type ConexaoDoAgent = {
+  tools: Record<string, EscolhaDeFerramenta>;
+  leituraPadrao?: "todas" | "limitada";
+};
+
+/**
+ * Passa a conexão para a lista explícita, sem mudar o que está ligado hoje:
+ * cada ferramenta do catálogo sem escolha vira `true` se hoje liga sozinha
+ * (leitura, no modo antigo) e `false` se não. Chave só pelo nome vira
+ * `servidor/ferramenta`. Sem lista guardada de algum servidor não dá para
+ * saber o que existe, e a conexão volta como estava.
+ */
+export function fixarLista<C extends ConexaoDoAgent>(
+  conexao: C,
+  servidores: readonly { nome: string; ferramentas: readonly FerramentaClassificavel[] | null }[],
+): C {
+  if (servidores.length === 0 || servidores.some((s) => s.ferramentas === null)) return conexao;
+  const tools: Record<string, EscolhaDeFerramenta> = { ...conexao.tools };
+  for (const { nome, ferramentas } of servidores) {
+    for (const f of ferramentas ?? []) {
+      const atual = escolhaDe(conexao.tools, nome, f.name);
+      delete tools[f.name];
+      tools[`${nome}/${f.name}`] = atual ?? (conexao.leituraPadrao === "limitada" ? false : ehLeituraDa(f));
+    }
+  }
+  return { ...conexao, tools, leituraPadrao: "limitada" };
 }
 
 /** Valor de `AgentConnection.tools`: liga, desliga, ou liga declarando que a ferramenta lê. */

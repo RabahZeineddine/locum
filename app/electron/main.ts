@@ -7656,6 +7656,9 @@ async function main(): Promise<void> {
   if (esquema.criado) console.log(t("schema.created", { count: esquema.disponiveis }));
   else if (esquema.adotado) console.log(t("schema.adopted", { count: esquema.disponiveis }));
 
+  // Agent que veio da regra antiga (leitura toda, ferramenta nova ligada) passa para a lista explícita onde o servidor já tem lista em cache.
+  await (await import("../src/services/library-service.js")).libraryService.migrarListasExplicitas().catch(() => undefined);
+
   if (flagValue("--set-secret") !== undefined || flagValue("--remove-secret") !== undefined) {
     await runSecretCommand();
     app.exit(0);
