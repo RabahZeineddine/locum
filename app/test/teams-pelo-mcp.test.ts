@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { eq } from "drizzle-orm";
 import { schema } from "../src/db/index.js";
 import { pollTeamsInbox } from "../src/sources/teams-inbox.js";
-import { teamsPostHandler } from "../src/teams/action.js";
+import { ApprovalGate } from "../src/approval/gate.js";
+import { destinoDe, teamsPostHandler } from "../src/teams/action.js";
 import { reagirNoTeams, REACAO_PEGOU } from "../src/teams/reaction.js";
 import { listTeamsChannels } from "../src/teams/channels.js";
 import { alvoDaReacao } from "../src/teams/reaction.js";
@@ -613,4 +614,89 @@ test("listar equipes e canais para o gatilho passa pelo servidor MCP, e sem Team
     listTeamsChannels({ token: semLogin, mcp: { list: async () => [], cachedTools: async () => null } }),
     /Em Conexões, entre com o Teams ou ligue um servidor/,
   );
+});
+
+/**
+ * Do gatilho de PR até a resposta aprovada: o evento sai da varredura, o
+ * `teams.post` o recebe junto com o texto do modelo, a Fila guarda o destino e
+ * a publicação chama o Teams com os ids certos (cliente falso).
+ */
+async function responderAoEventoDePr(
+  dados: Parameters<typeof servidorFalso>[0],
+  watch: Parameters<typeof pollTeamsInbox>[0],
+  quais: (e: Record<string, unknown>) => boolean,
+) {
+  const db = bancoDeTeste();
+  const leitura = servidorFalso(dados);
+  await pollTeamsInbox(watch, { db, token: semLogin, mcp: cadastro("x"), call: leitura.call, ...semGithub });
+  const evento = (await eventos(db)).find((e) => e.kind === "pr" && quais(e))!;
+  assert.ok(evento, "o gatilho gravou o evento de PR");
+
+  const handler = teamsPostHandler({ db, token: semLogin, mcp: cadastro("ms365"), call: servidorFalso({}).call });
+  const { payload } = await new ApprovalGate(new Map([["teams.post", handler]])).prepare(
+    "teams.post",
+    { ...evento, text: "revisado, ok" },
+    "approve",
+  );
+  const saida = servidorFalso({});
+  await teamsPostHandler({ db, token: semLogin, mcp: cadastro("ms365"), call: saida.call }).publish(payload, "id");
+  return { evento, payload: payload as Record<string, unknown>, chamadas: saida.chamadas };
+}
+
+test("PR na raiz do canal: a resposta aprovada entra na thread dessa mensagem", async () => {
+  const { chamadas, payload } = await responderAoEventoDePr(
+    { threads: [mensagem("t1", 2, `<p>olha ${PR}</p>`)] },
+    { mentions: false, dms: false, prLinks: true, channels: [{ teamId: EQUIPE, channelId: CANAL, label: "Geral" }] },
+    (e) => e.channelId === CANAL,
+  );
+  assert.deepEqual(payload.channel, { teamId: EQUIPE, channelId: CANAL, threadId: "t1", label: "Geral" });
+  assert.equal(chamadas.length, 1);
+  assert.equal(chamadas[0]!.tool, "reply-to-channel-message");
+  assert.deepEqual(
+    [chamadas[0]!.args.teamId, chamadas[0]!.args.channelId, chamadas[0]!.args.chatMessageId],
+    [EQUIPE, CANAL, "t1"],
+  );
+});
+
+test("PR dentro de uma thread: a resposta entra na raiz dela, sem abrir thread nova", async () => {
+  const { chamadas } = await responderAoEventoDePr(
+    { threads: [mensagem("t1", 5, "<p>bom dia</p>")], respostas: { t1: [mensagem("r1", 2, `<p>olha ${PR}</p>`)] } },
+    { mentions: false, dms: false, prLinks: true, channels: [{ teamId: EQUIPE, channelId: CANAL, label: "Geral" }] },
+    (e) => e.channelId === CANAL,
+  );
+  assert.equal(chamadas[0]!.tool, "reply-to-channel-message");
+  assert.equal(chamadas[0]!.args.chatMessageId, "t1");
+});
+
+test("PR em chat 1:1 e em grupo: a resposta aprovada vai para o chat", async () => {
+  for (const [id, tipo] of [["dm", "oneOnOne"], ["g", "group"]] as const) {
+    const { chamadas, payload } = await responderAoEventoDePr(
+      { chats: [{ id, chatType: tipo, mensagens: [mensagem("m1", 2, `<p>${PR}</p>`)] }] },
+      { mentions: false, dms: false, prLinks: true },
+      (e) => e.chatId === id,
+    );
+    assert.equal(payload.chatId, id);
+    assert.equal(payload.channel, undefined);
+    assert.equal(chamadas[0]!.tool, "send-chat-message");
+    assert.equal(chamadas[0]!.args.chatId, id);
+  }
+});
+
+test("evento de PR gravado antes da mudança (só com os campos teams*) ainda acha o destino", () => {
+  assert.deepEqual(
+    destinoDe({ prOwner: "acme", prRepo: "api", repo: "acme/api", teamsChatId: "19:dm", teamsMessageId: "9" }),
+    { tipo: "chat", chatId: "19:dm" },
+  );
+  assert.deepEqual(
+    destinoDe({
+      prOwner: "acme",
+      repo: "acme/api",
+      teamsTeamId: EQUIPE,
+      teamsChannelId: CANAL,
+      teamsMessageId: "r1",
+      teamsReplyToId: "t1",
+    }),
+    { tipo: "canal", teamId: EQUIPE, channelId: CANAL, threadId: "t1" },
+  );
+  assert.throws(() => destinoDe({ prOwner: "acme", repo: "acme/api" }), /evento de conversa/);
 });

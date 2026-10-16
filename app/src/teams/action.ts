@@ -4,6 +4,7 @@ import type { ActionHandler } from "../approval/gate.js";
 import { db as defaultDb, schema } from "../db/index.js";
 import { TEAMS_CHANNEL_PREFIX, TEAMS_SOURCE } from "../sources/teams-inbox.js";
 import { abrirTeams, type TeamsGraphOptions } from "./graph.js";
+import { alvoDaReacao } from "./reaction.js";
 
 type Db = typeof defaultDb;
 
@@ -72,8 +73,26 @@ function eventoDePr(payload: unknown): boolean {
   return typeof (payload as { prOwner?: unknown } | null | undefined)?.prOwner === "string";
 }
 
+/**
+ * O destino de um evento de PR que veio do Teams. O `repo` dele é o do GitHub,
+ * então a conversa de origem vem dos campos `teams*` que a varredura grava
+ * (os mesmos do 👀). Numa mensagem dentro de thread a resposta vai na raiz
+ * (`teamsReplyToId`); na raiz do canal, na própria mensagem. Nulo se o PR não
+ * veio do Teams.
+ */
+function destinoDoPr(payload: unknown): DestinoDoTeams | null {
+  const alvo = alvoDaReacao(payload);
+  if (alvo === null) return null;
+  if (alvo.tipo === "chat") return { tipo: "chat", chatId: alvo.chatId };
+  return { tipo: "canal", teamId: alvo.teamId, channelId: alvo.channelId, threadId: alvo.replyToId ?? alvo.messageId };
+}
+
 export function destinoDe(payload: unknown): DestinoDoTeams {
-  if (eventoDePr(payload)) throw new Error("o passo de resposta no Teams nao recebeu um evento de conversa");
+  if (eventoDePr(payload)) {
+    const doPr = destinoDoPr(payload);
+    if (doPr === null) throw new Error("o passo de resposta no Teams nao recebeu um evento de conversa");
+    return doPr;
+  }
   const repo = (payload as { repo?: unknown } | null | undefined)?.repo;
   if (typeof repo === "string" && repo.startsWith(TEAMS_CHANNEL_PREFIX)) {
     const partes = repo.slice(TEAMS_CHANNEL_PREFIX.length).split("/");

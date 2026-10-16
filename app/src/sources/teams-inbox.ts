@@ -590,8 +590,8 @@ async function prepararCursor(db: Db, chave: string, antiga: string): Promise<bo
  * `prDescartado` ou `prError`, para a mensagem não voltar como novidade.
  *
  * O `author` passa a ser o do PR, que é o que o bloqueio de auto-review
- * compara, e o do Teams fica em `teamsAuthor`. O `repo` também vira o do PR, o
- * que tira o evento do `teams.post`, que acha a conversa por ele.
+ * compara, e o do Teams fica em `teamsAuthor`. O `repo` também vira o do PR, e
+ * a conversa de origem fica nos campos `teams*`, de onde o `teams.post` tira o destino.
  */
 async function enriquecerPrs(
   ids: string[],
