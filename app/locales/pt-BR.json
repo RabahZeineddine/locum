@@ -2210,7 +2210,14 @@
       "loadTools": "carregar ferramentas",
       "loadingTools": "carregando...",
       "showAll": "mostrar todas ({{count}})",
-      "noMatch": "Nada encontrado."
+      "noMatch": "Nada encontrado.",
+      "apps": "Apps",
+      "fromLocum": "do Locum",
+      "whatToDo": "O que fazer?",
+      "searchOperation": "Buscar operação",
+      "noOperations": "Nenhuma operação.",
+      "operations": "Operações",
+      "appHint": "Escolha o app; o que ele faz vem depois."
     },
     "canvas": {
       "approval": "só com clique",

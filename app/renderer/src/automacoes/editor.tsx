@@ -72,7 +72,10 @@ import {
   useReactFlow,
 } from "@xyflow/react";
 import { ArrowLeft, Download, List, Loader2, Play } from "lucide-react";
-import { casaBusca, passoDeFerramenta, secoesDaPaleta, type ItemDaPaleta } from "@/lib/paleta-conexoes";
+import { MarcaLogo } from "@/components/marca-logo";
+import { appsDaPaleta, buscarNaPaleta, fonteDaMarca, nomeDoApp, passoDaOperacao, passoSemOperacao, servidorDoNoVazio, type AppDaPaleta, type OperacaoDoApp } from "@/lib/apps-da-paleta";
+import { tradutorDe } from "@/lib/operacao-da-ferramenta";
+import { casaBusca } from "@/lib/paleta-conexoes";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AgentSpec, Step } from "../../../src/config/types";
 import { esquemasDasConexoes, useFerramentasDasConexoes, useSaidasDoUltimoRun, type FerramentasDasConexoes } from "./ferramentas-das-conexoes";
@@ -578,11 +581,14 @@ function EditorCarregado({
     inserirPasso((spec) => componente.novo(spec));
   };
 
-  // A ferramenta de uma conexão vira um `mcp.call` com servidor e ferramenta preenchidos.
-  const acrescentarFerramenta = (item: ItemDaPaleta): void => {
-    const ferramenta = ferramentas.porServidor[item.servidor]?.tools?.find((f) => f.name === item.nome);
-    if (ferramenta === undefined) return;
-    inserirPasso((spec) => passoDeFerramenta(spec, item.servidor, ferramenta));
+  // Clicar no app cria o nó sem operação; o painel pergunta "O que fazer?".
+  const acrescentarApp = (app: AppDaPaleta): void => {
+    inserirPasso((spec) => passoSemOperacao(spec, app.id, nomeDoApp(app.id, tradutorDe(i18n)), servidorDoNoVazio(app)));
+  };
+
+  // Vindo da busca: o nó já nasce com a operação.
+  const acrescentarOperacao = (operacao: OperacaoDoApp): void => {
+    inserirPasso((spec) => passoDaOperacao(spec, operacao));
   };
 
   const inserirPasso = (criar: (spec: AgentSpec) => Step): void => {
@@ -879,7 +885,8 @@ function EditorCarregado({
           aoGatilho={acrescentarGatilho}
           aoLogica={acrescentarLogica}
           aoPasso={acrescentarPasso}
-          aoFerramenta={acrescentarFerramenta}
+          aoApp={acrescentarApp}
+          aoOperacao={acrescentarOperacao}
           conexoes={ferramentas}
           appsLigados={appsLigados}
           viaDoTeams={viaDoTeams}
@@ -1109,7 +1116,8 @@ function Paleta({
   aoPasso,
   aoAgent,
   aoLogica,
-  aoFerramenta,
+  aoApp,
+  aoOperacao,
   conexoes,
   criarAgent,
 }: {
@@ -1121,7 +1129,8 @@ function Paleta({
   aoPasso: (id: string) => void;
   aoAgent: (agent: AgentDaBiblioteca) => void;
   aoLogica: (op: string) => void;
-  aoFerramenta: (item: ItemDaPaleta) => void;
+  aoApp: (app: AppDaPaleta) => void;
+  aoOperacao: (operacao: OperacaoDoApp) => void;
   conexoes: FerramentasDasConexoes;
   criarAgent: () => void;
 }) {
@@ -1151,17 +1160,16 @@ function Paleta({
   );
 
   const [busca, setBusca] = useState("");
-  const [abertas, setAbertas] = useState<ReadonlySet<string>>(new Set());
   const buscando = busca.trim() !== "";
   const descricaoDe = (id: string): string | undefined => (i18n.exists(`automations.steps.${id}.description`) ? t(`automations.steps.${id}.description`) : undefined);
   const gatilhos = GATILHOS.filter((g) => casaBusca(busca, t(`automations.triggers.${g.id}.title`), g.id));
-  const passos = PASSOS.filter((p) => casaBusca(busca, tituloDoPasso(t, p.id), p.id, descricaoDe(p.id)));
+  const passos = PASSOS.filter((p) => p.id === "ai" && casaBusca(busca, tituloDoPasso(t, p.id), p.id, descricaoDe(p.id)));
   const logica = LOGICA.filter((l) => casaBusca(busca, tituloDoPasso(t, `logic.${l.id}`), l.id));
   const listaDeAgents = agents.filter((a) => casaBusca(busca, a.name));
-  const secoes = secoesDaPaleta(
-    conexoes.servidores.map((servidor) => ({ servidor, ferramentas: conexoes.porServidor[servidor]?.tools ?? null })),
-    { busca },
-  );
+  const traduzir = tradutorDe(i18n);
+  const paleta = conexoes.servidores.map((servidor) => ({ servidor, ferramentas: conexoes.porServidor[servidor]?.tools ?? null }));
+  const { apps, operacoes } = buscarNaPaleta(paleta, busca, traduzir);
+  const todosOsApps = appsDaPaleta(paleta);
   const Titulo = ({ chave }: { chave: string }) => <h3 className="text-muted-foreground px-1.5 pb-0.5 text-[11px] font-medium">{t(chave)}</h3>;
 
   return (
@@ -1227,91 +1235,56 @@ function Paleta({
           </ul>
         </section>
       )}
-      {secoes.map((secao) => {
-        const estado = conexoes.porServidor[secao.servidor];
-        const todas = buscando || abertas.has(secao.servidor) || secao.itens.length <= LIMITE_DA_SECAO;
-        const itens = todas ? secao.itens : secao.itens.slice(0, LIMITE_DA_SECAO);
-        return (
-          <section data-locum-paleta-conexao={secao.servidor} key={secao.servidor}>
-            <div className="flex items-center justify-between px-1.5 pb-0.5">
-              <h3 className="text-muted-foreground min-w-0 truncate text-[11px] font-medium">{secao.servidor}</h3>
-              {secao.semLista ? null : (
+      {apps.length === 0 ? null : (
+        <section data-locum-paleta-apps="">
+          <Titulo chave="automations.palette.apps" />
+          <ul>
+            {apps.map((app) => (
+              <li key={app.id}>
                 <button
-                  className="text-primary cursor-pointer text-[11px] hover:underline disabled:opacity-50"
-                  data-locum-paleta-atualizar={secao.servidor}
-                  disabled={estado?.carregando === true}
-                  onClick={() => void conexoes.carregar(secao.servidor)}
-                  title={t("automations.steps.mcp.call.refreshHint")}
+                  className="hover:bg-accent flex min-h-8 w-full cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-left text-[13px] transition-colors"
+                  data-locum-paleta-app={app.id}
+                  onClick={() => aoApp(app)}
                   type="button"
                 >
-                  {t(estado?.carregando === true ? "automations.steps.mcp.call.refreshing" : "automations.steps.mcp.call.refresh")}
+                  <MarcaLogo fonte={{ name: fonteDaMarca(app) }} tamanho="sm" />
+                  <span className="line-clamp-2 min-w-0 leading-4">{nomeDoApp(app.id, traduzir)}</span>
                 </button>
-              )}
-            </div>
-            {secao.semLista ? (
-              <div className="px-2 text-[11px]">
-                {estado?.erro == null ? null : <p className="text-destructive">{estado.erro}</p>}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {operacoes.length === 0 ? null : (
+        <section data-locum-paleta-operacoes="">
+          <Titulo chave="automations.palette.operations" />
+          <ul>
+            {operacoes.map((o) => (
+              <li key={o.chave}>
                 <button
-                  className="text-primary cursor-pointer hover:underline disabled:opacity-50"
-                  data-locum-paleta-carregar={secao.servidor}
-                  disabled={estado?.carregando === true}
-                  onClick={() => void conexoes.carregar(secao.servidor)}
+                  className="hover:bg-accent flex min-h-8 w-full cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-left text-[13px] transition-colors"
+                  data-locum-paleta-operacao={o.chave}
+                  data-locum-paleta-classe={o.leitura ? "leitura" : "escrita"}
+                  onClick={() => aoOperacao(o)}
+                  title={o.descricao === "" ? o.titulo : o.descricao}
                   type="button"
                 >
-                  {t(estado?.carregando === true ? "automations.palette.loadingTools" : "automations.palette.loadTools")}
+                  <MarcaLogo fonte={{ name: fonteDaMarca(todosOsApps.find((a) => a.id === o.app)!) }} tamanho="sm" />
+                  <span className="line-clamp-2 min-w-0 leading-4">
+                    {nomeDoApp(o.app, traduzir)} · {o.titulo}
+                  </span>
                 </button>
-              </div>
-            ) : (
-              <ul>
-                {itens.map((item) => (
-                  <li key={item.nome}>
-                    <button
-                      className={cn(
-                        "hover:bg-accent flex min-h-8 w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-[13px] transition-colors",
-                        item.desligada === null ? "cursor-pointer" : "cursor-not-allowed opacity-50",
-                      )}
-                      data-locum-paleta-ferramenta={`${item.servidor}/${item.nome}`}
-                      data-locum-paleta-classe={item.leitura ? "leitura" : "escrita"}
-                      disabled={item.desligada !== null}
-                      onClick={() => aoFerramenta(item)}
-                      title={item.desligada ?? item.descricao}
-                      type="button"
-                    >
-                      <span className="flex min-w-0 flex-1 flex-col">
-                        <span className="line-clamp-2 leading-4">{item.titulo}</span>
-                        {item.desligada === null ? null : <span className="text-muted-foreground text-[11px]">{item.desligada}</span>}
-                      </span>
-                      <span className={cn("shrink-0 rounded px-1 py-0.5 text-[10px]", item.leitura ? "bg-muted" : "bg-amber-500/15")}>
-                        {t(item.leitura ? "automations.palette.read" : "automations.palette.write")}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-                {todas ? null : (
-                  <li>
-                    <button
-                      className="text-primary cursor-pointer px-2 text-[11px] hover:underline"
-                      onClick={() => setAbertas(new Set([...abertas, secao.servidor]))}
-                      type="button"
-                    >
-                      {t("automations.palette.showAll", { count: secao.itens.length })}
-                    </button>
-                  </li>
-                )}
-              </ul>
-            )}
-          </section>
-        );
-      })}
-      {buscando && gatilhos.length + passos.length + logica.length + listaDeAgents.length + secoes.length === 0 ? (
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {buscando && gatilhos.length + passos.length + logica.length + listaDeAgents.length + apps.length + operacoes.length === 0 ? (
         <p className="text-muted-foreground px-2 text-[11px]">{t("automations.palette.noMatch")}</p>
       ) : null}
     </aside>
   );
 }
-
-/** Quantas ferramentas de uma conexão a paleta mostra antes de "mostrar todas". */
-const LIMITE_DA_SECAO = 8;
 
 /* ------------------------------------------------------------------ canvas */
 

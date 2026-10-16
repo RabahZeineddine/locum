@@ -36,6 +36,20 @@ export function appDoServidor(servidor: string): string {
   return APP_POR_NOME.find(([padrao]) => padrao.test(nome))?.[1] ?? nome;
 }
 
+/** Recursos do ms365 que são do Teams: o resto (e-mail, calendário, arquivos) fica no Microsoft 365. */
+const RECURSOS_DO_TEAMS = new Set(["chat", "channel", "team", "message", "reaction", "thread"]);
+
+/**
+ * O app de uma ferramenta. Cada uma pertence a um app só: o servidor do
+ * Microsoft 365 reparte as de chat e canal para o Teams.
+ */
+export function appDaFerramenta(servidor: string, ferramenta: string): string {
+  const app = appDoServidor(servidor);
+  if (app !== "microsoft365") return app;
+  const { recurso } = classificarOperacao(ferramenta, servidor);
+  return recurso !== null && RECURSOS_DO_TEAMS.has(recurso) ? "teams" : app;
+}
+
 export interface AppDaPaleta {
   id: string;
   /** Ações nativas do Locum deste app. */
@@ -50,13 +64,30 @@ export function appsDaPaleta(conexoes: readonly ConexaoParaPaleta[]): AppDaPalet
   const apps = new Map<string, AppDaPaleta>();
   for (const [id, nativas] of Object.entries(NATIVAS_POR_APP)) apps.set(id, { id, nativas: [...nativas], servidores: [], semLista: false });
   for (const c of conexoes) {
-    const id = appDoServidor(c.servidor);
-    const app = apps.get(id) ?? { id, nativas: [], servidores: [], semLista: false };
-    app.servidores.push(c.servidor);
-    app.semLista ||= c.ferramentas === null;
-    apps.set(id, app);
+    const padrao = appDoServidor(c.servidor);
+    const ids = new Set([padrao, ...(c.ferramentas ?? []).map((f) => appDaFerramenta(c.servidor, f.name))]);
+    // Servidor com ferramentas só aparece no app que as tem, mas o do próprio nome sempre existe.
+    for (const id of ids) {
+      if (id !== padrao && (c.ferramentas ?? []).length === 0) continue;
+      const app = apps.get(id) ?? { id, nativas: [], servidores: [], semLista: false };
+      app.servidores.push(c.servidor);
+      app.semLista ||= c.ferramentas === null && id === padrao;
+      apps.set(id, app);
+    }
   }
   return [...apps.values()];
+}
+
+/** O nome que `marcaDoServidor` reconhece para o ícone do app: o do catálogo de Conexões, ou o servidor. */
+export function fonteDaMarca(app: AppDaPaleta): string {
+  if (app.id === "tracker") return app.servidores[0] ?? "atlassian";
+  if (app.id === "microsoft365") return "ms365";
+  return app.id;
+}
+
+/** O servidor que o nó sem operação guarda: o primeiro do app, ou o id dele quando só há ações do Locum. */
+export function servidorDoNoVazio(app: AppDaPaleta): string {
+  return app.servidores[0] ?? app.id;
 }
 
 export function nomeDoApp(id: string, traduzir: Traduzir): string {
@@ -96,10 +127,10 @@ function nativa(app: string, acao: string, traduzir: Traduzir): OperacaoDoApp {
   };
 }
 
-function doServidor(app: string, c: ConexaoParaPaleta, traduzir: Traduzir): OperacaoDoApp[] {
+function doServidor(c: ConexaoParaPaleta, traduzir: Traduzir): OperacaoDoApp[] {
   return (c.ferramentas ?? []).map((f) => ({
     chave: `${c.servidor}/${f.name}`,
-    app,
+    app: appDaFerramenta(c.servidor, f.name),
     tipo: "ferramenta",
     servidor: c.servidor,
     ferramenta: f.name,
@@ -117,10 +148,19 @@ export function operacoesDoApp(
   app: string,
   conexoes: readonly ConexaoParaPaleta[],
   traduzir: Traduzir,
-): { nativas: OperacaoDoApp[]; grupos: { recurso: string | null; itens: OperacaoDoApp[] }[] } {
+): {
+  nativas: OperacaoDoApp[];
+  grupos: { recurso: string | null; itens: OperacaoDoApp[] }[];
+  /** Servidores que dão ferramentas ao app: com mais de um, cada operação mostra o dela. */
+  servidores: string[];
+} {
   const nativas = (NATIVAS_POR_APP[app] ?? []).map((a) => nativa(app, a, traduzir));
-  const ferramentas = conexoes.filter((c) => appDoServidor(c.servidor) === app).flatMap((c) => doServidor(app, c, traduzir));
-  return { nativas, grupos: agruparPor(ferramentas, (o) => o.recurso) };
+  const ferramentas = conexoes.flatMap((c) => doServidor(c, traduzir)).filter((o) => o.app === app);
+  return {
+    nativas,
+    grupos: agruparPor(ferramentas, (o) => o.recurso),
+    servidores: [...new Set(ferramentas.map((o) => o.servidor!))],
+  };
 }
 
 /**
@@ -159,7 +199,7 @@ export function reconhecerPasso(passo: Step): { app: string; operacao: OperacaoD
   const servidor = typeof params.server === "string" ? params.server : "";
   const ferramenta = typeof params.tool === "string" ? params.tool : "";
   return {
-    app: servidor === "" ? "mcp" : appDoServidor(servidor),
+    app: servidor === "" ? "mcp" : ferramenta === "" ? appDoServidor(servidor) : appDaFerramenta(servidor, ferramenta),
     operacao: ferramenta === "" ? { tipo: "vazia" } : { tipo: "ferramenta", servidor, ferramenta },
   };
 }

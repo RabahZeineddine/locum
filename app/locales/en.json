@@ -2161,7 +2161,14 @@
       "loadTools": "load tools",
       "loadingTools": "loading...",
       "showAll": "show all ({{count}})",
-      "noMatch": "Nothing found."
+      "noMatch": "Nothing found.",
+      "apps": "Apps",
+      "fromLocum": "from Locum",
+      "whatToDo": "What to do?",
+      "searchOperation": "Search operation",
+      "noOperations": "No operations.",
+      "operations": "Operations",
+      "appHint": "Pick the app; what it does comes next."
     },
     "canvas": {
       "approval": "click to send",

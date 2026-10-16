@@ -2315,10 +2315,12 @@ async function checkAutomacaoNova(window: BrowserWindow): Promise<void> {
 }
 
 /**
- * A paleta do editor tem uma seção por conexão ligada, com as ferramentas dela
- * e o selo de leitura ou escrita; a busca filtra; criar um nó a partir da
- * ferramenta abre o formulário com servidor e ferramenta preenchidos. Nada é
- * gravado: a automação nova só existe como provisória na janela.
+ * A paleta do editor tem uma entrada por app (o servidor de brinquedo é o
+ * próprio app); clicar cria o nó sem operação e o painel pergunta "O que
+ * fazer?", com as ferramentas e o selo de leitura ou escrita; escolher abre o
+ * formulário com servidor e ferramenta preenchidos. A busca da paleta acha a
+ * operação e cria o nó já com ela. Nada é gravado: a automação nova só existe
+ * como provisória na janela.
  */
 async function checkPaletaPorConexao(window: BrowserWindow): Promise<void> {
   const { FIXTURE_SERVER } = await import("../src/fixtures/mcp-fixture.js");
@@ -2339,7 +2341,16 @@ async function checkPaletaPorConexao(window: BrowserWindow): Promise<void> {
       campo.dispatchEvent(new Event("input", { bubbles: true }));
       return null;
     })()`);
-  const ferramenta = (nome: string): string => `[data-locum-paleta-ferramenta="${FIXTURE_SERVER}/${nome}"]`;
+  const operacao = (nome: string): string => `[data-locum-operacao="${FIXTURE_SERVER}/${nome}"]`;
+  const naBusca = (nome: string): string => `[data-locum-paleta-operacao="${FIXTURE_SERVER}/${nome}"]`;
+  const app = `[data-locum-paleta-app="${FIXTURE_SERVER}"]`;
+  const classe = (seletor: string, atributo: string): Promise<unknown> => js(`document.querySelector(${JSON.stringify(seletor)})?.dataset.${atributo} ?? null`);
+  const confereNo = async (nome: string): Promise<void> => {
+    await esperar("o formulario da ferramenta", () => existe('[data-locum-arg="text"]'));
+    const servidor = await js(`document.querySelector("[data-locum-acao-servidor]")?.value ?? null`);
+    const tool = await js(`document.querySelector("[data-locum-acao-ferramenta]")?.value ?? null`);
+    if (servidor !== FIXTURE_SERVER || tool !== nome) throw new Error(`o no criado pela paleta veio com ${String(servidor)}/${String(tool)}`);
+  };
   try {
     await irPara(window, "automations");
     await esperar("a lista de automacoes", () => existe("[data-locum-automacao-nova]"));
@@ -2349,29 +2360,33 @@ async function checkPaletaPorConexao(window: BrowserWindow): Promise<void> {
     await clicar("[data-locum-automacao-criar]");
     await esperar("o editor da automacao nova", () => existe("[data-locum-probe=automacao-editor]"));
 
-    await esperar("a secao do servidor de brinquedo", () => existe(`[data-locum-paleta-conexao="${FIXTURE_SERVER}"]`));
-    // Sem lista guardada a seção pede para carregar; com ela, as ferramentas já estão lá.
-    if (await existe(`[data-locum-paleta-carregar="${FIXTURE_SERVER}"]`)) await clicar(`[data-locum-paleta-carregar="${FIXTURE_SERVER}"]`);
-    await esperar("as ferramentas da conexao na paleta", () => existe(`[data-locum-paleta-conexao="${FIXTURE_SERVER}"] [data-locum-paleta-ferramenta]`));
+    await esperar("a entrada do app de brinquedo na paleta", () => existe(app));
+    if (await existe('[data-locum-paleta="mcp.call"]')) throw new Error("a paleta ainda tem o no fixo de acao em app");
+    if (await existe("[data-locum-paleta-conexao]")) throw new Error("a paleta ainda lista as ferramentas da conexao sem escolher o app");
 
+    // Clicar no app: nó sem operação, e o painel pergunta o que fazer.
+    await clicar(app);
+    await esperar("o painel O que fazer?", () => existe(`[data-locum-o-que-fazer="${FIXTURE_SERVER}"]`));
+    if (await existe('[data-locum-arg="text"]')) throw new Error("o no sem operacao ja mostrou um formulario");
+    // Sem lista guardada o painel pede para carregar; com ela, as operações já estão lá.
+    if (await existe(`[data-locum-operacao-carregar="${FIXTURE_SERVER}"]`)) await clicar(`[data-locum-operacao-carregar="${FIXTURE_SERVER}"]`);
+    await esperar("as operacoes do app", () => existe(operacao("echo")));
+    if ((await classe(operacao("pid"), "locumOperacaoClasse")) !== "leitura") throw new Error("o pid, anotado como leitura, nao veio com o selo de leitura");
+    if ((await classe(operacao("echo"), "locumOperacaoClasse")) !== "escrita") throw new Error("o echo, sem anotacao, nao veio como escrita");
+    await clicar(operacao("echo"));
+    await confereNo("echo");
+
+    // A busca da paleta acha a operação, e o clique cria o nó já com ela.
     await buscar("pid");
-    await esperar("a ferramenta pid na busca", () => existe(ferramenta("pid")));
-    const classe = (nome: string): Promise<unknown> => js(`document.querySelector(${JSON.stringify(ferramenta(nome))})?.dataset.locumPaletaClasse ?? null`);
-    if ((await classe("pid")) !== "leitura") throw new Error("o pid, anotado como leitura, nao veio com o selo de leitura");
-    await buscar("echo");
-    await esperar("a ferramenta echo na busca", () => existe(ferramenta("echo")));
-    if ((await classe("echo")) !== "escrita") throw new Error("o echo, sem anotacao, nao veio como escrita");
-    if (await existe('[data-locum-paleta="mcp.call"]')) throw new Error("a busca por echo deixou o no fixo de acao em app na paleta");
+    await esperar("a operacao pid na busca", () => existe(naBusca("pid")));
+    if ((await classe(naBusca("pid"), "locumPaletaClasse")) !== "leitura") throw new Error("o pid na busca nao veio como leitura");
     await buscar("zzz-nao-existe");
-    await esperar("a busca sem resultado esconder a conexao", async () => !(await existe(`[data-locum-paleta-conexao="${FIXTURE_SERVER}"]`)));
+    await esperar("a busca sem resultado esconder o app", async () => !(await existe(app)));
     await buscar("echo");
-    await esperar("a ferramenta echo de volta", () => existe(ferramenta("echo")));
-
-    await clicar(ferramenta("echo"));
-    await esperar("o formulario da ferramenta", () => existe('[data-locum-arg="text"]'));
-    const servidor = await js(`document.querySelector("[data-locum-acao-servidor]")?.value ?? null`);
-    const tool = await js(`document.querySelector("[data-locum-acao-ferramenta]")?.value ?? null`);
-    if (servidor !== FIXTURE_SERVER || tool !== "echo") throw new Error(`o no criado pela paleta veio com ${String(servidor)}/${String(tool)}`);
+    await esperar("a operacao echo na busca", () => existe(naBusca("echo")));
+    await clicar(naBusca("echo"));
+    await esperar("o no criado pela busca", () => existe('[data-locum-arg="text"]'));
+    await confereNo("echo");
   } finally {
     await js(`(Object.keys(localStorage).filter((k) => k.startsWith("locum.rascunho-automacao") || k.startsWith("locum.automacao-provisoria")).forEach((k) => localStorage.removeItem(k)), null)`);
   }
@@ -8126,7 +8141,7 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
     await irPara(janela, "automations", primeiroAgent);
     await new Promise((resolve) => setTimeout(resolve, 1200));
     await janela.webContents.executeJavaScript(
-      `(document.querySelector('[data-locum-paleta="mcp.call"]')?.click(), null)`,
+      `(document.querySelector('[data-locum-paleta-app="slack"]')?.click(), null)`,
     );
     await new Promise((resolve) => setTimeout(resolve, 800));
     writeFileSync(join(destino, "automations-acao.png"), (await janela.webContents.capturePage()).toPNG());

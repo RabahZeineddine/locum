@@ -42,6 +42,8 @@ import type { RotaId } from "../rotas";
 import { Ajuda, Alternador, Campo, CAMPO, Minutos } from "./campos";
 import { esquemasDeSaidaDasConexoes, type FerramentasDasConexoes } from "./ferramentas-das-conexoes";
 import { FormularioDaChamada } from "./formulario-da-chamada";
+import { OQueFazer } from "./o-que-fazer";
+import { passoDaOperacao, reconhecerPasso } from "@/lib/apps-da-paleta";
 import { ComboboxComChips, useListaEmCache, type OpcaoDoCombobox } from "./combobox";
 import { GatilhoDoGithub, ListaDeDescartes } from "./gatilho-github";
 import { escopoDoGatilho } from "@/lib/titulo-do-gatilho";
@@ -1024,7 +1026,14 @@ function ConfigDaAcao({
           </select>
         </Campo>
       )}
-      {passo.action === "mcp.call" ? <ConfigDaChamada conexoes={conexoes} passo={passo} rascunho={rascunho} saidas={saidas} trocar={trocar} /> : null}
+      {passo.action === "mcp.call" && reconhecerPasso(passo).operacao.tipo === "vazia" && reconhecerPasso(passo).app !== "mcp" ? (
+        <OQueFazer
+          app={reconhecerPasso(passo).app}
+          conexoes={conexoes}
+          aoEscolher={(operacao) => trocar(passoDaOperacao(rascunho.spec, operacao, passo) as PassoDeAcao)}
+        />
+      ) : null}
+      {passo.action === "mcp.call" && (reconhecerPasso(passo).operacao.tipo !== "vazia" || reconhecerPasso(passo).app === "mcp") ? <ConfigDaChamada conexoes={conexoes} passo={passo} rascunho={rascunho} saidas={saidas} trocar={trocar} /> : null}
       {passo.action === "http.request" ? <ConfigDoHttp passo={passo} rascunho={rascunho} trocar={trocar} /> : null}
       {passo.action === "teams.react" || passo.action === "slack.react" ? (
         <ConfigDaReacao passo={passo} rascunho={rascunho} trocar={trocar} />

@@ -4,6 +4,8 @@ import { criarI18n } from "../renderer/lib/i18n.js";
 import { tradutorDe } from "../renderer/lib/operacao-da-ferramenta.js";
 import {
   appDoServidor,
+  fonteDaMarca,
+  servidorDoNoVazio,
   appsDaPaleta,
   buscarNaPaleta,
   nomeDoApp,
@@ -84,9 +86,26 @@ test("as ações do Locum vêm primeiro, marcadas, e as ferramentas agrupadas po
   assert.equal(grupos[2]!.itens[0]!.leitura, true);
 });
 
-test("ms365 agrupa Teams, e-mail e o resto dentro do app Microsoft 365", () => {
-  const { grupos } = operacoesDoApp("microsoft365", CONEXOES, pt);
-  assert.deepEqual(grupos.map((g) => g.recurso), ["mail", "reaction", null]);
+test("as ferramentas de chat do ms365 vão para o Teams, e o resto fica no Microsoft 365, sem repetir", () => {
+  const teams = operacoesDoApp("teams", CONEXOES, pt);
+  assert.deepEqual(teams.nativas.map((o) => o.acao), ["teams.post", "teams.react"]);
+  assert.deepEqual(teams.grupos.map((g) => [g.recurso, g.itens.map((i) => [i.servidor, i.ferramenta])]), [["reaction", [["ms365", "set-chat-message-reaction"]]]]);
+  const m365 = operacoesDoApp("microsoft365", CONEXOES, pt);
+  assert.deepEqual(m365.grupos.map((g) => [g.recurso, g.itens.map((i) => i.ferramenta)]), [["mail", ["send-mail", "list-mail-messages"]], [null, ["get-me"]]]);
+  const apps = appsDaPaleta(CONEXOES);
+  assert.deepEqual(apps.find((a) => a.id === "teams")!.servidores, ["ms365"]);
+  assert.deepEqual(apps.find((a) => a.id === "microsoft365")!.servidores, ["ms365"]);
+});
+
+test("app que junta mais de um servidor expõe todos, para cada operação mostrar o dela", () => {
+  const conexoes: ConexaoParaPaleta[] = [
+    { servidor: "jira", ferramentas: [{ name: "create_issue" }] },
+    { servidor: "shortcut", ferramentas: [{ name: "stories-create" }] },
+  ];
+  const { grupos, servidores } = operacoesDoApp("tracker", conexoes, pt);
+  assert.deepEqual(servidores, ["jira", "shortcut"]);
+  assert.deepEqual(grupos[0]!.itens.map((i) => [i.titulo, i.servidor]), [["Criar issue", "jira"]]);
+  assert.deepEqual(operacoesDoApp("slack", CONEXOES, pt).servidores, ["slack"]);
 });
 
 test("busca acha operação em qualquer app e já devolve a operação", () => {
@@ -95,8 +114,8 @@ test("busca acha operação em qualquer app e já devolve a operação", () => {
   assert.deepEqual(operacoes.map((o) => [o.app, o.titulo]), [
     ["teams", "Reagir à mensagem"],
     ["slack", "Reagir"],
+    ["teams", "Reagir"],
     ["slack", "Reagir"],
-    ["microsoft365", "Reagir"],
   ]);
   assert.deepEqual(operacoes.map((o) => o.acao !== undefined), [true, true, false, false]);
 });
@@ -123,6 +142,11 @@ test("passo gravado é reconhecido como app e operação, sem migração", () =>
   );
   assert.deepEqual(rec({ type: "model", model: "m", prompt: "" } as never), { app: "ia", operacao: { tipo: "modelo" } });
   assert.deepEqual(rec({ type: "logic", op: "if" } as never), { app: "logica", operacao: { tipo: "logica", op: "if" } });
+});
+
+test("a ferramenta de chat do ms365 é reconhecida como Teams, a de e-mail como Microsoft 365", () => {
+  const rec = (tool: string) => reconhecerPasso({ ...base, type: "action", action: "mcp.call", mode: "approve", params: { server: "ms365", tool } } as Step).app;
+  assert.deepEqual([rec("send-chat-message"), rec("send-mail")], ["teams", "microsoft365"]);
 });
 
 test("mcp.call sem ferramenta é um app sem operação", () => {
@@ -182,4 +206,11 @@ test("o nome padrão acompanha a operação, o renomeado fica", () => {
   assert.equal(b.name, "Slack add reaction");
   const renomeado = passoDaOperacao(SPEC, op("slack", "slack_add_reaction"), { ...a, name: "Avisar o time" });
   assert.equal(renomeado.name, "Avisar o time");
+});
+
+test("ícone e servidor do nó vazio vêm do app", () => {
+  const apps = appsDaPaleta(CONEXOES);
+  const por = (id: string) => apps.find((a) => a.id === id)!;
+  assert.deepEqual([fonteDaMarca(por("slack")), fonteDaMarca(por("microsoft365")), fonteDaMarca(por("tracker")), fonteDaMarca(por("locum-fixture"))], ["slack", "ms365", "atlassian", "locum-fixture"]);
+  assert.deepEqual([servidorDoNoVazio(por("slack")), servidorDoNoVazio(por("http")), servidorDoNoVazio(por("microsoft365"))], ["slack", "http", "ms365"]);
 });
