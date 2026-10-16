@@ -174,3 +174,54 @@ test("falha ao soltar o 👀 não desfaz nem falha o remove", async () => {
   assert.equal((await falho.remove("acme-a")).removed, true);
   assert.equal(tabela(m.db, schema.agents), 0);
 });
+
+test("remove de automação que sumiu entre a checagem e a transação recusa como não cadastrada", async () => {
+  const m = montar();
+  await semear(m, "acme-a");
+  const antigo = (await m.agents.get("acme-a"))!;
+  await m.automations.remove("acme-a");
+  // a checagem de fora ainda enxerga o agent (o outro remove ainda não tinha commitado)
+  const agents = Object.create(m.agents) as AgentService;
+  agents.get = async () => antigo;
+  const automations = new AutomationService(agents, m.triggers, {} as unknown as ExecutionService, undefined, m.db, async () => {});
+  await assert.rejects(automations.remove("acme-a"), /nao cadastrada/);
+});
+
+test("solta o 👀 do pendente que o scheduler gravou entre a leitura de fora e a transação", async () => {
+  const m = montar();
+  await semear(m, "acme-a");
+  m.db.insert(schema.events).values({ id: "ev-tarde", source: "teams-inbox", externalId: "tarde", payload: { chatId: "c9" } }).run();
+  // o scheduler de outro processo grava o pendente depois da leitura de fora e antes do BEGIN IMMEDIATE
+  const db = Object.create(m.db) as Banco;
+  db.transaction = ((fn: never, opts: never) => {
+    m.db.update(schema.cursors).set({ value: JSON.stringify([{ eventId: "ev-tarde", since: 1 }]) }).where(eq(schema.cursors.source, "scheduler-retry")).run();
+    return m.db.transaction(fn, opts);
+  }) as Banco["transaction"];
+  const automations = new AutomationService(m.agents, m.triggers, {} as unknown as ExecutionService, undefined, db, async (payload) => {
+    m.soltos.push(payload);
+  });
+  await automations.remove("acme-a");
+  assert.deepEqual(m.soltos, [{ chatId: "c9" }]);
+});
+
+test("evento manual da automação usado por run de outra automação fica", async () => {
+  const m = montar();
+  await semear(m, "acme-a");
+  const b = await semear(m, "acme-b");
+  m.db.insert(schema.runs).values({ id: "run-b-usa-a", agentVersionId: b.versao.id, triggerId: b.gatilho.id, eventId: "ev-man-acme-a", status: "done" }).run();
+
+  await m.automations.remove("acme-a");
+
+  assert.equal(m.db.select().from(schema.events).where(eq(schema.events.id, "ev-man-acme-a")).all().length, 1);
+  assert.equal(m.db.select().from(schema.runs).where(eq(schema.runs.id, "run-b-usa-a")).all().length, 1);
+});
+
+test("evento manual da automação usado por run dela sai junto", async () => {
+  const m = montar();
+  const a = await semear(m, "acme-a");
+  m.db.insert(schema.runs).values({ id: "run-a-manual", agentVersionId: a.versao.id, triggerId: a.gatilho.id, eventId: "ev-man-acme-a", status: "done" }).run();
+
+  await m.automations.remove("acme-a");
+
+  assert.equal(m.db.select().from(schema.events).where(eq(schema.events.id, "ev-man-acme-a")).all().length, 0);
+});

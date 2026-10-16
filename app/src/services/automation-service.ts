@@ -318,11 +318,16 @@ export class AutomationService {
    */
   async remove(agentId: string): Promise<{ agentId: string; removed: true; triggers: number; runs: number }> {
     await this.recusarSeNaoExiste(agentId);
-    // Antes da transação: depois dela os gatilhos e o cursor de retentativa não existem mais.
-    const esperando = await this.eventosEsperandoRetentativa(agentId);
 
-    const { triggers, runs } = this.db.transaction(
+    const { triggers, runs, esperando } = this.db.transaction(
       (tx) => {
+        // Outro remove pode ter apagado o agent depois da checagem de fora.
+        if (tx.select({ id: schema.agents.id }).from(schema.agents).where(eq(schema.agents.id, agentId)).get() === undefined) {
+          throw new Error(`automacao "${agentId}" nao cadastrada`);
+        }
+        // Lido aqui: depois da transação os gatilhos e o cursor não existem mais, e antes dela
+        // o scheduler de outro processo ainda poderia gravar um pendente novo.
+        const esperando = this.eventosEsperandoRetentativa(tx, agentId);
         const previa = this.inspecionar(tx, agentId);
         if (previa.blockers.length > 0) throw new Error(previa.blockers.join("; "));
 
@@ -354,7 +359,7 @@ export class AutomationService {
           .run();
         tx.delete(schema.agentVersions).where(eq(schema.agentVersions.agentId, agentId)).run();
         tx.delete(schema.agents).where(eq(schema.agents.id, agentId)).run();
-        return previa;
+        return { triggers: previa.triggers, runs: previa.runs, esperando };
       },
       { behavior: "immediate" },
     );
@@ -376,14 +381,15 @@ export class AutomationService {
     if (isReserved(agentId)) throw new Error(`"${agentId}" e um agent do sistema e nao aceita escrita`);
   }
 
-  /** Eventos que ficaram com 👀 esperando nova tentativa nos gatilhos da automação. */
-  private async eventosEsperandoRetentativa(agentId: string): Promise<string[]> {
-    const ids = (await this.triggers.list(agentId)).map((g) => g.id);
+  /** Eventos que ficaram com 👀 esperando nova tentativa nos gatilhos da automação. Síncrona, para rodar dentro da transação do `remove`. */
+  private eventosEsperandoRetentativa(leitor: Pick<Db, "select">, agentId: string): string[] {
+    const ids = leitor.select({ id: schema.triggers.id }).from(schema.triggers).where(eq(schema.triggers.agentId, agentId)).all().map((g) => g.id);
     if (ids.length === 0) return [];
-    const linhas = await this.db
+    const linhas = leitor
       .select({ value: schema.cursors.value })
       .from(schema.cursors)
-      .where(and(eq(schema.cursors.source, FONTE_DA_RETENTATIVA), inArray(schema.cursors.key, ids)));
+      .where(and(eq(schema.cursors.source, FONTE_DA_RETENTATIVA), inArray(schema.cursors.key, ids)))
+      .all();
     const eventos = new Set<string>();
     for (const { value } of linhas) {
       try {
