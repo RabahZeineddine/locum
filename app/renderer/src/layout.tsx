@@ -11,6 +11,7 @@ import { Assistente } from "./assistente";
 import { AtualizacaoNoRodape } from "./atualizacao";
 import { CurrentInitiativeProvider } from "./current-initiative";
 import { EVENTO_ABRIR_PALETA, Paleta } from "./paleta";
+import { ProvedorDeToasts } from "./toasts";
 import { ROTA_IDS, ROTA_PADRAO, ROTAS, ROTAS_ANTIGAS, ROTAS_DA_BARRA, type RotaId, type TelaProps } from "./rotas";
 
 /**
@@ -136,6 +137,7 @@ export function Layout() {
 
   return (
     <CurrentInitiativeProvider ativa={ativa} detalhe={detalhe}>
+    <ProvedorDeToasts navegar={navegar}>
     <div className="flex h-screen text-foreground">
       <nav className="regiao-de-arrasto bg-sidebar border-sidebar-border flex w-48 shrink-0 flex-col border-r">
         <div className="flex items-center gap-2 px-3.5 pt-9 pb-3">
@@ -243,6 +245,7 @@ export function Layout() {
       */}
       <span className="hidden" data-locum-probe="tailwind" />
     </div>
+    </ProvedorDeToasts>
     </CurrentInitiativeProvider>
   );
 }

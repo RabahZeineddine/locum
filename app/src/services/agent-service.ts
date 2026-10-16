@@ -29,6 +29,8 @@ export interface AgentOverview extends AgentRow {
     createdAt: number;
     costUsd: number;
     estimateUsd: number;
+    /** O erro do run, para a lista dizer por que falhou sem abrir o detalhe. */
+    error: string | null;
   } | null;
 }
 
@@ -491,6 +493,7 @@ export class AgentService {
             createdAt: schema.runs.createdAt,
             costUsd: schema.runs.costUsd,
             estimateUsd: schema.runs.estimateUsd,
+            error: schema.runs.error,
           })
           .from(schema.runs)
           .innerJoin(schema.agentVersions, eq(schema.runs.agentVersionId, schema.agentVersions.id))

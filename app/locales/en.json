@@ -688,7 +688,8 @@
         "took": "{{seconds}} s",
         "starting": "starting the model and tools…",
         "working": "working…"
-      }
+      },
+      "notRun": "did not run"
     },
     "progress": "{{done}}/{{total}} steps",
     "waiting_steps": "{{count}} waiting",
@@ -706,7 +707,8 @@
     "stepReason": {
       "outside_initiative": "step targets a server outside this initiative's scope",
       "rejected": "rejected",
-      "publish_conflict": "the target changed before this could be published"
+      "publish_conflict": "the target changed before this could be published",
+      "not_run": "an earlier step failed, so this one did not run"
     },
     "tabs": {
       "executive": "Executive View",
@@ -729,6 +731,16 @@
       "review": "PR reviews",
       "digest": "Watch and alerts",
       "failed": "Failed"
+    },
+    "event": {
+      "title": "Event used",
+      "none": "no event",
+      "dryRun": "Dry run: nothing was sent to Teams or Slack. The reply step shows the text that would be posted."
+    },
+    "failedAt": "Failed at step \"{{step}}\"",
+    "dryRun": {
+      "badge": "dry run",
+      "text": "Text that would be posted"
     }
   },
   "settings": {
@@ -2557,6 +2569,25 @@
       "full": "Limit of {{max}} reached. Remove one to pick another.",
       "keys": "↑ ↓ Enter Esc",
       "refresh": "Refresh"
+    },
+    "runWith": {
+      "title": "Run with",
+      "lead": "This automation depends on an event ({{reason}}). Choose where it comes from.",
+      "recent": "Recent event",
+      "link": "Paste a PR link",
+      "linkPlaceholder": "https://github.com/owner/repo/pull/123",
+      "linkHelp": "Builds the event the way the trigger would: owner, repository, title, description and diff. With no conversation to answer, the Teams or Slack reply becomes a dry run and nothing is posted.",
+      "empty": "No trigger of this automation has recorded an event yet. Paste a PR link to try it.",
+      "run": "Run",
+      "starting": "starting...",
+      "cancel": "Cancel",
+      "noAuthor": "no author",
+      "source": {
+        "teams": "Teams",
+        "slack": "Slack",
+        "github": "GitHub",
+        "manual": "Link"
+      }
     }
   },
   "library": {
@@ -2990,5 +3021,14 @@
       "create": "Create skill"
     },
     "removeConfirmAgents_zero": "Remove {{name}}? {{count}} agents use it: they show the warning and runs fail until the skill is back."
+  },
+  "toast": {
+    "running": "Running {{name}}",
+    "done": "{{name}} finished",
+    "failed": "{{name}} failed: {{error}}",
+    "refused": "{{name}} did not start: {{error}}",
+    "paused": "{{name}} stopped and waits for your decision",
+    "open": "View run",
+    "dismiss": "Close"
   }
 }

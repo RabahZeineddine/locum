@@ -1,5 +1,7 @@
 import { TriggerConfig, type AgentSpec, type TriggerConfigInput } from "../config/types.js";
 import { agentService, ID_DE_AGENT, mensagemDeVersao, isReserved, type AgentService, type AgentVersion } from "./agent-service.js";
+import { dependenciaDeEvento, recusaSemEvento } from "../executor/dependencia-de-evento.js";
+import { eventoManual, type EventoManual, type EventoRecente } from "./evento-manual.js";
 import { executionService, type ExecutionService } from "./execution-service.js";
 import { esperaChats, MOTIVO_CHATS, recusaDaGravacao, triggerService, type TriggerEntry, type TriggerService } from "./trigger-service.js";
 
@@ -61,6 +63,7 @@ export class AutomationService {
     private readonly agents: AgentService = agentService,
     private readonly triggers: TriggerService = triggerService,
     private readonly executions: ExecutionService = executionService,
+    private readonly eventos: EventoManual = eventoManual,
   ) {}
 
   async get(agentId: string): Promise<Automation | null> {
@@ -149,22 +152,54 @@ export class AutomationService {
   }
 
   /**
-   * "Executar agora". Roda sem evento, como o gatilho de relógio, e aponta o
-   * run para o gatilho manual quando a automação tem um, para a lista de
-   * execuções dizer de onde ele veio.
+   * O que o "Executar com" precisa para abrir: se a automação depende de
+   * evento, e os últimos que os gatilhos dela já gravaram.
    */
-  async runNow(agentId: string): Promise<{ runId: string; aviso?: { provedor: string; ate: number } }> {
+  async eventsForRun(agentId: string): Promise<{ precisaDeEvento: string | null; recentes: EventoRecente[] }> {
+    const version = await this.agents.getLatestVersion(agentId);
+    if (version === undefined) throw new Error(`agent "${agentId}" não existe`);
+    return { precisaDeEvento: dependenciaDeEvento(version.spec), recentes: await this.eventos.recentes(agentId) };
+  }
+
+  /**
+   * "Executar agora". Sem evento, como o gatilho de relógio, e aponta o run
+   * para o gatilho manual quando a automação tem um, para a lista de
+   * execuções dizer de onde ele veio.
+   *
+   * A automação que depende de evento (`{{event.*}}` ou ação de conversa) pede
+   * um: `eventId` de um evento recente, ou `prUrl` com o link de um PR, que
+   * vira o evento como o gatilho do Teams o montaria. Sem nenhum dos dois
+   * recusa aqui, antes de abrir o run e de gastar o primeiro passo de modelo.
+   */
+  async runNow(
+    agentId: string,
+    evento: { eventId?: string; prUrl?: string } = {},
+  ): Promise<{ runId: string; eventId: string | null; aviso?: { provedor: string; ate: number } }> {
     if (isReserved(agentId)) throw new Error(`"${agentId}" e um agent do sistema e nao aceita escrita`);
+    if (evento.eventId !== undefined && evento.prUrl !== undefined) throw new Error("diga eventId ou prUrl, não os dois");
+
+    let eventId: string | null = null;
+    if (evento.eventId !== undefined) {
+      if (!(await this.eventos.existe(evento.eventId))) throw new Error(`evento ${evento.eventId} nao encontrado`);
+      eventId = evento.eventId;
+    } else if (evento.prUrl !== undefined) {
+      eventId = (await this.eventos.doLink(evento.prUrl)).eventId;
+    } else {
+      const version = await this.agents.getLatestVersion(agentId);
+      const motivo = version === undefined ? null : dependenciaDeEvento(version.spec);
+      if (motivo !== null) throw new Error(recusaSemEvento(motivo));
+    }
+
     const manual = (await this.triggers.list(agentId)).find((g) => g.config.kind === "manual");
     const { runId } = await this.executions.startForEvent({
-      eventId: null,
+      eventId,
       agentId,
       ...(manual === undefined ? {} : { triggerId: manual.id }),
       wait: false,
     });
     // Manual sempre roda. Com o provedor no limite, só avisa: pode falhar ou gastar o que resta.
     const bloqueio = await (await import("./limites-padrao.js")).pausaPadrao(agentId).catch(() => null);
-    return bloqueio === null ? { runId } : { runId, aviso: { provedor: bloqueio.provedor, ate: bloqueio.ate } };
+    return bloqueio === null ? { runId, eventId } : { runId, eventId, aviso: { provedor: bloqueio.provedor, ate: bloqueio.ate } };
   }
 
   /**

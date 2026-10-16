@@ -73,6 +73,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { RotaId } from "../rotas";
 import { ModalDeAgent } from "./modal-de-agent";
+import { useExecutarAgora } from "./executar-com";
 import { PainelDoNo } from "./painel";
 import { appDoGatilho, appDoPasso, resumoDoGatilho, Selo, tituloDoGatilho, tituloDoPasso } from "./visual";
 
@@ -217,6 +218,7 @@ function EditorCarregado({
   const [selecionado, setSelecionado] = useState<string | null>(null);
   const [nota, setNota] = useState("");
   const [ocupado, setOcupado] = useState<"salvar" | "rodar" | "ligar" | null>(null);
+  const executarAgora = useExecutarAgora();
   const [aviso, setAviso] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
   // O rascunho de uma edição que não chegou ao Salvar (ou um reservado antes): espera a decisão da pessoa. `reservada` diz que ele já saiu da chave ativa.
   const [oferta, setOferta] = useState<(OfertaDeRascunho & { reservada: boolean }) | null>(() => {
@@ -488,18 +490,9 @@ function EditorCarregado({
       setAviso({ tipo: "erro", texto: t("automations.editor.runUnsaved") });
       return;
     }
-    setOcupado("rodar");
     // Abre a execução na hora: é lá que se acompanha o que o agent vai fazendo.
-    call("automations.runNow", agentId).then(
-      ({ runId }) => {
-        setOcupado(null);
-        navegar("runs", runId);
-      },
-      (e: unknown) => {
-        setOcupado(null);
-        setAviso({ tipo: "erro", texto: e instanceof Error ? e.message : String(e) });
-      },
-    );
+    // Automação que depende de evento abre antes o diálogo "Executar com".
+    void executarAgora.pedir(agentId, rascunho.spec.name, { aoIniciar: (runId) => navegar("runs", runId) });
   };
 
   const alternar = (): void => {
@@ -636,10 +629,11 @@ function EditorCarregado({
           <Download />
           {t("pacote.export.button")}
         </Button>
-        <Button className="cursor-pointer" disabled={ocupado !== null || nova} onClick={executar} size="sm" variant="outline">
-          {ocupado === "rodar" ? <Loader2 className="animate-spin" /> : <Play />}
+        <Button className="cursor-pointer" disabled={ocupado !== null || nova || executarAgora.pedindo} onClick={executar} size="sm" variant="outline">
+          {executarAgora.pedindo ? <Loader2 className="animate-spin" /> : <Play />}
           {t("automations.editor.runNow")}
         </Button>
+        {executarAgora.dialogo}
         <Button
           className="cursor-pointer"
           data-locum-automacao-ligar=""

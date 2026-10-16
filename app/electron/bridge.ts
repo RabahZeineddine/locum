@@ -210,7 +210,8 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "automations.get": (agentId) => automationService.get(agentId),
     "automations.save": (input) => automationService.save(input),
     "automations.setEnabled": (agentId, enabled) => automationService.setEnabled(agentId, enabled),
-    "automations.runNow": (agentId) => automationService.runNow(agentId),
+    "automations.runNow": (agentId, evento) => automationService.runNow(agentId, evento),
+    "automations.eventsForRun": (agentId) => automationService.eventsForRun(agentId),
     "automations.suggestId": (nome) => automationService.suggestId(nome),
     "pacote.exportFile": async (agentId) => {
       const { texto, nomeDoArquivo } = await pacoteService.exportar(agentId);

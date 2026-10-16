@@ -37,6 +37,13 @@ export const ESTADOS = [
 ] as const;
 export type Estado = (typeof ESTADOS)[number];
 
+/** De onde veio um evento. Fonte nova gravada no banco sai crua, pelo mesmo motivo dos estados. */
+export const FONTES_DE_EVENTO = ["teams", "slack", "github", "manual"] as const;
+
+export function rotuloDaFonte(t: TFunction, fonte: string): string {
+  return (FONTES_DE_EVENTO as readonly string[]).includes(fonte) ? t(`automations.runWith.source.${fonte}`) : fonte;
+}
+
 export function rotuloDeSeveridade(t: TFunction, severidade: string): string {
   return (SEVERIDADES as readonly string[]).includes(severidade)
     ? t(`severity.${severidade}`)
@@ -48,7 +55,7 @@ export function rotuloDeEstado(t: TFunction, estado: string): string {
 }
 
 /** Codigo de passo pulado ou rejeitado, gravado em ingles por `gate.ts` e `executor.ts`. */
-export const MOTIVOS_DE_PASSO = ["outside_initiative", "rejected", "publish_conflict"] as const;
+export const MOTIVOS_DE_PASSO = ["outside_initiative", "rejected", "publish_conflict", "not_run"] as const;
 export type MotivoDePasso = (typeof MOTIVOS_DE_PASSO)[number];
 
 export function rotuloDoMotivo(t: TFunction, motivo: string): string {

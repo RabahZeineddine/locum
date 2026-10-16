@@ -21,6 +21,7 @@ import { pontoDoEstado } from "@/lib/estado-do-ponto";
 import { call, read, useRead, type ReadResult } from "@/lib/bridge";
 import { useJanela } from "@/lib/janela";
 import {
+  rotuloDaFonte,
   rotuloDeEstado,
   rotuloDeSeveridade,
   rotuloDoModelo,
@@ -315,6 +316,12 @@ export function LinhaDeExecucao({
           {run.stepPending > 0 && <span className="num">{t("runs.waiting_steps", { count: run.stepPending })}</span>}
           {run.stepFailed > 0 && <span className="num">{t("runs.failed_steps", { count: run.stepFailed })}</span>}
           {run.findingCount > 0 && <span className="num">{t("runs.findings", { count: run.findingCount })}</span>}
+          {run.status === "failed" && (run.failedStep?.error ?? run.error) !== null ? (
+            <span className="text-destructive min-w-0 truncate" data-locum-run-erro={run.id} title={run.failedStep?.error ?? run.error ?? undefined}>
+              {run.failedStep === null ? "" : `${run.failedStep.name}: `}
+              {run.failedStep?.error ?? run.error}
+            </span>
+          ) : null}
         </span>
       </span>
       <span className="text-muted-foreground num w-20 shrink-0 text-right text-xs">{quando(t, run.createdAt)}</span>
@@ -391,11 +398,16 @@ function Execucao({ navegar, runId }: { navegar: TelaProps["navegar"]; runId: st
       </div>
 
       {detalhe.error !== null ? (
-        <p className="border-border bg-card flex items-start gap-2 rounded-lg border px-3 py-2 text-[13px]">
+        <p className="border-border bg-card flex items-start gap-2 rounded-lg border px-3 py-2 text-[13px]" data-locum-run-falha={detalhe.failedStep?.key ?? ""}>
           <StatusDot className="mt-1.5" estado="erro" />
-          {detalhe.error}
+          <span className="flex min-w-0 flex-col gap-0.5">
+            {detalhe.failedStep === null ? null : <span className="font-medium">{t("runs.failedAt", { step: detalhe.failedStep.name })}</span>}
+            <span className="break-words">{detalhe.error}</span>
+          </span>
         </p>
       ) : null}
+
+      <EventoDoRun detalhe={detalhe} />
 
       {/* Resumo Executivo: PR, Veredito e Achados em destaque */}
       {ehPr && target && <CardResumoPr target={target} />}
@@ -418,6 +430,42 @@ function Execucao({ navegar, runId }: { navegar: TelaProps["navegar"]; runId: st
       </ol>
     </div>
   );
+}
+
+/** O evento que o run usou, ou "sem evento"; e o aviso de ensaio quando o evento veio de um link colado. */
+function EventoDoRun({ detalhe }: { detalhe: Detalhe }) {
+  const { t } = useTranslation();
+  const evento = detalhe.event;
+
+  return (
+    <div className="border-border bg-card flex flex-col gap-1 rounded-lg border px-3 py-2 text-[13px]" data-locum-run-evento={evento?.id ?? "nenhum"}>
+      <span className="flex flex-wrap items-center gap-2">
+        <span className="text-muted-foreground text-xs font-medium">{t("runs.event.title")}</span>
+        {evento === null ? (
+          <span>{t("runs.event.none")}</span>
+        ) : (
+          <>
+            <span className="font-medium">{rotuloDaFonte(t, evento.source)}</span>
+            {evento.author === null ? null : <span className="text-muted-foreground">{evento.author}</span>}
+            <span className="min-w-0 flex-1 truncate">{evento.trecho}</span>
+          </>
+        )}
+      </span>
+      {evento?.semConversa === true ? (
+        <span className="text-muted-foreground text-xs" data-locum-run-ensaio="">
+          {t("runs.event.dryRun")}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+/** A saída de um passo de resposta que virou ensaio: o texto que seria postado. */
+function ensaioDoPasso(output: unknown): { motivo: string; text: string | null } | null {
+  if (output === null || typeof output !== "object") return null;
+  const o = output as { state?: unknown; motivo?: unknown; text?: unknown };
+  if (o.state !== "ensaio") return null;
+  return { motivo: typeof o.motivo === "string" ? o.motivo : "", text: typeof o.text === "string" ? o.text : null };
 }
 
 /** Extrai veredito (APPROVE, COMMENT, REQUEST_CHANGES) e sumário se algum step produziu. */
@@ -663,6 +711,8 @@ function PassoDaExecucao({
 }) {
   const { t } = useTranslation();
   const rodando = passo.status === "running";
+  const naoRodou = passo.status === "skipped" && passo.error === "not_run";
+  const ensaio = ensaioDoPasso(passo.output);
   const segundos =
     passo.startedAt !== null && passo.endedAt !== null
       ? passo.endedAt - passo.startedAt
@@ -680,7 +730,12 @@ function PassoDaExecucao({
       <div className="flex flex-wrap items-center gap-2 text-[13px]">
         <span className="text-muted-foreground num">{passo.idx + 1}</span>
         <span className="font-medium">{passo.name}</span>
-        <Estado status={passo.status} />
+        <Estado rotulo={naoRodou ? t("runs.step.notRun") : undefined} status={passo.status} />
+        {ensaio === null ? null : (
+          <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[11px] font-medium" data-locum-ensaio="">
+            {t("runs.dryRun.badge")}
+          </span>
+        )}
         <span className="text-muted-foreground text-xs" title={passo.modelUsed ?? undefined}>
           {passo.modelUsed !== null ? rotuloDoModelo(passo.modelUsed) : t("runs.step.action")}
           {passo.substitutionReason !== null ? ` ${t("runs.step.substituted")}` : ""}
@@ -698,6 +753,15 @@ function PassoDaExecucao({
       {passo.error !== null ? (
         <p className="mt-2 text-destructive text-xs">{rotuloDoMotivo(t, passo.error)}</p>
       ) : null}
+
+      {ensaio === null ? null : (
+        <div className="border-border bg-muted/30 mt-2 flex flex-col gap-1 rounded-md border p-2.5 text-xs" data-locum-ensaio-texto="">
+          <span className="text-muted-foreground">
+            {ensaio.motivo} · {t("runs.dryRun.text")}
+          </span>
+          <span className="whitespace-pre-wrap break-words">{ensaio.text ?? ""}</span>
+        </div>
+      )}
 
       {ferramentas.length > 0 ? (
         <div className="mt-2 flex flex-wrap gap-1">
@@ -1009,13 +1073,13 @@ function temConteudo(valor: unknown): boolean {
  * o serviço devolve, e comparar contra texto de tela faria a verificação
  * depender do idioma da máquina que roda o loop.
  */
-function Estado({ status }: { status: string }) {
+function Estado({ status, rotulo }: { status: string; rotulo?: string | undefined }) {
   const { t } = useTranslation();
 
   return (
     <span className="inline-flex shrink-0 items-center gap-1.5 font-medium" data-locum-estado={status}>
       <StatusDot estado={pontoDoEstado(status)} />
-      {rotuloDeEstado(t, status)}
+      {rotulo ?? rotuloDeEstado(t, status)}
     </span>
   );
 }

@@ -1154,6 +1154,9 @@ async function checkRenderer(): Promise<string> {
       throw new Error(`a janela leu ${ponte.pendencias} pendencia(s) e a fila tem ${pendencias}`);
     }
 
+    // Depois das comparações acima: cria automação, run e evento que elas não esperam.
+    await checkExecutarComEvento(window);
+
     if (erros.length > 0) throw new Error(`o renderer registrou erro: ${erros.join(", ")}`);
 
     return t("smoke.renderer", {
@@ -2303,6 +2306,121 @@ async function checkAutomacaoNova(window: BrowserWindow): Promise<void> {
       db.delete(schema.agents).where(eq(schema.agents.id, id)).run();
     }
   }
+}
+
+/**
+ * "Executar agora" numa automação que depende de evento, de ponta a ponta e
+ * sem modelo nem rede: o botão abre o diálogo "Executar com" com o evento
+ * recente, o run escolhido falha no passo de resposta (um evento de PR não tem
+ * conversa), o aviso do canto diz o erro e leva ao run, e a lista mostra o erro
+ * numa linha. Um evento montado de link colado, gravado direto no banco porque
+ * o GitHub não é consultado aqui, vira ensaio. `LOCUM_EXECUTAR_CAPTURAS` pede as capturas.
+ */
+async function checkExecutarComEvento(window: BrowserWindow): Promise<void> {
+  const { automationService } = await import("../src/services/automation-service.js");
+  const { agentService } = await import("../src/services/agent-service.js");
+  const { runService } = await import("../src/services/run-service.js");
+  const { db, schema } = await import("../src/db/index.js");
+  const agentId = "smoke-executar";
+  const capturas = process.env.LOCUM_EXECUTAR_CAPTURAS;
+  const foto = async (nome: string): Promise<void> => {
+    if (capturas === undefined || capturas === "") return;
+    mkdirSync(capturas, { recursive: true });
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    writeFileSync(join(capturas, `${nome}.png`), (await window.webContents.capturePage()).toPNG());
+  };
+  const clicar = (seletor: string): Promise<boolean> =>
+    window.webContents.executeJavaScript(
+      `(() => {
+        const botao = document.querySelector(${JSON.stringify(seletor)});
+        if (botao === null || botao.disabled) return false;
+        botao.click();
+        return true;
+      })()`,
+    );
+
+  await automationService.save({
+    spec: {
+      id: agentId, name: "Revisar PRs (smoke)", defaultTools: [], skills: [], budget: {},
+      steps: [
+        { type: "logic", key: "ler", name: "Montar a resposta", op: "teams.card", value: "Revisei {{event.repo}}#{{event.prNumber}}", compare: "equals", against: "", cases: [], title: "", needs: [], optional: false, requiresServers: [] },
+        { type: "action", key: "responder", name: "Responder no Teams", action: "teams.post", mode: "approve", input: "ler", needs: ["ler"], optional: false, requiresServers: [] },
+      ],
+    } as never,
+    triggers: [{ config: { kind: "manual" } }],
+    note: "", create: true,
+  });
+  const versao = (await agentService.getLatestVersion(agentId))!;
+  const evento = async (source: string, payload: object): Promise<string> => {
+    const id = randomUUID();
+    db.insert(schema.events).values({ id, source, externalId: `smoke-executar:${id}`, payload }).run();
+    return id;
+  };
+  // O que um gatilho do Teams já gravou e virou run: é o que o diálogo lista.
+  const recente = await evento("teams", { repo: "akad/pagamentos", changedFiles: [], prOwner: "akad", prRepo: "pagamentos", prNumber: 482, ["title"]: "Corrige o fechamento do lote", author: "maria", teamsAuthor: "Maria Souza", text: "Alguém revisa? https://github.com/akad/pagamentos/pull/482" });
+  db.insert(schema.runs).values({ id: randomUUID(), agentVersionId: versao.id, eventId: recente, status: "done", createdAt: Math.floor(Date.now() / 1000) - 3600 }).run();
+
+  // O botão da lista: a automação depende de evento, então abre o diálogo.
+  await irPara(window, "automations");
+  await esperarProbe(window, "linha da automacao", `document.querySelector("[data-locum-executar-agora=${agentId}]") !== null ? true : null`);
+  if (!(await clicar(`[data-locum-executar-agora=${agentId}]`))) throw new Error("o botao Executar agora nao abriu");
+  await esperarProbe(window, "dialogo Executar com", `document.querySelector("[data-locum-executar-com=${agentId}]") !== null ? true : null`);
+  await esperarProbe(window, "evento recente no dialogo", `document.querySelector("[data-locum-evento='${recente}']") !== null ? true : null`);
+  await foto("dialogo");
+  if ((await window.webContents.executeJavaScript(`document.querySelector("[data-locum-executar-ir]").disabled`)) !== true) {
+    throw new Error("o dialogo deixou executar sem escolher o evento");
+  }
+  await clicar(`[data-locum-evento='${recente}']`);
+  if (!(await clicar("[data-locum-executar-ir]"))) throw new Error("o dialogo nao deixou executar com o evento escolhido");
+
+  // O aviso do canto segue o run até o fim e traz o erro do passo que falhou.
+  await esperarProbe(window, "aviso de falha", `document.querySelector("[data-locum-toast=erro]") !== null ? true : null`, 30_000);
+  const aviso = (await window.webContents.executeJavaScript(`document.querySelector("[data-locum-toast=erro]").textContent`)) as string;
+  if (!aviso.includes("conversa")) throw new Error(`o aviso de falha nao trouxe o erro do passo: ${aviso}`);
+  await foto("toast-falha");
+  const falho = (await runService.list({ agentId, status: "failed", limit: 1 }))[0];
+  if (falho?.failedStep?.key !== "responder") throw new Error(`o run falho nao aponta o passo: ${JSON.stringify(falho?.failedStep)}`);
+
+  // A linha da automação mostra o erro numa linha, com ligação para o run.
+  await esperarProbe(window, "erro na linha da automacao", `document.querySelector("[data-locum-ultimo-erro]") !== null ? true : null`);
+  await foto("lista-falha");
+
+  // O clique no aviso leva ao run, que mostra o passo que falhou e o evento usado.
+  if (!(await clicar("[data-locum-toast-abrir]"))) throw new Error("o aviso nao tem a ligacao para o run");
+  await esperarProbe(window, "detalhe do run falho", `document.querySelector("[data-locum-probe=execucao][data-run='${falho.id}']") !== null ? true : null`);
+  const passos = await esperarProbe<string>(
+    window,
+    "passos do run falho",
+    `(() => {
+      const estados = [...document.querySelectorAll("[data-locum-passo]")].map((p) => p.dataset.locumPasso + ":" + p.querySelector("[data-locum-estado]").dataset.locumEstado);
+      return estados.length === 2 ? estados.join(",") : null;
+    })()`,
+  );
+  if (passos !== "ler:done,responder:failed") throw new Error(`os passos do run falho ficaram ${passos}`);
+  await esperarProbe(window, "evento do run", `document.querySelector("[data-locum-run-evento='${recente}']") !== null ? true : null`);
+  await foto("run-falho");
+
+  // Na lista de Execuções a linha do run falho mostra o erro.
+  await irPara(window, "runs");
+  await esperarProbe(window, "erro na linha da execucao", `document.querySelector("[data-locum-run-erro='${falho.id}']") !== null ? true : null`);
+  await foto("execucoes-falha");
+
+  // Link colado: o evento não tem conversa, e a resposta vira ensaio sem nada sair.
+  const colado = await evento("manual", { repo: "akad/pagamentos", changedFiles: [], prOwner: "akad", prRepo: "pagamentos", prNumber: 9, ["title"]: "Ajusta o timeout", author: "bia", chatId: null, messageId: null, text: "", teamsAuthor: null, semConversa: true });
+  const { runId } = await automationService.runNow(agentId, { eventId: colado });
+  const limite = Date.now() + 20_000;
+  let ensaio = await runService.get(runId);
+  while (ensaio?.status !== "done" && Date.now() < limite) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    ensaio = await runService.get(runId);
+  }
+  if (ensaio?.status !== "done") throw new Error(`o run do ensaio terminou como ${ensaio?.status}: ${ensaio?.error}`);
+  await irPara(window, "runs", runId);
+  await esperarProbe(window, "texto do ensaio", `document.querySelector("[data-locum-ensaio-texto]") !== null ? true : null`);
+  await esperarProbe(window, "aviso de ensaio no evento", `document.querySelector("[data-locum-run-ensaio]") !== null ? true : null`);
+  await foto("run-ensaio");
+  await window.webContents.executeJavaScript(`(document.querySelector("[data-locum-ensaio-texto]").scrollIntoView({ block: "center" }), null)`);
+  await foto("run-ensaio-passo");
 }
 
 /**

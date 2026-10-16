@@ -176,6 +176,7 @@ export const FERRAMENTA_DO_CANAL: Record<string, string> = {
   "automations.save": "save_automation",
   "automations.setEnabled": "set_automation_enabled",
   "automations.runNow": "run_automation_now",
+  "automations.eventsForRun": "list_automation_events",
   "automations.suggestId": "suggest_automation_id",
   "pacote.exportFile": "export_package",
   "pacote.preview": "preview_package",

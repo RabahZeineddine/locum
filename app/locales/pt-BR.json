@@ -710,7 +710,8 @@
         "took": "{{seconds}} s",
         "starting": "subindo o modelo e as ferramentas…",
         "working": "trabalhando…"
-      }
+      },
+      "notRun": "não rodou"
     },
     "progress": "{{done}}/{{total}} passos",
     "waiting_steps": "{{count}} aguardando",
@@ -730,7 +731,8 @@
     "stepReason": {
       "outside_initiative": "o passo aponta para um servidor fora do escopo desta iniciativa",
       "rejected": "rejeitado",
-      "publish_conflict": "o alvo mudou antes disso poder ser publicado"
+      "publish_conflict": "o alvo mudou antes disso poder ser publicado",
+      "not_run": "um passo anterior falhou, então este não rodou"
     },
     "tabs": {
       "executive": "Visão Executiva",
@@ -753,6 +755,16 @@
       "review": "PR Reviews",
       "digest": "Vigilância & Alertas",
       "failed": "Com Falha"
+    },
+    "event": {
+      "title": "Evento usado",
+      "none": "sem evento",
+      "dryRun": "Ensaio: nada saiu para o Teams ou o Slack. O passo de resposta mostra o texto que seria postado."
+    },
+    "failedAt": "Falhou no passo \"{{step}}\"",
+    "dryRun": {
+      "badge": "ensaio",
+      "text": "Texto que seria postado"
     }
   },
   "settings": {
@@ -2607,6 +2619,25 @@
       "full": "Máximo de {{max}} atingido. Tire um para escolher outro.",
       "keys": "↑ ↓ Enter Esc",
       "refresh": "Atualizar"
+    },
+    "runWith": {
+      "title": "Executar com",
+      "lead": "Esta automação depende de um evento ({{reason}}). Escolha de onde ele vem.",
+      "recent": "Evento recente",
+      "link": "Colar um link de PR",
+      "linkPlaceholder": "https://github.com/dono/repo/pull/123",
+      "linkHelp": "Monta o evento como o gatilho montaria: dono, repositório, título, descrição e diff. Sem conversa de origem, a resposta no Teams ou no Slack vira ensaio e nada é postado.",
+      "empty": "Nenhum gatilho desta automação gravou evento ainda. Cole o link de um PR para testar.",
+      "run": "Executar",
+      "starting": "iniciando...",
+      "cancel": "Cancelar",
+      "noAuthor": "sem autor",
+      "source": {
+        "teams": "Teams",
+        "slack": "Slack",
+        "github": "GitHub",
+        "manual": "Link"
+      }
     }
   },
   "library": {
@@ -3049,5 +3080,14 @@
       "create": "Criar skill"
     },
     "removeConfirmAgents_zero": "Remover {{name}}? {{count}} agents a usam: eles mostram o aviso e a execução falha até a skill voltar."
+  },
+  "toast": {
+    "running": "Rodando {{name}}",
+    "done": "{{name}} terminou",
+    "failed": "{{name}} falhou: {{error}}",
+    "refused": "{{name}} não começou: {{error}}",
+    "paused": "{{name}} parou e espera sua decisão",
+    "open": "Ver execução",
+    "dismiss": "Fechar"
   }
 }

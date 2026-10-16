@@ -83,8 +83,10 @@ test("gatilho que sai do canvas sai do cadastro, e o que fica mantém o interrup
 
 test("interruptor liga e desliga todos os gatilhos, e executar agora usa o manual", async () => {
   const { automations, iniciados } = montar();
+  // Sem {{event.*}} nem ação de conversa: o botão roda sem pedir evento.
+  const semEvento = { ...spec, steps: [{ type: "model" as const, key: "resumo", name: "resumo", model: "ollama/x", prompt: "Resuma o dia", needs: [], requiresServers: [], optional: false, maxSteps: 8 }] };
   const salva = await automations.save({
-    spec,
+    spec: semEvento,
     triggers: [{ config: { kind: "manual" } }, { config: { kind: "slack-channel", channels: ["C1"] } }],
     note: "",
     create: true,
