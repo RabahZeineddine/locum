@@ -2188,20 +2188,12 @@
         "discards": "Latest discarded messages",
         "channels": "Team channels (mention or PR link wakes it)",
         "search": "Search team or channel",
-        "noMatch": "No channel matches \"{{termo}}\".",
         "countOf": "{{marked}} of {{total}} selected",
-        "list": "List channels",
-        "loading": "Reading channels...",
         "channelsHintVia": "Teams comes through {{server}}, which already brings channels. Each channel is one call per beat.",
         "channelsHint": "Turn on channels in the Teams connection, under Connections. Each channel is one Graph call per beat.",
         "chats": "Only these chats (empty = all chats)",
         "searchChats": "Search chat or person",
-        "noMatchChats": "No chat with \"{{termo}}\".",
-        "listChats": "List chats",
-        "loadingChats": "Reading chats...",
         "chatsHint": "Empty means every group and direct chat. With chats picked, direct messages, PR links and mentions only count in them, the others are not even read, and mentions in meeting chats stop counting.",
-        "reloadChats": "Reload list",
-        "chatsMax": "The maximum is {{max}} chats. Untick one to pick another.",
         "chatsPending": "This trigger was limited to chats in the package. Pick the chats before turning it on: empty would mean all of them.",
         "chatsAll": "Apply to all chats",
         "chatType": {
@@ -2480,6 +2472,14 @@
     "agentModal": {
       "title": "Library agent",
       "close": "Close"
+    },
+    "combobox": {
+      "remove": "Remove {{item}}",
+      "loading": "Loading the list...",
+      "noMatch": "Nothing matches \"{{termo}}\".",
+      "full": "Limit of {{max}} reached. Remove one to pick another.",
+      "keys": "↑ ↓ move, Enter picks, Esc closes",
+      "refresh": "Refresh"
     }
   },
   "library": {

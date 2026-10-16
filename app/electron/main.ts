@@ -1120,6 +1120,7 @@ async function checkRenderer(): Promise<string> {
     await checkAgentsDoConceito(window);
     await checkPacote(window);
     await checkEditorSaida(window);
+    await checkListaDoTeams(window);
     const configuracao = await checkConfig(window);
     const revisao = await checkReviewVerdict(window);
     const sessoes = await checkClaudeSessions(window);
@@ -1969,6 +1970,105 @@ async function checkEditorSaida(window: BrowserWindow): Promise<void> {
   await esperar("o editor de novo", () => existe("[data-locum-probe=automacao-editor]"));
   if (await existe("[data-locum-rascunho]")) throw new Error("o editor ofereceu um rascunho que foi descartado");
   if ((await nomeNoCabecalho()) === novoNome) throw new Error("o nome descartado voltou");
+}
+
+/**
+ * O gatilho do Teams no editor: o nome vem do modo ligado (link de PR, e não
+ * "menção ou DM"), e canais e chats se escolhem num campo com busca desde o
+ * início, que fecha ao escolher e anda pelo teclado. A lista do Graph vem do
+ * cache da janela, porque o smoke não alcança o Graph.
+ */
+async function checkListaDoTeams(window: BrowserWindow): Promise<void> {
+  const { automationService } = await import("../src/services/automation-service.js");
+  const { db, schema } = await import("../src/db/index.js");
+  const { eq } = await import("drizzle-orm");
+  const { AgentSpec, TriggerConfig } = await import("../src/config/types.js");
+  const id = `smoke-lista-teams-${randomUUID().slice(0, 6)}`;
+  const gravada = await automationService.save({
+    spec: AgentSpec.parse({
+      id,
+      name: "Lista do Teams",
+      steps: [{ type: "model", key: "revisar", name: "Revisar", model: "claude-code/claude-sonnet-5", prompt: "x" }],
+    }),
+    triggers: [{ config: TriggerConfig.parse({ kind: "teams-inbox", mentions: false, dms: false, prLinks: true }) }],
+    note: "smoke",
+    create: true,
+  });
+  const gatilho = gravada.triggers[0]!;
+  const js = (codigo: string): Promise<unknown> => window.webContents.executeJavaScript(codigo);
+  const clicar = (seletor: string): Promise<boolean> =>
+    js(`(() => { const e = document.querySelector(${JSON.stringify(seletor)}); e?.click(); return e !== null; })()`) as Promise<boolean>;
+  const existe = (seletor: string): Promise<boolean> => js(`document.querySelector(${JSON.stringify(seletor)}) !== null`) as Promise<boolean>;
+  const tecla = (key: string): Promise<unknown> =>
+    js(`(document.querySelector("[data-locum-combobox=teams-chats] input").dispatchEvent(new KeyboardEvent("keydown", { key: ${JSON.stringify(key)}, bubbles: true, cancelable: true })), null)`);
+  const esperar = async (nome: string, ok: () => Promise<boolean>): Promise<void> => {
+    await esperarDoServico(nome, async () => ((await ok()) ? true : undefined), 5_000);
+  };
+  const chats = [
+    { chatId: "19:ana", label: "Ana Souza", chatType: "oneOnOne" },
+    { chatId: "19:devs", label: "Integrados - Devs", chatType: "group" },
+    { chatId: "19:time", label: "Time de plataforma", chatType: "group" },
+  ];
+  try {
+    await irPara(window, "automations", id);
+    await js(`(sessionStorage.setItem(${JSON.stringify(`locum.cache.teams-chats:${gatilho.id}`)}, JSON.stringify({ em: Date.now(), dados: ${JSON.stringify(chats)} })), null)`);
+    await esperar("o nó do gatilho", () => existe("[data-locum-no-automacao^=gatilho-]"));
+    await clicar("[data-locum-no-automacao^=gatilho-]");
+    await esperar("o painel do gatilho", () => existe("[data-locum-combobox=teams-chats]"));
+
+    const noDoGatilho = (await js(`document.querySelector("[data-locum-no-automacao^=gatilho-]").textContent`)) as string;
+    if (!noDoGatilho.includes(t("automations.triggers.teams-inbox.titles.p"))) throw new Error(`o nó do gatilho de link de PR se chamou "${noDoGatilho}"`);
+    if (noDoGatilho.includes(t("automations.triggers.teams-inbox.titles.md"))) throw new Error("o nó do gatilho de link de PR levou o nome de menção ou DM");
+
+    // O campo de busca já está na tela, sem pedir a lista, e a lista abre ao focar.
+    if (await existe("[data-locum-combobox-lista]")) throw new Error("a lista de chats abriu antes de a pessoa tocar no campo");
+    await clicar("[data-locum-combobox=teams-chats] input");
+    await esperar("a lista de chats", () => existe("[data-locum-combobox-lista]"));
+    const total = (await js(`document.querySelectorAll("[data-locum-combobox-lista] [role=option]").length`)) as number;
+    if (total !== chats.length) throw new Error(`a lista mostrou ${total} chat(s) e o cache tem ${chats.length}`);
+
+    // Busca: digitar filtra.
+    await js(`(() => {
+      const campo = document.querySelector("[data-locum-combobox=teams-chats] input");
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(campo, "devs");
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+      return null;
+    })()`);
+    await esperar("a busca filtrar", async () => ((await js(`document.querySelectorAll("[data-locum-combobox-lista] [role=option]").length`)) as number) === 1);
+
+    // Esc fecha sem escolher.
+    await tecla("Escape");
+    await esperar("o Esc fechar a lista", async () => !(await existe("[data-locum-combobox-lista]")));
+    if ((await js(`document.querySelectorAll("[data-locum-combobox=teams-chats] [data-locum-chip]").length`)) !== 0) throw new Error("o Esc escolheu um chat");
+
+    // ↓ abre, ↓ anda, Enter escolhe e a lista fecha com o chip no campo.
+    await tecla("ArrowDown");
+    await esperar("a seta abrir a lista", () => existe("[data-locum-combobox-lista]"));
+    await tecla("ArrowDown");
+    await tecla("Enter");
+    await esperar("o Enter fechar a lista", async () => !(await existe("[data-locum-combobox-lista]")));
+    const escolhido = (await js(`[...document.querySelectorAll("[data-locum-combobox=teams-chats] [data-locum-chip]")].map((c) => c.textContent)`)) as string[];
+    if (escolhido.length !== 1 || escolhido[0] !== "Integrados - Devs") throw new Error(`o Enter escolheu ${JSON.stringify(escolhido)}`);
+
+    // O escopo entra no título do painel, e o resumo do nó.
+    const painel = (await js(`document.querySelector("[data-locum-painel]").textContent`)) as string;
+    if (!painel.includes("Integrados - Devs")) throw new Error("o painel do gatilho não mostrou o escopo escolhido");
+
+    // Clique fora fecha.
+    await clicar("[data-locum-combobox=teams-chats] input");
+    await esperar("a lista abrir de novo", () => existe("[data-locum-combobox-lista]"));
+    // Clique de verdade, no texto da versão: o Radix só fecha por ponteiro real.
+    const ponto = (await js(`(() => { const r = document.querySelector("[data-locum-probe=automacao-editor] header .num").getBoundingClientRect(); return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }; })()`)) as { x: number; y: number };
+    window.webContents.sendInputEvent({ type: "mouseDown", x: ponto.x, y: ponto.y, button: "left", clickCount: 1 });
+    window.webContents.sendInputEvent({ type: "mouseUp", x: ponto.x, y: ponto.y, button: "left", clickCount: 1 });
+    await esperar("o clique fora fechar a lista", async () => !(await existe("[data-locum-combobox-lista]")));
+  } finally {
+    await js(`(sessionStorage.clear(), localStorage.removeItem(${JSON.stringify(`locum.rascunho-automacao.${id}`)}), null)`);
+    // Sem execução nenhuma, a automação some inteira: gatilhos, versões e a linha dela.
+    db.delete(schema.triggers).where(eq(schema.triggers.agentId, id)).run();
+    db.delete(schema.agentVersions).where(eq(schema.agentVersions.agentId, id)).run();
+    db.delete(schema.agents).where(eq(schema.agents.id, id)).run();
+  }
 }
 
 /**

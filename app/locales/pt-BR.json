@@ -2238,20 +2238,12 @@
         "discards": "Últimas mensagens descartadas",
         "channels": "Canais de equipe (menção ou link de PR acorda)",
         "search": "Buscar equipe ou canal",
-        "noMatch": "Nenhum canal com \"{{termo}}\".",
         "countOf": "{{marked}} de {{total}} marcados",
-        "list": "Listar canais",
-        "loading": "Lendo canais...",
         "channelsHintVia": "O Teams vem pelo {{server}}, que já traz os canais. Cada canal é uma chamada por batida.",
         "channelsHint": "Precisa ligar os canais na conexão do Teams, em Conexões. Cada canal é uma chamada ao Graph por batida.",
         "chats": "Só nestes chats (vazio = todos os chats)",
         "searchChats": "Buscar chat ou pessoa",
-        "noMatchChats": "Nenhum chat com \"{{termo}}\".",
-        "listChats": "Listar chats",
-        "loadingChats": "Lendo chats...",
         "chatsHint": "Vazio vale para todos os chats em grupo e diretos. Com chats marcados, mensagem direta, link de PR e menção só contam neles, os outros nem são lidos, e menção em chat de reunião deixa de contar.",
-        "reloadChats": "Recarregar lista",
-        "chatsMax": "O máximo é {{max}} chats. Desmarque um para escolher outro.",
         "chatsPending": "Este gatilho era restrito a chats no pacote. Escolha os chats antes de ligar: vazio valeria para todos.",
         "chatsAll": "Valer para todos os chats",
         "chatType": {
@@ -2530,6 +2522,14 @@
     "agentModal": {
       "title": "Agent da biblioteca",
       "close": "Fechar"
+    },
+    "combobox": {
+      "remove": "Tirar {{item}}",
+      "loading": "Carregando a lista...",
+      "noMatch": "Nada com \"{{termo}}\".",
+      "full": "Máximo de {{max}} atingido. Tire um para escolher outro.",
+      "keys": "↑ ↓ navegar, Enter escolher, Esc fechar",
+      "refresh": "Atualizar"
     }
   },
   "library": {
