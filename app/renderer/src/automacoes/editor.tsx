@@ -73,7 +73,7 @@ import {
 } from "@xyflow/react";
 import { ArrowLeft, Download, List, Loader2, Play } from "lucide-react";
 import { MarcaLogo } from "@/components/marca-logo";
-import { appsDaPaleta, buscarNaPaleta, fonteDaMarca, nomeDoApp, passoDaOperacao, passoSemOperacao, servidorDoNoVazio, type AppDaPaleta, type OperacaoDoApp } from "@/lib/apps-da-paleta";
+import { appsDaPaleta, buscarNaPaleta, foiRenomeado, fonteDaMarca, fonteDaMarcaDoPasso, reconhecerPasso, temTrocaDeOperacao, tituloDaOperacaoDoPasso, nomeDoApp, passoDaOperacao, passoSemOperacao, servidorDoNoVazio, type AppDaPaleta, type OperacaoDoApp } from "@/lib/apps-da-paleta";
 import { tradutorDe } from "@/lib/operacao-da-ferramenta";
 import { casaBusca } from "@/lib/paleta-conexoes";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -1295,6 +1295,10 @@ type DadosDoNo = {
   tipo: string;
   titulo: string;
   subtitulo: string;
+  /** Passo de app: a fonte do ícone de marca, no lugar do selo do componente. */
+  marca?: string;
+  /** App sem operação escolhida: o card pede para escolher. */
+  vazio?: boolean;
   gatilho: boolean;
   aprovacao: boolean;
   /** Ação que sai sozinha, sem passar pela fila. */
@@ -1323,6 +1327,7 @@ function CanvasDaAutomacao({
   agents: readonly AgentDaBiblioteca[];
 }) {
   const { t, i18n } = useTranslation();
+  const traduzir = useMemo(() => tradutorDe(i18n), [i18n, i18n.language]);
   const [erro, setErro] = useState<string | null>(null);
 
   const base = useMemo<NoDoCanvas[]>(() => {
@@ -1365,13 +1370,27 @@ function CanvasDaAutomacao({
           tipo: tituloDoPasso(t, componente),
           titulo: p.name,
           subtitulo:
-            p.type === "logic"
+            p.type === "action" && temTrocaDeOperacao(p)
+              ? foiRenomeado(p, rascunho.spec)
+                ? p.name
+                : p.action === "mcp.call"
+                  ? ""
+                  : resumoDaAcao(p)
+              : p.type === "logic"
               ? resumoDaLogica(p)
               : p.type !== "model"
                 ? resumoDaAcao(p)
               : p.profile !== undefined
                 ? (agents.find((a) => a.id === p.profile)?.name ?? p.profile)
                 : (p.model.split("/").at(-1) ?? p.model),
+          ...(p.type === "action" && temTrocaDeOperacao(p)
+            ? {
+                marca: fonteDaMarcaDoPasso(p),
+                tipo: nomeDoApp(reconhecerPasso(p).app, traduzir),
+                titulo: tituloDaOperacaoDoPasso(p, traduzir) ?? t("automations.canvas.chooseWhat"),
+                vazio: reconhecerPasso(p).operacao.tipo === "vazia",
+              }
+            : {}),
           gatilho: false,
           aprovacao: p.type === "action" && p.mode === "approve",
           automatico: p.type === "action" && p.mode === "auto",
@@ -1382,7 +1401,7 @@ function CanvasDaAutomacao({
       };
     });
     return [...gatilhos, ...passos];
-  }, [rascunho, selecionado, problemasPorNo, agents, t]);
+  }, [rascunho, selecionado, problemasPorNo, agents, t, traduzir]);
 
   const [nos, setNos] = useState<NoDoCanvas[]>(base);
   useEffect(() => setNos(base), [base]);
@@ -1500,13 +1519,14 @@ function NoDoComponente({ data, selected }: NodeProps<NoDoCanvas>) {
         selected ? "border-primary" : "border-border",
       )}
       data-locum-no-automacao={data.chave}
+      data-locum-no-vazio={data.vazio === true ? "" : undefined}
     >
       {data.gatilho ? null : <Handle position={Position.Left} type="target" />}
       <div className="flex items-center gap-2">
-        <Selo app={data.app} id={data.componente} tamanho="sm" />
+        {data.marca === undefined ? <Selo app={data.app} id={data.componente} tamanho="sm" /> : <MarcaLogo fonte={{ name: data.marca }} tamanho="sm" />}
         <div className="flex min-w-0 flex-1 flex-col">
           <span className="text-muted-foreground truncate text-[11px]">{data.tipo}</span>
-          <span className="truncate text-[13px] font-medium">{data.titulo}</span>
+          <span className={cn("truncate text-[13px] font-medium", data.vazio === true && "text-muted-foreground italic")}>{data.titulo}</span>
         </div>
         {data.problema === null ? null : <StatusDot data-locum-no-problema={data.problema} estado={data.problema === "bloqueia" ? "erro" : "aviso"} />}
       </div>

@@ -2582,7 +2582,7 @@
       "githubTokenForDiff": "GitHub has no token: the review needs it to bring the PR diff.",
       "openConnection": "Open",
       "agentMissing": "This step's agent no longer exists in the library.",
-      "noTool": "Choose the app and the tool for this action.",
+      "noTool": "Choose what this app should do.",
       "noUrl": "Fill in the API address, starting with http:// or https://.",
       "noValue": "Say what this step looks at, with a variable.",
       "noCases": "Add at least one case to the switch.",

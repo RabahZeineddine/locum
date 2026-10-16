@@ -6,6 +6,7 @@ import {
   appDoServidor,
   fonteDaMarca,
   foiRenomeado,
+  fonteDaMarcaDoPasso,
   temTrocaDeOperacao,
   tituloDaOperacaoDoPasso,
   servidorDoNoVazio,
@@ -249,4 +250,12 @@ test("o topo de operação aparece nos passos de app e não nos do Locum por den
     [true, true, true, true, false, false, false],
   );
   assert.equal(temTrocaDeOperacao({ ...base, type: "logic", op: "if" } as never), false);
+});
+
+test("o ícone do card vem do app do passo", () => {
+  const acao = (action: string, params?: object) => ({ ...base, type: "action", action, mode: "approve", ...(params ? { params } : {}) }) as Step;
+  assert.deepEqual(
+    [acao("slack.react"), acao("mcp.call", { server: "jira", tool: "create_issue" }), acao("mcp.call", { server: "ms365", tool: "send-mail" }), acao("mcp.call", { server: "ms365", tool: "send-chat-message" })].map(fonteDaMarcaDoPasso),
+    ["slack", "jira", "ms365", "teams"],
+  );
 });

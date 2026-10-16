@@ -2632,7 +2632,7 @@
       "githubTokenForDiff": "O GitHub está sem token: a revisão precisa dele para trazer o diff do PR.",
       "openConnection": "Abrir",
       "agentMissing": "O agent deste passo não existe mais na biblioteca.",
-      "noTool": "Escolha o app e a ferramenta desta ação.",
+      "noTool": "Escolha o que este app deve fazer.",
       "noUrl": "Informe o endereço da API, começando com http:// ou https://.",
       "noValue": "Diga o que este passo olha, com uma variável.",
       "noCases": "Acrescente pelo menos um caso ao switch.",

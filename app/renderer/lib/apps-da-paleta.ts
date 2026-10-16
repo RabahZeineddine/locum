@@ -230,6 +230,12 @@ function nomePadrao(passo: PassoDeAcao, spec: AgentSpec): string | null {
   return null;
 }
 
+/** A fonte do ícone de marca do app do passo, para o card do canvas. */
+export function fonteDaMarcaDoPasso(passo: Step): string {
+  const { app, operacao } = reconhecerPasso(passo);
+  return fonteDaMarca({ id: app, nativas: [], servidores: operacao.tipo === "ferramenta" ? [operacao.servidor] : [], semLista: false });
+}
+
 /** Se o passo é de um app com lista de operações (e não do Locum por dentro, como digest e contexto). */
 export function temTrocaDeOperacao(passo: Step): boolean {
   if (passo.type !== "action") return false;

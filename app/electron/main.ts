@@ -2368,6 +2368,7 @@ async function checkPaletaPorConexao(window: BrowserWindow): Promise<void> {
     await clicar(app);
     await esperar("o painel O que fazer?", () => existe(`[data-locum-o-que-fazer="${FIXTURE_SERVER}"]`));
     if (await existe('[data-locum-arg="text"]')) throw new Error("o no sem operacao ja mostrou um formulario");
+    if (!(await existe("[data-locum-no-vazio]"))) throw new Error("o card do no sem operacao nao pediu para escolher o que fazer");
     // Sem lista guardada o painel pede para carregar; com ela, as operações já estão lá.
     if (await existe(`[data-locum-operacao-carregar="${FIXTURE_SERVER}"]`)) await clicar(`[data-locum-operacao-carregar="${FIXTURE_SERVER}"]`);
     await esperar("as operacoes do app", () => existe(operacao("echo")));
@@ -2375,6 +2376,8 @@ async function checkPaletaPorConexao(window: BrowserWindow): Promise<void> {
     if ((await classe(operacao("echo"), "locumOperacaoClasse")) !== "escrita") throw new Error("o echo, sem anotacao, nao veio como escrita");
     await clicar(operacao("echo"));
     await confereNo("echo");
+    if (await existe("[data-locum-no-vazio]")) throw new Error("o card continuou pedindo a operacao depois de escolhida");
+    if (!(await existe("[data-locum-no-automacao] [data-locum-marca]"))) throw new Error("o card do passo de app veio sem o icone do app");
 
     // O topo do painel troca a operação do mesmo app, e o formulário acompanha.
     await clicar("[data-locum-troca-operacao]");
