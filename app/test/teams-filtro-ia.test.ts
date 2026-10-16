@@ -13,8 +13,10 @@ import {
 import { today } from "../src/executor/budget.js";
 import {
   MODELO_PADRAO_ASSINATURA,
+  ErroDeConfiguracaoDoFiltro,
   criarJulgador,
   lerVeredito,
+  maisNovoHaiku,
   modeloDoFiltro,
   montarPrompt,
   type Julgador,
@@ -482,4 +484,137 @@ test("a mensagem raiz só vai no evento com filtro, e em texto, não em HTML", a
   const com = bancoDeTeste();
   await pollTeamsInbox(watch, { db: com.db, token, graphUrl: GRAPH, ...semGithub, fetchFn: graphFalso([raiz]).fetchFn, julgar: modeloFalso(() => true).julgar });
   assert.deepEqual(((await eventos(com.db))[0]?.item as Record<string, unknown>).threadRoot, { autor: "Outra Pessoa", texto: "Review de PR" });
+});
+
+/* ------------------------------------------------------ revisão: rodada 2 */
+
+const basico = (sobre: Record<string, unknown> = {}) => ({ owner: "acme", repoName: "api", pull: 7, headSha: "s", author: "x", draft: false, state: "open", merged: false, ...sobre });
+
+test("o descarte barato vem depois do teto e do orçamento, e usa só o pulls.get", async () => {
+  const { db } = bancoDeTeste();
+  const total = LIMITE_DO_FILTRO_IA + 2;
+  const threads = Array.from({ length: total }, (_, i) => mensagem(`b${i}`, total - i + 1, `<p>review ${link(i + 1)}</p>`));
+  const graph = graphFalso(threads);
+  let basicas = 0;
+  await pollTeamsInbox(watch, {
+    db, token, graphUrl: GRAPH, viewerLogin: async () => null, fetchFn: graph.fetchFn,
+    julgar: modeloFalso(() => true).julgar,
+    fetchPrBasico: async () => (basicas++, basico()) as never,
+    fetchPr: semGithub.fetchPr,
+  });
+  assert.equal(basicas, LIMITE_DO_FILTRO_IA, "buscou PR além do limite");
+
+  const { db: db2 } = bancoDeTeste();
+  db2.insert(schema.usageDaily).values({ day: today(), agentId: "a", costUsd: 5, tokens: 0, runs: 1 }).run();
+  let b2 = 0;
+  await pollTeamsInbox(watch, {
+    db: db2, token, graphUrl: GRAPH, viewerLogin: async () => null, fetchFn: graph.fetchFn,
+    julgar: modeloFalso(() => true).julgar, agentId: "a", orcamento: { perDayUsd: 1 },
+    fetchPrBasico: async () => (b2++, basico()) as never,
+  });
+  assert.equal(b2, 0, "buscou PR com o orçamento estourado");
+});
+
+test("o filtro barra a mensagem sem buscar arquivos, diff e CI do PR", async () => {
+  const { db } = bancoDeTeste();
+  const graph = graphFalso([mensagem("1", 3, `<p>já mergeei ${link(7)}</p>`)]);
+  let completas = 0;
+  let basicas = 0;
+  await pollTeamsInbox(watch, {
+    db, token, graphUrl: GRAPH, viewerLogin: async () => null, fetchFn: graph.fetchFn,
+    julgar: modeloFalso(() => false).julgar,
+    fetchPrBasico: async () => (basicas++, basico()) as never,
+    fetchPr: (async () => (completas++, {})) as never,
+  });
+  assert.equal(basicas, 1);
+  assert.equal(completas, 0);
+});
+
+test("erro de configuração do modelo: passa na hora, com aviso, sem contar falha", async () => {
+  const { db } = bancoDeTeste();
+  const graph = graphFalso([mensagem("1", 10, `<p>review ${link(1)}</p>`), mensagem("2", 5, `<p>outra ${link(2)}</p>`)]);
+  const julgar: Julgador = async () => {
+    throw new ErroDeConfiguracaoDoFiltro("sem provedor com modelo barato");
+  };
+  const r = await pollTeamsInbox(watch, { db, token, graphUrl: GRAPH, ...semGithub, fetchFn: graph.fetchFn, julgar });
+  assert.deepEqual(r.errors, []);
+  assert.deepEqual(r.avisos, ["filtro com IA sem modelo: sem provedor com modelo barato; mensagens passando sem filtro"]);
+  assert.equal((await eventos(db)).length, 2);
+  assert.equal(graph.reacoes.length, 2);
+  assert.deepEqual((await db.select().from(schema.cursors)).filter((c) => c.source.startsWith("teams-filtro-ia-falhas")), []);
+});
+
+test("o julgador separa configuração de falha: sem provedor é erro de configuração", async () => {
+  const julgar = criarJulgador({ disponivel: () => false, runtime: () => { throw new Error("não chega"); } });
+  await assert.rejects(julgar({ filtro: FILTRO, mensagem: { autor: null, texto: "x" } }), ErroDeConfiguracaoDoFiltro);
+  const falha = criarJulgador({ disponivel: () => true, runtime: () => ({ id: "x", run: async () => { throw new Error("5xx"); } }) });
+  await assert.rejects(falha({ filtro: FILTRO, mensagem: { autor: null, texto: "x" } }), (e: Error) => !(e instanceof ErroDeConfiguracaoDoFiltro));
+});
+
+test("com a mais velha adiada, a mais nova decidida em paralelo espera, e o veredito é reaproveitado", async () => {
+  const { db } = bancoDeTeste();
+  const graph = graphFalso([mensagem("2", 5, `<p>review: ${link(2)}</p>`), mensagem("1", 10, `<p>quebra ${link(1)}</p>`)]);
+  const modelo = modeloFalso((p) => (p.mensagem.texto.includes("quebra") ? new Error("fora") : true));
+  const batida = () => pollTeamsInbox(watch, { db, token, graphUrl: GRAPH, ...semGithub, fetchFn: graph.fetchFn, julgar: modelo.julgar });
+  await batida();
+  assert.equal((await eventos(db)).length, 0, "a nova passou na frente da velha");
+  assert.equal(modelo.pedidos.length, 2);
+  await batida();
+  // A nova não é perguntada de novo: só a velha, que falha outra vez.
+  assert.equal(modelo.pedidos.length, 3);
+  await batida();
+  assert.equal(modelo.pedidos.length, 4);
+  assert.deepEqual((await eventos(db)).map((e) => e.messageId).sort(), ["1", "2"]);
+});
+
+test("o teto de tempo é de cada origem: a caixa esgotada não tira a vez do canal", async () => {
+  const { db } = bancoDeTeste();
+  const chats = Array.from({ length: 6 }, (_, i) => mensagem(`c${i}`, 30 - i, `<p>review ${link(10 + i)}</p>`));
+  const fetchFn = (async (entrada: string | URL, init?: RequestInit) => {
+    const url = new URL(String(entrada));
+    const caminho = decodeURIComponent(url.pathname.replace(/^\/v1\.0/, ""));
+    const json = (valor: unknown) => new Response(JSON.stringify(valor));
+    if (init?.method === "POST") return new Response(null, { status: 204 });
+    if (caminho === "/me") return json({ id: "EU" });
+    if (caminho === "/me/chats") return json({ value: [{ id: "g", chatType: "group", lastMessagePreview: { createdDateTime: agoraMenos(1) } }] });
+    if (caminho === "/chats/g/messages") return json({ value: chats.map((m) => ({ ...m, chatId: "g" })) });
+    if (caminho === `/teams/${EQUIPE}/channels/${CANAL}/messages`) return json({ value: [mensagem("canal-1", 2, `<p>review ${link(900)}</p>`)] });
+    return new Response("{}", { status: 404 });
+  }) as typeof fetch;
+  let agora = 5_000_000;
+  const pedidos: string[] = [];
+  const julgar: Julgador = async (p) => {
+    pedidos.push(p.mensagem.texto);
+    agora += 60_000;
+    return { passa: true, motivo: "ok", gasto: { usd: 0, tokens: 0, billable: false } };
+  };
+  const r = await pollTeamsInbox(watch, { db, token, graphUrl: GRAPH, ...semGithub, fetchFn, julgar, relogio: () => agora });
+  assert.ok(pedidos.some((t) => t.includes(link(900))), "o canal ficou sem vez");
+  assert.ok(pedidos.length < 7, "a caixa não parou no teto");
+  assert.equal(r.avisos.filter((a) => /passou de 90s/.test(a)).length, 1);
+});
+
+test("contador sem carimbo também é limpo", async () => {
+  const { db } = bancoDeTeste();
+  db.insert(schema.cursors).values({ source: "teams-filtro-ia-falhas", key: "velha", value: JSON.stringify({ n: 1, at: null, cursor: `channel:${EQUIPE}:${CANAL}` }) }).run();
+  await pollTeamsInbox(watch, { db, token, graphUrl: GRAPH, ...semGithub, fetchFn: graphFalso([]).fetchFn, julgar: modeloFalso(() => true).julgar });
+  assert.deepEqual((await db.select().from(schema.cursors)).filter((c) => c.source.startsWith("teams-filtro-ia-falhas")), []);
+});
+
+test("o Haiku mais novo vence pela versão, e a data desempata", () => {
+  assert.equal(maisNovoHaiku(["claude-3-5-haiku-20241022", "claude-haiku-4-5-20251001", "claude-sonnet-4-5"]), "claude-haiku-4-5-20251001");
+  assert.equal(maisNovoHaiku(["claude-haiku-4-5", "claude-haiku-4-5-20251001"]), "claude-haiku-4-5-20251001");
+  assert.equal(maisNovoHaiku(["claude-sonnet-4-5"]), null);
+});
+
+test("a escolha do modelo da API é resolvida uma vez, não a cada mensagem", async () => {
+  let consultas = 0;
+  const julgar = criarJulgador({
+    disponivel: (p) => p === "anthropic",
+    haikuDaApi: async () => (consultas++, "claude-haiku-4-5"),
+    runtime: () => ({ id: "x", run: async () => ({ text: "", structured: { passa: true, motivo: "ok" }, promptTokens: 1, completionTokens: 1, costUsd: 0, billable: true, toolsUsed: [] }) }),
+  });
+  await julgar({ filtro: FILTRO, mensagem: { autor: null, texto: "a" } });
+  await julgar({ filtro: FILTRO, mensagem: { autor: null, texto: "b" } });
+  assert.equal(consultas, 1);
 });

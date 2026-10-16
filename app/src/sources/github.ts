@@ -214,6 +214,30 @@ export async function fetchPr(
   return contextFromPr(gh, owner, repo, pr, deps.diffMaxChars);
 }
 
+/** O que `pulls.get` já diz do PR, sem arquivos, diff nem CI. */
+export type PrBasico = Pick<PrContext, "owner" | "repoName" | "pull" | "headSha" | "author" | "draft" | "state" | "merged">;
+
+/** Só o `pulls.get`: estado, rascunho, autor e commit. Serve a quem decide se vale buscar o resto. */
+export async function fetchPrBasico(
+  owner: string,
+  repo: string,
+  pull: number,
+  deps: { client?: Pick<PrClient, "rest"> } = {},
+): Promise<PrBasico> {
+  const gh = deps.client ?? octokit();
+  const { data: pr } = await gh.rest.pulls.get({ owner, repo, pull_number: pull });
+  return {
+    owner,
+    repoName: repo,
+    pull,
+    headSha: pr.head.sha,
+    author: pr.user?.login ?? "desconhecido",
+    draft: pr.draft ?? false,
+    state: pr.state,
+    merged: pr.merged,
+  };
+}
+
 /**
  * A parte cara da ingestão: arquivos, diff e checks.
  *

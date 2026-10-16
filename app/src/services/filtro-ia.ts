@@ -105,6 +105,27 @@ function tentarJson(texto: string): unknown {
   }
 }
 
+/** O filtro não tem modelo que rode nesta máquina: configuração, não falha da chamada. */
+export class ErroDeConfiguracaoDoFiltro extends Error {}
+
+/** O Haiku mais novo da lista: versão maior primeiro, e a data do id desempata. */
+export function maisNovoHaiku(ids: readonly string[]): string | null {
+  const chave = (id: string): [number[], number] => {
+    const data = /(?:^|-)(\d{8})(?:$|-)/.exec(id)?.[1];
+    const versao = id.replace(data ?? "", "").match(/\d+/g)?.map(Number) ?? [];
+    return [versao, data === undefined ? 0 : Number(data)];
+  };
+  const maior = (a: number[], b: number[]) => {
+    for (let i = 0; i < Math.max(a.length, b.length); i++) if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) - (b[i] ?? 0);
+    return 0;
+  };
+  return (
+    [...ids]
+      .filter((id) => /haiku/i.test(id))
+      .sort((a, b) => maior(chave(b)[0], chave(a)[0]) || chave(b)[1] - chave(a)[1])[0] ?? null
+  );
+}
+
 export interface DependenciasDoJulgador {
   /** O provedor está pronto nesta máquina? */
   disponivel: (provedor: string) => boolean;
@@ -153,9 +174,26 @@ export async function modeloDoFiltro(filtro: FiltroIa, deps: Pick<DependenciasDo
   throw new Error("sem provedor com modelo barato (Claude Code ou chave da Anthropic)");
 }
 
+/** Quanto a escolha do modelo vale: a de uma batida, que não deve ir ao catálogo a cada mensagem. */
+const VALIDADE_DA_ESCOLHA_MS = 60_000;
+
 export function criarJulgador(deps: DependenciasDoJulgador): Julgador {
+  const escolhas = new Map<string, { em: number; id: string }>();
+  const modeloEmCache = async (filtro: FiltroIa, d: DependenciasDoJulgador): Promise<string> => {
+    const chave = filtro.modelo ?? "";
+    const guardada = escolhas.get(chave);
+    if (guardada !== undefined && Date.now() - guardada.em < VALIDADE_DA_ESCOLHA_MS) return guardada.id;
+    let id: string;
+    try {
+      id = await modeloDoFiltro(filtro, d);
+    } catch (err) {
+      throw new ErroDeConfiguracaoDoFiltro(err instanceof Error ? err.message : String(err));
+    }
+    escolhas.set(chave, { em: Date.now(), id });
+    return id;
+  };
   return async (pedido) => {
-    const id = await modeloDoFiltro(pedido.filtro, deps);
+    const id = await modeloEmCache(pedido.filtro, deps);
     const { provider, model } = splitModelId(id);
     const runtime = deps.runtime(provider);
     const prazo = deps.prazoMs ?? PRAZO_MS;
@@ -199,10 +237,10 @@ export const julgadorPadrao: Julgador = criarJulgador({
   resolver: async (modelo) =>
     resolveModel(modelo, await providerService.getFallbacks(machineId), providerService.entries()).used,
   haikuDaApi: async () => {
-    const comPreco = (await priceService.list()).find((p) => p.provider === "anthropic" && /haiku/i.test(p.model));
-    if (comPreco !== undefined) return comPreco.model;
+    const comPreco = maisNovoHaiku((await priceService.list()).filter((p) => p.provider === "anthropic").map((p) => p.model));
+    if (comPreco !== null) return comPreco;
     const { modelos } = await providerService.listModels("anthropic").catch(() => ({ modelos: [] as string[] }));
-    return modelos.find((m) => /haiku/i.test(m)) ?? null;
+    return maisNovoHaiku(modelos);
   },
   runtime: (provedor): Runtime => {
     if (provedor === "claude-code") return new ClaudeCodeRuntime(new Map());

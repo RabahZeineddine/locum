@@ -151,6 +151,10 @@ export class ClaudeCodeRuntime implements Runtime {
       let erros = "";
       let estourou = false;
       let cancelado = false;
+      const prazo = setTimeout(() => {
+        estourou = true;
+        filho.kill("SIGTERM");
+      }, TIMEOUT_MS);
       const cancelar = () => {
         cancelado = true;
         clearTimeout(prazo);
@@ -159,10 +163,8 @@ export class ClaudeCodeRuntime implements Runtime {
         falhou(new Error("claude -p cancelado"));
       };
       opcoes.sinal?.addEventListener("abort", cancelar, { once: true });
-      const prazo = setTimeout(() => {
-        estourou = true;
-        filho.kill("SIGTERM");
-      }, TIMEOUT_MS);
+      // Cancelado entre a checagem do início e o spawn: o evento já passou.
+      if (opcoes.sinal?.aborted) cancelar();
       filho.stdout.setEncoding("utf8");
       filho.stdout.on("data", (pedaco: string) => {
         const linhas = (resto + pedaco).split("\n");
