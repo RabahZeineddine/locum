@@ -2005,10 +2005,10 @@ async function checkListaDoTeams(window: BrowserWindow): Promise<void> {
     await esperarDoServico(nome, async () => ((await ok()) ? true : undefined), 5_000);
   };
   const chats = [
-    { chatId: "19:ana", label: "Ana Souza", chatType: "oneOnOne" },
-    { chatId: "19:devs", label: "Integrados - Devs", chatType: "group" },
-    { chatId: "19:time", label: "Time de plataforma", chatType: "group" },
-  ];
+    ["19:ana", "Ana Souza", "oneOnOne"],
+    ["19:devs", "Integrados - Devs", "group"],
+    ["19:time", "Time de plataforma", "group"],
+  ].map(([chatId, label, chatType]) => ({ chatId, label, chatType }));
   try {
     await irPara(window, "automations", id);
     await js(`(sessionStorage.setItem(${JSON.stringify(`locum.cache.teams-chats:${gatilho.id}`)}, JSON.stringify({ em: Date.now(), dados: ${JSON.stringify(chats)} })), null)`);
