@@ -1384,11 +1384,10 @@ function FerramentasEscolhidas({ tools, remover }: { tools: ToolRef[]; remover: 
 function ListaDeToolsets() {
   const { t } = useTranslation();
   const inicial = useRead("library.toolsets");
-  const [relida, setRelida] = useState<ResumoDoToolset[] | null>(null);
   const [aberto, setAberto] = useState<string | null>(null);
-  const lista = relida ?? inicial.data ?? [];
+  const lista = inicial.data ?? [];
   const reler = (): void => {
-    read("library.toolsets").then(setRelida, () => undefined);
+    invalidateReads("library.toolsets");
   };
 
   return (

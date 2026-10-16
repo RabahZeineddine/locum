@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { semPrefixoDoIpc } from "./erro-da-ponte";
 import {
-  estadoAoComecarLeitura,
+  criarCicloDeLeitura,
   estadoAoFalharLeitura,
   estadoAoLerDados,
+  estadoDeCarregando,
   type EstadoDeLeitura,
 } from "./leitura";
 import type {
@@ -164,6 +165,94 @@ export const READ_CHANNELS = [
 ] as const satisfies readonly BridgeChannel[];
 
 export type ReadChannel = (typeof READ_CHANNELS)[number];
+
+/**
+ * Quais leituras acompanham o banco ao vivo (o aviso `dados:mudou`).
+ *
+ * `true` so para o que le do banco local. Fica `false` o que vai a rede
+ * (templates do GitHub, listas de canais), sobe processo (`gh`, `claude`),
+ * abre o cofre ou le disco fora do banco: reler isso a cada escrita gastaria
+ * limite de API e CPU. Declarar e obrigatorio: canal novo sem entrada aqui nao
+ * compila, e `test/canais-ao-vivo.test.ts` confere o catalogo.
+ */
+export const AO_VIVO: Record<ReadChannel, boolean> = {
+  "agents.list": true,
+  "agents.get": true,
+  "agents.versions": true,
+  "agents.budgets": true,
+  "agents.overview": true,
+  "agents.templates": false,
+  "actions.describe": false,
+  "initiatives.list": true,
+  "initiatives.detail": true,
+  "initiatives.context": false,
+  "initiatives.deliveries": false,
+  "initiatives.overview": true,
+  "initiatives.staleDays": false,
+  "initiatives.root": false,
+  "sessions.terminal": false,
+  "sessions.installedTerminals": false,
+  "sessions.list": true,
+  "claudeSessions.list": false,
+  "limites.overview": true,
+  "prompts.list": true,
+  "runs.list": true,
+  "runs.get": true,
+  "runs.findings": true,
+  "runs.findingsByRun": true,
+  "approvals.listPending": true,
+  "approvals.listStuck": true,
+  "approvals.get": true,
+  "mcp.list": true,
+  "mcp.usage": true,
+  "mcp.vinculos": true,
+  "mcp.toolsCached": true,
+  "providers.list": false,
+  "providers.fallbacks": false,
+  "providers.preview": false,
+  "credentials.overview": false,
+  "providers.credentials": false,
+  "providers.ollamaUrl": false,
+  "providers.registered": false,
+  "providers.prices": false,
+  "github.status": false,
+  "github.ghAccounts": false,
+  "claudeCode.status": false,
+  "opencode.status": false,
+  "grafana.list": false,
+  "connections.list": false,
+  "connections.usage": false,
+  "claudeImport.origins": false,
+  "connections.slackApp": false,
+  "connections.teamsApp": false,
+  "connections.teamsPeloMcp": false,
+  "trackers.list": false,
+  "slack.get": false,
+  "chat.status": false,
+  "agents.aiStatus": false,
+  "metrics.report": true,
+  "machine.profile": false,
+  "triggers.list": true,
+  // Fora de proposito: e a base do editor, e o conflito ("mudou desde a v1")
+  // compara com ela. Reler em silencio trocaria a base e o aviso sumiria.
+  "automations.get": false,
+  "automations.eventsForRun": true,
+  "library.profiles": true,
+  "library.profile": true,
+  "library.profileVersions": true,
+  "library.toolsets": true,
+  "skills.list": false,
+  "skills.get": false,
+  "triggers.schedule": true,
+  "triggers.discards": true,
+  "triggers.lastError": true,
+  "scheduler.getWorkingHours": true,
+  "startup.get": false,
+  "app.version": false,
+  "updates.state": false,
+  "window.inboxTarget": false,
+  "i18n.state": false,
+};
 
 /**
  * O catalogo de acao, tambem escrito a mao, e tambem canal por canal.
@@ -402,7 +491,7 @@ export class BridgeError extends Error {
 }
 
 function bridge(): LocumBridge {
-  const exposta = globalThis.window?.locum;
+  const exposta = (globalThis as { window?: { locum?: LocumBridge } }).window?.locum;
   if (exposta === undefined) {
     throw new BridgeError("*", "a janela subiu sem a ponte, o preload nao rodou");
   }
@@ -465,10 +554,18 @@ export type ReadState<T> = EstadoDeLeitura<T, BridgeError>;
 type InvalidationListener = (channel: string) => void;
 const invalidationListeners = new Set<InvalidationListener>();
 
+/** Marca de `invalidarAoVivo`: só os canais que `AO_VIVO` declara como de banco. */
+const AO_VIVO_TAG = "~ao-vivo";
+
 export function invalidateReads(channel?: string): void {
   for (const listener of invalidationListeners) {
     listener(channel ?? "*");
   }
+}
+
+/** O aviso de que o banco mudou: relê só o que lê do banco, não rede nem processo. */
+export function invalidarAoVivo(): void {
+  invalidateReads(AO_VIVO_TAG);
 }
 
 /**
@@ -477,53 +574,34 @@ export function invalidateReads(channel?: string): void {
  * Os argumentos entram na dependencia por JSON e nao por identidade: quem
  * chama passa objeto literal, que muda de referencia a cada render, e comparar
  * por identidade dispararia a leitura em laco.
+ *
+ * So a primeira leitura (ou a de outros argumentos) mostra "carregando". A
+ * releitura por invalidacao mantem os dados na tela, e a que falha so marca
+ * `stale`. Ver `criarCicloDeLeitura` para a leitura em voo.
  */
 export function useRead<C extends ReadChannel>(
   channel: C,
   ...args: ReadArgs<C>
 ): ReadState<ReadResult<C>> {
-  const [state, setState] = useState<ReadState<ReadResult<C>>>({
-    status: "loading",
-    data: undefined,
-    error: undefined,
-  });
-  const [version, setVersion] = useState(0);
+  const [state, setState] = useState<ReadState<ReadResult<C>>>(estadoDeCarregando());
 
   const chave = JSON.stringify(args);
   // Sem a caixa, os argumentos entrariam na lista de dependencia do efeito e o
   // lint pediria o espalhamento, que traz a identidade de volta.
   const ultimos = useRef(args);
   ultimos.current = args;
+  const ciclo = useRef<ReturnType<typeof criarCicloDeLeitura> | null>(null);
 
   useEffect(() => {
-    const onInvalidate: InvalidationListener = (invalidatedChannel) => {
-      if (invalidatedChannel === "*" || invalidatedChannel === channel) {
-        setVersion((v) => v + 1);
-      }
-    };
-    invalidationListeners.add(onInvalidate);
-    return () => {
-      invalidationListeners.delete(onInvalidate);
-    };
-  }, [channel]);
-
-  // A leitura que o efeito anterior fez, para saber se esta é só uma releitura
-  // (mesmo canal e mesmos argumentos) e manter os dados na tela.
-  const ultimaLida = useRef<string | null>(null);
-
-  useEffect(() => {
-    let vivo = true;
-    const id = `${channel}:${chave}`;
-    const porInvalidacao = ultimaLida.current === id;
-    ultimaLida.current = id;
-    setState((atual) => estadoAoComecarLeitura(atual, porInvalidacao));
-
-    read(channel, ...ultimos.current).then(
-      (data) => {
-        if (vivo) setState((atual) => estadoAoLerDados(atual, data));
-      },
-      (erro: unknown) => {
-        if (!vivo) return;
+    setState(estadoDeCarregando());
+    const novo = criarCicloDeLeitura<ReadResult<C>>(
+      () => read(channel, ...ultimos.current),
+      (r) => {
+        if (r.ok) {
+          setState((atual) => estadoAoLerDados(atual, r.data));
+          return;
+        }
+        const erro = r.erro;
         const embrulhado =
           erro instanceof BridgeError
             ? erro
@@ -531,13 +609,28 @@ export function useRead<C extends ReadChannel>(
         setState((atual) => estadoAoFalharLeitura(atual, embrulhado));
       },
     );
-
+    ciclo.current = novo;
+    novo.pedir();
     // O desmontar nao cancela o IPC, que nao tem cancelamento: ele so impede a
     // gravacao de estado em componente que ja saiu.
-    return () => {
-      vivo = false;
+    return () => novo.descartar();
+  }, [channel, chave]);
+
+  useEffect(() => {
+    const onInvalidate: InvalidationListener = (invalidatedChannel) => {
+      if (
+        invalidatedChannel === "*" ||
+        invalidatedChannel === channel ||
+        (invalidatedChannel === AO_VIVO_TAG && AO_VIVO[channel])
+      ) {
+        ciclo.current?.pedir();
+      }
     };
-  }, [channel, chave, version]);
+    invalidationListeners.add(onInvalidate);
+    return () => {
+      invalidationListeners.delete(onInvalidate);
+    };
+  }, [channel]);
 
   return state;
 }

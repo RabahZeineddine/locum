@@ -344,18 +344,8 @@ function Execucao({ navegar, runId, passoAberto }: { navegar: TelaProps["navegar
   const { t } = useTranslation();
   const run = useRead("runs.get", runId);
   const achados = useRead("runs.findings", runId);
-  const [relido, setRelido] = useState<ReadResult<"runs.get">>(undefined);
-  const andando = (relido ?? run.data)?.status;
-
-  // Enquanto o run anda, a tela relê a cada segundo e meio: o passo grava o que
-  // vai fazendo, e é isso que aparece na linha do tempo de cada passo.
-  useEffect(() => {
-    if (andando !== "running" && andando !== "pending") return;
-    const id = window.setInterval(() => {
-      read("runs.get", runId).then(setRelido, () => undefined);
-    }, 1500);
-    return () => window.clearInterval(id);
-  }, [andando, runId]);
+  // O passo grava o que vai fazendo e o aviso `dados:mudou` relê o run: a
+  // linha do tempo anda sem relógio próprio.
 
   // "Ver o que sairia" chega com o passo na rota: leva a tela até ele.
   const carregado = run.status === "ready";
@@ -374,7 +364,7 @@ function Execucao({ navegar, runId, passoAberto }: { navegar: TelaProps["navegar
     return <Aviso probe="execucao">{t("runs.detail.missing", { runId })}</Aviso>;
   }
 
-  const detalhe = relido ?? run.data;
+  const detalhe = run.data;
   // O primeiro passo com saida carrega o marcador do bloco de codigo, que e
   // por onde o smoke confere que o destaque do shiki chegou: ele precisa de um
   // alvo estavel, e nao do primeiro `pre` que aparecer na tela.

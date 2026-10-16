@@ -4,13 +4,14 @@ import Database from "better-sqlite3";
  * Descobre que o banco mudou, venha a escrita de onde vier.
  *
  * `PRAGMA data_version` muda numa conexão quando OUTRA conexão confirma uma
- * transação. Por isso o observador abre uma conexão só dele, de leitura: ela
+ * transação. Por isso o observador abre uma conexão só dele (comum, sem
+ * `readonly`, usada apenas para o pragma): ela
  * enxerga a escrita do `Locum --mcp` (outro processo) e também a do scheduler e
  * do executor (outra conexão do mesmo processo). A leitura do pragma não toca
  * em tabela, então com o banco parado a conferência é quase de graça.
  *
  * Uma rajada de escritas entre duas conferências vira um aviso só. Ainda não
- * sabemos qual tabela mudou, então o aviso diz `*` (invalida tudo); o renderer
+ * sabemos qual tabela mudou, então o aviso diz `*`; o renderer relê só o que `AO_VIVO` declara de banco, e o renderer
  * relê sem piscar, e quem quiser refinar por área troca só este valor.
  */
 export const INTERVALO_DO_DETECTOR_MS = 1000;
@@ -75,7 +76,7 @@ export interface ObservadorDoBanco {
   fechar: () => void;
 }
 
-/** Conexão própria só para o `data_version`. */
+/** Conexão comum, só para o `data_version`: não lê nem escreve em tabela. */
 export function abrirObservadorDoBanco(caminho: string, nativeBinding?: string): ObservadorDoBanco {
   const conexao = new Database(caminho, nativeBinding ? { nativeBinding } : {});
   conexao.pragma("busy_timeout = 250");

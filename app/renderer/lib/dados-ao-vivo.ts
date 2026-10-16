@@ -1,4 +1,4 @@
-import { invalidateReads } from "./bridge";
+import { invalidarAoVivo } from "./bridge";
 import { criarPorteiroDeAvisos } from "./leitura";
 
 interface PonteDosDados {
@@ -14,7 +14,7 @@ export function assinarMudancasDosDados(): () => void {
   const ponte = (globalThis as Record<string, unknown>)["locum"] as PonteDosDados | undefined;
   const porteiro = criarPorteiroDeAvisos(
     () => typeof document === "undefined" || document.visibilityState === "visible",
-    () => invalidateReads(),
+    () => invalidarAoVivo(),
   );
   const desassinar = ponte?.dados?.onMudou?.(() => porteiro.avisar());
   const voltou = (): void => porteiro.voltou();

@@ -8,7 +8,7 @@ import { StatusDot } from "@/components/ui/status-dot";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { pontoDoEstado } from "@/lib/estado-do-ponto";
 import { MODELOS, rascunhoDoModelo, type ModeloId } from "@/lib/automacao";
-import { call, read, useRead, type ReadResult } from "@/lib/bridge";
+import { call, invalidateReads, read, useRead, type ReadResult } from "@/lib/bridge";
 import {
   apagarProvisoria,
   guardarProvisoria,
@@ -190,12 +190,11 @@ function LinhaDeTemplate({
 function ListaDeAutomacoes({ navegar }: Pick<TelaProps, "navegar">) {
   const { t } = useTranslation();
   const inicial = useRead("agents.overview");
-  const [relida, setRelida] = useState<Linha[] | null>(null);
   const [criando, setCriando] = useState(false);
   useAcaoDaTela("nova-automacao", () => setCriando(true));
   const [pacote, setPacote] = useState<{ nome: string; texto: string } | null>(null);
   const [erroDoArquivo, setErroDoArquivo] = useState<string | null>(null);
-  const lista = relida ?? inicial.data ?? [];
+  const lista = inicial.data ?? [];
   // As automações novas que ⌘Q ou uma queda deixaram sem gravar: nada as mostrava.
   const [provisorias, setProvisorias] = useState(() => listarProvisorias(globalThis.localStorage));
   // Reserva de automação apagada não tem mais a que voltar.
@@ -203,7 +202,7 @@ function ListaDeAutomacoes({ navegar }: Pick<TelaProps, "navegar">) {
     if (inicial.data !== undefined) limparReservasOrfas(globalThis.localStorage, inicial.data.map((l) => l.id));
   }, [inicial.data]);
   const reler = (): void => {
-    read("agents.overview").then(setRelida, () => undefined);
+    invalidateReads("agents.overview");
   };
 
   const escolherArquivo = (): void => {
@@ -309,7 +308,7 @@ function ListaDeAutomacoes({ navegar }: Pick<TelaProps, "navegar">) {
         </ListGroup>
       )}
 
-      {inicial.status === "loading" && relida === null ? (
+      {inicial.status === "loading" ? (
         <p className="text-muted-foreground text-[13px]">{t("automations.editor.loading")}</p>
       ) : lista.length === 0 && provisorias.length === 0 && !criando ? (
         <EmptyState

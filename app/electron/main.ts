@@ -7216,7 +7216,6 @@ async function esperarDestaque(window: BrowserWindow): Promise<number> {
   throw new Error("o bloco de codigo nao ficou destacado dentro de 20s");
 }
 
-/** Quantas pendencias a fila tem, lida direto do servico. */
 /**
  * Uma pendencia decidida por OUTRA conexao (o que o `Locum --mcp` faz, de outro
  * processo) tem de aparecer no contador da barra sem a pessoa trocar de aba.
@@ -7237,8 +7236,25 @@ async function checkContadorAoVivo(window: BrowserWindow): Promise<void> {
     outra.close();
   }
   await esperarProbe<number>(window, "contador-ao-vivo", `${lerContador} === ${antes - 1} ? 1 : null`, 5_000);
+
+  // A lista de Automacoes aberta mostra a automacao que outra conexao criou,
+  // sem trocar de aba nem recarregar.
+  await irPara(window, "automations");
+  const lerTotal = `(() => { const el = document.querySelector("[data-locum-probe=automacoes]"); return el === null ? null : Number(el.dataset.total); })()`;
+  // O total da tela e zero enquanto a primeira leitura anda: espera ele bater com o servico.
+  const { agentService } = await import("../src/services/agent-service.js");
+  const totalAntes = (await agentService.list()).length;
+  await esperarProbe<number>(window, "lista-de-automacoes", `(${lerTotal}) === ${totalAntes} ? 1 : null`);
+  const criadora = new Database(dbPath(), process.env.LOCUM_SQLITE_BINDING ? { nativeBinding: process.env.LOCUM_SQLITE_BINDING } : {});
+  try {
+    criadora.prepare("insert into agents (id, name) values (?, ?)").run(`ao-vivo-${Date.now()}`, "Automacao criada por outra conexao");
+  } finally {
+    criadora.close();
+  }
+  await esperarProbe<number>(window, "automacao-ao-vivo", `(${lerTotal}) === ${totalAntes + 1} ? 1 : null`, 5_000);
 }
 
+/** Quantas pendencias a fila tem, lida direto do servico. */
 async function countPending(): Promise<number> {
   const { approvalService } = await import("../src/services/approval-service.js");
   return (await approvalService.listPending()).length;
