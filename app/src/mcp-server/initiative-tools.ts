@@ -96,35 +96,18 @@ export function registerInitiativeTools(
     async ({ slug, status }) => respond(() => initiatives.setStatus(slug, status)),
   );
 
-  server.registerTool(
-    "set_initiative_servers",
-    {
-      description:
-        "Replaces the MCP servers the initiative can see, validated against the registry. Returns the already-linked agents that would lose a tool with the new list. Adding a server to an initiative that already has linked agents is refused: only a person widens it, in the app.",
-      inputSchema: {
-        slug: z.string(),
-        names: z.array(z.string()),
-      },
-    },
-    async ({ slug, names }) => respond(() => initiatives.setServers(slug, names, "agent")),
-  );
+  def(server, "set_initiative_servers", "danger",
+    "Replaces the MCP servers the initiative can see, validated against the registry. Adding a server widens what the agents already linked to the initiative can reach. Returns the linked agents that would lose a tool with the new list.",
+    { slug: z.string(), names: z.array(z.string()) },
+    ({ slug, names }) => initiatives.setServers(slug, names));
 
-  server.registerTool(
-    "link_agent_to_initiative",
-    {
-      description:
-        'Links an unlinked agent to an initiative. Refuses to link when the agent\'s latest version uses a tool or "requiresServers" outside the initiative\'s servers. Unlinking (slug null) or moving an agent that is already linked is refused: only a person does that, in the app.',
-      inputSchema: {
-        agentId: z.string(),
-        slug: z.string().nullable(),
-      },
-    },
-    async ({ agentId, slug }) =>
-      respond(async () => {
-        await initiatives.linkAgent(agentId, slug, "agent");
-        return { agentId, slug };
-      }),
-  );
+  def(server, "link_agent_to_initiative", "danger",
+    'Links an agent to an initiative. Refuses to link when the agent\'s latest version uses a tool or "requiresServers" outside the initiative\'s servers. Unlinking (slug null) or moving an agent that is already linked widens what that agent reaches: it goes back to seeing every server.',
+    { agentId: z.string(), slug: z.string().nullable() },
+    async ({ agentId, slug }) => {
+      await initiatives.linkAgent(agentId, slug);
+      return { agentId, slug };
+    });
 
   server.registerTool(
     "set_initiative_workspace",

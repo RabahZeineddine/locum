@@ -76,24 +76,30 @@ test("toolset e agent da biblioteca gravados pelo MCP aparecem na lista", async 
   assert.deepEqual(toolsets.find((t) => t.id === toolset)?.usedBy, [agent]);
 });
 
-test("ferramenta nova de servidor write é recusada, direto ou pelo toolset", async () => {
+test("ferramenta nova de servidor write é gravada, direto ou pelo toolset, e as duas ferramentas são destrutivas", async () => {
   const client = await ligarCliente();
   const sufixo = randomUUID().slice(0, 8);
   const servidor = `escrita-${sufixo}`;
   await mcpService.register({ name: servidor, transport: "http", url: "http://127.0.0.1:9/mcp", scope: "write" });
 
-  const direto = await client.callTool({
+  const { tools } = await client.listTools();
+  for (const nome of ["upsert_library_agent", "upsert_toolset"]) {
+    assert.equal(tools.find((t) => t.name === nome)?.annotations?.destructiveHint, true, nome);
+    assert.match(tools.find((t) => t.name === nome)?.description ?? "", /write/);
+  }
+
+  resultado(await client.callTool({
     name: "upsert_library_agent",
     arguments: { spec: { id: `a-${sufixo}`, name: "A", model: "a/b", tools: [{ server: servidor, tool: "comentar" }] } },
-  });
-  assert.equal(direto.isError, true);
-  assert.match(texto(direto), /escopo write/);
-
-  const pelo = await client.callTool({
+  }));
+  resultado(await client.callTool({
     name: "upsert_toolset",
     arguments: { toolset: { id: `t-${sufixo}`, name: "T", tools: [{ server: servidor, tool: "comentar" }] } },
-  });
-  assert.equal(pelo.isError, true);
+  }));
+  const lido = resultado(await client.callTool({ name: "get_library_agent", arguments: { id: `a-${sufixo}` } })) as {
+    spec: { tools: { tool: string }[] };
+  };
+  assert.deepEqual(lido.spec.tools.map((t) => t.tool), ["comentar"]);
 });
 
 test("o agent grava e devolve conexões, skills e orçamento pelo MCP", async () => {
@@ -116,135 +122,29 @@ test("o agent grava e devolve conexões, skills e orçamento pelo MCP", async ()
   assert.deepEqual(lido.spec.budget, { perDayUsd: 2 });
 });
 
-test("liberar escrita numa conexão pelo MCP é recusado, e manter a que já estava não", async () => {
-  const client = await ligarCliente();
-  const id = `escreve-${randomUUID().slice(0, 8)}`;
-  const base = { id, name: "Escreve", model: "a/b" };
-
-  const nova = await client.callTool({
-    name: "upsert_library_agent",
-    arguments: { spec: { ...base, connections: [{ connectionId: "github", tools: { create_comment: true } }] } },
-  });
-  assert.equal(nova.isError, true);
-  assert.match(texto(nova), /create_comment/);
-
-  // Escrita que a pessoa já liberou pela tela continua valendo quando o agente edita outra coisa.
-  await libraryService.saveProfile({
-    spec: { ...base, connections: [{ connectionId: "github", tools: { create_comment: true } }] },
-  });
-  resultado(
-    await client.callTool({
-      name: "upsert_library_agent",
-      arguments: {
-        spec: { ...base, instructions: "Novo texto.", connections: [{ connectionId: "github", tools: { create_comment: true } }] },
-      },
-    }),
-  );
-
-  // Ligar uma ferramenta de leitura, ou desligar uma de escrita, não é liberar escrita.
-  resultado(
-    await client.callTool({
-      name: "upsert_library_agent",
-      arguments: { spec: { ...base, connections: [{ connectionId: "github", tools: { get_issue: true, create_comment: false } }] } },
-    }),
-  );
-});
-
-test("pelo MCP, conexão nova de servidor write e mudança que libera ferramenta dela são recusadas", async () => {
+test("pelo MCP, liberar escrita numa conexão grava como na tela", async () => {
   const client = await ligarCliente();
   const sufixo = randomUUID().slice(0, 8);
   const servidor = `conexao-escrita-${sufixo}`;
   await mcpService.register({ name: servidor, transport: "http", url: "http://127.0.0.1:9/mcp", scope: "write" });
-  const base = { id: `w-${sufixo}`, name: "W", model: "a/b" };
-
-  const nova = await client.callTool({
-    name: "upsert_library_agent",
-    arguments: { spec: { ...base, connections: [{ connectionId: servidor }] } },
-  });
-  assert.equal(nova.isError, true);
-  assert.match(texto(nova), /conexão nova/);
-
-  // Gravada pela tela, a conexão segue valendo, e editar outra coisa passa.
-  await libraryService.saveProfile({ spec: { ...base, connections: [{ connectionId: servidor, tools: { buscar: false } }] } });
-  resultado(
-    await client.callTool({
-      name: "upsert_library_agent",
-      arguments: { spec: { ...base, instructions: "x", connections: [{ connectionId: servidor, tools: { buscar: false } }] } },
-    }),
-  );
-
-  const liga = await client.callTool({
-    name: "upsert_library_agent",
-    arguments: { spec: { ...base, connections: [{ connectionId: servidor, tools: { buscar: true } }] } },
-  });
-  assert.equal(liga.isError, true);
-  const tiraODesligar = await client.callTool({
-    name: "upsert_library_agent",
-    arguments: { spec: { ...base, connections: [{ connectionId: servidor }] } },
-  });
-  assert.equal(tiraODesligar.isError, true);
-});
-
-test("pelo MCP, declarar que uma ferramenta de escrita é leitura também é recusado", async () => {
-  const client = await ligarCliente();
-  const id = `declara-${randomUUID().slice(0, 8)}`;
-  const recusa = await client.callTool({
-    name: "upsert_library_agent",
-    arguments: { spec: { id, name: "D", model: "a/b", connections: [{ connectionId: "github", tools: { "github/create_comment": "read" } }] } },
-  });
-  assert.equal(recusa.isError, true);
-});
-
-test("pelo MCP, escolha \"read\" nova é recusada mesmo em nome de leitura, e a que já existia fica", async () => {
-  const client = await ligarCliente();
-  const id = `read-${randomUUID().slice(0, 8)}`;
-  const base = { id, name: "R", model: "a/b" };
-  const recusa = await client.callTool({
-    name: "upsert_library_agent",
-    arguments: { spec: { ...base, connections: [{ connectionId: "github", tools: { "github/get_report": "read" } }] } },
-  });
-  assert.equal(recusa.isError, true);
-  assert.match(texto(recusa), /get_report/);
-
-  await libraryService.saveProfile({ spec: { ...base, connections: [{ connectionId: "github", tools: { "github/get_report": "read" } }] } });
-  resultado(
-    await client.callTool({
-      name: "upsert_library_agent",
-      arguments: { spec: { ...base, instructions: "x", connections: [{ connectionId: "github", tools: { "github/get_report": "read" } }] } },
-    }),
-  );
-});
-
-test("pelo MCP, ligar ferramenta que o servidor anotou como escrita é recusado mesmo com nome de leitura", async () => {
-  const client = await ligarCliente();
-  const sufixo = randomUUID().slice(0, 8);
-  const servidor = `anotado-${sufixo}`;
-  await mcpService.register({ name: servidor, transport: "http", url: "http://127.0.0.1:9/mcp", scope: "read" });
-  // O que a última leitura do servidor guardou: nome de leitura anotado como escrita, e o inverso.
+  // O que a última leitura do servidor guardou: nome de leitura anotado como escrita.
   await db.insert(schema.settings).values({
     key: `mcp.ferramentas.${servidor}`,
     value: JSON.stringify({
       at: Date.now(),
-      tools: [
-        { name: "get_report", description: "", estimatedTokens: 0, readOnlyHint: false },
-        { name: "pid", description: "", estimatedTokens: 0, readOnlyHint: true },
-      ],
+      tools: [{ name: "get_report", description: "", estimatedTokens: 0, readOnlyHint: false }],
     }),
   });
-  const base = { id: `anot-${sufixo}`, name: "A", model: "a/b" };
+  const base = { id: `w-${sufixo}`, name: "W", model: "a/b" };
+  const grava = (connections: unknown) =>
+    client.callTool({ name: "upsert_library_agent", arguments: { spec: { ...base, connections } } });
 
-  const escreve = await client.callTool({
-    name: "upsert_library_agent",
-    arguments: { spec: { ...base, connections: [{ connectionId: servidor, tools: { get_report: true } }] } },
-  });
-  assert.equal(escreve.isError, true);
-  assert.match(texto(escreve), /get_report/);
-
-  // Anotada como leitura, passa, ainda que o nome não diga.
-  resultado(
-    await client.callTool({
-      name: "upsert_library_agent",
-      arguments: { spec: { ...base, connections: [{ connectionId: servidor, tools: { pid: true } }] } },
-    }),
-  );
+  resultado(await grava([{ connectionId: servidor }]));
+  resultado(await grava([{ connectionId: servidor, tools: { buscar: true, get_report: true } }]));
+  resultado(await grava([{ connectionId: "github", tools: { create_comment: true, "github/get_report": "read" } }]));
+  const lido = resultado(await client.callTool({ name: "get_library_agent", arguments: { id: base.id } })) as {
+    spec: { connections: { connectionId: string; tools: Record<string, unknown> }[] };
+  };
+  assert.equal(lido.spec.connections[0]?.connectionId, "github");
+  assert.equal(lido.spec.connections[0]?.tools.create_comment, true);
 });

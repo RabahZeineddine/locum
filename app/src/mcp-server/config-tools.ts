@@ -94,7 +94,7 @@ export function registerConfigTools(server: McpServer): void {
     "upsert_agent",
     {
       description:
-        "Records an AgentSpec (an automation: steps plus triggers set with set_trigger) as a new immutable version. Steps are model, action and logic, with decisions and paths through `when`; read describe_steps for the catalog. A spec identical to the latest returns the existing version. An invalid spec records nothing. Action steps recorded here start in approval mode: draft and auto are downgraded, and the response reports the downgrade. A step tool from a server with write scope that the latest version did not already use is refused: only a person adds it, in the app.",
+        "Records an AgentSpec (an automation: steps plus triggers set with set_trigger) as a new immutable version. Steps are model, action and logic, with decisions and paths through `when`; read describe_steps for the catalog. A spec identical to the latest returns the existing version. An invalid spec records nothing. Action steps recorded here start in approval mode: draft and auto are downgraded, and the response reports the downgrade. A step tool from a server with write scope is recorded like the app does: it adds a write tool to the automation.",
       inputSchema: {
         spec: z
           .record(z.string(), z.unknown())
@@ -141,7 +141,7 @@ export function registerConfigTools(server: McpServer): void {
         scope: z
           .enum(["read", "write"])
           .optional()
-          .describe("write does not allow external writes without approval. Tools of a write server only enter agent steps through a person, and a write server is not lowered to read from here"),
+          .describe("write does not allow external writes without approval. Tools of a write server enter agent steps as write tools"),
         idleTimeoutMs: z.number().int().positive().optional(),
         enabled: z
           .boolean()
@@ -159,11 +159,6 @@ export function registerConfigTools(server: McpServer): void {
           throw new Error("servidor MCP é ligado em passo separado: set_mcp_server_enabled, na tela do Locum ou com `locum mcp:enable`");
         }
         const atual = await mcpService.get(config.name);
-        // Ferramenta de servidor `write` não entra em passo pelo MCP. Baixar o
-        // escopo daqui desfaria essa trava num passo só.
-        if (atual?.config.scope === "write" && config.scope === "read") {
-          throw new Error(`servidor "${config.name}" é write; baixar o escopo é decisão de uma pessoa, na tela do Locum`);
-        }
         const junto = mergeRegistration(atual?.config, config as McpServerInput);
         const entry = await mcpService.register(junto);
         const desligar = enabled === false || atual === undefined || mudouDestino(atual.config, entry.config);

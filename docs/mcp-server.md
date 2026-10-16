@@ -47,7 +47,7 @@ linha de comando escreve. Não existe cópia nem sincronização.
 
 ## O que o servidor expõe
 
-São 179 ferramentas, todas casca fina sobre a camada de serviço em
+São 185 ferramentas, todas casca fina sobre a camada de serviço em
 `app/src/services/`. A regra mora no serviço, não aqui: versão de agent
 continua imutável, ciclo na tabela de substituição continua recusado na
 gravação, gatilho do pacote que espera a escolha de chats não liga.
@@ -123,6 +123,10 @@ guardar segredo, e não é recomendado.
 | `list_findings` | read | `runs.findings` |
 | `get_metrics` | read | `metrics.report` |
 | `list_mcp_servers` | read | `mcp.list` |
+| `get_provider_limits` | read | `limites.overview` |
+| `refresh_provider_limits` | external | `limites.refresh` |
+| `set_provider_budget` | write | `limites.setBudget` |
+| `set_limits_config` | write | `limites.setConfig` |
 | `list_providers` | read | `providers.list`, `providers.fallbacks`, `providers.preview` |
 | `get_machine_profile` | read | `machine.profile` |
 | `upsert_agent` | danger | só MCP |
@@ -142,8 +146,8 @@ guardar segredo, e não é recomendado.
 | `get_prompt` | read | só MCP |
 | `upsert_initiative` | write | `initiatives.upsert` |
 | `set_initiative_status` | write | `initiatives.setStatus` |
-| `set_initiative_servers` | write | `initiatives.setServers` |
-| `link_agent_to_initiative` | write | `initiatives.linkAgent` |
+| `set_initiative_servers` | danger | `initiatives.setServers` |
+| `link_agent_to_initiative` | danger | `initiatives.linkAgent` |
 | `set_initiative_workspace` | write | `initiatives.setWorkspaces` |
 | `add_initiative_link` | write | `initiatives.addLink` |
 | `upsert_prompt` | write | só MCP |
@@ -210,6 +214,8 @@ guardar segredo, e não é recomendado.
 | `add_slack_channel` | write | `slack.addChannel` |
 | `remove_slack_channel` | write | `slack.removeChannel` |
 | `get_teams_app` | read | `connections.teamsApp` |
+| `get_teams_mcp` | read | `connections.teamsPeloMcp` |
+| `use_claude_teams_server` | publish | `connections.usarTeamsDoClaude` |
 | `connect_teams` | external | `connections.connectTeams` |
 | `teams_admin_consent` | external | `connections.teamsAdminConsent` |
 | `set_teams_channels` | write | `connections.setTeamsChannels` |
@@ -304,9 +310,15 @@ a versão que grava como pessoa:
 - `set_budget` só baixa ou acrescenta teto; subir é por `save_agent_edited`.
 - `register_mcp_server` grava desligado; ligar é `set_mcp_server_enabled`.
 - `set_trigger` não liga; ligar é `set_trigger_enabled`.
-- `set_initiative_servers`, `link_agent_to_initiative`, `upsert_library_agent`
-  e `upsert_toolset` recusam o que alarga o alcance de um agent já ligado
-  (servidor novo, ferramenta de escrita nova); isso continua pela tela.
+- `upsert_agent` ainda recusa escrita pela conta Claude em passo de modelo
+  (escrita externa vai como passo de ação); ferramenta nova de servidor `write`
+  entra como na tela.
+
+Gravam como a tela, sem recusa, e por isso são `danger`:
+`set_initiative_servers` e `link_agent_to_initiative` (ampliam o que os agents
+já ligados alcançam), `upsert_library_agent` e `upsert_toolset` (adicionam
+ferramenta de escrita), e `register_mcp_server` (pode baixar um servidor de
+`write` para `read`). Quem confirma é o cliente, pela anotação.
 
 O chat de agent (`agent_chat_*`) só existe com o servidor subido pelo binário do
 Locum (`--mcp`), que entrega o processo do chat; pelo `npm run mcp` as

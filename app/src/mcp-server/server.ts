@@ -14,6 +14,7 @@ import { registerConfigTools } from "./config-tools.js";
 import { registerConnectionTools } from "./connection-tools.js";
 import { registerInitiativeTools } from "./initiative-tools.js";
 import { registerLibraryTools } from "./library-tools.js";
+import { registerLimitsTools } from "./limits-tools.js";
 import { registerMcpAdminTools } from "./mcp-admin-tools.js";
 import { registerPackageTools } from "./package-tools.js";
 import { registerProviderTools } from "./provider-tools.js";
@@ -54,6 +55,7 @@ export function buildMcpServer(fora: Partial<Ambiente> = {}): McpServer {
   );
 
   registerReadTools(server);
+  registerLimitsTools(server);
   registerConfigTools(server);
   registerRunTools(server);
   registerInitiativeTools(server);

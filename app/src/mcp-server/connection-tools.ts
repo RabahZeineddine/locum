@@ -192,6 +192,15 @@ export function registerConnectionTools(server: McpServer, amb: Ambiente): void 
     "Turns the channel scopes of Teams on or off. The token is not touched: reconnect (connect_teams) for Entra to ask again.",
     { enabled: z.boolean() }, ({ enabled }) => connectionService.setTeamsChannels(enabled));
 
+  def(server, "get_teams_mcp", "read",
+    "How Teams reaches Locum through an MCP server: the registered server that brings it (enabled, last health, whether it has the Teams read tools) or, if none, the Claude Code servers worth importing. Only reads files and the registry, starts no server.",
+    {}, () => connectionService.teamsPeloMcp());
+
+  def(server, "use_claude_teams_server", "publish",
+    "Imports ONE Teams server from the Claude Code config, linked and ENABLED, and tests it: this registers a command that runs on this machine and reaches Teams with your account. Fails when the server is not a Teams one or is missing variables.",
+    { name: z.string().min(1), origin: z.string().optional().describe("origin shown by get_teams_mcp, when the same name exists in more than one") },
+    ({ name, origin }) => connectionService.usarTeamsDoClaude(name, origin));
+
   def(server, "disconnect_teams", "danger",
     "Forgets the Teams token. Tenant and client id stay.", {}, () => connectionService.disconnectTeams());
 

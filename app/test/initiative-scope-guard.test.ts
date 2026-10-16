@@ -51,41 +51,35 @@ async function montar() {
   return { initiatives, slug, outra, agentId };
 }
 
-test("pelo MCP o agent entra numa iniciativa, mas não sai nem muda de iniciativa", async () => {
+const destrutiva = async (client: Client, nome: string) =>
+  (await client.listTools()).tools.find((t) => t.name === nome)?.annotations?.destructiveHint;
+
+test("pelo MCP o agent entra, sai e muda de iniciativa como na tela, e a ferramenta é destrutiva", async () => {
   const { initiatives, slug, outra, agentId } = await montar();
   const client = await ligarCliente();
+  assert.equal(await destrutiva(client, "link_agent_to_initiative"), true);
 
   const entrar = await client.callTool({ name: "link_agent_to_initiative", arguments: { agentId, slug } });
   assert.equal(entrar.isError, undefined);
 
-  const sair = await client.callTool({ name: "link_agent_to_initiative", arguments: { agentId, slug: null } });
-  assert.equal(sair.isError, true);
-  assert.match(texto(sair), /decisão de uma pessoa/);
-
   const mudar = await client.callTool({ name: "link_agent_to_initiative", arguments: { agentId, slug: outra } });
-  assert.equal(mudar.isError, true);
+  assert.equal(mudar.isError, undefined);
 
-  // Na tela, que é a pessoa, as duas coisas continuam valendo.
-  await initiatives.linkAgent(agentId, outra);
+  const sair = await client.callTool({ name: "link_agent_to_initiative", arguments: { agentId, slug: null } });
+  assert.equal(sair.isError, undefined);
+  assert.match(texto(sair), /"slug": null/);
   await initiatives.linkAgent(agentId, null);
   await client.close();
 });
 
-test("pelo MCP a iniciativa com agent ligado só perde servidor, e a sem agent monta a lista à vontade", async () => {
-  const { initiatives, slug, outra, agentId } = await montar();
+test("pelo MCP a iniciativa com agent ligado recebe servidor novo, e a ferramenta é destrutiva", async () => {
+  const { initiatives, slug, agentId } = await montar();
   await initiatives.linkAgent(agentId, slug);
   const client = await ligarCliente();
+  assert.equal(await destrutiva(client, "set_initiative_servers"), true);
 
   const incluir = await client.callTool({ name: "set_initiative_servers", arguments: { slug, names: ["srv-a", "srv-b"] } });
-  assert.equal(incluir.isError, true);
-  assert.match(texto(incluir), /srv-b/);
-
-  const tirar = await client.callTool({ name: "set_initiative_servers", arguments: { slug, names: [] } });
-  assert.equal(tirar.isError, undefined);
-
-  const semAgent = await client.callTool({ name: "set_initiative_servers", arguments: { slug: outra, names: ["srv-a", "srv-b"] } });
-  assert.equal(semAgent.isError, undefined);
-
-  await initiatives.setServers(slug, ["srv-a", "srv-b"]);
+  assert.equal(incluir.isError, undefined);
+  assert.deepEqual((await initiatives.detail(slug))?.servers.sort(), ["srv-a", "srv-b"]);
   await client.close();
 });
