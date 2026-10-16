@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { schema } from "../src/db/index.js";
 import { TriggerConfig } from "../src/config/types.js";
 import {
-  FALHAS_ATE_DESCARTAR,
+  FALHAS_ATE_PASSAR,
   LIMITE_DO_FILTRO_IA,
   TEMPO_DO_FILTRO_IA_MS,
   pollTeamsInbox,
@@ -339,7 +339,7 @@ test("o texto da mensagem não fecha a moldura do prompt", () => {
 
 /* ------------------------------------------------------ revisão: robustez */
 
-test("mensagem que sempre falha é descartada na terceira vez e não trava as seguintes", async () => {
+test("mensagem que sempre falha passa na terceira vez, com aviso, e não trava as seguintes", async () => {
   const { db } = bancoDeTeste();
   const ruim = mensagem("1", 10, `<p>quebra o modelo ${link(1)}</p>`);
   const boa = mensagem("2", 5, `<p>review: ${link(2)}</p>`);
@@ -347,31 +347,48 @@ test("mensagem que sempre falha é descartada na terceira vez e não trava as se
   const modelo = modeloFalso((p) => (p.mensagem.texto.includes("quebra") ? new Error("saída ilegível") : true));
   const batida = () => pollTeamsInbox(watch, { db, token, graphUrl: GRAPH, ...semGithub, fetchFn: graph.fetchFn, julgar: modelo.julgar });
 
-  for (let i = 1; i < FALHAS_ATE_DESCARTAR; i++) {
+  for (let i = 1; i < FALHAS_ATE_PASSAR; i++) {
     const r = await batida();
     assert.equal(r.errors.length, 1, `batida ${i}`);
-    assert.equal(r.descartes.length, 0);
+    assert.deepEqual(r.avisos, []);
+    assert.ok(!(await eventos(db)).some((e) => e.messageId === "1"), "passou antes da hora");
   }
   const ultima = await batida();
-  assert.deepEqual(ultima.descartes.map((d) => d.motivo), [`o filtro falhou ${FALHAS_ATE_DESCARTAR} vezes nesta mensagem`]);
-  // A boa nunca ficou presa atrás da ruim, e não vira evento duas vezes.
+  assert.deepEqual(ultima.avisos, ["o filtro falhou 3 vezes nesta mensagem; deixei passar"]);
+  assert.deepEqual(ultima.descartes, []);
+  // A ruim virou evento e ganhou 👀 como sem filtro; a boa tem um evento só.
+  assert.deepEqual((await eventos(db)).map((e) => e.messageId).sort(), ["1", "2"]);
+  assert.ok(graph.reacoes.some((r) => r.endsWith("/messages/1/setReaction")));
+  // Cursor andou: a próxima batida não pergunta nada.
+  const antes = modelo.pedidos.length;
   await batida();
-  assert.deepEqual((await eventos(db)).map((e) => e.messageId), ["2"]);
+  assert.equal(modelo.pedidos.length, antes);
 });
 
 test("as falhas contam entre batidas mesmo sem memória: ficam no banco", async () => {
   const { db } = bancoDeTeste();
   const graph = graphFalso([mensagem("1", 10, `<p>review ${link(1)}</p>`)]);
   const quebra = modeloFalso(() => new Error("fora"));
-  for (let i = 0; i < FALHAS_ATE_DESCARTAR; i++) {
+  for (let i = 0; i < FALHAS_ATE_PASSAR; i++) {
     // Cada batida é um "app reiniciado": nada em comum além do banco.
     await pollTeamsInbox(watch, { db, token, graphUrl: GRAPH, ...semGithub, fetchFn: graph.fetchFn, julgar: quebra.julgar });
   }
-  assert.equal(quebra.pedidos.length, FALHAS_ATE_DESCARTAR);
-  const depois = modeloFalso(() => true);
-  await pollTeamsInbox(watch, { db, token, graphUrl: GRAPH, ...semGithub, fetchFn: graph.fetchFn, julgar: depois.julgar });
-  assert.equal(depois.pedidos.length, 0, "a mensagem descartada voltou a ser perguntada");
-  assert.equal((await eventos(db)).length, 0);
+  assert.equal(quebra.pedidos.length, FALHAS_ATE_PASSAR);
+  assert.equal((await eventos(db)).length, 1);
+});
+
+test("contador de mensagem que o cursor já deixou para trás é apagado", async () => {
+  const { db } = bancoDeTeste();
+  const contadores = async () => (await db.select().from(schema.cursors)).filter((c) => c.source.startsWith("teams-filtro-ia-falhas"));
+  const graph = graphFalso([mensagem("1", 10, `<p>review ${link(1)}</p>`)]);
+  await pollTeamsInbox(watch, { db, token, graphUrl: GRAPH, ...semGithub, fetchFn: graph.fetchFn, julgar: modeloFalso(() => new Error("fora")).julgar });
+  assert.equal((await contadores()).length, 1);
+
+  // A mensagem deixa de existir e o cursor passa dela por outra mensagem mais nova.
+  const nova = graphFalso([mensagem("2", 1, `<p>review ${link(2)}</p>`)]);
+  await pollTeamsInbox(watch, { db, token, graphUrl: GRAPH, ...semGithub, fetchFn: nova.fetchFn, julgar: modeloFalso(() => true).julgar });
+  await pollTeamsInbox(watch, { db, token, graphUrl: GRAPH, ...semGithub, fetchFn: nova.fetchFn, julgar: modeloFalso(() => true).julgar });
+  assert.equal((await contadores()).length, 0);
 });
 
 test("o limite é de cada origem: a caixa cheia não trava os canais", async () => {

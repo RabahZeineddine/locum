@@ -121,8 +121,8 @@ export const TEMPO_DO_FILTRO_IA_MS = 90_000;
 /** Quantas mensagens o filtro pergunta ao modelo ao mesmo tempo. */
 const PARALELO_DO_FILTRO_IA = 3;
 
-/** Falhas do modelo na mesma mensagem, em batidas diferentes, antes de ela ser descartada. */
-export const FALHAS_ATE_DESCARTAR = 3;
+/** Falhas do modelo na mesma mensagem, em batidas diferentes, antes de ela passar sem filtro. */
+export const FALHAS_ATE_PASSAR = 3;
 
 /** Fonte das tentativas que falharam, no cursor: sobrevive a reiniciar o app. */
 const FONTE_DAS_FALHAS = "teams-filtro-ia-falhas";
@@ -225,8 +225,10 @@ async function varrer(
   const acolher = async (
     varredura: { eventIds: string[]; inWindow: string[]; seen: number },
     kind: "inbox" | "channel",
+    chaveDoCursor: string,
     channel?: string,
   ) => {
+    await filtro?.limpar(chaveDoCursor);
     const { erros, fora, descartes } = await enriquecerPrs(varredura.inWindow, kind, channel, db, { ...options, graph: teams }, revisados);
     outcome.descartes.push(...descartes);
     outcome.eventIds.push(...varredura.eventIds.filter((id) => !fora.has(id)));
@@ -250,9 +252,10 @@ async function varrer(
     await acolher(
       await pollMcpServer(
         { server: TEAMS_SERVER, tool: "inbox", args: { since: CURSOR_TOKEN } },
-        { db, call: caixa(graph, watch.chats), shape: inboxShape(vigia, eu, chave, teams.conta, filtro?.origem()) },
+        { db, call: caixa(graph, watch.chats), shape: inboxShape(vigia, eu, chave, teams.conta, filtro?.origem(chave)) },
       ),
       "inbox",
+      chave,
     );
   } catch (err) {
     outcome.errors.push({ kind: "inbox", error: err instanceof Error ? err.message : String(err) });
@@ -268,9 +271,10 @@ async function varrer(
       await acolher(
         await pollMcpServer(
           { server: TEAMS_SERVER, tool: "channel", args: { since: CURSOR_TOKEN } },
-          { db, call: doCanal(graph, canal, watch.filtroIa !== undefined), shape: canalShape(canal, eu, vigia, `${antiga}${sufixo}`, teams.conta, filtro?.origem()) },
+          { db, call: doCanal(graph, canal, watch.filtroIa !== undefined), shape: canalShape(canal, eu, vigia, `${antiga}${sufixo}`, teams.conta, filtro?.origem(`${antiga}${sufixo}`)) },
         ),
         "channel",
+        `${antiga}${sufixo}`,
         canal.label ?? canal.channelId,
       );
     } catch (err) {
@@ -332,11 +336,33 @@ function filtroDaBatida(
   type Decisao = { admissao: Admissao; motivo?: string };
   const adia: Decisao = { admissao: { kind: "adia" } };
 
-  const tentativas = async (id: string): Promise<number> =>
-    Number(
-      (await db.select({ value: schema.cursors.value }).from(schema.cursors).where(and(eq(schema.cursors.source, falhas), eq(schema.cursors.key, id))))[0]
-        ?.value ?? 0,
-    );
+  const tentativas = async (id: string): Promise<number> => {
+    const [linha] = await db
+      .select({ value: schema.cursors.value })
+      .from(schema.cursors)
+      .where(and(eq(schema.cursors.source, falhas), eq(schema.cursors.key, id)));
+    try {
+      return Number((JSON.parse(linha?.value ?? "{}") as { n?: number }).n ?? 0);
+    } catch {
+      return 0;
+    }
+  };
+  /** Apaga os contadores de mensagens que o cursor da origem já deixou para trás. */
+  const limpar = async (chaveDoCursor: string): Promise<void> => {
+    const [cursor] = await db
+      .select({ value: schema.cursors.value })
+      .from(schema.cursors)
+      .where(and(eq(schema.cursors.source, TEAMS_SOURCE), eq(schema.cursors.key, chaveDoCursor)));
+    if (cursor === undefined) return;
+    for (const linha of await db.select().from(schema.cursors).where(eq(schema.cursors.source, falhas))) {
+      try {
+        const { at, cursor: de } = JSON.parse(linha.value) as { at?: string; cursor?: string };
+        if (de === chaveDoCursor && at !== undefined && at < cursor.value) await esquecer(linha.key);
+      } catch {
+        await esquecer(linha.key);
+      }
+    }
+  };
   const esquecer = (id: string) =>
     db.delete(schema.cursors).where(and(eq(schema.cursors.source, falhas), eq(schema.cursors.key, id)));
 
@@ -356,7 +382,7 @@ function filtroDaBatida(
   };
 
   /** Uma origem: caixa ou canal, cada uma com o próprio limite de mensagens. */
-  const origem = () => {
+  const origem = (chaveDoCursor: string) => {
     let avaliadas = 0;
     const decisoes = new Map<string, Promise<Decisao>>();
 
@@ -406,16 +432,19 @@ function filtroDaBatida(
         falhou = true;
         erros.push(`filtro com IA: ${err instanceof Error ? err.message : String(err)}`);
         const vezes = (await tentativas(id)) + 1;
-        if (vezes >= FALHAS_ATE_DESCARTAR) {
+        // Fora do ar, descartar perderia pedido real: na terceira falha a mensagem segue como sem filtro.
+        if (vezes >= FALHAS_ATE_PASSAR) {
           await esquecer(id);
-          return { admissao: { kind: "descarta" }, motivo: `o filtro falhou ${FALHAS_ATE_DESCARTAR} vezes nesta mensagem` };
+          avisar(`passou:${id}`, `o filtro falhou ${FALHAS_ATE_PASSAR} vezes nesta mensagem; deixei passar`);
+          return { admissao: { kind: "passa" } };
         }
+        const valor = JSON.stringify({ n: vezes, at: carimbo(bruto.createdDateTime), cursor: chaveDoCursor });
         await db
           .insert(schema.cursors)
-          .values({ source: falhas, key: id, value: String(vezes) })
+          .values({ source: falhas, key: id, value: valor })
           .onConflictDoUpdate({
             target: [schema.cursors.source, schema.cursors.key],
-            set: { value: String(vezes), updatedAt: Math.floor(Date.now() / 1000) },
+            set: { value: valor, updatedAt: Math.floor(Date.now() / 1000) },
           });
         return adia;
       }
@@ -470,6 +499,7 @@ function filtroDaBatida(
 
   return {
     origem,
+    limpar,
     /** O que a batida barrou, o que falhou e o que avisa, e zera para a próxima conversa da mesma batida. */
     recolher: () => {
       const saida = { descartes, erros, avisos };

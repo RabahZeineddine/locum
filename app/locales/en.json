@@ -2110,7 +2110,7 @@
         "filtroIa": "AI filter (optional)",
         "filtroIaPlaceholder": "Is this a request for a pull request review?",
         "filtroIaModeloAuto": "This machine's Haiku (default)",
-        "filtroIaHint": "Each message that passes the trigger filters is read by a cheap model before waking the agent. If the answer is no, the message is left out and the reason shows in the discards. If the model fails, the message waits for the next poll and is discarded on the third failure. A message edited after being discarded does not come back. At most 20 per poll.",
+        "filtroIaHint": "Each message that passes the trigger filters is read by a cheap model before waking the agent. If the answer is no, the message is left out and the reason shows in the discards. If the model fails, the message waits for the next poll and, on the third failure in a row, goes through without the filter, with a warning. A message edited after being discarded does not come back. At most 20 per poll.",
         "discards": "Latest discarded messages",
         "channels": "Team channels (mention or PR link wakes it)",
         "search": "Search team or channel",
