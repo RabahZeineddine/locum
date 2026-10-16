@@ -40,6 +40,7 @@ import { rotuloDoMotivoDeEvento } from "@/lib/rotulos";
 import { gatilhosParaGravar, mesclar, type Conflito, type Escolhas } from "@/lib/mesclar-automacao";
 import {
   apagarProvisoria,
+  apagarRastroLocal,
   descartarReserva,
   descartarRascunho,
   diferencas,
@@ -84,12 +85,17 @@ import type { AgentSpec, Step } from "../../../src/config/types";
 import { esquemasDasConexoes, useFerramentasDasConexoes, useSaidasDoUltimoRun, type FerramentasDasConexoes } from "./ferramentas-das-conexoes";
 import { useTranslation } from "react-i18next";
 import type { RotaId } from "../rotas";
+import { useToasts } from "../toasts";
+import { ExcluirAutomacao } from "./excluir-automacao";
 import { ModalDeAgent } from "./modal-de-agent";
 import { useExecutarAgora } from "./executar-com";
 import { PainelDoNo } from "./painel";
 import { appDoGatilho, appDoPasso, NumeroDoPasso, resumoDoGatilho, Selo, tituloDoGatilho, tituloDoPasso } from "./visual";
 
 type Automacao = NonNullable<ReadResult<"automations.get">>;
+
+/** O agent do sistema que guarda o contexto: não é uma automação e não se exclui pela tela. */
+const AGENT_DO_CONTEXTO = "locum-context";
 
 /**
  * O canvas de uma automação.
@@ -231,6 +237,9 @@ function EditorCarregado({
   const [nota, setNota] = useState("");
   const [ocupado, setOcupado] = useState<"salvar" | "rodar" | "ligar" | null>(null);
   const executarAgora = useExecutarAgora();
+  const toasts = useToasts();
+  // A automação acabou de ser excluída: o autosave e a guarda de saída não podem trazer o rascunho de volta.
+  const excluida = useRef(false);
   const [aviso, setAviso] = useState<{ tipo: "ok" | "erro" | "aviso"; texto: string } | null>(null);
   // O rascunho de uma edição que não chegou ao Salvar (ou um reservado antes): espera a decisão da pessoa. `reservada` diz que ele já saiu da chave ativa.
   const [oferta, setOferta] = useState<(OfertaDeRascunho & { reservada: boolean }) | null>(() => {
@@ -491,6 +500,7 @@ function EditorCarregado({
   // Cada mudança vai para o rascunho local. Enquanto a oferta de um rascunho antigo está na tela, ele não é sobrescrito: a primeira edição
   // vale como "começar do gravado", e o antigo vai para a reserva (com a data) antes de o novo passar a ser guardado.
   useEffect(() => {
+    if (excluida.current) return;
     if (oferta !== null && !oferta.reservada) {
       if (!mudou) return;
       const chave = reservarRascunho(globalThis.localStorage, agentId);
@@ -507,6 +517,7 @@ function EditorCarregado({
   useEffect(
     () =>
       registrarGuarda((prosseguir) => {
+        if (excluida.current) return false;
         if (!mudouAgora.current) {
           // Automação nova abandonada sem edição: nada foi gravado, e a provisória também some.
           if (novaAgora.current) apagarProvisoria(globalThis.localStorage, agentId);
@@ -939,6 +950,28 @@ function EditorCarregado({
           />
         )}
       </div>
+
+      {nova || agentId === AGENT_DO_CONTEXTO ? null : (
+        <ExcluirAutomacao
+          agentId={agentId}
+          aoExcluir={({ triggers, runs }) => {
+            // Antes de navegar: com o rascunho ainda no navegador, a próxima abertura do id o ofereceria de volta.
+            excluida.current = true;
+            apagarRastroLocal(globalThis.localStorage, agentId);
+            invalidateReads();
+            toasts.informar(
+              t("automations.editor.remove.done", {
+                name: salvo.spec.name,
+                triggers: t("automations.editor.remove.triggers", { count: triggers }),
+                runs: t("automations.editor.remove.runs", { count: runs }),
+              }),
+            );
+            voltar();
+          }}
+          desabilitado={ocupado !== null}
+          nome={salvo.spec.name}
+        />
+      )}
 
       {modalDeAgent === null ? null : <ModalDeAgent detalhe={modalDeAgent.detalhe} fechar={fecharAgent} navegar={navegar} />}
 

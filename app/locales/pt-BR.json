@@ -2194,7 +2194,27 @@
         "done": "Ligada à iniciativa.",
         "pending": "A automação foi criada, mas ainda não está ligada à iniciativa."
       },
-      "eventWarning": "Versão {{version}} gravada. Este fluxo usa o evento ({{reason}}), mas {{triggers}} não traz evento: quando esse gatilho disparar, o run sai sem ele. Use um gatilho que grava evento ou tire a dependência."
+      "eventWarning": "Versão {{version}} gravada. Este fluxo usa o evento ({{reason}}), mas {{triggers}} não traz evento: quando esse gatilho disparar, o run sai sem ele. Use um gatilho que grava evento ou tire a dependência.",
+      "remove": {
+        "zone": "Zona de perigo",
+        "hint": "Apaga a automação com os gatilhos e o histórico de execuções. Não dá para desfazer.",
+        "button": "Excluir",
+        "title": "Excluir \"{{name}}\"?",
+        "triggers_zero": "{{count}} gatilhos",
+        "triggers_one": "{{count}} gatilho",
+        "triggers_other": "{{count}} gatilhos",
+        "runs_zero": "{{count}} execuções",
+        "runs_one": "{{count}} execução",
+        "runs_other": "{{count}} execuções",
+        "counts": "{{triggers}} e {{runs}} serão apagados junto.",
+        "irreversible": "Não dá para desfazer.",
+        "dedupe": "PRs revisados por esta automação nas últimas 24h podem ser revisados de novo.",
+        "blocked": "Não dá para excluir agora:",
+        "previewFailed": "Não foi possível conferir o que seria apagado: {{erro}}",
+        "cancel": "Cancelar",
+        "confirm": "Excluir de vez",
+        "done": "\"{{name}}\" excluída: {{triggers}} e {{runs}} apagados."
+      }
     },
     "palette": {
       "title": "Componentes",

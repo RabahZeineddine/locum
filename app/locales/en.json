@@ -2145,7 +2145,25 @@
         "done": "Linked to the initiative.",
         "pending": "The automation was created, but it is not linked to the initiative yet."
       },
-      "eventWarning": "Version {{version}} saved. This flow uses the event ({{reason}}), but {{triggers}} does not bring an event: when that trigger fires, the run goes out without it. Use a trigger that records events or drop the dependency."
+      "eventWarning": "Version {{version}} saved. This flow uses the event ({{reason}}), but {{triggers}} does not bring an event: when that trigger fires, the run goes out without it. Use a trigger that records events or drop the dependency.",
+      "remove": {
+        "zone": "Danger zone",
+        "hint": "Deletes the automation with its triggers and run history. This cannot be undone.",
+        "button": "Delete",
+        "title": "Delete \"{{name}}\"?",
+        "triggers_one": "{{count}} trigger",
+        "triggers_other": "{{count}} triggers",
+        "runs_one": "{{count}} run",
+        "runs_other": "{{count}} runs",
+        "counts": "{{triggers}} and {{runs}} will be deleted with it.",
+        "irreversible": "This cannot be undone.",
+        "dedupe": "PRs reviewed by this automation in the last 24h may be reviewed again.",
+        "blocked": "It cannot be deleted right now:",
+        "previewFailed": "Could not check what would be deleted: {{erro}}",
+        "cancel": "Cancel",
+        "confirm": "Delete for good",
+        "done": "\"{{name}}\" deleted: {{triggers}} and {{runs}} removed."
+      }
     },
     "palette": {
       "title": "Components",

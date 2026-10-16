@@ -142,6 +142,8 @@ export const READ_CHANNELS = [
   "automations.get",
   // Se a automação depende de evento e os últimos que os gatilhos gravaram: o diálogo "Executar com". Leitura pura.
   "automations.eventsForRun",
+  // O que a exclusão levaria e o que a impede: o diálogo de confirmação. Leitura pura.
+  "automations.removePreview",
   "library.profiles",
   "library.profile",
   "library.profileVersions",
@@ -403,6 +405,8 @@ export const ACTION_CHANNELS = [
   "automations.setEnabled",
   "automations.runNow",
   "automations.suggestId",
+  // Excluir a automação com o histórico: clique de quem está usando, depois do diálogo de confirmação.
+  "automations.remove",
   // Exportar e importar pacote: cliques de quem está usando. A prévia não grava
   // nada; importar grava o que a pessoa escolheu, e gatilho nenhum entra ligado.
   "pacote.exportFile",
