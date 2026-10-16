@@ -1474,8 +1474,7 @@
     "comment_box_label": "Comment that will be posted to GitHub",
     "comment_box_hint": "Edit freely before clicking Approve",
     "no_findings_title": "No blocking defects found.",
-    "no_findings_hint": "The audit found no functional regressions, concurrency issues, broken contracts or security flaws in the diff. You can approve the PR with the positive verdict above.",
-    "create_shortcut_issue": "Create Shortcut story"
+    "no_findings_hint": "The audit found no functional regressions, concurrency issues, broken contracts or security flaws in the diff. You can approve the PR with the positive verdict above."
   },
   "schema": {
     "created": "schema created from scratch, migrations applied: {{count}}",

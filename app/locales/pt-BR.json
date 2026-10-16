@@ -1511,8 +1511,7 @@
     "comment_box_label": "Comentário que será publicado no GitHub",
     "comment_box_hint": "Edite livremente antes de clicar em Aprovar",
     "no_findings_title": "Nenhum defeito impeditivo encontrado.",
-    "no_findings_hint": "A auditoria não encontrou regressões funcionais, concorrência, quebra de contratos ou falhas de segurança no diff. Você pode aprovar o PR com o parecer positivo acima ou descartar esta revisão sem comentar.",
-    "create_shortcut_issue": "Criar história no Shortcut"
+    "no_findings_hint": "A auditoria não encontrou regressões funcionais, concorrência, quebra de contratos ou falhas de segurança no diff. Você pode aprovar o PR com o parecer positivo acima ou descartar esta revisão sem comentar."
   },
   "schema": {
     "created": "esquema criado do zero, migrações aplicadas: {{count}}",

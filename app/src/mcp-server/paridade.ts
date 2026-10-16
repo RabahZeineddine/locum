@@ -64,7 +64,6 @@ export const FERRAMENTA_DO_CANAL: Record<string, string> = {
   "approvals.get": "get_approval",
   "approvals.update": "edit_approval_findings",
   "approvals.updateText": "edit_approval_text",
-  "approvals.createTrackerIssue": "propose_tracker_issue",
   "approvals.decide": "decide_approval",
   "approvals.settleStuck": "settle_stuck_approval",
 
