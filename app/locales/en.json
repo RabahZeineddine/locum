@@ -735,7 +735,7 @@
     "event": {
       "title": "Event used",
       "none": "no event",
-      "dryRun": "Dry run: nothing was sent to Teams or Slack. The reply step shows the text that would be posted."
+      "dryRun": "Dry run: nothing was published. The action steps show the text that would be sent."
     },
     "failedAt": "Failed at step \"{{step}}\"",
     "dryRun": {
@@ -2576,7 +2576,7 @@
       "recent": "Recent event",
       "link": "Paste a PR link",
       "linkPlaceholder": "https://github.com/owner/repo/pull/123",
-      "linkHelp": "Builds the event the way the trigger would: owner, repository, title, description and diff. With no conversation to answer, the Teams or Slack reply becomes a dry run and nothing is posted.",
+      "linkHelp": "Builds the event the way the trigger would: owner, repository, title, description and diff. Because the event comes from a link, every action that publishes outside (Teams or Slack reply, GitHub comment, tracker task, a writing app or API call) becomes a dry run and nothing is published.",
       "empty": "No trigger of this automation has recorded an event yet. Paste a PR link to try it.",
       "run": "Run",
       "starting": "starting...",

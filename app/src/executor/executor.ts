@@ -23,6 +23,7 @@ import { runLogic } from "./logic.js";
 import { discoverSkills, selectSkills, skillsAusentes, skillsIndisponiveis, skillsPreamble, type LoadedSkill, type SkillContext } from "../skills/loader.js";
 import { ApprovalGate, settleStep } from "../approval/gate.js";
 import { BudgetExceeded, assertWithinBudget, recordSpend, type Spend } from "./budget.js";
+import { ehLeitura } from "../config/leitura.js";
 import { ACOES_DE_CONVERSA, dependenciaDeEvento, recusaSemEvento } from "./dependencia-de-evento.js";
 import { SUBSCRIPTION_RUNTIMES } from "../runtimes/types.js";
 import { separarDaConta } from "../runtimes/claude-account.js";
@@ -675,10 +676,12 @@ export class Executor {
     const source = step.input ?? step.needs[0];
     const saida = source ? outputs.get(source) : undefined;
 
-    // Evento montado de um link colado não tem conversa para responder. A
-    // ação não falha nem entra na Fila: o passo termina com o texto que sairia.
-    if (args.payload.semConversa === true && ACOES_DE_CONVERSA.has(step.action)) {
-      const output = { state: "ensaio", motivo: ENSAIO_SEM_CONVERSA, text: textoDaResposta(saida) };
+    // Evento montado de um link colado não deve publicar nada: a pessoa pediu
+    // para ver o que a automação faria com aquele PR. A ação não falha nem
+    // entra na Fila: o passo termina com o texto que sairia.
+    if (args.payload.semConversa === true && publicaParaFora(step, args.payload, outputs)) {
+      const motivo = ACOES_DE_CONVERSA.has(step.action) ? ENSAIO_SEM_CONVERSA : ENSAIO_EVENTO_COLADO;
+      const output = { state: "ensaio", motivo, text: textoDaResposta(saida) };
       await db
         .update(schema.steps)
         .set({ status: "done", startedAt: nowSec(), endedAt: nowSec(), output })
@@ -879,6 +882,19 @@ export function renderPrompt(
 
 /** O que o passo de resposta diz quando o run de teste não tem conversa de origem. */
 export const ENSAIO_SEM_CONVERSA = "ensaio, sem conversa para responder";
+export const ENSAIO_EVENTO_COLADO = "ensaio, evento de link colado: nada é publicado";
+
+/**
+ * Se a ação sairia do Locum. Leitura segue o modo do passo: `mcp.call` com
+ * ferramenta de leitura e `http.request` com GET não mudam nada do outro lado.
+ * Na dúvida (ferramenta ou método que o fluxo não diz) conta como escrita.
+ */
+function publicaParaFora(step: ActionStep, payload: EventPayload, outputs: Map<string, unknown>): boolean {
+  const params = step.params === undefined ? {} : (renderParams(step.params, payload, outputs) as Record<string, unknown>);
+  if (step.action === "mcp.call") return typeof params.tool !== "string" || !ehLeitura(params.tool);
+  if (step.action === "http.request") return String(params.method ?? "POST").toUpperCase() !== "GET";
+  return true;
+}
 
 /** Motivo gravado no passo que ficou sem rodar porque um anterior falhou. */
 export const NAO_RODOU = "not_run";

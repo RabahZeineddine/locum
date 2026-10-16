@@ -1,4 +1,4 @@
-import { and, eq, gte, notInArray } from "drizzle-orm";
+import { and, eq, gte, isNull, ne, notInArray, or } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
 import { TEAMS_SERVER } from "../services/teams-app.js";
 import { pollMcpServer, CURSOR_TOKEN, type Admissao, type McpCaller, type McpPollShape } from "./mcp-poll.js";
@@ -682,8 +682,13 @@ export async function carregarRevisados(db: Db, opcoes: { comEventosDoTeams?: bo
   const revisoes = await db
     .select({ payload: schema.approvals.payload })
     .from(schema.approvals)
+    .innerJoin(schema.runs, eq(schema.approvals.runId, schema.runs.id))
+    .leftJoin(schema.events, eq(schema.runs.eventId, schema.events.id))
     .where(
       and(
+        // O run de um link colado (fonte "manual") é um ensaio do que o PR
+        // receberia, e não a review que o gatilho deve evitar repetir.
+        or(isNull(schema.events.source), ne(schema.events.source, "manual")),
         eq(schema.approvals.kind, "github.review_comment"),
         gte(schema.approvals.createdAt, desde),
         notInArray(schema.approvals.status, ["rejected", "failed", "conflict"]),

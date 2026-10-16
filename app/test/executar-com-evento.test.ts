@@ -131,6 +131,43 @@ for (const acao of ["teams.post", "slack.post"]) {
   });
 }
 
+/** Toda ação que publica para fora vira ensaio no evento de link colado; a que só lê segue o modo do passo. */
+const ACOES_EXTERNAS: { nome: string; acao: string; params?: Record<string, unknown>; target?: string; ensaio: boolean }[] = [
+  { nome: "github.review_comment", acao: "github.review_comment", ensaio: true },
+  { nome: "tracker.create_issue", acao: "tracker.create_issue", target: "jira", ensaio: true },
+  { nome: "mcp.call de escrita", acao: "mcp.call", params: { server: "jira", tool: "create_issue", args: {} }, ensaio: true },
+  { nome: "mcp.call de leitura", acao: "mcp.call", params: { server: "jira", tool: "get_issue", args: {} }, ensaio: false },
+  { nome: "http.request POST", acao: "http.request", params: { method: "POST", url: "https://example.com/x" }, ensaio: true },
+  { nome: "http.request sem método (o padrão é POST)", acao: "http.request", params: { url: "https://example.com/x" }, ensaio: true },
+  { nome: "http.request GET", acao: "http.request", params: { method: "GET", url: "https://example.com/x" }, ensaio: false },
+];
+
+for (const caso of ACOES_EXTERNAS) {
+  test(`evento colado: ${caso.nome} ${caso.ensaio ? "vira ensaio e nada sai" : "segue o modo do passo"}`, async () => {
+    const publicados: unknown[] = [];
+    const gate = new ApprovalGate(new Map([[caso.acao, { publish: async (p: unknown) => void publicados.push(p) }]]));
+    const executor = new Executor({ mcp: registroFalso, runtimes: new Map([["native", runtime([], '{"text":"Oi, revisei."}')]]), gate, machineId: "m" });
+    const { versao } = await agente([
+      modelo("revisar", "Revise {{event.repo}}"),
+      { type: "action", key: "responder", name: "responder", action: caso.acao, mode: "approve", input: "revisar", needs: ["revisar"], ...(caso.params ? { params: caso.params } : {}), ...(caso.target ? { target: caso.target } : {}) },
+    ]);
+    const eventoId = await evento({ repo: "o/r", changedFiles: [], prOwner: "o", prRepo: "r", prNumber: 7, semConversa: true });
+    const runId = await executor.createRun(versao.id, eventoId);
+
+    const aprovacoes = async () => (await db.select().from(schema.approvals).where(eq(schema.approvals.runId, runId))).length;
+    if (caso.ensaio) {
+      assert.equal(await executor.execute(runId), "done");
+      const resposta = (await passos(runId)).find((p) => p.stepKey === "responder")!;
+      assert.equal((resposta.output as { state: string }).state, "ensaio");
+      assert.equal(await aprovacoes(), 0);
+    } else {
+      assert.equal(await executor.execute(runId), "paused");
+      assert.equal(await aprovacoes(), 1);
+    }
+    assert.deepEqual(publicados, []);
+  });
+}
+
 test("com evento de conversa de verdade a ação segue o modo do passo e vai para a Fila", async () => {
   const gate = new ApprovalGate(new Map([["teams.post", { publish: async () => undefined }]]));
   const executor = new Executor({ mcp: registroFalso, runtimes: new Map([["native", runtime([])]]), gate, machineId: "m" });
@@ -150,7 +187,7 @@ test("a lista e o detalhe do run dizem qual passo falhou e qual evento foi usado
     modelo("revisar", "Revise {{event.repo}}"),
     { type: "action", key: "responder", name: "Responder no Teams", action: "acao.inexistente", mode: "auto", input: "revisar", needs: ["revisar"] },
   ]);
-  const eventoId = await evento({ repo: "o/r", changedFiles: [], prOwner: "o", prRepo: "r", prNumber: 7, title: "Ajusta", author: "maria", semConversa: true, origem: "link" });
+  const eventoId = await evento({ repo: "o/r", changedFiles: [], prOwner: "o", prRepo: "r", prNumber: 7, title: "Ajusta", author: "maria" });
   const runId = await executor.createRun(versao.id, eventoId);
   await executor.execute(runId);
   const semEvento = await executor.createRun(versao.id, null);
@@ -162,7 +199,7 @@ test("a lista e o detalhe do run dizem qual passo falhou e qual evento foi usado
   assert.match(linha!.error ?? "", /acao\.inexistente/);
 
   const detalhe = (await servico.get(runId))!;
-  assert.deepEqual(detalhe.event, { id: eventoId, source: "manual", author: "maria", trecho: "Ajusta", semConversa: true });
+  assert.deepEqual(detalhe.event, { id: eventoId, source: "manual", author: "maria", trecho: "Ajusta", semConversa: false });
   assert.equal((await servico.get(semEvento))!.event, null);
   const recusado = (await servico.list({ agentId: id })).find((r) => r.id === semEvento)!;
   assert.equal(recusado.failedStep, null);

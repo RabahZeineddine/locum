@@ -759,7 +759,7 @@
     "event": {
       "title": "Evento usado",
       "none": "sem evento",
-      "dryRun": "Ensaio: nada saiu para o Teams ou o Slack. O passo de resposta mostra o texto que seria postado."
+      "dryRun": "Ensaio: nada foi publicado. Os passos de ação mostram o texto que seria enviado."
     },
     "failedAt": "Falhou no passo \"{{step}}\"",
     "dryRun": {
@@ -2626,7 +2626,7 @@
       "recent": "Evento recente",
       "link": "Colar um link de PR",
       "linkPlaceholder": "https://github.com/dono/repo/pull/123",
-      "linkHelp": "Monta o evento como o gatilho montaria: dono, repositório, título, descrição e diff. Sem conversa de origem, a resposta no Teams ou no Slack vira ensaio e nada é postado.",
+      "linkHelp": "Monta o evento como o gatilho montaria: dono, repositório, título, descrição e diff. Como o evento vem de um link, toda ação que publica para fora (resposta no Teams ou no Slack, comentário no GitHub, tarefa no tracker, chamada de app ou de API que escreve) vira ensaio e nada é publicado.",
       "empty": "Nenhum gatilho desta automação gravou evento ainda. Cole o link de um PR para testar.",
       "run": "Executar",
       "starting": "iniciando...",

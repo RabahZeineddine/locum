@@ -27,7 +27,7 @@ const TAMANHO_DO_TRECHO = 140;
  * O evento do link sai como o gatilho do Teams o deixa depois de enriquecer um
  * `prLinks`: o contexto do PR por cima dos campos `prOwner`, `prRepo` e
  * `prNumber`. Os campos da conversa ficam vazios e `semConversa` avisa o
- * executor, que faz de `teams.post` e `slack.post` um ensaio. Não passa pelos
+ * executor, que faz de toda ação que publica para fora um ensaio. Não passa pelos
  * descartes do gatilho (rascunho, PR já revisado): quem cola o link pediu aquele PR.
  */
 export class EventoManual {
