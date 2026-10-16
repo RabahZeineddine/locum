@@ -2235,10 +2235,12 @@
         "summary_one": "{{count}} channel",
         "summary_other": "{{count}} channels",
         "channels": "Watched channels",
-        "hint": "The channel ID starts with C. In Slack, open the channel, click its name at the top, and the ID is at the bottom of the window.",
-        "placeholder": "C0123ABCD",
-        "add": "Add",
-        "remove": "Remove {{channel}}"
+        "hint": "Pick from the channels you are in. A channel that is not listed: paste its ID (starts with C or G) in the search.",
+        "remove": "Remove {{channel}}",
+        "private": "private",
+        "search": "Search a channel or paste the ID",
+        "useId": "Use ID {{id}}",
+        "openConnections": "Open Connections"
       },
       "slack-inbox": {
         "title": "Slack mention or DM",

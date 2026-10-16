@@ -212,6 +212,10 @@ export function registerConnectionTools(server: McpServer, amb: Ambiente): void 
     "Teams channels of the connected account, with team id, channel id and label, to fill the channels of a teams-inbox trigger. Reads Teams with your account; needs the channel scopes.",
     {}, () => amb.teamsChannels());
 
+  def(server, "list_slack_channels", "read-external",
+    "Slack channels (public and private) the connected account is in, with id, name and whether it is private, to fill the channels of a slack-channel trigger. Reads Slack with your account; needs the channel scopes (reconnect Slack if the app was created before them).",
+    {}, () => amb.slackChannels());
+
   /* ---------------------------------------------------------- trackers */
   def(server, "list_trackers", "read",
     "The task trackers registered (Jira, Shortcut, GitHub Issues): address, whether a credential is stored, and the last check. Never the credential.", {}, () => trackerService.list());

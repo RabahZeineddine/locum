@@ -30,6 +30,7 @@ import type { PromptService } from "../src/services/prompt-service.js";
 import type { ProviderService } from "../src/services/provider-service.js";
 import type { RunService } from "../src/services/run-service.js";
 import type { SlackService } from "../src/services/slack-service.js";
+import type { SlackChannelOption } from "../src/slack/channels.js";
 import type { StartupService } from "../src/services/startup-service.js";
 import type { UpdaterState } from "../src/update/state.js";
 import type { TrackerService } from "../src/services/tracker-service.js";
@@ -404,6 +405,8 @@ interface ServiceApi {
   "connections.setTeamsChannels": ConnectionService["setTeamsChannels"];
   "connections.teamsChannels": () => Promise<TeamsChannelOption[]>;
   "connections.teamsChats": (triggerId?: string) => Promise<TeamsChatOption[]>;
+  /** Os canais do Slack em que a pessoa está, para escolher em vez de digitar o id. */
+  "connections.slackChannels": () => Promise<SlackChannelOption[]>;
 
   /**
    * O tracker de tarefa: cadastrar, apontar destino e testar.
@@ -751,6 +754,7 @@ export const BRIDGE_CHANNELS = [
   "connections.setTeamsChannels",
   "connections.teamsChannels",
   "connections.teamsChats",
+  "connections.slackChannels",
   "trackers.list",
   "trackers.register",
   "trackers.remove",

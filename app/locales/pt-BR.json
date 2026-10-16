@@ -2285,10 +2285,12 @@
         "summary_other": "{{count}} canais",
         "summary_zero": "nenhum canal",
         "channels": "Canais observados",
-        "hint": "O ID do canal começa com C. No Slack, abra o canal, clique no nome dele no topo, e o ID aparece no fim da janela.",
-        "placeholder": "C0123ABCD",
-        "add": "Adicionar",
-        "remove": "Tirar {{channel}}"
+        "hint": "Escolha na lista os canais em que você está. Canal que não aparece: cole o ID (começa com C ou G) na busca.",
+        "remove": "Tirar {{channel}}",
+        "private": "privado",
+        "search": "Buscar canal ou colar o ID",
+        "useId": "Usar o ID {{id}}",
+        "openConnections": "Abrir Conexões"
       },
       "slack-inbox": {
         "title": "Menção ou DM no Slack",

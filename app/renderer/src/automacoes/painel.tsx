@@ -21,6 +21,7 @@ import {
 import { call, useRead, type ReadResult } from "@/lib/bridge";
 import { chaveDaListaDoTeams } from "@/lib/cache-de-lista";
 import { organizarCanais } from "@/lib/canais-do-teams";
+import { canalDoSlackDigitado, opcoesDeCanaisDoSlack } from "@/lib/canais-do-slack";
 import { organizarChats } from "@/lib/chats-do-teams";
 import { cn } from "@/lib/utils";
 import { Trash2, X } from "lucide-react";
@@ -150,7 +151,7 @@ export function PainelDoNo({
 
       {gatilho !== undefined ? (
         <>
-          <ConfigDoGatilho agentId={rascunho.spec.id} chave={chave} config={gatilho.config} key={chave} trocar={trocarGatilho} triggerId={gatilho.id} />
+          <ConfigDoGatilho agentId={rascunho.spec.id} chave={chave} config={gatilho.config} key={chave} navegar={navegar} trocar={trocarGatilho} triggerId={gatilho.id} />
           <Alternador
             ligado={gatilho.enabled}
             rotulo={t("automations.panel.enabled")}
@@ -192,12 +193,14 @@ function ConfigDoGatilho({
   config,
   trocar,
   triggerId,
+  navegar,
 }: {
   agentId: string;
   chave: string;
   config: TriggerConfig;
   trocar: (c: TriggerConfig) => void;
   triggerId?: string;
+  navegar: (id: RotaId, detalhe?: string) => void;
 }) {
   const { t } = useTranslation();
   switch (config.kind) {
@@ -210,7 +213,7 @@ function ConfigDoGatilho({
     case "slack-channel":
       return (
         <>
-          <CanaisDoSlack canais={config.channels} trocar={(channels) => trocar({ ...config, channels })} />
+          <CanaisDoSlack canais={config.channels} navegar={navegar} trocar={(channels) => trocar({ ...config, channels })} />
           <Minutos rotulo={t("automations.panel.everyMinutes")} valor={config.everyMinutes} trocar={(everyMinutes) => trocar({ ...config, everyMinutes })} />
         </>
       );
@@ -315,48 +318,59 @@ function ConfigDoCron({ expressao, trocar }: { expressao: string; trocar: (e: st
   );
 }
 
-function CanaisDoSlack({ canais, trocar }: { canais: readonly string[]; trocar: (c: string[]) => void }) {
+/**
+ * Canais do Slack, escolhidos numa lista com busca, como os do Teams. A lista
+ * vem da API do Slack com a conexão oficial e só carrega quando a pessoa abre o
+ * campo. Um id digitado à mão continua valendo: o canal que a lista não traz
+ * (ou a lista que não carregou) aparece como opção "usar este id".
+ */
+function CanaisDoSlack({
+  canais,
+  trocar,
+  navegar,
+}: {
+  canais: readonly string[];
+  trocar: (c: string[]) => void;
+  navegar: (id: RotaId, detalhe?: string) => void;
+}) {
   const { t } = useTranslation();
-  const [novo, setNovo] = useState("");
-  const valido = /^[CG][A-Z0-9]{6,}$/.test(novo.trim().toUpperCase());
-  const acrescentar = (): void => {
-    const id = novo.trim().toUpperCase();
-    if (!valido || canais.includes(id)) return;
-    trocar([...canais, id]);
-    setNovo("");
-  };
+  const lista = useListaEmCache("slack-canais", () => call("connections.slackChannels"));
+  const porId = new Map((lista.dados ?? []).map((c) => [c.id, c]));
+  const rotulos = { privado: t("automations.triggers.slack-channel.private") };
+  // Com a lista recusada ainda dá para digitar o id: o combobox abre vazio em vez de "carregando".
+  const opcoes: OpcaoDoCombobox[] | null = lista.dados === null && lista.erro === null ? null : (lista.dados ?? []).map((c) => ({ id: c.id, rotulo: `#${c.name}` }));
+  const semConexao = lista.erro !== null && /não está conectado/.test(lista.erro);
+
   return (
     <Campo ajuda={t("automations.triggers.slack-channel.hint")} rotulo={t("automations.triggers.slack-channel.channels")}>
-      <div className="flex flex-wrap gap-1.5">
-        {canais.map((c) => (
-          <span className="bg-muted flex items-center gap-1 rounded-full py-0.5 pr-1 pl-2.5 font-mono text-xs" key={c}>
-            {c}
-            <button
-              aria-label={t("automations.triggers.slack-channel.remove", { channel: c })}
-              className="hover:text-foreground text-muted-foreground cursor-pointer rounded-full p-0.5"
-              onClick={() => trocar(canais.filter((x) => x !== c))}
-              type="button"
-            >
-              <X className="size-3" />
+      <ComboboxComChips
+        aoAbrir={() => lista.pedir()}
+        aoAlternar={(o) => trocar(canais.includes(o.id) ? canais.filter((c) => c !== o.id) : [...canais, o.id])}
+        aoAtualizar={() => lista.pedir(true)}
+        aoRemover={(id) => trocar(canais.filter((c) => c !== id))}
+        carregando={lista.lendo}
+        filtrar={(busca) => {
+          const achadas = opcoesDeCanaisDoSlack(lista.dados ?? [], new Set(canais), busca, rotulos);
+          const digitado = canalDoSlackDigitado(busca, lista.dados ?? []);
+          return digitado === null
+            ? achadas
+            : [...achadas, { id: digitado, rotulo: t("automations.triggers.slack-channel.useId", { id: digitado }) }];
+        }}
+        opcoes={opcoes}
+        rotuloDaBusca={t("automations.triggers.slack-channel.search")}
+        selecionados={canais.map((c) => ({ id: c, rotulo: porId.has(c) ? `#${porId.get(c)!.name}` : c }))}
+        sonda="slack-canais"
+      />
+      {lista.erro === null ? null : (
+        <p className="text-destructive text-xs">
+          {lista.erro}
+          {semConexao ? (
+            <button className="ml-2 cursor-pointer underline" onClick={() => navegar("connections", "slack")} type="button">
+              {t("automations.triggers.slack-channel.openConnections")}
             </button>
-          </span>
-        ))}
-      </div>
-      <div className="flex gap-1.5">
-        <input
-          className={cn(CAMPO, "font-mono")}
-          data-locum-canal-novo=""
-          onChange={(e) => setNovo(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") acrescentar();
-          }}
-          placeholder={t("automations.triggers.slack-channel.placeholder")}
-          value={novo}
-        />
-        <Button className="cursor-pointer" disabled={!valido} onClick={acrescentar} size="sm" variant="outline">
-          {t("automations.triggers.slack-channel.add")}
-        </Button>
-      </div>
+          ) : null}
+        </p>
+      )}
     </Campo>
   );
 }

@@ -141,6 +141,7 @@ export const FERRAMENTA_DO_CANAL: Record<string, string> = {
   "connections.setTeamsChannels": "set_teams_channels",
   "connections.teamsChannels": "list_teams_channels",
   "connections.teamsChats": "list_teams_chats",
+  "connections.slackChannels": "list_slack_channels",
 
   "trackers.list": "list_trackers",
   "trackers.register": "register_tracker",
