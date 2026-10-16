@@ -9,13 +9,20 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { pontoDoEstado } from "@/lib/estado-do-ponto";
 import { MODELOS, rascunhoDoModelo, type ModeloId } from "@/lib/automacao";
 import { call, read, useRead, type ReadResult } from "@/lib/bridge";
-import { guardarProvisoria, lerProvisoria } from "@/lib/rascunho-automacao";
+import {
+  apagarProvisoria,
+  guardarProvisoria,
+  idSemProvisoria,
+  lerProvisoria,
+  limparReservasOrfas,
+  listarProvisorias,
+} from "@/lib/rascunho-automacao";
 import { semPrefixoDoIpc } from "@/lib/erro-da-ponte";
 import { quandoSolta } from "@/lib/limites";
 import { rotuloDeEstado, rotuloDoProvedor } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
 import { Loader2, Play, Plus, Upload } from "lucide-react";
-import { useState, type DragEvent, type ReactNode } from "react";
+import { useEffect, useState, type DragEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { TriggerConfig } from "../../../src/config/types";
 import { EditorDeAutomacao } from "../automacoes/editor";
@@ -188,6 +195,12 @@ function ListaDeAutomacoes({ navegar }: Pick<TelaProps, "navegar">) {
   const [pacote, setPacote] = useState<{ nome: string; texto: string } | null>(null);
   const [erroDoArquivo, setErroDoArquivo] = useState<string | null>(null);
   const lista = relida ?? inicial.data ?? [];
+  // As automações novas que ⌘Q ou uma queda deixaram sem gravar: nada as mostrava.
+  const [provisorias, setProvisorias] = useState(() => listarProvisorias(globalThis.localStorage));
+  // Reserva de automação apagada não tem mais a que voltar.
+  useEffect(() => {
+    if (inicial.data !== undefined) limparReservasOrfas(globalThis.localStorage, inicial.data.map((l) => l.id));
+  }, [inicial.data]);
   const reler = (): void => {
     read("agents.overview").then(setRelida, () => undefined);
   };
@@ -259,9 +272,45 @@ function ListaDeAutomacoes({ navegar }: Pick<TelaProps, "navegar">) {
         />
       ) : null}
 
+      {provisorias.length === 0 ? null : (
+        <ListGroup>
+          {provisorias.map(({ agentId, provisoria }) => (
+            <ListRow
+              className="min-h-11"
+              data-locum-automacao-rascunho={agentId}
+              key={agentId}
+              onClick={() => navegar("automations", agentId)}
+              rotulo={provisoria.rascunho.spec.name}
+            >
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className="truncate font-medium">{provisoria.rascunho.spec.name}</span>
+              </span>
+              <Badge variant="outline">{t("automations.list.draft")}</Badge>
+              <span className="flex shrink-0 items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                <Button
+                  className="cursor-pointer"
+                  data-locum-automacao-rascunho-descartar={agentId}
+                  onClick={() => {
+                    apagarProvisoria(globalThis.localStorage, agentId);
+                    setProvisorias(listarProvisorias(globalThis.localStorage));
+                  }}
+                  size="sm"
+                  variant="ghost"
+                >
+                  {t("automations.list.draftDiscard")}
+                </Button>
+                <Button className="cursor-pointer" onClick={() => navegar("automations", agentId)} size="sm" variant="outline">
+                  {t("automations.list.draftOpen")}
+                </Button>
+              </span>
+            </ListRow>
+          ))}
+        </ListGroup>
+      )}
+
       {inicial.status === "loading" && relida === null ? (
         <p className="text-muted-foreground text-[13px]">{t("automations.editor.loading")}</p>
-      ) : lista.length === 0 && !criando ? (
+      ) : lista.length === 0 && provisorias.length === 0 && !criando ? (
         <EmptyState
           acao={
             <Button className="cursor-pointer" onClick={() => setCriando(true)} size="sm" variant="outline">
@@ -449,8 +498,7 @@ export function NovaAutomacao({
       const titulo = nome.trim() || t(`automations.templates.${modelo}.title`);
       const sugerido = await call("automations.suggestId", titulo);
       // Uma automação nova ainda não gravada também ocupa o nome: não sobrescreve a provisória de outra.
-      let id = sugerido;
-      for (let n = 2; lerProvisoria(globalThis.localStorage, id) !== null && n < 1000; n++) id = `${sugerido.slice(0, 55)}-${n}`;
+      const id = idSemProvisoria(globalThis.localStorage, sugerido);
       const r = rascunhoDoModelo(modelo, id, titulo, tracker === "" ? (listaDeTrackers[0]?.id ?? null) : tracker, (agentes.data ?? []).map((a) => ({ id: a.id, name: a.name })));
       // Nada é gravado agora: o modelo espera no editor até o primeiro Salvar, e abandonar sem editar não deixa automação na lista.
       guardarProvisoria(globalThis.localStorage, id, {

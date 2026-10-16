@@ -1,5 +1,5 @@
 import { TriggerConfig, type AgentSpec, type TriggerConfigInput } from "../config/types.js";
-import { agentService, ID_DE_AGENT, isReserved, type AgentService, type AgentVersion } from "./agent-service.js";
+import { agentService, ID_DE_AGENT, mensagemDeVersao, isReserved, type AgentService, type AgentVersion } from "./agent-service.js";
 import { executionService, type ExecutionService } from "./execution-service.js";
 import { esperaChats, MOTIVO_CHATS, recusaDaGravacao, triggerService, type TriggerEntry, type TriggerService } from "./trigger-service.js";
 
@@ -67,13 +67,11 @@ export class AutomationService {
 
   async save(input: AutomationSaveInput): Promise<Automation> {
     const agentId = input.spec.id;
+    // Primeiro, para a recusa por versão valer sobre as dos gatilhos (um gatilho que sumiu junto com a versão
+    // nova é efeito dela). A conferência que vale é a de dentro da transação que grava, em `saveEdited`.
     if (input.expectedVersion !== undefined && input.create !== true) {
       const gravada = (await this.agents.getLatestVersion(agentId))?.version;
-      if (gravada !== undefined && gravada !== input.expectedVersion) {
-        throw new Error(
-          `a automação mudou desde a v${input.expectedVersion} (agora está na v${gravada}). Recarregue para ver o que entrou, ou salve por cima.`,
-        );
-      }
+      if (gravada !== undefined && gravada !== input.expectedVersion) throw new Error(mensagemDeVersao(input.expectedVersion, gravada));
     }
     // Antes de qualquer escrita: um gatilho inválido não pode deixar para
     // trás um spec novo gravado com os gatilhos antigos.
@@ -106,7 +104,8 @@ export class AutomationService {
       const nota = input.note.trim() || "criada no canvas";
       version = await this.agents.upsert(input.spec, nota, "human");
     } else {
-      version = await this.agents.saveEdited(agentId, input.spec, input.note);
+      // A versão esperada é conferida dentro da transação que grava a versão nova.
+      version = await this.agents.saveEdited(agentId, input.spec, input.note, input.expectedVersion);
     }
 
     const mantidos = new Set<string>();

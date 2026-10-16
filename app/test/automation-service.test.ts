@@ -160,3 +160,29 @@ test("a leitura da automação traz quando o agent nasceu, para o rascunho recon
   const lida = await automations.get(spec.id);
   assert.equal(typeof lida?.createdAt, "number");
 });
+
+test("duas gravações da mesma base em paralelo: uma passa, e a outra recebe o aviso de que a automação mudou", async () => {
+  const { automations } = montar();
+  await automations.save({ spec, triggers: [], note: "", create: true });
+  const resultados = await Promise.allSettled([
+    automations.save({ spec: { ...spec, name: "Da tela A" }, triggers: [], note: "a", expectedVersion: 1 }),
+    automations.save({ spec: { ...spec, name: "Da tela B" }, triggers: [], note: "b", expectedVersion: 1 }),
+  ]);
+  assert.deepEqual(resultados.map((r) => r.status).sort(), ["fulfilled", "rejected"]);
+  const recusada = resultados.find((r) => r.status === "rejected") as PromiseRejectedResult;
+  assert.match(String(recusada.reason), /mudou desde a v1/);
+  assert.equal((await automations.get(spec.id))?.version.version, 2);
+});
+
+test("salvar sem dizer enabled mantém o ligado que entrou depois da base, pelo MCP ou pela lista", async () => {
+  const { automations } = montar();
+  const criada = await automations.save({ spec, triggers: [{ config: { kind: "manual" } }], note: "", create: true });
+  await automations.setEnabled(spec.id, true); // não cria versão
+  const salva = await automations.save({
+    spec: { ...spec, name: "Outro nome" },
+    triggers: [{ id: criada.triggers[0]!.id, config: { kind: "manual" } }],
+    note: "troca o nome",
+    expectedVersion: 1,
+  });
+  assert.equal(salva.triggers[0]?.enabled, true);
+});

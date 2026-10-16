@@ -46,3 +46,15 @@ export function sairDaTela(prosseguir: () => void, desdeONivel = 0): void {
   };
   passo(0);
 }
+
+/**
+ * Depois de um salvar: com a pergunta de saída aberta, a navegação pendente
+ * segue (uma vez) quando salvou. Serve ao "Salvar" da pergunta e ao "salvar por
+ * cima" do conflito que apareceu no meio dela.
+ */
+export function seguirSeSalvou(saida: { prosseguir: () => void } | null, salvou: boolean, limpar: () => void): boolean {
+  if (!salvou || saida === null) return false;
+  limpar();
+  saida.prosseguir();
+  return true;
+}

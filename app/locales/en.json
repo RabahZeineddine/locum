@@ -1971,7 +1971,10 @@
       "steps_other": "{{count}} steps",
       "never": "never ran",
       "lastRun": "last: {{status}}",
-      "noTrigger": "no trigger"
+      "noTrigger": "no trigger",
+      "draft": "Draft, not saved",
+      "draftOpen": "Open",
+      "draftDiscard": "Discard"
     },
     "new": {
       "title": "New automation",
@@ -2068,7 +2071,13 @@
           "title": "Replace your current edits?",
           "body": "The kept draft takes the place of what you just edited, and the current edits will be discarded.",
           "confirm": "Replace"
-        }
+        },
+        "mine": "Your changes",
+        "byOutside": "Changed elsewhere since the draft",
+        "conflicts": "Changed on both sides: pick which one stays",
+        "keepMine": "Keep mine",
+        "keepOutside": "Keep the other",
+        "storageFull": "Could not store the draft on this computer: if the window closes, your edits are lost."
       },
       "conflict": {
         "title": "The automation changed",
@@ -2077,9 +2086,26 @@
         "reloadHint": "Brings the saved version and keeps your edits as a kept draft.",
         "overwrite": "Save over it",
         "confirmOverwrite": "Confirm: replace v{{para}}",
-        "cancel": "Cancel"
+        "cancel": "Cancel",
+        "undoTitle": "This from v{{para}} will be undone:",
+        "undoNone": "Nothing from v{{para}} will be undone."
       },
-      "notCreated": "Not saved yet: the first Save creates the automation."
+      "notCreated": "Not saved yet: the first Save creates the automation.",
+      "newId": {
+        "taken": "An automation with the id \"{{id}}\" already exists. Save writes this one as \"{{novo}}\" and keeps the draft until then.",
+        "save": "Save as {{id}}"
+      },
+      "localDraft": {
+        "found": "There is a draft of a new automation with this id that was never saved.",
+        "open": "Open the draft",
+        "discard": "Discard the draft"
+      },
+      "link": {
+        "failed": "The automation was created, but linking it to the initiative failed: {{erro}}",
+        "retry": "Try again",
+        "done": "Linked to the initiative.",
+        "pending": "The automation was created, but it is not linked to the initiative yet."
+      }
     },
     "palette": {
       "title": "Components",

@@ -2019,7 +2019,10 @@
       "steps_zero": "{{count}} passos",
       "never": "nunca rodou",
       "lastRun": "última: {{status}}",
-      "noTrigger": "sem gatilho"
+      "noTrigger": "sem gatilho",
+      "draft": "Rascunho, não salva",
+      "draftOpen": "Abrir",
+      "draftDiscard": "Descartar"
     },
     "new": {
       "title": "Nova automação",
@@ -2117,7 +2120,13 @@
           "title": "Trocar as edições atuais?",
           "body": "O rascunho reservado entra no lugar do que você editou agora, e as edições atuais serão descartadas.",
           "confirm": "Trocar"
-        }
+        },
+        "mine": "Suas mudanças",
+        "byOutside": "Mudou por fora desde o rascunho",
+        "conflicts": "Mexidos dos dois lados: escolha qual fica",
+        "keepMine": "Manter o meu",
+        "keepOutside": "Manter o de fora",
+        "storageFull": "Não consegui guardar o rascunho neste computador: se a janela fechar, as edições se perdem."
       },
       "conflict": {
         "title": "A automação mudou",
@@ -2126,9 +2135,26 @@
         "reloadHint": "Traz a versão gravada e guarda as suas edições como rascunho reservado.",
         "overwrite": "Salvar por cima",
         "confirmOverwrite": "Confirmar: substituir a v{{para}}",
-        "cancel": "Cancelar"
+        "cancel": "Cancelar",
+        "undoTitle": "Isto da v{{para}} será desfeito:",
+        "undoNone": "Nada da v{{para}} será desfeito."
       },
-      "notCreated": "Ainda não gravada: o primeiro Salvar cria a automação."
+      "notCreated": "Ainda não gravada: o primeiro Salvar cria a automação.",
+      "newId": {
+        "taken": "Já existe uma automação com o id \"{{id}}\". Salvar grava esta como \"{{novo}}\" e mantém o rascunho até lá.",
+        "save": "Gravar como {{id}}"
+      },
+      "localDraft": {
+        "found": "Existe um rascunho de automação nova com este id, que nunca foi gravado.",
+        "open": "Abrir o rascunho",
+        "discard": "Descartar o rascunho"
+      },
+      "link": {
+        "failed": "A automação foi criada, mas a ligação à iniciativa falhou: {{erro}}",
+        "retry": "Tentar de novo",
+        "done": "Ligada à iniciativa.",
+        "pending": "A automação foi criada, mas ainda não está ligada à iniciativa."
+      }
     },
     "palette": {
       "title": "Componentes",

@@ -1,4 +1,7 @@
 import type { Rascunho } from "./automacao";
+import { mesclar, type Conflito, type Escolhas } from "./mesclar-automacao";
+
+export type { Conflito, Escolhas } from "./mesclar-automacao";
 
 /**
  * O rascunho local do editor de automação.
@@ -33,6 +36,12 @@ export interface RascunhoGuardado {
    * apagada tem outra data, e o rascunho da encarnação anterior não vale.
    */
   criadaEm?: number;
+  /**
+   * O gravado sobre o qual a edição começou. Com ele, "o que mudou por fora
+   * desde o rascunho" se separa de "o que eu mexi". Rascunho antigo não o tem,
+   * e então tudo o que difere do gravado conta como meu.
+   */
+  base?: Rascunho;
 }
 
 /** Há diferença entre o que está na tela e o que está gravado. */
@@ -47,7 +56,8 @@ export function chaveDoRascunho(agentId: string): string {
 /**
  * Guarda o rascunho, ou apaga o guardado quando ele voltou a ser igual ao
  * gravado. Armazém cheio ou bloqueado não pode quebrar a edição: o rascunho é
- * rede de segurança, e perdê-lo é o estado de antes.
+ * rede de segurança, e perdê-lo é o estado de antes. Devolve falso quando não
+ * conseguiu escrever, para a tela avisar que a rede de segurança não está lá.
  */
 export function guardarRascunho(
   armazem: ArmazemLocal,
@@ -57,17 +67,23 @@ export function guardarRascunho(
   versao: number,
   agora: number = Date.now(),
   criadaEm?: number,
-): void {
+): boolean {
   try {
     if (!temMudanca(rascunho, salvo)) {
       armazem.removeItem(chaveDoRascunho(agentId));
-      return;
+      return true;
     }
-    const corpo: RascunhoGuardado = { rascunho, versao, salvoEm: agora, ...(criadaEm === undefined ? {} : { criadaEm }) };
+    const corpo: RascunhoGuardado = { rascunho, versao, salvoEm: agora, base: salvo, ...(criadaEm === undefined ? {} : { criadaEm }) };
     armazem.setItem(chaveDoRascunho(agentId), JSON.stringify(corpo));
+    return true;
   } catch {
     // sem armazém, sem rascunho
+    return false;
   }
+}
+
+function ehRascunho(r: Rascunho | null | undefined): r is Rascunho {
+  return r !== undefined && r !== null && typeof r.spec === "object" && r.spec !== null && Array.isArray(r.gatilhos);
 }
 
 function interpretar(cru: string | null): RascunhoGuardado | null {
@@ -75,12 +91,13 @@ function interpretar(cru: string | null): RascunhoGuardado | null {
     if (cru === null) return null;
     const lido = JSON.parse(cru) as Partial<RascunhoGuardado> | null;
     const r = lido?.rascunho;
-    if (r === undefined || r === null || typeof r.spec !== "object" || r.spec === null || !Array.isArray(r.gatilhos)) return null;
+    if (!ehRascunho(r)) return null;
     return {
       rascunho: r,
       versao: typeof lido?.versao === "number" ? lido.versao : 0,
       salvoEm: typeof lido?.salvoEm === "number" ? lido.salvoEm : 0,
       ...(typeof lido?.criadaEm === "number" ? { criadaEm: lido.criadaEm } : {}),
+      ...(ehRascunho(lido?.base) ? { base: lido.base } : {}),
     };
   } catch {
     return null;
@@ -112,12 +129,17 @@ export function descartarRascunho(armazem: ArmazemLocal, agentId: string): void 
  * numa chave própria, com a data, e só some quando a pessoa decide. Descartar
  * o rascunho ativo, na saída do editor, não mexe nela.
  */
+const PREFIXO_DAS_RESERVAS = "locum.rascunho-automacao-reserva.";
+
 function prefixoDaReserva(agentId: string): string {
-  return `locum.rascunho-automacao-reserva.${agentId}.`;
+  return `${PREFIXO_DAS_RESERVAS}${agentId}.`;
 }
 
+/** Quantas reservas cada automação guarda: a mais antiga cai quando entra a quarta. */
+export const MAXIMO_DE_RESERVAS = 3;
+
 /** Passa o rascunho ativo para a reserva e devolve a chave dela, ou nulo quando não havia o que reservar. */
-export function reservarRascunho(armazem: ArmazemLocal, agentId: string, agora: number = Date.now()): string | null {
+export function reservarRascunho(armazem: ArmazemListavel, agentId: string, agora: number = Date.now()): string | null {
   try {
     const cru = armazem.getItem(chaveDoRascunho(agentId));
     if (cru === null) return null;
@@ -126,6 +148,7 @@ export function reservarRascunho(armazem: ArmazemLocal, agentId: string, agora: 
     const chave = `${prefixoDaReserva(agentId)}${momento}`;
     armazem.setItem(chave, cru);
     armazem.removeItem(chaveDoRascunho(agentId));
+    for (const velha of lerReservas(armazem, agentId).slice(MAXIMO_DE_RESERVAS)) armazem.removeItem(velha.chave);
     return chave;
   } catch {
     return null;
@@ -165,6 +188,40 @@ export function descartarReserva(armazem: ArmazemLocal, chave: string): void {
   }
 }
 
+/**
+ * Tira as reservas que não valem mais: as de outra encarnação do mesmo id e as
+ * que, aplicadas sobre o gravado, não mudam nada.
+ */
+export function limparReservas(armazem: ArmazemListavel, agentId: string, atual: Gravado): void {
+  try {
+    for (const r of lerReservas(armazem, agentId)) {
+      const outraEncarnacao = r.guardado.criadaEm !== undefined && r.guardado.criadaEm !== atual.criadaEm;
+      const igualAoGravado = !temMudanca(restaurarRascunho(r.guardado.rascunho, atual.rascunho, r.guardado.base), atual.rascunho);
+      if (outraEncarnacao || igualAoGravado) armazem.removeItem(r.chave);
+    }
+  } catch {
+    // idem
+  }
+}
+
+/** Tira as reservas de automação que não existe mais. */
+export function limparReservasOrfas(armazem: ArmazemListavel, existentes: readonly string[]): void {
+  try {
+    const vivas = new Set(existentes);
+    const chaves: string[] = [];
+    for (let i = 0; i < armazem.length; i++) {
+      const chave = armazem.key(i);
+      if (chave !== null && chave.startsWith(PREFIXO_DAS_RESERVAS)) chaves.push(chave);
+    }
+    for (const chave of chaves) {
+      const agentId = chave.slice(PREFIXO_DAS_RESERVAS.length, chave.lastIndexOf("."));
+      if (!vivas.has(agentId)) armazem.removeItem(chave);
+    }
+  } catch {
+    // idem
+  }
+}
+
 /* ----------------------------------------------------------------- oferta */
 
 /** O que está gravado agora, contra o que a oferta de rascunho se confere. */
@@ -185,22 +242,14 @@ export interface OfertaDeRascunho {
 /**
  * Restaura um rascunho sobre o que está gravado agora.
  *
- * O rascunho devolve só o que a pessoa edita no canvas: nome, passos, desenho
- * e a configuração dos gatilhos. Ligado ou desligado, teto de gasto, skills e
- * ferramentas padrão vêm sempre do gravado: ligar a automação depois do
- * rascunho, ou gravar outro teto, não pode ser desfeito por uma restauração.
+ * Só o que a pessoa mexeu entra: o que ela editou no canvas (nome, passos,
+ * desenho, configuração dos gatilhos) sobre o gravado atual, passo a passo e
+ * gatilho a gatilho. Ligado ou desligado, teto de gasto, skills e ferramentas
+ * padrão vêm sempre do gravado. Sem a `base` (rascunho antigo), tudo o que
+ * difere do gravado conta como mexido por mim.
  */
-export function restaurarRascunho(rascunho: Rascunho, atual: Rascunho): Rascunho {
-  const ligados = new Map(atual.gatilhos.flatMap((g) => (g.id === undefined ? [] : [[g.id, g.enabled] as const])));
-  return {
-    spec: { ...rascunho.spec, budget: atual.spec.budget, skills: atual.spec.skills, defaultTools: atual.spec.defaultTools },
-    gatilhos: rascunho.gatilhos.map((g) => {
-      if (g.id !== undefined && ligados.has(g.id)) return { ...g, enabled: ligados.get(g.id)! };
-      // Sem o gatilho gravado (novo, ou apagado no meio), vira novo e desligado.
-      const { id: _id, ...novo } = g;
-      return { ...novo, enabled: false };
-    }),
-  };
+export function restaurarRascunho(rascunho: Rascunho, atual: Rascunho, base: Rascunho = atual, escolhas: Escolhas = {}): Rascunho {
+  return mesclar(base, rascunho, atual, escolhas).rascunho;
 }
 
 /** O rascunho (ou a reserva mais recente) que vale oferecer sobre o gravado, ou nulo. */
@@ -212,7 +261,7 @@ export function ofertaDeRascunho(armazem: ArmazemListavel, agentId: string, atua
   ];
   for (const c of candidatos) {
     if (c.guardado.criadaEm !== undefined && c.guardado.criadaEm !== atual.criadaEm) continue;
-    if (!temMudanca(restaurarRascunho(c.guardado.rascunho, atual.rascunho), atual.rascunho)) continue;
+    if (!temMudanca(restaurarRascunho(c.guardado.rascunho, atual.rascunho, c.guardado.base), atual.rascunho)) continue;
     return { ...c, baseMudou: c.guardado.versao !== atual.versao };
   }
   return null;
@@ -225,11 +274,14 @@ export interface Diferenca {
   tipo: "novo" | "removido" | "alterado";
   /** O nome do passo, ou o tipo do gatilho. */
   rotulo: string;
+  /** O id do gatilho cadastrado, quando tem. */
+  id?: string;
 }
 
 /** Passos e gatilhos em que o rascunho difere do gravado. Só a lista, sem o miolo. */
 export function diferencas(gravado: Rascunho, rascunho: Rascunho): { passos: Diferenca[]; gatilhos: Diferenca[] } {
   const igual = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
+  const comId = (id: string | undefined): { id?: string } => (id === undefined ? {} : { id });
 
   const passos: Diferenca[] = [];
   for (const p of gravado.spec.steps) {
@@ -244,13 +296,31 @@ export function diferencas(gravado: Rascunho, rascunho: Rascunho): { passos: Dif
   const gatilhos: Diferenca[] = [];
   for (const g of gravado.gatilhos) {
     const novo = rascunho.gatilhos.find((x) => x.id !== undefined && x.id === g.id);
-    if (novo === undefined) gatilhos.push({ chave: g.chave, tipo: "removido", rotulo: g.config.kind });
-    else if (!igual(g.config, novo.config)) gatilhos.push({ chave: g.chave, tipo: "alterado", rotulo: novo.config.kind });
+    if (novo === undefined) gatilhos.push({ chave: g.chave, tipo: "removido", rotulo: g.config.kind, ...comId(g.id) });
+    else if (!igual(g.config, novo.config)) gatilhos.push({ chave: g.chave, tipo: "alterado", rotulo: novo.config.kind, ...comId(g.id) });
   }
   for (const g of rascunho.gatilhos) {
-    if (g.id === undefined || !gravado.gatilhos.some((x) => x.id === g.id)) gatilhos.push({ chave: g.chave, tipo: "novo", rotulo: g.config.kind });
+    if (g.id === undefined || !gravado.gatilhos.some((x) => x.id === g.id)) gatilhos.push({ chave: g.chave, tipo: "novo", rotulo: g.config.kind, ...comId(g.id) });
   }
   return { passos, gatilhos };
+}
+
+export interface DiferencasEmTres {
+  /** O que o rascunho mudou sobre a base. */
+  minhas: { passos: Diferenca[]; gatilhos: Diferenca[] };
+  /** O que o gravado mudou sobre a base, sem que o rascunho soubesse. */
+  deFora: { passos: Diferenca[]; gatilhos: Diferenca[] };
+  /** O que os dois mexeram, com resultado diferente. */
+  conflitos: Conflito[];
+}
+
+/** A comparação a três: base, rascunho e gravado. */
+export function diferencasEmTres(base: Rascunho, rascunho: Rascunho, gravado: Rascunho): DiferencasEmTres {
+  return {
+    minhas: diferencas(base, rascunho),
+    deFora: diferencas(base, gravado),
+    conflitos: mesclar(base, rascunho, gravado).conflitos,
+  };
 }
 
 /* ------------------------------------------------- automação não gravada */
@@ -266,6 +336,12 @@ export interface Provisoria {
   nota: string;
   /** A iniciativa a que a automação se liga ao ser criada. */
   iniciativa?: string;
+  /**
+   * A automação já foi criada a partir desta provisória, e só falta ligá-la à
+   * iniciativa. Fica guardada até a ligação dar certo, e não conta como
+   * rascunho da lista.
+   */
+  criada?: boolean;
 }
 
 export function chaveDaProvisoria(agentId: string): string {
@@ -286,8 +362,13 @@ export function lerProvisoria(armazem: ArmazemLocal, agentId: string): Provisori
     if (cru === null) return null;
     const lido = JSON.parse(cru) as Partial<Provisoria> | null;
     const r = lido?.rascunho;
-    if (r === undefined || r === null || typeof r.spec !== "object" || r.spec === null || !Array.isArray(r.gatilhos)) return null;
-    return { rascunho: r, nota: typeof lido?.nota === "string" ? lido.nota : "", ...(typeof lido?.iniciativa === "string" ? { iniciativa: lido.iniciativa } : {}) };
+    if (!ehRascunho(r)) return null;
+    return {
+      rascunho: r,
+      nota: typeof lido?.nota === "string" ? lido.nota : "",
+      ...(typeof lido?.iniciativa === "string" ? { iniciativa: lido.iniciativa } : {}),
+      ...(lido?.criada === true ? { criada: true } : {}),
+    };
   } catch {
     return null;
   }
@@ -299,4 +380,41 @@ export function apagarProvisoria(armazem: ArmazemLocal, agentId: string): void {
   } catch {
     // idem
   }
+}
+
+const PREFIXO_DA_PROVISORIA = chaveDaProvisoria("");
+
+/** As automações novas ainda não gravadas, para a lista mostrar o que ⌘Q ou uma queda deixou. */
+export function listarProvisorias(armazem: ArmazemListavel): { agentId: string; provisoria: Provisoria }[] {
+  try {
+    const achadas: { agentId: string; provisoria: Provisoria }[] = [];
+    for (let i = 0; i < armazem.length; i++) {
+      const chave = armazem.key(i);
+      if (chave === null || !chave.startsWith(PREFIXO_DA_PROVISORIA)) continue;
+      const agentId = chave.slice(PREFIXO_DA_PROVISORIA.length);
+      const provisoria = lerProvisoria(armazem, agentId);
+      if (provisoria !== null && provisoria.criada !== true) achadas.push({ agentId, provisoria });
+    }
+    return achadas;
+  } catch {
+    return [];
+  }
+}
+
+/** A automação foi criada, e a provisória só espera a ligação à iniciativa. */
+export function marcarProvisoriaCriada(armazem: ArmazemLocal, agentId: string): void {
+  const p = lerProvisoria(armazem, agentId);
+  if (p !== null) guardarProvisoria(armazem, agentId, { ...p, criada: true });
+}
+
+/** O id livre também de provisória: uma automação nova ainda não gravada ocupa o nome, e não deve ser sobrescrita pela de outra. */
+export function idSemProvisoria(armazem: ArmazemLocal, sugerido: string): string {
+  let id = sugerido;
+  for (let n = 2; lerProvisoria(armazem, id) !== null && n < 1000; n++) id = `${sugerido.slice(0, 55)}-${n}`;
+  return id;
+}
+
+/** A gravação foi recusada porque já existe automação com esse id. */
+export function recusaPorIdOcupado(texto: string): boolean {
+  return texto.includes("já existe uma automação");
 }
