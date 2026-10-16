@@ -14,6 +14,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TelaProps } from "../rotas";
 import { GrupoDeLinhas } from "./blocos";
+import { LimitesDoProvedor } from "./limites";
 
 type Provedor = ReadResult<"providers.list">[number];
 type Orcamento = ReadResult<"agents.budgets">[number];
@@ -204,6 +205,8 @@ function LinhaDoProvedor({
 
       <div className="flex flex-col gap-2 pr-3 pb-2.5 pl-[1.875rem] empty:hidden">
         {provedor.available ? <ListaDeModelos modelos={modelos} provedor={provedor.name} /> : null}
+
+        <LimitesDoProvedor disponivel={provedor.available} nome={provedor.name} />
 
         {provedor.name === "ollama" ? <EnderecoDoOllama recarregar={recarregar} /> : null}
 

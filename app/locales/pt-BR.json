@@ -2749,5 +2749,53 @@
       "toolRemoved": "não entra: escrita não roda como ferramenta avulsa. Para escrever, use um nó de ação da automação, que passa pela fila.",
       "toolAsks": "entra e pede confirmação a cada uso"
     }
+  },
+  "limits": {
+    "title": "Limites",
+    "noReading": "sem leitura ainda; aparece depois da primeira execução",
+    "refresh": "Atualizar",
+    "refreshing": "atualizando...",
+    "refreshCostClaude": "Atualizar faz uma chamada mínima ao Haiku e gasta um pouco da cota da assinatura.",
+    "refreshGateway": "Pergunta o orçamento da chave ao gateway, no máximo a cada 10 minutos.",
+    "refreshSkipped": "Consultado há pouco; o gateway só é perguntado a cada 10 minutos.",
+    "refreshFailed": "Não foi possível atualizar: {{error}}",
+    "updated": "atualizado {{when}}",
+    "justNow": "agora",
+    "minutesAgo": "há {{count}} min",
+    "hoursAgo": "há {{count}} h",
+    "daysAgo": "há {{count}} d",
+    "resets": "reseta {{when}}",
+    "key": {
+      "5h": "5h",
+      "semana": "semana",
+      "dia": "dia",
+      "mes": "mês",
+      "rpm": "req/min",
+      "tpm": "tokens/min",
+      "orcamento": "orçamento"
+    },
+    "origin": {
+      "assinatura": "assinatura",
+      "orcamento-local": "orçamento local",
+      "cabecalho-api": "cabeçalho da API",
+      "gateway": "gateway"
+    },
+    "budget": {
+      "day": "Teto por dia (USD)",
+      "month": "Teto por mês (USD)",
+      "save": "Salvar",
+      "hint": "Calculado do gasto que o Locum registra neste provedor. Vazio, sem teto."
+    },
+    "pause": "automações em pausa até {{time}} (limite do {{provider}})",
+    "manualWarning": "O limite do {{provider}} vale até {{time}}: esta execução manual roda mesmo assim e pode falhar.",
+    "claudeLine": "Claude: {{windows}}",
+    "settings": {
+      "title": "Pausar automações perto do limite",
+      "description": "Gatilho automático que usaria um provedor no limite espera o reset, com o evento guardado, ou usa o modelo substituto. Execução manual sempre roda.",
+      "enable": "Pausar perto do limite",
+      "window": "Janela de assinatura (%)",
+      "budget": "Orçamento (%)",
+      "save": "Salvar"
+    }
   }
 }

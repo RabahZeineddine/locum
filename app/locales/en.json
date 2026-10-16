@@ -2690,5 +2690,53 @@
       "toolRemoved": "left out: writes do not run as loose tools. To write, use an action node in the automation, which goes through the queue.",
       "toolAsks": "comes in and asks for confirmation on each use"
     }
+  },
+  "limits": {
+    "title": "Limits",
+    "noReading": "no reading yet; it shows up after the first run",
+    "refresh": "Refresh",
+    "refreshing": "refreshing...",
+    "refreshCostClaude": "Refresh makes one minimal Haiku call and spends a little of the subscription quota.",
+    "refreshGateway": "Asks the gateway for the key budget, at most every 10 minutes.",
+    "refreshSkipped": "Checked a moment ago; the gateway is only asked every 10 minutes.",
+    "refreshFailed": "Could not refresh: {{error}}",
+    "updated": "updated {{when}}",
+    "justNow": "just now",
+    "minutesAgo": "{{count}} min ago",
+    "hoursAgo": "{{count}} h ago",
+    "daysAgo": "{{count}} d ago",
+    "resets": "resets {{when}}",
+    "key": {
+      "5h": "5h",
+      "semana": "week",
+      "dia": "day",
+      "mes": "month",
+      "rpm": "req/min",
+      "tpm": "tokens/min",
+      "orcamento": "budget"
+    },
+    "origin": {
+      "assinatura": "subscription",
+      "orcamento-local": "local budget",
+      "cabecalho-api": "API headers",
+      "gateway": "gateway"
+    },
+    "budget": {
+      "day": "Daily cap (USD)",
+      "month": "Monthly cap (USD)",
+      "save": "Save",
+      "hint": "Computed from the spend Locum records on this provider. Empty means no cap."
+    },
+    "pause": "automations paused until {{time}} ({{provider}} limit)",
+    "manualWarning": "The {{provider}} limit holds until {{time}}: this manual run goes ahead anyway and may fail.",
+    "claudeLine": "Claude: {{windows}}",
+    "settings": {
+      "title": "Pause automations near the limit",
+      "description": "An automatic trigger that would use a provider at its limit waits for the reset, with the event kept, or uses the fallback model. Manual runs always go.",
+      "enable": "Pause near the limit",
+      "window": "Subscription window (%)",
+      "budget": "Budget (%)",
+      "save": "Save"
+    }
   }
 }

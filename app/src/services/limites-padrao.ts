@@ -86,7 +86,6 @@ export async function visaoDosLimites(agoraMs: number = Date.now()): Promise<Vis
   const entradas = providerService.entries();
   const nomes = new Set<string>(todos.map((l) => l.provedor));
   for (const [nome, entrada] of Object.entries(entradas)) if (entrada.available() && nome !== "codex") nomes.add(nome);
-  nomes.add("claude-code");
   const provedores: ProvedorComLimites[] = [];
   for (const provedor of [...nomes].sort()) {
     const entrada = entradas[provedor];

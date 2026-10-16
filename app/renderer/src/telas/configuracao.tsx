@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge";
+import { ProtecaoDeLimites } from "./limites";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { StatusDot } from "@/components/ui/status-dot";
@@ -94,6 +95,9 @@ export function Configuracao({ detalhe, navegar }: TelaProps) {
               </LinhaDePreferencia>
               <LinhaDePreferencia descricao={t("settings.workingHours.description")} titulo={t("settings.workingHours.title")}>
                 <EscolhaDeWorkingHours />
+              </LinhaDePreferencia>
+              <LinhaDePreferencia descricao={t("limits.settings.description")} empilhado titulo={t("limits.settings.title")}>
+                <ProtecaoDeLimites />
               </LinhaDePreferencia>
               <LinhaDePreferencia
                 descricao={t("settings.initiativesRoot.description")}

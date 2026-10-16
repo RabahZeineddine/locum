@@ -26,6 +26,7 @@ import { cn } from "@/lib/utils";
 import type { TelaProps } from "../rotas";
 import { passosDoComeco, type PassoDoComeco } from "../../lib/comece-aqui";
 import { alvoDaPendencia, idade } from "./inbox";
+import { LimitesNaHoje } from "./limites";
 
 type Pendencia = ReadResult<"approvals.listPending">[number];
 type Agenda = ReadResult<"triggers.schedule">[number];
@@ -214,6 +215,8 @@ export function Hoje({ navegar }: TelaProps) {
           valor={`$${metricasExecutivas.custoTotal.toFixed(2)}`}
         />
       </div>
+
+      <LimitesNaHoje />
 
       <ComeceAqui agenda={agenda.data} navegar={navegar} />
 
