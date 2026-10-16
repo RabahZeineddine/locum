@@ -182,6 +182,7 @@ test("chats e canais do Teams saem do leitor que o servidor recebeu", async () =
       return [{ chatId: "19:a@thread.v2", label: "Time", chatType: "group" }];
     },
     teamsChannels: async () => [{ teamId: "t1", channelId: "c1", label: "Geral" } as never],
+    slackChannels: async () => ({ canais: [{ id: "C1", name: "geral", isPrivate: false }], truncado: false, total: 1, arquivados: [], naoEncontrados: [] }),
   });
   assert.deepEqual(ok(await client.callTool({ name: "list_teams_chats", arguments: { triggerId: "g1" } })), [{ chatId: "19:a@thread.v2", label: "Time", chatType: "group" }]);
   assert.deepEqual(chamadas, [{ triggerId: "g1" }]);
@@ -608,6 +609,7 @@ test("Teams com o acesso nativo vencido pede para abrir o Locum, sem renovar", a
   try {
     await assert.rejects(ambientePadrao.teamsChats({}), new RegExp(RENOVAR_TEAMS));
     await assert.rejects(ambientePadrao.teamsChannels(), /abra o Locum para renovar o Teams/);
+    await assert.rejects(ambientePadrao.slackChannels(), /abra o Locum para renovar o Slack/);
     assert.equal(renovou, 0);
   } finally {
     mcpOAuthService.lerSemRenovar = original;

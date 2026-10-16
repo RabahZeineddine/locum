@@ -3,6 +3,7 @@ import { db as defaultDb, schema } from "../db/index.js";
 import { AgentSpec } from "../config/types.js";
 import { buildExecutor } from "../executor/build.js";
 import { isReserved } from "./agent-service.js";
+import { LibraryService } from "./library-service.js";
 
 type Db = typeof defaultDb;
 
@@ -49,6 +50,8 @@ export interface RunSummary extends RunRow {
   stepPending: number;
   stepFailed: number;
   findingCount: number;
+  /** Passos de ação que terminaram em ensaio: mostraram o texto em vez de publicar. */
+  stepDryRun: number;
   /** O passo que derrubou o run, com o erro dele. Nulo em run que não falhou em passo. */
   failedStep: { key: string; name: string; error: string | null } | null;
 }
@@ -63,12 +66,14 @@ export interface RunEvent {
   semConversa: boolean;
 }
 
-export interface RunDetail extends Omit<RunSummary, "stepTotal" | "stepDone" | "stepPending" | "stepFailed" | "findingCount" | "failedStep"> {
+export interface RunDetail extends Omit<RunSummary, "stepTotal" | "stepDone" | "stepPending" | "stepFailed" | "findingCount" | "stepDryRun" | "failedStep"> {
   event: RunEvent | null;
   failedStep: RunSummary["failedStep"];
   /** A versao exata que executou, nao a mais recente do agent. */
   spec: AgentSpec;
   steps: StepRow[];
+  /** Teto por run (USD) dos agents da biblioteca que os passos usam, pelo id do agent. Sem teto, fora. */
+  tetosDosAgents: Record<string, number>;
 }
 
 /** Achado de um run, ja normalizado, venha da tabela ou da saida do passo. */
@@ -172,6 +177,7 @@ export class RunService {
         stepFailed: sql<number>`sum(${s.status} = 'failed')`,
         // O `case` protege o `json_each`: saída que não é objeto JSON, ou
         // objeto sem lista em `findings`, estouraria a consulta inteira.
+        stepDryRun: sql<number>`sum(case when json_valid(${s.output}) and json_extract(${s.output}, '$.state') = 'ensaio' then 1 else 0 end)`,
         findingCount: sql<number>`sum(case when json_valid(${s.output}) and json_type(${s.output}, '$.findings') = 'array' then (
           select count(*) from json_each(${s.output}, '$.findings') as f
           where f.type = 'object'
@@ -192,6 +198,7 @@ export class RunService {
           stepPending: Number(r.stepPending ?? 0),
           stepFailed: Number(r.stepFailed ?? 0),
           findingCount: Number(r.findingCount ?? 0),
+          stepDryRun: Number(r.stepDryRun ?? 0),
         },
       ]),
     );
@@ -214,6 +221,7 @@ export class RunService {
       .where(eq(schema.runs.id, runId));
     if (!row) return undefined;
 
+    const spec = AgentSpec.parse(row.spec);
     const passos = await this.steps(runId);
     const falho = passos.find((p) => p.status === "failed");
     return {
@@ -224,9 +232,21 @@ export class RunService {
       agentName: row.agentName,
       agentVersion: row.agentVersion,
       target: alvo(row.evento),
-      spec: AgentSpec.parse(row.spec),
+      spec,
       steps: passos,
+      tetosDosAgents: await this.tetosDosAgents(spec),
     };
+  }
+
+  /** O teto por run de cada agent da biblioteca que o fluxo usa, como o executor o lê a cada passo. */
+  private async tetosDosAgents(spec: AgentSpec): Promise<Record<string, number>> {
+    const tetos: Record<string, number> = {};
+    const biblioteca = new LibraryService(this.db);
+    for (const id of new Set(spec.steps.flatMap((s) => ("profile" in s && s.profile !== undefined ? [s.profile] : [])))) {
+      const teto = (await biblioteca.getProfile(id))?.spec.budget.perRunUsd;
+      if (teto !== undefined) tetos[id] = teto;
+    }
+    return tetos;
   }
 
   private async eventOf(eventId: string | null, payload: unknown): Promise<RunEvent | null> {
@@ -424,7 +444,7 @@ export class RunService {
 
 type StepCounts = Pick<
   RunSummary,
-  "stepTotal" | "stepDone" | "stepPending" | "stepFailed" | "findingCount"
+  "stepTotal" | "stepDone" | "stepPending" | "stepFailed" | "findingCount" | "stepDryRun"
 >;
 
 const SEM_PASSOS: StepCounts = {
@@ -433,6 +453,7 @@ const SEM_PASSOS: StepCounts = {
   stepPending: 0,
   stepFailed: 0,
   findingCount: 0,
+  stepDryRun: 0,
 };
 
 /** O passo pedido mais o fecho transitivo de quem depende dele. */

@@ -1,3 +1,4 @@
+import { listSlackChannels } from "../src/slack/channels.js";
 import { listTeamsChannels } from "../src/teams/channels.js";
 import { listTeamsChats } from "../src/teams/chats.js";
 import { claudeAccountService, SERVIDOR_CONTA } from "../src/runtimes/claude-account.js";
@@ -444,6 +445,7 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "connections.setTeamsChannels": (ligado) => connectionService.setTeamsChannels(ligado),
     "connections.teamsChannels": () => listTeamsChannels(),
     "connections.teamsChats": (triggerId) => listTeamsChats({ triggerId }),
+    "connections.slackChannels": (ids) => listSlackChannels({ ...(ids === undefined ? {} : { ids }) }),
 
     "trackers.list": () => trackerService.list(),
     "trackers.register": (cadastro) => trackerService.register(cadastro),

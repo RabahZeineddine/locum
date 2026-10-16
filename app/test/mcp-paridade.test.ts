@@ -22,6 +22,7 @@ before(() => migrateDb());
 const FORA: Partial<Ambiente> = {
   teamsChats: async () => [],
   teamsChannels: async () => [],
+  slackChannels: async () => ({ canais: [], truncado: false, total: 0, arquivados: [], naoEncontrados: [] }),
   sessions: async () => [],
   systemLocale: () => "pt-BR",
   appVersion: () => "0.0.0-teste",

@@ -106,9 +106,12 @@ test("a recusa sem evento é traduzida pelo código, e outro erro passa como vei
   assert.equal(rotuloDoErroDeRun(t, "a ação deu 500"), "a ação deu 500");
 });
 
-test("o motivo do ensaio em código é traduzido e o texto livre de run antigo passa como veio", () => {
+test("o motivo do ensaio em código é traduzido e o texto de run antigo também, e o desconhecido passa como veio", () => {
   const t = ((chave: string) => chave) as never;
   assert.equal(rotuloDoMotivoDoEnsaio(t, "sem-conversa"), "runs.dryRun.reason.sem-conversa");
   assert.equal(rotuloDoMotivoDoEnsaio(t, "evento-colado"), "runs.dryRun.reason.evento-colado");
-  assert.equal(rotuloDoMotivoDoEnsaio(t, "ensaio, sem conversa para responder"), "ensaio, sem conversa para responder");
+  // Os textos que runs gravados antes dos códigos trazem viram o código.
+  assert.equal(rotuloDoMotivoDoEnsaio(t, "ensaio, sem conversa para responder"), "runs.dryRun.reason.sem-conversa");
+  assert.equal(rotuloDoMotivoDoEnsaio(t, "ensaio, evento de link colado: nada é publicado"), "runs.dryRun.reason.evento-colado");
+  assert.equal(rotuloDoMotivoDoEnsaio(t, "outro texto livre"), "outro texto livre");
 });

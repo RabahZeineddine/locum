@@ -23,7 +23,8 @@ export const SLACK_REDIRECT_URI = "http://localhost:41753/callback";
 export const SLACK_SERVER = "slack";
 
 /**
- * Escopos de usuário: ler canal público e privado, achar canal e pessoa, e
+ * Escopos de usuário: ler canal público e privado, listar os canais em que a
+ * pessoa está (`channels:read`, `groups:read`), achar canal e pessoa, e
  * responder em thread. Responder continua passando pela fila de aprovação; o
  * escopo só existe para que a resposta aprovada consiga sair.
  *
@@ -34,6 +35,8 @@ export const SLACK_SERVER = "slack";
 export const SLACK_USER_SCOPES = [
   "channels:history",
   "groups:history",
+  "channels:read",
+  "groups:read",
   "search:read.public",
   "search:read.private",
   "search:read.im",

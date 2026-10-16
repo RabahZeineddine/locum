@@ -29,6 +29,7 @@ import {
   rotuloDoMotivo,
   rotuloDoMotivoDoEnsaio,
 } from "@/lib/rotulos";
+import { ensaioDoPasso, estimativaAcimaDoTeto, ondeSairia, passoDoDetalhe } from "@/lib/ensaio-do-run";
 import { cn } from "@/lib/utils";
 import {
   AlertCircle,
@@ -76,10 +77,10 @@ const ALTURA_DA_LINHA = 52;
 export function Execucoes({ detalhe, navegar }: TelaProps) {
   // Se detalhe for um runId (UUID), abre o detalhe daquele run.
   // Se for um agentId ou slug de filtro (ex: "observability-watch"), abre a lista filtrada por ele.
-  const ehRunId = detalhe !== null && /^[0-9a-f-]{36}$/i.test(detalhe);
+  const run = passoDoDetalhe(detalhe);
 
-  return ehRunId ? (
-    <Execucao navegar={navegar} runId={detalhe!} />
+  return run !== null ? (
+    <Execucao navegar={navegar} passoAberto={run.stepKey} runId={run.runId} />
   ) : (
     <Lista filtroAgente={detalhe} navegar={navegar} />
   );
@@ -318,6 +319,11 @@ export function LinhaDeExecucao({
           {run.stepPending > 0 && <span className="num">{t("runs.waiting_steps", { count: run.stepPending })}</span>}
           {run.stepFailed > 0 && <span className="num">{t("runs.failed_steps", { count: run.stepFailed })}</span>}
           {run.findingCount > 0 && <span className="num">{t("runs.findings", { count: run.findingCount })}</span>}
+          {run.stepDryRun > 0 && (
+            <span className="bg-muted rounded px-1.5 py-px text-[11px] font-medium" data-locum-run-selo-ensaio={run.id}>
+              {t("runs.dryRun.badge")}
+            </span>
+          )}
           {run.status === "failed" && (run.failedStep?.error ?? run.error) !== null ? (
             <span className="text-destructive min-w-0 truncate" data-locum-run-erro={run.id} title={rotuloDoErroDeRun(t, run.failedStep?.error ?? run.error ?? "")}>
               {run.failedStep === null ? "" : `${run.failedStep.name}: `}
@@ -334,7 +340,7 @@ export function LinhaDeExecucao({
 
 /* ----------------------------------------------------------------- detalhe */
 
-function Execucao({ navegar, runId }: { navegar: TelaProps["navegar"]; runId: string }) {
+function Execucao({ navegar, runId, passoAberto }: { navegar: TelaProps["navegar"]; runId: string; passoAberto: string | null }) {
   const { t } = useTranslation();
   const run = useRead("runs.get", runId);
   const achados = useRead("runs.findings", runId);
@@ -350,6 +356,13 @@ function Execucao({ navegar, runId }: { navegar: TelaProps["navegar"]; runId: st
     }, 1500);
     return () => window.clearInterval(id);
   }, [andando, runId]);
+
+  // "Ver o que sairia" chega com o passo na rota: leva a tela até ele.
+  const carregado = run.status === "ready";
+  useEffect(() => {
+    if (passoAberto === null || !carregado) return;
+    document.querySelector(`[data-locum-passo="${CSS.escape(passoAberto)}"]`)?.scrollIntoView({ block: "center" });
+  }, [passoAberto, carregado]);
 
   if (run.status === "error") {
     return <Aviso probe="execucao">{t("runs.refused", { message: run.error.message })}</Aviso>;
@@ -368,6 +381,7 @@ function Execucao({ navegar, runId }: { navegar: TelaProps["navegar"]; runId: st
   const comSaida = detalhe.steps.find((p) => p.output !== null)?.stepKey ?? null;
 
   const veredito = extrairVeredito(detalhe.steps);
+  const acimaDoTeto = estimativaAcimaDoTeto(detalhe);
   const achadosLista = achados.data ?? [];
   const target = detalhe.target;
   const ehPr = Boolean(target && (target.pull || target.repo));
@@ -396,8 +410,18 @@ function Execucao({ navegar, runId }: { navegar: TelaProps["navegar"]; runId: st
           <Estado status={detalhe.status} />
         </span>
         <span className="text-muted-foreground num text-xs">{quando(t, detalhe.createdAt)}</span>
+        {detalhe.steps.some((p) => ensaioDoPasso(p.output) !== null) ? (
+          <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[11px] font-medium" data-locum-run-selo-ensaio="">
+            {t("runs.dryRun.badge")}
+          </span>
+        ) : null}
         <span className="num ml-auto text-[13px]">{dinheiro(t, detalhe)}</span>
       </div>
+      {acimaDoTeto === null ? null : (
+        <p className="text-muted-foreground -mt-3 text-right text-xs" data-locum-run-acima-do-teto="">
+          {t("runs.overCap", { estimate: acimaDoTeto.estimateUsd.toFixed(2), cap: acimaDoTeto.capUsd.toFixed(2) })}
+        </p>
+      )}
 
       {detalhe.error !== null ? (
         <p className="border-border bg-card flex items-start gap-2 rounded-lg border px-3 py-2 text-[13px]" data-locum-run-falha={detalhe.failedStep?.key ?? ""}>
@@ -423,6 +447,7 @@ function Execucao({ navegar, runId }: { navegar: TelaProps["navegar"]; runId: st
         {detalhe.steps.map((passo) => (
           <li key={passo.id}>
             <PassoDaExecucao
+              acao={acaoDoPasso(detalhe, passo.stepKey)}
               marcado={passo.stepKey === comSaida}
               passo={passo}
               runId={detalhe.id}
@@ -462,12 +487,10 @@ function EventoDoRun({ detalhe }: { detalhe: Detalhe }) {
   );
 }
 
-/** A saída de um passo de resposta que virou ensaio: o texto que seria postado. */
-function ensaioDoPasso(output: unknown): { motivo: string; text: string | null } | null {
-  if (output === null || typeof output !== "object") return null;
-  const o = output as { state?: unknown; motivo?: unknown; text?: unknown };
-  if (o.state !== "ensaio") return null;
-  return { motivo: typeof o.motivo === "string" ? o.motivo : "", text: typeof o.text === "string" ? o.text : null };
+/** A ação do passo no agent que rodou, ou nada quando o passo não é de ação. */
+function acaoDoPasso(detalhe: Detalhe, stepKey: string): string | undefined {
+  const passo = detalhe.spec.steps.find((s) => s.key === stepKey);
+  return passo?.type === "action" ? passo.action : undefined;
 }
 
 /** Extrai veredito (APPROVE, COMMENT, REQUEST_CHANGES) e sumário se algum step produziu. */
@@ -683,6 +706,7 @@ function SecaoDetalhesTecnicos({
           {detalhe.steps.map((passo) => (
             <li key={passo.id}>
               <PassoDaExecucao
+                acao={acaoDoPasso(detalhe, passo.stepKey)}
                 marcado={passo.stepKey === comSaida}
                 passo={passo}
                 runId={detalhe.id}
@@ -703,10 +727,13 @@ function SecaoDetalhesTecnicos({
  * modelo foi pedido, qual rodou, por que trocou, e quais skills entraram.
  */
 function PassoDaExecucao({
+  acao,
   marcado,
   passo,
   runId,
 }: {
+  /** A ação do passo no agent que rodou, quando ele é de ação: diz para onde o ensaio sairia. */
+  acao: string | undefined;
   marcado: boolean;
   passo: Passo;
   runId: string;
@@ -757,11 +784,16 @@ function PassoDaExecucao({
       ) : null}
 
       {ensaio === null ? null : (
-        <div className="border-border bg-muted/30 mt-2 flex flex-col gap-1 rounded-md border p-2.5 text-xs" data-locum-ensaio-texto="">
+        <div
+          className="mt-2 flex flex-col gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs"
+          data-locum-ensaio-texto=""
+        >
+          <span className="font-medium text-amber-700 dark:text-amber-300">{t("runs.dryRun.title")}</span>
           <span className="text-muted-foreground">
-            {rotuloDoMotivoDoEnsaio(t, ensaio.motivo)} · {t("runs.dryRun.text")}
+            {rotuloDoMotivoDoEnsaio(t, ensaio.motivo)} · {t(`runs.dryRun.where.${ondeSairia(acao)}`)}
           </span>
-          <span className="whitespace-pre-wrap break-words">{ensaio.text ?? ""}</span>
+          <span className="text-muted-foreground">{t("runs.dryRun.text")}</span>
+          <span className="bg-background/60 rounded border p-2 text-[13px] whitespace-pre-wrap break-words">{ensaio.text ?? ""}</span>
         </div>
       )}
 

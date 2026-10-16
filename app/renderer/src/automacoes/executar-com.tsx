@@ -173,6 +173,11 @@ function ExecutarCom({
               value={link}
             />
             <p className="text-muted-foreground text-xs">{t("automations.runWith.linkHelp")}</p>
+            {link.trim() === "" ? null : (
+              <p className="text-xs font-medium" data-locum-executar-ensaio="">
+                {t("automations.runWith.linkRuns")}
+              </p>
+            )}
           </section>
 
           {link.trim() === "" && escolhido !== null && pedido.acoesAuto.length > 0 ? (

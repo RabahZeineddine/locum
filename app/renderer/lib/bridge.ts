@@ -219,6 +219,8 @@ export const ACTION_CHANNELS = [
   "connections.setTeamsChannels",
   "connections.teamsChannels",
   "connections.teamsChats",
+  // Listar canais vai à API do Slack, atrás de um clique como o do Teams.
+  "connections.slackChannels",
   // A chave de provedor indo para o keychain, e o exame que pergunta o
   // catálogo àquele provedor. Escrita e rede, os dois atrás de um clique, pelo
   // mesmo motivo dos canais do GitHub logo acima.

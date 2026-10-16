@@ -768,8 +768,16 @@
       "reason": {
         "sem-conversa": "sem conversa para responder",
         "evento-colado": "evento de link colado, nada é publicado"
+      },
+      "title": "Ensaio, não publicado",
+      "where": {
+        "teams": "sairia no Teams, no fio da conversa de origem",
+        "slack": "sairia no Slack, na thread de origem",
+        "github": "sairia no GitHub, no pull request",
+        "outro": "sairia no destino do passo"
       }
-    }
+    },
+    "overCap": "Estimativa de {{estimate}} USD acima do teto de {{cap}} USD por run, não cobrado (assinatura)."
   },
   "settings": {
     "refused": "a ponte recusou {{channel}}: {{message}}",
@@ -2285,10 +2293,21 @@
         "summary_other": "{{count}} canais",
         "summary_zero": "nenhum canal",
         "channels": "Canais observados",
-        "hint": "O ID do canal começa com C. No Slack, abra o canal, clique no nome dele no topo, e o ID aparece no fim da janela.",
-        "placeholder": "C0123ABCD",
-        "add": "Adicionar",
-        "remove": "Tirar {{channel}}"
+        "hint": "Escolha na lista os canais em que você está. Canal que não aparece: cole o ID (começa com C ou G) na busca.",
+        "remove": "Tirar {{channel}}",
+        "private": "privado",
+        "search": "Buscar canal ou colar o ID",
+        "useId": "Usar o ID {{id}}",
+        "openConnections": "Abrir Conexões",
+        "archived": "arquivado",
+        "notFound": "não encontrado",
+        "openManifest": "Abrir o manifesto do app",
+        "truncated": "A lista parou em {{count}} canais. Cole o ID do canal que faltar na busca.",
+        "error": {
+          "sem-conexao": "O Slack não está conectado. Conecte em Conexões, pelo servidor oficial.",
+          "sem-escopo": "O token do Slack não tem os escopos de canal. Atualize o app com o manifesto novo e conecte de novo.",
+          "outro-servidor": "A lista só vem pela conexão oficial do Slack. Cole o ID do canal."
+        }
       },
       "slack-inbox": {
         "title": "Menção ou DM no Slack",
@@ -2648,7 +2667,8 @@
         "action": "tem a ação {{acao}}"
       },
       "refused": "Esta automação precisa de um evento ({{reason}}). Escolha um evento recente ou cole um link.",
-      "publishWarning": "Este é um evento que já aconteceu: a automação roda de verdade com ele. {{actions}} está em modo automático e publica de novo em seu nome, sem passar pela Fila."
+      "publishWarning": "Este é um evento que já aconteceu: a automação roda de verdade com ele. {{actions}} está em modo automático e publica de novo em seu nome, sem passar pela Fila.",
+      "linkRuns": "Vai rodar a automação de verdade (gasta modelo) e mostrar a resposta sem publicar nem pôr na Fila."
     }
   },
   "library": {
@@ -3099,6 +3119,8 @@
     "paused": "{{name}} parou e espera sua decisão",
     "open": "Ver execução",
     "dismiss": "Fechar",
-    "failedBare": "{{name}} falhou"
+    "failedBare": "{{name}} falhou",
+    "dryRun": "Ensaio: nada foi publicado.",
+    "seeDryRun": "Ver o que sairia"
   }
 }

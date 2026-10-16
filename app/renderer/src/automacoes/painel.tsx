@@ -19,14 +19,16 @@ import {
   type Rascunho,
 } from "@/lib/automacao";
 import { call, useRead, type ReadResult } from "@/lib/bridge";
-import { chaveDaListaDoTeams } from "@/lib/cache-de-lista";
+import { chaveDaListaDoSlack, chaveDaListaDoTeams } from "@/lib/cache-de-lista";
 import { organizarCanais } from "@/lib/canais-do-teams";
+import { canalDoSlackDigitado, opcoesDeCanaisDoSlack, rotuloDoChipDoSlack } from "@/lib/canais-do-slack";
 import { organizarChats } from "@/lib/chats-do-teams";
 import { cn } from "@/lib/utils";
 import { Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { LogicCompare, type LogicStep, type TriggerConfig } from "../../../src/config/types";
+import { codigoDoErroDeCanais } from "../../../src/slack/channels-erro";
 import { parseCron, proximaOcorrencia } from "../../../src/triggers/cron";
 import { PROVEDORES_FORA_DO_FILTRO } from "../../../src/config/filtro-ia";
 import { descreverCron } from "@/lib/descricao-do-cron";
@@ -150,7 +152,7 @@ export function PainelDoNo({
 
       {gatilho !== undefined ? (
         <>
-          <ConfigDoGatilho agentId={rascunho.spec.id} chave={chave} config={gatilho.config} key={chave} trocar={trocarGatilho} triggerId={gatilho.id} />
+          <ConfigDoGatilho agentId={rascunho.spec.id} chave={chave} config={gatilho.config} key={chave} navegar={navegar} trocar={trocarGatilho} triggerId={gatilho.id} />
           <Alternador
             ligado={gatilho.enabled}
             rotulo={t("automations.panel.enabled")}
@@ -192,12 +194,14 @@ function ConfigDoGatilho({
   config,
   trocar,
   triggerId,
+  navegar,
 }: {
   agentId: string;
   chave: string;
   config: TriggerConfig;
   trocar: (c: TriggerConfig) => void;
   triggerId?: string;
+  navegar: (id: RotaId, detalhe?: string) => void;
 }) {
   const { t } = useTranslation();
   switch (config.kind) {
@@ -210,7 +214,7 @@ function ConfigDoGatilho({
     case "slack-channel":
       return (
         <>
-          <CanaisDoSlack canais={config.channels} trocar={(channels) => trocar({ ...config, channels })} />
+          <CanaisDoSlack canais={config.channels} navegar={navegar} trocar={(channels) => trocar({ ...config, channels })} />
           <Minutos rotulo={t("automations.panel.everyMinutes")} valor={config.everyMinutes} trocar={(everyMinutes) => trocar({ ...config, everyMinutes })} />
         </>
       );
@@ -315,48 +319,75 @@ function ConfigDoCron({ expressao, trocar }: { expressao: string; trocar: (e: st
   );
 }
 
-function CanaisDoSlack({ canais, trocar }: { canais: readonly string[]; trocar: (c: string[]) => void }) {
+/**
+ * Canais do Slack, escolhidos numa lista com busca, como os do Teams. A lista
+ * vem da API do Slack com a conexão oficial e só carrega quando a pessoa abre o
+ * campo. Um id digitado à mão continua valendo: o canal que a lista não traz
+ * (ou a lista que não carregou) aparece como opção "usar este id".
+ */
+function CanaisDoSlack({
+  canais,
+  trocar,
+  navegar,
+}: {
+  canais: readonly string[];
+  trocar: (c: string[]) => void;
+  navegar: (id: RotaId, detalhe?: string) => void;
+}) {
   const { t } = useTranslation();
-  const [novo, setNovo] = useState("");
-  const valido = /^[CG][A-Z0-9]{6,}$/.test(novo.trim().toUpperCase());
-  const acrescentar = (): void => {
-    const id = novo.trim().toUpperCase();
-    if (!valido || canais.includes(id)) return;
-    trocar([...canais, id]);
-    setNovo("");
-  };
+  const app = useRead("connections.slackApp").data;
+  // A resposta inteira fica como único item da lista em cache: ela traz também o que é arquivado e o que não existe.
+  const lista = useListaEmCache(chaveDaListaDoSlack(app), async () => [await call("connections.slackChannels", [...canais])]);
+  const resposta = lista.dados?.[0] ?? null;
+  const rotulosDoChip = { arquivado: t("automations.triggers.slack-channel.archived"), naoEncontrado: t("automations.triggers.slack-channel.notFound") };
+  const rotulos = { privado: t("automations.triggers.slack-channel.private") };
+  // Com a lista recusada ainda dá para digitar o id: o combobox abre vazio em vez de "carregando".
+  const opcoes: OpcaoDoCombobox[] | null = resposta === null && lista.erro === null ? null : opcoesDeCanaisDoSlack(resposta?.canais ?? [], new Set(canais), "", rotulos);
+  const codigo = lista.erro === null ? null : codigoDoErroDeCanais(lista.erro);
+
   return (
     <Campo ajuda={t("automations.triggers.slack-channel.hint")} rotulo={t("automations.triggers.slack-channel.channels")}>
-      <div className="flex flex-wrap gap-1.5">
-        {canais.map((c) => (
-          <span className="bg-muted flex items-center gap-1 rounded-full py-0.5 pr-1 pl-2.5 font-mono text-xs" key={c}>
-            {c}
-            <button
-              aria-label={t("automations.triggers.slack-channel.remove", { channel: c })}
-              className="hover:text-foreground text-muted-foreground cursor-pointer rounded-full p-0.5"
-              onClick={() => trocar(canais.filter((x) => x !== c))}
-              type="button"
-            >
-              <X className="size-3" />
-            </button>
-          </span>
-        ))}
-      </div>
-      <div className="flex gap-1.5">
-        <input
-          className={cn(CAMPO, "font-mono")}
-          data-locum-canal-novo=""
-          onChange={(e) => setNovo(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") acrescentar();
-          }}
-          placeholder={t("automations.triggers.slack-channel.placeholder")}
-          value={novo}
-        />
-        <Button className="cursor-pointer" disabled={!valido} onClick={acrescentar} size="sm" variant="outline">
-          {t("automations.triggers.slack-channel.add")}
-        </Button>
-      </div>
+      <ComboboxComChips
+        aoAbrir={() => lista.pedir()}
+        aoAlternar={(o) => trocar(canais.includes(o.id) ? canais.filter((c) => c !== o.id) : [...canais, o.id])}
+        aoAtualizar={() => lista.pedir(true)}
+        aoRemover={(id) => trocar(canais.filter((c) => c !== id))}
+        carregando={lista.lendo}
+        filtrar={(busca) => {
+          const marcados = new Set(canais);
+          const achadas = opcoesDeCanaisDoSlack(resposta?.canais ?? [], marcados, busca, rotulos);
+          const digitado = canalDoSlackDigitado(busca, resposta?.canais ?? [], marcados);
+          return digitado === null
+            ? achadas
+            : [...achadas, { id: digitado, rotulo: t("automations.triggers.slack-channel.useId", { id: digitado }) }];
+        }}
+        opcoes={opcoes}
+        rotuloDaBusca={t("automations.triggers.slack-channel.search")}
+        selecionados={canais.map((c) => ({ id: c, rotulo: rotuloDoChipDoSlack(c, resposta, rotulosDoChip) }))}
+        sonda="slack-canais"
+      />
+      {resposta?.truncado === true ? (
+        <p className="text-muted-foreground text-xs" data-locum-slack-truncado="">
+          {t("automations.triggers.slack-channel.truncated", { count: resposta.total })}
+        </p>
+      ) : null}
+      {lista.erro === null ? null : (
+        <div className="text-destructive flex flex-col gap-1 text-xs">
+          <p>{codigo === null ? lista.erro : t(`automations.triggers.slack-channel.error.${codigo}`)}</p>
+          {codigo === "sem-conexao" || codigo === "sem-escopo" ? (
+            <span className="flex gap-3">
+              <button className="cursor-pointer underline" onClick={() => navegar("connections", "slack")} type="button">
+                {t("automations.triggers.slack-channel.openConnections")}
+              </button>
+              {codigo === "sem-escopo" ? (
+                <button className="cursor-pointer underline" onClick={() => void call("connections.openSlackManifest")} type="button">
+                  {t("automations.triggers.slack-channel.openManifest")}
+                </button>
+              ) : null}
+            </span>
+          ) : null}
+        </div>
+      )}
     </Campo>
   );
 }
