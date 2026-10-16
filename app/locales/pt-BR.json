@@ -2019,7 +2019,10 @@
       "steps_zero": "{{count}} passos",
       "never": "nunca rodou",
       "lastRun": "última: {{status}}",
-      "noTrigger": "sem gatilho"
+      "noTrigger": "sem gatilho",
+      "draft": "Rascunho, não salva",
+      "draftOpen": "Abrir",
+      "draftDiscard": "Descartar"
     },
     "new": {
       "title": "Nova automação",
@@ -2030,7 +2033,8 @@
       "creating": "criando...",
       "cancel": "Cancelar",
       "tracker": "Onde abrir a tarefa",
-      "trackerNone": "Nenhum tracker cadastrado. Dá para escolher depois, no nó da tarefa."
+      "trackerNone": "Nenhum tracker cadastrado. Dá para escolher depois, no nó da tarefa.",
+      "noStorage": "Não consegui guardar o modelo neste computador para abrir o editor."
     },
     "templates": {
       "teamsPrReview": {
@@ -2083,7 +2087,74 @@
       "problems_one": "{{count}} ponto para revisar",
       "problems_other": "{{count}} pontos para revisar",
       "problems_zero": "{{count}} pontos para revisar",
-      "blocked": "Corrija os pontos marcados para salvar."
+      "blocked": "Corrija os pontos marcados para salvar.",
+      "exit": {
+        "title": "Sair com alterações não salvas?",
+        "body": "Esta automação tem alterações que ainda não foram gravadas.",
+        "save": "Salvar e sair",
+        "discard": "Descartar e sair",
+        "cancel": "Cancelar",
+        "blocked": "Há pontos a corrigir: não dá para salvar agora."
+      },
+      "draft": {
+        "found": "Há um rascunho não salvo desta automação, de {{quando}}.",
+        "continue": "Continuar rascunho",
+        "discard": "Descartar",
+        "autosaved": "Rascunho guardado neste computador",
+        "continueAnyway": "Continuar mesmo assim",
+        "baseChanged": "A automação mudou desde o rascunho (v{{de}} → v{{para}}).",
+        "diff": "Ver diferenças",
+        "hideDiff": "Ocultar diferenças",
+        "diffNone": "Nenhuma diferença em passos ou gatilhos.",
+        "diffSteps": "Passos",
+        "diffTriggers": "Gatilhos",
+        "kind": {
+          "novo": "novo",
+          "removido": "removido",
+          "alterado": "alterado"
+        },
+        "reserved": "Você começou do gravado. O rascunho de {{quando}} ficou reservado.",
+        "continueReserved": "Continuar o reservado",
+        "discardReserved": "Descartar o reservado",
+        "swap": {
+          "title": "Trocar as edições atuais?",
+          "body": "O rascunho reservado entra no lugar do que você editou agora, e as edições atuais serão descartadas.",
+          "confirm": "Trocar"
+        },
+        "mine": "Suas mudanças",
+        "byOutside": "Mudou por fora desde o rascunho",
+        "conflicts": "Mexidos dos dois lados: escolha qual fica",
+        "keepMine": "Manter o meu",
+        "keepOutside": "Manter o de fora",
+        "storageFull": "Não consegui guardar o rascunho neste computador: se a janela fechar, as edições se perdem."
+      },
+      "conflict": {
+        "title": "A automação mudou",
+        "body": "Enquanto você editava, ela foi gravada de novo (v{{de}} → v{{para}}).",
+        "reload": "Recarregar",
+        "reloadHint": "Traz a versão gravada e guarda as suas edições como rascunho reservado.",
+        "overwrite": "Salvar por cima",
+        "confirmOverwrite": "Confirmar: substituir a v{{para}}",
+        "cancel": "Cancelar",
+        "undoTitle": "Isto da v{{para}} será desfeito:",
+        "undoNone": "Nada da v{{para}} será desfeito."
+      },
+      "notCreated": "Ainda não gravada: o primeiro Salvar cria a automação.",
+      "newId": {
+        "taken": "Já existe uma automação com o id \"{{id}}\". Salvar grava esta como \"{{novo}}\" e mantém o rascunho até lá.",
+        "save": "Gravar como {{id}}"
+      },
+      "localDraft": {
+        "found": "Existe um rascunho de automação nova com este id, que nunca foi gravado.",
+        "open": "Abrir o rascunho",
+        "discard": "Descartar o rascunho"
+      },
+      "link": {
+        "failed": "A automação foi criada, mas a ligação à iniciativa falhou: {{erro}}",
+        "retry": "Tentar de novo",
+        "done": "Ligada à iniciativa.",
+        "pending": "A automação foi criada, mas ainda não está ligada à iniciativa."
+      }
     },
     "palette": {
       "title": "Componentes",
@@ -2133,7 +2204,8 @@
       },
       "autoHint": "Sai sozinho, sem passar pela fila. Use quando já confiar no que esse fluxo manda.",
       "approvalOnly": "Esta ação sempre para na fila até você aprovar.",
-      "variablesFocused": "Clique para inserir no campo selecionado:"
+      "variablesFocused": "Clique para inserir no campo selecionado:",
+      "help": "Saiba mais"
     },
     "triggers": {
       "manual": {
@@ -2203,43 +2275,57 @@
       },
       "slack-inbox": {
         "title": "Menção ou DM no Slack",
-        "summary": "menções e DMs",
         "mentions": "Menções a você",
-        "dms": "Mensagens diretas"
+        "dms": "Mensagens diretas",
+        "titles": {
+          "m": "Menção no Slack",
+          "d": "DM no Slack",
+          "md": "Menção ou DM no Slack",
+          "none": "Slack sem nenhum modo ligado"
+        }
       },
       "teams-inbox": {
         "title": "Menção ou DM no Teams",
-        "summary": "menções e conversas",
         "mentions": "Menções a você",
         "dms": "Conversas diretas",
         "prLinks": "Mensagem com link de PR",
-        "filtroIa": "Filtro com IA (opcional)",
+        "filtroIa": "Filtro com IA",
         "filtroIaPlaceholder": "É um pedido de review de pull request?",
         "filtroIaModeloAuto": "Haiku da máquina (padrão)",
         "filtroIaHint": "Cada mensagem que passa nos filtros do gatilho é lida por um modelo barato antes de acordar o agent. Se a resposta for não, a mensagem fica de fora e o motivo aparece nos descartes. Se o modelo falhar, ela espera a próxima batida e, na terceira falha seguida, passa sem o filtro, com um aviso. Mensagem editada depois de descartada não volta. No máximo 20 por batida.",
         "discards": "Últimas mensagens descartadas",
-        "channels": "Canais de equipe (menção ou link de PR acorda)",
+        "channels": "Canais de equipe",
         "search": "Buscar equipe ou canal",
-        "noMatch": "Nenhum canal com \"{{termo}}\".",
         "countOf": "{{marked}} de {{total}} marcados",
-        "list": "Listar canais",
-        "loading": "Lendo canais...",
-        "channelsHintVia": "O Teams vem pelo {{server}}, que já traz os canais. Cada canal é uma chamada por batida.",
-        "channelsHint": "Precisa ligar os canais na conexão do Teams, em Conexões. Cada canal é uma chamada ao Graph por batida.",
-        "chats": "Só nestes chats (vazio = todos os chats)",
+        "channelsHintVia": "Menção ou link de PR nesses canais acorda o agent. O Teams vem pelo {{server}}, que já traz os canais. Cada canal é uma chamada por batida.",
+        "channelsHint": "Menção ou link de PR nesses canais acorda o agent. Precisa ligar os canais na conexão do Teams, em Conexões. Cada canal é uma chamada ao Graph por batida.",
+        "chats": "Chats",
         "searchChats": "Buscar chat ou pessoa",
-        "noMatchChats": "Nenhum chat com \"{{termo}}\".",
-        "listChats": "Listar chats",
-        "loadingChats": "Lendo chats...",
         "chatsHint": "Vazio vale para todos os chats em grupo e diretos. Com chats marcados, mensagem direta, link de PR e menção só contam neles, os outros nem são lidos, e menção em chat de reunião deixa de contar.",
-        "summaryChats": "menções e conversas · {{count}} chats",
-        "reloadChats": "Recarregar lista",
-        "chatsMax": "O máximo é {{max}} chats. Desmarque um para escolher outro.",
         "chatsPending": "Este gatilho era restrito a chats no pacote. Escolha os chats antes de ligar: vazio valeria para todos.",
         "chatsAll": "Valer para todos os chats",
         "chatType": {
           "oneOnOne": "1:1",
           "group": "grupo"
+        },
+        "titles": {
+          "m": "Menção no Teams",
+          "d": "DM no Teams",
+          "md": "Menção ou DM no Teams",
+          "p": "Link de PR no Teams",
+          "mp": "Menção ou link de PR no Teams",
+          "dp": "DM ou link de PR no Teams",
+          "mdp": "Menção, DM ou link de PR no Teams",
+          "none": "Teams sem nenhum modo ligado"
+        },
+        "scope": {
+          "all": "todas as conversas",
+          "channels_one": "{{count}} canal",
+          "channels_other": "{{count}} canais",
+          "chats_one": "{{count}} chat",
+          "chats_other": "{{count}} chats",
+          "chats_zero": "{{count}} chats",
+          "channels_zero": "{{count}} canais"
         }
       },
       "poll": {
@@ -2303,10 +2389,29 @@
         "task": "Tarefa deste passo",
         "taskHint": "O que o agent faz aqui. Quem ele é, o modelo e as ferramentas vêm da biblioteca.",
         "choose": "Agent",
-        "open": "Abrir na biblioteca",
+        "open": "Abrir agent",
         "none": "Nenhum agent na biblioteca.",
         "toLibrary": "Transformar em agent da biblioteca",
-        "toLibraryHint": "Leva modelo e ferramentas para um agent novo, que outras automações podem usar. O texto deste passo vira a tarefa."
+        "toLibraryHint": "Leva modelo e ferramentas para um agent novo, que outras automações podem usar. O texto deste passo vira a tarefa.",
+        "modes": {
+          "agent": "Agent",
+          "inline": "Instrução embutida"
+        },
+        "pick": "Escolha um agent",
+        "stillInline": "O passo segue com a instrução embutida até você escolher um agent.",
+        "create": "Criar agent",
+        "summary": {
+          "model": "Modelo",
+          "tools": "Ferramentas",
+          "noTools": "nenhuma",
+          "single_one": "{{count}} avulsa",
+          "single_other": "{{count}} avulsas",
+          "single_zero": "{{count}} avulsas",
+          "toolsets_one": "{{count}} toolset",
+          "toolsets_other": "{{count}} toolsets",
+          "toolsets_zero": "{{count}} toolsets",
+          "edit": "Editar na biblioteca"
+        }
       },
       "mcp.call": {
         "title": "Ação em app",
@@ -2490,6 +2595,18 @@
       "link": "Legado (só leitura)",
       "lead": "As automações do modelo anterior ao conceito novo, só para consulta. Para criar, abra Automações; os agents moram em Agents.",
       "empty": "Nenhuma automação do modelo antigo."
+    },
+    "agentModal": {
+      "title": "Agent da biblioteca",
+      "close": "Fechar"
+    },
+    "combobox": {
+      "remove": "Tirar {{item}}",
+      "loading": "Carregando a lista...",
+      "noMatch": "Nada com \"{{termo}}\".",
+      "full": "Máximo de {{max}} atingido. Tire um para escolher outro.",
+      "keys": "↑ ↓ Enter Esc",
+      "refresh": "Atualizar"
     }
   },
   "library": {
@@ -2582,7 +2699,14 @@
         "usage": "Onde ele trabalha hoje? As automações que o chamam, e a remoção, que só vale sem uso."
       },
       "shortcuts": "Atalhos: toolsets e ferramentas avulsas",
-      "shortcutsHint": "Jeito antigo de dar ferramentas, que continua valendo e se soma às conexões. Só leitura: o que escreve fora é nó de ação na automação."
+      "shortcutsHint": "Jeito antigo de dar ferramentas, que continua valendo e se soma às conexões. Só leitura: o que escreve fora é nó de ação na automação.",
+      "exit": {
+        "title": "Sair com alterações não salvas?",
+        "body": "Este agent tem alterações que ainda não foram gravadas.",
+        "save": "Salvar e sair",
+        "discard": "Descartar e sair",
+        "cancel": "Cancelar"
+      }
     },
     "toolsets": {
       "lead": "Um toolset junta ferramentas de um ou mais apps. O agent que inclui o toolset ganha todas elas.",

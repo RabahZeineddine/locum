@@ -1119,6 +1119,10 @@ async function checkRenderer(): Promise<string> {
     const agents = await checkAgents(window);
     await checkAgentsDoConceito(window);
     await checkPacote(window);
+    await checkEditorSaida(window);
+    await checkListaDoTeams(window);
+    await checkAutomacaoNova(window);
+    await checkPassoDeAgent(window);
     const configuracao = await checkConfig(window);
     const revisao = await checkReviewVerdict(window);
     const sessoes = await checkClaudeSessions(window);
@@ -1902,6 +1906,402 @@ async function checkAgentsDoConceito(window: BrowserWindow): Promise<void> {
     await esperarProbe(window, "legado", `document.querySelector("[data-locum-probe=agents]") !== null ? true : null`);
   } finally {
     for (const criado of criados) await libraryService.removeProfile(criado).catch(() => undefined);
+  }
+}
+
+/**
+ * O editor de automação não perde trabalho: sair com mudança não salva pede
+ * confirmação (pela barra lateral e pelo botão de voltar), cada mudança vai
+ * para um rascunho local, e reabrir oferece continuar ou descartar.
+ */
+async function checkEditorSaida(window: BrowserWindow): Promise<void> {
+  const { agentService } = await import("../src/services/agent-service.js");
+  const agentId = (await agentService.list())[0]?.id;
+  if (agentId === undefined) throw new Error("sem automacao de exemplo para o exame do editor");
+  const js = (codigo: string): Promise<unknown> => window.webContents.executeJavaScript(codigo);
+  const clicar = (seletor: string): Promise<boolean> =>
+    js(`(() => { const e = document.querySelector(${JSON.stringify(seletor)}); e?.click(); return e !== null; })()`) as Promise<boolean>;
+  const existe = (seletor: string): Promise<boolean> => js(`document.querySelector(${JSON.stringify(seletor)}) !== null`) as Promise<boolean>;
+  const rota = (): Promise<string> => js(`(() => { const p = document.querySelector("[data-locum-probe=rota]"); return p.dataset.ativo + "|" + p.dataset.detalhe; })()`) as Promise<string>;
+  const rascunhoGuardado = (): Promise<boolean> =>
+    js(`localStorage.getItem(${JSON.stringify(`locum.rascunho-automacao.${agentId}`)}) !== null`) as Promise<boolean>;
+  const nomeNoCabecalho = (): Promise<string> => js(`document.querySelector("[data-locum-probe=automacao-editor] header input").value`) as Promise<string>;
+  const esperar = async (nome: string, ok: () => Promise<boolean>): Promise<void> => {
+    await esperarDoServico(nome, async () => ((await ok()) ? true : undefined), 5_000);
+  };
+  const novoNome = "Nome editado pelo exame";
+  const digitarNome = (nome: string): Promise<unknown> =>
+    js(`(() => {
+      const campo = document.querySelector("[data-locum-probe=automacao-editor] header input");
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(campo, ${JSON.stringify(nome)});
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+      return null;
+    })()`);
+  const reservas = (): Promise<number> =>
+    js(`Object.keys(localStorage).filter((k) => k.startsWith(${JSON.stringify(`locum.rascunho-automacao-reserva.${agentId}.`)})).length`) as Promise<number>;
+  const limpar = (): Promise<unknown> =>
+    js(`(Object.keys(localStorage).filter((k) => k.startsWith("locum.rascunho-automacao")).forEach((k) => localStorage.removeItem(k)), null)`);
+
+  await limpar();
+  await irPara(window, "automations", agentId);
+  await esperar("o editor", () => existe("[data-locum-probe=automacao-editor]"));
+  await js(`(() => {
+    const campo = document.querySelector("[data-locum-probe=automacao-editor] header input");
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(campo, ${JSON.stringify(novoNome)});
+    campo.dispatchEvent(new Event("input", { bubbles: true }));
+    return null;
+  })()`);
+  await esperar("o rascunho local", rascunhoGuardado);
+
+  // Pela barra lateral e pelo voltar do cabecalho: a janela fica onde estava e pergunta.
+  for (const [saida, destino] of [
+    ["[data-locum-rota=agents]", "agents"],
+    ["[data-locum-probe=automacao-editor] header button", "automations"],
+  ] as const) {
+    if (!(await clicar(saida))) throw new Error(`o editor nao ofereceu a saida ${saida}`);
+    await esperar("a confirmacao de sair", () => existe("[data-locum-saida]"));
+    if ((await rota()) !== `automations|${agentId}`) throw new Error(`a janela saiu para ${await rota()} antes de a pessoa responder (${destino})`);
+    await clicar("[data-locum-saida-cancelar]");
+    await esperar("a confirmacao fechar", async () => !(await existe("[data-locum-saida]")));
+    if (!(await rascunhoGuardado())) throw new Error("cancelar a saida apagou o rascunho");
+  }
+
+  // O atalho do menu (⌘, e ⌘1..N) passa pela mesma guarda: a janela fica onde estava e pergunta.
+  const { pedirNavegacao } = await import("./menu.js");
+  await pedirNavegacao(window, "settings");
+  await esperar("a confirmacao de sair pelo menu", () => existe("[data-locum-saida]"));
+  if ((await rota()) !== `automations|${agentId}`) throw new Error(`o atalho do menu saiu para ${await rota()} sem a pessoa responder`);
+  await clicar("[data-locum-saida-cancelar]");
+  await esperar("a confirmacao do menu fechar", async () => !(await existe("[data-locum-saida]")));
+  if (!(await rascunhoGuardado())) throw new Error("cancelar a saida pelo menu apagou o rascunho");
+
+  // A automação foi gravada de novo (v+1) depois do rascunho: a oferta avisa que a base mudou e deixa ver as diferenças.
+  const { automationService } = await import("../src/services/automation-service.js");
+  const gravada = await automationService.get(agentId);
+  if (gravada === null) throw new Error("a automacao do exame sumiu");
+  const versaoDoRascunho = gravada.version.version;
+  await automationService.save({
+    spec: { ...gravada.version.spec, layout: { ...(gravada.version.spec.layout ?? {}), "exame-base": { x: 1, y: 2 } } },
+    triggers: gravada.triggers.map((g) => ({ id: g.id, config: g.config })),
+    note: "exame: entrou depois do rascunho",
+  });
+
+  // Como depois de uma queda: sai sem passar pela pergunta e reabre.
+  await irPara(window, "agents");
+  await irPara(window, "automations", agentId);
+  await esperar("a oferta do rascunho", () => existe("[data-locum-rascunho]"));
+  const oferta = (await js(`document.querySelector("[data-locum-rascunho]").textContent`)) as string;
+  if (!oferta.includes(`v${versaoDoRascunho}`) || !oferta.includes(`v${versaoDoRascunho + 1}`)) throw new Error(`a oferta nao disse que a base mudou: ${oferta}`);
+  await clicar("[data-locum-rascunho-diferencas]");
+  await esperar("a lista de diferencas", () => existe("[data-locum-rascunho-lista]"));
+
+  // Editar com a oferta aberta e "comecar do gravado": o rascunho antigo vai para a reserva, e continuar pede confirmacao.
+  await digitarNome("Edicao nova, sem decidir");
+  await esperar("o rascunho reservado", async () => (await reservas()) === 1 && (await existe("[data-locum-rascunho=reservado]")));
+  await clicar("[data-locum-rascunho-continuar]");
+  await esperar("a pergunta de trocar", () => existe("[data-locum-rascunho-trocar]"));
+  if ((await nomeNoCabecalho()) !== "Edicao nova, sem decidir") throw new Error("a pergunta de trocar ja trocou as edicoes");
+  await clicar("[data-locum-rascunho-trocar-confirmar]");
+  await esperar("o nome do rascunho de volta", async () => (await nomeNoCabecalho()) === novoNome);
+  if ((await reservas()) !== 0) throw new Error("continuar o reservado deixou a reserva para tras");
+
+  // Descartar e sair leva ao destino e apaga o rascunho.
+  await clicar("[data-locum-rota=agents]");
+  await esperar("a confirmacao de sair de novo", () => existe("[data-locum-saida]"));
+  await clicar("[data-locum-saida-descartar]");
+  await esperar("a saida depois de descartar", async () => (await rota()).startsWith("agents|"));
+  if (await rascunhoGuardado()) throw new Error("descartar nao apagou o rascunho");
+  await limpar();
+  await irPara(window, "automations", agentId);
+  await esperar("o editor de novo", () => existe("[data-locum-probe=automacao-editor]"));
+  if (await existe("[data-locum-rascunho]")) throw new Error("o editor ofereceu um rascunho que foi descartado");
+  if ((await nomeNoCabecalho()) === novoNome) throw new Error("o nome descartado voltou");
+}
+
+/**
+ * O gatilho do Teams no editor: o nome vem do modo ligado (link de PR, e não
+ * "menção ou DM"), e canais e chats se escolhem num campo com busca desde o
+ * início, que fecha ao escolher e anda pelo teclado. A lista do Graph vem do
+ * cache da janela, porque o smoke não alcança o Graph.
+ */
+/** A chave que o painel usa para guardar a lista do Teams na janela: leva a conexão e a conta. */
+async function chaveDoCacheDoTeams(tipo: "canais" | "chats", gatilho?: { id?: string; agentId: string; chave: string }): Promise<string> {
+  const { connectionService } = await import("../src/services/connection-service.js");
+  const { chaveDaListaDoTeams } = await import("../renderer/lib/cache-de-lista.js");
+  const conexao = (await connectionService.list()).find((c) => c.id === "teams");
+  return `locum.cache.${chaveDaListaDoTeams(tipo, conexao, gatilho)}`;
+}
+
+async function checkListaDoTeams(window: BrowserWindow): Promise<void> {
+  const { automationService } = await import("../src/services/automation-service.js");
+  const { db, schema } = await import("../src/db/index.js");
+  const { eq } = await import("drizzle-orm");
+  const { AgentSpec, TriggerConfig } = await import("../src/config/types.js");
+  const id = `smoke-lista-teams-${randomUUID().slice(0, 6)}`;
+  const gravada = await automationService.save({
+    spec: AgentSpec.parse({
+      id,
+      name: "Lista do Teams",
+      steps: [{ type: "model", key: "revisar", name: "Revisar", model: "claude-code/claude-sonnet-5", prompt: "x" }],
+    }),
+    triggers: [{ config: TriggerConfig.parse({ kind: "teams-inbox", mentions: false, dms: false, prLinks: true }) }],
+    note: "smoke",
+    create: true,
+  });
+  const gatilho = gravada.triggers[0]!;
+  const js = (codigo: string): Promise<unknown> => window.webContents.executeJavaScript(codigo);
+  const clicar = (seletor: string): Promise<boolean> =>
+    js(`(() => { const e = document.querySelector(${JSON.stringify(seletor)}); e?.click(); return e !== null; })()`) as Promise<boolean>;
+  const existe = (seletor: string): Promise<boolean> => js(`document.querySelector(${JSON.stringify(seletor)}) !== null`) as Promise<boolean>;
+  const tecla = (key: string): Promise<unknown> =>
+    js(`(document.querySelector("[data-locum-combobox=teams-chats] input").dispatchEvent(new KeyboardEvent("keydown", { key: ${JSON.stringify(key)}, bubbles: true, cancelable: true })), null)`);
+  const esperar = async (nome: string, ok: () => Promise<boolean>): Promise<void> => {
+    await esperarDoServico(nome, async () => ((await ok()) ? true : undefined), 5_000);
+  };
+  const chats = [
+    ["19:ana", "Ana Souza", "oneOnOne"],
+    ["19:devs", "Integrados - Devs", "group"],
+    ["19:time", "Time de plataforma", "group"],
+  ].map(([chatId, label, chatType]) => ({ chatId, label, chatType }));
+  try {
+    await irPara(window, "automations", id);
+    await js(`(sessionStorage.setItem(${JSON.stringify(await chaveDoCacheDoTeams("chats", { id: gatilho.id, agentId: id, chave: "gatilho-1" }))}, JSON.stringify({ em: Date.now(), dados: ${JSON.stringify(chats)} })), null)`);
+    await esperar("o nó do gatilho", () => existe("[data-locum-no-automacao^=gatilho-]"));
+    await clicar("[data-locum-no-automacao^=gatilho-]");
+    await esperar("o painel do gatilho", () => existe("[data-locum-combobox=teams-chats]"));
+
+    const noDoGatilho = (await js(`document.querySelector("[data-locum-no-automacao^=gatilho-]").textContent`)) as string;
+    if (!noDoGatilho.includes(t("automations.triggers.teams-inbox.titles.p"))) throw new Error(`o nó do gatilho de link de PR se chamou "${noDoGatilho}"`);
+    if (noDoGatilho.includes(t("automations.triggers.teams-inbox.titles.md"))) throw new Error("o nó do gatilho de link de PR levou o nome de menção ou DM");
+
+    // O campo de busca já está na tela, sem pedir a lista, e a lista abre ao focar.
+    if (await existe("[data-locum-combobox-lista]")) throw new Error("a lista de chats abriu antes de a pessoa tocar no campo");
+    await clicar("[data-locum-combobox=teams-chats] input");
+    await esperar("a lista de chats", () => existe("[data-locum-combobox-lista]"));
+    const total = (await js(`document.querySelectorAll("[data-locum-combobox-lista] [role=option]").length`)) as number;
+    if (total !== chats.length) throw new Error(`a lista mostrou ${total} chat(s) e o cache tem ${chats.length}`);
+
+    // Busca: digitar filtra.
+    await js(`(() => {
+      const campo = document.querySelector("[data-locum-combobox=teams-chats] input");
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(campo, "devs");
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+      return null;
+    })()`);
+    await esperar("a busca filtrar", async () => ((await js(`document.querySelectorAll("[data-locum-combobox-lista] [role=option]").length`)) as number) === 1);
+
+    // Esc fecha sem escolher.
+    await tecla("Escape");
+    await esperar("o Esc fechar a lista", async () => !(await existe("[data-locum-combobox-lista]")));
+    if ((await js(`document.querySelectorAll("[data-locum-combobox=teams-chats] [data-locum-chip]").length`)) !== 0) throw new Error("o Esc escolheu um chat");
+
+    // ↓ abre, ↓ anda, Enter escolhe e a lista fecha com o chip no campo.
+    await tecla("ArrowDown");
+    await esperar("a seta abrir a lista", () => existe("[data-locum-combobox-lista]"));
+    await tecla("ArrowDown");
+    await tecla("Enter");
+    await esperar("o Enter fechar a lista", async () => !(await existe("[data-locum-combobox-lista]")));
+    const escolhido = (await js(`[...document.querySelectorAll("[data-locum-combobox=teams-chats] [data-locum-chip]")].map((c) => c.textContent)`)) as string[];
+    if (escolhido.length !== 1 || escolhido[0] !== "Integrados - Devs") throw new Error(`o Enter escolheu ${JSON.stringify(escolhido)}`);
+
+    // O escopo entra no título do painel, e o resumo do nó.
+    const painel = (await js(`document.querySelector("[data-locum-painel]").textContent`)) as string;
+    if (!painel.includes("Integrados - Devs")) throw new Error("o painel do gatilho não mostrou o escopo escolhido");
+
+    // Clique fora fecha.
+    await clicar("[data-locum-combobox=teams-chats] input");
+    await esperar("a lista abrir de novo", () => existe("[data-locum-combobox-lista]"));
+    // Clique de verdade, no texto da versão: o Radix só fecha por ponteiro real.
+    const ponto = (await js(`(() => { const r = document.querySelector("[data-locum-probe=automacao-editor] header .num").getBoundingClientRect(); return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }; })()`)) as { x: number; y: number };
+    window.webContents.sendInputEvent({ type: "mouseDown", x: ponto.x, y: ponto.y, button: "left", clickCount: 1 });
+    window.webContents.sendInputEvent({ type: "mouseUp", x: ponto.x, y: ponto.y, button: "left", clickCount: 1 });
+    await esperar("o clique fora fechar a lista", async () => !(await existe("[data-locum-combobox-lista]")));
+  } finally {
+    await js(`(sessionStorage.clear(), localStorage.removeItem(${JSON.stringify(`locum.rascunho-automacao.${id}`)}), null)`);
+    // Sem execução nenhuma, a automação some inteira: gatilhos, versões e a linha dela.
+    db.delete(schema.triggers).where(eq(schema.triggers.agentId, id)).run();
+    db.delete(schema.agentVersions).where(eq(schema.agentVersions.agentId, id)).run();
+    db.delete(schema.agents).where(eq(schema.agents.id, id)).run();
+  }
+}
+
+/**
+ * O passo de IA escolhe um agent da biblioteca por padrão: o painel mostra o
+ * resumo dele só leitura, abre e cria agent num modal sem sair do editor, e a
+ * instrução embutida segue como alternativa.
+ */
+async function checkPassoDeAgent(window: BrowserWindow): Promise<void> {
+  const { automationService } = await import("../src/services/automation-service.js");
+  const { libraryService } = await import("../src/services/library-service.js");
+  const { db, schema } = await import("../src/db/index.js");
+  const { eq } = await import("drizzle-orm");
+  const { AgentSpec } = await import("../src/config/types.js");
+  const sufixo = randomUUID().slice(0, 6);
+  const id = `smoke-passo-agent-${sufixo}`;
+  const perfil = `smoke-perfil-${sufixo}`;
+  await libraryService.saveProfile({
+    spec: { id: perfil, name: "Revisor do smoke", description: "", model: "claude-code/claude-sonnet-5", instructions: "Revise o diff e cite a linha.", connections: [], skills: [], budget: {} },
+    create: true,
+  });
+  await automationService.save({
+    spec: AgentSpec.parse({ id, name: "Passo de agent", steps: [{ type: "model", key: "revisar", name: "Revisar", model: "claude-code/claude-sonnet-5", prompt: "" }] }),
+    triggers: [],
+    note: "smoke",
+    create: true,
+  });
+  const js = (codigo: string): Promise<unknown> => window.webContents.executeJavaScript(codigo);
+  const clicar = (seletor: string): Promise<boolean> =>
+    js(`(() => { const e = document.querySelector(${JSON.stringify(seletor)}); e?.click(); return e !== null; })()`) as Promise<boolean>;
+  const existe = (seletor: string): Promise<boolean> => js(`document.querySelector(${JSON.stringify(seletor)}) !== null`) as Promise<boolean>;
+  const rota = (): Promise<string> => js(`(() => { const p = document.querySelector("[data-locum-probe=rota]"); return p.dataset.ativo + "|" + p.dataset.detalhe; })()`) as Promise<string>;
+  const esperar = async (nome: string, ok: () => Promise<boolean>): Promise<void> => {
+    await esperarDoServico(nome, async () => ((await ok()) ? true : undefined), 5_000);
+  };
+  try {
+    await irPara(window, "automations", id);
+    await esperar("o nó do passo", () => existe("[data-locum-no-automacao=revisar]"));
+    await clicar("[data-locum-no-automacao=revisar]");
+    await esperar("o painel do passo", () => existe("[data-locum-passo-modos]"));
+    // O padrão é Agent, e o select dos agents da biblioteca está lá.
+    if (!(await existe("[data-locum-passo-modo=agent][aria-selected=true]"))) throw new Error("o passo de IA novo não abriu em Agent");
+    await esperar("o select de agents", () => existe("[data-locum-passo-agent]"));
+    await js(`(() => {
+      const s = document.querySelector("[data-locum-passo-agent]");
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set.call(s, ${JSON.stringify(perfil)});
+      s.dispatchEvent(new Event("change", { bubbles: true }));
+      return null;
+    })()`);
+    await esperar("o resumo do agent", () => existe(`[data-locum-agent-resumo=${JSON.stringify(perfil)}]`));
+    const resumo = (await js(`document.querySelector("[data-locum-agent-resumo]").textContent`)) as string;
+    if (!resumo.includes("claude-sonnet-5") || !resumo.includes("Revise o diff")) throw new Error(`o resumo do agent veio assim: ${resumo}`);
+
+    // Abrir e criar agent abrem sobre o editor, sem trocar de tela.
+    for (const botao of ["[data-locum-passo-abrir-agent]", "[data-locum-passo-criar-agent]"]) {
+      await clicar(botao);
+      await esperar("o modal do agent", () => existe("[data-locum-probe=agent-modal]"));
+      if ((await rota()) !== `automations|${id}`) throw new Error(`o botão ${botao} tirou a janela de ${id}: ${await rota()}`);
+      await clicar("[data-locum-agent-modal-fechar]");
+      await esperar("o modal fechar", async () => !(await existe("[data-locum-probe=agent-modal]")));
+    }
+    if (!(await existe("[data-locum-probe=automacao-editor]"))) throw new Error("fechar o modal levou para fora do editor");
+
+    // Com edição pendente no agent, fechar o modal pergunta antes, e o atalho do menu passa pela pergunta do agent.
+    const { pedirNavegacao } = await import("./menu.js");
+    await clicar("[data-locum-passo-criar-agent]");
+    await esperar("o formulário do agent novo", () => existe("[data-locum-probe=agent-modal] [data-locum-agent-nome]"));
+    await js(`(() => {
+      const campo = document.querySelector("[data-locum-probe=agent-modal] [data-locum-agent-nome]");
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(campo, "Agent a meio");
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+      return null;
+    })()`);
+    await clicar("[data-locum-agent-modal-fechar]");
+    await esperar("a pergunta ao fechar o modal", () => existe("[data-locum-agent-saida]"));
+    if (!(await existe("[data-locum-probe=agent-modal]"))) throw new Error("o modal fechou antes de a pessoa responder");
+    await clicar("[data-locum-agent-saida-cancelar]");
+    await esperar("a pergunta fechar", async () => !(await existe("[data-locum-agent-saida]")));
+    await pedirNavegacao(window, "settings");
+    await esperar("a pergunta do agent pelo menu", () => existe("[data-locum-agent-saida]"));
+    if ((await rota()) !== `automations|${id}`) throw new Error(`o atalho do menu saiu para ${await rota()} com o modal do agent sujo`);
+    await clicar("[data-locum-agent-saida-cancelar]");
+    await clicar("[data-locum-agent-modal-fechar]");
+    await esperar("a pergunta ao fechar de novo", () => existe("[data-locum-agent-saida]"));
+    await clicar("[data-locum-agent-saida-descartar]");
+    await esperar("o modal fechar ao descartar", async () => !(await existe("[data-locum-probe=agent-modal]")));
+
+    // Instrução embutida: o select some e o passo deixa de apontar para o agent.
+    await clicar("[data-locum-passo-modo=inline]");
+    await esperar("a instrução embutida", async () => (await existe("[data-locum-prompt]")) && !(await existe("[data-locum-passo-agent]")));
+    await clicar("[data-locum-passo-modo=agent]");
+    await esperar("o select de volta", () => existe("[data-locum-passo-agent]"));
+    if (await existe("[data-locum-agent-resumo]")) throw new Error("o resumo do agent ficou depois de trocar para instrução embutida");
+  } finally {
+    await js(`(localStorage.removeItem(${JSON.stringify(`locum.rascunho-automacao.${id}`)}), null)`);
+    db.delete(schema.triggers).where(eq(schema.triggers.agentId, id)).run();
+    db.delete(schema.agentVersions).where(eq(schema.agentVersions.agentId, id)).run();
+    db.delete(schema.agents).where(eq(schema.agents.id, id)).run();
+    await libraryService.removeProfile(perfil).catch(() => undefined);
+  }
+}
+
+/**
+ * "Nova automação" não grava nada até o primeiro Salvar: abandonar o editor sem
+ * editar não deixa automação na lista. E salvar sobre uma versão mais nova (o
+ * MCP gravou no meio) abre a escolha entre recarregar e salvar por cima, e
+ * recarregar guarda as edições como rascunho reservado.
+ */
+async function checkAutomacaoNova(window: BrowserWindow): Promise<void> {
+  const { agentService } = await import("../src/services/agent-service.js");
+  const { automationService } = await import("../src/services/automation-service.js");
+  const { db, schema } = await import("../src/db/index.js");
+  const { eq } = await import("drizzle-orm");
+  const js = (codigo: string): Promise<unknown> => window.webContents.executeJavaScript(codigo);
+  const clicar = (seletor: string): Promise<boolean> =>
+    js(`(() => { const e = document.querySelector(${JSON.stringify(seletor)}); e?.click(); return e !== null; })()`) as Promise<boolean>;
+  const existe = (seletor: string): Promise<boolean> => js(`document.querySelector(${JSON.stringify(seletor)}) !== null`) as Promise<boolean>;
+  const rota = (): Promise<string> => js(`(() => { const p = document.querySelector("[data-locum-probe=rota]"); return p.dataset.ativo + "|" + p.dataset.detalhe; })()`) as Promise<string>;
+  const esperar = async (nome: string, ok: () => Promise<boolean>): Promise<void> => {
+    await esperarDoServico(nome, async () => ((await ok()) ? true : undefined), 5_000);
+  };
+  const digitarNome = (nome: string): Promise<unknown> =>
+    js(`(() => {
+      const campo = document.querySelector("[data-locum-probe=automacao-editor] header input");
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(campo, ${JSON.stringify(nome)});
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+      return null;
+    })()`);
+  const abrirNova = async (): Promise<string> => {
+    await irPara(window, "automations");
+    await esperar("a lista de automacoes", () => existe("[data-locum-automacao-nova]"));
+    await clicar("[data-locum-automacao-nova]");
+    await esperar("o formulario de nova automacao", () => existe("[data-locum-modelo=blank]"));
+    await clicar("[data-locum-modelo=blank]");
+    await clicar("[data-locum-automacao-criar]");
+    await esperar("o editor da automacao nova", () => existe("[data-locum-probe=automacao-editor]"));
+    const [, detalhe] = (await rota()).split("|");
+    return detalhe!;
+  };
+  const provisorias = (): Promise<number> =>
+    js(`Object.keys(localStorage).filter((k) => k.startsWith("locum.automacao-provisoria.")).length`) as Promise<number>;
+  let id = "";
+  try {
+    // Abandonada sem edicao: nada foi gravado, e a provisoria some.
+    id = await abrirNova();
+    if ((await agentService.get(id)) !== undefined) throw new Error("abrir uma automacao nova ja gravou o agent");
+    if (!(await existe("[data-locum-automacao-nova-aviso]"))) throw new Error("o editor nao disse que a automacao ainda nao foi gravada");
+    await clicar("[data-locum-rota=agents]");
+    await esperar("sair sem pergunta", async () => (await rota()).startsWith("agents|"));
+    if (await existe("[data-locum-saida]")) throw new Error("abandonar a automacao nova sem editar pediu confirmacao");
+    if ((await agentService.get(id)) !== undefined) throw new Error("abandonar a automacao nova deixou um agent para tras");
+    if ((await provisorias()) !== 0) throw new Error("abandonar a automacao nova deixou a provisoria");
+
+    // O primeiro Salvar cria.
+    id = await abrirNova();
+    await digitarNome("Automacao do exame");
+    await clicar("[data-locum-automacao-salvar]");
+    await esperar("a automacao criada", async () => (await agentService.get(id)) !== undefined);
+    await esperar("o editor ja gravado", async () => !(await existe("[data-locum-automacao-nova-aviso]")));
+    if ((await provisorias()) !== 0) throw new Error("salvar nao apagou a provisoria");
+
+    // O MCP grava no meio: salvar com a versao antiga e recusado, e recarregar guarda as edicoes.
+    const gravada = await automationService.get(id);
+    if (gravada === null) throw new Error("a automacao do exame sumiu");
+    await digitarNome("Edicao da tela");
+    await automationService.save({ spec: { ...gravada.version.spec, name: "Pelo MCP" }, triggers: [], note: "mcp" });
+    await clicar("[data-locum-automacao-salvar]");
+    await esperar("a escolha do conflito", () => existe("[data-locum-conflito]"));
+    if ((await automationService.get(id))?.version.spec.name !== "Pelo MCP") throw new Error("a tela gravou por cima da versao do MCP");
+    await clicar("[data-locum-conflito-recarregar]");
+    await esperar("o rascunho reservado depois de recarregar", () => existe("[data-locum-rascunho=reservado]"));
+    const nomeAgora = (await js(`document.querySelector("[data-locum-probe=automacao-editor] header input").value`)) as string;
+    if (nomeAgora !== "Pelo MCP") throw new Error(`recarregar trouxe "${nomeAgora}" e a versao gravada e "Pelo MCP"`);
+  } finally {
+    await js(`(Object.keys(localStorage).filter((k) => k.startsWith("locum.rascunho-automacao") || k.startsWith("locum.automacao-provisoria")).forEach((k) => localStorage.removeItem(k)), null)`);
+    if (id !== "") {
+      db.delete(schema.triggers).where(eq(schema.triggers.agentId, id)).run();
+      db.delete(schema.agentVersions).where(eq(schema.agentVersions.agentId, id)).run();
+      db.delete(schema.agents).where(eq(schema.agents.id, id)).run();
+    }
   }
 }
 
@@ -6939,6 +7339,149 @@ async function capturarSkills(janela: BrowserWindow): Promise<void> {
 }
 
 /**
+ * O editor de automação do modelo "Revisar PR do Teams", nos momentos em que
+ * as queixas apareceram: o gatilho com o modo de link de PR, o painel do passo
+ * de IA com agent da biblioteca, sair com mudança não salva e reabrir depois.
+ * `prefixo` separa as fotos de antes e de depois de uma mudança.
+ */
+async function capturarEditor(janela: BrowserWindow, destino: string, prefixo: string): Promise<void> {
+  const { libraryService } = await import("../src/services/library-service.js");
+  const pausa = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+  const foto = async (nome: string): Promise<void> => {
+    await pausa(500);
+    writeFileSync(join(destino, `${prefixo}${nome}.png`), (await janela.webContents.capturePage()).toPNG());
+  };
+  const js = (codigo: string): Promise<unknown> => janela.webContents.executeJavaScript(codigo);
+  const clicar = (seletor: string): Promise<boolean> =>
+    js(`(() => { const e = document.querySelector(${JSON.stringify(seletor)}); e?.click(); return e !== null; })()`) as Promise<boolean>;
+  const clicarTexto = (padrao: string): Promise<boolean> =>
+    js(`(() => { const b = [...document.querySelectorAll("button")].find((x) => new RegExp(${JSON.stringify(padrao)}, "i").test(x.textContent ?? "")); b?.click(); return b !== undefined; })()`) as Promise<boolean>;
+  const digitar = (seletor: string, texto: string): Promise<unknown> =>
+    js(`(() => {
+      const campo = document.querySelector(${JSON.stringify(seletor)});
+      if (campo === null) return null;
+      Object.getOwnPropertyDescriptor(campo instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, "value").set.call(campo, ${JSON.stringify(texto)});
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+      return null;
+    })()`);
+
+  // O armazém da janela sobrevive entre execuções: rascunho de uma captura anterior apareceria na foto.
+  await js(`(localStorage.clear(), sessionStorage.clear(), null)`);
+
+  const revisor = "captura-revisor-de-pr";
+  await libraryService.saveProfile({
+    spec: {
+      id: revisor,
+      name: "Revisor de PR",
+      description: "Lê o diff e aponta defeito real.",
+      model: "claude-code/claude-sonnet-5",
+      instructions: "Revise o pull request em busca de defeito real, não de estilo.\nCite o arquivo e a linha.\nSe não achou nada, diga isso em uma frase.\nNunca aprove sem ter lido o diff inteiro.",
+      connections: [{ connectionId: "github", tools: {} }],
+      skills: [],
+      budget: {},
+    },
+    create: true,
+  });
+  try {
+    await irPara(janela, "automations");
+    await pausa(1200);
+    await clicar("[data-locum-automacao-nova]");
+    await pausa(600);
+    await clicar("[data-locum-modelo=teamsPrReview]");
+    await pausa(300);
+    await clicar("[data-locum-automacao-criar]");
+    await pausa(1800);
+    const agentId = (await js(`document.querySelector("[data-locum-probe=rota]")?.dataset.detalhe ?? ""`)) as string;
+    if (agentId === "") throw new Error("a captura do editor não criou a automação");
+
+    // Gatilho: o nome do nó e o painel.
+    await clicar("[data-locum-no-automacao^=gatilho-]");
+    await pausa(600);
+    await foto("editor-1-gatilho");
+    await js(`(document.querySelector("[data-locum-painel]")?.scrollTo(0, 99999), null)`);
+    await foto("editor-3-gatilho-rolado");
+
+    // Passo de IA com o agent da biblioteca.
+    await clicar("[data-locum-no-automacao=revisar]");
+    await pausa(600);
+    await foto("editor-5-passo-de-ia");
+
+    // Mudança não salva e saída pela barra lateral.
+    await digitar("[data-locum-probe=automacao-editor] header input", "Revisar PR do Teams (editado)");
+    await pausa(600);
+    await clicar("[data-locum-rota=agents]");
+    await pausa(1000);
+    await foto("editor-2-sair-com-mudanca");
+    await clicar("[data-locum-saida-cancelar]");
+    await pausa(300);
+
+    // Reabrir, como depois de uma queda da janela.
+    await irPara(janela, "agents");
+    await pausa(600);
+    await irPara(janela, "automations", agentId);
+    await pausa(1500);
+    await foto("editor-2c-reaberto");
+    await clicar("[data-locum-rascunho-continuar]");
+    await pausa(500);
+    await foto("editor-2d-rascunho-retomado");
+
+    // O botão do passo de IA que levava a Agents.
+    await clicar("[data-locum-no-automacao=revisar]");
+    await pausa(500);
+    if (!(await clicar("[data-locum-passo-abrir-agent]"))) await clicarTexto("Abrir na biblioteca");
+    await pausa(1500);
+    await foto("editor-6-abrir-agent");
+    await clicar("[data-locum-agent-modal-fechar]");
+    await pausa(500);
+    await clicar("[data-locum-passo-criar-agent]");
+    await pausa(1200);
+    await foto("editor-7-criar-agent");
+    await clicar("[data-locum-agent-modal-fechar]");
+    await pausa(500);
+
+    // As listas de chats e de canais do Teams.
+    await irPara(janela, "automations", agentId);
+    await pausa(1500);
+    // O smoke não alcança o Graph: a lista entra pelo cache da janela, que é por onde ela chega depois da primeira leitura.
+    const { TriggerService } = await import("../src/services/trigger-service.js");
+    const { db } = await import("../src/db/index.js");
+    const gatilhoId = (await new TriggerService(db).list(agentId))[0]?.id;
+    const chats = ["Ana Souza", "Bruno Lima", "Integrados - Devs", "Integrados - Plataforma", "Time de revisão", "Carla Mendes", "Squad Seguros", "Diego Alves"].map((label, i) => ({
+      chatId: `19:chat-${i}`,
+      label,
+      chatType: i % 3 === 1 ? "group" : "oneOnOne",
+    }));
+    const canais = ["Integrados", "Plataforma"].flatMap((equipe, e) =>
+      ["geral", "deploys", "revisao"].map((canal, c) => ({ teamId: `t${e}`, teamName: equipe, channelId: `c${e}${c}`, channelName: canal })),
+    );
+    await js(`(() => {
+      sessionStorage.setItem(${JSON.stringify(await chaveDoCacheDoTeams("chats", { id: gatilhoId, agentId, chave: "gatilho-1" }))}, JSON.stringify({ em: Date.now(), dados: ${JSON.stringify(chats)} }));
+      sessionStorage.setItem(${JSON.stringify(await chaveDoCacheDoTeams("canais"))}, JSON.stringify({ em: Date.now(), dados: ${JSON.stringify(canais)} }));
+      return null;
+    })()`);
+    await irPara(janela, "agents");
+    await irPara(janela, "automations", agentId);
+    await pausa(1500);
+    await clicar("[data-locum-rascunho-descartar]");
+    await clicar("[data-locum-no-automacao^=gatilho-]");
+    await pausa(600);
+    await foto("editor-4-lista-de-chats");
+    await clicar("[data-locum-combobox=teams-chats] input");
+    await pausa(500);
+    await foto("editor-4b-chats-aberta");
+    await js(`(document.querySelector("[data-locum-combobox=teams-chats] input").dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })), null)`);
+    await js(`(document.querySelector("[data-locum-combobox=teams-chats] input").dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })), null)`);
+    await pausa(400);
+    await clicar("[data-locum-combobox=teams-canais] input");
+    await pausa(500);
+    await foto("editor-4c-canais-aberta");
+  } finally {
+    await libraryService.removeProfile(revisor).catch(() => undefined);
+  }
+  console.log(`capturas do editor em ${destino}`);
+}
+
+/**
  * Fotografa cada destino, para que a interface possa ser olhada e não só
  * descrita por linha de log.
  *
@@ -6950,6 +7493,12 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
   const destino = flagValue("--capturas-em") ?? join(process.cwd(), "capturas");
   mkdirSync(destino, { recursive: true });
   janela.setSize(1280, 860);
+
+  // `--capturas-so editor` fotografa só o editor de automação, para comparar antes e depois de uma mudança.
+  if (flagValue("--capturas-so") === "editor") {
+    await capturarEditor(janela, destino, flagValue("--capturas-prefixo") ?? "");
+    return;
+  }
 
   // O detalhe de execução e o assistente também entram: eles são metade do
   // aplicativo e não apareciam em captura nenhuma, que é como a lista de

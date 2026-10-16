@@ -249,9 +249,11 @@ export class AgentService {
     guarded: { spec: AgentSpec; downgrades: ActionDowngrade[] },
     latest: AgentVersionRow | undefined,
     note?: string,
+    expectedVersion?: number,
   ): Promise<AgentVersion> {
     const parsed = guarded.spec;
     refuseReserved(parsed.id);
+    if (expectedVersion !== undefined) assertVersion(latest?.version, expectedVersion);
     if (latest && sameSpec(latest.spec, parsed)) {
       return { ...parseVersion(latest), downgrades: guarded.downgrades };
     }
@@ -262,6 +264,17 @@ export class AgentService {
     // servidor MCP grava a mesma versão em paralelo, não pode deixar para trás
     // um agent sem spec, que `get` daria por existente.
     const inserted = this.db.transaction((tx) => {
+      if (expectedVersion !== undefined) {
+        // A conferência junto da gravação: uma versão que entrou entre a leitura e aqui não passa.
+        const gravada = tx
+          .select({ version: schema.agentVersions.version })
+          .from(schema.agentVersions)
+          .where(eq(schema.agentVersions.agentId, parsed.id))
+          .orderBy(desc(schema.agentVersions.version))
+          .limit(1)
+          .get();
+        assertVersion(gravada?.version, expectedVersion);
+      }
       tx.insert(schema.agents)
         .values({ id: parsed.id, name: parsed.name })
         .onConflictDoUpdate({
@@ -327,14 +340,15 @@ export class AgentService {
    * subir o modo de um passo de ação. A nota é obrigatória porque é o que o
    * histórico mostra, e versão sem motivo é versão que ninguém entende depois.
    */
-  async saveEdited(agentId: string, spec: AgentSpec, note: string): Promise<AgentVersion> {
+  async saveEdited(agentId: string, spec: AgentSpec, note: string, expectedVersion?: number): Promise<AgentVersion> {
     const motivo = note.trim();
     if (motivo.length === 0) throw new Error("diga o que mudou: a nota vira o registro da versão");
     if (spec.id !== agentId) {
       throw new Error(`o spec diz ser "${spec.id}" e a tela editava "${agentId}"`);
     }
     if (!(await this.get(agentId))) throw new Error(`agent "${agentId}" não existe`);
-    return this.upsert(spec, motivo, "human");
+    const parsed = AgentSpec.parse(spec);
+    return this.write({ spec: parsed, downgrades: [] }, await this.latestRow(parsed.id), motivo, expectedVersion);
   }
 
   /**
@@ -547,6 +561,15 @@ export class AgentService {
       .limit(1);
     return row;
   }
+}
+
+/** A recusa de gravar sobre uma versão que não é a esperada. */
+export function mensagemDeVersao(esperada: number, gravada: number): string {
+  return `a automação mudou desde a v${esperada} (agora está na v${gravada}). Recarregue para ver o que entrou, ou salve por cima.`;
+}
+
+function assertVersion(gravada: number | undefined, esperada: number): void {
+  if (gravada !== undefined && gravada !== esperada) throw new Error(mensagemDeVersao(esperada, gravada));
 }
 
 function parseVersion(row: AgentVersionRow): AgentVersion {

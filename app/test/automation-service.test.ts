@@ -124,3 +124,88 @@ test("zerar chatsPendentes sem valerParaTodosOsChats recusa antes de gravar o sp
   assert.equal(atual?.version.version, 1);
   assert.equal((atual?.triggers[0]?.config as { chatsPendentes: number }).chatsPendentes, 2);
 });
+
+test("salvar com a versão esperada recusa quando a gravada é outra, e sem ela segue como antes", async () => {
+  const { automations } = montar();
+  await automations.save({ spec, triggers: [], note: "", create: true });
+  // Outro chamador (o MCP, por exemplo) grava a v2 sem versão esperada.
+  await automations.save({ spec: { ...spec, name: "Pelo MCP" }, triggers: [], note: "mcp" });
+
+  await assert.rejects(
+    automations.save({ spec: { ...spec, name: "Da tela" }, triggers: [], note: "tela", expectedVersion: 1 }),
+    /mudou.*v1.*v2/,
+  );
+  const atual = await automations.get(spec.id);
+  assert.equal(atual?.version.version, 2);
+  assert.equal(atual?.version.spec.name, "Pelo MCP");
+
+  const ok = await automations.save({ spec: { ...spec, name: "Da tela" }, triggers: [], note: "tela", expectedVersion: 2 });
+  assert.equal(ok.version.version, 3);
+});
+
+test("a versão esperada é conferida antes de qualquer escrita, inclusive dos gatilhos", async () => {
+  const { automations } = montar();
+  await automations.save({ spec, triggers: [], note: "", create: true });
+  await automations.save({ spec: { ...spec, name: "v2" }, triggers: [], note: "v2" });
+  await assert.rejects(
+    automations.save({ spec, triggers: [{ config: { kind: "slack-channel", channels: ["C1"] } }], note: "x", expectedVersion: 1 }),
+    /mudou/,
+  );
+  assert.equal((await automations.get(spec.id))?.triggers.length, 0);
+});
+
+test("a leitura da automação traz quando o agent nasceu, para o rascunho reconhecer id reaproveitado", async () => {
+  const { automations } = montar();
+  await automations.save({ spec, triggers: [], note: "", create: true });
+  const lida = await automations.get(spec.id);
+  assert.equal(typeof lida?.createdAt, "number");
+});
+
+test("duas gravações da mesma base em paralelo: uma passa, e a outra recebe o aviso de que a automação mudou", async () => {
+  const { automations } = montar();
+  await automations.save({ spec, triggers: [], note: "", create: true });
+  const resultados = await Promise.allSettled([
+    automations.save({ spec: { ...spec, name: "Da tela A" }, triggers: [], note: "a", expectedVersion: 1 }),
+    automations.save({ spec: { ...spec, name: "Da tela B" }, triggers: [], note: "b", expectedVersion: 1 }),
+  ]);
+  assert.deepEqual(resultados.map((r) => r.status).sort(), ["fulfilled", "rejected"]);
+  const recusada = resultados.find((r) => r.status === "rejected") as PromiseRejectedResult;
+  assert.match(String(recusada.reason), /mudou desde a v1/);
+  assert.equal((await automations.get(spec.id))?.version.version, 2);
+});
+
+test("salvar sem dizer enabled mantém o ligado que entrou depois da base, pelo MCP ou pela lista", async () => {
+  const { automations } = montar();
+  const criada = await automations.save({ spec, triggers: [{ config: { kind: "manual" } }], note: "", create: true });
+  await automations.setEnabled(spec.id, true); // não cria versão
+  const salva = await automations.save({
+    spec: { ...spec, name: "Outro nome" },
+    triggers: [{ id: criada.triggers[0]!.id, config: { kind: "manual" } }],
+    note: "troca o nome",
+    expectedVersion: 1,
+  });
+  assert.equal(salva.triggers[0]?.enabled, true);
+});
+
+test("com knownTriggerIds, o gatilho criado por fora depois que o editor abriu fica, e o que a pessoa tirou sai", async () => {
+  const { automations, triggers } = montar();
+  const criada = await automations.save({
+    spec,
+    triggers: [{ config: { kind: "manual" } }, { config: { kind: "cron", expression: "0 9 * * 1-5" } }],
+    note: "",
+    create: true,
+  });
+  const manual = criada.triggers.find((g) => g.config.kind === "manual")!;
+  const cron = criada.triggers.find((g) => g.config.kind === "cron")!;
+  // Pelo MCP, sem versão nova, com o editor aberto.
+  const deFora = await triggers.set(spec.id, { kind: "cron", expression: "0 18 * * 1-5" });
+
+  const salva = await automations.save({
+    spec: { ...spec, name: "Outro nome" },
+    triggers: [{ id: manual.id, config: { kind: "manual" } }],
+    note: "tira o cron",
+    expectedVersion: 1,
+    knownTriggerIds: [manual.id, cron.id],
+  });
+  assert.deepEqual(salva.triggers.map((g) => g.id).sort(), [manual.id, deFora.id].sort());
+});

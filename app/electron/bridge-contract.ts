@@ -895,6 +895,13 @@ export const TERMINAL_EVENT_CHANNEL = "terminal:event";
 /** O `UpdaterState` inteiro, empurrado a cada mudança de fase ou de porcentagem. */
 export const UPDATES_EVENT_CHANNEL = "updates:event";
 
+/**
+ * O menu pede à janela que navegue. A janela passa pelo mesmo `navegar` dos
+ * cliques, e com isso pela guarda de saída do editor: escrever o hash por fora
+ * dela perderia a edição que a confirmação existe para proteger.
+ */
+export const MENU_NAVEGAR_CHANNEL = "menu:navegar";
+
 /** O nome sob o qual o preload pendura a ponte na janela. */
 export const BRIDGE_GLOBAL = "locum";
 

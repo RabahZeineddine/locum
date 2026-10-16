@@ -1971,7 +1971,10 @@
       "steps_other": "{{count}} steps",
       "never": "never ran",
       "lastRun": "last: {{status}}",
-      "noTrigger": "no trigger"
+      "noTrigger": "no trigger",
+      "draft": "Draft, not saved",
+      "draftOpen": "Open",
+      "draftDiscard": "Discard"
     },
     "new": {
       "title": "New automation",
@@ -1982,7 +1985,8 @@
       "creating": "creating...",
       "cancel": "Cancel",
       "tracker": "Where to open the task",
-      "trackerNone": "No tracker registered. You can pick one later, on the task node."
+      "trackerNone": "No tracker registered. You can pick one later, on the task node.",
+      "noStorage": "Could not keep the template on this computer to open the editor."
     },
     "templates": {
       "teamsPrReview": {
@@ -2034,7 +2038,74 @@
       "asList": "View as list",
       "problems_one": "{{count}} thing to check",
       "problems_other": "{{count}} things to check",
-      "blocked": "Fix the marked points to save."
+      "blocked": "Fix the marked points to save.",
+      "exit": {
+        "title": "Leave with unsaved changes?",
+        "body": "This automation has changes that have not been saved yet.",
+        "save": "Save and leave",
+        "discard": "Discard and leave",
+        "cancel": "Cancel",
+        "blocked": "Some points need fixing, so it cannot be saved now."
+      },
+      "draft": {
+        "found": "There is an unsaved draft of this automation, from {{quando}}.",
+        "continue": "Continue draft",
+        "discard": "Discard",
+        "autosaved": "Draft kept on this computer",
+        "continueAnyway": "Continue anyway",
+        "baseChanged": "The automation changed since the draft (v{{de}} → v{{para}}).",
+        "diff": "See differences",
+        "hideDiff": "Hide differences",
+        "diffNone": "No difference in steps or triggers.",
+        "diffSteps": "Steps",
+        "diffTriggers": "Triggers",
+        "kind": {
+          "novo": "new",
+          "removido": "removed",
+          "alterado": "changed"
+        },
+        "reserved": "You started from the saved version. The draft from {{quando}} was kept aside.",
+        "continueReserved": "Continue the kept draft",
+        "discardReserved": "Discard the kept draft",
+        "swap": {
+          "title": "Replace your current edits?",
+          "body": "The kept draft takes the place of what you just edited, and the current edits will be discarded.",
+          "confirm": "Replace"
+        },
+        "mine": "Your changes",
+        "byOutside": "Changed elsewhere since the draft",
+        "conflicts": "Changed on both sides: pick which one stays",
+        "keepMine": "Keep mine",
+        "keepOutside": "Keep the other",
+        "storageFull": "Could not store the draft on this computer: if the window closes, your edits are lost."
+      },
+      "conflict": {
+        "title": "The automation changed",
+        "body": "While you were editing, it was saved again (v{{de}} → v{{para}}).",
+        "reload": "Reload",
+        "reloadHint": "Brings the saved version and keeps your edits as a kept draft.",
+        "overwrite": "Save over it",
+        "confirmOverwrite": "Confirm: replace v{{para}}",
+        "cancel": "Cancel",
+        "undoTitle": "This from v{{para}} will be undone:",
+        "undoNone": "Nothing from v{{para}} will be undone."
+      },
+      "notCreated": "Not saved yet: the first Save creates the automation.",
+      "newId": {
+        "taken": "An automation with the id \"{{id}}\" already exists. Save writes this one as \"{{novo}}\" and keeps the draft until then.",
+        "save": "Save as {{id}}"
+      },
+      "localDraft": {
+        "found": "There is a draft of a new automation with this id that was never saved.",
+        "open": "Open the draft",
+        "discard": "Discard the draft"
+      },
+      "link": {
+        "failed": "The automation was created, but linking it to the initiative failed: {{erro}}",
+        "retry": "Try again",
+        "done": "Linked to the initiative.",
+        "pending": "The automation was created, but it is not linked to the initiative yet."
+      }
     },
     "palette": {
       "title": "Components",
@@ -2084,7 +2155,8 @@
       },
       "autoHint": "Goes out on its own, skipping the queue. Use it once you trust what this flow sends.",
       "approvalOnly": "This action always waits in the queue for your approval.",
-      "variablesFocused": "Click to insert into the selected field:"
+      "variablesFocused": "Click to insert into the selected field:",
+      "help": "Learn more"
     },
     "triggers": {
       "manual": {
@@ -2153,43 +2225,57 @@
       },
       "slack-inbox": {
         "title": "Slack mention or DM",
-        "summary": "mentions and DMs",
         "mentions": "Mentions of you",
-        "dms": "Direct messages"
+        "dms": "Direct messages",
+        "titles": {
+          "m": "Mention in Slack",
+          "d": "DM in Slack",
+          "md": "Mention or DM in Slack",
+          "none": "Slack with no mode on"
+        }
       },
       "teams-inbox": {
         "title": "Teams mention or DM",
-        "summary": "mentions and chats",
         "mentions": "Mentions of you",
         "dms": "Direct chats",
         "prLinks": "Message with a PR link",
-        "filtroIa": "AI filter (optional)",
+        "filtroIa": "AI filter",
         "filtroIaPlaceholder": "Is this a request for a pull request review?",
         "filtroIaModeloAuto": "This machine's Haiku (default)",
         "filtroIaHint": "Each message that passes the trigger filters is read by a cheap model before waking the agent. If the answer is no, the message is left out and the reason shows in the discards. If the model fails, the message waits for the next poll and, on the third failure in a row, goes through without the filter, with a warning. A message edited after being discarded does not come back. At most 20 per poll.",
         "discards": "Latest discarded messages",
-        "channels": "Team channels (mention or PR link wakes it)",
+        "channels": "Team channels",
         "search": "Search team or channel",
-        "noMatch": "No channel matches \"{{termo}}\".",
         "countOf": "{{marked}} of {{total}} selected",
-        "list": "List channels",
-        "loading": "Reading channels...",
-        "channelsHintVia": "Teams comes through {{server}}, which already brings channels. Each channel is one call per beat.",
-        "channelsHint": "Turn on channels in the Teams connection, under Connections. Each channel is one Graph call per beat.",
-        "chats": "Only these chats (empty = all chats)",
+        "channelsHintVia": "A mention or PR link in these channels wakes the agent. Teams comes through {{server}}, which already brings channels. Each channel is one call per tick.",
+        "channelsHint": "A mention or PR link in these channels wakes the agent. Turn on channels in the Teams connection, under Connections. Each channel is one Graph call per tick.",
+        "chats": "Chats",
         "searchChats": "Search chat or person",
-        "noMatchChats": "No chat with \"{{termo}}\".",
-        "listChats": "List chats",
-        "loadingChats": "Reading chats...",
         "chatsHint": "Empty means every group and direct chat. With chats picked, direct messages, PR links and mentions only count in them, the others are not even read, and mentions in meeting chats stop counting.",
-        "summaryChats": "mentions and chats · {{count}} chats",
-        "reloadChats": "Reload list",
-        "chatsMax": "The maximum is {{max}} chats. Untick one to pick another.",
         "chatsPending": "This trigger was limited to chats in the package. Pick the chats before turning it on: empty would mean all of them.",
         "chatsAll": "Apply to all chats",
         "chatType": {
           "oneOnOne": "1:1",
           "group": "group"
+        },
+        "titles": {
+          "m": "Mention in Teams",
+          "d": "DM in Teams",
+          "md": "Mention or DM in Teams",
+          "p": "PR link in Teams",
+          "mp": "Mention or PR link in Teams",
+          "dp": "DM or PR link in Teams",
+          "mdp": "Mention, DM or PR link in Teams",
+          "none": "Teams with no mode on"
+        },
+        "scope": {
+          "all": "all conversations",
+          "channels_one": "{{count}} channel",
+          "channels_other": "{{count}} channels",
+          "chats_one": "{{count}} chat",
+          "chats_other": "{{count}} chats",
+          "chats_zero": "{{count}} chats",
+          "channels_zero": "{{count}} channels"
         }
       },
       "poll": {
@@ -2253,10 +2339,29 @@
         "task": "Task for this step",
         "taskHint": "What the agent does here. Who it is, the model and the tools come from the library.",
         "choose": "Agent",
-        "open": "Open in library",
+        "open": "Open agent",
         "none": "No agent in the library.",
         "toLibrary": "Turn into a library agent",
-        "toLibraryHint": "Moves model and tools into a new agent that other automations can use. This step's text becomes the task."
+        "toLibraryHint": "Moves model and tools into a new agent that other automations can use. This step's text becomes the task.",
+        "modes": {
+          "agent": "Agent",
+          "inline": "Inline instruction"
+        },
+        "pick": "Pick an agent",
+        "stillInline": "The step keeps its inline instruction until you pick an agent.",
+        "create": "Create agent",
+        "summary": {
+          "model": "Model",
+          "tools": "Tools",
+          "noTools": "none",
+          "single_one": "{{count}} single",
+          "single_other": "{{count}} single",
+          "single_zero": "{{count}} single",
+          "toolsets_one": "{{count}} toolset",
+          "toolsets_other": "{{count}} toolsets",
+          "toolsets_zero": "{{count}} toolsets",
+          "edit": "Edit in library"
+        }
       },
       "mcp.call": {
         "title": "App action",
@@ -2440,6 +2545,18 @@
       "link": "Legacy (read only)",
       "lead": "Automations from the model before the new concept, for reference only. To create one, open Automations; agents live in Agents.",
       "empty": "No automation from the old model."
+    },
+    "agentModal": {
+      "title": "Library agent",
+      "close": "Close"
+    },
+    "combobox": {
+      "remove": "Remove {{item}}",
+      "loading": "Loading the list...",
+      "noMatch": "Nothing matches \"{{termo}}\".",
+      "full": "Limit of {{max}} reached. Remove one to pick another.",
+      "keys": "↑ ↓ Enter Esc",
+      "refresh": "Refresh"
     }
   },
   "library": {
@@ -2528,7 +2645,14 @@
         "usage": "Where does it work today? The automations that call it, and removal, which only works when unused."
       },
       "shortcuts": "Shortcuts: toolsets and extra tools",
-      "shortcutsHint": "The older way of giving tools. It still works and adds to the connections. Read only: anything that writes outside is an action node in the automation."
+      "shortcutsHint": "The older way of giving tools. It still works and adds to the connections. Read only: anything that writes outside is an action node in the automation.",
+      "exit": {
+        "title": "Leave with unsaved changes?",
+        "body": "This agent has changes that were not saved yet.",
+        "save": "Save and leave",
+        "discard": "Discard and leave",
+        "cancel": "Cancel"
+      }
     },
     "toolsets": {
       "lead": "A toolset groups tools from one or more apps. An agent that includes the toolset gets all of them.",

@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import type { AppDoComponente } from "@/lib/automacao";
 import { descreverCron } from "@/lib/descricao-do-cron";
+import { escopoDoTeams, tituloDoGatilho } from "@/lib/titulo-do-gatilho";
 import type { TriggerConfig } from "../../../src/config/types";
 
 /**
@@ -108,7 +109,7 @@ export function Selo({ app, id, tamanho = "md" }: { app: AppDoComponente; id: st
 
 /**
  * A frase curta de um gatilho: "a cada 15 min", "2 canais", "Dias úteis às
- * 09:00 · cron 0 9 * * 1-5". O cron leva a frase junto quando dá para dizer.
+ * 09:00 · cron 0 9 * * 1-5". Vazia quando o título já diz tudo. O cron leva a frase junto quando dá para dizer.
  */
 export function resumoDoGatilho(t: TFunction, config: TriggerConfig, idioma: string): string {
   switch (config.kind) {
@@ -125,11 +126,9 @@ export function resumoDoGatilho(t: TFunction, config: TriggerConfig, idioma: str
     case "slack-channel":
       return t("automations.triggers.slack-channel.summary", { count: config.channels.length });
     case "slack-inbox":
-      return t("automations.triggers.slack-inbox.summary");
+      return "";
     case "teams-inbox":
-      return config.chats.length === 0
-        ? t("automations.triggers.teams-inbox.summary")
-        : t("automations.triggers.teams-inbox.summaryChats", { count: config.chats.length });
+      return escopoDoTeams(t, config);
     case "poll":
       return t("automations.triggers.poll.summary", { owner: config.owner ?? "", repo: config.repoMatch });
     case "webhook":
@@ -139,9 +138,7 @@ export function resumoDoGatilho(t: TFunction, config: TriggerConfig, idioma: str
   }
 }
 
-export function tituloDoGatilho(t: TFunction, config: TriggerConfig): string {
-  return t(`automations.triggers.${config.kind}.title`);
-}
+export { tituloDoGatilho };
 
 /** Título do componente de passo, com a ação crua para o que a paleta não conhece. */
 export function tituloDoPasso(t: TFunction, id: string): string {

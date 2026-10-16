@@ -123,6 +123,25 @@ export function caminhosDe(passo: Step | undefined): string[] {
 /* ---------------------------------------------------------------- edição */
 
 /**
+ * O passo de IA chamando um agent da biblioteca.
+ *
+ * Com `profile`, o `model` do passo é ignorado pelo executor, e por isso a
+ * escolha do agent não toca nele: assim a volta para a instrução embutida
+ * encontra o modelo que a pessoa tinha. O nome acompanha a troca só quando
+ * ainda era o do agent antigo, e nome escrito à mão fica.
+ */
+export function passoComAgent(passo: PassoDeIA, escolhido: { id: string; name: string }, nomeDoAntigo = ""): PassoDeIA {
+  const nome = passo.name === nomeDoAntigo || passo.name.trim() === "" ? escolhido.name : passo.name;
+  return { ...passo, profile: escolhido.id, name: nome };
+}
+
+/** De volta à instrução embutida: tira só o `profile`, e prompt, tools e model seguem como estavam. */
+export function passoSemAgent(passo: PassoDeIA): PassoDeIA {
+  const { profile: _profile, ...resto } = passo;
+  return resto;
+}
+
+/**
  * Liga dois passos: `destino` passa a esperar `origem`.
  *
  * Devolve o erro em vez de lançar, para o canvas mostrar ao lado da seta. Seta

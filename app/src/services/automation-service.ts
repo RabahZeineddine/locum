@@ -1,5 +1,5 @@
 import { TriggerConfig, type AgentSpec, type TriggerConfigInput } from "../config/types.js";
-import { agentService, ID_DE_AGENT, isReserved, type AgentService, type AgentVersion } from "./agent-service.js";
+import { agentService, ID_DE_AGENT, mensagemDeVersao, isReserved, type AgentService, type AgentVersion } from "./agent-service.js";
 import { executionService, type ExecutionService } from "./execution-service.js";
 import { esperaChats, MOTIVO_CHATS, recusaDaGravacao, triggerService, type TriggerEntry, type TriggerService } from "./trigger-service.js";
 
@@ -23,10 +23,24 @@ export interface AutomationSaveInput {
   note: string;
   /** Verdadeiro para automação nova: recusa se o id já existir. */
   create?: boolean;
+  /**
+   * A versão gravada sobre a qual a edição começou. O canvas manda; o MCP e os
+   * outros chamadores não precisam. Com ela, gravar sobre uma versão mais nova
+   * é recusado em vez de passar por cima do que entrou no meio.
+   */
+  expectedVersion?: number;
+  /**
+   * Os gatilhos que quem grava tinha na mão. Com a lista, só esses podem ser
+   * removidos por terem ficado de fora: um gatilho criado por fora depois que o
+   * editor abriu fica. Sem ela, a lista de `triggers` é a lista inteira.
+   */
+  knownTriggerIds?: string[];
 }
 
 export interface Automation {
   version: AgentVersion;
+  /** Quando o agent nasceu: um id reaproveitado depois de apagado tem outra data. */
+  createdAt: number;
   triggers: TriggerEntry[];
 }
 
@@ -52,12 +66,19 @@ export class AutomationService {
   async get(agentId: string): Promise<Automation | null> {
     if (isReserved(agentId)) return null;
     const version = await this.agents.getLatestVersion(agentId);
-    if (version === undefined) return null;
-    return { version, triggers: await this.triggers.list(agentId) };
+    const agent = await this.agents.get(agentId);
+    if (version === undefined || agent === undefined) return null;
+    return { version, createdAt: agent.createdAt, triggers: await this.triggers.list(agentId) };
   }
 
   async save(input: AutomationSaveInput): Promise<Automation> {
     const agentId = input.spec.id;
+    // Primeiro, para a recusa por versão valer sobre as dos gatilhos (um gatilho que sumiu junto com a versão
+    // nova é efeito dela). A conferência que vale é a de dentro da transação que grava, em `saveEdited`.
+    if (input.expectedVersion !== undefined && input.create !== true) {
+      const gravada = (await this.agents.getLatestVersion(agentId))?.version;
+      if (gravada !== undefined && gravada !== input.expectedVersion) throw new Error(mensagemDeVersao(input.expectedVersion, gravada));
+    }
     // Antes de qualquer escrita: um gatilho inválido não pode deixar para
     // trás um spec novo gravado com os gatilhos antigos.
     for (const gatilho of input.triggers) TriggerConfig.parse(gatilho.config);
@@ -89,7 +110,8 @@ export class AutomationService {
       const nota = input.note.trim() || "criada no canvas";
       version = await this.agents.upsert(input.spec, nota, "human");
     } else {
-      version = await this.agents.saveEdited(agentId, input.spec, input.note);
+      // A versão esperada é conferida dentro da transação que grava a versão nova.
+      version = await this.agents.saveEdited(agentId, input.spec, input.note, input.expectedVersion);
     }
 
     const mantidos = new Set<string>();
@@ -102,10 +124,12 @@ export class AutomationService {
       mantidos.add(salvo.id);
     }
     for (const antigo of atuais) {
-      if (!mantidos.has(antigo.id)) await this.triggers.remove(antigo.id);
+      if (mantidos.has(antigo.id)) continue;
+      if (input.knownTriggerIds !== undefined && !input.knownTriggerIds.includes(antigo.id)) continue;
+      await this.triggers.remove(antigo.id);
     }
 
-    return { version, triggers: await this.triggers.list(agentId) };
+    return { version, createdAt: (await this.agents.get(agentId))!.createdAt, triggers: await this.triggers.list(agentId) };
   }
 
   /**

@@ -7,6 +7,8 @@ import {
   ehGatilho,
   FORMATOS,
   formatoDe,
+  passoComAgent,
+  passoSemAgent,
   trocarPasso,
   variaveis,
   type AgentDaBiblioteca,
@@ -17,20 +19,24 @@ import {
   type Rascunho,
 } from "@/lib/automacao";
 import { call, useRead, type ReadResult } from "@/lib/bridge";
+import { chaveDaListaDoTeams } from "@/lib/cache-de-lista";
 import { organizarCanais } from "@/lib/canais-do-teams";
 import { organizarChats } from "@/lib/chats-do-teams";
 import { cn } from "@/lib/utils";
-import { Search, Trash2, X } from "lucide-react";
+import { Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { LogicCompare, type LogicStep, type TriggerConfig } from "../../../src/config/types";
 import { parseCron, proximaOcorrencia } from "../../../src/triggers/cron";
 import { PROVEDORES_FORA_DO_FILTRO } from "../../../src/config/filtro-ia";
 import { descreverCron } from "@/lib/descricao-do-cron";
+import { resumoDoAgent } from "@/lib/resumo-do-agent";
 import { SeletorDeFerramentas, SeletorDeModelo, useCatalogo } from "../editor-agent";
 import type { RotaId } from "../rotas";
-import { Alternador, Campo, CAMPO, Minutos } from "./campos";
+import { Ajuda, Alternador, Campo, CAMPO, Minutos } from "./campos";
+import { ComboboxComChips, useListaEmCache, type OpcaoDoCombobox } from "./combobox";
 import { GatilhoDoGithub, ListaDeDescartes } from "./gatilho-github";
+import { escopoDoGatilho } from "@/lib/titulo-do-gatilho";
 import { appDoGatilho, appDoPasso, Selo, tituloDoGatilho, tituloDoPasso } from "./visual";
 
 type Tracker = ReadResult<"trackers.list">[number];
@@ -56,11 +62,14 @@ export function PainelDoNo({
   remover,
   fechar,
   navegar,
+  abrirAgent,
   relerBiblioteca,
 }: {
   chave: string;
   agents: readonly AgentDaBiblioteca[];
   navegar: (id: RotaId, detalhe?: string) => void;
+  /** Abre o agent da biblioteca num modal, sem sair do editor. */
+  abrirAgent: AbrirAgent;
   relerBiblioteca: () => Promise<void>;
   rascunho: Rascunho;
   setRascunho: (f: (r: Rascunho) => Rascunho) => void;
@@ -74,12 +83,16 @@ export function PainelDoNo({
   const passo = ehGatilho(chave) ? undefined : rascunho.spec.steps.find((p) => p.key === chave);
   if (gatilho === undefined && passo === undefined) return null;
 
+  // A descrição longa do componente vai no ⓘ do cabeçalho, e não num parágrafo acima dos campos.
+  const chaveDaAjuda = gatilho !== undefined ? `automations.triggers.${gatilho.config.kind}.help` : `automations.steps.${componenteDoPasso(passo!)}.description`;
+  const ajudaDoNo = i18n.exists(chaveDaAjuda) ? t(chaveDaAjuda) : null;
+
   const cabecalho =
     gatilho !== undefined
-      ? { app: appDoGatilho(gatilho.config.kind), id: gatilho.config.kind, titulo: tituloDoGatilho(t, gatilho.config) }
+      ? { app: appDoGatilho(gatilho.config.kind), id: gatilho.config.kind, titulo: tituloDoGatilho(t, gatilho.config), escopo: escopoDoGatilho(t, gatilho.config) }
       : (() => {
           const id = componenteDoPasso(passo!);
-          return { app: appDoPasso(id), id, titulo: tituloDoPasso(t, id) };
+          return { app: appDoPasso(id), id, titulo: tituloDoPasso(t, id), escopo: "" };
         })();
 
   const trocarGatilho = (config: TriggerConfig): void =>
@@ -96,7 +109,19 @@ export function PainelDoNo({
     >
       <div className="flex items-center gap-2">
         <Selo app={cabecalho.app} id={cabecalho.id} tamanho="sm" />
-        <span className="flex-1 truncate text-[13px] font-medium">{cabecalho.titulo}</span>
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="flex items-center gap-1.5 text-[13px] font-medium">
+            <span className="truncate" title={cabecalho.titulo}>
+              {cabecalho.titulo}
+            </span>
+            {ajudaDoNo === null ? null : <Ajuda texto={ajudaDoNo} />}
+          </span>
+          {cabecalho.escopo === "" ? null : (
+            <span className="text-muted-foreground truncate text-[11px]" title={cabecalho.escopo}>
+              {cabecalho.escopo}
+            </span>
+          )}
+        </span>
         <button
           aria-label={t("automations.panel.close")}
           className="text-muted-foreground hover:text-foreground cursor-pointer rounded p-1"
@@ -125,10 +150,7 @@ export function PainelDoNo({
 
       {gatilho !== undefined ? (
         <>
-          {i18n.exists(`automations.triggers.${gatilho.config.kind}.help`) && (
-            <p className="text-muted-foreground text-xs">{t(`automations.triggers.${gatilho.config.kind}.help`)}</p>
-          )}
-          <ConfigDoGatilho config={gatilho.config} key={chave} trocar={trocarGatilho} triggerId={gatilho.id} />
+          <ConfigDoGatilho agentId={rascunho.spec.id} chave={chave} config={gatilho.config} key={chave} trocar={trocarGatilho} triggerId={gatilho.id} />
           <Alternador
             ligado={gatilho.enabled}
             rotulo={t("automations.panel.enabled")}
@@ -137,11 +159,12 @@ export function PainelDoNo({
             }
           />
         </>
-      ) : passo!.type === "model" && passo!.profile !== undefined ? (
-        <ConfigDoAgent agents={agents} chave={chave} navegar={navegar} passo={passo as PassoDeIA} rascunho={rascunho} setRascunho={setRascunho} />
       ) : passo!.type === "model" ? (
-        <ConfigDaIA
+        <ConfigDoPassoDeIA
+          abrirAgent={abrirAgent}
+          agents={agents}
           chave={chave}
+          key={chave}
           passo={passo as PassoDeIA}
           rascunho={rascunho}
           relerBiblioteca={relerBiblioteca}
@@ -164,10 +187,14 @@ export function PainelDoNo({
 /* ----------------------------------------------------------------- gatilho */
 
 function ConfigDoGatilho({
+  agentId,
+  chave,
   config,
   trocar,
   triggerId,
 }: {
+  agentId: string;
+  chave: string;
   config: TriggerConfig;
   trocar: (c: TriggerConfig) => void;
   triggerId?: string;
@@ -213,6 +240,7 @@ function ConfigDoGatilho({
                 chats={config.chats}
                 pendentes={config.chatsPendentes > 0}
                 trocar={(chats) => trocar({ ...config, chats })}
+                escopo={{ agentId, chave, ...(triggerId === undefined ? {} : { id: triggerId }) }}
                 triggerId={triggerId}
                 valeParaTodos={() => trocar({ ...config, chatsPendentes: 0 })}
               />
@@ -298,7 +326,7 @@ function CanaisDoSlack({ canais, trocar }: { canais: readonly string[]; trocar: 
     setNovo("");
   };
   return (
-    <Campo rotulo={t("automations.triggers.slack-channel.channels")}>
+    <Campo ajuda={t("automations.triggers.slack-channel.hint")} rotulo={t("automations.triggers.slack-channel.channels")}>
       <div className="flex flex-wrap gap-1.5">
         {canais.map((c) => (
           <span className="bg-muted flex items-center gap-1 rounded-full py-0.5 pr-1 pl-2.5 font-mono text-xs" key={c}>
@@ -329,7 +357,6 @@ function CanaisDoSlack({ canais, trocar }: { canais: readonly string[]; trocar: 
           {t("automations.triggers.slack-channel.add")}
         </Button>
       </div>
-      <p className="text-muted-foreground text-[11px]">{t("automations.triggers.slack-channel.hint")}</p>
     </Campo>
   );
 }
@@ -337,113 +364,57 @@ function CanaisDoSlack({ canais, trocar }: { canais: readonly string[]; trocar: 
 type CanalDoTeams = Extract<TriggerConfig, { kind: "teams-inbox" }>["channels"][number];
 
 /**
- * Canais de equipe do Teams. A lista vem do Graph e só chega por clique: é
- * rede, e pede os escopos de canal que a conexão pode não ter.
+ * Canais de equipe do Teams. A lista vem do Graph, pede os escopos de canal que
+ * a conexão pode não ter, e por isso só carrega quando a pessoa abre o campo.
+ * Fica guardada por alguns minutos.
  */
 function CanaisDoTeams({ canais, trocar }: { canais: readonly CanalDoTeams[]; trocar: (c: CanalDoTeams[]) => void }) {
   const { t } = useTranslation();
-  const [opcoes, setOpcoes] = useState<ReadResult<"connections.teamsChannels"> | null>(null);
-  const [erro, setErro] = useState<string | null>(null);
-  const [lendo, setLendo] = useState(false);
   // Pelo servidor MCP (ms365) os canais já vêm: a conexão nativa e os escopos dela não entram.
-  const viaDoTeams = useRead("connections.list").data?.find((c) => c.id === "teams")?.via;
-  const [busca, setBusca] = useState("");
-  const marcado = (teamId: string, channelId: string): boolean =>
-    canais.some((c) => c.teamId === teamId && c.channelId === channelId);
-  const grupos = organizarCanais(opcoes ?? [], new Set(canais.map((c) => `${c.teamId}/${c.channelId}`)), busca);
-
-  const listar = (): void => {
-    setLendo(true);
-    setErro(null);
-    call("connections.teamsChannels").then(
-      (lista) => {
-        setOpcoes(lista);
-        setLendo(false);
-      },
-      (e: unknown) => {
-        setErro(e instanceof Error ? e.message : String(e));
-        setLendo(false);
-      },
-    );
-  };
+  const conexao = useRead("connections.list").data?.find((c) => c.id === "teams");
+  const viaDoTeams = conexao?.via;
+  const lista = useListaEmCache(chaveDaListaDoTeams("canais", conexao), () => call("connections.teamsChannels"));
+  const idDe = (teamId: string, channelId: string): string => `${teamId}/${channelId}`;
+  const opcoes: OpcaoDoCombobox[] | null =
+    lista.dados === null
+      ? null
+      : lista.dados.map((o) => ({ id: idDe(o.teamId, o.channelId), rotulo: o.channelName, grupo: o.teamName }));
+  const porId = new Map((lista.dados ?? []).map((o) => [idDe(o.teamId, o.channelId), o]));
 
   return (
-    <Campo rotulo={t("automations.triggers.teams-inbox.channels")}>
-      {canais.length === 0 ? null : (
-        <div className="flex flex-wrap gap-1.5">
-          {canais.map((c) => (
-            <span className="bg-muted flex items-center gap-1 rounded-full py-0.5 pr-1 pl-2.5 text-xs" key={`${c.teamId}/${c.channelId}`}>
-              {c.label ?? c.channelId}
-              <button
-                aria-label={t("automations.triggers.slack-channel.remove", { channel: c.label ?? c.channelId })}
-                className="hover:text-foreground text-muted-foreground cursor-pointer rounded-full p-0.5"
-                onClick={() => trocar(canais.filter((x) => !(x.teamId === c.teamId && x.channelId === c.channelId)))}
-                type="button"
-              >
-                <X className="size-3" />
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
-      {opcoes === null ? (
-        <Button className="cursor-pointer self-start" disabled={lendo} onClick={listar} size="sm" variant="outline">
-          {t(lendo ? "automations.triggers.teams-inbox.loading" : "automations.triggers.teams-inbox.list")}
-        </Button>
-      ) : (
-        <div className="flex flex-col gap-2" data-locum-teams-canais={opcoes.length}>
-          <label className="border-border bg-card focus-within:ring-ring flex h-8 max-w-sm items-center gap-2 rounded-md border px-2 focus-within:ring-2">
-            <Search aria-hidden className="text-muted-foreground size-3.5" />
-            <input
-              aria-label={t("automations.triggers.teams-inbox.search")}
-              className="placeholder:text-muted-foreground w-full bg-transparent text-xs outline-none"
-              onChange={(e) => setBusca(e.target.value)}
-              placeholder={t("automations.triggers.teams-inbox.search")}
-              value={busca}
-            />
-          </label>
-          <div className="flex max-h-72 flex-col gap-2 overflow-y-auto text-xs">
-            {grupos.length === 0 ? (
-              <p className="text-muted-foreground">{t("automations.triggers.teams-inbox.noMatch", { termo: busca.trim() })}</p>
-            ) : (
-              grupos.map((g) => (
-                <section className="flex flex-col gap-1" data-locum-teams-equipe={g.teamName} key={g.teamId}>
-                  <h4 className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
-                    {g.teamName} · {t("automations.triggers.teams-inbox.countOf", { marked: g.marcados, total: g.canais.length })}
-                  </h4>
-                  <ul className="flex flex-col gap-1">
-                    {g.canais.map((o) => (
-                      <li key={`${o.teamId}/${o.channelId}`}>
-                        <label className="flex cursor-pointer items-center gap-2">
-                          <input
-                            checked={marcado(o.teamId, o.channelId)}
-                            className="accent-primary cursor-pointer"
-                            onChange={(e) =>
-                              trocar(
-                                e.target.checked
-                                  ? [...canais, { teamId: o.teamId, channelId: o.channelId, label: `${o.teamName} / ${o.channelName}` }]
-                                  : canais.filter((x) => !(x.teamId === o.teamId && x.channelId === o.channelId)),
-                              )
-                            }
-                            type="checkbox"
-                          />
-                          {o.channelName}
-                        </label>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              ))
-            )}
-          </div>
-        </div>
-      )}
-      <p className="text-muted-foreground text-[11px]">
-        {viaDoTeams === undefined
+    <Campo
+      ajuda={
+        viaDoTeams === undefined
           ? t("automations.triggers.teams-inbox.channelsHint")
-          : t("automations.triggers.teams-inbox.channelsHintVia", { server: viaDoTeams })}
-      </p>
-      {erro === null ? null : <p className="text-destructive text-xs">{erro}</p>}
+          : t("automations.triggers.teams-inbox.channelsHintVia", { server: viaDoTeams })
+      }
+      rotulo={t("automations.triggers.teams-inbox.channels")}
+    >
+      <ComboboxComChips
+        aoAbrir={() => lista.pedir()}
+        aoAlternar={(o) => {
+          const canal = porId.get(o.id);
+          if (canal === undefined) return;
+          const ja = canais.some((c) => idDe(c.teamId, c.channelId) === o.id);
+          trocar(
+            ja
+              ? canais.filter((c) => idDe(c.teamId, c.channelId) !== o.id)
+              : [...canais, { teamId: canal.teamId, channelId: canal.channelId, label: `${canal.teamName} / ${canal.channelName}` }],
+          );
+        }}
+        aoAtualizar={() => lista.pedir(true)}
+        aoRemover={(id) => trocar(canais.filter((c) => idDe(c.teamId, c.channelId) !== id))}
+        carregando={lista.lendo}
+        filtrar={(busca) => {
+          const grupos = organizarCanais(lista.dados ?? [], new Set(canais.map((c) => idDe(c.teamId, c.channelId))), busca);
+          return grupos.flatMap((g) => g.canais.map((o) => ({ id: idDe(o.teamId, o.channelId), rotulo: o.channelName, grupo: `${g.teamName} · ${t("automations.triggers.teams-inbox.countOf", { marked: g.marcados, total: g.canais.length })}` })));
+        }}
+        opcoes={opcoes}
+        rotuloDaBusca={t("automations.triggers.teams-inbox.search")}
+        selecionados={canais.map((c) => ({ id: idDe(c.teamId, c.channelId), rotulo: c.label ?? c.channelId }))}
+        sonda="teams-canais"
+      />
+      {lista.erro === null ? null : <p className="text-destructive text-xs">{lista.erro}</p>}
     </Campo>
   );
 }
@@ -480,7 +451,7 @@ function FiltroComIa({ filtro, trocar }: { filtro: FiltroIaConfig | undefined; t
   // O modelo escolhido sobrevive a apagar a pergunta: sem pergunta o filtro sai do cadastro, e a pessoa volta a escrevê-la.
   const [modelo, setModelo] = useState(filtro?.modelo);
   return (
-    <Campo rotulo={t("automations.triggers.teams-inbox.filtroIa")}>
+    <Campo ajuda={t("automations.triggers.teams-inbox.filtroIaHint")} rotulo={t("automations.triggers.teams-inbox.filtroIa")}>
       <textarea
         className={cn(CAMPO, "min-h-16 resize-y")}
         data-locum-filtro-ia=""
@@ -501,7 +472,6 @@ function FiltroComIa({ filtro, trocar }: { filtro: FiltroIaConfig | undefined; t
           valor={modelo ?? ""}
         />
       )}
-      <p className="text-muted-foreground text-[11px]">{t("automations.triggers.teams-inbox.filtroIaHint")}</p>
     </Campo>
   );
 }
@@ -510,57 +480,28 @@ function ChatsDoTeams({
   chats,
   trocar,
   triggerId,
+  escopo,
   pendentes,
   valeParaTodos,
 }: {
   chats: readonly ChatDoTeams[];
   trocar: (c: ChatDoTeams[]) => void;
   triggerId?: string;
+  escopo: { id?: string; agentId: string; chave: string };
   pendentes: boolean;
   valeParaTodos: () => void;
 }) {
   const { t } = useTranslation();
-  const [opcoes, setOpcoes] = useState<ReadResult<"connections.teamsChats"> | null>(null);
-  const [erro, setErro] = useState<string | null>(null);
-  const [lendo, setLendo] = useState(false);
-  const [busca, setBusca] = useState("");
-  const cheio = chats.length >= MAX_CHATS;
-  const lista = organizarChats(opcoes ?? [], new Set(chats.map((c) => c.chatId)), busca);
-
-  const listar = (): void => {
-    setLendo(true);
-    setErro(null);
-    call("connections.teamsChats", triggerId).then(
-      (achados) => {
-        setOpcoes(achados);
-        setLendo(false);
-      },
-      (e: unknown) => {
-        setErro(e instanceof Error ? e.message : String(e));
-        setLendo(false);
-      },
-    );
-  };
+  // A lista sai pela conta que o gatilho gravou, então cada gatilho tem a sua.
+  const conexao = useRead("connections.list").data?.find((c) => c.id === "teams");
+  const lista = useListaEmCache(chaveDaListaDoTeams("chats", conexao, escopo), () => call("connections.teamsChats", triggerId));
+  const opcoes: OpcaoDoCombobox[] | null =
+    lista.dados === null
+      ? null
+      : lista.dados.map((o) => ({ id: o.chatId, rotulo: o.label, detalhe: t(`automations.triggers.teams-inbox.chatType.${o.chatType}`) }));
 
   return (
-    <Campo rotulo={t("automations.triggers.teams-inbox.chats")}>
-      {chats.length === 0 ? null : (
-        <div className="flex flex-wrap gap-1.5">
-          {chats.map((c) => (
-            <span className="bg-muted flex items-center gap-1 rounded-full py-0.5 pr-1 pl-2.5 text-xs" key={c.chatId}>
-              {c.label ?? c.chatId}
-              <button
-                aria-label={t("automations.triggers.slack-channel.remove", { channel: c.label ?? c.chatId })}
-                className="hover:text-foreground text-muted-foreground cursor-pointer rounded-full p-0.5"
-                onClick={() => trocar(chats.filter((x) => x.chatId !== c.chatId))}
-                type="button"
-              >
-                <X className="size-3" />
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
+    <Campo ajuda={t("automations.triggers.teams-inbox.chatsHint")} rotulo={t("automations.triggers.teams-inbox.chats")}>
       {pendentes && chats.length === 0 ? (
         <div className="flex flex-col items-start gap-1.5">
           <p className="text-xs text-amber-600 dark:text-amber-400">{t("automations.triggers.teams-inbox.chatsPending")}</p>
@@ -569,55 +510,28 @@ function ChatsDoTeams({
           </Button>
         </div>
       ) : null}
-      {opcoes === null ? (
-        <Button className="cursor-pointer self-start" disabled={lendo} onClick={listar} size="sm" variant="outline">
-          {t(lendo ? "automations.triggers.teams-inbox.loadingChats" : "automations.triggers.teams-inbox.listChats")}
-        </Button>
-      ) : (
-        <div className="flex flex-col gap-2" data-locum-teams-chats={opcoes.length}>
-          <Button className="cursor-pointer self-start" disabled={lendo} onClick={listar} size="sm" variant="ghost">
-            {t(lendo ? "automations.triggers.teams-inbox.loadingChats" : "automations.triggers.teams-inbox.reloadChats")}
-          </Button>
-          {cheio ? <p className="text-xs text-amber-600 dark:text-amber-400">{t("automations.triggers.teams-inbox.chatsMax", { max: MAX_CHATS })}</p> : null}
-          <label className="border-border bg-card focus-within:ring-ring flex h-8 max-w-sm items-center gap-2 rounded-md border px-2 focus-within:ring-2">
-            <Search aria-hidden className="text-muted-foreground size-3.5" />
-            <input
-              aria-label={t("automations.triggers.teams-inbox.searchChats")}
-              className="placeholder:text-muted-foreground w-full bg-transparent text-xs outline-none"
-              onChange={(e) => setBusca(e.target.value)}
-              placeholder={t("automations.triggers.teams-inbox.searchChats")}
-              value={busca}
-            />
-          </label>
-          <ul className="flex max-h-72 flex-col gap-1 overflow-y-auto text-xs">
-            {lista.length === 0 ? (
-              <li className="text-muted-foreground">{t("automations.triggers.teams-inbox.noMatchChats", { termo: busca.trim() })}</li>
-            ) : (
-              lista.map((o) => (
-                <li key={o.chatId}>
-                  <label className="flex cursor-pointer items-center gap-2">
-                    <input
-                      checked={chats.some((c) => c.chatId === o.chatId)}
-                      disabled={cheio && !chats.some((c) => c.chatId === o.chatId)}
-                      className="accent-primary cursor-pointer"
-                      onChange={(e) =>
-                        trocar(e.target.checked ? [...chats, { chatId: o.chatId, label: o.label }] : chats.filter((x) => x.chatId !== o.chatId))
-                      }
-                      type="checkbox"
-                    />
-                    {o.label}
-                    <span className="text-muted-foreground text-[11px]">
-                      {t(`automations.triggers.teams-inbox.chatType.${o.chatType}`)}
-                    </span>
-                  </label>
-                </li>
-              ))
-            )}
-          </ul>
-        </div>
-      )}
-      <p className="text-muted-foreground text-[11px]">{t("automations.triggers.teams-inbox.chatsHint")}</p>
-      {erro === null ? null : <p className="text-destructive text-xs">{erro}</p>}
+      <ComboboxComChips
+        aoAbrir={() => lista.pedir()}
+        aoAlternar={(o) =>
+          trocar(chats.some((c) => c.chatId === o.id) ? chats.filter((c) => c.chatId !== o.id) : [...chats, { chatId: o.id, label: o.rotulo }])
+        }
+        aoAtualizar={() => lista.pedir(true)}
+        aoRemover={(id) => trocar(chats.filter((c) => c.chatId !== id))}
+        carregando={lista.lendo}
+        filtrar={(busca) =>
+          organizarChats(lista.dados ?? [], new Set(chats.map((c) => c.chatId)), busca).map((o) => ({
+            id: o.chatId,
+            rotulo: o.label,
+            detalhe: t(`automations.triggers.teams-inbox.chatType.${o.chatType}`),
+          }))
+        }
+        limite={MAX_CHATS}
+        opcoes={opcoes}
+        rotuloDaBusca={t("automations.triggers.teams-inbox.searchChats")}
+        selecionados={chats.map((c) => ({ id: c.chatId, rotulo: c.label ?? c.chatId }))}
+        sonda="teams-chats"
+      />
+      {lista.erro === null ? null : <p className="text-destructive text-xs">{lista.erro}</p>}
     </Campo>
   );
 }
@@ -659,7 +573,7 @@ function TarefaEFormato({
 
   return (
     <>
-      <Campo rotulo={rotulo}>
+      <Campo ajuda={dica} rotulo={rotulo}>
         <textarea
           className={cn(CAMPO, "min-h-40 resize-y font-mono text-xs leading-relaxed")}
           data-locum-prompt=""
@@ -667,7 +581,6 @@ function TarefaEFormato({
           ref={caixa}
           value={passo.prompt}
         />
-        {dica === undefined ? null : <p className="text-muted-foreground text-[11px]">{dica}</p>}
         {disponiveis.length > 0 ? (
           <div className="flex flex-col gap-1">
             <span className="text-muted-foreground text-[11px]">{t("automations.steps.ai.variables")}</span>
@@ -713,6 +626,71 @@ function TarefaEFormato({
   );
 }
 
+type AbrirAgent = (detalhe: string, aoFechar?: (id: string | null, lista: ReadResult<"library.profiles">) => void) => void;
+
+/**
+ * Passo de IA. O padrão é chamar um agent da biblioteca, que traz modelo,
+ * instruções e ferramentas, e o texto do passo vira só a tarefa. A instrução
+ * embutida continua como alternativa. Um passo que já tem texto ou ferramentas
+ * próprias abre na instrução embutida, para o painel não esconder o que existe.
+ */
+function ConfigDoPassoDeIA({
+  chave,
+  passo,
+  rascunho,
+  setRascunho,
+  agents,
+  abrirAgent,
+  relerBiblioteca,
+}: {
+  chave: string;
+  passo: PassoDeIA;
+  rascunho: Rascunho;
+  setRascunho: (f: (r: Rascunho) => Rascunho) => void;
+  agents: readonly AgentDaBiblioteca[];
+  abrirAgent: AbrirAgent;
+  relerBiblioteca: () => Promise<void>;
+}) {
+  const { t } = useTranslation();
+  const [modo, setModo] = useState<"agent" | "inline">(
+    passo.profile !== undefined || (passo.prompt.trim() === "" && passo.tools === undefined) ? "agent" : "inline",
+  );
+  const trocar = (novo: PassoDeIA): void => setRascunho((r) => ({ ...r, spec: trocarPasso(r.spec, passo.key, novo) }));
+  const paraEmbutida = (): void => {
+    setModo("inline");
+    if (passo.profile === undefined) return;
+    trocar(passoSemAgent(passo));
+  };
+
+  return (
+    <>
+      <div className="bg-muted flex gap-0.5 rounded-md p-0.5" data-locum-passo-modos="" role="tablist">
+        {(["agent", "inline"] as const).map((m) => (
+          <button
+            aria-selected={modo === m}
+            className={cn(
+              "flex-1 cursor-pointer rounded px-2 py-1 text-xs transition-colors",
+              modo === m ? "bg-card text-foreground font-medium" : "text-muted-foreground hover:text-foreground",
+            )}
+            data-locum-passo-modo={m}
+            key={m}
+            onClick={() => (m === "inline" ? paraEmbutida() : setModo("agent"))}
+            role="tab"
+            type="button"
+          >
+            {t(`automations.steps.agent.modes.${m}`)}
+          </button>
+        ))}
+      </div>
+      {modo === "agent" ? (
+        <ConfigDoAgent abrirAgent={abrirAgent} agents={agents} chave={chave} passo={passo} rascunho={rascunho} setRascunho={setRascunho} />
+      ) : (
+        <ConfigDaIA chave={chave} passo={passo} rascunho={rascunho} relerBiblioteca={relerBiblioteca} setRascunho={setRascunho} />
+      )}
+    </>
+  );
+}
+
 /** Passo com agent da biblioteca: quem trabalha vem de lá, a tarefa é daqui. */
 function ConfigDoAgent({
   chave,
@@ -720,39 +698,42 @@ function ConfigDoAgent({
   rascunho,
   setRascunho,
   agents,
-  navegar,
+  abrirAgent,
 }: {
   chave: string;
   passo: PassoDeIA;
   rascunho: Rascunho;
   setRascunho: (f: (r: Rascunho) => Rascunho) => void;
   agents: readonly AgentDaBiblioteca[];
-  navegar: (id: RotaId, detalhe?: string) => void;
+  abrirAgent: AbrirAgent;
 }) {
   const { t } = useTranslation();
   const trocar = (novo: PassoDeIA): void => setRascunho((r) => ({ ...r, spec: trocarPasso(r.spec, passo.key, novo) }));
   const atual = agents.find((a) => a.id === passo.profile);
+  const escolher = (escolhido: AgentDaBiblioteca): void => {
+    trocar(passoComAgent(passo, escolhido, atual?.name ?? ""));
+  };
 
   return (
     <>
       <Campo rotulo={t("automations.steps.agent.choose")}>
-        {agents.length === 0 ? (
-          <p className="text-muted-foreground text-xs">{t("automations.steps.agent.none")}</p>
-        ) : (
+        {agents.length === 0 ? null : (
           <select
             className={CAMPO}
             data-locum-passo-agent=""
             onChange={(e) => {
               const escolhido = agents.find((a) => a.id === e.target.value);
-              if (escolhido === undefined) return;
-              // O nome acompanha a troca só quando ainda era o do agent antigo:
-              // nome escrito à mão pela pessoa fica.
-              const nome = passo.name === (atual?.name ?? "") ? escolhido.name : passo.name;
-              trocar({ ...passo, profile: escolhido.id, model: escolhido.model, name: nome });
+              if (escolhido !== undefined) escolher(escolhido);
             }}
-            value={passo.profile}
+            value={passo.profile ?? ""}
           >
-            {atual === undefined ? <option value={passo.profile}>{passo.profile}</option> : null}
+            {passo.profile === undefined ? (
+              <option disabled value="">
+                {t("automations.steps.agent.pick")}
+              </option>
+            ) : atual === undefined ? (
+              <option value={passo.profile}>{passo.profile}</option>
+            ) : null}
             {agents.map((a) => (
               <option key={a.id} value={a.id}>
                 {a.name}
@@ -760,16 +741,35 @@ function ConfigDoAgent({
             ))}
           </select>
         )}
-        {atual === undefined ? null : (
-          <button
-            className="text-primary w-fit cursor-pointer text-xs hover:underline"
-            onClick={() => navegar("agents", atual.id)}
-            type="button"
+        {agents.length === 0 ? <p className="text-muted-foreground text-xs">{t("automations.steps.agent.none")}</p> : null}
+        {passo.profile === undefined ? (
+          <p className="text-muted-foreground text-xs" data-locum-passo-ainda-embutido="">
+            {t("automations.steps.agent.stillInline")}
+          </p>
+        ) : null}
+        <div className="flex gap-1.5">
+          <Button
+            className="cursor-pointer"
+            data-locum-passo-criar-agent=""
+            onClick={() =>
+              abrirAgent("novo", (id, lista) => {
+                const criado = lista.find((a) => a.id === id);
+                if (criado !== undefined) escolher(criado);
+              })
+            }
+            size="sm"
+            variant="outline"
           >
-            {t("automations.steps.agent.open")}
-          </button>
-        )}
+            {t("automations.steps.agent.create")}
+          </Button>
+          {atual === undefined ? null : (
+            <Button className="cursor-pointer" data-locum-passo-abrir-agent="" onClick={() => abrirAgent(atual.id)} size="sm" variant="outline">
+              {t("automations.steps.agent.open")}
+            </Button>
+          )}
+        </div>
       </Campo>
+      {atual === undefined ? null : <ResumoDoAgent abrirAgent={abrirAgent} id={atual.id} />}
       <Campo rotulo={t("automations.panel.name")}>
         <input className={CAMPO} onChange={(e) => trocar({ ...passo, name: e.target.value })} value={passo.name} />
       </Campo>
@@ -782,6 +782,49 @@ function ConfigDoAgent({
         trocar={trocar}
       />
     </>
+  );
+}
+
+/** Modelo, ferramentas e um trecho das instruções do agent escolhido, só leitura. */
+function ResumoDoAgent({ id, abrirAgent }: { id: string; abrirAgent: AbrirAgent }) {
+  const { t } = useTranslation();
+  const lido = useRead("library.profile", id);
+  if (lido.data === undefined || lido.data === null) return null;
+  const r = resumoDoAgent(lido.data.spec);
+  const ferramentas = r.conexoes.length + r.avulsas + r.toolsets;
+  return (
+    <div className="border-border bg-background/40 flex flex-col gap-2 rounded-md border p-2.5 text-xs" data-locum-agent-resumo={id}>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+        <dt className="text-muted-foreground">{t("automations.steps.agent.summary.model")}</dt>
+        <dd className="truncate font-mono" title={lido.data.spec.model}>
+          {r.modelo}
+        </dd>
+        <dt className="text-muted-foreground">{t("automations.steps.agent.summary.tools")}</dt>
+        <dd className="flex min-w-0 flex-wrap gap-1">
+          {ferramentas === 0 ? (
+            <span className="text-muted-foreground">{t("automations.steps.agent.summary.noTools")}</span>
+          ) : (
+            <>
+              {r.conexoes.map((c) => (
+                <span className="bg-muted rounded px-1.5 py-0.5 font-mono text-[11px]" key={c.id}>
+                  {c.ferramentas > 0 ? `${c.id} · ${c.ferramentas}` : c.id}
+                </span>
+              ))}
+              {r.avulsas > 0 ? <span className="bg-muted rounded px-1.5 py-0.5 text-[11px]">{t("automations.steps.agent.summary.single", { count: r.avulsas })}</span> : null}
+              {r.toolsets > 0 ? <span className="bg-muted rounded px-1.5 py-0.5 text-[11px]">{t("automations.steps.agent.summary.toolsets", { count: r.toolsets })}</span> : null}
+            </>
+          )}
+        </dd>
+      </dl>
+      {r.trecho === "" ? null : (
+        <p className="text-muted-foreground line-clamp-6 whitespace-pre-wrap" data-locum-agent-instrucoes="">
+          {r.trecho}
+        </p>
+      )}
+      <button className="text-primary w-fit cursor-pointer hover:underline" onClick={() => abrirAgent(id)} type="button">
+        {t("automations.steps.agent.summary.edit")}
+      </button>
+    </div>
   );
 }
 
@@ -852,6 +895,7 @@ function ConfigDaIA({
         />
       </Campo>
       <div className="border-border flex flex-col gap-1.5 border-t pt-3">
+        <div className="flex items-center gap-1.5">
         <Button
           className="cursor-pointer self-start"
           data-locum-levar-para-biblioteca=""
@@ -862,7 +906,8 @@ function ConfigDaIA({
         >
           {t("automations.steps.agent.toLibrary")}
         </Button>
-        <p className="text-muted-foreground text-[11px]">{t("automations.steps.agent.toLibraryHint")}</p>
+        <Ajuda texto={t("automations.steps.agent.toLibraryHint")} />
+        </div>
         {erro === null ? null : <p className="text-destructive text-xs">{erro}</p>}
       </div>
     </>
@@ -887,7 +932,6 @@ function ConfigDaAcao({
 
   return (
     <>
-      <p className="text-muted-foreground text-xs">{t(`automations.steps.${passo.action}.description`, { defaultValue: "" })}</p>
       <Campo rotulo={t("automations.panel.name")}>
         <input className={CAMPO} onChange={(e) => trocar({ ...passo, name: e.target.value })} value={passo.name} />
       </Campo>
@@ -1008,7 +1052,6 @@ function ConfigDaLogica({
 
   return (
     <>
-      <p className="text-muted-foreground text-xs">{t(`automations.steps.logic.${passo.op}.description`)}</p>
       <Campo rotulo={t("automations.panel.name")}>
         <input className={CAMPO} onChange={(e) => trocar({ ...passo, name: e.target.value })} value={passo.name} />
       </Campo>
@@ -1034,7 +1077,7 @@ function ConfigDaLogica({
       </Campo>
       {passo.op === "if" ? (
         <>
-          <Campo rotulo={t("automations.steps.logic.compare")}>
+          <Campo ajuda={t("automations.steps.logic.ifHint")} rotulo={t("automations.steps.logic.compare")}>
             <select
               className={CAMPO}
               onChange={(e) => trocar({ ...passo, compare: e.target.value as LogicStep["compare"] })}
@@ -1057,11 +1100,10 @@ function ConfigDaLogica({
               />
             </Campo>
           )}
-          <p className="text-muted-foreground text-[11px]">{t("automations.steps.logic.ifHint")}</p>
         </>
       ) : null}
       {passo.op === "switch" ? (
-        <Campo rotulo={t("automations.steps.logic.cases")}>
+        <Campo ajuda={t("automations.steps.logic.switchHint")} rotulo={t("automations.steps.logic.cases")}>
           <div className="flex flex-wrap gap-1.5">
             {passo.cases.map((c) => (
               <span className="bg-muted flex items-center gap-1 rounded-full py-0.5 pr-1 pl-2.5 text-xs" key={c}>
@@ -1104,7 +1146,6 @@ function ConfigDaLogica({
               {t("automations.steps.logic.addCase")}
             </Button>
           </div>
-          <p className="text-muted-foreground text-[11px]">{t("automations.steps.logic.switchHint")}</p>
         </Campo>
       ) : null}
     </>
@@ -1359,7 +1400,7 @@ function ConfigDoHttp({
           value={params.url ?? ""}
         />
       </div>
-      <Campo rotulo={t("automations.steps.http.request.headers")}>
+      <Campo ajuda={t("automations.steps.http.request.headersHint")} rotulo={t("automations.steps.http.request.headers")}>
         {cabecalhos.map(([nome, valor]) => {
           const aplicar = (v: string): void => mudar({ headers: { ...params.headers, [nome]: v } });
           return (
@@ -1405,10 +1446,9 @@ function ConfigDoHttp({
             {t("automations.steps.http.request.addHeader")}
           </Button>
         </div>
-        <p className="text-muted-foreground text-[11px]">{t("automations.steps.http.request.headersHint")}</p>
       </Campo>
       {params.method === "GET" ? null : (
-        <Campo rotulo={t("automations.steps.http.request.body")}>
+        <Campo ajuda={t("automations.steps.http.request.bodyHint")} rotulo={t("automations.steps.http.request.body")}>
           <textarea
             className={cn(CAMPO, "min-h-28 font-mono text-xs")}
             data-locum-http-corpo=""
@@ -1416,7 +1456,6 @@ function ConfigDoHttp({
             onFocus={focar((body) => mudar({ body }))}
             value={textoDoValor(params.body)}
           />
-          <p className="text-muted-foreground text-[11px]">{t("automations.steps.http.request.bodyHint")}</p>
         </Campo>
       )}
     </>
