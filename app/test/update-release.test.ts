@@ -251,3 +251,13 @@ test("reabrir depois da troca sobe instância nova, mesmo com o --mcp do mesmo p
   const script = scriptDeTroca({ pid: 1, atual: "/Applications/Locum.app", novo: "/tmp/novo/Locum.app", reabrir: true });
   assert.match(script, /^open -n '?\/Applications\/Locum\.app'?$/m);
 });
+
+test("a pergunta ao GitHub não usa o cache HTTP, que segurava a versão de um minuto atrás", async () => {
+  const pedidos: Array<RequestInit | undefined> = [];
+  const buscar = (async (_url: string, init?: RequestInit) => {
+    pedidos.push(init);
+    return new Response("", { status: 404 });
+  }) as unknown as typeof fetch;
+  assert.equal(await procurarVersaoNova({ atual: "0.1.0", arch: "arm64", buscar }), null);
+  assert.equal(pedidos[0]?.cache, "no-store");
+});
