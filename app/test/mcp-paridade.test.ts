@@ -10,6 +10,8 @@ import type { Ambiente } from "../src/mcp-server/ambiente.js";
 import { CANAIS_SEM_FERRAMENTA, FERRAMENTA_DO_CANAL, semFerramenta } from "../src/mcp-server/paridade.js";
 import { buildMcpServer } from "../src/mcp-server/server.js";
 import { exigirAnotacoes } from "../src/mcp-server/tool-def.js";
+import { db, schema } from "../src/db/index.js";
+import { agentService } from "../src/services/agent-service.js";
 import { secretService } from "../src/services/secret-service.js";
 
 /** A tela inteira pelo MCP: cada canal da ponte tem ferramenta, e cada ferramenta diz o que faz. */
@@ -137,6 +139,43 @@ const OLHAM_A_CASA = new Set([
   "list_gh_accounts",
 ]);
 
+/** O agent, a automação e a aprovação que carregam segredo no texto e nos headers, para as leituras que pedem argumento. */
+async function comArgumento(segredos: Record<string, string>, sufixo: string) {
+  const agentId = `lido-${sufixo}`;
+  const versao = await agentService.upsert(
+    {
+      id: agentId,
+      name: "Lido",
+      steps: [
+        { type: "model", key: "ler", name: "Ler", model: "anthropic/modelo", prompt: `a chave é ${segredos.provedor}` },
+        { type: "action", key: "chamar", name: "Chamar", action: "http.request", needs: ["ler"], mode: "approve", params: { method: "POST", url: "https://api.exemplo.dev/x", headers: { "X-Api-Key": segredos.cabecalho } } },
+      ],
+    } as never,
+    undefined,
+    "human",
+  );
+  const run = `run-${sufixo}`;
+  const passo = `passo-${sufixo}`;
+  const aprovacao = `apr-${sufixo}`;
+  await db.insert(schema.runs).values({ id: run, agentVersionId: versao.id, status: "paused" });
+  await db.insert(schema.steps).values({ id: passo, runId: run, idx: 1, stepKey: "chamar", name: "Chamar", status: "awaiting_approval" });
+  await db.insert(schema.approvals).values({
+    id: aprovacao,
+    runId: run,
+    stepId: passo,
+    kind: "http.request",
+    payload: { method: "POST", url: "https://api.exemplo.dev/x", headers: { "X-Api-Key": segredos.cabecalho }, body: `usa ${segredos.tracker}` },
+  });
+  return [
+    { name: "get_agent", arguments: { agentId } },
+    { name: "get_automation", arguments: { agentId } },
+    { name: "export_agent", arguments: { agentId } },
+    { name: "get_approval", arguments: { approvalId: aprovacao } },
+    { name: "list_pending_approvals", arguments: {} },
+    { name: "get_run", arguments: { runId: run } },
+  ];
+}
+
 test("segredo guardado pelas ferramentas não volta por nenhuma leitura", async () => {
   secretService.useBackend({ available: () => true, encrypt: (p) => Buffer.from(p), decrypt: (b) => b.toString() });
   const client = await ligarCliente();
@@ -147,6 +186,8 @@ test("segredo guardado pelas ferramentas não volta por nenhuma leitura", async 
     tracker: j("valor-do-tracker-", sufixo),
     grafana: j("glsa_", "valor-do-grafana-", sufixo),
     mcp: j("valor-do-servidor-", sufixo),
+    argumento: j("valor-no-argumento-", sufixo),
+    cabecalho: j("valor-no-cabecalho-", sufixo),
   };
 
   ok(await client.callTool({ name: "save_github_token", arguments: { token: segredos.github } }));
@@ -157,6 +198,8 @@ test("segredo guardado pelas ferramentas não volta por nenhuma leitura", async 
   ok(await client.callTool({ name: "save_grafana_instance", arguments: { name: `gf-${sufixo}`, url: "https://grafana.exemplo", token: segredos.grafana } }));
   const servidor = `srv-${sufixo}`;
   ok(await client.callTool({ name: "register_mcp_server", arguments: { name: servidor, transport: "http", url: "https://mcp.exemplo/x" } }));
+  const comando = `cmd-${sufixo}`;
+  ok(await client.callTool({ name: "register_mcp_server", arguments: { name: comando, transport: "stdio", command: ["npx", "x-mcp", "--api-key", segredos.argumento] } }));
   const credencial = ok(await client.callTool({ name: "set_mcp_server_credential", arguments: { name: servidor, field: "Authorization", value: segredos.mcp } }));
   assert.doesNotMatch(credencial, new RegExp(segredos.mcp));
 
@@ -168,6 +211,7 @@ test("segredo guardado pelas ferramentas não volta por nenhuma leitura", async 
     ...leituras.map((t) => ({ name: t.name, arguments: {} })),
     { name: "list_cached_server_tools", arguments: { name: servidor } },
     { name: "get_connection_usage", arguments: { id: "github" } },
+    ...(await comArgumento(segredos, sufixo)),
   ];
   for (const chamada of chamadas) {
     const saida = texto(await client.callTool(chamada));
@@ -220,7 +264,17 @@ test("o chat de agent pelo MCP espera a volta acabar ou parar no cartão, e deci
 
   const enviado = JSON.parse(ok(await client.callTool({ name: "agent_chat_send", arguments: { agentId: "a", text: "publique" } })));
   assert.equal(enviado.falas[1].cartoes[0].estado, "pendente");
-  const decidido = JSON.parse(ok(await client.callTool({ name: "agent_chat_decide", arguments: { agentId: "a", cardId: "c1", decision: "recusar" } })));
+  // Com cartão à espera, enviar de novo volta como erro com o motivo, em vez de uma resposta que parece boa.
+  const ocupado = await client.callTool({ name: "agent_chat_send", arguments: { agentId: "a", text: "outra" } });
+  assert.equal(ocupado.isError, true);
+  assert.match(texto(ocupado), /card|answering/);
+  // A decisão fica amarrada ao cartão que o cliente viu: sem o hash, ou com outro, o cartão não é decidido.
+  const semHash = await client.callTool({ name: "agent_chat_decide", arguments: { agentId: "a", cardId: "c1", decision: "recusar" } });
+  assert.equal(semHash.isError, true);
+  const errado = await client.callTool({ name: "agent_chat_decide", arguments: { agentId: "a", cardId: "c1", decision: "recusar", hash: "0000" } });
+  assert.equal(errado.isError, true);
+  assert.deepEqual(decisoes, []);
+  const decidido = JSON.parse(ok(await client.callTool({ name: "agent_chat_decide", arguments: { agentId: "a", cardId: "c1", decision: "recusar", hash: enviado.falas[1].cartoes[0].hash } })));
   assert.equal(decidido.falas[1].cartoes[0].estado, "recusado");
   assert.deepEqual(decisoes, ["c1:recusar"]);
   assert.equal(JSON.parse(ok(await client.callTool({ name: "agent_chat_reset", arguments: { agentId: "a" } }))).reset, true);

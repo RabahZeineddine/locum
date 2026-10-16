@@ -106,6 +106,15 @@ recusava o que a tela faz decidia por ele. A decisão 4 fica substituída nisso:
 de mundo aberto, e o Claude Code pergunta antes de cada chamada. A regra que
 continua valendo é a mesma: nada sai sem uma pessoa ter dito que sai.
 
+O rebaixamento do `upsert_agent` (passo de ação gravado como agent nasce em
+`approve`) deixou de ser uma garantia do servidor. A classe da ferramenta é
+declarada por quem grava, e `save_agent_edited`, `save_automation`,
+`import_agent` e `restore_agent_version` gravam como a tela, com `auto`
+preservado. Quem segura é a confirmação do cliente: cada uma sai anotada como
+destrutiva (e, quando liga gatilho ou sai para a rede, de mundo aberto), e
+`decide_approval` e `agent_chat_decide` exigem o hash do conteúdo que o cliente
+viu, para a confirmação ficar amarrada a ele.
+
 ## Consequências
 
 O cadastro de servidores MCP sai da lista fixa em `src/cli.ts` e passa para o

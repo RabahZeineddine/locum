@@ -85,3 +85,12 @@ test("restaurar versão sobrescreve a atual: vem anotada como destrutiva, e a le
   }
   for (const nome of ["list_agent_versions", "list_library_agent_versions"]) assert.equal(por.get(nome)?.readOnlyHint, true, nome);
 });
+
+test("o --mcp não tem o terminal do Locum: com ele preferido usa o do sistema e avisa", async () => {
+  const { terminalDeFora } = await import("../src/mcp-server/session-tools.js");
+  assert.deepEqual(terminalDeFora(undefined, "iterm"), { terminal: "iterm" });
+  assert.deepEqual(terminalDeFora("warp", "locum"), { terminal: "warp" });
+  const sem = terminalDeFora(undefined, "locum");
+  assert.equal(sem.terminal, "terminal");
+  assert.match(sem.aviso ?? "", /do Locum/);
+});

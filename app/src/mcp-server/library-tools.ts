@@ -178,7 +178,7 @@ function catalogo() {
           "for mcp.call: { server, tool, args }; for http.request: { method, url, headers, body }. Accept markers and go on top of the input step output.",
         target: "tracker.create_issue: id of the registered tracker",
         modes:
-          "approve stops in the queue for a person; auto publishes on its own; draft prepares without publishing. Recorded from here, every action step starts in approve: only a person raises the mode, in the app.",
+          "approve stops in the queue for a person; auto publishes on its own; draft prepares without publishing. upsert_agent lowers every action step to approve. save_automation, save_agent_edited, import_agent and restore_agent_version record the mode as given, like the editor, so an auto action recorded there publishes without asking; the client confirms each of those calls.",
       },
       logic: {
         fields: "op, value, compare, against, cases, title",
@@ -189,7 +189,7 @@ function catalogo() {
     },
     actions: buildGate().describe(),
     triggers:
-      "Automation triggers are recorded with set_trigger and start disabled; a person enables them in the app.",
+      "Automation triggers are recorded with set_trigger (always disabled) or with the triggers of save_automation; turning one on is set_trigger_enabled or set_automation_enabled, which the client confirms because the app then acts by itself with your accounts.",
   };
 }
 

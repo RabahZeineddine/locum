@@ -42,6 +42,15 @@ test("describe_steps traz lógica, comparações e os modos de cada ação", asy
   assert.deepEqual(slack?.modes, ["approve", "auto"]);
 });
 
+test("describe_steps diz quem sobe o modo e quem liga o gatilho, como as ferramentas fazem hoje", async () => {
+  const client = await ligarCliente();
+  const catalogo = JSON.stringify(resultado(await client.callTool({ name: "describe_steps", arguments: {} })));
+  assert.doesNotMatch(catalogo, /only a person raises the mode/);
+  assert.match(catalogo, /upsert_agent[^"]*approve/);
+  assert.match(catalogo, /save_automation[^"]*save_agent_edited|save_agent_edited[^"]*save_automation/);
+  assert.match(catalogo, /set_trigger_enabled/);
+});
+
 test("toolset e agent da biblioteca gravados pelo MCP aparecem na lista", async () => {
   const client = await ligarCliente();
   const sufixo = randomUUID().slice(0, 8);

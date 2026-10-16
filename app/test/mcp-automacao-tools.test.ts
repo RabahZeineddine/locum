@@ -225,21 +225,30 @@ test("a fila devolve o texto como está, e decidir passa pela gate que o servido
   });
 
   const lista = await client.callTool({ name: "list_pending_approvals", arguments: {} });
-  const pendentes = ok<{ id: string; status: string; agentId: string }[]>(lista);
+  const pendentes = ok<{ id: string; status: string; agentId: string; hash: string }[]>(lista);
   assert.equal(pendentes.find((p) => p.id === aprovacao)?.agentId, agentId);
 
-  const uma = ok<{ id: string; payload: { text: string; channel: string } }>(await client.callTool({ name: "get_approval", arguments: { approvalId: aprovacao } }));
+  const uma = ok<{ id: string; hash: string; payload: { text: string; channel: string } }>(await client.callTool({ name: "get_approval", arguments: { approvalId: aprovacao } }));
   assert.equal(uma.payload.channel, "C1");
   assert.equal(uma.payload.text, "Missing null check on token: it can be undefined");
+  assert.equal(pendentes.find((p) => p.id === aprovacao)?.hash, uma.hash, "a fila e a leitura dão o mesmo hash");
   recusa(await client.callTool({ name: "get_approval", arguments: { approvalId: "nao-existe" } }), /nao encontrada/);
 
-  assert.deepEqual(ok(await client.callTool({ name: "decide_approval", arguments: { approvalId: aprovacao, decision: "rejected" } })), {
+  // A confirmação fica amarrada ao que foi visto: sem hash, ou com o de outro conteúdo, nada é decidido.
+  recusa(await client.callTool({ name: "decide_approval", arguments: { approvalId: aprovacao, decision: "approved" } }), /hash/);
+  ok(await client.callTool({ name: "edit_approval_text", arguments: { approvalId: aprovacao, text: "outro texto, que o cliente não viu" } }));
+  recusa(await client.callTool({ name: "decide_approval", arguments: { approvalId: aprovacao, decision: "approved", hash: uma.hash } }), /mudou|changed/);
+  assert.deepEqual(decisoes, []);
+
+  const nova = ok<{ hash: string }>(await client.callTool({ name: "get_approval", arguments: { approvalId: aprovacao } }));
+  assert.notEqual(nova.hash, uma.hash);
+  assert.deepEqual(ok(await client.callTool({ name: "decide_approval", arguments: { approvalId: aprovacao, decision: "rejected", hash: nova.hash } })), {
     approvalId: aprovacao,
     decision: "rejected",
     status: "rejected",
   });
   assert.deepEqual(decisoes, [[aprovacao, "rejected"]]);
-  recusa(await client.callTool({ name: "decide_approval", arguments: { approvalId: aprovacao, decision: "talvez" } }), /./);
+  recusa(await client.callTool({ name: "decide_approval", arguments: { approvalId: aprovacao, decision: "talvez", hash: nova.hash } }), /./);
 });
 
 test("exportar e importar: sem segredo no texto, copia ao lado e gatilho sempre desligado", async () => {
@@ -513,9 +522,13 @@ test("list_claude_sessions traz só metadados por padrão, e o texto só quando 
     assert.equal("lastReply" in s, false);
   }
   assert.doesNotMatch(texto(resposta), /resposta privada|diga a senha/);
+  // Sem ai-title, o título da tela é o começo do primeiro pedido: sem o texto, ele não sai.
+  assert.doesNotMatch(texto(resposta), /Escrever a migração/);
+  assert.ok(lista.every((x) => !("titleFromText" in x)));
 
   const comTexto = await client.callTool({ name: "list_claude_sessions", arguments: { includeText: true } });
   assert.match(texto(comTexto), /resposta privada/);
+  assert.match(texto(comTexto), /Escrever a migração/);
   assert.doesNotMatch(texto(comTexto), new RegExp(TOKEN));
 
   const alvo = lista[0]!.id as string;

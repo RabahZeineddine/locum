@@ -2,12 +2,29 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { limparSegredos } from "../pacote/limpeza.js";
 import { claudeSessionsService } from "../services/claude-sessions-service.js";
-import { sessionService, TERMINALS } from "../services/session-service.js";
+import { sessionService, TERMINALS, type SessionTerminal } from "../services/session-service.js";
 import type { Ambiente } from "./ambiente.js";
 import { def } from "./tool-def.js";
 
 /** Os aplicativos de terminal; o embutido (`locum`) só existe com a janela do app aberta neste processo. */
 const TERMINAL_DE_FORA = z.enum(["terminal", "iterm", "warp"]);
+
+/**
+ * O terminal em que o `--mcp` abre uma sessão. O embutido (`locum`) vive na
+ * janela do app e este processo não o tem: com ele como preferido, e sem
+ * terminal pedido, abre no do sistema e avisa.
+ */
+export function terminalDeFora(
+  pedido: z.infer<typeof TERMINAL_DE_FORA> | undefined,
+  preferido: SessionTerminal,
+): { terminal: z.infer<typeof TERMINAL_DE_FORA>; aviso?: string } {
+  if (pedido !== undefined) return { terminal: pedido };
+  if (preferido !== "locum") return { terminal: preferido };
+  return {
+    terminal: "terminal",
+    aviso: "o terminal preferido é o do Locum, que só existe na janela do app; abriu no Terminal do sistema. Escolha outro com set_session_terminal ou passe terminal.",
+  };
+}
 
 /**
  * As sessões: as do Claude Code e do opencode desta máquina (a tela do que
@@ -21,15 +38,18 @@ export function registerSessionTools(server: McpServer, amb: Ambiente): void {
     { includeText: z.boolean().optional() },
     async ({ includeText }) => {
       const sessoes = await amb.sessions();
-      // O texto da conversa só se lê, e pode ter token colado: sai limpo.
+      // O título de quem não tem um do Claude é o começo do primeiro pedido, que é texto da conversa.
+      const semMarca = <T extends { titleFromText?: true }>({ titleFromText: _t, ...resto }: T) => resto;
       if (includeText === true) {
         return sessoes.map((s) => ({
-          ...s,
+          ...semMarca(s),
+          // O texto da conversa só se lê, e pode ter token colado: sai limpo.
           ...(s.lastPrompt == null ? {} : { lastPrompt: limparSegredos(s.lastPrompt) }),
           ...(s.lastReply == null ? {} : { lastReply: limparSegredos(s.lastReply) }),
+          title: limparSegredos(s.title),
         }));
       }
-      return sessoes.map(({ lastPrompt: _p, lastReply: _r, ...resto }) => resto);
+      return sessoes.map(({ lastPrompt: _p, lastReply: _r, ...s }) => ({ ...semMarca(s), title: s.titleFromText === true ? s.id.slice(0, 8) : s.title }));
     });
 
   def(server, "mark_claude_session_done", "write",
@@ -53,13 +73,19 @@ export function registerSessionTools(server: McpServer, amb: Ambiente): void {
   def(server, "resume_claude_session", "external",
     "Opens a terminal application on this machine running `claude --resume` (or `opencode --session`) in the folder of the session, which then works with the permissions that tool has. A session still held by a process is refused.",
     { id: z.string().min(1), initiative: z.string().optional(), terminal: TERMINAL_DE_FORA.optional().describe("when absent, the preferred terminal") },
-    ({ id, initiative, terminal }) => claudeSessionsService.resume(id, initiative, terminal));
+    async ({ id, initiative, terminal }) => {
+      const { terminal: onde, aviso } = terminalDeFora(terminal, await sessionService.terminal());
+      return { ...(await claudeSessionsService.resume(id, initiative, onde)), ...(aviso === undefined ? {} : { aviso }) };
+    });
 
   def(server, "open_initiative_session", "external",
     "Opens a Claude session with the context of an initiative in a terminal application on this machine, in the folder of the chosen workspace. The session writes its handoff at the end; read it with read_session_handoff.",
     { slug: z.string().min(1), workspaceId: z.string().optional(), terminal: TERMINAL_DE_FORA.optional().describe("when absent, the preferred terminal") },
-    ({ slug, workspaceId, terminal }) =>
-      sessionService.open(slug, { ...(workspaceId === undefined ? {} : { workspaceId }), ...(terminal === undefined ? {} : { terminal }) }));
+    async ({ slug, workspaceId, terminal }) => {
+      const { terminal: onde, aviso } = terminalDeFora(terminal, await sessionService.terminal());
+      const aberta = await sessionService.open(slug, { ...(workspaceId === undefined ? {} : { workspaceId }), terminal: onde });
+      return { ...aberta, ...(aviso === undefined ? {} : { aviso }) };
+    });
 
   def(server, "list_initiative_sessions", "read",
     "The sessions opened for an initiative, with state and whether each left a handoff.",

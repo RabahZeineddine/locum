@@ -47,7 +47,7 @@ linha de comando escreve. Não existe cópia nem sincronização.
 
 ## O que o servidor expõe
 
-São 185 ferramentas, todas casca fina sobre a camada de serviço em
+São 189 ferramentas, todas casca fina sobre a camada de serviço em
 `app/src/services/`. A regra mora no serviço, não aqui: versão de agent
 continua imutável, ciclo na tabela de substituição continua recusado na
 gravação, gatilho do pacote que espera a escolha de chats não liga.
@@ -126,7 +126,9 @@ guardar segredo, e não é recomendado.
 |---|---|---|
 | `locum_health` | read | só MCP |
 | `list_agents` | read | `agents.list` |
-| `get_agent` | read | `agents.get`, `agents.versions` |
+| `get_agent` | read | `agents.get` |
+| `list_agent_versions` | read | `agents.versions` |
+| `restore_agent_version` | danger | só MCP (a tela regrava a versão antiga pelo editor) |
 | `list_runs` | read | `runs.list` |
 | `get_run` | read | `runs.get` |
 | `list_findings` | read | `runs.findings` |
@@ -170,7 +172,9 @@ guardar segredo, e não é recomendado.
 | `suggest_library_id` | read | `library.suggestId` |
 | `describe_steps` | read | `actions.describe` |
 | `list_library_agents` | read | `library.profiles` |
-| `get_library_agent` | read | `library.profile`, `library.profileVersions` |
+| `get_library_agent` | read | `library.profile` |
+| `list_library_agent_versions` | read | `library.profileVersions` |
+| `restore_library_agent_version` | danger | só MCP (a tela regrava a versão antiga pelo editor) |
 | `upsert_library_agent` | danger | `library.saveProfile` |
 | `list_toolsets` | read | `library.toolsets` |
 | `upsert_toolset` | danger | `library.saveToolset` |
@@ -183,7 +187,7 @@ guardar segredo, e não é recomendado.
 | `get_trigger_schedule` | read | `triggers.schedule` |
 | `suggest_automation_id` | read | `automations.suggestId` |
 | `preview_github_trigger` | read-external | `triggers.previewGithub` |
-| `save_automation` | danger | `automations.save` |
+| `save_automation` | publish | `automations.save` |
 | `set_automation_enabled` | publish | `automations.setEnabled` |
 | `set_trigger_enabled` | publish | `triggers.setEnabled` |
 | `remove_trigger` | danger | `triggers.remove` |
@@ -197,11 +201,11 @@ guardar segredo, e não é recomendado.
 | `add_custom_connection` | external | `connections.addCustom` |
 | `enable_github_mcp_server` | write | `connections.ligarServidorDoGithub` |
 | `get_github_status` | read | `github.status` |
-| `save_github_token` | write | `github.save` |
+| `save_github_token` | danger | `github.save` |
 | `forget_github_token` | danger | `github.forget` |
 | `check_github` | read-external | `github.check` |
 | `list_gh_accounts` | read | `github.ghAccounts` |
-| `use_gh_account` | write | `github.useGh` |
+| `use_gh_account` | danger | `github.useGh` |
 | `get_claude_code_status` | read | `claudeCode.status` |
 | `connect_claude_code` | danger | `claudeCode.connect` |
 | `get_opencode_status` | read | `opencode.status` |
@@ -211,7 +215,7 @@ guardar segredo, e não é recomendado.
 | `list_claude_import_origins` | read | `claudeImport.origins` |
 | `apply_claude_import` | write | `claudeImport.apply` |
 | `list_grafana_instances` | read | `grafana.list` |
-| `save_grafana_instance` | write | `grafana.save` |
+| `save_grafana_instance` | danger | `grafana.save` |
 | `remove_grafana_instance` | danger | `grafana.remove` |
 | `get_credentials_overview` | read | `credentials.overview` |
 | `get_slack_app` | read | `connections.slackApp` |
@@ -232,11 +236,11 @@ guardar segredo, e não é recomendado.
 | `list_teams_chats` | read-external | `connections.teamsChats` |
 | `list_teams_channels` | read-external | `connections.teamsChannels` |
 | `list_trackers` | read | `trackers.list` |
-| `register_tracker` | write | `trackers.register` |
+| `register_tracker` | publish | `trackers.register` |
 | `remove_tracker` | danger | `trackers.remove` |
 | `set_tracker_enabled` | write | `trackers.setEnabled` |
 | `set_tracker_project` | write | `trackers.setProject` |
-| `save_tracker_secret` | write | `trackers.saveSecret` |
+| `save_tracker_secret` | danger | `trackers.saveSecret` |
 | `forget_tracker_secret` | danger | `trackers.forgetSecret` |
 | `test_tracker` | read-external | `trackers.test` |
 | `list_tracker_projects` | read-external | `trackers.projects` |
@@ -259,7 +263,7 @@ guardar segredo, e não é recomendado.
 | `import_agent` | danger | `agents.importFile` |
 | `save_agent_draft` | write | `agents.aiSave` |
 | `list_agent_templates` | read-external | `agents.templates` |
-| `install_agent_template` | write | `agents.importTemplate` |
+| `install_agent_template` | publish | `agents.importTemplate` |
 | `install_reply_agent` | write | `agents.installReply` |
 | `agent_chat_state` | read | `agentChat.state` |
 | `agent_chat_send` | external | `agentChat.send` |
@@ -267,11 +271,11 @@ guardar segredo, e não é recomendado.
 | `agent_chat_cancel` | write | `agentChat.cancel` |
 | `agent_chat_reset` | danger | `agentChat.reset` |
 | `list_registered_providers` | read | `providers.registered` |
-| `register_provider` | write | `providers.register` |
+| `register_provider` | publish | `providers.register` |
 | `set_provider_enabled` | write | `providers.setEnabled` |
 | `remove_provider` | danger | `providers.remove` |
 | `get_provider_credentials` | read | `providers.credentials` |
-| `save_provider_secret` | write | `providers.saveSecret` |
+| `save_provider_secret` | danger | `providers.saveSecret` |
 | `forget_provider_secret` | danger | `providers.forgetSecret` |
 | `check_provider` | read-external | `providers.checkSecret` |
 | `list_provider_models` | read-external | `providers.models` |
@@ -282,7 +286,7 @@ guardar segredo, e não é recomendado.
 | `set_model_price` | write | `providers.setPrice` |
 | `remove_model_price` | write | `providers.removePrice` |
 | `set_mcp_server_enabled` | danger | `mcp.setEnabled` |
-| `set_mcp_server_credential` | write | `mcp.setCredential` |
+| `set_mcp_server_credential` | danger | `mcp.setCredential` |
 | `get_mcp_usage` | read | `mcp.usage` |
 | `get_mcp_links` | read | `mcp.vinculos` |
 | `accept_mcp_origin` | danger | `mcp.aceitarOrigem` |
@@ -315,13 +319,25 @@ a versão que grava como pessoa:
 
 - `upsert_agent` rebaixa para `approve` o passo de ação que chega em `draft` ou
   `auto` e mudou desde a versão anterior; `save_agent_edited` e
-  `save_automation` gravam como a tela.
+  `save_automation` gravam como a tela. O rebaixamento do `upsert_agent` deixou
+  de ser uma garantia: a classe da ferramenta é declarada por quem grava, e
+  quem segura o modo `auto` é a confirmação do cliente, pela anotação de cada
+  chamada, e não o servidor.
 - `set_budget` só baixa ou acrescenta teto; subir é por `save_agent_edited`.
 - `register_mcp_server` grava desligado; ligar é `set_mcp_server_enabled`.
 - `set_trigger` não liga; ligar é `set_trigger_enabled`.
 - `upsert_agent` ainda recusa escrita pela conta Claude em passo de modelo
   (escrita externa vai como passo de ação); ferramenta nova de servidor `write`
   entra como na tela.
+
+Sobrescrevem credencial guardada, e por isso são `danger`: `save_github_token`,
+`use_gh_account`, `save_provider_secret`, `save_tracker_secret`,
+`save_grafana_instance` e `set_mcp_server_credential`. São `publish` (destrutivas
+e de mundo aberto) `register_provider` e `register_tracker`, porque trocar o
+`baseUrl` de um cadastro manda a chave guardada para o host novo, e
+`install_agent_template`, que busca o template no GitHub e sobrescreve o agent
+de mesmo id. `save_automation` também é `publish`: com `enabled: true` liga
+gatilho, como `set_automation_enabled`.
 
 Gravam como a tela, sem recusa, e por isso são `danger`:
 `set_initiative_servers` e `link_agent_to_initiative` (ampliam o que os agents
@@ -347,3 +363,21 @@ porta única do [ADR 0002](adr/0002-camada-de-servico-e-servidor-mcp.md). Ela é
 do tipo `publish`: o Claude Code pergunta antes de cada chamada, e é essa
 pergunta que mantém a invariante de que nada sai no nome de quem usa sem a
 pessoa ter dito que sai.
+
+`decide_approval` e `agent_chat_decide` pedem o `hash` do conteúdo (o que
+`get_approval`, `list_pending_approvals` e `agent_chat_state` mostram, como o
+`accept_mcp_origin` pede o de `get_mcp_links`). Se o texto, os achados ou os
+argumentos do cartão mudaram desde a leitura, nada é decidido: a confirmação do
+cliente fica amarrada ao que ele viu.
+
+## Chat de agent com o app aberto
+
+O app aberto e o `--mcp` são dois processos sobre o mesmo banco, e a conversa
+de cada agent mora nas mesmas chaves. Cada operação relê o disco quando a
+conversa está quieta, e quem está no meio de uma fala (ou com um cartão à
+espera) segura uma trava por agent (`chat.trava.agent:<id>`, com o pid): o
+outro processo recusa enviar, decidir e limpar com o motivo, e a trava de um
+processo morto não segura ninguém. O app relê ao abrir o chat e ao focar a
+janela. O cartão que já tinha o clique de Executar e ficou sem resposta porque o
+processo morreu volta como "não se sabe se saiu" (`incerto`), e não como
+expirado: a escrita pode ter saído, e a pessoa confere no serviço.
