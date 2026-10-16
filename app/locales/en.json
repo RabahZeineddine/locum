@@ -710,6 +710,7 @@
       "outside_initiative": "step targets a server outside this initiative's scope",
       "rejected": "rejected",
       "publish_conflict": "the target changed before this could be published",
+      "dependency_rejected": "skipped because step {{step}} was rejected",
       "not_run": "an earlier step failed, so this one did not run"
     },
     "tabs": {
@@ -737,6 +738,9 @@
     "event": {
       "title": "Event used",
       "none": "no event",
+      "prsCut_one": "{{count}} more PR did not make it in (limit per message)",
+      "prsCut_other": "{{count}} more PRs did not make it in (limit per message)",
+      "prsCut_zero": "{{count}} more PRs did not make it in (limit per message)",
       "dryRun": "Dry run: nothing was published. The action steps show the text that would be sent."
     },
     "failedAt": "Failed at step \"{{step}}\"",
@@ -2066,7 +2070,7 @@
       "problems_other": "{{count}} things to check",
       "blocked": "Fix the marked points to save.",
       "reactionNotice": {
-        "text": "The trigger no longer reacts on its own. Add the reaction nodes.",
+        "text": "The trigger no longer reacts on its own. Add the reaction nodes (the review step also gets a verdict field and an instruction to fill it).",
         "add": "Add reaction nodes",
         "dismiss": "Dismiss"
       },
@@ -2282,6 +2286,10 @@
         "mentions": "Mentions of you",
         "dms": "Direct chats",
         "prLinks": "Message with a PR link",
+        "groupPrs": "Group the PRs of one message into a single run",
+        "groupPrsHint": "Off (the default): one event, and one run, per PR. On: one run reviews every PR of the message and answers once. A review action (github.review_comment) then covers only the first PR.",
+        "maxPrs": "PRs per message",
+        "maxPrsHint": "Default 5. Links beyond this are left out, and the run says how many.",
         "filtroIa": "AI filter",
         "filtroIaPlaceholder": "Is this a request for a pull request review?",
         "filtroIaModeloAuto": "This machine's Haiku (default)",
@@ -2514,6 +2522,10 @@
         }
       }
     },
+    "reactionNodes": {
+      "pegou": "React 👀",
+      "verdict": "React by verdict"
+    },
     "problems": {
       "noName": "The automation needs a name.",
       "noSteps": "Add at least one step.",
@@ -2526,6 +2538,8 @@
       "slackReplyNeedsSlack": "Replying in Slack needs a Slack trigger: that is where the thread comes from.",
       "teamsReplyNeedsTeams": "Replying in Teams needs a Teams trigger.",
       "slackReactNeedsSlack": "Reacting in Slack needs a Slack trigger: the reaction lands on that message.",
+      "reactionValueMissing": "This reaction reads a field that the earlier step does not produce: add it to the step's output format, or it falls on the fallback emoji.",
+      "groupedReview": "The trigger groups the PRs of a message, but a review action covers only the first PR. Turn grouping off, or answer in Teams instead.",
       "teamsReactNeedsTeams": "Reacting in Teams needs a Teams trigger: the reaction lands on that message.",
       "noTracker": "Choose which tracker opens the task.",
       "createReviewer": "Without a reviewer agent, the review uses a loose AI step. Create an agent for PR review and swap the step for it.",

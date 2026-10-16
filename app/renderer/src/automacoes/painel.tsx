@@ -239,6 +239,30 @@ function ConfigDoGatilho({
                 rotulo={t("automations.triggers.teams-inbox.prLinks")}
                 trocar={(prLinks) => trocar({ ...config, prLinks })}
               />
+              {config.prLinks ? (
+                <>
+                  <Alternador
+                    ligado={config.agruparPrs}
+                    rotulo={t("automations.triggers.teams-inbox.groupPrs")}
+                    trocar={(agruparPrs) => trocar({ ...config, agruparPrs })}
+                  />
+                  <p className="text-muted-foreground -mt-1 text-xs">{t("automations.triggers.teams-inbox.groupPrsHint")}</p>
+                  <Campo ajuda={t("automations.triggers.teams-inbox.maxPrsHint")} rotulo={t("automations.triggers.teams-inbox.maxPrs")}>
+                    <input
+                      className={cn(CAMPO, "w-28")}
+                      data-locum-max-prs=""
+                      max={20}
+                      min={1}
+                      onChange={(e) => {
+                        const n = Number.parseInt(e.target.value, 10);
+                        if (Number.isFinite(n) && n >= 1 && n <= 20) trocar({ ...config, maxPrs: n });
+                      }}
+                      type="number"
+                      value={config.maxPrs}
+                    />
+                  </Campo>
+                </>
+              ) : null}
               <FiltroComIa filtro={config.filtroIa} trocar={(filtroIa) => trocar(comFiltro(config, filtroIa))} />
               <ChatsDoTeams
                 chats={config.chats}

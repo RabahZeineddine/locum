@@ -478,6 +478,11 @@ function EventoDoRun({ detalhe }: { detalhe: Detalhe }) {
           </>
         )}
       </span>
+      {evento !== null && evento.prsCortados > 0 ? (
+        <span className="text-muted-foreground text-xs" data-locum-run-prs-cortados="">
+          {t("runs.event.prsCut", { count: evento.prsCortados })}
+        </span>
+      ) : null}
       {evento?.semConversa === true ? (
         <span className="text-muted-foreground text-xs" data-locum-run-ensaio="">
           {t("runs.event.dryRun")}

@@ -1,6 +1,6 @@
 import type { ParsedGithubPr } from "./slack.js";
 
-/** Quantos PRs de uma mensagem viram evento. Passou disso é lista de colar, não pedido de revisão. */
+/** Padrão de `maxPrs` do gatilho: quantos PRs de uma mensagem entram. Passou disso é lista de colar, não pedido de revisão. */
 export const MAX_PR_POR_MENSAGEM = 5;
 
 /**
@@ -16,7 +16,7 @@ const LINK = /https?:\/\/(?:www\.)?github\.com\/([\w.-]+)\/([\w.-]+)\/pull\/(\d+
  *
  * Serve a HTML cru: o link vive no `href` e some quando as tags saem.
  */
-export function extrairLinksDePr(texto: string): { prs: ParsedGithubPr[]; cortados: number } {
+export function extrairLinksDePr(texto: string, max: number = MAX_PR_POR_MENSAGEM): { prs: ParsedGithubPr[]; cortados: number } {
   // Link dentro de código ou bloco de código é exemplo, não pedido de revisão.
   texto = texto.replace(/<(code|pre)\b[^>]*>[\s\S]*?<\/\1>/gi, " ");
   const vistos = new Set<string>();
@@ -27,7 +27,7 @@ export function extrairLinksDePr(texto: string): { prs: ParsedGithubPr[]; cortad
     const chave = `${pr.owner}/${pr.repo}#${pr.pull}`.toLowerCase();
     if (vistos.has(chave)) continue;
     vistos.add(chave);
-    if (prs.length < MAX_PR_POR_MENSAGEM) prs.push(pr);
+    if (prs.length < max) prs.push(pr);
     else cortados += 1;
   }
   return { prs, cortados };

@@ -11,14 +11,14 @@ PR), **legítimo** (fica, com o motivo).
 
 | # | onde | o que faz | estado |
 |---|---|---|---|
-| A1 | `src/sources/teams-inbox.ts` `reagirAoPegar` | põe 👀 na mensagem durante a varredura | em andamento (`feat/reacoes-como-nos`) |
-| A2 | `src/sources/github.ts` `avisarOrigem` | depois da review, reage no Teams e no Slack | em andamento |
-| A3 | `src/sources/github.ts` `reagirNoTeamsAoSair` | troca 👀 pelo emoji do veredito | em andamento |
-| A4 | `src/sources/github.ts` `reagirNoSlack` | o mesmo no Slack, com nome de tool fixo | em andamento |
-| A5 | `src/teams/reaction.ts` `soltarOPr` | tira 👀 (chamado por draft, discard, executor e scheduler) | em andamento |
-| A6 | `src/executor/executor.ts` catch de `execute` | run falho ou pausado tira 👀 | em andamento |
-| A7 | `src/triggers/scheduler.ts` `soltarDoEvento` | evento descartado (fila cheia, reavaliação, 24 h) tira 👀 | em andamento |
-| A8 | `src/approval/gate.ts` proposta nula → `discard` | cai em A5 | em andamento |
+| A1 | `src/sources/teams-inbox.ts` `reagirAoPegar` | põe 👀 na mensagem durante a varredura | feito (este PR) |
+| A2 | `src/sources/github.ts` `avisarOrigem` | depois da review, reage no Teams e no Slack | feito (este PR) |
+| A3 | `src/sources/github.ts` `reagirNoTeamsAoSair` | troca 👀 pelo emoji do veredito | feito (este PR) |
+| A4 | `src/sources/github.ts` `reagirNoSlack` | o mesmo no Slack, com nome de tool fixo | feito (este PR) |
+| A5 | `src/teams/reaction.ts` `soltarOPr` | tira 👀 (chamado por draft, discard, executor e scheduler) | feito (este PR) |
+| A6 | `src/executor/executor.ts` catch de `execute` | run falho ou pausado tira 👀 | feito (este PR) |
+| A7 | `src/triggers/scheduler.ts` `soltarDoEvento` | evento descartado (fila cheia, reavaliação, 24 h) tira 👀 | feito (este PR) |
+| A8 | `src/approval/gate.ts` proposta nula → `discard` | cai em A5 | feito (este PR) |
 
 ## B. Decisão de fluxo escondida
 
@@ -62,8 +62,8 @@ B35 (tentativas de GET, transporte).
 | # | onde | o que é | proposta | estado |
 |---|---|---|---|---|
 | C2, C3 | `sources/github.ts` | "LGTM!", "Sugestão:", rótulos de severidade | template no nó `github.review_comment` | pendente |
-| C4 | `teams/reaction.ts`, `sources/github.ts` | emojis fixos | parâmetro do nó de reação | em andamento |
-| C5 | `sources/github-pr-link.ts` | 5 PRs por mensagem, o resto some | parâmetro e aviso no detalhe | em andamento |
+| C4 | `teams/reaction.ts`, `sources/github.ts` | emojis fixos | parâmetro do nó de reação | feito (este PR) |
+| C5 | `sources/github-pr-link.ts` | 5 PRs por mensagem, o resto some | parâmetro e aviso no detalhe | feito (este PR) |
 | C7 | `services/github-service.ts` | diff de 200 000 caracteres, setter sem chamador | parâmetro do nó | pendente |
 | C8 | `services/filtro-ia.ts` | prazo e corte de texto do filtro | parâmetros | pendente |
 | C9 | `executor.ts` | contexto da iniciativa cortado em 40 000 | aviso no run | pendente |

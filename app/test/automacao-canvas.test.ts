@@ -305,3 +305,55 @@ test("ida e volta entre Agent e Instrução embutida preserva prompt, tools e mo
   assert.deepEqual(volta.tools, passo.tools);
   assert.equal(volta.model, "claude-code/claude-opus-4");
 });
+
+const CTX = { slackConectado: true, teamsConectado: true, trackers: [] as string[] };
+
+test("a migração acrescenta verdict ao passo de revisão que só tinha text, e o prompt pede o veredito", () => {
+  const antigo = rascunhoDoModelo("teamsPrReview", "t", "T", null);
+  const revisarAntigo = antigo.spec.steps.find((p) => p.key === "revisar")!;
+  const gravado = {
+    ...antigo,
+    spec: {
+      ...antigo.spec,
+      steps: [
+        { ...revisarAntigo, needs: [], prompt: "Revise o PR.", outputSchema: FORMATOS.respostaTeams } as never,
+        antigo.spec.steps.find((p) => p.key === "responder")!,
+      ],
+    },
+  };
+  assert.deepEqual(problemas(comNosDeReacao(gravado), CTX).map((p) => p.chave), []);
+  const novo = comNosDeReacao(gravado, { pegou: "React 👀", veredito: "React by verdict" });
+  const revisar = novo.spec.steps.find((p) => p.key === "revisar")!;
+  const esquema = revisar.type === "model" ? (revisar.outputSchema as { required: string[]; properties: Record<string, { enum?: string[] }> }) : null;
+  assert.deepEqual(esquema?.required, ["text", "verdict"]);
+  assert.deepEqual(esquema?.properties.verdict?.enum, ["APPROVE", "REQUEST_CHANGES", "COMMENT"]);
+  assert.match(revisar.type === "model" ? revisar.prompt : "", /Em `verdict`/);
+  assert.deepEqual(novo.spec.steps.map((p) => p.name).filter((n) => n.startsWith("React")), ["React 👀", "React by verdict"]);
+  assert.ok(AgentSpec.safeParse(novo.spec).success);
+  // Rodar de novo não duplica o campo nem a instrução.
+  const de_novo = passoDeRevisar(comNosDeReacao({ ...novo, spec: { ...novo.spec, steps: novo.spec.steps.filter((p) => !(p.type === "action" && p.action === "teams.react")) } }));
+  assert.equal((de_novo.prompt.match(/Em `verdict`/g) ?? []).length, 1);
+});
+
+const passoDeRevisar = (r: ReturnType<typeof rascunhoDoModelo>) => {
+  const p = r.spec.steps.find((x) => x.key === "revisar")!;
+  if (p.type !== "model") throw new Error("revisar não é de IA");
+  return p;
+};
+
+test("problemas avisa quando a reação lê um campo que o passo não produz", () => {
+  const r = rascunhoDoModelo("teamsPrReview", "t", "T", null);
+  assert.deepEqual(problemas(r, CTX).filter((p) => p.chave.includes("reaction")), []);
+  const semVerdict = { ...r, spec: { ...r.spec, steps: r.spec.steps.map((p) => (p.key === "revisar" ? { ...p, outputSchema: FORMATOS.respostaTeams } : p)) as never } };
+  assert.deepEqual(problemas(semVerdict, CTX).filter((p) => p.chave.includes("reaction")).map((p) => [p.chave, p.no]), [["automations.problems.reactionValueMissing", "veredito"]]);
+});
+
+test("problemas avisa quando agruparPrs convive com github.review_comment, que cobre só o primeiro PR", () => {
+  const r = rascunhoDoModelo("teamsPrReview", "t", "T", null);
+  const comReview = { ...r, spec: { ...r.spec, steps: [...r.spec.steps, { type: "action", key: "comentar", name: "c", needs: ["revisar"], optional: false, action: "github.review_comment", mode: "approve", input: "revisar" } as never] } };
+  assert.deepEqual(problemas(comReview, CTX).filter((p) => p.chave.includes("groupedReview")).map((p) => p.no), ["comentar"]);
+  const separado = { ...comReview, gatilhos: comReview.gatilhos.map((g) => ({ ...g, config: { ...g.config, agruparPrs: false } as never })) };
+  assert.deepEqual(problemas(separado, CTX).filter((p) => p.chave.includes("groupedReview")), []);
+  // O modelo do Teams com resposta única agrupa; os gatilhos que já existem seguem separados.
+  assert.equal(r.gatilhos[0]!.config.kind === "teams-inbox" && r.gatilhos[0]!.config.agruparPrs, true);
+});

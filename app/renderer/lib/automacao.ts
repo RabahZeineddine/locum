@@ -347,7 +347,7 @@ export const GATILHOS: readonly ComponenteDeGatilho[] = [
   {
     id: "teams-inbox",
     app: "teams",
-    novo: () => ({ kind: "teams-inbox", mentions: true, dms: true, prLinks: false, channels: [], chats: [], chatsPendentes: 0, everyMinutes: 5 }),
+    novo: () => ({ kind: "teams-inbox", mentions: true, dms: true, prLinks: false, agruparPrs: false, maxPrs: 5, channels: [], chats: [], chatsPendentes: 0, everyMinutes: 5 }),
   },
   {
     id: "poll",
@@ -623,6 +623,7 @@ export function problemas(r: Rascunho, ctx: Contexto): Problema[] {
   const kinds = new Set(r.gatilhos.map((g) => g.config.kind));
   const conversaDoSlack = kinds.has("slack-channel") || kinds.has("slack-inbox");
   const conversaDoTeams = kinds.has("teams-inbox");
+  const agrupa = r.gatilhos.some((g) => g.config.kind === "teams-inbox" && g.config.prLinks && g.config.agruparPrs);
 
   if (r.spec.name.trim() === "") lista.push({ chave: "automations.problems.noName", bloqueia: true });
   if (r.spec.steps.length === 0) lista.push({ chave: "automations.problems.noSteps", bloqueia: true });
@@ -693,6 +694,18 @@ export function problemas(r: Rascunho, ctx: Contexto): Problema[] {
     if (p.action === "teams.post" && !conversaDoTeams) {
       lista.push({ chave: "automations.problems.teamsReplyNeedsTeams", no: p.key, bloqueia: false });
     }
+    if (p.action === "teams.react" || p.action === "slack.react") {
+      const de = ((p.params ?? {}).porValor as { de?: unknown } | undefined)?.de;
+      const alvo = typeof de === "string" ? /^\{\{\s*steps\.([\w-]+)\.([\w-]+)\s*\}\}$/.exec(de) : null;
+      const fonteDoValor = alvo === null ? undefined : porChave.get(alvo[1]!);
+      if (alvo !== null && fonteDoValor?.type === "model") {
+        const props = (fonteDoValor.outputSchema as { properties?: Record<string, unknown> } | undefined)?.properties;
+        if (props?.[alvo[2]!] === undefined) lista.push({ chave: "automations.problems.reactionValueMissing", no: p.key, bloqueia: false });
+      }
+    }
+    if (p.action === "github.review_comment" && agrupa) {
+      lista.push({ chave: "automations.problems.groupedReview", no: p.key, bloqueia: false });
+    }
     if (p.action === "slack.react" && !conversaDoSlack) {
       lista.push({ chave: "automations.problems.slackReactNeedsSlack", no: p.key, bloqueia: false });
     }
@@ -714,11 +727,11 @@ const REACAO_PEGOU = "👀";
 const REACAO_POR_VEREDITO = { APPROVE: "✅", REQUEST_CHANGES: "⚠️", COMMENT: "💬" } as const;
 
 /** O 👀 do início: opcional, porque a revisão não pode depender de uma cortesia. */
-function reacaoDePegou(action: "teams.react" | "slack.react", key: string): PassoDeAcao {
+function reacaoDePegou(action: "teams.react" | "slack.react", key: string, name = "Reagir 👀"): PassoDeAcao {
   return {
     type: "action",
     key,
-    name: "Reagir 👀",
+    name,
     needs: [],
     optional: true,
     action,
@@ -728,11 +741,11 @@ function reacaoDePegou(action: "teams.react" | "slack.react", key: string): Pass
 }
 
 /** A reação do veredito, que troca o 👀: lê `verdict` da saída do passo de revisão. */
-function reacaoDeVeredito(action: "teams.react" | "slack.react", key: string, revisao: string, needs: string[]): PassoDeAcao {
+function reacaoDeVeredito(action: "teams.react" | "slack.react", key: string, revisao: string, needs: string[], name = "Reagir pelo veredito"): PassoDeAcao {
   return {
     type: "action",
     key,
-    name: "Reagir pelo veredito",
+    name,
     needs,
     optional: true,
     action,
@@ -756,13 +769,31 @@ export function faltaReacaoNoGatilho(r: Rascunho): boolean {
   return comLink && !reage && r.spec.steps.length > 0;
 }
 
+const INSTRUCAO_DO_VEREDITO = [
+  "",
+  "Em `verdict`, o veredito: APPROVE se não há defeito a corrigir, REQUEST_CHANGES se há",
+  "defeito que precisa ser corrigido antes do merge, COMMENT se só há observações.",
+].join("\n");
+
+/** O passo de revisão ganha o campo `verdict` (enum) no esquema de saída e a instrução no prompt, se faltarem. */
+function passoComVeredito(p: PassoDeIA): PassoDeIA {
+  const esquema = (p.outputSchema ?? FORMATOS.respostaTeams) as { properties?: Record<string, unknown>; required?: string[] };
+  if (esquema.properties?.verdict !== undefined) return p;
+  const outputSchema = {
+    ...esquema,
+    properties: { ...(esquema.properties ?? {}), verdict: { type: "string", enum: ["APPROVE", "REQUEST_CHANGES", "COMMENT"] } },
+    required: [...(esquema.required ?? []), "verdict"],
+  };
+  return { ...p, outputSchema, prompt: p.prompt.includes("`verdict`") ? p.prompt : `${p.prompt}\n${INSTRUCAO_DO_VEREDITO}` };
+}
+
 /**
  * Acrescenta ao rascunho os nós que o gatilho fazia sozinho: 👀 no começo (os
  * passos sem dependência passam a esperar por ele) e a reação pelo veredito
  * depois do que já havia. A pessoa revisa e salva; nada é gravado aqui.
  */
-export function comNosDeReacao(r: Rascunho): Rascunho {
-  const pegou = reacaoDePegou("teams.react", novaChave(r.spec, "pegou"));
+export function comNosDeReacao(r: Rascunho, nomes: { pegou: string; veredito: string } = { pegou: "Reagir 👀", veredito: "Reagir pelo veredito" }): Rascunho {
+  const pegou = reacaoDePegou("teams.react", novaChave(r.spec, "pegou"), nomes.pegou);
   const raizes = new Set(r.spec.steps.filter((p) => p.needs.length === 0).map((p) => p.key));
   const dependidos = new Set(r.spec.steps.flatMap((p) => p.needs));
   const finais = r.spec.steps.filter((p) => !dependidos.has(p.key)).map((p) => p.key);
@@ -771,8 +802,9 @@ export function comNosDeReacao(r: Rascunho): Rascunho {
   const modelos = r.spec.steps.filter((p) => p.type === "model");
   const revisao =
     (review?.type === "action" ? (review.input ?? review.needs[0]) : undefined) ?? modelos[modelos.length - 1]?.key ?? "revisar";
-  const spec0 = { ...r.spec, steps: [pegou, ...r.spec.steps.map((p) => (raizes.has(p.key) ? { ...p, needs: [pegou.key] } : p))] };
-  const veredito = reacaoDeVeredito("teams.react", novaChave(spec0, "veredito"), revisao, finais);
+  const comVeredito = (p: Step): Step => (p.type === "model" && p.key === revisao ? passoComVeredito(p) : p);
+  const spec0 = { ...r.spec, steps: [pegou, ...r.spec.steps.map((p) => comVeredito(raizes.has(p.key) ? { ...p, needs: [pegou.key] } : p))] };
+  const veredito = reacaoDeVeredito("teams.react", novaChave(spec0, "veredito"), revisao, finais, nomes.veredito);
   return { ...r, spec: { ...spec0, steps: [...spec0.steps, veredito] } };
 }
 
@@ -980,7 +1012,7 @@ export function rascunhoDoModelo(
             reacaoDoVeredito("revisar", ["responder"]),
           ],
         },
-        gatilhos: [gatilho({ kind: "teams-inbox", mentions: false, dms: false, prLinks: true, channels: [], chats: [], chatsPendentes: 0, everyMinutes: 5 })],
+        gatilhos: [gatilho({ kind: "teams-inbox", mentions: false, dms: false, prLinks: true, agruparPrs: true, maxPrs: 5, channels: [], chats: [], chatsPendentes: 0, everyMinutes: 5 })],
       };
     }
     case "blank": {

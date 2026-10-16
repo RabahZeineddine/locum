@@ -734,6 +734,7 @@
       "outside_initiative": "o passo aponta para um servidor fora do escopo desta iniciativa",
       "rejected": "rejeitado",
       "publish_conflict": "o alvo mudou antes disso poder ser publicado",
+      "dependency_rejected": "pulado porque o passo {{step}} foi recusado",
       "not_run": "um passo anterior falhou, então este não rodou"
     },
     "tabs": {
@@ -761,6 +762,9 @@
     "event": {
       "title": "Evento usado",
       "none": "sem evento",
+      "prsCut_one": "mais {{count}} PR não entrou (limite por mensagem)",
+      "prsCut_other": "mais {{count}} PRs não entraram (limite por mensagem)",
+      "prsCut_zero": "mais {{count}} PRs não entraram (limite por mensagem)",
       "dryRun": "Ensaio: nada foi publicado. Os passos de ação mostram o texto que seria enviado."
     },
     "failedAt": "Falhou no passo \"{{step}}\"",
@@ -2115,7 +2119,7 @@
       "problems_zero": "{{count}} pontos para revisar",
       "blocked": "Corrija os pontos marcados para salvar.",
       "reactionNotice": {
-        "text": "O gatilho não reage mais sozinho. Adicione os nós de reação.",
+        "text": "O gatilho não reage mais sozinho. Adicione os nós de reação (o passo de revisão também ganha o campo verdict e a instrução para preenchê-lo).",
         "add": "Adicionar nós de reação",
         "dismiss": "Dispensar"
       },
@@ -2332,6 +2336,10 @@
         "mentions": "Menções a você",
         "dms": "Conversas diretas",
         "prLinks": "Mensagem com link de PR",
+        "groupPrs": "Agrupar os PRs de uma mensagem num run só",
+        "groupPrsHint": "Desligado (o padrão): um evento, e um run, por PR. Ligado: um run revisa todos os PRs da mensagem e responde uma vez. A ação de review (github.review_comment) cobre então só o primeiro PR.",
+        "maxPrs": "PRs por mensagem",
+        "maxPrsHint": "Padrão 5. O que passar disso fica de fora, e o run diz quantos.",
         "filtroIa": "Filtro com IA",
         "filtroIaPlaceholder": "É um pedido de review de pull request?",
         "filtroIaModeloAuto": "Haiku da máquina (padrão)",
@@ -2564,6 +2572,10 @@
         }
       }
     },
+    "reactionNodes": {
+      "pegou": "Reagir 👀",
+      "verdict": "Reagir pelo veredito"
+    },
     "problems": {
       "noName": "A automação precisa de nome.",
       "noSteps": "Acrescente pelo menos um passo.",
@@ -2576,6 +2588,8 @@
       "slackReplyNeedsSlack": "Responder no Slack precisa de um gatilho do Slack: é dele que vem a thread.",
       "teamsReplyNeedsTeams": "Responder no Teams precisa de um gatilho do Teams.",
       "slackReactNeedsSlack": "Reagir no Slack precisa de um gatilho do Slack: a reação cai nessa mensagem.",
+      "reactionValueMissing": "Esta reação lê um campo que o passo anterior não produz: acrescente-o ao formato de saída do passo, ou ela cai no emoji padrão.",
+      "groupedReview": "O gatilho agrupa os PRs da mensagem, mas a ação de review cobre só o primeiro PR. Desligue o agrupamento, ou responda no Teams.",
       "teamsReactNeedsTeams": "Reagir no Teams precisa de um gatilho do Teams: a reação cai nessa mensagem.",
       "noTracker": "Escolha em qual tracker abrir a tarefa.",
       "createReviewer": "Sem um agent revisor, a revisão usa um passo de IA solto. Crie um agent para revisar PR e troque o passo por ele.",

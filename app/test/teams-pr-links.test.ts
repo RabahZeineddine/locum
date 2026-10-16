@@ -192,7 +192,8 @@ test("mensagem do próprio usuário com link conta; sem link, não", async () =>
 });
 
 const WEB = "https://github.com/acme/web/pull/9";
-const WATCH_PR = { mentions: false, dms: false, prLinks: true };
+const WATCH_PR = { mentions: false, dms: false, prLinks: true, agruparPrs: true };
+const WATCH_SEPARADO = { mentions: false, dms: false, prLinks: true };
 const chatCom = (html: string) => [{ id: "g", chatType: "group", mensagens: [mensagem("m1", 2, html)] }];
 
 test("dois links na mesma mensagem viram um evento só, com a lista de PRs, sem duplicar na batida seguinte", async () => {
@@ -234,17 +235,83 @@ test("PR que já tem review sai da lista, e se todos já têm nada é gerado", a
   assert.equal((await eventos(db)).filter((e) => e.prs !== undefined).length, 2);
 });
 
-test("PR que não deu para buscar sai da lista com o erro, e os outros seguem", async () => {
+test("gatilho sem agruparPrs (o padrão e o já gravado) gera um evento por PR, e o dedupe é por PR", async () => {
   const db = bancoDeTeste();
-  const fetchPr = (async (owner: string, repo: string, pull: number) => {
-    if (pull === 7) throw new Error("fora do ar");
-    return (semGithub.fetchPr as (o: string, r: string, p: number) => Promise<unknown>)(owner, repo, pull);
+  const chats = chatCom(`${PR} e ${WEB}`);
+  const primeira = await pollTeamsInbox(WATCH_SEPARADO, { db, token, ...semGithub, ...graphFalso({ chats }) });
+  assert.equal(primeira.eventIds.length, 2);
+  const lista = await eventos(db);
+  assert.deepEqual(lista.map((e) => e.repo).sort(), ["acme/api", "acme/web"]);
+  assert.ok(lista.every((e) => (e.prs as unknown[]).length === 1));
+
+  const segunda = await pollTeamsInbox(WATCH_SEPARADO, { db, token, ...semGithub, ...graphFalso({ chats }) });
+  assert.equal(segunda.eventIds.length, 0);
+  // Mensagem nova com o PR já revisado e um novo: só o novo gera evento.
+  const nova = [{ id: "g2", chatType: "group", mensagens: [mensagem("m2", -0.2, `${PR} https://github.com/acme/web/pull/10`)] }];
+  const r = await pollTeamsInbox(WATCH_SEPARADO, { db, token, ...semGithub, ...graphFalso({ chats: nova }) });
+  assert.deepEqual(r.descartes.map((d) => [d.pr, d.motivo]), [["acme/api#7", "repetido"]]);
+  assert.equal(r.inWindow.length, 1);
+});
+
+test("o PR que o evento não cobriu não conta como revisado", async () => {
+  const db = bancoDeTeste();
+  // PR 7 falha no GET: o evento cobre só o 9 (depois do limite de tentativas), e o 7 pode voltar depois.
+  const falha7 = (async (o: string, r: string, p: number) => {
+    if (p === 7) throw new Error("502");
+    return (semGithub.fetchPr as (o: string, r: string, p: number) => Promise<unknown>)(o, r, p);
   }) as never;
-  const r = await pollTeamsInbox(WATCH_PR, { db, token, ...semGithub, fetchPr, ...graphFalso({ chats: chatCom(`${PR} ${WEB}`) }) });
-  assert.match(r.errors[0]!.error, /acme\/api#7: fora do ar/);
+  for (let i = 0; i < 3; i++) await pollTeamsInbox(WATCH_PR, { db, token, ...semGithub, fetchPr: falha7, ...graphFalso({ chats: chatCom(`${PR} ${WEB}`) }) });
+  const { carregarRevisados } = await import("../src/sources/teams-inbox.js");
+  const revisados = await carregarRevisados(db);
+  assert.deepEqual([...revisados].map((k) => k.split("@")[0]), ["acme/web#9"]);
+});
+
+test("PR cujo GET falha fica pendente e entra na batida seguinte, sem acordar o agent antes", async () => {
+  const db = bancoDeTeste();
+  let falhar = true;
+  const fetchPr = (async (o: string, r: string, p: number) => {
+    if (p === 9 && falhar) throw new Error("502");
+    return (semGithub.fetchPr as (o: string, r: string, p: number) => Promise<unknown>)(o, r, p);
+  }) as never;
+  const chats = chatCom(`${PR} ${WEB}`);
+  const primeira = await pollTeamsInbox(WATCH_PR, { db, token, ...semGithub, fetchPr, ...graphFalso({ chats }) });
+  assert.match(primeira.errors[0]!.error, /acme\/web#9: 502/);
+  assert.deepEqual(primeira.inWindow, []);
+  const [pendente] = await eventos(db);
+  assert.equal(pendente!.prs, undefined);
+  assert.equal((pendente!.prsPendentes as unknown[]).length, 2);
+
+  falhar = false;
+  const segunda = await pollTeamsInbox(WATCH_PR, { db, token, ...semGithub, fetchPr, ...graphFalso({ chats }) });
+  assert.equal(segunda.inWindow.length, 1);
+  const [pronto] = await eventos(db);
+  assert.deepEqual((pronto!.prs as { prNumber: number }[]).map((p) => p.prNumber), [7, 9]);
+  assert.equal(pronto!.prsPendentes, undefined);
+});
+
+test("PR que falha a cada batida não segura os outros para sempre: depois de três tentativas o evento sai com o que deu", async () => {
+  const db = bancoDeTeste();
+  const fetchPr = (async (o: string, r: string, p: number) => {
+    if (p === 9) throw new Error("404");
+    return (semGithub.fetchPr as (o: string, r: string, p: number) => Promise<unknown>)(o, r, p);
+  }) as never;
+  const chats = chatCom(`${PR} ${WEB}`);
+  for (let i = 0; i < 2; i++) assert.deepEqual((await pollTeamsInbox(WATCH_PR, { db, token, ...semGithub, fetchPr, ...graphFalso({ chats }) })).inWindow, []);
+  const ultima = await pollTeamsInbox(WATCH_PR, { db, token, ...semGithub, fetchPr, ...graphFalso({ chats }) });
+  assert.equal(ultima.inWindow.length, 1);
   const [evento] = await eventos(db);
-  assert.deepEqual((evento!.prs as { prNumber: number }[]).map((p) => p.prNumber), [9]);
-  assert.equal(evento!.prNumber, 9);
+  assert.deepEqual((evento!.prs as { prNumber: number }[]).map((p) => p.prNumber), [7]);
+  assert.equal(evento!.prsFalharam, "acme/web#9");
+});
+
+test("maxPrs do gatilho manda no teto, e prsTexto avisa quantos PRs não entraram", async () => {
+  const db = bancoDeTeste();
+  const links = [1, 2, 3, 4].map((n) => `https://github.com/acme/api/pull/${n}`).join(" ");
+  await pollTeamsInbox({ ...WATCH_PR, maxPrs: 2 }, { db, token, ...semGithub, ...graphFalso({ chats: chatCom(links) }) });
+  const [evento] = await eventos(db);
+  assert.equal((evento!.prs as unknown[]).length, 2);
+  assert.equal(evento!.prsCortados, 2);
+  assert.match(String(evento!.prsTexto), /mais 2 PRs não entraram \(limite de 2 por mensagem\)/);
 });
 
 test("mais de cinco links: cinco entram e o evento diz quantos ficaram de fora", async () => {
@@ -264,10 +331,11 @@ test("spec gravada com os campos de um PR só segue renderizando pelo primeiro P
   assert.equal(renderPrompt("{{event.repo}}#{{event.prNumber}}", evento as never, new Map()), "acme/api#7");
 });
 
-test("o limite de cinco links diz quantos ficaram de fora", () => {
+test("o limite de links diz quantos ficaram de fora", () => {
   const links = [1, 2, 2, 3, 4, 5, 6, 7].map((n) => `https://github.com/acme/api/pull/${n}`).join(" ");
   const { prs, cortados } = extrairLinksDePr(links);
   assert.deepEqual([prs.length, cortados], [5, 2]);
+  assert.deepEqual(extrairLinksDePr(links, 3).prs.length, 3);
 });
 
 const CONTEXTO_DO_PR = {

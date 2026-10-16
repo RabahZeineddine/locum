@@ -814,7 +814,7 @@ function EditorCarregado({
             className="cursor-pointer"
             data-locum-aviso-reacao-adicionar=""
             onClick={() => {
-              setRascunho((r) => comNosDeReacao(r));
+              setRascunho((r) => comNosDeReacao(r, { pegou: t("automations.reactionNodes.pegou"), veredito: t("automations.reactionNodes.verdict") }));
               dispensarAvisoDeReacao();
             }}
             size="sm"

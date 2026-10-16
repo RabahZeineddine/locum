@@ -247,8 +247,17 @@ test("a lista e o detalhe do run dizem qual passo falhou e qual evento foi usado
   assert.match(linha!.error ?? "", /acao\.inexistente/);
 
   const detalhe = (await servico.get(runId))!;
-  assert.deepEqual(detalhe.event, { id: eventoId, source: "manual", author: "maria", trecho: "Ajusta", semConversa: false });
+  assert.deepEqual(detalhe.event, { id: eventoId, source: "manual", author: "maria", trecho: "Ajusta", semConversa: false, prsCortados: 0 });
   assert.equal((await servico.get(semEvento))!.event, null);
   const recusado = (await servico.list({ agentId: id })).find((r) => r.id === semEvento)!;
   assert.equal(recusado.failedStep, null);
+});
+
+test("o detalhe do run diz quantos PRs do evento ficaram fora do teto", async () => {
+  const executor = new Executor({ mcp: registroFalso, runtimes: new Map([["native", runtime([])]]), gate: new ApprovalGate(new Map()), machineId: "m" });
+  const { versao } = await agente([modelo("revisar", "Revise {{event.repo}}")]);
+  const eventoId = await evento({ repo: "o/r", changedFiles: [], prOwner: "o", prRepo: "r", prNumber: 7, prsCortados: 2 });
+  const runId = await executor.createRun(versao.id, eventoId);
+  await executor.execute(runId);
+  assert.equal((await new RunService().get(runId))!.event!.prsCortados, 2);
 });

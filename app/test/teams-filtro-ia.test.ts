@@ -97,7 +97,7 @@ const eventos = async (db: ReturnType<typeof bancoDeTeste>["db"]) =>
 const cursorDoCanal = async (db: ReturnType<typeof bancoDeTeste>["db"]) =>
   (await db.select().from(schema.cursors).where(eq(schema.cursors.key, `channel:${EQUIPE}:${CANAL}`)))[0]?.value;
 
-const watch: TeamsInboxWatch = { mentions: false, dms: false, prLinks: true, channels: CANAIS, filtroIa: FILTRO };
+const watch: TeamsInboxWatch = { mentions: false, dms: false, prLinks: true, agruparPrs: true, channels: CANAIS, filtroIa: FILTRO };
 
 /** Modelo de mentira: decide pelo texto e guarda o que foi perguntado. */
 function modeloFalso(decide: (p: PedidoDoFiltro) => boolean | Error) {

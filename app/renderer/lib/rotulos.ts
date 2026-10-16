@@ -60,6 +60,7 @@ export const MOTIVOS_DE_PASSO = ["outside_initiative", "rejected", "publish_conf
 export type MotivoDePasso = (typeof MOTIVOS_DE_PASSO)[number];
 
 export function rotuloDoMotivo(t: TFunction, motivo: string): string {
+  if (motivo.startsWith("dependency_rejected:")) return t("runs.stepReason.dependency_rejected", { step: motivo.slice("dependency_rejected:".length) });
   return (MOTIVOS_DE_PASSO as readonly string[]).includes(motivo)
     ? t(`runs.stepReason.${motivo}`)
     : motivo;

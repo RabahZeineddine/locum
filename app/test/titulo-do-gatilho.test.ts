@@ -17,6 +17,8 @@ const teams = (parcial: Partial<Teams>): Teams => ({
   mentions: false,
   dms: false,
   prLinks: false,
+  agruparPrs: false,
+  maxPrs: 5,
   channels: [],
   chats: [],
   chatsPendentes: 0,

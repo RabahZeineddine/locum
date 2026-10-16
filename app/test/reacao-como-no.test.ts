@@ -244,3 +244,42 @@ test("reação marcada optional que o Graph recusa não derruba o run, e a sem o
   assert.equal(await executor.execute(falho), "failed");
   assert.equal((await passo(falho, "revisar")).status, "skipped");
 });
+
+test("rejeitar o responder na Fila pula o veredito: nada reage, e o motivo diz qual passo foi recusado", async () => {
+  const g = graphFalso();
+  const gate = new ApprovalGate(new Map([["teams.react", teamsReactHandler(g.opcoes)], ["teams.post", { publish: async () => undefined }]]));
+  const executor = new Executor({ mcp: registroFalso, runtimes: new Map([["native", runtimeDoVeredito("APPROVE")]]), gate, machineId: "m" });
+  const versao = await agente([
+    REVISAR,
+    { type: "action", key: "responder", name: "responder", action: "teams.post", mode: "approve", input: "revisar", needs: ["revisar"] },
+    reagir("veredito", { porValor: POR_VEREDITO }, { needs: ["responder"] }),
+    reagir("depois", { emoji: "🎉" }, { needs: ["veredito"] }),
+  ]);
+  const runId = await executor.createRun(versao.id, await evento({ ...PR, ...CONVERSAS[0]!.campos, teamsChatId: "19:um@unq.gbl.spaces" }));
+  assert.equal(await executor.execute(runId), "paused");
+  const [pendencia] = await db.select().from(schema.approvals).where(eq(schema.approvals.runId, runId));
+  await executor.decide(pendencia!.id, "rejected");
+
+  assert.deepEqual(g.pedidos, []);
+  assert.equal((await passo(runId, "veredito")).status, "skipped");
+  assert.equal((await passo(runId, "veredito")).error, "dependency_rejected:responder");
+  assert.equal((await passo(runId, "depois")).error, "dependency_rejected:veredito");
+});
+
+test("passo optional que falhou não roda de novo quando o run é retomado", async () => {
+  let chamadas = 0;
+  const http = { modes: ["approve", "auto"] as const, publish: async () => void (chamadas += 1, (() => { throw new Error("502"); })()) };
+  const gate = new ApprovalGate(new Map([["http.request", http as never], ["teams.post", { publish: async () => undefined }]]));
+  const executor = new Executor({ mcp: registroFalso, runtimes: new Map([["native", runtimeDoVeredito("APPROVE")]]), gate, machineId: "m" });
+  const versao = await agente([
+    { type: "action", key: "ping", name: "ping", action: "http.request", mode: "auto", optional: true, params: { method: "POST", url: "https://example.com/x" } },
+    { ...REVISAR, needs: ["ping"] },
+    { type: "action", key: "responder", name: "responder", action: "teams.post", mode: "approve", input: "revisar", needs: ["revisar"] },
+  ]);
+  const runId = await executor.createRun(versao.id, await evento({ ...PR, ...CONVERSAS[0]!.campos }));
+  assert.equal(await executor.execute(runId), "paused");
+  const pendencia = (await db.select().from(schema.approvals).where(eq(schema.approvals.runId, runId))).find((a) => a.status === "pending");
+  await executor.decide(pendencia!.id, "approved");
+  assert.equal(chamadas, 1);
+  assert.equal((await passo(runId, "ping")).status, "failed");
+});

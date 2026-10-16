@@ -80,8 +80,9 @@ Lote de uma jornada real no app empacotado.
 - **Automações**: a aba "Meus Agents" listava automações e passou a "Minhas
   automações". Modelos novos de revisão de PR (link no Teams, e PR aberto no
   GitHub), e o fluxo em branco chama o primeiro agent criado.
-- **Teams**: o modelo de PR no Teams é só revisar e responder com aprovação; o
-  gatilho com link de PR já reage 👀. A lista de canais do gatilho ganhou busca
+- **Teams**: o modelo de PR no Teams revisa e responde com aprovação, com nós de reação
+  (`teams.react`: 👀 no início e o veredito no fim); o gatilho com link de PR
+  não reage mais sozinho (nota: as reações agora são nós, ADR 0006). A lista de canais do gatilho ganhou busca
   e grupos por equipe, com as equipes de canal marcado primeiro
   (`renderer/lib/canais-do-teams.ts`). O detalhe do Teams via servidor MCP usa
   `Connection.via`.
@@ -370,7 +371,7 @@ que a interface vai usar.
 | veredito da review | a auditoria devolve `verdict` preso no esquema de saída, com o critério de cada um no prompt; a tela de revisão mostra o veredito e deixa trocar antes de aprovar, gravando na pendência junto com os achados; aprovar sem achado é publicável, comentar sem achado não |
 | tracker de tarefa, Jira e GitHub Issues | adaptador, cadastro no banco e credencial no keychain; teste de conexão e lista de destinos pela interface, verificado contra um tracker de mentira em 127.0.0.1 |
 | Slack pelo servidor oficial | o painel do Slack guia a criação de um app no workspace a partir de manifesto (cliente público com PKCE, retorno fixo em `http://localhost:41753/callback`), recebe o client id e autoriza no navegador; a origem do Slack passa a usar `slack_read_channel` e `slack_send_message`; com a conexão feita, o gatilho `slack-inbox` acorda um agent em menção e mensagem direta. Verificado com servidor de autorização de mentira; contra o Slack de verdade, ainda não |
-| Teams pelo Microsoft Graph | cada organização registra um app no Entra (tenant único, cliente público com PKCE, retorno fixo em `http://localhost:41754/callback`), e o painel recebe tenant e client id e autoriza no navegador; escopos `User.Read`, `Chat.Read` e `ChatMessage.Send`, nenhum de administrador; o gatilho `teams-inbox` acorda um agent em menção e mensagem direta, e a ação `teams.post` responde na conversa depois do clique. Verificado com Graph de mentira; contra o Teams de verdade, ainda não; sem o login nativo, o gatilho e as ações (responder, reagir) falam com o servidor MCP ligado que expõe `get-current-user`, `list-chats` e `list-chat-messages`, como o ms365, detectado pelas ferramentas guardadas e não pelo nome, e a paleta e Conexões dizem "pelo ms365" (a reação em resposta de thread de canal fica na raiz da thread, porque o ms365 não reage em resposta, e dois PRs na mesma thread dividem essa reação: o primeiro review a terminar troca o 👀 dos dois; em servidor com várias contas, a conta da primeira batida do gatilho fica gravada e vale nas seguintes); verificado com servidor MCP de mentira |
+| Teams pelo Microsoft Graph | cada organização registra um app no Entra (tenant único, cliente público com PKCE, retorno fixo em `http://localhost:41754/callback`), e o painel recebe tenant e client id e autoriza no navegador; escopos `User.Read`, `Chat.Read` e `ChatMessage.Send`, nenhum de administrador; o gatilho `teams-inbox` acorda um agent em menção e mensagem direta (com `prLinks`, um evento por PR, ou um só com `agruparPrs`), e a ação `teams.post` responde na conversa depois do clique. Verificado com Graph de mentira; contra o Teams de verdade, ainda não; sem o login nativo, o gatilho e as ações (responder, reagir) falam com o servidor MCP ligado que expõe `get-current-user`, `list-chats` e `list-chat-messages`, como o ms365, detectado pelas ferramentas guardadas e não pelo nome, e a paleta e Conexões dizem "pelo ms365" (a reação em resposta de thread de canal fica na raiz da thread, porque o ms365 não reage em resposta, e dois PRs na mesma thread dividem essa reação: o primeiro review a terminar troca o 👀 dos dois; em servidor com várias contas, a conta da primeira batida do gatilho fica gravada e vale nas seguintes); verificado com servidor MCP de mentira; nota: reagir é o nó `teams.react`, que o gatilho e a publicação não chamam mais, e o 👀 e o veredito da revisão vêm do modelo do canvas |
 | Jira pela conexão Atlassian | tipo `jira-atlassian`, que fala com o servidor MCP oficial usando a autorização da vitrine, sem e-mail nem token; o Jira mora no painel da Atlassian e o GitHub Issues no do GitHub, e o cartão Jira separado saiu |
 | passo de ação que abre tarefa | `tracker.create_issue` monta o item e para na fila; corpo escrito por um passo de modelo antes dele, modo travado em `approve` pelo handler |
 | descoberta de skills e seleção por arquivo alterado | pronto |
@@ -2060,8 +2061,8 @@ a própria pessoa escreveu. Reunião segue só com menção. Cada PR da mensagem
 (até cinco) vira um evento, com a chave de deduplicação `<mensagem>:pr:<PR>`.
 O evento é enriquecido com `fetchPr`, como o do Slack, e a mensagem de origem
 fica em `teamsChatId` ou `teamsTeamId` e `teamsChannelId`, `teamsMessageId` e
-`teamsReplyToId`. O 👀 sai ao enriquecer e é trocado por ✅, ⚠️ ou 💬 em
-`github.review_comment.publish` (`app/src/teams/reaction.ts`, `setReaction` e
+`teamsReplyToId`. Nenhuma reação sai do gatilho nem da publicação: a reação é
+o nó `teams.react` (`app/src/teams/react-action.ts`, `setReaction` e
 `unsetReaction` do Graph). O cursor é por gatilho (`inbox:<id>` e
 `channel:<equipe>:<canal>:<id>`), herdado do compartilhado antigo quando existe e tem menos de 24h;
 sem cursor nenhum, link de PR anterior à ativação não conta. O evento só chega ao

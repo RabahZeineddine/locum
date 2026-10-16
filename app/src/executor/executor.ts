@@ -233,6 +233,8 @@ export class Executor {
     // depende só deles também pula; quem junta dois caminhos roda com o que
     // chegou.
     const foraDoCaminho = new Set<string>();
+    // Os passos recusados na Fila, e os que pularam por causa deles.
+    const recusados = new Set<string>();
     let runCost = run.costUsd;
     let runTokens = run.tokens;
     let runEstimate = run.estimateUsd;
@@ -260,9 +262,18 @@ export class Executor {
         atual = step.key;
         const existing = await this.loadStep(runId, step.key);
 
+        // Passo opcional que já falhou não roda de novo na retomada: o run seguiu sem ele.
+        if (existing?.status === "failed" && step.optional) {
+          outputs.set(step.key, null);
+          continue;
+        }
         if (existing?.status === "done" || (existing?.status === "skipped" && existing.error !== NAO_RODOU)) {
           outputs.set(step.key, existing.output);
           if (existing.status === "skipped" && existing.error === PULADO_PELO_CAMINHO) foraDoCaminho.add(step.key);
+          if (existing.status === "skipped" && (existing.error === "rejected" || existing.error === "publish_conflict" || ehPuladoPorRecusa(existing.error))) {
+            foraDoCaminho.add(step.key);
+            recusados.add(step.key);
+          }
           continue;
         }
         if (existing?.status === "awaiting_approval") {
@@ -280,6 +291,11 @@ export class Executor {
             return this.pause(runId);
           }
           outputs.set(step.key, (await settleStep(existing.id, approval.status)).output);
+          // Recusado na Fila: o que depende só dele não roda.
+          if (approval.status === "rejected" || approval.status === "conflict") {
+            foraDoCaminho.add(step.key);
+            recusados.add(step.key);
+          }
           continue;
         }
 
@@ -296,9 +312,13 @@ export class Executor {
         }
 
         if (foraDoCaminhoEscolhido(step, outputs, foraDoCaminho)) {
+          // Pulado porque o que ele esperava foi recusado na Fila, e não por um caminho que não foi escolhido.
+          const recusado = step.needs.find((n) => recusados.has(n));
+          const motivoDoPulo = recusado === undefined ? PULADO_PELO_CAMINHO : `${PULADO_POR_RECUSA}${recusado}`;
+          if (recusado !== undefined) recusados.add(step.key);
           await db
             .update(schema.steps)
-            .set({ status: "skipped", error: PULADO_PELO_CAMINHO, output: null, endedAt: nowSec() })
+            .set({ status: "skipped", error: motivoDoPulo, output: null, endedAt: nowSec() })
             .where(eq(schema.steps.id, stepId));
           outputs.set(step.key, null);
           foraDoCaminho.add(step.key);
@@ -992,6 +1012,10 @@ async function publicaParaFora(
 
 /** Motivo gravado no passo que ficou sem rodar porque um anterior falhou. */
 export const NAO_RODOU = "not_run";
+
+/** Prefixo do motivo do passo que pulou porque um passo de que depende foi recusado na Fila; a chave dele vem depois. */
+export const PULADO_POR_RECUSA = "dependency_rejected:";
+export const ehPuladoPorRecusa = (erro: string | null | undefined): boolean => erro?.startsWith(PULADO_POR_RECUSA) === true;
 
 /** Motivo gravado no passo que ficou de fora do caminho escolhido. */
 export const PULADO_PELO_CAMINHO = "branch_not_taken";
