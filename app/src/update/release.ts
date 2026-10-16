@@ -102,8 +102,11 @@ export async function procurarVersaoNova(opcoes: {
   const buscar = opcoes.buscar ?? clienteHttp;
   const base = `${opcoes.api ?? UPDATE_API}/repos/${opcoes.repo ?? UPDATE_REPO}`;
 
+  // Sem cache HTTP: o GitHub manda `max-age=60`, e uma conferência logo depois
+  // de publicar (ou o clique na versão) via a resposta velha e dizia "atualizado".
   const resposta = await buscar(`${base}/releases/latest`, {
     headers: { accept: "application/vnd.github+json", "user-agent": "locum-updater" },
+    cache: "no-store",
   });
   // Repositório sem release nenhum responde 404, e isso não é falha.
   if (resposta.status === 404) return null;
