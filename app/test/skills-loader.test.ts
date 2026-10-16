@@ -8,12 +8,13 @@ import {
   globToRegExp,
   parseFrontmatter,
   selectSkills,
+  skillsAusentes,
   skillsPreamble,
   type LoadedSkill,
 } from "../src/skills/loader.js";
 
 function skill(name: string, body = `corpo de ${name}`): LoadedSkill {
-  return { name, description: `sobre ${name}`, body, origin: `/x/${name}/SKILL.md`, hash: "abc" };
+  return { name, description: `sobre ${name}`, body, origin: `/x/${name}/SKILL.md`, hash: "abc", fonte: { tipo: "minhas" } };
 }
 
 function escreveSkill(dir: string, name: string): void {
@@ -86,4 +87,51 @@ test("sem installed_plugins.json a pasta de plugins é varrida inteira", () => {
   const home = mkdtempSync(join(tmpdir(), "locum-skills-"));
   escreveSkill(join(home, ".claude", "plugins", "cache", "mkt", "plug", "1.0.0", "skills", "funda"), "funda");
   assert.deepEqual([...discoverSkills(home, home).keys()], ["funda"]);
+});
+
+test("a descoberta diz de onde veio cada skill: minhas, plugin com versão, Locum e projeto", () => {
+  const home = mkdtempSync(join(tmpdir(), "locum-skills-"));
+  const plugins = join(home, ".claude", "plugins");
+  const atual = join(plugins, "cache", "mkt", "plug", "2.0.0");
+  escreveSkill(join(atual, "skills", "de-plugin"), "de-plugin");
+  writeFileSync(join(plugins, "installed_plugins.json"), JSON.stringify({ version: 2, plugins: { "plug@mkt": [{ installPath: atual, version: "2.0.0" }] } }));
+  escreveSkill(join(home, ".claude", "skills", "minha"), "minha");
+  escreveSkill(join(home, "projeto", ".claude", "skills", "do-projeto"), "do-projeto");
+  const locum = join(home, "locum-skills");
+  escreveSkill(join(locum, "criada"), "criada");
+
+  const achadas = discoverSkills(home, join(home, "projeto"), locum);
+  assert.deepEqual(achadas.get("minha")?.fonte, { tipo: "minhas" });
+  assert.deepEqual(achadas.get("de-plugin")?.fonte, { tipo: "plugin", plugin: "plug", versao: "2.0.0" });
+  assert.deepEqual(achadas.get("do-projeto")?.fonte, { tipo: "projeto" });
+  assert.deepEqual(achadas.get("criada")?.fonte, { tipo: "locum" });
+});
+
+test("skill da máquina vence a do Locum de mesmo nome", () => {
+  const home = mkdtempSync(join(tmpdir(), "locum-skills-"));
+  escreveSkill(join(home, ".claude", "skills", "igual"), "igual");
+  const locum = join(home, "locum-skills");
+  escreveSkill(join(locum, "igual"), "igual");
+  assert.deepEqual(discoverSkills(home, join(home, "projeto"), locum).get("igual")?.fonte, { tipo: "minhas" });
+});
+
+test("LOCUM_CLAUDE_DIR troca a pasta das minhas skills quando ninguém passa o home", () => {
+  const pasta = mkdtempSync(join(tmpdir(), "locum-claude-"));
+  escreveSkill(join(pasta, "skills", "da-pasta"), "da-pasta");
+  const antes = process.env.LOCUM_CLAUDE_DIR;
+  process.env.LOCUM_CLAUDE_DIR = pasta;
+  try {
+    assert.ok(discoverSkills(undefined, pasta, join(pasta, "nada")).has("da-pasta"));
+  } finally {
+    if (antes === undefined) delete process.env.LOCUM_CLAUDE_DIR;
+    else process.env.LOCUM_CLAUDE_DIR = antes;
+  }
+});
+
+test("skills ausentes: as que o agent cita e o catálogo não tem", () => {
+  const catalogo = new Map([skill("presente")].map((s) => [s.name, s]));
+  assert.deepEqual(
+    skillsAusentes([{ skill: "presente", when: { always: true } }, { skill: "sumiu", when: { always: true } }], catalogo),
+    ["sumiu"],
+  );
 });

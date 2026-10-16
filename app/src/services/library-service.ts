@@ -266,6 +266,18 @@ export class LibraryService {
     return total;
   }
 
+  /** As skills que cada agent cita, na versão mais recente: a Skills mostra quem usa o quê. */
+  async skillsPorAgent(): Promise<{ id: string; name: string; skills: string[] }[]> {
+    const perfis = await this.db.select().from(schema.agentProfiles);
+    const lista: { id: string; name: string; skills: string[] }[] = [];
+    for (const perfil of perfis) {
+      const ultima = await this.latestProfile(perfil.id);
+      if (ultima === undefined) continue;
+      lista.push({ id: perfil.id, name: ultima.spec.name, skills: ultima.spec.skills.map((k) => k.skill) });
+    }
+    return lista.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
   async getProfile(id: string): Promise<ProfileVersion | null> {
     return (await this.latestProfile(id)) ?? null;
   }
