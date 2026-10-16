@@ -1817,7 +1817,9 @@ async function checkAgentsDoConceito(window: BrowserWindow): Promise<void> {
 
     // O editor mostra a conexão, e as ferramentas dela com a classe de cada uma.
     await clicar("[data-locum-agent-aba=tools]");
-    // O botão só existe depois que a lista de conexões chega com o servidor dela.
+    // A conexão abre recolhida; o botão só existe depois que a lista de conexões chega com o servidor dela e o bloco abre.
+    await esperarProbe(window, "conexao-bloco", `document.querySelector('[data-locum-agent-conexao-alternar="${FIXTURE_SERVER}"]') !== null ? true : null`);
+    await clicar(`[data-locum-agent-conexao-alternar="${FIXTURE_SERVER}"]`);
     await esperarProbe(window, "conexao", `document.querySelector('[data-locum-agent-carregar="${FIXTURE_SERVER}"]') !== null ? true : null`);
     await clicar(`[data-locum-agent-carregar="${FIXTURE_SERVER}"]`);
     const caixas = await esperarProbe<Record<string, boolean>>(
@@ -7253,6 +7255,8 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
       await new Promise((resolve) => setTimeout(resolve, 1000));
       await clicar("[data-locum-agent-aba=tools]");
       await new Promise((resolve) => setTimeout(resolve, 600));
+      await clicar(`[data-locum-agent-conexao-alternar="${FIXTURE_SERVER}"]`);
+      await new Promise((resolve) => setTimeout(resolve, 300));
       await clicar(`[data-locum-agent-carregar="${FIXTURE_SERVER}"]`);
       await new Promise((resolve) => setTimeout(resolve, 3500));
       writeFileSync(join(destino, "agents-editor-conexoes.png"), (await janela.webContents.capturePage()).toPNG());
@@ -7526,6 +7530,8 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
       await pausa(1000);
       await clicar("[data-locum-agent-aba=tools]");
       await pausa(2000);
+      await clicar("[data-locum-agent-conexao-alternar=teams]");
+      await pausa(600);
       await foto("atritos-agent-conexao-grande");
       await janela.webContents.executeJavaScript(`(() => {
         const campo = document.querySelector("[data-locum-agent-ferramentas-busca]");
@@ -7601,6 +7607,8 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
         }
         await clicar("[data-locum-agent-aba=tools]");
         await pausa(500);
+        await clicar(`[data-locum-agent-conexao-alternar="${FIXTURE_SERVER}"]`);
+        await new Promise((resolve) => setTimeout(resolve, 300));
         await clicar(`[data-locum-agent-carregar="${FIXTURE_SERVER}"]`);
         await pausa(3500);
         await foto("redesign-agents-editor-tools");
@@ -7608,6 +7616,8 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
         await pausa(1000);
         await clicar("[data-locum-agent-aba=tools]");
         await pausa(2000);
+        await clicar("[data-locum-agent-conexao-alternar=teams]");
+        await pausa(600);
         await foto("redesign-agents-conexao-grande");
         await janela.webContents.executeJavaScript(`(() => {
           const campo = document.querySelector("[data-locum-agent-ferramentas-busca]");
