@@ -987,6 +987,9 @@ function ConfigDaAcao({
       )}
       {passo.action === "mcp.call" ? <ConfigDaChamada passo={passo} rascunho={rascunho} trocar={trocar} /> : null}
       {passo.action === "http.request" ? <ConfigDoHttp passo={passo} rascunho={rascunho} trocar={trocar} /> : null}
+      {passo.action === "teams.react" || passo.action === "slack.react" ? (
+        <ConfigDaReacao passo={passo} rascunho={rascunho} trocar={trocar} />
+      ) : null}
       {passo.action === "tracker.create_issue" ? (
         <Campo rotulo={t("automations.steps.tracker.create_issue.tracker")}>
           {trackers.length === 0 ? (
@@ -1387,6 +1390,157 @@ function ConfigDaChamada({
           )}
         </>
       )}
+    </>
+  );
+}
+
+type ParamsDeReacao = {
+  emoji?: string;
+  operacao?: "set" | "unset";
+  tirar?: string;
+  porValor?: { de?: string; mapa?: Record<string, string>; padrao?: string };
+};
+
+/**
+ * Reação na mensagem do evento: operação, emoji (fixo ou escolhido pelo valor
+ * de um passo, como o veredito da revisão) e a reação que sai antes.
+ */
+function ConfigDaReacao({
+  passo,
+  rascunho,
+  trocar,
+}: {
+  passo: PassoDeAcao;
+  rascunho: Rascunho;
+  trocar: (novo: PassoDeAcao) => void;
+}) {
+  const { t } = useTranslation();
+  const params = (passo.params ?? {}) as ParamsDeReacao;
+  const mudar = (novo: ParamsDeReacao): void => {
+    const juntos: Record<string, unknown> = { ...params, ...novo };
+    for (const k of Object.keys(juntos)) if (juntos[k] === undefined) delete juntos[k];
+    trocar({ ...passo, params: juntos });
+  };
+  const { focar, inserir } = useInsercao();
+  const [novoValor, setNovoValor] = useState("");
+  const porValor = params.porValor;
+  const mapa = Object.entries(porValor?.mapa ?? {});
+  const aplicarMapa = (m: Record<string, string>): void => mudar({ porValor: { ...porValor, mapa: m } });
+
+  return (
+    <>
+      <Variaveis inserir={inserir} lista={variaveis(rascunho, passo.key)} />
+      <Campo rotulo={t("automations.steps.react.operation")}>
+        <select
+          className={CAMPO}
+          data-locum-reacao-operacao=""
+          onChange={(e) => mudar({ operacao: e.target.value === "unset" ? "unset" : "set" })}
+          value={params.operacao ?? "set"}
+        >
+          <option value="set">{t("automations.steps.react.set")}</option>
+          <option value="unset">{t("automations.steps.react.unset")}</option>
+        </select>
+      </Campo>
+      <Campo rotulo={t("automations.steps.react.source")}>
+        <select
+          className={CAMPO}
+          data-locum-reacao-fonte=""
+          onChange={(e) =>
+            e.target.value === "valor"
+              ? mudar({ emoji: undefined, porValor: { de: "", mapa: {}, padrao: params.emoji ?? "" } })
+              : mudar({ porValor: undefined, emoji: porValor?.padrao ?? "👀" })
+          }
+          value={porValor === undefined ? "fixo" : "valor"}
+        >
+          <option value="fixo">{t("automations.steps.react.fixed")}</option>
+          <option value="valor">{t("automations.steps.react.byValue")}</option>
+        </select>
+      </Campo>
+      {porValor === undefined ? (
+        <Campo rotulo={t("automations.steps.react.emoji")}>
+          <input
+            className={CAMPO}
+            data-locum-reacao-emoji=""
+            onChange={(e) => mudar({ emoji: e.target.value })}
+            onFocus={focar((emoji) => mudar({ emoji }))}
+            value={params.emoji ?? ""}
+          />
+        </Campo>
+      ) : (
+        <>
+          <Campo ajuda={t("automations.steps.react.fromHint")} rotulo={t("automations.steps.react.from")}>
+            <input
+              className={cn(CAMPO, "font-mono text-xs")}
+              data-locum-reacao-de=""
+              onChange={(e) => mudar({ porValor: { ...porValor, de: e.target.value } })}
+              onFocus={focar((de) => mudar({ porValor: { ...porValor, de } }))}
+              placeholder={"{{steps.revisar.verdict}}" as string}
+              value={porValor.de ?? ""}
+            />
+          </Campo>
+          <Campo rotulo={t("automations.steps.react.map")}>
+            {mapa.map(([valor, emoji]) => (
+              <div className="flex items-center gap-1.5" key={valor}>
+                <span className="w-32 shrink-0 truncate font-mono text-xs">{valor}</span>
+                <input
+                  aria-label={t("automations.steps.react.emojiFor", { value: valor })}
+                  className={CAMPO}
+                  onChange={(e) => aplicarMapa({ ...porValor.mapa, [valor]: e.target.value })}
+                  value={emoji}
+                />
+                <button
+                  aria-label={t("automations.steps.react.removeValue", { value: valor })}
+                  className="text-muted-foreground hover:text-foreground cursor-pointer rounded p-1"
+                  onClick={() => {
+                    const { [valor]: _fora, ...resto } = porValor.mapa ?? {};
+                    aplicarMapa(resto);
+                  }}
+                  type="button"
+                >
+                  <X className="size-3.5" />
+                </button>
+              </div>
+            ))}
+            <div className="flex gap-1.5">
+              <input
+                className={cn(CAMPO, "font-mono text-xs")}
+                onChange={(e) => setNovoValor(e.target.value)}
+                placeholder={t("automations.steps.react.valuePlaceholder")}
+                value={novoValor}
+              />
+              <Button
+                className="cursor-pointer"
+                disabled={novoValor.trim() === "" || novoValor.trim() in (porValor.mapa ?? {})}
+                onClick={() => {
+                  aplicarMapa({ ...porValor.mapa, [novoValor.trim()]: "" });
+                  setNovoValor("");
+                }}
+                size="sm"
+                variant="outline"
+              >
+                {t("automations.steps.react.addValue")}
+              </Button>
+            </div>
+          </Campo>
+          <Campo rotulo={t("automations.steps.react.fallback")}>
+            <input
+              className={CAMPO}
+              onChange={(e) => mudar({ porValor: { ...porValor, padrao: e.target.value } })}
+              value={porValor.padrao ?? ""}
+            />
+          </Campo>
+        </>
+      )}
+      {(params.operacao ?? "set") === "set" ? (
+        <Campo ajuda={t("automations.steps.react.removeFirstHint")} rotulo={t("automations.steps.react.removeFirst")}>
+          <input
+            className={CAMPO}
+            data-locum-reacao-tirar=""
+            onChange={(e) => mudar({ tirar: e.target.value === "" ? undefined : e.target.value })}
+            value={params.tirar ?? ""}
+          />
+        </Campo>
+      ) : null}
     </>
   );
 }

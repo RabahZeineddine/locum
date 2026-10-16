@@ -1,4 +1,4 @@
-import { before, test } from "node:test";
+import { afterEach, before, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
@@ -17,23 +17,22 @@ before(() => {
   process.env.OLLAMA_BASE_URL = "http://127.0.0.1:9";
 });
 
-const GRAPH = "https://graph.test/v1.0";
 const ORIGEM = { teamsChatId: "19:chat@thread.v2", teamsMessageId: "1700" };
 const REVIEW = { owner: "acme", repo: "api", pull: 7, findings: [], ...ORIGEM };
 
-/** Graph de mentira que anota o caminho e a reação de cada chamada. */
-function graph() {
-  const chamadas: string[] = [];
-  const opcoes = {
-    token: async () => "t",
-    graphUrl: GRAPH,
-    fetchFn: (async (url: string, init: RequestInit) => {
-      chamadas.push(`${decodeURIComponent(String(url).replace(GRAPH, "").split("/").pop()!)} ${JSON.parse(String(init.body)).reactionType}`);
-      return new Response(null, { status: 204 });
-    }) as unknown as typeof fetch,
-  };
-  return { chamadas, opcoes };
-}
+/** Tudo que sai pela rede durante o teste: se alguma reação escapar, ela aparece aqui. */
+const saidas: string[] = [];
+const fetchOriginal = globalThis.fetch;
+beforeEach(() => {
+  saidas.length = 0;
+  globalThis.fetch = (async (url: string | URL) => {
+    saidas.push(String(url));
+    return new Response(null, { status: 204 });
+  }) as typeof fetch;
+});
+afterEach(() => {
+  globalThis.fetch = fetchOriginal;
+});
 
 const clienteDoGithub = {
   rest: { pulls: { createReview: async () => ({}), listReviews: async () => ({ data: [] }) } },
@@ -61,40 +60,20 @@ async function agentEPasso(actionKind: string) {
   return { runId, stepId, versionId: versao.id };
 }
 
-test("rascunho do review só tira o 👀, sem pôr o veredito", async () => {
-  const g = graph();
-  await githubReviewHandler(() => clienteDoGithub, { teams: g.opcoes }).draft!({ ...REVIEW, verdict: "APPROVE" }, "ext-d");
-  assert.deepEqual(g.chamadas, ["unsetReaction 👀"]);
+test("rascunho do review não reage", async () => {
+  await githubReviewHandler(() => clienteDoGithub).draft!({ ...REVIEW, verdict: "APPROVE" }, "ext-d");
+  assert.deepEqual(saidas, []);
 });
 
-test("proposta rejeitada na fila tira o 👀 e não põe nada", async () => {
-  const g = graph();
-  const gate = new ApprovalGate(
-    new Map([["github.review_comment", githubReviewHandler(() => clienteDoGithub, { teams: g.opcoes })]]),
-  );
-  const { runId, stepId } = await agentEPasso("github.review_comment");
-  const estado = await gate.submit(
-    { runId, stepId, kind: "github.review_comment", payload: { ...REVIEW, verdict: "APPROVE" } },
-    "approve",
-  );
-  assert.equal(estado, "pending");
-  assert.deepEqual(g.chamadas, []);
-
-  const [pendencia] = await db.select().from(schema.approvals).where(eq(schema.approvals.stepId, stepId));
-  await gate.decide(pendencia!.id, "rejected");
-  assert.deepEqual(g.chamadas, ["unsetReaction 👀"]);
-});
-
-test("aprovar continua trocando o 👀 pelo veredito, e não chama o descarte", async () => {
-  const g = graph();
-  const gate = new ApprovalGate(
-    new Map([["github.review_comment", githubReviewHandler(() => clienteDoGithub, { teams: g.opcoes })]]),
-  );
-  const { runId, stepId } = await agentEPasso("github.review_comment");
-  await gate.submit({ runId, stepId, kind: "github.review_comment", payload: { ...REVIEW, verdict: "REQUEST_CHANGES" } }, "approve");
-  const [pendencia] = await db.select().from(schema.approvals).where(eq(schema.approvals.stepId, stepId));
-  await gate.decide(pendencia!.id, "approved");
-  assert.deepEqual(g.chamadas, ["unsetReaction 👀", "setReaction ⚠️"]);
+test("rejeitar na fila e aprovar não reagem: a reação é de um nó do fluxo", async () => {
+  const gate = new ApprovalGate(new Map([["github.review_comment", githubReviewHandler(() => clienteDoGithub)]]));
+  for (const decisao of ["rejected", "approved"] as const) {
+    const { runId, stepId } = await agentEPasso("github.review_comment");
+    await gate.submit({ runId, stepId, kind: "github.review_comment", payload: { ...REVIEW, verdict: "REQUEST_CHANGES" } }, "approve");
+    const [pendencia] = await db.select().from(schema.approvals).where(eq(schema.approvals.stepId, stepId));
+    await gate.decide(pendencia!.id, decisao);
+  }
+  assert.deepEqual(saidas, []);
 });
 
 test("propose que devolve nulo chama o descarte da ação", async () => {
@@ -110,8 +89,7 @@ test("propose que devolve nulo chama o descarte da ação", async () => {
   assert.deepEqual(descartados, [{ a: 1 }]);
 });
 
-test("run que falha tira o 👀 do evento e não põe nada", async () => {
-  const g = graph();
+test("run que falha não mexe na mensagem do Teams", async () => {
   const runtime: Runtime = {
     run: async () => {
       throw new Error("modelo fora do ar");
@@ -139,24 +117,13 @@ test("run que falha tira o 👀 do evento e não põe nada", async () => {
     runtimes: new Map([["native", runtime]]),
     gate: new ApprovalGate(new Map()),
     machineId: "maquina-de-teste",
-    teams: g.opcoes,
   });
   const runId = await executor.createRun(versao.id, eventId);
   assert.equal(await executor.execute(runId), "failed");
-  assert.deepEqual(g.chamadas, ["unsetReaction 👀"]);
+  assert.deepEqual(saidas, []);
 });
 
-test("run pausado e retomado: a review publica e o veredito sai mesmo se tirar o 👀 falhar", async () => {
-  const chamadas: string[] = [];
-  const opcoes = {
-    token: async () => "t",
-    graphUrl: GRAPH,
-    fetchFn: (async (url: string, init: RequestInit) => {
-      const acao = String(url).split("/").pop()!;
-      chamadas.push(`${acao} ${JSON.parse(String(init.body)).reactionType}`);
-      return acao === "unsetReaction" ? new Response("{}", { status: 500 }) : new Response(null, { status: 204 });
-    }) as unknown as typeof fetch,
-  };
+test("run pausado e retomado: a review publica e nada reage", async () => {
   const criadas: unknown[] = [];
   const cliente = {
     rest: { pulls: { createReview: async (p: unknown) => void criadas.push(p), listReviews: async () => ({ data: [] }) } },
@@ -202,19 +169,18 @@ test("run pausado e retomado: a review publica e o veredito sai mesmo se tirar o
   const executor = new Executor({
     mcp: new McpRegistry(new Map()),
     runtimes: new Map([["native", runtime]]),
-    gate: new ApprovalGate(new Map([["github.review_comment", githubReviewHandler(() => cliente, { teams: opcoes })]])),
+    gate: new ApprovalGate(new Map([["github.review_comment", githubReviewHandler(() => cliente)]])),
     machineId: "maquina-de-teste",
-    teams: opcoes,
   });
 
   const runId = await executor.createRun(versao.id, eventId);
   const estado = await executor.execute(runId);
   const [run] = await db.select().from(schema.runs).where(eq(schema.runs.id, runId));
   assert.equal(estado, "paused", String(run?.error));
-  assert.deepEqual(chamadas, []);
+  assert.deepEqual(saidas, []);
 
   const [pendencia] = await db.select().from(schema.approvals).where(eq(schema.approvals.runId, runId));
   assert.deepEqual(await executor.decide(pendencia!.id, "approved"), { status: "approved", run: "done" });
   assert.equal(criadas.length, 1);
-  assert.deepEqual(chamadas, ["unsetReaction 👀", "setReaction 💬"]);
+  assert.deepEqual(saidas, []);
 });

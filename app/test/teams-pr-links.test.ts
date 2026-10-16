@@ -223,7 +223,7 @@ const CONTEXTO_DO_PR = {
   url: "https://github.com/acme/api/pull/7",
 };
 
-test("o evento com PR é enriquecido com o contexto do PR e guarda onde reagir", async () => {
+test("o evento com PR é enriquecido com o contexto do PR e guarda a mensagem de origem", async () => {
   const db = bancoDeTeste();
   const pedidos: unknown[][] = [];
   const fetchPr = (async (...args: unknown[]) => {

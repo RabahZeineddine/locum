@@ -50,7 +50,7 @@ export async function postSlackReply(
   }
 }
 
-async function callTool(
+export async function callTool(
   server: string,
   tool: string,
   args: Record<string, unknown>,

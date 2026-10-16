@@ -40,6 +40,8 @@
         "digest.deliver": "a digest in the queue",
         "slack.post": "a Slack message",
         "teams.post": "a Teams message",
+        "slack.react": "a Slack reaction",
+        "teams.react": "a Teams reaction",
         "context.update": "an initiative context update"
       }
     },
@@ -2015,7 +2017,7 @@
     "templates": {
       "teamsPrReview": {
         "title": "Teams: review the linked PR",
-        "description": "Message with a PR link in a Teams group: the trigger reacts with 👀, the agent reviews the PR and the reply in the thread goes out after your approval."
+        "description": "Message with a PR link in a Teams group: a node reacts with 👀, the agent reviews the PR, the reply in the thread goes out after your approval, and a last node swaps the 👀 for the verdict."
       },
       "githubPrReview": {
         "title": "GitHub: review an opened PR",
@@ -2063,6 +2065,11 @@
       "problems_one": "{{count}} thing to check",
       "problems_other": "{{count}} things to check",
       "blocked": "Fix the marked points to save.",
+      "reactionNotice": {
+        "text": "The trigger no longer reacts on its own. Add the reaction nodes.",
+        "add": "Add reaction nodes",
+        "dismiss": "Dismiss"
+      },
       "exit": {
         "title": "Leave with unsaved changes?",
         "body": "This automation has changes that have not been saved yet.",
@@ -2347,6 +2354,7 @@
           "livre": "Free text",
           "respostaSlack": "Slack reply (text and thread)",
           "respostaTeams": "Teams reply (text)",
+          "respostaTeamsComVeredito": "Teams reply with verdict (text and verdict)",
           "tarefa": "Task from a conversation",
           "tarefaDePullRequest": "Task from a pull request",
           "outro": "Custom (edit as list)"
@@ -2359,6 +2367,33 @@
       "teams.post": {
         "title": "Reply in Teams",
         "description": "Replies in the chat that started the flow."
+      },
+      "slack.react": {
+        "title": "React in Slack",
+        "description": "Adds or removes a reaction on the Slack message that started the flow."
+      },
+      "teams.react": {
+        "title": "React in Teams",
+        "description": "Adds or removes a reaction on the Teams message that started the flow. Nothing reacts unless a node does."
+      },
+      "react": {
+        "operation": "Operation",
+        "set": "Add the reaction",
+        "unset": "Remove the reaction",
+        "source": "Emoji from",
+        "fixed": "Fixed emoji",
+        "byValue": "By the value of a step",
+        "emoji": "Emoji",
+        "from": "Value",
+        "fromHint": "The field of an earlier step, for example steps.revisar.verdict.",
+        "map": "Emoji for each value",
+        "emojiFor": "Emoji for {{value}}",
+        "removeValue": "Remove {{value}}",
+        "valuePlaceholder": "Value, e.g. APPROVE",
+        "addValue": "Add",
+        "fallback": "Emoji for any other value",
+        "removeFirst": "Remove first",
+        "removeFirstHint": "A reaction taken off before the new one goes on, such as 👀. Failing to remove it does not stop the new one."
       },
       "tracker.create_issue": {
         "title": "Open task",
@@ -2490,6 +2525,8 @@
       "actionWithoutAi": "This action needs an AI step before it to write the text.",
       "slackReplyNeedsSlack": "Replying in Slack needs a Slack trigger: that is where the thread comes from.",
       "teamsReplyNeedsTeams": "Replying in Teams needs a Teams trigger.",
+      "slackReactNeedsSlack": "Reacting in Slack needs a Slack trigger: the reaction lands on that message.",
+      "teamsReactNeedsTeams": "Reacting in Teams needs a Teams trigger: the reaction lands on that message.",
       "noTracker": "Choose which tracker opens the task.",
       "createReviewer": "Without a reviewer agent, the review uses a loose AI step. Create an agent for PR review and swap the step for it.",
       "githubTokenForDiff": "GitHub has no token: the review needs it to bring the PR diff.",

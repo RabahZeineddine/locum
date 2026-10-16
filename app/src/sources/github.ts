@@ -25,14 +25,6 @@ import {
   type FiltrosResolvidos,
   type ItemDaBusca,
 } from "./github-filtros.js";
-import {
-  alvoDaReacao,
-  reagirNoTeams,
-  soltarOPr,
-  REACAO_DO_VEREDITO,
-  REACAO_PEGOU,
-  type TeamsReactionOptions,
-} from "../teams/reaction.js";
 
 export type Finding = ReviewFinding;
 
@@ -45,61 +37,6 @@ export type ReviewPayload = {
   // Opcional porque pendência gravada antes do veredito existir continua na fila.
   verdict?: ReviewVerdict;
 };
-
-/** O que o evento de origem deixa no payload para o review avisar de volta. */
-type OrigemDoReview = {
-  summary?: string;
-  slackChannel?: string;
-  slackTs?: string;
-  channel?: string;
-  ts?: string;
-};
-
-/**
- * Depois que o review saiu, avisa a mensagem de onde o pedido veio. Cada
- * origem falha sozinha e em silêncio: a reação é cortesia, e o review já saiu.
- */
-async function avisarOrigem(
-  p: ReviewPayload & OrigemDoReview,
-  deps: { teams?: TeamsReactionOptions },
-): Promise<void> {
-  await reagirNoSlack(p);
-  await reagirNoTeamsAoSair(p, deps.teams);
-}
-
-/** Troca 👀 pelo veredito na mensagem do Teams, com cada chamada tentada sozinha. */
-async function reagirNoTeamsAoSair(p: ReviewPayload, options?: TeamsReactionOptions): Promise<void> {
-  const alvo = alvoDaReacao(p);
-  if (alvo === null) return;
-  const emoji = REACAO_DO_VEREDITO[p.verdict ?? "COMMENT"];
-  for (const [acao, reacao] of [["unset", REACAO_PEGOU], ["set", emoji]] as const) {
-    try {
-      await reagirNoTeams(alvo, acao, reacao, options);
-    } catch (err) {
-      console.error(`reagir no Teams (${acao} ${reacao}) falhou: ${err instanceof Error ? err.message : String(err)}`);
-    }
-  }
-}
-
-/** Se este review veio de uma mensagem no Slack, sincroniza a reação. */
-async function reagirNoSlack(p: ReviewPayload & OrigemDoReview): Promise<void> {
-  const canalSlack = p.slackChannel ?? p.channel;
-  const tsSlack = p.slackTs ?? p.ts;
-  if (canalSlack && tsSlack) {
-    try {
-      const emoji = p.verdict === "APPROVE" ? "white_check_mark" : p.verdict === "REQUEST_CHANGES" ? "warning" : "speech_balloon";
-      const { mcpService } = await import("../services/mcp-service.js");
-      const { McpRegistry } = await import("../mcp/registry.js");
-      const configs = await mcpService.enabledConfigs();
-      if (configs.some((c) => c.name === "slack")) {
-        const reg = McpRegistry.fromList(configs);
-        await reg.callTool("slack", "slack_remove_reaction", { channel_id: canalSlack, timestamp: tsSlack, name: "eyes" }).catch(() => undefined);
-        await reg.callTool("slack", "slack_add_reaction", { channel_id: canalSlack, timestamp: tsSlack, name: emoji }).catch(() => undefined);
-        await reg.closeAll();
-      }
-    } catch {}
-  }
-}
 
 /**
  * O cliente autenticado, com o token vindo do cofre ou do ambiente.
@@ -759,10 +696,7 @@ function renderBody(findings: Finding[], summary?: string): string {
  * fica em estado pendente, visivel so para quem criou. Voce abre o PR, le e
  * envia. Nada publico antes disso.
  */
-export function githubReviewHandler(
-  client: () => ReviewClient = octokit,
-  deps: { teams?: TeamsReactionOptions } = {},
-): ActionHandler {
+export function githubReviewHandler(client: () => ReviewClient = octokit): ActionHandler {
   const comments = (findings: Finding[]) =>
     findings
       .filter((f): f is Finding & { file: string; line: number } => Boolean(f.file && f.line))
@@ -816,7 +750,7 @@ export function githubReviewHandler(
       return payload;
     },
     async publish(payload, externalId) {
-      const p = payload as ReviewPayload & OrigemDoReview;
+      const p = payload as ReviewPayload & { summary?: string };
       if (await jaSaiu(p, externalId)) return;
       await client().rest.pulls.createReview({
         owner: p.owner,
@@ -826,8 +760,6 @@ export function githubReviewHandler(
         body: `${renderBody(p.findings, p.summary)}\n${marca(externalId)}`,
         comments: comments(p.findings),
       });
-
-      await avisarOrigem(p, deps);
     },
     async draft(payload, externalId) {
       const p = payload as ReviewPayload & { summary?: string };
@@ -839,12 +771,6 @@ export function githubReviewHandler(
         body: `${renderBody(p.findings, p.summary)}\n${marca(externalId)}`,
         comments: comments(p.findings),
       });
-      // Saiu pendente: ainda não é veredito, então o 👀 só sai.
-      await soltarOPr(p, deps.teams);
-    },
-    // Proposta que não vai sair: o 👀 do "peguei" não pode ficar para sempre.
-    async discard(payload) {
-      await soltarOPr(payload, deps.teams);
     },
   };
 }

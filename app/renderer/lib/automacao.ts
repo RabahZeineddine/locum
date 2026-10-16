@@ -285,6 +285,16 @@ export const FORMATOS = {
     required: ["text"],
     properties: { text: { type: "string" } },
   } as Record<string, unknown>,
+  /** A resposta do Teams com o veredito da revisão, que o nó de reação lê. */
+  respostaTeamsComVeredito: {
+    type: "object",
+    additionalProperties: false,
+    required: ["text", "verdict"],
+    properties: {
+      text: { type: "string" },
+      verdict: { type: "string", enum: ["APPROVE", "REQUEST_CHANGES", "COMMENT"] },
+    },
+  } as Record<string, unknown>,
   tarefa: CONVERSATION_ISSUE_SCHEMA as unknown as Record<string, unknown>,
   tarefaDePullRequest: ISSUE_CONTENT_SCHEMA as unknown as Record<string, unknown>,
 } as const;
@@ -396,6 +406,34 @@ export const PASSOS: readonly ComponenteDePasso[] = [
     }),
   },
   {
+    id: "slack.react",
+    app: "slack",
+    novo: (spec) => ({
+      type: "action",
+      key: novaChave(spec, "reagir-slack"),
+      name: "Reagir no Slack",
+      needs: [],
+      optional: false,
+      action: "slack.react",
+      mode: "approve",
+      params: { emoji: "👀", operacao: "set" },
+    }),
+  },
+  {
+    id: "teams.react",
+    app: "teams",
+    novo: (spec) => ({
+      type: "action",
+      key: novaChave(spec, "reagir-teams"),
+      name: "Reagir no Teams",
+      needs: [],
+      optional: false,
+      action: "teams.react",
+      mode: "approve",
+      params: { emoji: "👀", operacao: "set" },
+    }),
+  },
+  {
     id: "tracker.create_issue",
     app: "atlassian",
     novo: (spec) => ({
@@ -470,7 +508,7 @@ export const LOGICA: readonly { id: LogicStep["op"]; novo: (spec: AgentSpec) => 
 }));
 
 /** Ações que não leem a saída de uma IA: o que mandam está todo em `params`. */
-export const ACOES_POR_PARAMETRO: ReadonlySet<string> = new Set(["mcp.call", "http.request"]);
+export const ACOES_POR_PARAMETRO: ReadonlySet<string> = new Set(["mcp.call", "http.request", "teams.react", "slack.react"]);
 
 /** O componente da paleta que corresponde a um passo já gravado. */
 export function componenteDoPasso(passo: Step): string {
@@ -655,6 +693,12 @@ export function problemas(r: Rascunho, ctx: Contexto): Problema[] {
     if (p.action === "teams.post" && !conversaDoTeams) {
       lista.push({ chave: "automations.problems.teamsReplyNeedsTeams", no: p.key, bloqueia: false });
     }
+    if (p.action === "slack.react" && !conversaDoSlack) {
+      lista.push({ chave: "automations.problems.slackReactNeedsSlack", no: p.key, bloqueia: false });
+    }
+    if (p.action === "teams.react" && !conversaDoTeams) {
+      lista.push({ chave: "automations.problems.teamsReactNeedsTeams", no: p.key, bloqueia: false });
+    }
     if (p.action === "tracker.create_issue" && (p.target === undefined || !ctx.trackers.includes(p.target))) {
       lista.push({ chave: "automations.problems.noTracker", no: p.key, bloqueia: true });
     }
@@ -663,6 +707,74 @@ export function problemas(r: Rascunho, ctx: Contexto): Problema[] {
 }
 
 /* ----------------------------------------------------------------- modelos */
+
+/* ------------------------------------------------------------- reações */
+
+const REACAO_PEGOU = "👀";
+const REACAO_POR_VEREDITO = { APPROVE: "✅", REQUEST_CHANGES: "⚠️", COMMENT: "💬" } as const;
+
+/** O 👀 do início: opcional, porque a revisão não pode depender de uma cortesia. */
+function reacaoDePegou(action: "teams.react" | "slack.react", key: string): PassoDeAcao {
+  return {
+    type: "action",
+    key,
+    name: "Reagir 👀",
+    needs: [],
+    optional: true,
+    action,
+    mode: "auto",
+    params: { emoji: REACAO_PEGOU, operacao: "set" },
+  };
+}
+
+/** A reação do veredito, que troca o 👀: lê `verdict` da saída do passo de revisão. */
+function reacaoDeVeredito(action: "teams.react" | "slack.react", key: string, revisao: string, needs: string[]): PassoDeAcao {
+  return {
+    type: "action",
+    key,
+    name: "Reagir pelo veredito",
+    needs,
+    optional: true,
+    action,
+    mode: "auto",
+    params: {
+      operacao: "set",
+      tirar: REACAO_PEGOU,
+      porValor: { de: `{{steps.${revisao}.verdict}}`, mapa: { ...REACAO_POR_VEREDITO }, padrao: REACAO_POR_VEREDITO.COMMENT },
+    },
+  };
+}
+
+/**
+ * Automação gravada com gatilho do Teams que traz link de PR e nenhum nó de
+ * reação: antes o gatilho punha o 👀 sozinho. Hoje ele não reage, e o editor
+ * avisa, sem mexer no que está gravado.
+ */
+export function faltaReacaoNoGatilho(r: Rascunho): boolean {
+  const comLink = r.gatilhos.some((g) => g.config.kind === "teams-inbox" && g.config.prLinks);
+  const reage = r.spec.steps.some((p) => p.type === "action" && p.action === "teams.react");
+  return comLink && !reage && r.spec.steps.length > 0;
+}
+
+/**
+ * Acrescenta ao rascunho os nós que o gatilho fazia sozinho: 👀 no começo (os
+ * passos sem dependência passam a esperar por ele) e a reação pelo veredito
+ * depois do que já havia. A pessoa revisa e salva; nada é gravado aqui.
+ */
+export function comNosDeReacao(r: Rascunho): Rascunho {
+  const pegou = reacaoDePegou("teams.react", novaChave(r.spec, "pegou"));
+  const raizes = new Set(r.spec.steps.filter((p) => p.needs.length === 0).map((p) => p.key));
+  const dependidos = new Set(r.spec.steps.flatMap((p) => p.needs));
+  const finais = r.spec.steps.filter((p) => !dependidos.has(p.key)).map((p) => p.key);
+  // O veredito vem do passo de IA que alimenta a publicação do review, ou do último passo de IA.
+  const review = r.spec.steps.find((p) => p.type === "action" && p.action === "github.review_comment");
+  const modelos = r.spec.steps.filter((p) => p.type === "model");
+  const revisao =
+    (review?.type === "action" ? (review.input ?? review.needs[0]) : undefined) ?? modelos[modelos.length - 1]?.key ?? "revisar";
+  const spec0 = { ...r.spec, steps: [pegou, ...r.spec.steps.map((p) => (raizes.has(p.key) ? { ...p, needs: [pegou.key] } : p))] };
+  const veredito = reacaoDeVeredito("teams.react", novaChave(spec0, "veredito"), revisao, finais);
+  return { ...r, spec: { ...spec0, steps: [...spec0.steps, veredito] } };
+}
 
 export type ModeloId = "blank" | "slackReply" | "slackJira" | "mentions" | "daily" | "teamsPrReview" | "githubPrReview";
 
@@ -707,6 +819,8 @@ export function rascunhoDoModelo(
     input,
     ...(target === undefined ? {} : { target }),
   });
+  const reacaoPegou = (): PassoDeAcao => reacaoDePegou("teams.react", "pegou");
+  const reacaoDoVeredito = (revisao: string, depoisDe: string[]): PassoDeAcao => reacaoDeVeredito("teams.react", "veredito", revisao, depoisDe);
   const gatilho = (config: TriggerConfig): GatilhoNoCanvas => ({ chave: `${PREFIXO_DE_GATILHO}1`, config, enabled: false });
 
   const resposta = [
@@ -830,6 +944,7 @@ export function rascunhoDoModelo(
         spec: {
           ...base,
           steps: [
+            reacaoPegou(),
             {
               ...ia(
                 "revisar",
@@ -840,6 +955,9 @@ export function rascunhoDoModelo(
                   "",
                   "Em `text`, a resposta como ela sairia no fio: direta, com os achados que importam",
                   "em ordem de gravidade. Se não achou nada, diga isso em uma frase.",
+                  "",
+                  "Em `verdict`, o veredito: APPROVE se não há defeito a corrigir, REQUEST_CHANGES se há",
+                  "defeito que precisa ser corrigido antes do merge, COMMENT se só há observações.",
                   "",
                   "De: {{event.author}}",
                   "",
@@ -854,13 +972,14 @@ export function rascunhoDoModelo(
                   "Diff:",
                   "{{event.diff}}",
                 ].join("\n"),
-                [],
-                FORMATOS.respostaTeams,
+                ["pegou"],
+                FORMATOS.respostaTeamsComVeredito,
               ),
               maxSteps: 16,
               ...(revisor === undefined ? {} : { profile: revisor }),
             },
             acao("responder", "Responder no fio", "teams.post", "revisar"),
+            reacaoDoVeredito("revisar", ["responder"]),
           ],
         },
         gatilhos: [gatilho({ kind: "teams-inbox", mentions: false, dms: false, prLinks: true, channels: [], chats: [], chatsPendentes: 0, everyMinutes: 5 })],

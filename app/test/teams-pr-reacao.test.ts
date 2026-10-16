@@ -106,21 +106,19 @@ const mensagemComPr = {
   body: { contentType: "html", content: PR },
 };
 
-test("ao pegar o PR o Locum reage com 👀 na mensagem", async () => {
+test("ao pegar o PR o Locum não reage: reação só acontece por nó do fluxo", async () => {
   const { fetchFn, pedidos } = graphDaCaixa([mensagemComPr]);
-  await pollTeamsInbox(
+  const resultado = await pollTeamsInbox(
     { mentions: false, dms: false, prLinks: true },
     { db: bancoDeTeste(), token, fetchFn, graphUrl: GRAPH, viewerLogin: async () => null, fetchPr: (async () => CONTEXTO) as never },
   );
-  assert.deepEqual(
-    pedidos.map((p) => [p.url, p.corpo]),
-    [["/chats/g/messages/m1/setReaction", { reactionType: "👀" }]],
-  );
+  assert.equal(resultado.eventIds.length, 1);
+  assert.deepEqual(pedidos, []);
 });
 
-test("PR que não deu para buscar não ganha 👀, e erro na reação não derruba a varredura", async () => {
+test("PR que não deu para buscar não vira evento e a varredura segue", async () => {
   const falhou = graphDaCaixa([mensagemComPr]);
-  await pollTeamsInbox(
+  const resultado = await pollTeamsInbox(
     { mentions: false, dms: false, prLinks: true },
     {
       db: bancoDeTeste(),
@@ -132,20 +130,8 @@ test("PR que não deu para buscar não ganha 👀, e erro na reação não derru
       }) as never,
     },
   );
+  assert.equal(resultado.eventIds.length, 0);
   assert.deepEqual(falhou.pedidos, []);
-
-  const recusa = graphDeReacoes({ recusa: 403 });
-  const caixa = graphDaCaixa([mensagemComPr]);
-  const fetchFn = (async (entrada: string | URL, init?: RequestInit) =>
-    init?.method === "POST" ? recusa.opcoes.fetchFn(entrada, init) : caixa.fetchFn(entrada, init)) as typeof fetch;
-  const db = bancoDeTeste();
-  const resultado = await pollTeamsInbox(
-    { mentions: false, dms: false, prLinks: true },
-    { db, token, fetchFn, graphUrl: GRAPH, viewerLogin: async () => null, fetchPr: (async () => CONTEXTO) as never },
-  );
-  assert.equal(resultado.eventIds.length, 1);
-  assert.deepEqual(resultado.errors, []);
-  assert.equal(recusa.pedidos.length, 1);
 });
 
 const clienteDoGithub = {
@@ -153,32 +139,13 @@ const clienteDoGithub = {
 } as unknown as ReviewClient;
 const REVIEW = { owner: "acme", repo: "api", pull: 7, findings: [] };
 
-test("ao publicar, tira o 👀 e põe a reação do veredito, no chat, no canal e na resposta", async () => {
-  const esperado = { APPROVE: "✅", REQUEST_CHANGES: "⚠️", COMMENT: "💬" } as const;
-  for (const [verdict, emoji] of Object.entries(esperado)) {
-    for (const [origem, caminho] of [
-      [CHAT, "/chats/19:chat@thread.v2/messages/1700"],
-      [CANAL, "/teams/T1/channels/19:canal@thread.tacv2/messages/300"],
-      [REPLY, "/teams/T1/channels/19:canal@thread.tacv2/messages/300/replies/301"],
-    ] as const) {
-      const g = graphDeReacoes();
-      await githubReviewHandler(() => clienteDoGithub, { teams: g.opcoes }).publish(
-        { ...REVIEW, ...origem, verdict },
-        `ext-${verdict}-${caminho}`,
-      );
-      assert.deepEqual(
-        g.pedidos.map((p) => [p.url, p.corpo]),
-        [
-          [`${caminho}/unsetReaction`, { reactionType: "👀" }],
-          [`${caminho}/setReaction`, { reactionType: emoji }],
-        ],
-        `${verdict} ${caminho}`,
-      );
-    }
-  }
+const original = { enabledConfigs: mcpService.enabledConfigs, fromList: McpRegistry.fromList };
+afterEach(() => {
+  mcpService.enabledConfigs = original.enabledConfigs;
+  McpRegistry.fromList = original.fromList;
 });
 
-test("erro do Graph na reação nunca impede o review de sair", async () => {
+test("publicar o review não reage em lugar nenhum, nem no Teams nem no Slack", async () => {
   let criadas = 0;
   const cliente = {
     rest: {
@@ -191,35 +158,26 @@ test("erro do Graph na reação nunca impede o review de sair", async () => {
       },
     },
   } as unknown as ReviewClient;
-  const g = graphDeReacoes({ recusa: 500 });
-  await githubReviewHandler(() => cliente, { teams: g.opcoes }).publish({ ...REVIEW, ...CHAT, verdict: "APPROVE" }, "ext-x");
-  assert.equal(criadas, 1);
-  // Cada reação é tentada sozinha: a recusa de tirar o 👀 não impede de pôr o veredito.
-  assert.equal(g.pedidos.length, 2);
-
-  await githubReviewHandler(() => cliente, {
-    teams: { token: async () => null, fetchFn: g.opcoes.fetchFn },
-  }).publish({ ...REVIEW, ...CHAT }, "ext-y");
-  assert.equal(criadas, 2);
-});
-
-const original = { enabledConfigs: mcpService.enabledConfigs, fromList: McpRegistry.fromList };
-afterEach(() => {
-  mcpService.enabledConfigs = original.enabledConfigs;
-  McpRegistry.fromList = original.fromList;
-});
-
-test("review sem campos do Teams não chama o Graph, e o do Slack não chama o Teams", async () => {
-  const g = graphDeReacoes();
-  await githubReviewHandler(() => clienteDoGithub, { teams: g.opcoes }).publish({ ...REVIEW, verdict: "APPROVE" }, "ext-1");
-
-  mcpService.enabledConfigs = (async () => []) as never;
-  McpRegistry.fromList = (() => ({ callTool: async () => ({}), closeAll: async () => undefined })) as never;
-  await githubReviewHandler(() => clienteDoGithub, { teams: g.opcoes }).publish(
-    { ...REVIEW, slackChannel: "C1", slackTs: "1" },
-    "ext-2",
-  );
-  assert.deepEqual(g.pedidos, []);
+  const chamadas: string[] = [];
+  const fetchOriginal = globalThis.fetch;
+  globalThis.fetch = (async (entrada: string | URL) => {
+    chamadas.push(String(entrada));
+    return new Response(null, { status: 204 });
+  }) as typeof fetch;
+  mcpService.enabledConfigs = (async () => {
+    chamadas.push("mcp");
+    return [];
+  }) as never;
+  try {
+    for (const origem of [CHAT, CANAL, REPLY, { slackChannel: "C1", slackTs: "1" }]) {
+      await githubReviewHandler(() => cliente).publish({ ...REVIEW, ...origem, verdict: "APPROVE" }, `ext-${criadas}`);
+    }
+    await githubReviewHandler(() => cliente).draft!({ ...REVIEW, ...CHAT }, "ext-rascunho");
+  } finally {
+    globalThis.fetch = fetchOriginal;
+  }
+  assert.equal(criadas, 5);
+  assert.deepEqual(chamadas, []);
 });
 
 test("o destino da reação sai do evento e a saída do modelo não troca", () => {
@@ -276,11 +234,9 @@ test("o mesmo PR no mesmo commit só gera um evento, e commit novo gera outro", 
   const outra = { ...mensagemComPr, id: "m2", createdDateTime: agoraMenos(1) };
   const repetido = await varrer([{}, {}], { mensagens: [mensagemComPr, outra] });
   assert.equal(repetido.resultado.inWindow.length, 1);
-  assert.equal(repetido.pedidos.length, 1);
 
   const novo = await varrer([{}, { headSha: "sha2" }], { mensagens: [mensagemComPr, outra] });
   assert.equal(novo.resultado.inWindow.length, 2);
-  assert.equal(novo.pedidos.length, 2);
 });
 
 const revisarOutraVez = (db: ReturnType<typeof bancoDeTeste>) => {

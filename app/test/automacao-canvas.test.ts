@@ -4,6 +4,8 @@ import { AgentSpec } from "../src/config/types.js";
 import { renderPrompt } from "../src/executor/executor.js";
 import {
   adicionarPasso,
+  comNosDeReacao,
+  faltaReacaoNoGatilho,
   arestas,
   desligar,
   FORMATOS,
@@ -167,18 +169,53 @@ test("o modelo de PR no Teams revisa e só responde depois de aprovar, sem nó q
   const r = rascunhoDoModelo("teamsPrReview", "t", "T", null);
   assert.deepEqual(r.gatilhos.map((g) => g.config.kind), ["teams-inbox"]);
   assert.equal(r.gatilhos[0]!.config.kind === "teams-inbox" && r.gatilhos[0]!.config.prLinks, true);
-  assert.deepEqual(r.spec.steps.map((p) => p.key), ["revisar", "responder"]);
-  // O gatilho com link de PR já reage 👀 sozinho: não há ferramenta a escolher.
+  assert.deepEqual(r.spec.steps.map((p) => p.key), ["pegou", "revisar", "responder", "veredito"]);
+  // A reação é nó do fluxo, com a ação do próprio Teams: não há ferramenta de app a escolher.
   assert.ok(r.spec.steps.every((p) => p.type !== "action" || p.action !== "mcp.call"));
-  const resposta = r.spec.steps[1]!;
+  const resposta = r.spec.steps[2]!;
   assert.equal(resposta.type === "action" && resposta.action, "teams.post");
   assert.equal(resposta.type === "action" && resposta.mode, "approve");
   assert.deepEqual(resposta.needs, ["revisar"]);
 });
 
+test("o modelo de PR no Teams reage 👀 no começo, expõe o veredito e troca o 👀 pelo veredito no fim", () => {
+  const r = rascunhoDoModelo("teamsPrReview", "t", "T", null);
+  const [pegou, revisar, , veredito] = r.spec.steps;
+  assert.deepEqual([pegou!.type === "action" && pegou!.action, pegou!.type === "action" && pegou!.mode, pegou!.needs], ["teams.react", "auto", []]);
+  assert.deepEqual(pegou!.type === "action" && pegou!.params, { emoji: "👀", operacao: "set" });
+  assert.deepEqual(revisar!.needs, ["pegou"]);
+  const esquema = revisar!.type === "model" ? (revisar!.outputSchema as { required: string[]; properties: { verdict: { enum: string[] } } }) : null;
+  assert.deepEqual(esquema?.required, ["text", "verdict"]);
+  assert.deepEqual(esquema?.properties.verdict.enum, ["APPROVE", "REQUEST_CHANGES", "COMMENT"]);
+  assert.deepEqual(veredito!.type === "action" && veredito!.params, {
+    operacao: "set",
+    tirar: "👀",
+    porValor: { de: "{{steps.revisar.verdict}}", mapa: { APPROVE: "✅", REQUEST_CHANGES: "⚠️", COMMENT: "💬" }, padrao: "💬" },
+  });
+  assert.deepEqual(veredito!.needs, ["responder"]);
+  assert.ok(AgentSpec.safeParse(r.spec).success);
+});
+
+test("automação gravada sem nó de reação ganha o aviso, e o botão insere os nós no rascunho sem tocar no gravado", () => {
+  const antigo = rascunhoDoModelo("teamsPrReview", "t", "T", null);
+  const gravado = { ...antigo, spec: { ...antigo.spec, steps: antigo.spec.steps.filter((p) => p.type !== "action" || p.action !== "teams.react").map((p) => ({ ...p, needs: p.needs.filter((n) => n !== "pegou") })) } };
+  assert.equal(faltaReacaoNoGatilho(gravado), true);
+  assert.equal(faltaReacaoNoGatilho(antigo), false);
+  const sem = { ...gravado, gatilhos: [{ ...gravado.gatilhos[0]!, config: { ...gravado.gatilhos[0]!.config, prLinks: false } as never }] };
+  assert.equal(faltaReacaoNoGatilho(sem), false);
+
+  const novo = comNosDeReacao(gravado);
+  assert.deepEqual(novo.spec.steps.map((p) => p.key), ["pegou", "revisar", "responder", "veredito"]);
+  assert.deepEqual(novo.spec.steps.find((p) => p.key === "revisar")!.needs, ["pegou"]);
+  assert.deepEqual(novo.spec.steps.find((p) => p.key === "veredito")!.needs, ["responder"]);
+  assert.equal(faltaReacaoNoGatilho(novo), false);
+  assert.ok(AgentSpec.safeParse(novo.spec).success);
+  assert.equal(gravado.spec.steps.length, 2);
+});
+
 test("o modelo de PR no Teams monta o prompt com o diff do evento e não exige servidor", () => {
   const r = rascunhoDoModelo("teamsPrReview", "t", "T", null);
-  const revisar = r.spec.steps[0]!;
+  const revisar = r.spec.steps.find((x) => x.key === "revisar")!;
   assert.equal(revisar.type, "model");
   assert.deepEqual(revisar.type === "model" && revisar.requiresServers, []);
   const prompt = renderPrompt(
@@ -213,7 +250,7 @@ test("em branco sugere o agent criado, e sem agent fica o passo de IA", () => {
 
 test("o modelo de PR no Teams usa o agent de nome parecido com revisor, e sem ele fica o passo de IA", () => {
   const passo = (r: ReturnType<typeof rascunhoDoModelo>) => {
-    const p = r.spec.steps[0]!;
+    const p = r.spec.steps.find((x) => x.key === "revisar")!;
     return p.type === "model" ? p.profile : undefined;
   };
   assert.equal(passo(rascunhoDoModelo("teamsPrReview", "t", "T", null, [{ id: "geral", name: "Geral" }, { id: "rev", name: "Revisor de código" }])), "rev");

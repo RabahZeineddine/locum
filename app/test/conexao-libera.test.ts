@@ -5,7 +5,7 @@ import { liberaDaConexao } from "../renderer/lib/conexao-libera.js";
 test("Slack libera os gatilhos de mensagem e a ação de postar", () => {
   const l = liberaDaConexao("slack", { servidor: true });
   assert.deepEqual(l.gatilhos, ["slack-channel", "slack-inbox"]);
-  assert.deepEqual(l.acoes, ["slack.post", "mcp.call"]);
+  assert.deepEqual(l.acoes, ["slack.post", "slack.react", "mcp.call"]);
 });
 
 test("GitHub libera o gatilho de pull request e nenhuma ação própria", () => {
@@ -15,7 +15,7 @@ test("GitHub libera o gatilho de pull request e nenhuma ação própria", () => 
 });
 
 test("Teams e Atlassian liberam o que a paleta amarra a eles", () => {
-  assert.deepEqual(liberaDaConexao("teams", { servidor: false }), { gatilhos: ["teams-inbox"], acoes: ["teams.post"] });
+  assert.deepEqual(liberaDaConexao("teams", { servidor: false }), { gatilhos: ["teams-inbox"], acoes: ["teams.post", "teams.react"] });
   assert.deepEqual(liberaDaConexao("atlassian", { servidor: true }).acoes, ["tracker.create_issue", "mcp.call"]);
 });
 

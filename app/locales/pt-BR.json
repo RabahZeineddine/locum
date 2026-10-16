@@ -41,6 +41,8 @@
         "digest.deliver": "resumo na fila",
         "slack.post": "mensagem no Slack",
         "teams.post": "mensagem no Teams",
+        "slack.react": "reação no Slack",
+        "teams.react": "reação no Teams",
         "context.update": "atualização do contexto da iniciativa"
       }
     },
@@ -2063,7 +2065,7 @@
     "templates": {
       "teamsPrReview": {
         "title": "Teams: revisar o PR do link",
-        "description": "Mensagem com link de PR num grupo do Teams: o gatilho reage com 👀, o agent revisa o PR e a resposta no fio sai com a sua aprovação."
+        "description": "Mensagem com link de PR num grupo do Teams: um nó reage com 👀, o agent revisa o PR, a resposta no fio sai com a sua aprovação e um último nó troca o 👀 pelo veredito."
       },
       "githubPrReview": {
         "title": "GitHub: revisar PR aberto",
@@ -2112,6 +2114,11 @@
       "problems_other": "{{count}} pontos para revisar",
       "problems_zero": "{{count}} pontos para revisar",
       "blocked": "Corrija os pontos marcados para salvar.",
+      "reactionNotice": {
+        "text": "O gatilho não reage mais sozinho. Adicione os nós de reação.",
+        "add": "Adicionar nós de reação",
+        "dismiss": "Dispensar"
+      },
       "exit": {
         "title": "Sair com alterações não salvas?",
         "body": "Esta automação tem alterações que ainda não foram gravadas.",
@@ -2397,6 +2404,7 @@
           "livre": "Texto livre",
           "respostaSlack": "Resposta de Slack (texto e thread)",
           "respostaTeams": "Resposta de Teams (texto)",
+          "respostaTeamsComVeredito": "Resposta de Teams com veredito (texto e veredito)",
           "tarefa": "Tarefa a partir de conversa",
           "tarefaDePullRequest": "Tarefa a partir de pull request",
           "outro": "Personalizado (editar como lista)"
@@ -2409,6 +2417,33 @@
       "teams.post": {
         "title": "Responder no Teams",
         "description": "Responde na conversa que começou o fluxo."
+      },
+      "slack.react": {
+        "title": "Reagir no Slack",
+        "description": "Põe ou tira uma reação na mensagem do Slack que começou o fluxo."
+      },
+      "teams.react": {
+        "title": "Reagir no Teams",
+        "description": "Põe ou tira uma reação na mensagem do Teams que começou o fluxo. Nada reage se um nó não pedir."
+      },
+      "react": {
+        "operation": "Operação",
+        "set": "Pôr a reação",
+        "unset": "Tirar a reação",
+        "source": "Emoji vem de",
+        "fixed": "Emoji fixo",
+        "byValue": "Pelo valor de um passo",
+        "emoji": "Emoji",
+        "from": "Valor",
+        "fromHint": "O campo de um passo anterior, por exemplo steps.revisar.verdict.",
+        "map": "Emoji de cada valor",
+        "emojiFor": "Emoji de {{value}}",
+        "removeValue": "Remover {{value}}",
+        "valuePlaceholder": "Valor, ex.: APPROVE",
+        "addValue": "Adicionar",
+        "fallback": "Emoji para qualquer outro valor",
+        "removeFirst": "Tirar antes",
+        "removeFirstHint": "Uma reação que sai antes de a nova entrar, como 👀. Falhar ao tirar não impede a nova."
       },
       "tracker.create_issue": {
         "title": "Abrir tarefa",
@@ -2540,6 +2575,8 @@
       "actionWithoutAi": "Esta ação precisa de um passo de IA antes, que escreva o texto.",
       "slackReplyNeedsSlack": "Responder no Slack precisa de um gatilho do Slack: é dele que vem a thread.",
       "teamsReplyNeedsTeams": "Responder no Teams precisa de um gatilho do Teams.",
+      "slackReactNeedsSlack": "Reagir no Slack precisa de um gatilho do Slack: a reação cai nessa mensagem.",
+      "teamsReactNeedsTeams": "Reagir no Teams precisa de um gatilho do Teams: a reação cai nessa mensagem.",
       "noTracker": "Escolha em qual tracker abrir a tarefa.",
       "createReviewer": "Sem um agent revisor, a revisão usa um passo de IA solto. Crie um agent para revisar PR e troque o passo por ele.",
       "githubTokenForDiff": "O GitHub está sem token: a revisão precisa dele para trazer o diff do PR.",

@@ -80,11 +80,11 @@ test("o mesmo passo mexido por mim e por fora é conflito, e a escolha decide qu
 
 test("passo novo de fora entra, e passo que removi some se ninguém mexeu nele", () => {
   const base = v1();
-  const extra = { ...base.spec.steps[1]!, key: "extra", name: "Extra", needs: ["revisar"] };
+  const extra = { ...base.spec.steps.find((p) => p.key === "responder")!, key: "extra", name: "Extra", needs: ["revisar"] };
   const gravado: Rascunho = { ...base, spec: { ...base.spec, steps: [...base.spec.steps, extra] } };
   const meu: Rascunho = { ...base, spec: { ...base.spec, steps: base.spec.steps.filter((p) => p.key !== "responder") } };
   const { rascunho } = mesclar(base, meu, gravado);
-  assert.deepEqual(rascunho.spec.steps.map((p) => p.key), ["revisar", "extra"]);
+  assert.deepEqual(rascunho.spec.steps.map((p) => p.key), ["pegou", "revisar", "veredito", "extra"]);
 });
 
 test("gatilho que existe no gravado e não no rascunho vem do gravado, se não estava na base", () => {

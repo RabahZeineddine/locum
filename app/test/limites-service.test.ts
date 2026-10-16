@@ -320,7 +320,7 @@ test("gateway fora do ar não levanta erro", async () => {
 
 // ---- agendador
 
-function agendador(pausa: ConstructorParameters<typeof Scheduler>[12]) {
+function agendador(pausa: ConstructorParameters<typeof Scheduler>[11]) {
   const db = bancoDeTeste();
   const iniciados: (string | null)[] = [];
   const triggers = { enabled: async () => gatilhos, list: async () => gatilhos } as unknown as TriggerService;
@@ -340,7 +340,7 @@ function agendador(pausa: ConstructorParameters<typeof Scheduler>[12]) {
   const scheduler = new Scheduler(
     db, triggers, executions, {} as McpService, {} as SlackService, poll as never,
     (async () => ({ checked: 0, settled: [], stillOpen: 0, unreadable: 0, failed: [] })) as never,
-    async () => "eu", undefined, undefined, undefined, undefined, pausa,
+    async () => "eu", undefined, undefined, undefined, pausa,
   );
   return { scheduler, iniciados, gatilhos };
 }
@@ -373,7 +373,7 @@ test("gatilho de relógio no limite não toma a batida e dispara na primeira dep
     db, { enabled: async () => gatilhos, list: async () => gatilhos } as unknown as TriggerService,
     { startForEvent: async () => (iniciados.push(1), { runId: "r" }) } as unknown as ExecutionService,
     {} as McpService, {} as SlackService, undefined, (async () => ({ checked: 0, settled: [], stillOpen: 0, unreadable: 0, failed: [] })) as never,
-    undefined, undefined, undefined, undefined, undefined,
+    undefined, undefined, undefined, undefined,
     async (_a, at) => (at < reset ? { provedor: "claude-code", ate: reset, limite: {} as never } : null),
   );
   const preso = await scheduler.tick({ at: T0 });
@@ -455,7 +455,7 @@ test("o runtime do Claude Code publica a leitura do stream, e a do filtro com IA
   await assert.rejects(() => julgar({ filtro: { modelo: "claude-code/haiku" } as never, mensagem: { texto: "oi" } as never }), ErroDeLimiteDoFiltro);
 });
 
-function agendadorComEventos(quantos: number, pausa: ConstructorParameters<typeof Scheduler>[12], reavaliar: ConstructorParameters<typeof Scheduler>[13]) {
+function agendadorComEventos(quantos: number, pausa: ConstructorParameters<typeof Scheduler>[11], reavaliar: ConstructorParameters<typeof Scheduler>[12]) {
   const db = bancoDeTeste();
   const iniciados: (string | null)[] = [];
   const gatilhos: TriggerEntry[] = [
@@ -476,7 +476,7 @@ function agendadorComEventos(quantos: number, pausa: ConstructorParameters<typeo
     { startForEvent: async (i: { eventId: string | null }) => (iniciados.push(i.eventId), { runId: `r${iniciados.length}` }) } as unknown as ExecutionService,
     {} as McpService, {} as SlackService, poll as never,
     (async () => ({ checked: 0, settled: [], stillOpen: 0, unreadable: 0, failed: [] })) as never,
-    async () => "eu", undefined, undefined, undefined, undefined, pausa, reavaliar,
+    async () => "eu", undefined, undefined, undefined, pausa, reavaliar,
   );
   return { db, scheduler, iniciados };
 }

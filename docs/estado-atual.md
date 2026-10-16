@@ -2198,3 +2198,14 @@ ramo `mcp-poll` do agendador, em `app/src/triggers/scheduler.ts:381`, que hoje �
 caso único e legível. Na segunda fonte que precisar do mesmo desvio, ele deixa
 de ser, e o lugar de resolver isso é uma tabela de fontes registradas, antes de
 escrever o segundo `if`.
+
+## Reações como nós do fluxo
+
+Nenhum gatilho, run ou ação reage sozinho. `teams.react` e `slack.react` são
+ações do fluxo (params `emoji`, `operacao` set|unset, `tirar`, `porValor`) que
+agem na mensagem do evento; sem evento de conversa, ou com evento colado, viram
+ensaio. Saíram o 👀 do gatilho `teams-inbox`, a troca pelo veredito ao publicar
+a review e o `soltarOPr` do run falho, do descarte e da proposta rejeitada. Passo
+de ação `optional` que falha fica `failed` e não derruba o run. O editor avisa,
+uma vez, a automação gravada com `prLinks` sem nó de reação, e o botão insere os
+nós no rascunho sem migrar o banco.

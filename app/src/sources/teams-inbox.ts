@@ -6,7 +6,6 @@ import { assertWithinBudget, BudgetExceeded, recordSpend, type Spend } from "../
 import type { AgentBudget } from "../config/types.js";
 import { ErroDeConfiguracaoDoFiltro, ErroDeLimiteDoFiltro, julgadorPadrao, type FiltroIa, type Julgador, type MensagemDoFiltro } from "../services/filtro-ia.js";
 import { abrirTeams, type GraphGet, type TeamsGraphOptions } from "../teams/graph.js";
-import { alvoDaReacao, reagirNoTeams, REACAO_PEGOU } from "../teams/reaction.js";
 import { githubService } from "../services/github-service.js";
 import { fetchPr as defaultFetchPr, fetchPrBasico as defaultFetchPrBasico, type PrBasico } from "./github.js";
 import { extractGithubPrLinks } from "./github-pr-link.js";
@@ -646,7 +645,6 @@ async function enriquecerPrs(
 
       const { prError: _resolvido, ...resto } = payload;
       await gravar(id, { ...resto, ...contexto, teamsAuthor: payload.author });
-      await reagirAoPegar(payload, options);
     } catch (err) {
       falha(err instanceof Error ? err.message : String(err));
     }
@@ -733,17 +731,6 @@ export async function motivoDeDescarte(
   if (eu !== null && contexto.author.toLowerCase() === eu.toLowerCase()) return "proprio";
 
   return (await revisados()).has(chaveDoCommit(contexto)) ? "repetido" : null;
-}
-
-/** O 👀 de "peguei". Recusa do Graph vira log: a revisão não depende da reação. */
-async function reagirAoPegar(payload: Record<string, unknown>, options: TeamsInboxOptions): Promise<void> {
-  const alvo = alvoDaReacao(payload);
-  if (alvo === null) return;
-  try {
-    await reagirNoTeams(alvo, "set", REACAO_PEGOU, options);
-  } catch (err) {
-    console.error(`reagir com ${REACAO_PEGOU} no Teams falhou: ${err instanceof Error ? err.message : String(err)}`);
-  }
 }
 
 /**

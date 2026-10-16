@@ -15,6 +15,7 @@ import {
   Play,
   Plug,
   Send,
+  SmilePlus,
   Split,
   Signpost,
   Sparkles,
@@ -49,6 +50,8 @@ const ICONES: Record<string, LucideIcon> = {
   agent: Bot,
   "slack.post": Send,
   "teams.post": Send,
+  "slack.react": SmilePlus,
+  "teams.react": SmilePlus,
   "tracker.create_issue": ClipboardList,
   "mcp.call": Plug,
   "http.request": Globe,
@@ -75,8 +78,8 @@ export function appDoGatilho(kind: TriggerConfig["kind"]): AppDoComponente {
 }
 
 export function appDoPasso(id: string): AppDoComponente {
-  if (id === "slack.post" || id.startsWith("logic.slack.")) return "slack";
-  if (id === "teams.post" || id === "logic.teams.card") return "teams";
+  if (id === "slack.post" || id === "slack.react" || id.startsWith("logic.slack.")) return "slack";
+  if (id === "teams.post" || id === "teams.react" || id === "logic.teams.card") return "teams";
   if (id === "tracker.create_issue") return "atlassian";
   if (id.startsWith("github.")) return "github";
   return "locum";
@@ -143,7 +146,7 @@ export { tituloDoGatilho };
 /** Título do componente de passo, com a ação crua para o que a paleta não conhece. */
 export function tituloDoPasso(t: TFunction, id: string): string {
   if (id.startsWith("logic.")) return t(`automations.steps.logic.${id.slice("logic.".length)}.title`);
-  return ["ai", "agent", "slack.post", "teams.post", "tracker.create_issue", "mcp.call", "http.request"].includes(id)
+  return ["ai", "agent", "slack.post", "teams.post", "slack.react", "teams.react", "tracker.create_issue", "mcp.call", "http.request"].includes(id)
     ? t(`automations.steps.${id}.title`)
     : t("automations.steps.other.title", { action: id });
 }
