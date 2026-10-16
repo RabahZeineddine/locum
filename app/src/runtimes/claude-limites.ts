@@ -107,7 +107,8 @@ function resetDoTexto(texto: string, agora: number): number | null {
 function lerMensagemDeLimite(texto: string, agora: number): LeituraDeLimite | null {
   const antigo = /usage limit reached\|(\d{9,13})/i.exec(texto);
   if (antigo !== null) return { status: "rejected", bloqueioAte: emMilissegundos(Number(antigo[1]))! };
-  if (!/(hit|reached) your (?:[\w-]+\s+){0,3}limit/i.test(texto) && !/usage limit reached/i.test(texto)) return null;
+  // Só cota de assinatura: "context limit" e outros limites do modelo não entram.
+  if (!/(hit|reached) your (?:session|weekly|week|usage|daily|5-hour|five-hour|opus|sonnet)(?: usage)? limit/i.test(texto) && !/(?:usage|5-hour|five-hour) limit reached/i.test(texto)) return null;
 
   const reset = resetDoTexto(texto, agora);
   const leitura: LeituraDeLimite = { status: "rejected" };

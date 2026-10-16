@@ -124,3 +124,17 @@ test("rejected sem janela vira a de 5h cheia, com o reset do bloqueio ou meia ho
   assert.equal(sem[0]!.resetaEm, Math.floor((AGORA + 30 * 60_000) / 1000));
   assert.deepEqual(limitesDaLeitura({ status: "allowed" }, AGORA), []);
 });
+
+test("limite de contexto e outros erros com a palavra limit não são cota de assinatura", () => {
+  for (const texto of [
+    "You've reached your context limit",
+    "Prompt is too long: context limit exceeded",
+    "You've hit your rate of requests limit for this tool",
+    "output token limit reached",
+  ]) {
+    assert.equal(lerLinhaDeLimite(JSON.stringify({ type: "result", is_error: true, result: texto }), AGORA), null, texto);
+  }
+  for (const texto of ["You've hit your session limit · resets 3pm", "5-hour limit reached ∙ resets 3pm", "You've reached your weekly limit"]) {
+    assert.equal(lerLinhaDeLimite(JSON.stringify({ type: "result", is_error: true, result: texto }), AGORA)?.status, "rejected", texto);
+  }
+});

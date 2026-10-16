@@ -55,6 +55,16 @@ export function aoGastar(ouvinte: OuvinteDeGasto): () => void {
   return () => ouvintesDeGasto.delete(ouvinte);
 }
 
+/**
+ * O ponto único por onde todo caminho de modelo conta gasto no provedor:
+ * runtime nativo, chat do agent, assistente e construtor de agent. Assinatura
+ * (`billable` falso) gasta cota, não dinheiro, e não entra no orçamento local.
+ */
+export function contarGastoDoProvedor(provedor: string, gasto: { usd: number; tokens: number; billable?: boolean }): void {
+  if (gasto.billable === false) return;
+  publicarGasto(provedor, { usd: gasto.usd, tokens: gasto.tokens });
+}
+
 export function publicarGasto(provedor: string, gasto: { usd: number; tokens: number }): void {
   for (const ouvinte of ouvintesDeGasto) {
     try {

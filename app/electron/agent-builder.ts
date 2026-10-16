@@ -1,4 +1,6 @@
 import { generateText } from "ai";
+import { contarGastoDoProvedor } from "../src/runtimes/limites-lidos.js";
+import { costOf, priceService } from "../src/services/price-service.js";
 import { ClaudeCodeRuntime } from "../src/runtimes/claude-code.js";
 import { CODEX_DEFAULT_MODEL, CodexRuntime } from "../src/runtimes/codex.js";
 import { AgentBuilder, type CatalogoDoCriador, type Gerador } from "../src/services/agent-builder.js";
@@ -55,7 +57,14 @@ async function gerador(): Promise<Gerador | null> {
   const modelo = entry.model(guardado.slice(corte + 1));
   return {
     modelo: guardado,
-    gerar: async (sistema, pedido) => (await generateText({ model: modelo, system: sistema, prompt: pedido })).text,
+    gerar: async (sistema, pedido) => {
+      const r = await generateText({ model: modelo, system: sistema, prompt: pedido });
+      const entrou = r.totalUsage?.inputTokens ?? 0;
+      const saiu = r.totalUsage?.outputTokens ?? 0;
+      const preco = await priceService.priceFor(guardado.slice(0, corte), guardado.slice(corte + 1)).catch(() => undefined);
+      contarGastoDoProvedor(guardado.slice(0, corte), { usd: preco === undefined ? 0 : costOf(preco, entrou, saiu), tokens: entrou + saiu });
+      return r.text;
+    },
   };
 }
 

@@ -6672,6 +6672,8 @@ async function serveMcp(): Promise<void> {
 
   const { providerService } = await import("../src/services/provider-service.js");
   await providerService.loadSecrets();
+  // Gasto e leitura de limite de quem roda modelo por este processo também contam.
+  (await import("../src/services/limites-padrao.js")).ligarLimites();
 
   const { closeMcpPool } = await import("../src/executor/build.js");
   const { buildMcpServer } = await import("../src/mcp-server/server.js");

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { StatusDot } from "@/components/ui/status-dot";
 import { call, invalidateReads, useRead, type ReadResult } from "@/lib/bridge";
-import { haQuantoTempo, horaDoDia, percentual, piorEstado, quandoReseta } from "@/lib/limites";
+import { haQuantoTempo, percentual, piorEstado, quandoReseta, quandoSolta } from "@/lib/limites";
 import { rotuloDoProvedor } from "@/lib/rotulos";
 
 type Visao = ReadResult<"limites.overview">;
@@ -111,7 +111,63 @@ export function LimitesDoProvedor({ nome, disponivel }: { nome: string; disponiv
         {recente === null ? null : <span className="text-muted-foreground">{t("limits.updated", { when: haQuantoTempo(t, recente) })}</span>}
       </div>
       {provedor.aceitaOrcamento ? <OrcamentoDoProvedor provedor={provedor} /> : null}
+      <LimiarDoProvedor provedor={provedor} />
+      {provedor.gatewayPossivel ? <MarcaDeGateway marcados={lido.data?.gateways ?? []} provedor={provedor} /> : null}
     </div>
+  );
+}
+
+/** Limiar só deste provedor, na própria linha: ajuste fino do global. */
+function LimiarDoProvedor({ provedor }: { provedor: ProvedorComLimites }) {
+  const { t } = useTranslation();
+  const chave = provedor.assinatura ? "janela" : "orcamento";
+  const maximo = provedor.assinatura ? 100 : 150;
+  const atual = provedor.limiares[chave];
+  const [rascunho, setRascunho] = useState<string | null>(null);
+  const [erro, setErro] = useState(false);
+  const valor = rascunho ?? (atual === undefined ? "" : String(Math.round(atual * 100)));
+  const gravar = (): void => {
+    const vazio = valor.trim() === "";
+    const n = Number(valor);
+    if (!vazio && !(Number.isFinite(n) && n >= 1 && n <= maximo)) {
+      setErro(true);
+      return;
+    }
+    setErro(false);
+    const resto = { ...provedor.limiares };
+    if (vazio) delete resto[chave];
+    else resto[chave] = n / 100;
+    void call("limites.setConfig", { limiares: { [provedor.provedor]: resto } }).then(() => {
+      setRascunho(null);
+      invalidateReads("limites.overview");
+    });
+  };
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-xs" data-locum-limiar-provedor={provedor.provedor}>
+      <label className="text-muted-foreground" htmlFor={`limiar-${provedor.provedor}`}>{t("limits.settings.threshold")}</label>
+      <Input className="h-7 w-16 text-right tabular-nums" id={`limiar-${provedor.provedor}`} onChange={(e) => setRascunho(e.target.value)} type="number" value={valor} />
+      <Button disabled={rascunho === null} onClick={gravar} size="sm" variant="secondary">
+        {t("limits.settings.save")}
+      </Button>
+      {erro ? <span className="text-sev-critical">{t("limits.settings.invalid", { max: maximo })}</span> : null}
+    </div>
+  );
+}
+
+/** Gateway cadastrado: só quem o dono marca como LiteLLM recebe a pergunta ao `key/info`. */
+function MarcaDeGateway({ marcados, provedor }: { marcados: string[]; provedor: ProvedorComLimites }) {
+  const { t } = useTranslation();
+  return (
+    <label className="flex items-center gap-2 text-xs" data-locum-litellm={provedor.provedor}>
+      <input
+        checked={provedor.gateway}
+        onChange={(e) => {
+          void call("limites.setConfig", { gateways: e.target.checked ? [...new Set([...marcados, provedor.provedor])] : marcados.filter((g) => g !== provedor.provedor) }).then(() => invalidateReads("limites.overview"));
+        }}
+        type="checkbox"
+      />
+      {t("limits.settings.litellm")}
+    </label>
   );
 }
 
@@ -174,7 +230,7 @@ export function LimitesNaHoje() {
       {pausados.map((p) => (
         <p className="flex items-center gap-2 text-[13px]" data-locum-pausa={p.provedor} key={p.provedor}>
           <StatusDot estado="erro" />
-          {t("limits.pause", { time: horaDoDia(p.pausaAte!, i18n.language), provider: rotuloDoProvedor(p.provedor) })}
+          {t("limits.pause", { time: quandoSolta(p.pausaAte!, i18n.language), provider: rotuloDoProvedor(p.provedor) })}
         </p>
       ))}
       <div className="border-border bg-card flex flex-col divide-y divide-border rounded-lg border">
@@ -202,9 +258,10 @@ export function ProtecaoDeLimites() {
   const lido = useRead("limites.overview");
   const [janela, setJanela] = useState<string | null>(null);
   const [orcamento, setOrcamento] = useState<string | null>(null);
+  const [erro, setErro] = useState(false);
   if (lido.data === undefined) return null;
   const v = lido.data;
-  const gravar = (parcial: { protecao?: boolean; limiarJanela?: number; limiarOrcamento?: number }): void => {
+  const gravar = (parcial: { protecao?: boolean; limiarJanela?: number; limiarOrcamento?: number; usarSubstituto?: boolean }): void => {
     void call("limites.setConfig", parcial).then(() => {
       setJanela(null);
       setOrcamento(null);
@@ -229,12 +286,29 @@ export function ProtecaoDeLimites() {
       </span>
       <Button
         disabled={janela === null && orcamento === null}
-        onClick={() => gravar({ limiarJanela: Number(janelaAtual) / 100, limiarOrcamento: Number(orcamentoAtual) / 100 })}
+        onClick={() => {
+          // Vazio ou fora de 1 a 100 (150 no orçamento) não grava: zero pausaria tudo o tempo todo.
+          const j = Number(janelaAtual);
+          const o = Number(orcamentoAtual);
+          if (janelaAtual.trim() === "" || orcamentoAtual.trim() === "" || !(j >= 1 && j <= 100) || !(o >= 1 && o <= 150)) {
+            setErro(true);
+            return;
+          }
+          setErro(false);
+          gravar({ limiarJanela: j / 100, limiarOrcamento: o / 100 });
+        }}
         size="sm"
         variant="secondary"
       >
         {t("limits.settings.save")}
       </Button>
+      {erro ? <span className="text-sev-critical text-xs">{t("limits.settings.invalid", { max: "100 / 150" })}</span> : null}
+      <label className="flex basis-full items-center gap-2 text-xs" title={t("limits.settings.useFallbackHint")}>
+        <input checked={v.usarSubstituto} onChange={(e) => gravar({ usarSubstituto: e.target.checked })} type="checkbox" />
+        {t("limits.settings.useFallback")}
+      </label>
+      <p className="text-muted-foreground basis-full text-[11px]">{t("limits.settings.useFallbackHint")}</p>
     </div>
   );
 }
+

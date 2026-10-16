@@ -49,7 +49,7 @@ export interface StartedRun {
 /** O minimo do executor que este servico usa, para poder trocar em teste. */
 export interface RunStarter {
   createRun(agentVersionId: string, eventId: string | null, triggerId?: string | null): Promise<string>;
-  execute(runId: string): Promise<"done" | "paused" | "failed">;
+  execute(runId: string, opcoes?: { manual?: boolean }): Promise<"done" | "paused" | "failed">;
 }
 
 const SINTETICO = new Set(["demo", "sintetico", "synthetic"]);

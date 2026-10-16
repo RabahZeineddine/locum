@@ -10,7 +10,7 @@ import { pontoDoEstado } from "@/lib/estado-do-ponto";
 import { MODELOS, rascunhoDoModelo, type ModeloId } from "@/lib/automacao";
 import { call, read, useRead, type ReadResult } from "@/lib/bridge";
 import { semPrefixoDoIpc } from "@/lib/erro-da-ponte";
-import { horaDoDia } from "@/lib/limites";
+import { quandoSolta } from "@/lib/limites";
 import { rotuloDeEstado, rotuloDoProvedor } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
 import { Loader2, Play, Plus, Upload } from "lucide-react";
@@ -321,7 +321,7 @@ export function LinhaDaAutomacao({
         setAviso(
           r.aviso === undefined
             ? t("automations.list.started")
-            : `${t("automations.list.started")} ${t("limits.manualWarning", { provider: rotuloDoProvedor(r.aviso.provedor), time: horaDoDia(r.aviso.ate, i18n.language) })}`,
+            : `${t("automations.list.started")} ${t("limits.manualWarning", { provider: rotuloDoProvedor(r.aviso.provedor), time: quandoSolta(r.aviso.ate, i18n.language) })}`,
         );
         aoMudar();
       },

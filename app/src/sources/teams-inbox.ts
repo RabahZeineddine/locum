@@ -672,7 +672,7 @@ function memoizar<T>(fn: () => Promise<T>): () => Promise<T> {
  * pegou o PR naquele commit, que é o link colado de novo. O evento do poll do
  * GitHub sozinho não conta: outro agent revisando não é este.
  */
-async function carregarRevisados(db: Db): Promise<Set<string>> {
+export async function carregarRevisados(db: Db, opcoes: { comEventosDoTeams?: boolean } = {}): Promise<Set<string>> {
   const desde = Math.floor(Date.now() / 1000) - JANELA_DO_MESMO_COMMIT_S;
   const chave = (p: Record<string, unknown> | null | undefined, repo: unknown) =>
     p?.headSha === undefined || p.owner === undefined
@@ -689,10 +689,13 @@ async function carregarRevisados(db: Db): Promise<Set<string>> {
         notInArray(schema.approvals.status, ["rejected", "failed", "conflict"]),
       ),
     );
-  const doTeams = await db
-    .select({ payload: schema.events.payload })
-    .from(schema.events)
-    .where(and(eq(schema.events.source, TEAMS_SOURCE), gte(schema.events.receivedAt, desde)));
+  const doTeams =
+    opcoes.comEventosDoTeams === false
+      ? []
+      : await db
+          .select({ payload: schema.events.payload })
+          .from(schema.events)
+          .where(and(eq(schema.events.source, TEAMS_SOURCE), gte(schema.events.receivedAt, desde)));
 
   const vistos = new Set<string>();
   for (const { payload } of revisoes) {
@@ -710,7 +713,7 @@ async function carregarRevisados(db: Db): Promise<Set<string>> {
 }
 
 /** Por que o PR não merece revisão agora, ou nulo se merece. */
-async function motivoDeDescarte(
+export async function motivoDeDescarte(
   contexto: PrBasico,
   quemSouNoGithub: () => Promise<string | null>,
   revisados: () => Promise<Set<string>>,

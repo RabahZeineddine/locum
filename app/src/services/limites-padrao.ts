@@ -67,6 +67,10 @@ export interface ProvedorComLimites {
   /** Pode ter orçamento local: provedor de API. */
   aceitaOrcamento: boolean;
   orcamento: { diaUsd?: number; mesUsd?: number };
+  /** Limiares só deste provedor, em fração; ausente vale o global. */
+  limiares: { janela?: number; orcamento?: number };
+  /** Cadastrado: pode ser marcado como LiteLLM. */
+  gatewayPossivel: boolean;
   limites: LimiteComEstado[];
   /** Epoch em ms em que a pausa solta, ou nulo. */
   pausaAte: number | null;
@@ -76,6 +80,8 @@ export interface VisaoDosLimites {
   protecao: boolean;
   limiarJanela: number;
   limiarOrcamento: number;
+  usarSubstituto: boolean;
+  gateways: string[];
   provedores: ProvedorComLimites[];
 }
 
@@ -97,14 +103,16 @@ export async function visaoDosLimites(agoraMs: number = Date.now()): Promise<Vis
     provedores.push({
       provedor,
       assinatura,
-      gateway: entrada?.registered !== undefined,
+      gateway: entrada?.registered !== undefined && config.gateways.includes(provedor),
       aceitaOrcamento: !assinatura,
       orcamento: config.orcamentos[provedor] ?? {},
+      limiares: config.limiares[provedor] ?? {},
+      gatewayPossivel: entrada?.registered !== undefined,
       limites,
       pausaAte: bloqueio?.ate ?? null,
     });
   }
-  return { protecao: config.protecao, limiarJanela: config.limiarJanela, limiarOrcamento: config.limiarOrcamento, provedores };
+  return { protecao: config.protecao, limiarJanela: config.limiarJanela, limiarOrcamento: config.limiarOrcamento, usarSubstituto: config.usarSubstituto, gateways: config.gateways, provedores };
 }
 
 /**

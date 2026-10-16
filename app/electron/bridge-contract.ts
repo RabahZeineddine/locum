@@ -273,7 +273,14 @@ interface ServiceApi {
   /** Teto em dólar por dia e por mês de um provedor de API. */
   "limites.setBudget": (provedor: string, orcamento: { diaUsd?: number; mesUsd?: number }) => Promise<void>;
   /** Pausar automações perto do limite, e os limiares globais. */
-  "limites.setConfig": (config: { protecao?: boolean; limiarJanela?: number; limiarOrcamento?: number }) => Promise<void>;
+  "limites.setConfig": (config: {
+    protecao?: boolean;
+    limiarJanela?: number;
+    limiarOrcamento?: number;
+    usarSubstituto?: boolean;
+    limiares?: Record<string, { janela?: number; orcamento?: number }>;
+    gateways?: string[];
+  }) => Promise<void>;
 
   "providers.list": ProviderService["listProviders"];
   "providers.fallbacks": ProviderService["getFallbacks"];

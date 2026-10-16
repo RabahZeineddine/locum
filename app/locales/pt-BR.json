@@ -2795,7 +2795,12 @@
       "enable": "Pausar perto do limite",
       "window": "Janela de assinatura (%)",
       "budget": "Orçamento (%)",
-      "save": "Salvar"
+      "save": "Salvar",
+      "useFallback": "Quando o provedor estiver no limite, usar o substituto cadastrado",
+      "useFallbackHint": "Só troca para provedor de API que tenha orçamento local definido; sem isso a automação espera o reset. Desligado de fábrica.",
+      "invalid": "Use um valor de 1 a {{max}}.",
+      "litellm": "É um gateway LiteLLM (perguntar o orçamento da chave no Atualizar)",
+      "threshold": "Pausar a partir de (%)"
     }
   }
 }

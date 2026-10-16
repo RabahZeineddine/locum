@@ -2736,7 +2736,12 @@
       "enable": "Pause near the limit",
       "window": "Subscription window (%)",
       "budget": "Budget (%)",
-      "save": "Save"
+      "save": "Save",
+      "useFallback": "When the provider is at its limit, use the registered fallback",
+      "useFallbackHint": "Only switches to an API provider that has a local budget; otherwise the automation waits for the reset. Off by default.",
+      "invalid": "Use a value from 1 to {{max}}.",
+      "litellm": "This is a LiteLLM gateway (ask the key budget on Refresh)",
+      "threshold": "Pause from (%)"
     }
   }
 }

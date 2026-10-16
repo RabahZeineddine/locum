@@ -1,4 +1,6 @@
 import type { WebContents } from "electron";
+import { contarGastoDoProvedor } from "../src/runtimes/limites-lidos.js";
+import { costOf, priceService } from "../src/services/price-service.js";
 import { stepCountIs, streamText, type ModelMessage } from "ai";
 import { mkdirSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -328,6 +330,13 @@ export class ChatSession {
     }
 
     mensagens.push(...(await resultado.response).messages);
+    const uso = await Promise.resolve(resultado.totalUsage).catch(() => undefined);
+    if (uso !== undefined) {
+      const preco = await priceService.priceFor(escolha.provedor, escolha.modelo).catch(() => undefined);
+      const entrou = uso.inputTokens ?? 0;
+      const saiu = uso.outputTokens ?? 0;
+      contarGastoDoProvedor(escolha.provedor, { usd: preco === undefined ? 0 : costOf(preco, entrou, saiu), tokens: entrou + saiu });
+    }
     emitirEvento({ tipo: "fim", motivo: await resultado.finishReason });
   }
 }

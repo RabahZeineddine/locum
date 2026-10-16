@@ -150,13 +150,31 @@ export class Executor {
 
   /** Veio de gatilho que não é o botão: só essas execuções cedem ao limite do provedor. */
   private async ehAutomatica(runId: string): Promise<boolean> {
+    if (this.manuais.has(runId)) return false;
     const [run] = await db.select({ triggerId: schema.runs.triggerId }).from(schema.runs).where(eq(schema.runs.id, runId));
     if (run?.triggerId == null) return false;
     const [gatilho] = await db.select({ kind: schema.triggers.kind }).from(schema.triggers).where(eq(schema.triggers.id, run.triggerId));
     return gatilho !== undefined && gatilho.kind !== "manual";
   }
 
-  async execute(runId: string): Promise<"done" | "paused" | "failed"> {
+  /** Runs que uma pessoa pediu (reexecução de passo): nunca cedem ao limite do provedor. */
+  private readonly manuais = new Set<string>();
+
+  /**
+   * `manual` marca quem pediu: reexecutar um passo é clique de pessoa, mesmo num
+   * run que nasceu de gatilho automático, e a origem do run não decide isso.
+   */
+  async execute(runId: string, opcoes: { manual?: boolean } = {}): Promise<"done" | "paused" | "failed"> {
+    if (opcoes.manual !== true) return this.executarRun(runId);
+    this.manuais.add(runId);
+    try {
+      return await this.executarRun(runId);
+    } finally {
+      this.manuais.delete(runId);
+    }
+  }
+
+  private async executarRun(runId: string): Promise<"done" | "paused" | "failed"> {
     const [run] = await db.select().from(schema.runs).where(eq(schema.runs.id, runId));
     if (!run) throw new Error(`run ${runId} nao encontrado`);
 

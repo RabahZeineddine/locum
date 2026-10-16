@@ -32,3 +32,12 @@ const PIOR: Record<"ok" | "aviso" | "erro", number> = { ok: 0, aviso: 1, erro: 2
 export function piorEstado<T extends { estado: "ok" | "aviso" | "erro" }>(limites: T[]): "ok" | "aviso" | "erro" {
   return limites.reduce<"ok" | "aviso" | "erro">((pior, l) => (PIOR[l.estado] > PIOR[pior] ? l.estado : pior), "ok");
 }
+
+/** "14:00" quando é hoje; "qui 22/10 14:00" quando não. */
+export function quandoSolta(ms: number, idioma: string, agoraMs: number = Date.now()): string {
+  const data = new Date(ms);
+  const hora = horaDoDia(ms, idioma);
+  if (data.toDateString() === new Date(agoraMs).toDateString()) return hora;
+  const dia = data.toLocaleDateString(idioma, { weekday: "short", day: "2-digit", month: "2-digit" }).replace(".", "");
+  return `${dia} ${hora}`;
+}

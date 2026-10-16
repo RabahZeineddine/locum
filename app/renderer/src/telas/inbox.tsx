@@ -549,6 +549,11 @@ function Linha({
           )}
 
           {alvo.origem && <p className="text-muted-foreground mt-0.5 text-xs">{alvo.origem}</p>}
+          {pendencia.trocaPorLimite !== null && (
+            <p className="text-muted-foreground mt-0.5 text-xs" data-locum-troca-por-limite>
+              {pendencia.trocaPorLimite}
+            </p>
+          )}
 
           {principal && (
             <p className="text-muted-foreground mt-1 line-clamp-2 max-w-[72ch] text-xs leading-relaxed">{principal.problem}</p>

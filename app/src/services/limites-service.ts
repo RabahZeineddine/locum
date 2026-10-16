@@ -32,6 +32,14 @@ export interface ConfigDeLimites {
   orcamentos: Record<string, OrcamentoDoProvedor>;
   /** Ajuste fino por provedor; ausente vale o global. */
   limiares: Record<string, { janela?: number; orcamento?: number }>;
+  /**
+   * Quando o provedor está no limite, usar o substituto de `model_fallbacks`.
+   * Desligado de fábrica: trocar de provedor muda custo e comportamento, e só
+   * vale para provedor de API com orçamento local, que é o que segura o gasto.
+   */
+  usarSubstituto: boolean;
+  /** Provedores cadastrados que o dono diz serem LiteLLM: só esses recebem a pergunta ao `key/info`. */
+  gateways: string[];
 }
 
 export const CONFIG_PADRAO: ConfigDeLimites = {
@@ -40,6 +48,8 @@ export const CONFIG_PADRAO: ConfigDeLimites = {
   limiarOrcamento: LIMIAR_PADRAO_ORCAMENTO,
   orcamentos: {},
   limiares: {},
+  usarSubstituto: false,
+  gateways: [],
 };
 
 type Retrato = Record<string, { quando: number; limites: LimiteLido[] }>;
@@ -52,7 +62,12 @@ export interface Bloqueio {
   limite: Limite;
   /** Epoch em ms em que o limite solta. */
   ate: number;
+  /** Por que um substituto livre não foi usado, quando havia. */
+  nota?: string;
 }
+
+/** O começo do motivo de uma troca por limite: a Fila e a execução o reconhecem por aqui. */
+export const PREFIXO_DA_TROCA_POR_LIMITE = "feito com ";
 
 export type Decisao =
   | { tipo: "livre"; modelo: string }
@@ -143,6 +158,8 @@ export class LimitesService {
         limiarOrcamento: limiar(c.limiarOrcamento, LIMIAR_PADRAO_ORCAMENTO),
         orcamentos: typeof c.orcamentos === "object" && c.orcamentos !== null ? c.orcamentos : {},
         limiares: typeof c.limiares === "object" && c.limiares !== null ? c.limiares : {},
+        usarSubstituto: c.usarSubstituto === true,
+        gateways: Array.isArray(c.gateways) ? c.gateways.filter((g): g is string => typeof g === "string") : [],
       };
     } catch {
       return CONFIG_PADRAO;
@@ -150,7 +167,23 @@ export class LimitesService {
   }
 
   async gravarConfig(parcial: Partial<ConfigDeLimites>): Promise<ConfigDeLimites> {
-    const nova = { ...(await this.config()), ...parcial };
+    // Limiar vazio ou zero pausaria tudo o tempo todo: recusa em vez de gravar.
+    const valido = (v: number | undefined, teto: number, nome: string): void => {
+      if (v !== undefined && !(Number.isFinite(v) && v > 0 && v <= teto)) throw new Error(`${nome} precisa estar entre 1% e ${Math.round(teto * 100)}%`);
+    };
+    valido(parcial.limiarJanela, 1, "limiar da janela");
+    valido(parcial.limiarOrcamento, 1.5, "limiar do orçamento");
+    for (const [provedor, l] of Object.entries(parcial.limiares ?? {})) {
+      valido(l.janela, 1, `limiar da janela de ${provedor}`);
+      valido(l.orcamento, 1.5, `limiar do orçamento de ${provedor}`);
+    }
+    const atual = await this.config();
+    const nova = { ...atual, ...parcial };
+    if (parcial.limiares !== undefined) {
+      // Por provedor: gravar um não apaga os outros, e vazio tira o ajuste.
+      nova.limiares = { ...atual.limiares, ...parcial.limiares };
+      for (const [p, l] of Object.entries(nova.limiares)) if (l.janela === undefined && l.orcamento === undefined) delete nova.limiares[p];
+    }
     await this.settings.set(CHAVE_CONFIG, JSON.stringify(nova));
     return nova;
   }
@@ -167,6 +200,18 @@ export class LimitesService {
     if (Object.keys(limpo).length === 0) delete orcamentos[provedor];
     else orcamentos[provedor] = limpo;
     await this.gravarConfig({ orcamentos });
+  }
+
+  /** Tira tudo que se guardou de um provedor: sem a chave, o orçamento e a leitura dele não valem mais. */
+  async esquecer(provedor: string): Promise<void> {
+    const c = await this.config();
+    const orcamentos = { ...c.orcamentos };
+    const limiares = { ...c.limiares };
+    delete orcamentos[provedor];
+    delete limiares[provedor];
+    await this.settings.set(CHAVE_CONFIG, JSON.stringify({ ...c, orcamentos, limiares, gateways: c.gateways.filter((g) => g !== provedor) }));
+    await this.serial(async () => this.alterarRetrato((retrato) => void delete retrato[provedor]));
+    this.ultimaConsultaDoGateway.delete(provedor);
   }
 
   private async lerRetrato(): Promise<Retrato> {
@@ -186,13 +231,38 @@ export class LimitesService {
    */
   registrar(provedor: string, lidos: LimiteLido[], quando: number = this.agora()): Promise<void> {
     if (lidos.length === 0) return Promise.resolve();
-    return this.serial(async () => {
-      const retrato = await this.lerRetrato();
-      const atual = retrato[provedor]?.limites ?? [];
-      const mantidos = atual.filter((a) => !lidos.some((l) => l.chave === a.chave && l.origem === a.origem));
-      retrato[provedor] = { quando, limites: [...mantidos, ...lidos] };
-      await this.settings.set(CHAVE_RETRATO, JSON.stringify(retrato));
-    });
+    return this.serial(async () =>
+      this.alterarRetrato((retrato) => {
+        const atual = retrato[provedor]?.limites ?? [];
+        const mantidos = atual.filter((a) => !lidos.some((l) => l.chave === a.chave && l.origem === a.origem));
+        retrato[provedor] = { quando, limites: [...mantidos, ...lidos] };
+      }),
+    );
+  }
+
+  /**
+   * Lê, muda e grava o retrato numa transação só, e imediata: o app e o
+   * `--mcp` rodam em processos separados sobre o mesmo banco, e duas leituras
+   * ao mesmo tempo não podem apagar uma à outra.
+   */
+  private alterarRetrato(mudar: (retrato: Retrato) => void): void {
+    this.db.transaction(
+      (tx) => {
+        const [linha] = tx.select({ value: schema.settings.value }).from(schema.settings).where(eq(schema.settings.key, CHAVE_RETRATO)).all();
+        let retrato: Retrato = {};
+        try {
+          const lido = JSON.parse(linha?.value ?? "{}") as Retrato;
+          if (typeof lido === "object" && lido !== null) retrato = lido;
+        } catch {}
+        mudar(retrato);
+        const value = JSON.stringify(retrato);
+        tx.insert(schema.settings)
+          .values({ key: CHAVE_RETRATO, value })
+          .onConflictDoUpdate({ target: schema.settings.key, set: { value, updatedAt: sql`(unixepoch())` } })
+          .run();
+      },
+      { behavior: "immediate" },
+    );
   }
 
   /** Soma o gasto cobrado de uma chamada de API ao dia do provedor. */
@@ -307,8 +377,10 @@ export class LimitesService {
     agoraMs: number = this.agora(),
   ): Promise<Decisao> {
     const provedorDe = (id: string): string => id.slice(0, Math.max(id.indexOf("/"), 0));
+    const config = await this.config();
     const visitados = new Set<string>();
     let primeiro: Bloqueio | null = null;
+    let nota: string | undefined;
     const fila = [modelo];
     while (fila.length > 0) {
       const atual = fila.shift()!;
@@ -318,15 +390,19 @@ export class LimitesService {
       if (deps.disponivel(provedor)) {
         const b = await this.bloqueio(provedor, agoraMs);
         if (b === null) {
-          return atual === modelo
-            ? { tipo: "livre", modelo }
-            : { tipo: "substitui", modelo: atual, de: modelo, motivo: `${provedorDe(modelo)} no limite, rodando em ${atual}` };
-        }
-        primeiro ??= b;
+          if (atual === modelo) return { tipo: "livre", modelo };
+          // Substituto livre: só vale com a opção ligada e com orçamento local no provedor dele.
+          const orc = config.orcamentos[provedor];
+          if (!config.usarSubstituto) nota ??= `substituto ${atual} não usado: a opção de usar o substituto está desligada`;
+          else if (orc === undefined) nota ??= `substituto ${atual} não usado: ${provedor} não tem orçamento local definido`;
+          else
+            return { tipo: "substitui", modelo: atual, de: modelo, motivo: `${PREFIXO_DA_TROCA_POR_LIMITE}${atual} por limite do ${provedorDe(modelo)}` };
+        } else primeiro ??= b;
       }
       for (const f of deps.fallbacks.filter((x) => x.fromModel === atual).sort((a, b) => a.order - b.order)) fila.push(f.toModel);
     }
-    return primeiro === null ? { tipo: "livre", modelo } : { tipo: "pausa", bloqueio: primeiro };
+    if (primeiro === null) return { tipo: "livre", modelo };
+    return { tipo: "pausa", bloqueio: nota === undefined ? primeiro : { ...primeiro, nota } };
   }
 
   /**
@@ -335,6 +411,7 @@ export class LimitesService {
    * a cada 10 minutos por provedor. Falha, 404 ou corpo estranho: nada, sem erro.
    */
   async consultarGateway(provedor: string, forcar = false): Promise<boolean> {
+    if (!(await this.config()).gateways.includes(provedor)) return false;
     const alvo = this.gateway(provedor);
     if (alvo === null) return false;
     const agora = this.agora();

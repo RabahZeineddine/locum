@@ -2,7 +2,7 @@ import { generateText, stepCountIs, type LanguageModel, type ModelMessage, type 
 import { buildProviders, type ProviderEntry } from "../providers/registry.js";
 import { costOf, priceService, type PriceService } from "../services/price-service.js";
 import { lerCabecalhosDeTaxa } from "./limites-cabecalhos.js";
-import { publicarGasto, publicarLimites } from "./limites-lidos.js";
+import { contarGastoDoProvedor, publicarLimites } from "./limites-lidos.js";
 import { cortar, nomeDaFerramenta, type Runtime, type RuntimeRequest, type RuntimeResult } from "./types.js";
 
 /**
@@ -89,7 +89,7 @@ export class NativeRuntime implements Runtime {
     // ele não há limite de taxa, e sem erro.
     publicarLimites(req.provider, lerCabecalhosDeTaxa(result.response?.headers));
     const custo = price ? costOf(price, promptTokens, completionTokens) : 0;
-    publicarGasto(req.provider, { usd: custo, tokens: promptTokens + completionTokens });
+    contarGastoDoProvedor(req.provider, { usd: custo, tokens: promptTokens + completionTokens });
 
     return {
       text: result.text,

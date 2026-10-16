@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { contarGastoDoProvedor } from "../runtimes/limites-lidos.js";
 import { stepCountIs, streamText, type LanguageModel, type ModelMessage, type ToolSet } from "ai";
 import { SERVIDOR_CONTA, type ToolRef } from "../config/types.js";
 import { selectSkills, skillsPreamble, type LoadedSkill } from "../skills/loader.js";
@@ -485,7 +486,9 @@ export class ConversasDeAgent {
         const entrou = uso.inputTokens ?? 0;
         const saiu = uso.outputTokens ?? 0;
         const preco = await this.deps.preco(modelo.provedor, modelo.modelo);
-        return { usd: preco === undefined ? 0 : costOf(preco, entrou, saiu), tokens: entrou + saiu };
+        const gasto = { usd: preco === undefined ? 0 : costOf(preco, entrou, saiu), tokens: entrou + saiu };
+        contarGastoDoProvedor(modelo.provedor, gasto);
+        return gasto;
       };
       if (cancelado || sinal.aborted) {
         emitir({ tipo: "fim", motivo: "cancelado" });
