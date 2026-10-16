@@ -9,6 +9,8 @@ export function quandoReseta(t: TFunction, resetaEmS: number, idioma: string, ag
   const min = Math.max(0, Math.ceil((ms - agoraMs) / 60_000));
   if (min >= 24 * 60) return quandoSolta(ms, idioma, agoraMs);
   const hora = horaDoDia(ms, idioma);
+  // Retrato um pouco velho, com o reset já passado: "em 0 min" soaria parado.
+  if (min === 0) return t("limits.justNow");
   if (min < 60) return t("limits.inMinutes", { count: min, time: hora });
   const h = Math.floor(min / 60);
   const resto = min % 60;
