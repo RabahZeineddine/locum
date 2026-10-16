@@ -42,6 +42,16 @@ export function registerReadTools(server: McpServer): void {
   );
 
   server.registerTool(
+    "get_provider_limits",
+    {
+      description:
+        "Limits of every provider in one model: subscription windows (Claude Code 5h and weekly, Codex), API rate limits read from response headers, gateway budgets and the local daily/monthly budget. Each limit has usage 0..1, the reset time (epoch s) and its origin. pausaAte is set while automations are paused for that provider.",
+      inputSchema: {},
+    },
+    async () => respond(async () => (await import("../services/limites-padrao.js")).visaoDosLimites()),
+  );
+
+  server.registerTool(
     "list_runs",
     {
       description: "Lists the most recent runs, optionally filtered by status or agent.",

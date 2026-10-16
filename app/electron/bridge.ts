@@ -342,6 +342,12 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "mcp.tools": (name) => (name === SERVIDOR_CONTA ? claudeAccountService.tools() : mcpService.listTools(name)),
     "mcp.toolsCached": async (name) => (name === SERVIDOR_CONTA ? null : mcpService.cachedTools(name)),
     "claudeAccount.list": (renovar) => claudeAccountService.listar(renovar),
+    "limites.overview": async () => (await import("../src/services/limites-padrao.js")).visaoDosLimites(),
+    "limites.refresh": async (provedor) => (await import("../src/services/limites-padrao.js")).atualizarLimites(provedor),
+    "limites.setBudget": async (provedor, orcamento) => (await import("../src/services/limites-service.js")).limitesService.definirOrcamento(provedor, orcamento),
+    "limites.setConfig": async (config) => {
+      await (await import("../src/services/limites-service.js")).limitesService.gravarConfig(config);
+    },
     "mcp.setEnabled": (name, enabled) => mcpService.setEnabled(name, enabled),
     "mcp.setCredential": async (name, entrada) => {
       // Devolve só o nome: o cadastro vem com o marcador, mas não há motivo
@@ -504,6 +510,8 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
 /** Registra os canais. Devolve quantos ficaram no ar. */
 export function setupBridge(bridgeHandlers: BridgeHandlers): number {
   const handlers = buildHandlers(bridgeHandlers);
+  // As leituras de limite que os runtimes publicam só valem se alguém as guarda.
+  void import("../src/services/limites-padrao.js").then((m) => m.ligarLimites()).catch(() => undefined);
   const listed = new Set<string>(BRIDGE_CHANNELS);
   const faltando = Object.keys(handlers).filter((k) => !listed.has(k));
   if (faltando.length > 0) {

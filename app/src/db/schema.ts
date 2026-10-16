@@ -396,6 +396,23 @@ export const usageDaily = sqliteTable(
 );
 
 /**
+ * Gasto do dia por provedor, para o orçamento local de cada um. `usage_daily`
+ * é por agent e não diz de qual provedor veio o gasto; este soma o que o
+ * runtime de API cobra, uma linha por dia e provedor.
+ */
+export const usageProviderDaily = sqliteTable(
+  "usage_provider_daily",
+  {
+    day: text("day").notNull(),
+    provider: text("provider").notNull(),
+    costUsd: real("cost_usd").notNull().default(0),
+    tokens: integer("tokens").notNull().default(0),
+    requests: integer("requests").notNull().default(0),
+  },
+  (t) => [uniqueIndex("usage_provider_daily_unq").on(t.day, t.provider)],
+);
+
+/**
  * Preço por modelo, em dólar por milhão de tokens.
  *
  * Cadastrado por quem administra, e não tabelado no código: o preço muda sem

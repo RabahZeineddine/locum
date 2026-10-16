@@ -19,6 +19,8 @@ import { buildMcpServer } from "./server.js";
 // Pelo próprio arquivo, o caminho vale de onde quer que ele seja chamado.
 migrateDb(fileURLToPath(new URL("../../drizzle", import.meta.url)));
 
+const { ligarLimites } = await import("../services/limites-padrao.js");
+ligarLimites();
 const server = buildMcpServer();
 await server.connect(new StdioServerTransport());
 console.error("servidor MCP do locum no ar");

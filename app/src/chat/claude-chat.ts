@@ -1,6 +1,8 @@
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { flagsDaConta } from "../runtimes/claude-account.js";
+import { lerLinhaDeLimite } from "../runtimes/claude-limites.js";
+import { publicarLeituraDeLimite } from "../runtimes/claude-code.js";
 
 /** O que o chat mostra enquanto a resposta chega. O mesmo formato do assistente. */
 export type EventoDoChat =
@@ -191,6 +193,7 @@ export async function conversarPeloClaude(
   let quebrar = false;
   try {
     for await (const linha of processo.linhas) {
+      publicarLeituraDeLimite(lerLinhaDeLimite(linha));
       const lido = lerLinha(linha);
       if (lido.sessao !== undefined) sessao = lido.sessao;
       if (lido.gasto !== undefined) gasto = lido.gasto;

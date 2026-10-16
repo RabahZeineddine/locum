@@ -106,7 +106,7 @@ export class AutomationService {
    * run para o gatilho manual quando a automação tem um, para a lista de
    * execuções dizer de onde ele veio.
    */
-  async runNow(agentId: string): Promise<{ runId: string }> {
+  async runNow(agentId: string): Promise<{ runId: string; aviso?: { provedor: string; ate: number } }> {
     if (isReserved(agentId)) throw new Error(`"${agentId}" e um agent do sistema e nao aceita escrita`);
     const manual = (await this.triggers.list(agentId)).find((g) => g.config.kind === "manual");
     const { runId } = await this.executions.startForEvent({
@@ -115,7 +115,9 @@ export class AutomationService {
       ...(manual === undefined ? {} : { triggerId: manual.id }),
       wait: false,
     });
-    return { runId };
+    // Manual sempre roda. Com o provedor no limite, só avisa: pode falhar ou gastar o que resta.
+    const bloqueio = await (await import("./limites-padrao.js")).pausaPadrao(agentId).catch(() => null);
+    return bloqueio === null ? { runId } : { runId, aviso: { provedor: bloqueio.provedor, ate: bloqueio.ate } };
   }
 
   /**

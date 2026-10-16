@@ -4,7 +4,7 @@ import { TEAMS_SERVER } from "../services/teams-app.js";
 import { pollMcpServer, CURSOR_TOKEN, type Admissao, type McpCaller, type McpPollShape } from "./mcp-poll.js";
 import { assertWithinBudget, BudgetExceeded, recordSpend, type Spend } from "../executor/budget.js";
 import type { AgentBudget } from "../config/types.js";
-import { ErroDeConfiguracaoDoFiltro, julgadorPadrao, type FiltroIa, type Julgador, type MensagemDoFiltro } from "../services/filtro-ia.js";
+import { ErroDeConfiguracaoDoFiltro, ErroDeLimiteDoFiltro, julgadorPadrao, type FiltroIa, type Julgador, type MensagemDoFiltro } from "../services/filtro-ia.js";
 import { abrirTeams, type GraphGet, type TeamsGraphOptions } from "../teams/graph.js";
 import { alvoDaReacao, reagirNoTeams, REACAO_PEGOU } from "../teams/reaction.js";
 import { githubService } from "../services/github-service.js";
@@ -435,6 +435,12 @@ function filtroDaBatida(
           semModelo = err.message;
           avisar("sem-modelo", `filtro com IA sem modelo: ${err.message}; mensagens passando sem filtro`);
           return { admissao: { kind: "passa" } };
+        }
+        // No limite do provedor a mensagem espera o reset: sem contar falha e sem passar sem filtro.
+        if (err instanceof ErroDeLimiteDoFiltro) {
+          falhou = true;
+          avisar("limite", `filtro com IA em pausa: ${err.message}; as mensagens esperam o reset`);
+          return adia;
         }
         falhou = true;
         erros.push(`filtro com IA: ${err instanceof Error ? err.message : String(err)}`);

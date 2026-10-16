@@ -35,6 +35,7 @@ import type { TrackerService } from "../src/services/tracker-service.js";
 import type { TriggerService } from "../src/services/trigger-service.js";
 import type { PreviaDoGatilho } from "../src/services/trigger-preview.js";
 import type { Scheduler, TickResult } from "../src/triggers/scheduler.js";
+import type { VisaoDosLimites } from "../src/services/limites-padrao.js";
 import type { TriggerConfigInput, WorkingHoursConfig } from "../src/config/types.js";
 
 /**
@@ -264,6 +265,15 @@ interface ServiceApi {
    * `mcp.tools` com o nome `claude-conta` devolve a mesma lista.
    */
   "claudeAccount.list": ClaudeAccountService["listar"];
+
+  /** Limites de cada provedor num modelo só: assinatura, taxa, gateway e orçamento local. */
+  "limites.overview": () => Promise<VisaoDosLimites>;
+  /** Atualizar agora. No Claude Code custa uma chamada mínima; no gateway, uma consulta, no máximo a cada 10 min. */
+  "limites.refresh": (provedor: string) => Promise<{ chamou: boolean }>;
+  /** Teto em dólar por dia e por mês de um provedor de API. */
+  "limites.setBudget": (provedor: string, orcamento: { diaUsd?: number; mesUsd?: number }) => Promise<void>;
+  /** Pausar automações perto do limite, e os limiares globais. */
+  "limites.setConfig": (config: { protecao?: boolean; limiarJanela?: number; limiarOrcamento?: number }) => Promise<void>;
 
   "providers.list": ProviderService["listProviders"];
   "providers.fallbacks": ProviderService["getFallbacks"];
@@ -660,6 +670,10 @@ export const BRIDGE_CHANNELS = [
   "mcp.desvincular",
   "mcp.mostrarOrigem",
   "claudeAccount.list",
+  "limites.overview",
+  "limites.refresh",
+  "limites.setBudget",
+  "limites.setConfig",
   "providers.list",
   "providers.fallbacks",
   "providers.preview",

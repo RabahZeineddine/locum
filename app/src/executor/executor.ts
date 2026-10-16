@@ -148,6 +148,14 @@ export class Executor {
     return ids;
   }
 
+  /** Veio de gatilho que não é o botão: só essas execuções cedem ao limite do provedor. */
+  private async ehAutomatica(runId: string): Promise<boolean> {
+    const [run] = await db.select({ triggerId: schema.runs.triggerId }).from(schema.runs).where(eq(schema.runs.id, runId));
+    if (run?.triggerId == null) return false;
+    const [gatilho] = await db.select({ kind: schema.triggers.kind }).from(schema.triggers).where(eq(schema.triggers.id, run.triggerId));
+    return gatilho !== undefined && gatilho.kind !== "manual";
+  }
+
   async execute(runId: string): Promise<"done" | "paused" | "failed"> {
     const [run] = await db.select().from(schema.runs).where(eq(schema.runs.id, runId));
     if (!run) throw new Error(`run ${runId} nao encontrado`);
@@ -459,7 +467,17 @@ export class Executor {
       return { kind: "skipped" };
     }
 
-    const resolution = resolveModel(modelo, fallbacks, providerService.entries());
+    let resolution = resolveModel(modelo, fallbacks, providerService.entries());
+    // Execução automática com o provedor no limite troca pelo substituto da
+    // cadeia de fallback, se houver. A manual nunca é trocada nem barrada.
+    if (await this.ehAutomatica(runId)) {
+      const { limitesService } = await import("../services/limites-service.js");
+      const entradas = providerService.entries();
+      const decisao = await limitesService.decidir(resolution.used, { fallbacks, disponivel: (p) => entradas[p]?.available() ?? false });
+      if (decisao.tipo === "substitui") {
+        resolution = { ...resolveModel(decisao.modelo, fallbacks, entradas), requested: modelo, substitutionReason: decisao.motivo };
+      }
+    }
     const runtime =
       this.deps.runtimes.get(SUBSCRIPTION_RUNTIMES.has(resolution.provider) ? resolution.provider : "native");
     if (!runtime) throw new Error(`runtime indisponivel para "${resolution.provider}"`);

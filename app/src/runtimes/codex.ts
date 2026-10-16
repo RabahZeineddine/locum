@@ -1,4 +1,6 @@
 import { spawn } from "node:child_process";
+import { limitesDoEventoDoCodex } from "./limites-codex.js";
+import { publicarLimites, type LimiteLido } from "./limites-lidos.js";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -177,6 +179,7 @@ export function readCodexEvents(stdout: string): {
   toolsUsed: string[];
   error?: string;
   lastNotice?: string;
+  limites: LimiteLido[];
 } {
   let text = "";
   let promptTokens = 0;
@@ -185,6 +188,7 @@ export function readCodexEvents(stdout: string): {
   const toolsUsed = new Set<string>();
   let error: string | undefined;
   let lastNotice: string | undefined;
+  let limites: LimiteLido[] = [];
 
   for (const linha of stdout.split("\n")) {
     if (!linha.trim().startsWith("{")) continue;
@@ -194,6 +198,9 @@ export function readCodexEvents(stdout: string): {
     } catch {
       continue;
     }
+    // O retrato de limite do plano, quando o Codex o põe no stream; o último vale.
+    const lidos = limitesDoEventoDoCodex(evento);
+    if (lidos.length > 0) limites = lidos;
     if (evento.type === "item.completed" && "item" in evento) {
       if (evento.item.type === "agent_message" && typeof evento.item.text === "string") text = evento.item.text;
       if (evento.item.type === "mcp_tool_call" && evento.item.server && evento.item.tool) {
@@ -215,7 +222,7 @@ export function readCodexEvents(stdout: string): {
     }
   }
 
-  return { text, promptTokens, completionTokens, cacheReadTokens, toolsUsed: [...toolsUsed], error, lastNotice };
+  return { text, promptTokens, completionTokens, cacheReadTokens, toolsUsed: [...toolsUsed], error, lastNotice, limites };
 }
 
 function executar(
@@ -270,6 +277,7 @@ export class CodexRuntime implements Runtime {
       const { args, env } = codexCall(req, this.mcpConfigs, { schema, pasta });
       const { stdout, stderr, code } = await executar(this.binario, args, codexPrompt(req), env);
       const lido = readCodexEvents(stdout);
+      publicarLimites("codex", lido.limites);
 
       if (code !== 0 || lido.error !== undefined) {
         const detalhe = lido.error ?? lido.lastNotice ?? (stderr.trim().split("\n").pop() || `saiu com ${code}`);

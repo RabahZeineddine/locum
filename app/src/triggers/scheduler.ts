@@ -23,8 +23,27 @@ import { ajustarPorHorario } from "./working-hours.js";
 // import dinamico la embaixo.
 import type { SweepOptions, SweepReport } from "../services/reconcile-service.js";
 import type { PullRequestScan } from "../sources/github.js";
+import type { Bloqueio } from "../services/limites-service.js";
 
 type Db = typeof defaultDb;
+
+/**
+ * Se o agent está barrado pelo limite de um provedor. Import dinâmico pelo
+ * mesmo motivo das outras: os serviços de provedor e biblioteca não precisam
+ * subir junto com o agendador.
+ */
+export type PausaFn = (agentId: string, at: number) => Promise<Bloqueio | null>;
+
+const pausaDoLimite: PausaFn = async (agentId, at) => {
+  const { pausaPadrao } = await import("../services/limites-padrao.js");
+  return pausaPadrao(agentId, at);
+};
+
+/** "automações em pausa até 14:00 (limite do claude-code)". */
+export function textoDaPausa(b: Bloqueio): string {
+  const hora = new Date(b.ate).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  return `automações em pausa até ${hora} (limite do ${b.provedor})`;
+}
 
 /** Fonte do cursor de tempo. Uma linha por gatilho, guardando o ultimo disparo. */
 const CURSOR_SOURCE = "scheduler";
@@ -210,7 +229,12 @@ export class Scheduler {
     private readonly settings: SettingsService = settingsService,
     /** Tira o 👀 do Teams do evento que desistiu de abrir run. Existe para o teste trocar. */
     private readonly soltar: (payload: unknown) => Promise<void> = soltarOPr,
+    /** A proteção de limite de provedor. Existe para o teste trocar. */
+    private readonly pausa: PausaFn = pausaDoLimite,
   ) {}
+
+  /** O que a batida guardou por causa do limite, por gatilho, para entrar no detail. */
+  private readonly pausadas = new Map<string, string>();
 
   /** Batida vinda do evento de acordar da maquina, que o M3 vai ligar. */
   async onWake(): Promise<TickResult> {
@@ -376,6 +400,13 @@ export class Scheduler {
       return { ...base, status: "waiting", nextDueAt: devido };
     }
 
+    // Gatilho de relógio não tem evento para guardar: com o provedor no limite
+    // ele não toma a batida, e a próxima depois do reset o acha vencido.
+    if (trigger.config.kind === "cron" || trigger.config.kind === "schedule") {
+      const bloqueio = await this.pausa(trigger.agentId, at).catch(() => null);
+      if (bloqueio !== null) return { ...base, status: "waiting", detail: textoDaPausa(bloqueio), nextDueAt: bloqueio.ate };
+    }
+
     // A batida toma o gatilho antes de disparar, numa escrita condicional ao
     // valor que leu. O app serializa as próprias batidas, mas `locum tick` no
     // terminal bate no mesmo banco: as duas veriam o gatilho vencido e cada
@@ -393,6 +424,9 @@ export class Scheduler {
     const nextDueAt = vencimento(trigger.config, at, at, globalHours);
     try {
       const { configuracao, ...fired } = await this.fire(trigger, at, wait);
+      const emPausa = this.pausadas.get(trigger.id);
+      this.pausadas.delete(trigger.id);
+      if (emPausa !== undefined) fired.detail = [fired.detail, emPausa].filter(Boolean).join("; ");
       // O que a batida não conseguiu ler fica visível no gatilho; batida limpa apaga o erro.
       if (configuracao === undefined) await limparErro(this.db, trigger.id);
       else await registrarErro(this.db, trigger.id, { em: at, tipo: "configuracao", texto: configuracao });
@@ -585,6 +619,19 @@ export class Scheduler {
     const agora = at;
     const antes = new Map((await this.readRetry(trigger.id)).map((p) => [p.eventId, p.since]));
     const pendentes: Pendente[] = [];
+    // Provedor no limite: o evento já está gravado e o cursor andou, então ele
+    // fica na lista de tentativas sem envelhecer, e roda na primeira batida
+    // depois do reset. Nada se perde, e nada gasta cota que acabou.
+    const bloqueio = await this.pausa(trigger.agentId, at).catch(() => null);
+    if (bloqueio !== null) {
+      const ids = new Set([...antes.keys(), ...eventIds]);
+      for (const eventId of ids) {
+        if (!(await this.alreadyRan(trigger.id, eventId))) pendentes.push({ eventId, since: agora });
+      }
+      if (antes.size > 0 || pendentes.length > 0) await this.writeRetry(trigger.id, pendentes);
+      if (pendentes.length > 0) this.pausadas.set(trigger.id, `${textoDaPausa(bloqueio)}, ${pendentes.length} evento(s) guardado(s)`);
+      return runs;
+    }
     // Um evento que não abre run não segura os outros. O cursor da fonte já
     // andou quando chega aqui, e parar no primeiro erro deixaria o resto da
     // janela sem run e fora da próxima varredura. O que falhou fica anotado

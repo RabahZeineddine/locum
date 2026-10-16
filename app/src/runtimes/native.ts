@@ -1,6 +1,8 @@
 import { generateText, stepCountIs, type LanguageModel, type ModelMessage, type TextPart } from "ai";
 import { buildProviders, type ProviderEntry } from "../providers/registry.js";
 import { costOf, priceService, type PriceService } from "../services/price-service.js";
+import { lerCabecalhosDeTaxa } from "./limites-cabecalhos.js";
+import { publicarGasto, publicarLimites } from "./limites-lidos.js";
 import { cortar, nomeDaFerramenta, type Runtime, type RuntimeRequest, type RuntimeResult } from "./types.js";
 
 /**
@@ -82,6 +84,12 @@ export class NativeRuntime implements Runtime {
     const completionTokens = result.totalUsage?.outputTokens ?? 0;
     const cacheReadTokens = result.totalUsage?.inputTokenDetails?.cacheReadTokens;
     const price = await this.prices.priceFor(req.provider, req.model);
+
+    // Cabeçalho de taxa da última resposta (OpenAI, Anthropic, gateways): sem
+    // ele não há limite de taxa, e sem erro.
+    publicarLimites(req.provider, lerCabecalhosDeTaxa(result.response?.headers));
+    const custo = price ? costOf(price, promptTokens, completionTokens) : 0;
+    publicarGasto(req.provider, { usd: custo, tokens: promptTokens + completionTokens });
 
     return {
       text: result.text,
