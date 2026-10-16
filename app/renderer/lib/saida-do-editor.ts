@@ -10,17 +10,39 @@
 /** Devolve verdadeiro quando segurou a saída; nesse caso, quem decide chama `prosseguir`. */
 export type Guarda = (prosseguir: () => void) => boolean;
 
-let guarda: Guarda | null = null;
+interface Registro {
+  guarda: Guarda;
+  nivel: number;
+}
 
-/** Registra a guarda e devolve quem a tira. */
-export function registrarGuarda(nova: Guarda): () => void {
-  guarda = nova;
+const guardas: Registro[] = [];
+
+/**
+ * Registra a guarda e devolve quem a tira. O editor é o nível 0; o agent aberto
+ * sobre ele num modal é o nível 1: sair da janela pergunta primeiro a dele e
+ * depois a do editor, e fechar só o modal pergunta só a dele.
+ */
+export function registrarGuarda(nova: Guarda, nivel = 0): () => void {
+  const registro = { guarda: nova, nivel };
+  guardas.push(registro);
   return () => {
-    if (guarda === nova) guarda = null;
+    const i = guardas.indexOf(registro);
+    if (i >= 0) guardas.splice(i, 1);
   };
 }
 
-export function sairDaTela(prosseguir: () => void): void {
-  if (guarda !== null && guarda(prosseguir)) return;
-  prosseguir();
+/** Consulta, do nível mais alto ao `desdeONivel`, as guardas que seguram a saída, uma de cada vez. */
+export function sairDaTela(prosseguir: () => void, desdeONivel = 0): void {
+  const fila = guardas
+    .filter((g) => g.nivel >= desdeONivel)
+    .sort((a, b) => b.nivel - a.nivel)
+    .map((g) => g.guarda);
+  const passo = (i: number): void => {
+    if (i >= fila.length) {
+      prosseguir();
+      return;
+    }
+    if (!fila[i]!(() => passo(i + 1))) passo(i + 1);
+  };
+  passo(0);
 }

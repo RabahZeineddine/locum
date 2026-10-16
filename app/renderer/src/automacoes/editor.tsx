@@ -31,7 +31,20 @@ import {
 } from "@/lib/automacao";
 import { call, read, useRead, type ReadResult } from "@/lib/bridge";
 import { semPrefixoDoIpc } from "@/lib/erro-da-ponte";
-import { descartarRascunho, guardarRascunho, lerRascunho, temMudanca, type RascunhoGuardado } from "@/lib/rascunho-automacao";
+import {
+  apagarProvisoria,
+  descartarReserva,
+  descartarRascunho,
+  diferencas,
+  guardarRascunho,
+  lerProvisoria,
+  ofertaDeRascunho,
+  restaurarRascunho,
+  reservarRascunho,
+  temMudanca,
+  type OfertaDeRascunho,
+  type Provisoria,
+} from "@/lib/rascunho-automacao";
 import { registrarGuarda } from "@/lib/saida-do-editor";
 import { cn } from "@/lib/utils";
 import {
@@ -80,9 +93,14 @@ export function EditorDeAutomacao({
 }) {
   const { t } = useTranslation();
   const lida = useRead("automations.get", agentId);
+  // "Nova automação" não grava nada até o primeiro Salvar: o modelo espera aqui.
+  const [provisoria] = useState(() => lerProvisoria(globalThis.localStorage, agentId));
 
   if (lida.status === "loading") {
     return <p className="text-muted-foreground pt-6 text-sm">{t("automations.editor.loading")}</p>;
+  }
+  if (lida.status === "ready" && lida.data === null && provisoria !== null) {
+    return <EditorCarregado abrirGatilho={abrirGatilho} automacao={deProvisoria(agentId, provisoria)} navegar={navegar} provisoria={provisoria} voltar={voltar} />;
   }
   if (lida.status === "error" || lida.data === null) {
     return (
@@ -114,6 +132,11 @@ function valeParaTodosOsChats(g: GatilhoNoCanvas, gravados: readonly GatilhoNoCa
   );
 }
 
+/** A automação ainda não gravada, no formato da leitura: versão 0 e nenhum gatilho cadastrado. */
+function deProvisoria(agentId: string, p: Provisoria): Automacao {
+  return { version: { agentId, version: 0, spec: p.rascunho.spec, note: null, createdAt: 0, downgrades: [] }, createdAt: 0, triggers: [] } as unknown as Automacao;
+}
+
 function paraRascunho(a: Automacao): Rascunho {
   return { spec: a.version.spec, gatilhos: gatilhosDoCadastro(a.triggers) };
 }
@@ -123,26 +146,39 @@ function EditorCarregado({
   abrirGatilho,
   voltar,
   navegar,
+  provisoria,
 }: {
   automacao: Automacao;
+  provisoria?: Provisoria;
   abrirGatilho?: string;
   voltar: () => void;
   navegar: (id: RotaId, detalhe?: string) => void;
 }) {
   const { t, i18n } = useTranslation();
   const agentId = automacao.version.agentId;
-  const [salvo, setSalvo] = useState<Rascunho>(() => paraRascunho(automacao));
+  const [salvo, setSalvo] = useState<Rascunho>(() => provisoria?.rascunho ?? paraRascunho(automacao));
+  // Ainda sem versão gravada: o primeiro Salvar cria a automação.
+  const [nova, setNova] = useState(provisoria !== undefined);
+  const [criadaEm, setCriadaEm] = useState(automacao.createdAt);
   const [rascunho, setRascunho] = useState<Rascunho>(salvo);
   const [versao, setVersao] = useState(automacao.version.version);
   const [selecionado, setSelecionado] = useState<string | null>(null);
   const [nota, setNota] = useState("");
   const [ocupado, setOcupado] = useState<"salvar" | "rodar" | "ligar" | null>(null);
   const [aviso, setAviso] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
-  // O rascunho de uma edição que não chegou ao Salvar: espera a decisão da pessoa antes de a edição passar a ser guardada por cima.
-  const [achado, setAchado] = useState<RascunhoGuardado | null>(() => {
-    const guardado = lerRascunho(globalThis.localStorage, automacao.version.agentId);
-    return guardado !== null && temMudanca(guardado.rascunho, paraRascunho(automacao)) ? guardado : null;
+  // O rascunho de uma edição que não chegou ao Salvar (ou um reservado antes): espera a decisão da pessoa. `reservada` diz que ele já saiu da chave ativa.
+  const [oferta, setOferta] = useState<(OfertaDeRascunho & { reservada: boolean }) | null>(() => {
+    const o = ofertaDeRascunho(globalThis.localStorage, agentId, {
+      versao: automacao.version.version,
+      criadaEm: automacao.createdAt,
+      rascunho: provisoria?.rascunho ?? paraRascunho(automacao),
+    });
+    return o === null ? null : { ...o, reservada: o.reserva !== undefined };
   });
+  const [vendoDiferencas, setVendoDiferencas] = useState(false);
+  const [trocando, setTrocando] = useState(false);
+  // A gravação recusada porque a versão gravada é outra que a da base da edição.
+  const [conflito, setConflito] = useState<{ atual: Automacao; confirmando: boolean } | null>(null);
   // A saída que espera a resposta de "salvar, descartar ou cancelar".
   const [saida, setSaida] = useState<{ prosseguir: () => void } | null>(null);
   // O agent da biblioteca aberto sobre o editor.
@@ -179,6 +215,22 @@ function EditorCarregado({
   const bloqueado = lista.some((p) => p.bloqueia);
   const ligada = salvo.gatilhos.some((g) => g.enabled);
 
+  const quandoDoRascunho =
+    oferta === null ? "" : new Date(oferta.guardado.salvoEm).toLocaleString(i18n.language, { dateStyle: "short", timeStyle: "short" });
+  const diferencasDaOferta = useMemo(
+    () => (oferta === null ? { passos: [], gatilhos: [] } : diferencas(salvo, restaurarRascunho(oferta.guardado.rascunho, salvo))),
+    [oferta, salvo],
+  );
+  // Aplica o rascunho oferecido sobre o gravado, trazendo só o que se edita no canvas: ligado e estado dos gatilhos ficam os do gravado.
+  const aplicarOferta = (): void => {
+    if (oferta === null) return;
+    setRascunho(restaurarRascunho(oferta.guardado.rascunho, salvo));
+    setSelecionado(null);
+    if (oferta.reserva !== undefined) descartarReserva(globalThis.localStorage, oferta.reserva);
+    setOferta(null);
+    setTrocando(false);
+  };
+
   const exportar = (): void => {
     setAviso(null);
     call("pacote.exportFile", agentId).then(
@@ -189,53 +241,101 @@ function EditorCarregado({
     );
   };
 
-  const salvar = (): Promise<boolean> => {
+  const salvar = (sobre?: Automacao): Promise<boolean> => {
     setOcupado("salvar");
     setAviso(null);
+    // Salvar por cima de uma versão que entrou no meio: a base esperada passa a ser a dela, e o ligado ou desligado vem do gravado.
+    const ligadoNoGravado = new Map((sobre?.triggers ?? []).map((g) => [g.id, g.enabled]));
     return call("automations.save", {
       spec: rascunho.spec,
       triggers: rascunho.gatilhos.map((g) => ({
         ...(g.id === undefined ? {} : { id: g.id }),
         config: g.config,
-        enabled: g.enabled,
+        enabled: g.id !== undefined && ligadoNoGravado.has(g.id) ? ligadoNoGravado.get(g.id)! : g.enabled,
         ...(valeParaTodosOsChats(g, salvo.gatilhos) ? { valerParaTodosOsChats: true } : {}),
       })),
-      note: nota.trim() || t("automations.editor.noteDefault"),
+      note: nota.trim() || (nova ? provisoria?.nota : undefined) || t("automations.editor.noteDefault"),
+      ...(nova ? { create: true } : { expectedVersion: sobre?.version.version ?? versao }),
     }).then(
       (gravada) => {
         const novo = paraRascunho(gravada);
+        if (nova) {
+          apagarProvisoria(globalThis.localStorage, agentId);
+          setNova(false);
+          setCriadaEm(gravada.createdAt);
+          if (provisoria?.iniciativa !== undefined) {
+            call("initiatives.linkAgent", agentId, provisoria.iniciativa).catch((e: unknown) =>
+              setAviso({ tipo: "erro", texto: e instanceof Error ? e.message : String(e) }),
+            );
+          }
+        }
         setSalvo(novo);
         setRascunho(novo);
         setVersao(gravada.version.version);
         setNota("");
+        setConflito(null);
         setOcupado(null);
         setAviso({ tipo: "ok", texto: t("automations.editor.saved", { version: gravada.version.version }) });
         return true;
       },
-      (e: unknown) => {
+      async (e: unknown) => {
         setOcupado(null);
-        setAviso({ tipo: "erro", texto: e instanceof Error ? e.message : String(e) });
+        const texto = e instanceof Error ? e.message : String(e);
+        // Recusa por versão: relê para saber qual é a gravada e oferece recarregar ou salvar por cima.
+        const atual = nova ? null : await read("automations.get", agentId).catch(() => null);
+        if (atual !== null && atual.version.version !== (sobre?.version.version ?? versao)) setConflito({ atual, confirmando: false });
+        else setAviso({ tipo: "erro", texto });
         return false;
       },
     );
   };
 
-  // Cada mudança vai para o rascunho local. Enquanto há rascunho esperando decisão, não se grava por cima dele.
+  // Recarregar depois de um conflito: as edições não se perdem, vão para a reserva e a oferta de rascunho aparece sobre o gravado novo.
+  const recarregar = (atual: Automacao): void => {
+    guardarRascunho(globalThis.localStorage, agentId, rascunho, salvo, versao, Date.now(), criadaEm);
+    reservarRascunho(globalThis.localStorage, agentId);
+    const novoSalvo = paraRascunho(atual);
+    setSalvo(novoSalvo);
+    setRascunho(novoSalvo);
+    setVersao(atual.version.version);
+    setNota("");
+    setSelecionado(null);
+    const o = ofertaDeRascunho(globalThis.localStorage, agentId, { versao: atual.version.version, criadaEm, rascunho: novoSalvo });
+    setOferta(o === null ? null : { ...o, reservada: o.reserva !== undefined });
+    setVendoDiferencas(false);
+    setConflito(null);
+    // A saída que esperava estava a salvar: com as edições na reserva, não há mais o que confirmar.
+    setSaida(null);
+  };
+
+  // Cada mudança vai para o rascunho local. Enquanto a oferta de um rascunho antigo está na tela, ele não é sobrescrito: a primeira edição
+  // vale como "começar do gravado", e o antigo vai para a reserva (com a data) antes de o novo passar a ser guardado.
   useEffect(() => {
-    if (achado === null) guardarRascunho(globalThis.localStorage, agentId, rascunho, salvo, versao);
-  }, [achado, agentId, rascunho, salvo, versao]);
+    if (oferta !== null && !oferta.reservada) {
+      if (!mudou) return;
+      const chave = reservarRascunho(globalThis.localStorage, agentId);
+      setOferta((o) => (o === null ? o : { ...o, reservada: true, ...(chave === null ? {} : { reserva: chave }) }));
+    }
+    guardarRascunho(globalThis.localStorage, agentId, rascunho, salvo, versao, Date.now(), criadaEm);
+  }, [oferta, mudou, agentId, rascunho, salvo, versao, criadaEm]);
 
   // Sair com mudança não salva pede confirmação, por qualquer caminho de navegação.
   const mudouAgora = useRef(mudou);
   mudouAgora.current = mudou;
+  const novaAgora = useRef(nova);
+  novaAgora.current = nova;
   useEffect(
     () =>
       registrarGuarda((prosseguir) => {
-        if (!mudouAgora.current) return false;
+        if (!mudouAgora.current) {
+          // Automação nova abandonada sem edição: nada foi gravado, e a provisória também some.
+          if (novaAgora.current) apagarProvisoria(globalThis.localStorage, agentId);
+          return false;
+        }
         setSaida({ prosseguir });
         return true;
       }),
-    [],
+    [agentId],
   );
 
   const abrirAgent = (detalhe: string, aoFechar?: (id: string | null, lista: ReadResult<"library.profiles">) => void): void =>
@@ -250,7 +350,7 @@ function EditorCarregado({
   };
 
   const executar = (): void => {
-    if (mudou) {
+    if (mudou || nova) {
       setAviso({ tipo: "erro", texto: t("automations.editor.runUnsaved") });
       return;
     }
@@ -382,7 +482,9 @@ function EditorCarregado({
           onChange={(e) => setRascunho((r) => ({ ...r, spec: { ...r.spec, name: e.target.value } }))}
           value={rascunho.spec.name}
         />
-        <span className="text-muted-foreground num mr-auto text-xs">{t("automations.editor.version", { version: versao })}</span>
+        <span className="text-muted-foreground num mr-auto text-xs" data-locum-automacao-nova-aviso={nova ? "" : undefined}>
+          {nova ? t("automations.editor.notCreated") : t("automations.editor.version", { version: versao })}
+        </span>
         {mudou ? <Badge variant="outline">{t("automations.editor.unsaved")}</Badge> : null}
         <Button className="cursor-pointer" onClick={() => navegar("automations", `legacy/${agentId}`)} size="sm" variant="ghost">
           <List />
@@ -391,7 +493,7 @@ function EditorCarregado({
         <Button
           className="cursor-pointer"
           data-locum-automacao-exportar=""
-          disabled={ocupado !== null || mudou}
+          disabled={ocupado !== null || mudou || nova}
           onClick={exportar}
           size="sm"
           title={mudou ? t("pacote.export.saveFirst") : t("pacote.export.hint")}
@@ -400,14 +502,14 @@ function EditorCarregado({
           <Download />
           {t("pacote.export.button")}
         </Button>
-        <Button className="cursor-pointer" disabled={ocupado !== null} onClick={executar} size="sm" variant="outline">
+        <Button className="cursor-pointer" disabled={ocupado !== null || nova} onClick={executar} size="sm" variant="outline">
           {ocupado === "rodar" ? <Loader2 className="animate-spin" /> : <Play />}
           {t("automations.editor.runNow")}
         </Button>
         <Button
           className="cursor-pointer"
           data-locum-automacao-ligar=""
-          disabled={ocupado !== null || salvo.gatilhos.length === 0}
+          disabled={ocupado !== null || nova || salvo.gatilhos.length === 0}
           onClick={alternar}
           size="sm"
           title={t("automations.editor.enabledHint")}
@@ -418,7 +520,7 @@ function EditorCarregado({
         </Button>
       </header>
 
-      {mudou ? (
+      {mudou || nova ? (
         <div className="flex flex-wrap items-center gap-1.5">
           <Input
             className="min-w-64 flex-1"
@@ -437,43 +539,64 @@ function EditorCarregado({
           >
             {t("automations.editor.discard")}
           </Button>
-          <Button className="cursor-pointer" data-locum-automacao-salvar="" disabled={bloqueado || ocupado !== null} onClick={salvar} size="sm">
+          <Button className="cursor-pointer" data-locum-automacao-salvar="" disabled={bloqueado || ocupado !== null} onClick={() => void salvar()} size="sm">
             {t(ocupado === "salvar" ? "automations.editor.saving" : "automations.editor.save")}
           </Button>
         </div>
       ) : null}
 
-      {achado === null ? null : (
-        <div className="bg-card border-border flex flex-wrap items-center gap-2 rounded-md border px-3 py-1.5 text-xs" data-locum-rascunho="">
-          <StatusDot estado="aviso" />
-          <span className="mr-auto">
-            {t("automations.editor.draft.found", {
-              quando: new Date(achado.salvoEm).toLocaleString(i18n.language, { dateStyle: "short", timeStyle: "short" }),
-            })}
-          </span>
-          <Button
-            className="cursor-pointer"
-            data-locum-rascunho-descartar=""
-            onClick={() => {
-              descartarRascunho(globalThis.localStorage, agentId);
-              setAchado(null);
-            }}
-            size="sm"
-            variant="ghost"
-          >
-            {t("automations.editor.draft.discard")}
-          </Button>
-          <Button
-            className="cursor-pointer"
-            data-locum-rascunho-continuar=""
-            onClick={() => {
-              setRascunho(achado.rascunho);
-              setAchado(null);
-            }}
-            size="sm"
-          >
-            {t("automations.editor.draft.continue")}
-          </Button>
+      {oferta === null ? null : (
+        <div className="bg-card border-border flex flex-col gap-1.5 rounded-md border px-3 py-1.5 text-xs" data-locum-rascunho={oferta.reservada ? "reservado" : ""}>
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusDot estado="aviso" />
+            <span className="mr-auto">
+              {oferta.reservada
+                ? t("automations.editor.draft.reserved", { quando: quandoDoRascunho })
+                : t("automations.editor.draft.found", { quando: quandoDoRascunho })}
+              {oferta.baseMudou ? ` ${t("automations.editor.draft.baseChanged", { de: oferta.guardado.versao, para: versao })}` : ""}
+            </span>
+            <Button className="cursor-pointer" data-locum-rascunho-diferencas="" onClick={() => setVendoDiferencas((v) => !v)} size="sm" variant="ghost">
+              {t(vendoDiferencas ? "automations.editor.draft.hideDiff" : "automations.editor.draft.diff")}
+            </Button>
+            <Button
+              className="cursor-pointer"
+              data-locum-rascunho-descartar=""
+              onClick={() => {
+                if (oferta.reserva !== undefined) descartarReserva(globalThis.localStorage, oferta.reserva);
+                else descartarRascunho(globalThis.localStorage, agentId);
+                setOferta(null);
+              }}
+              size="sm"
+              variant="ghost"
+            >
+              {t(oferta.reservada ? "automations.editor.draft.discardReserved" : "automations.editor.draft.discard")}
+            </Button>
+            <Button
+              className="cursor-pointer"
+              data-locum-rascunho-continuar=""
+              onClick={() => {
+                // Editar depois de a oferta aparecer já foi uma escolha: trocar agora descarta essas edições, e isso pergunta.
+                if (oferta.reservada && mudou) setTrocando(true);
+                else aplicarOferta();
+              }}
+              size="sm"
+            >
+              {t(oferta.reservada ? "automations.editor.draft.continueReserved" : oferta.baseMudou ? "automations.editor.draft.continueAnyway" : "automations.editor.draft.continue")}
+            </Button>
+          </div>
+          {vendoDiferencas ? (
+            <div className="text-muted-foreground flex flex-col gap-0.5 pl-5" data-locum-rascunho-lista="">
+              {diferencasDaOferta.passos.length + diferencasDaOferta.gatilhos.length === 0 ? <span>{t("automations.editor.draft.diffNone")}</span> : null}
+              {diferencasDaOferta.passos.length > 0 ? <span className="text-foreground">{t("automations.editor.draft.diffSteps")}</span> : null}
+              {diferencasDaOferta.passos.map((d) => (
+                <span key={`p-${d.chave}`}>{`${t(`automations.editor.draft.kind.${d.tipo}`)}: ${d.rotulo}`}</span>
+              ))}
+              {diferencasDaOferta.gatilhos.length > 0 ? <span className="text-foreground">{t("automations.editor.draft.diffTriggers")}</span> : null}
+              {diferencasDaOferta.gatilhos.map((d) => (
+                <span key={`g-${d.chave}`}>{`${t(`automations.editor.draft.kind.${d.tipo}`)}: ${d.rotulo}`}</span>
+              ))}
+            </div>
+          ) : null}
         </div>
       )}
 
@@ -557,7 +680,60 @@ function EditorCarregado({
 
       {modalDeAgent === null ? null : <ModalDeAgent detalhe={modalDeAgent.detalhe} fechar={fecharAgent} navegar={navegar} />}
 
-      <Dialog onOpenChange={(aberto) => !aberto && setSaida(null)} open={saida !== null}>
+      <Dialog onOpenChange={(aberto) => !aberto && setTrocando(false)} open={trocando}>
+        <DialogContent data-locum-rascunho-trocar="">
+          <DialogHeader>
+            <DialogTitle>{t("automations.editor.draft.swap.title")}</DialogTitle>
+            <DialogDescription>{t("automations.editor.draft.swap.body")}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button className="cursor-pointer" onClick={() => setTrocando(false)} size="sm" variant="ghost">
+              {t("automations.editor.exit.cancel")}
+            </Button>
+            <Button className="cursor-pointer" data-locum-rascunho-trocar-confirmar="" onClick={aplicarOferta} size="sm">
+              {t("automations.editor.draft.swap.confirm")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog onOpenChange={(aberto) => !aberto && setConflito(null)} open={conflito !== null}>
+        <DialogContent data-locum-conflito="">
+          <DialogHeader>
+            <DialogTitle>{t("automations.editor.conflict.title")}</DialogTitle>
+            <DialogDescription>
+              {t("automations.editor.conflict.body", { de: versao, para: conflito?.atual.version.version ?? "" })}
+            </DialogDescription>
+          </DialogHeader>
+          <p className="text-muted-foreground text-xs">{t("automations.editor.conflict.reloadHint")}</p>
+          <DialogFooter>
+            <Button className="cursor-pointer" onClick={() => setConflito(null)} size="sm" variant="ghost">
+              {t("automations.editor.conflict.cancel")}
+            </Button>
+            <Button className="cursor-pointer" data-locum-conflito-recarregar="" onClick={() => conflito !== null && recarregar(conflito.atual)} size="sm" variant="outline">
+              {t("automations.editor.conflict.reload")}
+            </Button>
+            {conflito?.confirmando ? (
+              <Button
+                className="cursor-pointer"
+                data-locum-conflito-confirmar=""
+                disabled={ocupado !== null || bloqueado}
+                onClick={() => conflito !== null && void salvar(conflito.atual)}
+                size="sm"
+                variant="destructive"
+              >
+                {t("automations.editor.conflict.confirmOverwrite", { para: conflito.atual.version.version })}
+              </Button>
+            ) : (
+              <Button className="cursor-pointer" data-locum-conflito-por-cima="" onClick={() => setConflito((c) => (c === null ? c : { ...c, confirmando: true }))} size="sm">
+                {t("automations.editor.conflict.overwrite")}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog onOpenChange={(aberto) => !aberto && setSaida(null)} open={saida !== null && conflito === null}>
         <DialogContent data-locum-saida="">
           <DialogHeader>
             <DialogTitle>{t("automations.editor.exit.title")}</DialogTitle>
@@ -573,7 +749,9 @@ function EditorCarregado({
               data-locum-saida-descartar=""
               onClick={() => {
                 const seguir = saida?.prosseguir;
+                // Só o rascunho ativo: a reserva é de uma decisão que a pessoa ainda não tomou, e continua achável.
                 descartarRascunho(globalThis.localStorage, agentId);
+                if (nova) apagarProvisoria(globalThis.localStorage, agentId);
                 setSaida(null);
                 seguir?.();
               }}

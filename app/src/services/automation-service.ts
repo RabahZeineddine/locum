@@ -23,10 +23,18 @@ export interface AutomationSaveInput {
   note: string;
   /** Verdadeiro para automação nova: recusa se o id já existir. */
   create?: boolean;
+  /**
+   * A versão gravada sobre a qual a edição começou. O canvas manda; o MCP e os
+   * outros chamadores não precisam. Com ela, gravar sobre uma versão mais nova
+   * é recusado em vez de passar por cima do que entrou no meio.
+   */
+  expectedVersion?: number;
 }
 
 export interface Automation {
   version: AgentVersion;
+  /** Quando o agent nasceu: um id reaproveitado depois de apagado tem outra data. */
+  createdAt: number;
   triggers: TriggerEntry[];
 }
 
@@ -52,12 +60,21 @@ export class AutomationService {
   async get(agentId: string): Promise<Automation | null> {
     if (isReserved(agentId)) return null;
     const version = await this.agents.getLatestVersion(agentId);
-    if (version === undefined) return null;
-    return { version, triggers: await this.triggers.list(agentId) };
+    const agent = await this.agents.get(agentId);
+    if (version === undefined || agent === undefined) return null;
+    return { version, createdAt: agent.createdAt, triggers: await this.triggers.list(agentId) };
   }
 
   async save(input: AutomationSaveInput): Promise<Automation> {
     const agentId = input.spec.id;
+    if (input.expectedVersion !== undefined && input.create !== true) {
+      const gravada = (await this.agents.getLatestVersion(agentId))?.version;
+      if (gravada !== undefined && gravada !== input.expectedVersion) {
+        throw new Error(
+          `a automação mudou desde a v${input.expectedVersion} (agora está na v${gravada}). Recarregue para ver o que entrou, ou salve por cima.`,
+        );
+      }
+    }
     // Antes de qualquer escrita: um gatilho inválido não pode deixar para
     // trás um spec novo gravado com os gatilhos antigos.
     for (const gatilho of input.triggers) TriggerConfig.parse(gatilho.config);
@@ -105,7 +122,7 @@ export class AutomationService {
       if (!mantidos.has(antigo.id)) await this.triggers.remove(antigo.id);
     }
 
-    return { version, triggers: await this.triggers.list(agentId) };
+    return { version, createdAt: (await this.agents.get(agentId))!.createdAt, triggers: await this.triggers.list(agentId) };
   }
 
   /**

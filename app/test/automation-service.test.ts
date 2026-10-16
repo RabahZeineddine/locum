@@ -124,3 +124,39 @@ test("zerar chatsPendentes sem valerParaTodosOsChats recusa antes de gravar o sp
   assert.equal(atual?.version.version, 1);
   assert.equal((atual?.triggers[0]?.config as { chatsPendentes: number }).chatsPendentes, 2);
 });
+
+test("salvar com a versão esperada recusa quando a gravada é outra, e sem ela segue como antes", async () => {
+  const { automations } = montar();
+  await automations.save({ spec, triggers: [], note: "", create: true });
+  // Outro chamador (o MCP, por exemplo) grava a v2 sem versão esperada.
+  await automations.save({ spec: { ...spec, name: "Pelo MCP" }, triggers: [], note: "mcp" });
+
+  await assert.rejects(
+    automations.save({ spec: { ...spec, name: "Da tela" }, triggers: [], note: "tela", expectedVersion: 1 }),
+    /mudou.*v1.*v2/,
+  );
+  const atual = await automations.get(spec.id);
+  assert.equal(atual?.version.version, 2);
+  assert.equal(atual?.version.spec.name, "Pelo MCP");
+
+  const ok = await automations.save({ spec: { ...spec, name: "Da tela" }, triggers: [], note: "tela", expectedVersion: 2 });
+  assert.equal(ok.version.version, 3);
+});
+
+test("a versão esperada é conferida antes de qualquer escrita, inclusive dos gatilhos", async () => {
+  const { automations } = montar();
+  await automations.save({ spec, triggers: [], note: "", create: true });
+  await automations.save({ spec: { ...spec, name: "v2" }, triggers: [], note: "v2" });
+  await assert.rejects(
+    automations.save({ spec, triggers: [{ config: { kind: "slack-channel", channels: ["C1"] } }], note: "x", expectedVersion: 1 }),
+    /mudou/,
+  );
+  assert.equal((await automations.get(spec.id))?.triggers.length, 0);
+});
+
+test("a leitura da automação traz quando o agent nasceu, para o rascunho reconhecer id reaproveitado", async () => {
+  const { automations } = montar();
+  await automations.save({ spec, triggers: [], note: "", create: true });
+  const lida = await automations.get(spec.id);
+  assert.equal(typeof lida?.createdAt, "number");
+});

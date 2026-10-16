@@ -14,6 +14,22 @@ interface Entrada<T> {
   dados: T;
 }
 
+/**
+ * A chave da lista do Teams. Leva a conexão e a conta: a lista é de quem está
+ * conectado, e trocar de conta não pode devolver a da outra. A lista de chats
+ * sai pela conta que o gatilho gravou, então cada gatilho tem a sua; gatilho
+ * ainda sem id leva a automação e a chave do nó, e não colide com o de outra.
+ */
+export function chaveDaListaDoTeams(
+  tipo: "canais" | "chats",
+  conexao: { via?: string | null; account?: string | null } | undefined,
+  gatilho?: { id?: string; agentId: string; chave: string },
+): string {
+  const quem = `${conexao?.via ?? "nativa"}:${conexao?.account ?? ""}`;
+  if (tipo === "canais" || gatilho === undefined) return `teams-${tipo}:${quem}`;
+  return `teams-${tipo}:${quem}:${gatilho.id ?? `novo/${gatilho.agentId}/${gatilho.chave}`}`;
+}
+
 const chaveDe = (chave: string): string => `locum.cache.${chave}`;
 
 /** O que está guardado e ainda vale, ou nulo. */

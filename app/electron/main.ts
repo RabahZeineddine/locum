@@ -1121,6 +1121,7 @@ async function checkRenderer(): Promise<string> {
     await checkPacote(window);
     await checkEditorSaida(window);
     await checkListaDoTeams(window);
+    await checkAutomacaoNova(window);
     await checkPassoDeAgent(window);
     const configuracao = await checkConfig(window);
     const revisao = await checkReviewVerdict(window);
@@ -1929,8 +1930,19 @@ async function checkEditorSaida(window: BrowserWindow): Promise<void> {
     await esperarDoServico(nome, async () => ((await ok()) ? true : undefined), 5_000);
   };
   const novoNome = "Nome editado pelo exame";
+  const digitarNome = (nome: string): Promise<unknown> =>
+    js(`(() => {
+      const campo = document.querySelector("[data-locum-probe=automacao-editor] header input");
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(campo, ${JSON.stringify(nome)});
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+      return null;
+    })()`);
+  const reservas = (): Promise<number> =>
+    js(`Object.keys(localStorage).filter((k) => k.startsWith(${JSON.stringify(`locum.rascunho-automacao-reserva.${agentId}.`)})).length`) as Promise<number>;
+  const limpar = (): Promise<unknown> =>
+    js(`(Object.keys(localStorage).filter((k) => k.startsWith("locum.rascunho-automacao")).forEach((k) => localStorage.removeItem(k)), null)`);
 
-  await js(`(localStorage.removeItem(${JSON.stringify(`locum.rascunho-automacao.${agentId}`)}), null)`);
+  await limpar();
   await irPara(window, "automations", agentId);
   await esperar("o editor", () => existe("[data-locum-probe=automacao-editor]"));
   await js(`(() => {
@@ -1954,12 +1966,44 @@ async function checkEditorSaida(window: BrowserWindow): Promise<void> {
     if (!(await rascunhoGuardado())) throw new Error("cancelar a saida apagou o rascunho");
   }
 
+  // O atalho do menu (⌘, e ⌘1..N) passa pela mesma guarda: a janela fica onde estava e pergunta.
+  const { pedirNavegacao } = await import("./menu.js");
+  await pedirNavegacao(window, "settings");
+  await esperar("a confirmacao de sair pelo menu", () => existe("[data-locum-saida]"));
+  if ((await rota()) !== `automations|${agentId}`) throw new Error(`o atalho do menu saiu para ${await rota()} sem a pessoa responder`);
+  await clicar("[data-locum-saida-cancelar]");
+  await esperar("a confirmacao do menu fechar", async () => !(await existe("[data-locum-saida]")));
+  if (!(await rascunhoGuardado())) throw new Error("cancelar a saida pelo menu apagou o rascunho");
+
+  // A automação foi gravada de novo (v+1) depois do rascunho: a oferta avisa que a base mudou e deixa ver as diferenças.
+  const { automationService } = await import("../src/services/automation-service.js");
+  const gravada = await automationService.get(agentId);
+  if (gravada === null) throw new Error("a automacao do exame sumiu");
+  const versaoDoRascunho = gravada.version.version;
+  await automationService.save({
+    spec: { ...gravada.version.spec, layout: { ...(gravada.version.spec.layout ?? {}), "exame-base": { x: 1, y: 2 } } },
+    triggers: gravada.triggers.map((g) => ({ id: g.id, config: g.config })),
+    note: "exame: entrou depois do rascunho",
+  });
+
   // Como depois de uma queda: sai sem passar pela pergunta e reabre.
   await irPara(window, "agents");
   await irPara(window, "automations", agentId);
   await esperar("a oferta do rascunho", () => existe("[data-locum-rascunho]"));
+  const oferta = (await js(`document.querySelector("[data-locum-rascunho]").textContent`)) as string;
+  if (!oferta.includes(`v${versaoDoRascunho}`) || !oferta.includes(`v${versaoDoRascunho + 1}`)) throw new Error(`a oferta nao disse que a base mudou: ${oferta}`);
+  await clicar("[data-locum-rascunho-diferencas]");
+  await esperar("a lista de diferencas", () => existe("[data-locum-rascunho-lista]"));
+
+  // Editar com a oferta aberta e "comecar do gravado": o rascunho antigo vai para a reserva, e continuar pede confirmacao.
+  await digitarNome("Edicao nova, sem decidir");
+  await esperar("o rascunho reservado", async () => (await reservas()) === 1 && (await existe("[data-locum-rascunho=reservado]")));
   await clicar("[data-locum-rascunho-continuar]");
+  await esperar("a pergunta de trocar", () => existe("[data-locum-rascunho-trocar]"));
+  if ((await nomeNoCabecalho()) !== "Edicao nova, sem decidir") throw new Error("a pergunta de trocar ja trocou as edicoes");
+  await clicar("[data-locum-rascunho-trocar-confirmar]");
   await esperar("o nome do rascunho de volta", async () => (await nomeNoCabecalho()) === novoNome);
+  if ((await reservas()) !== 0) throw new Error("continuar o reservado deixou a reserva para tras");
 
   // Descartar e sair leva ao destino e apaga o rascunho.
   await clicar("[data-locum-rota=agents]");
@@ -1967,6 +2011,7 @@ async function checkEditorSaida(window: BrowserWindow): Promise<void> {
   await clicar("[data-locum-saida-descartar]");
   await esperar("a saida depois de descartar", async () => (await rota()).startsWith("agents|"));
   if (await rascunhoGuardado()) throw new Error("descartar nao apagou o rascunho");
+  await limpar();
   await irPara(window, "automations", agentId);
   await esperar("o editor de novo", () => existe("[data-locum-probe=automacao-editor]"));
   if (await existe("[data-locum-rascunho]")) throw new Error("o editor ofereceu um rascunho que foi descartado");
@@ -1979,6 +2024,14 @@ async function checkEditorSaida(window: BrowserWindow): Promise<void> {
  * início, que fecha ao escolher e anda pelo teclado. A lista do Graph vem do
  * cache da janela, porque o smoke não alcança o Graph.
  */
+/** A chave que o painel usa para guardar a lista do Teams na janela: leva a conexão e a conta. */
+async function chaveDoCacheDoTeams(tipo: "canais" | "chats", gatilho?: { id?: string; agentId: string; chave: string }): Promise<string> {
+  const { connectionService } = await import("../src/services/connection-service.js");
+  const { chaveDaListaDoTeams } = await import("../renderer/lib/cache-de-lista.js");
+  const conexao = (await connectionService.list()).find((c) => c.id === "teams");
+  return `locum.cache.${chaveDaListaDoTeams(tipo, conexao, gatilho)}`;
+}
+
 async function checkListaDoTeams(window: BrowserWindow): Promise<void> {
   const { automationService } = await import("../src/services/automation-service.js");
   const { db, schema } = await import("../src/db/index.js");
@@ -2012,7 +2065,7 @@ async function checkListaDoTeams(window: BrowserWindow): Promise<void> {
   ].map(([chatId, label, chatType]) => ({ chatId, label, chatType }));
   try {
     await irPara(window, "automations", id);
-    await js(`(sessionStorage.setItem(${JSON.stringify(`locum.cache.teams-chats:${gatilho.id}`)}, JSON.stringify({ em: Date.now(), dados: ${JSON.stringify(chats)} })), null)`);
+    await js(`(sessionStorage.setItem(${JSON.stringify(await chaveDoCacheDoTeams("chats", { id: gatilho.id, agentId: id, chave: "gatilho-1" }))}, JSON.stringify({ em: Date.now(), dados: ${JSON.stringify(chats)} })), null)`);
     await esperar("o nó do gatilho", () => existe("[data-locum-no-automacao^=gatilho-]"));
     await clicar("[data-locum-no-automacao^=gatilho-]");
     await esperar("o painel do gatilho", () => existe("[data-locum-combobox=teams-chats]"));
@@ -2132,6 +2185,30 @@ async function checkPassoDeAgent(window: BrowserWindow): Promise<void> {
     }
     if (!(await existe("[data-locum-probe=automacao-editor]"))) throw new Error("fechar o modal levou para fora do editor");
 
+    // Com edição pendente no agent, fechar o modal pergunta antes, e o atalho do menu passa pela pergunta do agent.
+    const { pedirNavegacao } = await import("./menu.js");
+    await clicar("[data-locum-passo-criar-agent]");
+    await esperar("o formulário do agent novo", () => existe("[data-locum-probe=agent-modal] [data-locum-agent-nome]"));
+    await js(`(() => {
+      const campo = document.querySelector("[data-locum-probe=agent-modal] [data-locum-agent-nome]");
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(campo, "Agent a meio");
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+      return null;
+    })()`);
+    await clicar("[data-locum-agent-modal-fechar]");
+    await esperar("a pergunta ao fechar o modal", () => existe("[data-locum-agent-saida]"));
+    if (!(await existe("[data-locum-probe=agent-modal]"))) throw new Error("o modal fechou antes de a pessoa responder");
+    await clicar("[data-locum-agent-saida-cancelar]");
+    await esperar("a pergunta fechar", async () => !(await existe("[data-locum-agent-saida]")));
+    await pedirNavegacao(window, "settings");
+    await esperar("a pergunta do agent pelo menu", () => existe("[data-locum-agent-saida]"));
+    if ((await rota()) !== `automations|${id}`) throw new Error(`o atalho do menu saiu para ${await rota()} com o modal do agent sujo`);
+    await clicar("[data-locum-agent-saida-cancelar]");
+    await clicar("[data-locum-agent-modal-fechar]");
+    await esperar("a pergunta ao fechar de novo", () => existe("[data-locum-agent-saida]"));
+    await clicar("[data-locum-agent-saida-descartar]");
+    await esperar("o modal fechar ao descartar", async () => !(await existe("[data-locum-probe=agent-modal]")));
+
     // Instrução embutida: o select some e o passo deixa de apontar para o agent.
     await clicar("[data-locum-passo-modo=inline]");
     await esperar("a instrução embutida", async () => (await existe("[data-locum-prompt]")) && !(await existe("[data-locum-passo-agent]")));
@@ -2144,6 +2221,87 @@ async function checkPassoDeAgent(window: BrowserWindow): Promise<void> {
     db.delete(schema.agentVersions).where(eq(schema.agentVersions.agentId, id)).run();
     db.delete(schema.agents).where(eq(schema.agents.id, id)).run();
     await libraryService.removeProfile(perfil).catch(() => undefined);
+  }
+}
+
+/**
+ * "Nova automação" não grava nada até o primeiro Salvar: abandonar o editor sem
+ * editar não deixa automação na lista. E salvar sobre uma versão mais nova (o
+ * MCP gravou no meio) abre a escolha entre recarregar e salvar por cima, e
+ * recarregar guarda as edições como rascunho reservado.
+ */
+async function checkAutomacaoNova(window: BrowserWindow): Promise<void> {
+  const { agentService } = await import("../src/services/agent-service.js");
+  const { automationService } = await import("../src/services/automation-service.js");
+  const { db, schema } = await import("../src/db/index.js");
+  const { eq } = await import("drizzle-orm");
+  const js = (codigo: string): Promise<unknown> => window.webContents.executeJavaScript(codigo);
+  const clicar = (seletor: string): Promise<boolean> =>
+    js(`(() => { const e = document.querySelector(${JSON.stringify(seletor)}); e?.click(); return e !== null; })()`) as Promise<boolean>;
+  const existe = (seletor: string): Promise<boolean> => js(`document.querySelector(${JSON.stringify(seletor)}) !== null`) as Promise<boolean>;
+  const rota = (): Promise<string> => js(`(() => { const p = document.querySelector("[data-locum-probe=rota]"); return p.dataset.ativo + "|" + p.dataset.detalhe; })()`) as Promise<string>;
+  const esperar = async (nome: string, ok: () => Promise<boolean>): Promise<void> => {
+    await esperarDoServico(nome, async () => ((await ok()) ? true : undefined), 5_000);
+  };
+  const digitarNome = (nome: string): Promise<unknown> =>
+    js(`(() => {
+      const campo = document.querySelector("[data-locum-probe=automacao-editor] header input");
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(campo, ${JSON.stringify(nome)});
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+      return null;
+    })()`);
+  const abrirNova = async (): Promise<string> => {
+    await irPara(window, "automations");
+    await esperar("a lista de automacoes", () => existe("[data-locum-automacao-nova]"));
+    await clicar("[data-locum-automacao-nova]");
+    await esperar("o formulario de nova automacao", () => existe("[data-locum-modelo=blank]"));
+    await clicar("[data-locum-modelo=blank]");
+    await clicar("[data-locum-automacao-criar]");
+    await esperar("o editor da automacao nova", () => existe("[data-locum-probe=automacao-editor]"));
+    const [, detalhe] = (await rota()).split("|");
+    return detalhe!;
+  };
+  const provisorias = (): Promise<number> =>
+    js(`Object.keys(localStorage).filter((k) => k.startsWith("locum.automacao-provisoria.")).length`) as Promise<number>;
+  let id = "";
+  try {
+    // Abandonada sem edicao: nada foi gravado, e a provisoria some.
+    id = await abrirNova();
+    if ((await agentService.get(id)) !== undefined) throw new Error("abrir uma automacao nova ja gravou o agent");
+    if (!(await existe("[data-locum-automacao-nova-aviso]"))) throw new Error("o editor nao disse que a automacao ainda nao foi gravada");
+    await clicar("[data-locum-rota=agents]");
+    await esperar("sair sem pergunta", async () => (await rota()).startsWith("agents|"));
+    if (await existe("[data-locum-saida]")) throw new Error("abandonar a automacao nova sem editar pediu confirmacao");
+    if ((await agentService.get(id)) !== undefined) throw new Error("abandonar a automacao nova deixou um agent para tras");
+    if ((await provisorias()) !== 0) throw new Error("abandonar a automacao nova deixou a provisoria");
+
+    // O primeiro Salvar cria.
+    id = await abrirNova();
+    await digitarNome("Automacao do exame");
+    await clicar("[data-locum-automacao-salvar]");
+    await esperar("a automacao criada", async () => (await agentService.get(id)) !== undefined);
+    await esperar("o editor ja gravado", async () => !(await existe("[data-locum-automacao-nova-aviso]")));
+    if ((await provisorias()) !== 0) throw new Error("salvar nao apagou a provisoria");
+
+    // O MCP grava no meio: salvar com a versao antiga e recusado, e recarregar guarda as edicoes.
+    const gravada = await automationService.get(id);
+    if (gravada === null) throw new Error("a automacao do exame sumiu");
+    await digitarNome("Edicao da tela");
+    await automationService.save({ spec: { ...gravada.version.spec, name: "Pelo MCP" }, triggers: [], note: "mcp" });
+    await clicar("[data-locum-automacao-salvar]");
+    await esperar("a escolha do conflito", () => existe("[data-locum-conflito]"));
+    if ((await automationService.get(id))?.version.spec.name !== "Pelo MCP") throw new Error("a tela gravou por cima da versao do MCP");
+    await clicar("[data-locum-conflito-recarregar]");
+    await esperar("o rascunho reservado depois de recarregar", () => existe("[data-locum-rascunho=reservado]"));
+    const nomeAgora = (await js(`document.querySelector("[data-locum-probe=automacao-editor] header input").value`)) as string;
+    if (nomeAgora !== "Pelo MCP") throw new Error(`recarregar trouxe "${nomeAgora}" e a versao gravada e "Pelo MCP"`);
+  } finally {
+    await js(`(Object.keys(localStorage).filter((k) => k.startsWith("locum.rascunho-automacao") || k.startsWith("locum.automacao-provisoria")).forEach((k) => localStorage.removeItem(k)), null)`);
+    if (id !== "") {
+      db.delete(schema.triggers).where(eq(schema.triggers.agentId, id)).run();
+      db.delete(schema.agentVersions).where(eq(schema.agentVersions.agentId, id)).run();
+      db.delete(schema.agents).where(eq(schema.agents.id, id)).run();
+    }
   }
 }
 
@@ -7297,8 +7455,8 @@ async function capturarEditor(janela: BrowserWindow, destino: string, prefixo: s
       ["geral", "deploys", "revisao"].map((canal, c) => ({ teamId: `t${e}`, teamName: equipe, channelId: `c${e}${c}`, channelName: canal })),
     );
     await js(`(() => {
-      sessionStorage.setItem(${JSON.stringify(`locum.cache.teams-chats:${gatilhoId}`)}, JSON.stringify({ em: Date.now(), dados: ${JSON.stringify(chats)} }));
-      sessionStorage.setItem("locum.cache.teams-canais", JSON.stringify({ em: Date.now(), dados: ${JSON.stringify(canais)} }));
+      sessionStorage.setItem(${JSON.stringify(await chaveDoCacheDoTeams("chats", { id: gatilhoId, agentId, chave: "gatilho-1" }))}, JSON.stringify({ em: Date.now(), dados: ${JSON.stringify(chats)} }));
+      sessionStorage.setItem(${JSON.stringify(await chaveDoCacheDoTeams("canais"))}, JSON.stringify({ em: Date.now(), dados: ${JSON.stringify(canais)} }));
       return null;
     })()`);
     await irPara(janela, "agents");

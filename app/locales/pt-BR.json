@@ -2030,7 +2030,8 @@
       "creating": "criando...",
       "cancel": "Cancelar",
       "tracker": "Onde abrir a tarefa",
-      "trackerNone": "Nenhum tracker cadastrado. Dá para escolher depois, no nó da tarefa."
+      "trackerNone": "Nenhum tracker cadastrado. Dá para escolher depois, no nó da tarefa.",
+      "noStorage": "Não consegui guardar o modelo neste computador para abrir o editor."
     },
     "templates": {
       "teamsPrReview": {
@@ -2096,8 +2097,38 @@
         "found": "Há um rascunho não salvo desta automação, de {{quando}}.",
         "continue": "Continuar rascunho",
         "discard": "Descartar",
-        "autosaved": "Rascunho guardado neste computador"
-      }
+        "autosaved": "Rascunho guardado neste computador",
+        "continueAnyway": "Continuar mesmo assim",
+        "baseChanged": "A automação mudou desde o rascunho (v{{de}} → v{{para}}).",
+        "diff": "Ver diferenças",
+        "hideDiff": "Ocultar diferenças",
+        "diffNone": "Nenhuma diferença em passos ou gatilhos.",
+        "diffSteps": "Passos",
+        "diffTriggers": "Gatilhos",
+        "kind": {
+          "novo": "novo",
+          "removido": "removido",
+          "alterado": "alterado"
+        },
+        "reserved": "Você começou do gravado. O rascunho de {{quando}} ficou reservado.",
+        "continueReserved": "Continuar o reservado",
+        "discardReserved": "Descartar o reservado",
+        "swap": {
+          "title": "Trocar as edições atuais?",
+          "body": "O rascunho reservado entra no lugar do que você editou agora, e as edições atuais serão descartadas.",
+          "confirm": "Trocar"
+        }
+      },
+      "conflict": {
+        "title": "A automação mudou",
+        "body": "Enquanto você editava, ela foi gravada de novo (v{{de}} → v{{para}}).",
+        "reload": "Recarregar",
+        "reloadHint": "Traz a versão gravada e guarda as suas edições como rascunho reservado.",
+        "overwrite": "Salvar por cima",
+        "confirmOverwrite": "Confirmar: substituir a v{{para}}",
+        "cancel": "Cancelar"
+      },
+      "notCreated": "Ainda não gravada: o primeiro Salvar cria a automação."
     },
     "palette": {
       "title": "Componentes",
@@ -2341,6 +2372,7 @@
           "inline": "Instrução embutida"
         },
         "pick": "Escolha um agent",
+        "stillInline": "O passo segue com a instrução embutida até você escolher um agent.",
         "create": "Criar agent",
         "summary": {
           "model": "Modelo",
@@ -2641,7 +2673,14 @@
         "usage": "Onde ele trabalha hoje? As automações que o chamam, e a remoção, que só vale sem uso."
       },
       "shortcuts": "Atalhos: toolsets e ferramentas avulsas",
-      "shortcutsHint": "Jeito antigo de dar ferramentas, que continua valendo e se soma às conexões. Só leitura: o que escreve fora é nó de ação na automação."
+      "shortcutsHint": "Jeito antigo de dar ferramentas, que continua valendo e se soma às conexões. Só leitura: o que escreve fora é nó de ação na automação.",
+      "exit": {
+        "title": "Sair com alterações não salvas?",
+        "body": "Este agent tem alterações que ainda não foram gravadas.",
+        "save": "Salvar e sair",
+        "discard": "Descartar e sair",
+        "cancel": "Cancelar"
+      }
     },
     "toolsets": {
       "lead": "Um toolset junta ferramentas de um ou mais apps. O agent que inclui o toolset ganha todas elas.",

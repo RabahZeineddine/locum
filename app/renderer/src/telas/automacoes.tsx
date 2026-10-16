@@ -9,6 +9,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { pontoDoEstado } from "@/lib/estado-do-ponto";
 import { MODELOS, rascunhoDoModelo, type ModeloId } from "@/lib/automacao";
 import { call, read, useRead, type ReadResult } from "@/lib/bridge";
+import { guardarProvisoria, lerProvisoria } from "@/lib/rascunho-automacao";
 import { semPrefixoDoIpc } from "@/lib/erro-da-ponte";
 import { quandoSolta } from "@/lib/limites";
 import { rotuloDeEstado, rotuloDoProvedor } from "@/lib/rotulos";
@@ -446,15 +447,18 @@ export function NovaAutomacao({
     setErro(null);
     try {
       const titulo = nome.trim() || t(`automations.templates.${modelo}.title`);
-      const id = await call("automations.suggestId", titulo);
+      const sugerido = await call("automations.suggestId", titulo);
+      // Uma automação nova ainda não gravada também ocupa o nome: não sobrescreve a provisória de outra.
+      let id = sugerido;
+      for (let n = 2; lerProvisoria(globalThis.localStorage, id) !== null && n < 1000; n++) id = `${sugerido.slice(0, 55)}-${n}`;
       const r = rascunhoDoModelo(modelo, id, titulo, tracker === "" ? (listaDeTrackers[0]?.id ?? null) : tracker, (agentes.data ?? []).map((a) => ({ id: a.id, name: a.name })));
-      await call("automations.save", {
-        spec: r.spec,
-        triggers: r.gatilhos.map((g) => ({ config: g.config })),
-        note: t(`automations.templates.${modelo}.title`),
-        create: true,
+      // Nada é gravado agora: o modelo espera no editor até o primeiro Salvar, e abandonar sem editar não deixa automação na lista.
+      guardarProvisoria(globalThis.localStorage, id, {
+        rascunho: r,
+        nota: t(`automations.templates.${modelo}.title`),
+        ...(iniciativa === undefined ? {} : { iniciativa }),
       });
-      if (iniciativa !== undefined) await call("initiatives.linkAgent", id, iniciativa);
+      if (lerProvisoria(globalThis.localStorage, id) === null) throw new Error(t("automations.new.noStorage"));
       aoCriar(id);
     } catch (e) {
       setErro(e instanceof Error ? e.message : String(e));

@@ -9,6 +9,8 @@ import {
   FORMATOS,
   ligar,
   MODELOS,
+  passoComAgent,
+  passoSemAgent,
   PASSOS,
   LOGICA,
   caminhosDe,
@@ -240,4 +242,27 @@ test("sem agent revisor, o modelo do Teams sugere criar um, com atalho para o ag
   const com = rascunhoDoModelo("teamsPrReview", "t", "T", null, [{ id: "rev", name: "Revisor" }]);
   assert.equal(problemas(com, { ...base, agents: ["rev"] }).some((p) => p.chave === "automations.problems.createReviewer"), false);
   assert.equal(problemas(sem, base).some((p) => p.chave === "automations.problems.createReviewer"), false, "sem a lista de agents não acusa");
+});
+
+test("escolher o agent não mexe no model do passo, que com profile é ignorado", () => {
+  const passo = { type: "model" as const, key: "p", name: "Analisar", needs: [], optional: false, model: "claude-code/claude-opus-4", prompt: "Faça X", tools: [{ server: "github", tool: "*", class: "read" as const }], requiresServers: [], maxSteps: 8 };
+  const com = passoComAgent(passo, { id: "revisor", name: "Revisor" });
+  assert.equal(com.profile, "revisor");
+  assert.equal(com.model, "claude-code/claude-opus-4");
+  assert.equal(com.name, "Analisar", "nome escrito à mão fica");
+  const acompanha = passoComAgent({ ...com, name: "Revisor" }, { id: "outro", name: "Outro" }, "Revisor");
+  assert.equal(acompanha.name, "Outro", "o nome do agent antigo acompanha a troca");
+  const outro = passoComAgent({ ...com, name: "Meu nome" }, { id: "outro", name: "Outro" }, "Revisor");
+  assert.equal(outro.name, "Meu nome");
+  assert.equal(outro.model, "claude-code/claude-opus-4");
+});
+
+test("ida e volta entre Agent e Instrução embutida preserva prompt, tools e model", () => {
+  const passo = { type: "model" as const, key: "p", name: "Analisar", needs: [], optional: false, model: "claude-code/claude-opus-4", prompt: "Faça X", tools: [{ server: "github", tool: "*", class: "read" as const }], requiresServers: [], maxSteps: 8 };
+  const volta = passoSemAgent(passoComAgent(passo, { id: "revisor", name: "Revisor" }));
+  assert.equal(volta.profile, undefined);
+  assert.equal("profile" in volta, false);
+  assert.equal(volta.prompt, "Faça X");
+  assert.deepEqual(volta.tools, passo.tools);
+  assert.equal(volta.model, "claude-code/claude-opus-4");
 });

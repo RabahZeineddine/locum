@@ -7,6 +7,8 @@ import {
   ehGatilho,
   FORMATOS,
   formatoDe,
+  passoComAgent,
+  passoSemAgent,
   trocarPasso,
   variaveis,
   type AgentDaBiblioteca,
@@ -17,6 +19,7 @@ import {
   type Rascunho,
 } from "@/lib/automacao";
 import { call, useRead, type ReadResult } from "@/lib/bridge";
+import { chaveDaListaDoTeams } from "@/lib/cache-de-lista";
 import { organizarCanais } from "@/lib/canais-do-teams";
 import { organizarChats } from "@/lib/chats-do-teams";
 import { cn } from "@/lib/utils";
@@ -147,7 +150,7 @@ export function PainelDoNo({
 
       {gatilho !== undefined ? (
         <>
-          <ConfigDoGatilho config={gatilho.config} key={chave} trocar={trocarGatilho} triggerId={gatilho.id} />
+          <ConfigDoGatilho agentId={rascunho.spec.id} chave={chave} config={gatilho.config} key={chave} trocar={trocarGatilho} triggerId={gatilho.id} />
           <Alternador
             ligado={gatilho.enabled}
             rotulo={t("automations.panel.enabled")}
@@ -184,10 +187,14 @@ export function PainelDoNo({
 /* ----------------------------------------------------------------- gatilho */
 
 function ConfigDoGatilho({
+  agentId,
+  chave,
   config,
   trocar,
   triggerId,
 }: {
+  agentId: string;
+  chave: string;
   config: TriggerConfig;
   trocar: (c: TriggerConfig) => void;
   triggerId?: string;
@@ -233,6 +240,7 @@ function ConfigDoGatilho({
                 chats={config.chats}
                 pendentes={config.chatsPendentes > 0}
                 trocar={(chats) => trocar({ ...config, chats })}
+                escopo={{ agentId, chave, ...(triggerId === undefined ? {} : { id: triggerId }) }}
                 triggerId={triggerId}
                 valeParaTodos={() => trocar({ ...config, chatsPendentes: 0 })}
               />
@@ -362,9 +370,10 @@ type CanalDoTeams = Extract<TriggerConfig, { kind: "teams-inbox" }>["channels"][
  */
 function CanaisDoTeams({ canais, trocar }: { canais: readonly CanalDoTeams[]; trocar: (c: CanalDoTeams[]) => void }) {
   const { t } = useTranslation();
-  const lista = useListaEmCache("teams-canais", () => call("connections.teamsChannels"));
   // Pelo servidor MCP (ms365) os canais já vêm: a conexão nativa e os escopos dela não entram.
-  const viaDoTeams = useRead("connections.list").data?.find((c) => c.id === "teams")?.via;
+  const conexao = useRead("connections.list").data?.find((c) => c.id === "teams");
+  const viaDoTeams = conexao?.via;
+  const lista = useListaEmCache(chaveDaListaDoTeams("canais", conexao), () => call("connections.teamsChannels"));
   const idDe = (teamId: string, channelId: string): string => `${teamId}/${channelId}`;
   const opcoes: OpcaoDoCombobox[] | null =
     lista.dados === null
@@ -471,18 +480,21 @@ function ChatsDoTeams({
   chats,
   trocar,
   triggerId,
+  escopo,
   pendentes,
   valeParaTodos,
 }: {
   chats: readonly ChatDoTeams[];
   trocar: (c: ChatDoTeams[]) => void;
   triggerId?: string;
+  escopo: { id?: string; agentId: string; chave: string };
   pendentes: boolean;
   valeParaTodos: () => void;
 }) {
   const { t } = useTranslation();
   // A lista sai pela conta que o gatilho gravou, então cada gatilho tem a sua.
-  const lista = useListaEmCache(`teams-chats:${triggerId ?? ""}`, () => call("connections.teamsChats", triggerId));
+  const conexao = useRead("connections.list").data?.find((c) => c.id === "teams");
+  const lista = useListaEmCache(chaveDaListaDoTeams("chats", conexao, escopo), () => call("connections.teamsChats", triggerId));
   const opcoes: OpcaoDoCombobox[] | null =
     lista.dados === null
       ? null
@@ -647,8 +659,7 @@ function ConfigDoPassoDeIA({
   const paraEmbutida = (): void => {
     setModo("inline");
     if (passo.profile === undefined) return;
-    const { profile: _profile, ...resto } = passo;
-    trocar(resto);
+    trocar(passoSemAgent(passo));
   };
 
   return (
@@ -699,10 +710,8 @@ function ConfigDoAgent({
   const { t } = useTranslation();
   const trocar = (novo: PassoDeIA): void => setRascunho((r) => ({ ...r, spec: trocarPasso(r.spec, passo.key, novo) }));
   const atual = agents.find((a) => a.id === passo.profile);
-  // O nome acompanha a troca só quando ainda era o do agent antigo: nome escrito à mão pela pessoa fica.
   const escolher = (escolhido: AgentDaBiblioteca): void => {
-    const nome = passo.name === (atual?.name ?? "") || passo.name.trim() === "" ? escolhido.name : passo.name;
-    trocar({ ...passo, profile: escolhido.id, model: escolhido.model, name: nome });
+    trocar(passoComAgent(passo, escolhido, atual?.name ?? ""));
   };
 
   return (
@@ -733,6 +742,11 @@ function ConfigDoAgent({
           </select>
         )}
         {agents.length === 0 ? <p className="text-muted-foreground text-xs">{t("automations.steps.agent.none")}</p> : null}
+        {passo.profile === undefined ? (
+          <p className="text-muted-foreground text-xs" data-locum-passo-ainda-embutido="">
+            {t("automations.steps.agent.stillInline")}
+          </p>
+        ) : null}
         <div className="flex gap-1.5">
           <Button
             className="cursor-pointer"

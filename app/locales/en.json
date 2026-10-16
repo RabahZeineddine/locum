@@ -1982,7 +1982,8 @@
       "creating": "creating...",
       "cancel": "Cancel",
       "tracker": "Where to open the task",
-      "trackerNone": "No tracker registered. You can pick one later, on the task node."
+      "trackerNone": "No tracker registered. You can pick one later, on the task node.",
+      "noStorage": "Could not keep the template on this computer to open the editor."
     },
     "templates": {
       "teamsPrReview": {
@@ -2047,8 +2048,38 @@
         "found": "There is an unsaved draft of this automation, from {{quando}}.",
         "continue": "Continue draft",
         "discard": "Discard",
-        "autosaved": "Draft kept on this computer"
-      }
+        "autosaved": "Draft kept on this computer",
+        "continueAnyway": "Continue anyway",
+        "baseChanged": "The automation changed since the draft (v{{de}} → v{{para}}).",
+        "diff": "See differences",
+        "hideDiff": "Hide differences",
+        "diffNone": "No difference in steps or triggers.",
+        "diffSteps": "Steps",
+        "diffTriggers": "Triggers",
+        "kind": {
+          "novo": "new",
+          "removido": "removed",
+          "alterado": "changed"
+        },
+        "reserved": "You started from the saved version. The draft from {{quando}} was kept aside.",
+        "continueReserved": "Continue the kept draft",
+        "discardReserved": "Discard the kept draft",
+        "swap": {
+          "title": "Replace your current edits?",
+          "body": "The kept draft takes the place of what you just edited, and the current edits will be discarded.",
+          "confirm": "Replace"
+        }
+      },
+      "conflict": {
+        "title": "The automation changed",
+        "body": "While you were editing, it was saved again (v{{de}} → v{{para}}).",
+        "reload": "Reload",
+        "reloadHint": "Brings the saved version and keeps your edits as a kept draft.",
+        "overwrite": "Save over it",
+        "confirmOverwrite": "Confirm: replace v{{para}}",
+        "cancel": "Cancel"
+      },
+      "notCreated": "Not saved yet: the first Save creates the automation."
     },
     "palette": {
       "title": "Components",
@@ -2291,6 +2322,7 @@
           "inline": "Inline instruction"
         },
         "pick": "Pick an agent",
+        "stillInline": "The step keeps its inline instruction until you pick an agent.",
         "create": "Create agent",
         "summary": {
           "model": "Model",
@@ -2587,7 +2619,14 @@
         "usage": "Where does it work today? The automations that call it, and removal, which only works when unused."
       },
       "shortcuts": "Shortcuts: toolsets and extra tools",
-      "shortcutsHint": "The older way of giving tools. It still works and adds to the connections. Read only: anything that writes outside is an action node in the automation."
+      "shortcutsHint": "The older way of giving tools. It still works and adds to the connections. Read only: anything that writes outside is an action node in the automation.",
+      "exit": {
+        "title": "Leave with unsaved changes?",
+        "body": "This agent has changes that were not saved yet.",
+        "save": "Save and leave",
+        "discard": "Discard and leave",
+        "cancel": "Cancel"
+      }
     },
     "toolsets": {
       "lead": "A toolset groups tools from one or more apps. An agent that includes the toolset gets all of them.",

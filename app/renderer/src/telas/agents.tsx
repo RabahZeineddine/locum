@@ -4,6 +4,7 @@ import { MarcaLogo } from "@/components/marca-logo";
 import { SeloDeAcesso } from "@/components/selo-de-acesso";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { ListGroup, ListRow } from "@/components/ui/list-row";
@@ -13,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { call, invalidateReads, read, useRead, type ReadResult } from "@/lib/bridge";
 import { rotuloDoModelo } from "@/lib/rotulos";
+import { registrarGuarda } from "@/lib/saida-do-editor";
 import { cn } from "@/lib/utils";
 import { ChatDoAgent } from "../agent-chat";
 import { ArrowLeft, Bot, ChevronDown, ChevronRight, Copy, Loader2, Plug, Plus, RefreshCw, Search, Trash2, Workflow, Wrench, X } from "lucide-react";
@@ -61,7 +63,7 @@ const AGENT_EM_BRANCO: AgentProfile = {
  * trabalha e o que fazer com a saída. Os toolsets, atalhos de ferramentas que
  * vários agents compartilham, ficam numa aba à parte.
  */
-export function Agents({ detalhe, navegar }: TelaProps) {
+export function Agents({ detalhe, navegar, nivelDaGuarda }: TelaProps & { nivelDaGuarda?: number }) {
   const { t } = useTranslation();
   const aba = detalhe === ABA_TOOLSETS ? "toolsets" : "agents";
 
@@ -71,6 +73,7 @@ export function Agents({ detalhe, navegar }: TelaProps) {
         abrir={(id) => navegar("agents", id)}
         id={detalhe === NOVO ? null : detalhe}
         navegar={navegar}
+        nivelDaGuarda={nivelDaGuarda}
         voltar={() => navegar("agents")}
       />
     );
@@ -247,7 +250,9 @@ function EditorDoAgent({
   voltar,
   abrir,
   navegar,
+  nivelDaGuarda,
 }: {
+  nivelDaGuarda?: number;
   id: string | null;
   voltar: () => void;
   abrir: (id: string) => void;
@@ -274,7 +279,7 @@ function EditorDoAgent({
       </div>
     );
   }
-  return <FormularioDoAgent abrir={abrir} inicial={id === null ? null : (lido.data ?? null)} key={id ?? NOVO} navegar={navegar} voltar={voltar} />;
+  return <FormularioDoAgent abrir={abrir} inicial={id === null ? null : (lido.data ?? null)} key={id ?? NOVO} navegar={navegar} nivelDaGuarda={nivelDaGuarda} voltar={voltar} />;
 }
 
 function FormularioDoAgent({
@@ -282,7 +287,9 @@ function FormularioDoAgent({
   voltar,
   abrir,
   navegar,
+  nivelDaGuarda,
 }: {
+  nivelDaGuarda?: number;
   inicial: ReadResult<"library.profile">;
   voltar: () => void;
   abrir: (id: string) => void;
@@ -300,10 +307,23 @@ function FormularioDoAgent({
   const [secao, setSecao] = useState<Secao>("instructions");
   const novo = salvo === null;
   const mudou = salvo === null || JSON.stringify(salvo.spec) !== JSON.stringify(spec);
+  // Com a guarda ligada (o formulário aberto num modal), sair com edição não salva pergunta antes.
+  const [saida, setSaida] = useState<{ prosseguir: () => void } | null>(null);
+  const sujo = salvo === null ? JSON.stringify(spec) !== JSON.stringify(AGENT_EM_BRANCO) : mudou;
+  const sujoAgora = useRef(sujo);
+  sujoAgora.current = sujo;
+  useEffect(() => {
+    if (nivelDaGuarda === undefined) return undefined;
+    return registrarGuarda((prosseguir) => {
+      if (!sujoAgora.current) return false;
+      setSaida({ prosseguir });
+      return true;
+    }, nivelDaGuarda);
+  }, [nivelDaGuarda]);
   const usadoPor = (usos.data ?? []).find((u) => u.id === spec.id)?.usedBy ?? [];
   const trocar = <K extends keyof AgentProfile>(campo: K, valor: AgentProfile[K]): void => setSpec((s) => ({ ...s, [campo]: valor }));
 
-  const salvar = async (): Promise<void> => {
+  const salvar = async (): Promise<boolean> => {
     setOcupado(true);
     setAviso(null);
     try {
@@ -318,9 +338,13 @@ function FormularioDoAgent({
       setSpec(gravado.spec);
       setNota("");
       setAviso({ tipo: "ok", texto: t("library.editor.saved", { version: gravado.version }) });
+      // O que acabou de ser gravado não é mais edição pendente, mesmo antes de a tela repintar.
+      sujoAgora.current = false;
       if (novo) abrir(gravado.profileId);
+      return true;
     } catch (e) {
       setAviso({ tipo: "erro", texto: e instanceof Error ? e.message : String(e) });
+      return false;
     } finally {
       setOcupado(false);
     }
@@ -622,6 +646,50 @@ function FormularioDoAgent({
           />
         </div>
       )}
+
+      <Dialog onOpenChange={(aberto) => !aberto && setSaida(null)} open={saida !== null}>
+        <DialogContent data-locum-agent-saida="">
+          <DialogHeader>
+            <DialogTitle>{t("library.editor.exit.title")}</DialogTitle>
+            <DialogDescription>{t("library.editor.exit.body")}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button className="cursor-pointer" data-locum-agent-saida-cancelar="" onClick={() => setSaida(null)} size="sm" variant="ghost">
+              {t("library.editor.exit.cancel")}
+            </Button>
+            <Button
+              className="cursor-pointer"
+              data-locum-agent-saida-descartar=""
+              onClick={() => {
+                const seguir = saida?.prosseguir;
+                sujoAgora.current = false;
+                setSaida(null);
+                seguir?.();
+              }}
+              size="sm"
+              variant="outline"
+            >
+              {t("library.editor.exit.discard")}
+            </Button>
+            <Button
+              className="cursor-pointer"
+              data-locum-agent-saida-salvar=""
+              disabled={ocupado || spec.name.trim() === ""}
+              onClick={() => {
+                const seguir = saida?.prosseguir;
+                void salvar().then((ok) => {
+                  if (!ok) return;
+                  setSaida(null);
+                  seguir?.();
+                });
+              }}
+              size="sm"
+            >
+              {t("library.editor.exit.save")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Tabs>
   );
 }

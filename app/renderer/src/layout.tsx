@@ -6,11 +6,12 @@ import { useRead } from "@/lib/bridge";
 import { useRota } from "@/lib/router";
 import { cn } from "@/lib/utils";
 import { assinarEventosDoTerminal } from "@/lib/terminal";
+import { assinarNavegacaoDoMenu } from "@/lib/menu";
 import { Assistente } from "./assistente";
 import { AtualizacaoNoRodape } from "./atualizacao";
 import { CurrentInitiativeProvider } from "./current-initiative";
 import { EVENTO_ABRIR_PALETA, Paleta } from "./paleta";
-import { ROTA_IDS, ROTA_PADRAO, ROTAS, ROTAS_ANTIGAS, ROTAS_DA_BARRA, type TelaProps } from "./rotas";
+import { ROTA_IDS, ROTA_PADRAO, ROTAS, ROTAS_ANTIGAS, ROTAS_DA_BARRA, type RotaId, type TelaProps } from "./rotas";
 
 /**
  * Estado da ponte, no rodape da barra lateral.
@@ -229,6 +230,7 @@ export function Layout() {
       <Paleta navegar={navegar} />
       <Assistente navegar={navegar} />
       <SeguirTerminal navegar={navegar} />
+      <SeguirOMenu navegar={navegar} />
 
       {/*
         Marcador do smoke. Ele confere que este elemento esta com display none,
@@ -257,6 +259,21 @@ function SeguirTerminal({ navegar }: Pick<TelaProps, "navegar">) {
         if (evento.tipo !== "aberto") return;
         if (evento.iniciativa === null) navegar("sessions");
         else navegar("initiatives", `${evento.iniciativa}/terminal`);
+      }),
+    [navegar],
+  );
+  return null;
+}
+
+/**
+ * O menu da aplicação (⌘, e ⌘1..N) pede a rota por aqui, e não escrevendo o
+ * hash: assim passa pela guarda de saída do editor, como o clique na barra.
+ */
+function SeguirOMenu({ navegar }: Pick<TelaProps, "navegar">) {
+  useEffect(
+    () =>
+      assinarNavegacaoDoMenu((rota) => {
+        if ((ROTA_IDS as readonly string[]).includes(rota)) navegar(rota as RotaId);
       }),
     [navegar],
   );

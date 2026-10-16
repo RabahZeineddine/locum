@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { listaComCache, lerDoCache, TTL_DA_LISTA_MS } from "../renderer/lib/cache-de-lista.js";
+import { chaveDaListaDoTeams, listaComCache, lerDoCache, TTL_DA_LISTA_MS } from "../renderer/lib/cache-de-lista.js";
 import type { ArmazemLocal } from "../renderer/lib/rascunho-automacao.js";
 
 /** A lista de canais e chats do Teams é carregada uma vez e guardada por alguns minutos. */
@@ -59,4 +59,20 @@ test("as setas andam pela lista e dão a volta", async () => {
   assert.equal(moverDestaque(2, 3, 1), 0);
   assert.equal(moverDestaque(0, 3, -1), 2);
   assert.equal(moverDestaque(0, 0, 1), 0);
+});
+
+test("a chave da lista leva a conexão e a conta, e trocar de conta não reaproveita a lista da outra", () => {
+  const a = chaveDaListaDoTeams("canais", { via: "ms365", account: "ana@x.com" });
+  assert.notEqual(a, chaveDaListaDoTeams("canais", { via: "ms365", account: "bia@x.com" }));
+  assert.notEqual(a, chaveDaListaDoTeams("canais", { via: "native", account: "ana@x.com" }));
+  assert.notEqual(chaveDaListaDoTeams("canais", { via: "ms365" }), chaveDaListaDoTeams("chats", { via: "ms365" }, { id: "g1", agentId: "a", chave: "gatilho-1" }));
+});
+
+test("chats de gatilho sem id não compartilham a chave entre automações nem entre gatilhos", () => {
+  const conta = { via: "ms365", account: "ana@x.com" };
+  const um = chaveDaListaDoTeams("chats", conta, { agentId: "auto-a", chave: "gatilho-1" });
+  assert.notEqual(um, chaveDaListaDoTeams("chats", conta, { agentId: "auto-b", chave: "gatilho-1" }));
+  assert.notEqual(um, chaveDaListaDoTeams("chats", conta, { agentId: "auto-a", chave: "gatilho-2" }));
+  assert.notEqual(um, chaveDaListaDoTeams("chats", conta, { id: "g1", agentId: "auto-a", chave: "gatilho-1" }));
+  assert.equal(chaveDaListaDoTeams("chats", conta, { id: "g1", agentId: "auto-a", chave: "gatilho-1" }), chaveDaListaDoTeams("chats", conta, { id: "g1", agentId: "auto-b", chave: "gatilho-9" }));
 });

@@ -1,4 +1,5 @@
 import { app, dialog, Menu, shell, type BrowserWindow, type MenuItemConstructorOptions } from "electron";
+import { MENU_NAVEGAR_CHANNEL } from "./bridge-contract.js";
 import { t } from "./i18n.js";
 import { VERSAO } from "./versao.js";
 
@@ -56,12 +57,22 @@ export function appMenuLabels(): string[] {
   return Menu.getApplicationMenu()?.items.map((i) => i.label) ?? [];
 }
 
+/**
+ * Pede à janela que vá ao destino. Não escreve o hash: a janela navega pelo
+ * mesmo caminho dos cliques e, com isso, pela guarda de saída do editor.
+ */
+export async function pedirNavegacao(janela: BrowserWindow, id: string): Promise<void> {
+  // Janela que ainda carrega não tem editor aberto nem ouvinte: escrever o hash não escapa de guarda nenhuma.
+  if (janela.webContents.isLoading()) await janela.webContents.executeJavaScript(`location.hash = ${JSON.stringify(`#/${id}`)}`);
+  else janela.webContents.send(MENU_NAVEGAR_CHANNEL, id);
+}
+
 async function irPara(id: string): Promise<void> {
   if (opcoes === null) return;
   const janela = await opcoes.janela();
   janela.show();
   janela.focus();
-  await janela.webContents.executeJavaScript(`location.hash = ${JSON.stringify(`#/${id}`)}`);
+  await pedirNavegacao(janela, id);
 }
 
 /**
