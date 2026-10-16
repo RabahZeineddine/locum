@@ -1,7 +1,7 @@
 import { TriggerConfig, type AgentSpec, type TriggerConfigInput } from "../config/types.js";
 import { agentService, ID_DE_AGENT, isReserved, type AgentService, type AgentVersion } from "./agent-service.js";
 import { executionService, type ExecutionService } from "./execution-service.js";
-import { esperaChats, MOTIVO_CHATS, triggerService, type TriggerEntry, type TriggerService } from "./trigger-service.js";
+import { esperaChats, MOTIVO_CHATS, recusaDaGravacao, triggerService, type TriggerEntry, type TriggerService } from "./trigger-service.js";
 
 /** Um gatilho como o canvas manda: com `id` quando já existia. */
 export interface AutomationTriggerInput {
@@ -63,9 +63,21 @@ export class AutomationService {
     for (const gatilho of input.triggers) TriggerConfig.parse(gatilho.config);
     const atuais = await this.triggers.list(agentId);
     const triggers = herdarPendenciaDeChats(atuais, input.triggers);
-    // Também antes de gravar: ligar um gatilho que espera chats recusa a gravação inteira.
+    // Também antes de gravar: tudo o que a gravação dos gatilhos vai recusar
+    // (ligar um que espera chats, zerar a pendência sem o aviso) recusa a
+    // gravação inteira, e não deixa o spec novo para trás.
     for (const gatilho of triggers) {
-      if (gatilho.enabled === true && esperaChats(TriggerConfig.parse(gatilho.config))) throw new Error(MOTIVO_CHATS);
+      const parsed = TriggerConfig.parse(gatilho.config);
+      const existente =
+        gatilho.id === undefined
+          ? atuais.find((a) => JSON.stringify(a.config) === JSON.stringify(parsed))
+          : atuais.find((a) => a.id === gatilho.id);
+      if (gatilho.id !== undefined && existente === undefined) throw new Error(`gatilho ${gatilho.id} nao cadastrado`);
+      const recusa = recusaDaGravacao(existente, parsed, {
+        ...(gatilho.enabled === undefined ? {} : { enabled: gatilho.enabled }),
+        ...(gatilho.valerParaTodosOsChats === true ? { valerParaTodosOsChats: true } : {}),
+      });
+      if (recusa !== null) throw new Error(recusa);
     }
 
     let version: AgentVersion;

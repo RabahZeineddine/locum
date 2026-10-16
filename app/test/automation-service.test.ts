@@ -105,3 +105,22 @@ test("identificador sugerido sai do nome, sem acento, e não colide", async () =
   assert.equal(await automations.suggestId("Triagem"), "triagem-2");
   assert.equal(await automations.suggestId("Legacy"), "legacy-2");
 });
+
+test("zerar chatsPendentes sem valerParaTodosOsChats recusa antes de gravar o spec", async () => {
+  const { automations } = montar();
+  const teams = { kind: "teams-inbox", chats: [], chatsPendentes: 2, prLinks: true } as never;
+  const criada = await automations.save({ spec, triggers: [{ config: teams }], note: "", create: true });
+  const gatilho = criada.triggers[0]!;
+
+  await assert.rejects(
+    automations.save({
+      spec: { ...spec, name: "Outro nome" },
+      triggers: [{ id: gatilho.id, config: { ...(gatilho.config as object), chatsPendentes: 0 } as never }],
+      note: "troca",
+    }),
+    /todos os chats|escolha os chats/,
+  );
+  const atual = await automations.get(spec.id);
+  assert.equal(atual?.version.version, 1);
+  assert.equal((atual?.triggers[0]?.config as { chatsPendentes: number }).chatsPendentes, 2);
+});

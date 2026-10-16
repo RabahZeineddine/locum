@@ -67,6 +67,13 @@ function escapar(texto: string): string {
 
 const PADROES: readonly [RegExp, string][] = [...PADROES_DE_SEGREDO, ...PADROES_PESSOAIS];
 
+/** Webhook de entrada e segredo na query: o que numa URL é credencial, sem mexer no resto do texto. */
+export function ocultarCredencialDeUrl(url: string, marcador: string): string {
+  return url
+    .replace(PADROES_DE_SEGREDO[1]![0], marcador)
+    .replace(PADROES_DE_SEGREDO[3]![0], `$1${marcador}`);
+}
+
 /**
  * Só as credenciais, sem tocar em id, e-mail nem caminho. Para o que sai de uma
  * leitura em que o id é o que a pessoa procura, como a fila de aprovação.

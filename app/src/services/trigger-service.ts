@@ -34,6 +34,31 @@ export interface TriggerEntry {
  * Quem consome isto e o agendador em `triggers/scheduler.ts`, que so bate
  * gatilho habilitado.
  */
+/**
+ * O que a gravação de um gatilho recusa por regra de chats, dado o gatilho que
+ * já existe (se existe): ligar um que espera a escolha de chats, ou zerar a
+ * pendência sem escolher chats, o que o faria valer para todos. Quem grava
+ * vários de uma vez confere tudo por aqui antes de tocar em qualquer um.
+ */
+export function recusaDaGravacao(
+  existing: { config: TriggerConfig; enabled: boolean } | undefined,
+  parsed: TriggerConfig,
+  options: { enabled?: boolean; valerParaTodosOsChats?: boolean },
+): string | null {
+  if (esperaChats(parsed) && (options.enabled ?? existing?.enabled ?? false)) return MOTIVO_CHATS;
+  if (
+    existing !== undefined &&
+    esperaChats(existing.config) &&
+    parsed.kind === "teams-inbox" &&
+    parsed.chatsPendentes === 0 &&
+    parsed.chats.length === 0 &&
+    options.valerParaTodosOsChats !== true
+  ) {
+    return MOTIVO_VALER_PARA_TODOS;
+  }
+  return null;
+}
+
 export class TriggerService {
   constructor(private readonly db: Db = defaultDb) {}
 
@@ -87,18 +112,8 @@ export class TriggerService {
     const existing = options.id
       ? await this.requireRow(options.id, agentId)
       : await this.sameConfigRow(agentId, parsed);
-    if (esperaChats(parsed) && (options.enabled ?? existing?.enabled ?? false)) throw new Error(MOTIVO_CHATS);
-    // Zerar a pendência sem escolher chats faz o gatilho valer para todos: só com o aviso explícito.
-    if (
-      existing !== undefined &&
-      esperaChats(toEntry(existing).config) &&
-      parsed.kind === "teams-inbox" &&
-      parsed.chatsPendentes === 0 &&
-      parsed.chats.length === 0 &&
-      options.valerParaTodosOsChats !== true
-    ) {
-      throw new Error(MOTIVO_VALER_PARA_TODOS);
-    }
+    const recusa = recusaDaGravacao(existing === undefined ? undefined : toEntry(existing), parsed, options);
+    if (recusa !== null) throw new Error(recusa);
 
     if (existing) {
       const [updated] = await this.db
