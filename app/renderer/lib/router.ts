@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { sairDaTela } from "./saida-do-editor";
 
 /**
  * Roteamento da janela, por hash.
@@ -101,7 +102,10 @@ export function useRota<Id extends string>(
 
   const navegar = useCallback((id: Id, detalhe?: string) => {
     const cauda = detalhe === undefined ? "" : `/${encodeURIComponent(detalhe)}`;
-    globalThis.location.hash = `#/${id}${cauda}`;
+    // A tela aberta pode segurar a saída para perguntar (editor com mudança não salva).
+    sairDaTela(() => {
+      globalThis.location.hash = `#/${id}${cauda}`;
+    });
   }, []);
 
   return { ...local, navegar };

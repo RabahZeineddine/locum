@@ -2034,7 +2034,21 @@
       "asList": "View as list",
       "problems_one": "{{count}} thing to check",
       "problems_other": "{{count}} things to check",
-      "blocked": "Fix the marked points to save."
+      "blocked": "Fix the marked points to save.",
+      "exit": {
+        "title": "Leave with unsaved changes?",
+        "body": "This automation has changes that have not been saved yet.",
+        "save": "Save and leave",
+        "discard": "Discard and leave",
+        "cancel": "Cancel",
+        "blocked": "Some points need fixing, so it cannot be saved now."
+      },
+      "draft": {
+        "found": "There is an unsaved draft of this automation, from {{quando}}.",
+        "continue": "Continue draft",
+        "discard": "Discard",
+        "autosaved": "Draft kept on this computer"
+      }
     },
     "palette": {
       "title": "Components",
@@ -2440,6 +2454,10 @@
       "link": "Legacy (read only)",
       "lead": "Automations from the model before the new concept, for reference only. To create one, open Automations; agents live in Agents.",
       "empty": "No automation from the old model."
+    },
+    "agentModal": {
+      "title": "Library agent",
+      "close": "Close"
     }
   },
   "library": {

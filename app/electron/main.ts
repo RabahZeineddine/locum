@@ -1119,6 +1119,7 @@ async function checkRenderer(): Promise<string> {
     const agents = await checkAgents(window);
     await checkAgentsDoConceito(window);
     await checkPacote(window);
+    await checkEditorSaida(window);
     const configuracao = await checkConfig(window);
     const revisao = await checkReviewVerdict(window);
     const sessoes = await checkClaudeSessions(window);
@@ -1903,6 +1904,71 @@ async function checkAgentsDoConceito(window: BrowserWindow): Promise<void> {
   } finally {
     for (const criado of criados) await libraryService.removeProfile(criado).catch(() => undefined);
   }
+}
+
+/**
+ * O editor de automação não perde trabalho: sair com mudança não salva pede
+ * confirmação (pela barra lateral e pelo botão de voltar), cada mudança vai
+ * para um rascunho local, e reabrir oferece continuar ou descartar.
+ */
+async function checkEditorSaida(window: BrowserWindow): Promise<void> {
+  const { agentService } = await import("../src/services/agent-service.js");
+  const agentId = (await agentService.list())[0]?.id;
+  if (agentId === undefined) throw new Error("sem automacao de exemplo para o exame do editor");
+  const js = (codigo: string): Promise<unknown> => window.webContents.executeJavaScript(codigo);
+  const clicar = (seletor: string): Promise<boolean> =>
+    js(`(() => { const e = document.querySelector(${JSON.stringify(seletor)}); e?.click(); return e !== null; })()`) as Promise<boolean>;
+  const existe = (seletor: string): Promise<boolean> => js(`document.querySelector(${JSON.stringify(seletor)}) !== null`) as Promise<boolean>;
+  const rota = (): Promise<string> => js(`(() => { const p = document.querySelector("[data-locum-probe=rota]"); return p.dataset.ativo + "|" + p.dataset.detalhe; })()`) as Promise<string>;
+  const rascunhoGuardado = (): Promise<boolean> =>
+    js(`localStorage.getItem(${JSON.stringify(`locum.rascunho-automacao.${agentId}`)}) !== null`) as Promise<boolean>;
+  const nomeNoCabecalho = (): Promise<string> => js(`document.querySelector("[data-locum-probe=automacao-editor] header input").value`) as Promise<string>;
+  const esperar = async (nome: string, ok: () => Promise<boolean>): Promise<void> => {
+    await esperarDoServico(nome, async () => ((await ok()) ? true : undefined), 5_000);
+  };
+  const novoNome = "Nome editado pelo exame";
+
+  await js(`(localStorage.removeItem(${JSON.stringify(`locum.rascunho-automacao.${agentId}`)}), null)`);
+  await irPara(window, "automations", agentId);
+  await esperar("o editor", () => existe("[data-locum-probe=automacao-editor]"));
+  await js(`(() => {
+    const campo = document.querySelector("[data-locum-probe=automacao-editor] header input");
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(campo, ${JSON.stringify(novoNome)});
+    campo.dispatchEvent(new Event("input", { bubbles: true }));
+    return null;
+  })()`);
+  await esperar("o rascunho local", rascunhoGuardado);
+
+  // Pela barra lateral e pelo voltar do cabecalho: a janela fica onde estava e pergunta.
+  for (const [saida, destino] of [
+    ["[data-locum-rota=agents]", "agents"],
+    ["[data-locum-probe=automacao-editor] header button", "automations"],
+  ] as const) {
+    if (!(await clicar(saida))) throw new Error(`o editor nao ofereceu a saida ${saida}`);
+    await esperar("a confirmacao de sair", () => existe("[data-locum-saida]"));
+    if ((await rota()) !== `automations|${agentId}`) throw new Error(`a janela saiu para ${await rota()} antes de a pessoa responder (${destino})`);
+    await clicar("[data-locum-saida-cancelar]");
+    await esperar("a confirmacao fechar", async () => !(await existe("[data-locum-saida]")));
+    if (!(await rascunhoGuardado())) throw new Error("cancelar a saida apagou o rascunho");
+  }
+
+  // Como depois de uma queda: sai sem passar pela pergunta e reabre.
+  await irPara(window, "agents");
+  await irPara(window, "automations", agentId);
+  await esperar("a oferta do rascunho", () => existe("[data-locum-rascunho]"));
+  await clicar("[data-locum-rascunho-continuar]");
+  await esperar("o nome do rascunho de volta", async () => (await nomeNoCabecalho()) === novoNome);
+
+  // Descartar e sair leva ao destino e apaga o rascunho.
+  await clicar("[data-locum-rota=agents]");
+  await esperar("a confirmacao de sair de novo", () => existe("[data-locum-saida]"));
+  await clicar("[data-locum-saida-descartar]");
+  await esperar("a saida depois de descartar", async () => (await rota()).startsWith("agents|"));
+  if (await rascunhoGuardado()) throw new Error("descartar nao apagou o rascunho");
+  await irPara(window, "automations", agentId);
+  await esperar("o editor de novo", () => existe("[data-locum-probe=automacao-editor]"));
+  if (await existe("[data-locum-rascunho]")) throw new Error("o editor ofereceu um rascunho que foi descartado");
+  if ((await nomeNoCabecalho()) === novoNome) throw new Error("o nome descartado voltou");
 }
 
 /**
@@ -6939,6 +7005,111 @@ async function capturarSkills(janela: BrowserWindow): Promise<void> {
 }
 
 /**
+ * O editor de automação do modelo "Revisar PR do Teams", nos momentos em que
+ * as queixas apareceram: o gatilho com o modo de link de PR, o painel do passo
+ * de IA com agent da biblioteca, sair com mudança não salva e reabrir depois.
+ * `prefixo` separa as fotos de antes e de depois de uma mudança.
+ */
+async function capturarEditor(janela: BrowserWindow, destino: string, prefixo: string): Promise<void> {
+  const { libraryService } = await import("../src/services/library-service.js");
+  const pausa = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+  const foto = async (nome: string): Promise<void> => {
+    await pausa(500);
+    writeFileSync(join(destino, `${prefixo}${nome}.png`), (await janela.webContents.capturePage()).toPNG());
+  };
+  const js = (codigo: string): Promise<unknown> => janela.webContents.executeJavaScript(codigo);
+  const clicar = (seletor: string): Promise<boolean> =>
+    js(`(() => { const e = document.querySelector(${JSON.stringify(seletor)}); e?.click(); return e !== null; })()`) as Promise<boolean>;
+  const clicarTexto = (padrao: string): Promise<boolean> =>
+    js(`(() => { const b = [...document.querySelectorAll("button")].find((x) => new RegExp(${JSON.stringify(padrao)}, "i").test(x.textContent ?? "")); b?.click(); return b !== undefined; })()`) as Promise<boolean>;
+  const digitar = (seletor: string, texto: string): Promise<unknown> =>
+    js(`(() => {
+      const campo = document.querySelector(${JSON.stringify(seletor)});
+      if (campo === null) return null;
+      Object.getOwnPropertyDescriptor(campo instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, "value").set.call(campo, ${JSON.stringify(texto)});
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+      return null;
+    })()`);
+
+  const revisor = "captura-revisor-de-pr";
+  await libraryService.saveProfile({
+    spec: {
+      id: revisor,
+      name: "Revisor de PR",
+      description: "Lê o diff e aponta defeito real.",
+      model: "claude-code/claude-sonnet-5",
+      instructions: "Revise o pull request em busca de defeito real, não de estilo.\nCite o arquivo e a linha.\nSe não achou nada, diga isso em uma frase.\nNunca aprove sem ter lido o diff inteiro.",
+      connections: [{ connectionId: "github", tools: {} }],
+      skills: [],
+      budget: {},
+    },
+    create: true,
+  });
+  try {
+    await irPara(janela, "automations");
+    await pausa(1200);
+    await clicar("[data-locum-automacao-nova]");
+    await pausa(600);
+    await clicar("[data-locum-modelo=teamsPrReview]");
+    await pausa(300);
+    await clicar("[data-locum-automacao-criar]");
+    await pausa(1800);
+    const agentId = (await js(`document.querySelector("[data-locum-probe=rota]")?.dataset.detalhe ?? ""`)) as string;
+    if (agentId === "") throw new Error("a captura do editor não criou a automação");
+
+    // Gatilho: o nome do nó e o painel.
+    await clicar("[data-locum-no-automacao^=gatilho-]");
+    await pausa(600);
+    await foto("editor-1-gatilho");
+    await js(`(document.querySelector("[data-locum-painel]")?.scrollTo(0, 99999), null)`);
+    await foto("editor-3-gatilho-rolado");
+
+    // Passo de IA com o agent da biblioteca.
+    await clicar("[data-locum-no-automacao=revisar]");
+    await pausa(600);
+    await foto("editor-5-passo-de-ia");
+
+    // Mudança não salva e saída pela barra lateral.
+    await digitar("[data-locum-probe=automacao-editor] header input", "Revisar PR do Teams (editado)");
+    await pausa(600);
+    await clicar("[data-locum-rota=agents]");
+    await pausa(1000);
+    await foto("editor-2-sair-com-mudanca");
+    await clicar("[data-locum-saida-cancelar]");
+    await pausa(300);
+
+    // Reabrir, como depois de uma queda da janela.
+    await irPara(janela, "agents");
+    await pausa(600);
+    await irPara(janela, "automations", agentId);
+    await pausa(1500);
+    await foto("editor-2c-reaberto");
+    await clicar("[data-locum-rascunho-continuar]");
+    await pausa(500);
+    await foto("editor-2d-rascunho-retomado");
+
+    // O botão do passo de IA que levava a Agents.
+    await clicar("[data-locum-no-automacao=revisar]");
+    await pausa(500);
+    if (!(await clicar("[data-locum-passo-abrir-agent]"))) await clicarTexto("Abrir na biblioteca");
+    await pausa(1500);
+    await foto("editor-6-abrir-agent");
+    await clicar("[data-locum-agent-modal-fechar]");
+    await pausa(500);
+
+    // As listas de chats e de canais do Teams.
+    await irPara(janela, "automations", agentId);
+    await pausa(1500);
+    await clicar("[data-locum-no-automacao^=gatilho-]");
+    await pausa(600);
+    await foto("editor-4-lista-de-chats");
+  } finally {
+    await libraryService.removeProfile(revisor).catch(() => undefined);
+  }
+  console.log(`capturas do editor em ${destino}`);
+}
+
+/**
  * Fotografa cada destino, para que a interface possa ser olhada e não só
  * descrita por linha de log.
  *
@@ -6950,6 +7121,12 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
   const destino = flagValue("--capturas-em") ?? join(process.cwd(), "capturas");
   mkdirSync(destino, { recursive: true });
   janela.setSize(1280, 860);
+
+  // `--capturas-so editor` fotografa só o editor de automação, para comparar antes e depois de uma mudança.
+  if (flagValue("--capturas-so") === "editor") {
+    await capturarEditor(janela, destino, flagValue("--capturas-prefixo") ?? "");
+    return;
+  }
 
   // O detalhe de execução e o assistente também entram: eles são metade do
   // aplicativo e não apareciam em captura nenhuma, que é como a lista de

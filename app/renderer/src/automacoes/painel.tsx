@@ -56,11 +56,14 @@ export function PainelDoNo({
   remover,
   fechar,
   navegar,
+  abrirAgent,
   relerBiblioteca,
 }: {
   chave: string;
   agents: readonly AgentDaBiblioteca[];
   navegar: (id: RotaId, detalhe?: string) => void;
+  /** Abre o agent da biblioteca num modal, sem sair do editor. */
+  abrirAgent: (detalhe: string) => void;
   relerBiblioteca: () => Promise<void>;
   rascunho: Rascunho;
   setRascunho: (f: (r: Rascunho) => Rascunho) => void;
@@ -138,7 +141,7 @@ export function PainelDoNo({
           />
         </>
       ) : passo!.type === "model" && passo!.profile !== undefined ? (
-        <ConfigDoAgent agents={agents} chave={chave} navegar={navegar} passo={passo as PassoDeIA} rascunho={rascunho} setRascunho={setRascunho} />
+        <ConfigDoAgent abrirAgent={abrirAgent} agents={agents} chave={chave} passo={passo as PassoDeIA} rascunho={rascunho} setRascunho={setRascunho} />
       ) : passo!.type === "model" ? (
         <ConfigDaIA
           chave={chave}
@@ -720,14 +723,14 @@ function ConfigDoAgent({
   rascunho,
   setRascunho,
   agents,
-  navegar,
+  abrirAgent,
 }: {
   chave: string;
   passo: PassoDeIA;
   rascunho: Rascunho;
   setRascunho: (f: (r: Rascunho) => Rascunho) => void;
   agents: readonly AgentDaBiblioteca[];
-  navegar: (id: RotaId, detalhe?: string) => void;
+  abrirAgent: (detalhe: string) => void;
 }) {
   const { t } = useTranslation();
   const trocar = (novo: PassoDeIA): void => setRascunho((r) => ({ ...r, spec: trocarPasso(r.spec, passo.key, novo) }));
@@ -763,7 +766,8 @@ function ConfigDoAgent({
         {atual === undefined ? null : (
           <button
             className="text-primary w-fit cursor-pointer text-xs hover:underline"
-            onClick={() => navegar("agents", atual.id)}
+            data-locum-passo-abrir-agent=""
+            onClick={() => abrirAgent(atual.id)}
             type="button"
           >
             {t("automations.steps.agent.open")}

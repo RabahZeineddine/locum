@@ -2,6 +2,7 @@ import { Canvas } from "@/components/ai-elements/canvas";
 import { Controls } from "@/components/ai-elements/controls";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { StatusDot } from "@/components/ui/status-dot";
 import {
@@ -30,6 +31,8 @@ import {
 } from "@/lib/automacao";
 import { call, read, useRead, type ReadResult } from "@/lib/bridge";
 import { semPrefixoDoIpc } from "@/lib/erro-da-ponte";
+import { descartarRascunho, guardarRascunho, lerRascunho, temMudanca, type RascunhoGuardado } from "@/lib/rascunho-automacao";
+import { registrarGuarda } from "@/lib/saida-do-editor";
 import { cn } from "@/lib/utils";
 import {
   applyNodeChanges,
@@ -48,6 +51,7 @@ import { ArrowLeft, Download, List, Loader2, Play } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { RotaId } from "../rotas";
+import { ModalDeAgent } from "./modal-de-agent";
 import { PainelDoNo } from "./painel";
 import { appDoGatilho, appDoPasso, resumoDoGatilho, Selo, tituloDoGatilho, tituloDoPasso } from "./visual";
 
@@ -125,7 +129,7 @@ function EditorCarregado({
   voltar: () => void;
   navegar: (id: RotaId, detalhe?: string) => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const agentId = automacao.version.agentId;
   const [salvo, setSalvo] = useState<Rascunho>(() => paraRascunho(automacao));
   const [rascunho, setRascunho] = useState<Rascunho>(salvo);
@@ -134,6 +138,15 @@ function EditorCarregado({
   const [nota, setNota] = useState("");
   const [ocupado, setOcupado] = useState<"salvar" | "rodar" | "ligar" | null>(null);
   const [aviso, setAviso] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
+  // O rascunho de uma edição que não chegou ao Salvar: espera a decisão da pessoa antes de a edição passar a ser guardada por cima.
+  const [achado, setAchado] = useState<RascunhoGuardado | null>(() => {
+    const guardado = lerRascunho(globalThis.localStorage, automacao.version.agentId);
+    return guardado !== null && temMudanca(guardado.rascunho, paraRascunho(automacao)) ? guardado : null;
+  });
+  // A saída que espera a resposta de "salvar, descartar ou cancelar".
+  const [saida, setSaida] = useState<{ prosseguir: () => void } | null>(null);
+  // O agent da biblioteca aberto sobre o editor.
+  const [modalDeAgent, setModalDeAgent] = useState<{ detalhe: string; aoFechar?: (id: string | null, lista: ReadResult<"library.profiles">) => void } | null>(null);
 
   const conexoes = useRead("connections.list");
   const trackers = useRead("trackers.list");
@@ -161,7 +174,7 @@ function EditorCarregado({
 
   const viaDoTeams = (conexoes.data ?? []).find((c) => c.id === "teams")?.via;
 
-  const mudou = JSON.stringify(rascunho) !== JSON.stringify(salvo);
+  const mudou = temMudanca(rascunho, salvo);
   const lista = problemas(rascunho, ctx);
   const bloqueado = lista.some((p) => p.bloqueia);
   const ligada = salvo.gatilhos.some((g) => g.enabled);
@@ -176,10 +189,10 @@ function EditorCarregado({
     );
   };
 
-  const salvar = (): void => {
+  const salvar = (): Promise<boolean> => {
     setOcupado("salvar");
     setAviso(null);
-    call("automations.save", {
+    return call("automations.save", {
       spec: rascunho.spec,
       triggers: rascunho.gatilhos.map((g) => ({
         ...(g.id === undefined ? {} : { id: g.id }),
@@ -197,12 +210,43 @@ function EditorCarregado({
         setNota("");
         setOcupado(null);
         setAviso({ tipo: "ok", texto: t("automations.editor.saved", { version: gravada.version.version }) });
+        return true;
       },
       (e: unknown) => {
         setOcupado(null);
         setAviso({ tipo: "erro", texto: e instanceof Error ? e.message : String(e) });
+        return false;
       },
     );
+  };
+
+  // Cada mudança vai para o rascunho local. Enquanto há rascunho esperando decisão, não se grava por cima dele.
+  useEffect(() => {
+    if (achado === null) guardarRascunho(globalThis.localStorage, agentId, rascunho, salvo, versao);
+  }, [achado, agentId, rascunho, salvo, versao]);
+
+  // Sair com mudança não salva pede confirmação, por qualquer caminho de navegação.
+  const mudouAgora = useRef(mudou);
+  mudouAgora.current = mudou;
+  useEffect(
+    () =>
+      registrarGuarda((prosseguir) => {
+        if (!mudouAgora.current) return false;
+        setSaida({ prosseguir });
+        return true;
+      }),
+    [],
+  );
+
+  const abrirAgent = (detalhe: string, aoFechar?: (id: string | null, lista: ReadResult<"library.profiles">) => void): void =>
+    setModalDeAgent(aoFechar === undefined ? { detalhe } : { detalhe, aoFechar });
+  const fecharAgent = (id: string | null): void => {
+    const aoFechar = modalDeAgent?.aoFechar;
+    setModalDeAgent(null);
+    read("library.profiles").then((lista) => {
+      setBibliotecaRelida(lista);
+      if (id !== null) aoFechar?.(id, lista);
+    }, () => undefined);
   };
 
   const executar = (): void => {
@@ -399,6 +443,40 @@ function EditorCarregado({
         </div>
       ) : null}
 
+      {achado === null ? null : (
+        <div className="bg-card border-border flex flex-wrap items-center gap-2 rounded-md border px-3 py-1.5 text-xs" data-locum-rascunho="">
+          <StatusDot estado="aviso" />
+          <span className="mr-auto">
+            {t("automations.editor.draft.found", {
+              quando: new Date(achado.salvoEm).toLocaleString(i18n.language, { dateStyle: "short", timeStyle: "short" }),
+            })}
+          </span>
+          <Button
+            className="cursor-pointer"
+            data-locum-rascunho-descartar=""
+            onClick={() => {
+              descartarRascunho(globalThis.localStorage, agentId);
+              setAchado(null);
+            }}
+            size="sm"
+            variant="ghost"
+          >
+            {t("automations.editor.draft.discard")}
+          </Button>
+          <Button
+            className="cursor-pointer"
+            data-locum-rascunho-continuar=""
+            onClick={() => {
+              setRascunho(achado.rascunho);
+              setAchado(null);
+            }}
+            size="sm"
+          >
+            {t("automations.editor.draft.continue")}
+          </Button>
+        </div>
+      )}
+
       {aviso === null ? null : (
         <p className="text-muted-foreground flex items-center gap-1.5 text-xs">
           <StatusDot estado={aviso.tipo === "erro" ? "erro" : "ok"} />
@@ -443,7 +521,12 @@ function EditorCarregado({
           aoPasso={acrescentarPasso}
           appsLigados={appsLigados}
           viaDoTeams={viaDoTeams}
-          criarAgent={() => navegar("agents", "novo")}
+          criarAgent={() =>
+            abrirAgent("novo", (id, lista) => {
+              const criado = lista.find((a) => a.id === id);
+              if (criado !== undefined && !agentsDaBiblioteca.some((a) => a.id === id)) acrescentarAgent(criado);
+            })
+          }
         />
         <div className="border-border min-w-0 flex-1 overflow-hidden rounded-lg border" data-locum-probe="automacao-canvas">
           <CanvasDaAutomacao
@@ -458,6 +541,7 @@ function EditorCarregado({
         {selecionado === null ? null : (
           <PainelDoNo
             agents={agentsDaBiblioteca}
+            abrirAgent={abrirAgent}
             chave={selecionado}
             navegar={navegar}
             relerBiblioteca={() => read("library.profiles").then(setBibliotecaRelida, () => undefined)}
@@ -470,6 +554,53 @@ function EditorCarregado({
           />
         )}
       </div>
+
+      {modalDeAgent === null ? null : <ModalDeAgent detalhe={modalDeAgent.detalhe} fechar={fecharAgent} navegar={navegar} />}
+
+      <Dialog onOpenChange={(aberto) => !aberto && setSaida(null)} open={saida !== null}>
+        <DialogContent data-locum-saida="">
+          <DialogHeader>
+            <DialogTitle>{t("automations.editor.exit.title")}</DialogTitle>
+            <DialogDescription>{t("automations.editor.exit.body")}</DialogDescription>
+          </DialogHeader>
+          {bloqueado ? <p className="text-muted-foreground text-xs">{t("automations.editor.exit.blocked")}</p> : null}
+          <DialogFooter>
+            <Button className="cursor-pointer" data-locum-saida-cancelar="" onClick={() => setSaida(null)} size="sm" variant="ghost">
+              {t("automations.editor.exit.cancel")}
+            </Button>
+            <Button
+              className="cursor-pointer"
+              data-locum-saida-descartar=""
+              onClick={() => {
+                const seguir = saida?.prosseguir;
+                descartarRascunho(globalThis.localStorage, agentId);
+                setSaida(null);
+                seguir?.();
+              }}
+              size="sm"
+              variant="outline"
+            >
+              {t("automations.editor.exit.discard")}
+            </Button>
+            <Button
+              className="cursor-pointer"
+              data-locum-saida-salvar=""
+              disabled={bloqueado || ocupado !== null}
+              onClick={() => {
+                const seguir = saida?.prosseguir;
+                void salvar().then((ok) => {
+                  if (!ok) return;
+                  setSaida(null);
+                  seguir?.();
+                });
+              }}
+              size="sm"
+            >
+              {t("automations.editor.exit.save")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

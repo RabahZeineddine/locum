@@ -2083,7 +2083,21 @@
       "problems_one": "{{count}} ponto para revisar",
       "problems_other": "{{count}} pontos para revisar",
       "problems_zero": "{{count}} pontos para revisar",
-      "blocked": "Corrija os pontos marcados para salvar."
+      "blocked": "Corrija os pontos marcados para salvar.",
+      "exit": {
+        "title": "Sair com alterações não salvas?",
+        "body": "Esta automação tem alterações que ainda não foram gravadas.",
+        "save": "Salvar e sair",
+        "discard": "Descartar e sair",
+        "cancel": "Cancelar",
+        "blocked": "Há pontos a corrigir: não dá para salvar agora."
+      },
+      "draft": {
+        "found": "Há um rascunho não salvo desta automação, de {{quando}}.",
+        "continue": "Continuar rascunho",
+        "discard": "Descartar",
+        "autosaved": "Rascunho guardado neste computador"
+      }
     },
     "palette": {
       "title": "Componentes",
@@ -2490,6 +2504,10 @@
       "link": "Legado (só leitura)",
       "lead": "As automações do modelo anterior ao conceito novo, só para consulta. Para criar, abra Automações; os agents moram em Agents.",
       "empty": "Nenhuma automação do modelo antigo."
+    },
+    "agentModal": {
+      "title": "Agent da biblioteca",
+      "close": "Fechar"
     }
   },
   "library": {
