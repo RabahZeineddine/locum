@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { contarGastoDoProvedor } from "../runtimes/limites-lidos.js";
 import { stepCountIs, streamText, type LanguageModel, type ModelMessage, type ToolSet } from "ai";
 import { SERVIDOR_CONTA, type ToolRef } from "../config/types.js";
-import { selectSkills, skillsPreamble, type LoadedSkill } from "../skills/loader.js";
+import { discoverSkills, selectSkills, skillsAusentes, skillsPreamble, type LoadedSkill } from "../skills/loader.js";
 import { BudgetExceeded, type assertWithinBudget, type recordSpend } from "../executor/budget.js";
 import type { McpRegistry } from "../mcp/registry.js";
 import { prefixoDoServidor } from "../runtimes/claude-account.js";
@@ -172,6 +172,12 @@ export class ConversasDeAgent {
     return this.deps.prazos?.travaMs ?? VALIDADE_DA_TRAVA_MS;
   }
 
+  private skillsAusentes(perfil: ResolvedProfile): string[] {
+    const skills = perfil.version.spec.skills;
+    if (skills.length === 0) return [];
+    return skillsAusentes(skills, this.deps.skills ?? discoverSkills());
+  }
+
   async estado(id: string): Promise<EstadoDaConversa> {
     const conversa = await this.obter(id);
     await this.expirarVencidos(conversa);
@@ -185,6 +191,7 @@ export class ConversasDeAgent {
       outroProcesso: outro !== null,
       resumido: conversa.resumido,
       semServidor: perfil.semServidor,
+      semSkill: this.skillsAusentes(perfil),
       contaIgnorada: perfil.tools.filter((t) => t.server === SERVIDOR_CONTA).length,
       seq: conversa.seq,
     };

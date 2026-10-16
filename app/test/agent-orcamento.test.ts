@@ -134,7 +134,7 @@ function depsDaConsulta(opcoes: { budget?: object; skills?: string[] }, pedidos:
       }),
     },
     fallbacks: async () => [],
-    skills: new Map([["revisao", { name: "revisao", description: "d", body: "Confira os testes.", origin: "/x", hash: "h" }]]),
+    skills: new Map([["revisao", { name: "revisao", description: "d", body: "Confira os testes.", origin: "/x", hash: "h", fonte: { tipo: "minhas" } }]]),
     build: async () => ({
       mcp: { toolsFor: async () => ({ tools: {}, release: () => {} }) },
       runtimes: new Map([
@@ -186,5 +186,14 @@ test("ask_agent recusa consultar agent cuja conexão não tem servidor ligado, e
     library: { resolveProfile: async () => ({ ...base, semServidor: [{ connectionId: "jira", motivo: "sem servidor ligado nesta máquina" }] }) },
   };
   await assert.rejects(consultarAgent("triador", "oi", comFalta), /o agent "triador" usa a conexão "jira", sem servidor ligado nesta máquina/);
+  assert.equal(pedidos.length, 0);
+});
+
+test("ask_agent recusa consultar agent cuja skill sumiu da máquina, e diz qual", async () => {
+  const pedidos: RuntimeRequest[] = [];
+  await assert.rejects(
+    consultarAgent("triador", "oi", depsDaConsulta({ skills: ["revisao", "sumiu"] }, pedidos, [])),
+    /o agent "triador" usa a skill "sumiu", que não existe mais nesta máquina/,
+  );
   assert.equal(pedidos.length, 0);
 });

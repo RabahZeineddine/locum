@@ -1,6 +1,9 @@
 import { before, test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { and, eq } from "drizzle-orm";
 import { ApprovalGate } from "../src/approval/gate.js";
 import { AgentSpec } from "../src/config/types.js";
@@ -13,6 +16,9 @@ import { AgentService } from "../src/services/agent-service.js";
 import { InitiativeService } from "../src/services/initiative-service.js";
 import { LibraryService, type CatalogoDeConexoes } from "../src/services/library-service.js";
 import { McpService } from "../src/services/mcp-service.js";
+import { SkillsService } from "../src/services/skills-service.js";
+import { claudeArgs } from "../src/runtimes/claude-code.js";
+import { discoverSkills } from "../src/skills/loader.js";
 
 /** Agent da biblioteca com conexões e orçamento, dentro do executor. */
 
@@ -153,4 +159,75 @@ test("o teto por run do agent segue contando depois que o run volta da fila", as
   assert.equal(pedidos.length, 1);
   const [run] = await db.select().from(schema.runs).where(eq(schema.runs.id, runId));
   assert.match(run!.error ?? "", /teto do agent "Retoma": para mudar, abra Agents > Retoma > Orçamento/);
+});
+
+/** Skills do agent: a do Locum chega como a da máquina, e a que sumiu derruba o passo com o nome. */
+
+function skillsEmDisco(): { catalogo: () => ReturnType<typeof discoverSkills>; servico: SkillsService; daMaquina: (nome: string) => void } {
+  const raiz = mkdtempSync(join(tmpdir(), "locum-exec-skills-"));
+  const home = join(raiz, "home");
+  const locumDir = join(raiz, "locum");
+  const servico = new SkillsService({ home, cwd: join(raiz, "projeto"), locumDir, agentes: async () => [] });
+  return {
+    catalogo: () => discoverSkills(home, join(raiz, "projeto"), locumDir),
+    servico,
+    daMaquina: (nome) => {
+      mkdirSync(join(home, ".claude", "skills", nome), { recursive: true });
+      writeFileSync(join(home, ".claude", "skills", nome, "SKILL.md"), `---\nname: ${nome}\ndescription: d\n---\nCorpo da ${nome}`);
+    },
+  };
+}
+
+test("a skill do Locum e a da máquina chegam inteiras no system, e o claude-code a recebe pelo mesmo texto", async () => {
+  const { catalogo, servico, daMaquina } = skillsEmDisco();
+  await servico.criar({ name: "so-do-locum", description: "d", body: "Corpo criada no Locum" });
+  daMaquina("da-maquina");
+  const biblioteca = new LibraryService(db, catalogo2());
+  const perfil = `skills-${randomUUID().slice(0, 8)}`;
+  await biblioteca.saveProfile({ spec: { id: perfil, name: "Com skills", model: "ollama/x", skills: ["so-do-locum", "da-maquina"] } });
+  const pedidos: RuntimeRequest[] = [];
+  const executor = new Executor({ mcp: registroFalso, runtimes: new Map([["native", runtimeQueRegistra(pedidos)]]), gate: new ApprovalGate(new Map()), machineId: "m", profiles: biblioteca, skills: catalogo() });
+  const { versao } = await fluxo(perfil);
+  const runId = await executor.createRun(versao.id, null);
+  assert.equal(await executor.execute(runId), "done");
+  const system = pedidos[0]!.system ?? "";
+  assert.match(system, /## Skill: so-do-locum\n\nCorpo criada no Locum/);
+  assert.match(system, /## Skill: da-maquina\n\nCorpo da da-maquina/);
+  const usadas = (await passo(runId, "tarefa"))?.skillsUsed as { name: string }[];
+  assert.deepEqual(usadas.map((s) => s.name).sort(), ["da-maquina", "so-do-locum"]);
+  // O claude-code roda sem as configurações da máquina: o mesmo `system` vai no argumento, e é só por ele que a skill chega.
+  const args = claudeArgs({ ...pedidos[0]!, provider: "claude-code", model: "claude-sonnet-5" });
+  assert.equal(args[args.indexOf("--append-system-prompt") + 1], system);
+});
+
+function catalogo2(): CatalogoDeConexoes {
+  return catalogo({}, {});
+}
+
+test("skill que o agent usa e sumiu da máquina derruba o passo obrigatório com o nome, sem chamar o modelo", async () => {
+  const { catalogo } = skillsEmDisco();
+  const biblioteca = new LibraryService(db, catalogo2());
+  const perfil = `sem-skill-${randomUUID().slice(0, 8)}`;
+  await biblioteca.saveProfile({ spec: { id: perfil, name: "Sem skill", model: "ollama/x", skills: ["sumiu"] } });
+  const pedidos: RuntimeRequest[] = [];
+  const executor = new Executor({ mcp: registroFalso, runtimes: new Map([["native", runtimeQueRegistra(pedidos)]]), gate: new ApprovalGate(new Map()), machineId: "m", profiles: biblioteca, skills: catalogo() });
+  const { versao } = await fluxo(perfil);
+  const runId = await executor.createRun(versao.id, null);
+  assert.equal(await executor.execute(runId), "failed");
+  const falho = await passo(runId, "tarefa");
+  assert.equal(falho?.status, "failed");
+  assert.match(falho?.error ?? "", new RegExp(`o agent "${perfil}" usa a skill "sumiu", que não existe mais nesta máquina`));
+  assert.equal(pedidos.length, 0);
+});
+
+test("o passo opcional com skill ausente é pulado com o motivo", async () => {
+  const { catalogo } = skillsEmDisco();
+  const biblioteca = new LibraryService(db, catalogo2());
+  const perfil = `opc-skill-${randomUUID().slice(0, 8)}`;
+  await biblioteca.saveProfile({ spec: { id: perfil, name: "Opc", model: "ollama/x", skills: ["sumiu"] } });
+  const executor = new Executor({ mcp: registroFalso, runtimes: new Map([["native", runtimeQueRegistra([])]]), gate: new ApprovalGate(new Map()), machineId: "m", profiles: biblioteca, skills: catalogo() });
+  const { versao } = await fluxo(perfil, { optional: true });
+  const runId = await executor.createRun(versao.id, null);
+  assert.equal(await executor.execute(runId), "done");
+  assert.equal((await passo(runId, "tarefa"))?.status, "skipped");
 });

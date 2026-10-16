@@ -20,7 +20,7 @@ import { providerService } from "../services/provider-service.js";
 import type { Atividade, Runtime } from "../runtimes/types.js";
 import { conexoesIndisponiveis, libraryService, type LibraryService } from "../services/library-service.js";
 import { runLogic } from "./logic.js";
-import { selectSkills, skillsPreamble, type LoadedSkill, type SkillContext } from "../skills/loader.js";
+import { discoverSkills, selectSkills, skillsAusentes, skillsIndisponiveis, skillsPreamble, type LoadedSkill, type SkillContext } from "../skills/loader.js";
 import { ApprovalGate, settleStep } from "../approval/gate.js";
 import { BudgetExceeded, assertWithinBudget, recordSpend, type Spend } from "./budget.js";
 import { SUBSCRIPTION_RUNTIMES } from "../runtimes/types.js";
@@ -414,10 +414,17 @@ export class Executor {
     const modelo = perfil === null ? step.model : perfil.version.spec.model;
     const maxSteps = perfil === null ? step.maxSteps : perfil.version.spec.maxSteps;
 
-    // Conexão do agent sem servidor utilizável nesta máquina: o passo para com
-    // o nome dela, e o opcional é pulado com o mesmo motivo.
-    if (perfil !== null && perfil.semServidor.length > 0) {
-      const motivo = conexoesIndisponiveis(perfil.version.profileId, perfil.semServidor);
+    // Conexão sem servidor utilizável ou skill que sumiu da máquina: o passo
+    // para com o nome dela, e o opcional é pulado com o mesmo motivo.
+    // O disco só é lido quando o agent cita skill.
+    const skillsDoAgent = perfil?.version.spec.skills ?? [];
+    const catalogoDeSkills = this.deps.skills ?? (skillsDoAgent.length > 0 ? discoverSkills() : undefined);
+    const semSkill = catalogoDeSkills === undefined ? [] : skillsAusentes(skillsDoAgent, catalogoDeSkills);
+    if (perfil !== null && (perfil.semServidor.length > 0 || semSkill.length > 0)) {
+      const motivo = [
+        ...(perfil.semServidor.length > 0 ? [conexoesIndisponiveis(perfil.version.profileId, perfil.semServidor)] : []),
+        ...(semSkill.length > 0 ? [skillsIndisponiveis(perfil.version.profileId, semSkill)] : []),
+      ].join("; ");
       if (!step.optional) {
         await db
           .update(schema.steps)
@@ -501,7 +508,7 @@ export class Executor {
     if (!runtime) throw new Error(`runtime indisponivel para "${resolution.provider}"`);
 
     const ctx: SkillContext = { repo: payload.repo, changedFiles: payload.changedFiles };
-    const skills = selectSkills([...spec.skills, ...(perfil?.version.spec.skills ?? [])], ctx, this.deps.skills);
+    const skills = selectSkills([...spec.skills, ...(perfil?.version.spec.skills ?? [])], ctx, catalogoDeSkills);
     const { doLocum, daConta } = separarDaConta(toolRefs, runtime.id);
     const { tools, release } =
       runtime.id === "claude-code" ? this.deps.mcp.nomesPara(doLocum) : await this.deps.mcp.toolsFor(doLocum);

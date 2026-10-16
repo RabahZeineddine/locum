@@ -292,6 +292,18 @@ test("conexão sem servidor aparece como aviso, e a conversa segue", async () =>
   assert.match(await textoDoAssistente(c, "aviso"), /Resposta do modelo falso/);
 });
 
+test("skill que sumiu da máquina aparece como aviso, e a conversa segue", async () => {
+  const spec = AgentProfile.parse({ id: "skill", name: "Agent skill", model: "falso/roteiro", skills: ["presente", "sumiu"] });
+  const base = perfilDe("skill");
+  const c = montar("skill", {
+    perfil: { ...base, version: { ...base.version, spec } },
+    deps: { skills: new Map([["presente", { name: "presente", description: "d", body: "b", origin: "/x", hash: "h", fonte: { tipo: "minhas" } }]]) },
+  });
+  assert.deepEqual((await c.conversas.estado("skill")).semSkill, ["sumiu"]);
+  await c.conversas.enviar("skill", "oi");
+  assert.match(await textoDoAssistente(c, "skill"), /Resposta do modelo falso/);
+});
+
 test("cancelar com cartão pendente expira o cartão e a conversa pode seguir", async () => {
   const c = montar("cancela");
   await c.conversas.enviar("cancela", '[[chama painel__echo {"text":"oi"}]]');
