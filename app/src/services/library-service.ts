@@ -373,7 +373,7 @@ export class LibraryService {
       try {
         const atual = await this.latestProfile(perfil.id);
         if (atual === undefined) continue;
-        const nova = await this.saveProfile({ spec: atual.spec, note: "lista de ferramentas explícita" });
+        const nova = await this.saveProfile({ spec: atual.spec, note: "linha de base das ferramentas" });
         if (nova.version !== atual.version) migrados.push(perfil.id);
         if (nova.spec.connections.some((c) => c.leituraPadrao !== "limitada")) pendentes.push(perfil.id);
       } catch (erro) {

@@ -43,7 +43,7 @@ export async function consultarAgent(id: string, pergunta: string, deps: Consult
   const perfil = await (deps.library ?? libraryService).resolveProfile(id);
   const spec = perfil.version.spec;
   if (perfil.semServidor.length > 0) throw new Error(conexoesIndisponiveis(spec.id, perfil.semServidor));
-  const catalogoDeSkills = deps.skills ?? (spec.skills.length > 0 ? discoverSkills() : undefined);
+  const catalogoDeSkills = deps.skills ?? (spec.skills.length > 0 ? discoverSkills(undefined, undefined, undefined, { projeto: false }) : undefined);
   const semSkill = catalogoDeSkills === undefined ? [] : skillsAusentes(spec.skills, catalogoDeSkills, { repo: "", changedFiles: [] });
   if (semSkill.length > 0) throw new Error(skillsIndisponiveis(spec.id, semSkill));
 
@@ -61,7 +61,7 @@ export async function consultarAgent(id: string, pergunta: string, deps: Consult
   const { tools, release } = await mcp.toolsFor(doLocum);
   // Sem evento por trás, só valem as skills de regra "sempre".
   const skills = selectSkills(spec.skills, { repo: "", changedFiles: [] }, catalogoDeSkills);
-  const system = [perfil.system, skillsPreamble(skills, true)].filter((p) => p.length > 0).join("\n\n");
+  const system = [perfil.system, skillsPreamble(skills, true, runtime.id)].filter((p) => p.length > 0).join("\n\n");
   try {
     const resultado = await runtime.run({
       provider: resolucao.provider,

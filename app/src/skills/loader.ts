@@ -101,8 +101,8 @@ function roots(home: string | undefined, cwd: string, locumDir: string, projeto:
   ].filter((r) => existsSync(r.dir)) as Raiz[];
 }
 
-function findSkillFiles(dir: string, depth = 0): string[] {
-  if (depth > MAX_DEPTH) return [];
+function findSkillFiles(dir: string, profundidade = MAX_DEPTH, depth = 0): string[] {
+  if (depth > profundidade) return [];
   const out: string[] = [];
   let entries: string[];
   try {
@@ -123,7 +123,7 @@ function findSkillFiles(dir: string, depth = 0): string[] {
       if (entry === "SKILL.md") out.push(full);
       continue;
     }
-    if (!SKIPPED_DIRS.has(entry)) out.push(...findSkillFiles(full, depth + 1));
+    if (!SKIPPED_DIRS.has(entry)) out.push(...findSkillFiles(full, profundidade, depth + 1));
   }
   return out;
 }
@@ -151,7 +151,8 @@ export function descobrirComSombra(
   const achadas = new Map<string, LoadedSkill>();
   const sombreadas: LoadedSkill[] = [];
   for (const { dir, fonte } of roots(home, cwd, locumDir, opcoes.projeto ?? true)) {
-    for (const file of findSkillFiles(dir)) {
+    // A raiz do Locum vale um nível (`<nome>/SKILL.md`): SKILL.md mais fundo é arquivo de apoio da skill, não outra skill.
+    for (const file of findSkillFiles(dir, fonte.tipo === "locum" ? 1 : MAX_DEPTH)) {
       const raw = readFileSync(file, "utf8");
       const { name, description, body } = parseFrontmatter(raw);
       if (!name) continue;
@@ -253,16 +254,19 @@ export function selectSkills(
  */
 export const TETO_DA_SKILL_BYTES = 64 * 1024;
 export const TETO_DAS_SKILLS_BYTES = 256 * 1024;
+/** Só o claude-code leva o system por argumento do processo (ARG_MAX); nos outros runtimes vale só o teto total. */
+const RUNTIME_COM_ARGV = "claude-code";
 const kb = (bytes: number): string => `${Math.round(bytes / 1024)} KB`;
 
-export function skillsPreamble(skills: LoadedSkill[], inline: boolean): string {
+export function skillsPreamble(skills: LoadedSkill[], inline: boolean, runtimeId: string = RUNTIME_COM_ARGV): string {
+  const tetoPorSkill = runtimeId === RUNTIME_COM_ARGV ? TETO_DA_SKILL_BYTES : TETO_DAS_SKILLS_BYTES;
   if (skills.length === 0) return "";
   if (inline) {
     let total = 0;
     for (const s of skills) {
       const bytes = Buffer.byteLength(s.body);
-      if (bytes > TETO_DA_SKILL_BYTES) {
-        throw new Error(`a skill "${s.name}" tem ${kb(bytes)}, acima do teto de ${kb(TETO_DA_SKILL_BYTES)} no prompt`);
+      if (bytes > tetoPorSkill) {
+        throw new Error(`a skill "${s.name}" tem ${kb(bytes)}, acima do teto de ${kb(tetoPorSkill)} no prompt`);
       }
       total += bytes;
     }

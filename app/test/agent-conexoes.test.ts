@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { contarDaConexao } from "../renderer/lib/ferramentas-do-agent.js";
 import { AgentProfile } from "../src/config/types.js";
 import * as schema from "../src/db/schema.js";
 import { LibraryService, type CatalogoDeConexoes } from "../src/services/library-service.js";
@@ -325,7 +326,7 @@ test("a migração dos agents antigos preserva exatamente as ligadas de hoje e g
   assert.deepEqual(pendentes, []);
   const versao = await comCache.getProfile("pr-review");
   assert.equal(versao?.version, 2);
-  assert.equal(versao?.note, "lista de ferramentas explícita");
+  assert.equal(versao?.note, "linha de base das ferramentas");
   assert.deepEqual(nomes((await comCache.resolveProfile("pr-review")).tools), antes);
   assert.deepEqual((await comCache.migrarListasExplicitas()).migrados, [], "a segunda passada não grava nada");
 });
@@ -337,24 +338,41 @@ test("sem lista em cache o agent segue como antes e a lista de agents o aponta a
   assert.deepEqual((await biblioteca.listProfiles())[0]?.listaImplicita, ["github"]);
 });
 
-test("ferramentas novas no catálogo seguem como aviso depois da migração e de um save, e nenhuma versão nasce", async () => {
+test("a migração grava a linha de base; o que o servidor ganha depois segue como aviso, e salvar não o decide", async () => {
   const bd = bancoDeTeste();
   const semCache: CatalogoDeConexoes = { ...catalogoGithub(), guardadasDe: async () => null };
   await new LibraryService(bd, semCache).saveProfile({ spec: { id: "pr-review", name: "PR", model: modelo, connections: [{ connectionId: "github" }] } });
 
-  const comNovas = new LibraryService(bd, catalogoGithub(["get_nova", "create_nova"]));
-  assert.deepEqual((await comNovas.migrarListasExplicitas()).migrados, ["pr-review"]);
-  const migrada = await comNovas.getProfile("pr-review");
+  const base = new LibraryService(bd, catalogoGithub());
+  assert.deepEqual((await base.migrarListasExplicitas()).migrados, ["pr-review"]);
+  const migrada = await base.getProfile("pr-review");
   const tools = migrada?.spec.connections[0]?.tools ?? {};
-  assert.deepEqual(Object.keys(tools).sort(), ["github/get_issue", "github/get_nova", "github/get_pull_request", "github/list_commits", "github/pull_request_read"]);
-  assert.equal(Object.values(tools).every((v) => v === true), true, "só o que estava ligado foi gravado");
-  assert.equal(tools["github/create_comment"], undefined);
-  assert.equal(tools["github/create_nova"], undefined);
+  assert.deepEqual(Object.keys(tools).sort(), ["github/create_comment", "github/get_issue", "github/get_pull_request", "github/list_commits", "github/pull_request_read"]);
+  assert.equal(tools["github/create_comment"], false);
+  assert.equal(tools["github/get_issue"], true);
+  const guardadas = (extra: string[]) => [{ nome: "github", ferramentas: ["get_issue", "list_commits", "get_pull_request", "pull_request_read", "create_comment", ...extra].map((name) => ({ name })) }];
+  assert.equal(contarDaConexao(migrada!.spec.connections[0]!, guardadas([])).novas, 0);
 
-  const salvo = await comNovas.saveProfile({ spec: migrada!.spec });
+  const comGanho = new LibraryService(bd, catalogoGithub(["get_nova"]));
+  assert.equal(contarDaConexao(migrada!.spec.connections[0]!, guardadas(["get_nova"])).novas, 1);
+  const salvo = await comGanho.saveProfile({ spec: migrada!.spec });
   assert.equal(salvo.version, migrada!.version, "salvar sem mudança não cria versão");
   assert.deepEqual(salvo.spec.connections[0]?.tools, tools);
-  assert.deepEqual((await comNovas.migrarListasExplicitas()).migrados, []);
+  assert.equal(contarDaConexao(salvo.spec.connections[0]!, guardadas(["get_nova"])).novas, 1, "o save em limitada não mexe no aviso");
+  assert.deepEqual((await comGanho.migrarListasExplicitas()).migrados, []);
+});
+
+test("agent limitada vindo da main com mapa vazio ganha a linha de base na migração, uma vez", async () => {
+  const bd = bancoDeTeste();
+  const semCache: CatalogoDeConexoes = { ...catalogoGithub(), guardadasDe: async () => null };
+  await new LibraryService(bd, semCache).saveProfile({ spec: { id: "teams", name: "T", model: modelo, connections: [{ connectionId: "github", leituraPadrao: "limitada" }] } });
+  const biblioteca = new LibraryService(bd, catalogoGithub());
+  assert.deepEqual((await biblioteca.migrarListasExplicitas()).migrados, ["teams"]);
+  const perfil = await biblioteca.getProfile("teams");
+  assert.equal(Object.values(perfil?.spec.connections[0]?.tools ?? {}).length, 5);
+  assert.equal(Object.values(perfil?.spec.connections[0]?.tools ?? {}).every((v) => v === false), true);
+  const gain = new LibraryService(bd, catalogoGithub(["get_nova"]));
+  assert.deepEqual((await gain.migrarListasExplicitas()).migrados, [], "com a linha de base feita, a ferramenta nova não é decidida por ninguém");
 });
 
 test("a migração segue quando um agent falha, e diz qual foi e por quê", async () => {

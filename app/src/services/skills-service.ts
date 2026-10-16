@@ -1,4 +1,4 @@
-import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, extname, isAbsolute, join, relative, resolve } from "node:path";
 import {
   descobrirComSombra,
@@ -174,11 +174,17 @@ export class SkillsService {
     const name = this.nomeLivre(NOME.test(declarado ?? "") ? declarado! : slug(declarado ?? base) || slug(base));
     const texto = declarado === name && description !== undefined ? bruto : montar(name, description ?? descricaoDoCorpo(body), body);
 
+    const destino = join(this.locumDir, name);
+    // Pasta que já existia (sem SKILL.md) tem dono: o rollback tira só o que o importar criou.
+    const existia = lstatExiste(destino);
+    const criados: string[] = [];
     try {
-      if (pasta) this.copiarPasta(caminho, join(this.locumDir, name));
+      if (pasta) this.copiarPasta(caminho, destino, criados);
+      criados.push(join(destino, "SKILL.md"));
       this.gravar(name, texto);
     } catch (erro) {
-      rmSync(join(this.locumDir, name), { recursive: true, force: true });
+      if (!existia) rmSync(destino, { recursive: true, force: true });
+      else for (const arquivo of criados) rmSync(arquivo, { force: true });
       throw erro;
     }
     return this.deLocum(name);
@@ -217,10 +223,7 @@ export class SkillsService {
     if (!NOME.test(name)) throw new Error("o nome usa minúsculas, dígitos e hífens, até 64 caracteres");
     const raiz = resolve(this.locumDir);
     const pasta = resolve(raiz, name);
-    const dentro = (base: string, alvo: string): boolean => {
-      const rel = relative(base, alvo);
-      return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
-    };
+    const dentro = estaDentro;
     if (!dentro(raiz, pasta)) throw new Error(`"${name}" fica fora da pasta de skills do Locum`);
     if (existsSync(pasta) && !dentro(realpathSync(raiz), realpathSync(pasta))) {
       throw new Error(`"${name}" fica fora da pasta de skills do Locum`);
@@ -245,12 +248,24 @@ export class SkillsService {
   private gravar(name: string, texto: string): void {
     const pasta = this.pastaDaSkill(name);
     mkdirSync(pasta, { recursive: true });
-    writeFileSync(join(pasta, "SKILL.md"), texto);
+    const arquivo = join(pasta, "SKILL.md");
+    if (lstatExiste(arquivo)) {
+      if (lstatSync(arquivo).isSymbolicLink()) throw new Error(`"${name}/SKILL.md" é um link; o Locum não escreve através de link`);
+      if (!estaDentro(realpathSync(this.locumDir), realpathSync(arquivo))) throw new Error(`"${name}" fica fora da pasta de skills do Locum`);
+    }
+    // Arquivo temporário e rename: substitui o destino sem seguir link.
+    const temporario = join(pasta, `.SKILL.md.${process.pid}.${Date.now()}.tmp`);
+    try {
+      writeFileSync(temporario, texto);
+      renameSync(temporario, arquivo);
+    } finally {
+      rmSync(temporario, { force: true });
+    }
     this.esquecer();
   }
 
   /** Copia a pasta sem seguir link e sem node_modules, com teto de arquivos e de tamanho. */
-  private copiarPasta(origem: string, destino: string): void {
+  private copiarPasta(origem: string, destino: string, criados: string[] = []): void {
     const arquivos: string[] = [];
     let bytes = 0;
     const andar = (dir: string): void => {
@@ -274,7 +289,23 @@ export class SkillsService {
       const alvo = join(destino, relative(origem, arquivo));
       mkdirSync(join(alvo, ".."), { recursive: true });
       cpSync(arquivo, alvo);
+      criados.push(alvo);
     }
+  }
+}
+
+function estaDentro(base: string, alvo: string): boolean {
+  const rel = relative(base, alvo);
+  return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+}
+
+/** Existe como entrada, inclusive link quebrado, que `existsSync` não enxerga. */
+function lstatExiste(caminho: string): boolean {
+  try {
+    lstatSync(caminho);
+    return true;
+  } catch {
+    return false;
   }
 }
 

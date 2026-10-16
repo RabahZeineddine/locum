@@ -214,3 +214,37 @@ test("o catálogo para o chat usa o mesmo cache curto da lista", async () => {
   passar(60_000);
   assert.deepEqual([...servico.catalogo().keys()].sort(), ["primeira", "segunda"]);
 });
+
+test("atualizar não escreve através de SKILL.md que é link para fora da pasta do Locum", async () => {
+  const { servico, locumDir, raiz } = ambiente();
+  const fora = join(raiz, "fora.md");
+  writeFileSync(fora, "---\nname: real\ndescription: d\n---\nORIGINAL");
+  mkdirSync(join(locumDir, "real"), { recursive: true });
+  symlinkSync(fora, join(locumDir, "real", "SKILL.md"));
+  await assert.rejects(servico.atualizar("real", { description: "x", body: "SOBRESCRITO" }), /link/);
+  assert.match(readFileSync(fora, "utf8"), /ORIGINAL/);
+});
+
+test("importar pasta com SKILL.md aninhado: só a skill da raiz vale, a filha é arquivo comum", async () => {
+  const { servico, raiz, locumDir } = ambiente();
+  const src = join(raiz, "src", "pai");
+  mkdirSync(join(src, "exemplos", "filha"), { recursive: true });
+  writeFileSync(join(src, "SKILL.md"), "---\nname: pai\ndescription: p\n---\nB\n");
+  writeFileSync(join(src, "exemplos", "filha", "SKILL.md"), "---\nname: filha\ndescription: f\n---\nF\n");
+  await servico.importar(src);
+  assert.ok(existsSync(join(locumDir, "pai", "exemplos", "filha", "SKILL.md")), "o arquivo foi copiado");
+  assert.deepEqual((await servico.listar({ atualizar: true })).map((s) => s.name), ["pai"]);
+  await assert.rejects(servico.remover("filha"), /não existe/);
+});
+
+test("importar que falha não apaga o que já estava na pasta de destino", async () => {
+  const { servico, raiz, locumDir } = ambiente();
+  mkdirSync(join(locumDir, "ocupada"), { recursive: true });
+  writeFileSync(join(locumDir, "ocupada", "nota.txt"), "meu");
+  const src = join(raiz, "src", "ocupada");
+  mkdirSync(src, { recursive: true });
+  writeFileSync(join(src, "SKILL.md"), "---\nname: ocupada\ndescription: o\n---\nB\n");
+  for (let i = 0; i < 205; i++) writeFileSync(join(src, `f${i}`), "x");
+  await assert.rejects(servico.importar(src), /grande demais/);
+  assert.equal(readFileSync(join(locumDir, "ocupada", "nota.txt"), "utf8"), "meu");
+});

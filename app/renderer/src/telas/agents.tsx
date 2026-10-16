@@ -18,7 +18,7 @@ import { ChatDoAgent } from "../agent-chat";
 import { ArrowLeft, Bot, ChevronDown, ChevronRight, Copy, Loader2, Plug, Plus, RefreshCw, Search, Trash2, Workflow, Wrench, X } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { ehLeitura, ehLeituraDa, escolhaDe, escolhaInicial, ligadaPorPadrao, type EscolhaDeFerramenta } from "../../../src/config/leitura.js";
+import { ehLeitura, ehLeituraDa, escolhaDe, escolhaInicial, fixarLista, ligadaPorPadrao, type EscolhaDeFerramenta } from "../../../src/config/leitura.js";
 import { agruparPorTipo, contarDaConexao, filtrarFerramentas, LIMITE_PARA_AGRUPAR, revisarNovas } from "@/lib/ferramentas-do-agent";
 import { SERVIDOR_NATIVO, type AgentBudget, type AgentConnection, type AgentProfile, type ToolRef, type Toolset } from "../../../src/config/types";
 import { Dica, GrupoPorTipo } from "../ferramentas-agrupadas";
@@ -742,7 +742,13 @@ function BlocoDaConexao({
   const nomeDaConexao = conexao?.name ?? escolha.connectionId;
   const [aberto, setAberto] = useState(false);
   const [revisao, setRevisao] = useState(0);
-  const contagem = contarDaConexao(escolha, servidores.map((nome) => ({ nome, ferramentas: guardadas[nome] ?? null })));
+  const catalogo = servidores.map((nome) => ({ nome, ferramentas: guardadas[nome] ?? null }));
+  // Conexão limitada sem a linha de base (adicionada sem lista, ou vinda de antes dela): quando a lista chega a linha de base entra no rascunho, e a contagem já sai normal.
+  const comBase = escolha.leituraPadrao === "limitada" ? fixarLista(escolha, catalogo) : escolha;
+  useEffect(() => {
+    if (comBase !== escolha) mudar(comBase);
+  });
+  const contagem = contarDaConexao(comBase, catalogo);
   const implicita = escolha.leituraPadrao !== "limitada";
   const resumo = contagem.conhecida
     ? contagem.escrita > 0

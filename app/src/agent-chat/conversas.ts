@@ -572,10 +572,10 @@ export class ConversasDeAgent {
     }
   }
 
-  private systemDe(perfil: ResolvedProfile): string {
+  private systemDe(perfil: ResolvedProfile, runtimeId: string): string {
     // Sem evento por trás, só valem as skills de regra "sempre", como na consulta entre agents.
     const skills = selectSkills(perfil.version.spec.skills, { repo: "", changedFiles: [] }, this.deps.skills ?? skillsService.catalogo());
-    return [perfil.system, skillsPreamble(skills, true)].filter((p) => p.length > 0).join("\n\n");
+    return [perfil.system, skillsPreamble(skills, true, runtimeId)].filter((p) => p.length > 0).join("\n\n");
   }
 
   private mensagemDeErro(err: unknown): string {
@@ -601,7 +601,7 @@ export class ConversasDeAgent {
     guardarCartao: (c: Cartao) => void,
   ): Promise<Gasto | null> {
     const spec = perfil.version.spec;
-    const system = this.systemDe(perfil);
+    const system = this.systemDe(perfil, "native");
     const historico = await this.historicoDe(conversa);
     if ("texto" in entrada) {
       historico.push({ role: "user", content: entrada.texto });
@@ -762,7 +762,7 @@ export class ConversasDeAgent {
     const { sessao: nova, gasto } = await assinatura({
       texto,
       modelo,
-      system: this.systemDe(perfil),
+      system: this.systemDe(perfil, "claude-code"),
       sessao,
       perfil,
       aprovar,

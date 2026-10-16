@@ -144,6 +144,14 @@ test("inline recusa skill acima de 64 KB e o total acima de 256 KB, com o nome e
   assert.doesNotThrow(() => skillsPreamble(quatro.slice(0, 4), true));
 });
 
+test("o teto de 64 KB por skill vale só no claude-code; nos outros runtimes fica o teto total", () => {
+  const pesada = skill("pesada", "x".repeat(100 * 1024));
+  assert.throws(() => skillsPreamble([pesada], true, "claude-code"), /pesada.*100 KB/);
+  assert.doesNotThrow(() => skillsPreamble([pesada], true, "native"));
+  assert.throws(() => skillsPreamble([skill("enorme", "x".repeat(257 * 1024))], true, "native"), /enorme.*257 KB/);
+  assert.throws(() => skillsPreamble([pesada, pesada, skill("c", "x".repeat(70 * 1024))], true, "native"), /256 KB/);
+});
+
 test("skills ausentes olha só as regras que casam com o evento", () => {
   const catalogo = new Map([skill("presente")].map((s) => [s.name, s]));
   const regras = [

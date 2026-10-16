@@ -418,7 +418,7 @@ export class Executor {
     // para com o nome dela, e o opcional é pulado com o mesmo motivo.
     // O disco só é lido quando o agent cita skill.
     const skillsDoAgent = perfil?.version.spec.skills ?? [];
-    const catalogoDeSkills = this.deps.skills ?? (skillsDoAgent.length > 0 ? discoverSkills() : undefined);
+    const catalogoDeSkills = this.deps.skills ?? (skillsDoAgent.length > 0 ? discoverSkills(undefined, undefined, undefined, { projeto: false }) : undefined);
     const semSkill = catalogoDeSkills === undefined ? [] : skillsAusentes(skillsDoAgent, catalogoDeSkills, { repo: payload.repo, changedFiles: payload.changedFiles });
     if (perfil !== null && (perfil.semServidor.length > 0 || semSkill.length > 0)) {
       const motivo = [
@@ -560,7 +560,7 @@ export class Executor {
       // enxerga plugin nem consegue abrir a skill pelo nome.
       // O contexto da iniciativa entra no system: sem ele, o agent saía
       // procurando "o contexto da iniciativa" pelo disco.
-      const system = [perfil?.system ?? "", args.contextoDaIniciativa ?? "", skillsPreamble(skills, true)]
+      const system = [perfil?.system ?? "", args.contextoDaIniciativa ?? "", skillsPreamble(skills, true, runtime.id)]
         .filter((s) => s.length > 0)
         .join("\n\n");
 
