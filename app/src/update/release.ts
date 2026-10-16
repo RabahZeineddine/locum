@@ -271,6 +271,8 @@ export function scriptDeTroca(opcoes: {
     // O download pelo processo não ganha quarentena, mas um zip aberto à mão
     // ganharia, e o Gatekeeper barraria o aplicativo sem assinatura.
     `xattr -dr com.apple.quarantine ${atual} 2>/dev/null`,
-    opcoes.reabrir ? `open ${atual}` : ":",
+    // `-n`: com o `--mcp` do Claude Code no ar, o `open` sem ele só reativaria
+    // aquele processo, que é do mesmo pacote e não tem janela.
+    opcoes.reabrir ? `open -n ${atual}` : ":",
   ].join("\n");
 }

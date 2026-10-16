@@ -246,3 +246,8 @@ test("só troca bundle instalado, não o aberto do .dmg nem o translocado", () =
   assert.match(motivoParaNaoTrocar("/Volumes/Locum 0.1.0/Locum.app") ?? "", /\.dmg/);
   assert.match(motivoParaNaoTrocar("/private/var/folders/x/AppTranslocation/y/d/Locum.app") ?? "", /isolada/);
 });
+
+test("reabrir depois da troca sobe instância nova, mesmo com o --mcp do mesmo pacote no ar", () => {
+  const script = scriptDeTroca({ pid: 1, atual: "/Applications/Locum.app", novo: "/tmp/novo/Locum.app", reabrir: true });
+  assert.match(script, /^open -n '?\/Applications\/Locum\.app'?$/m);
+});
