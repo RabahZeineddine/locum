@@ -9,6 +9,8 @@ import type { UpdaterState } from "./state.js";
 export type RodapeDaAtualizacao =
   | { tipo: "versao" }
   | { tipo: "procurando" }
+  | { tipo: "atualizado" }
+  | { tipo: "falhou" }
   | { tipo: "baixando"; version: string; percent: number | null }
   | { tipo: "pronta"; version: string };
 
@@ -36,11 +38,19 @@ export function rodapeDaAtualizacao(estado: UpdaterState): RodapeDaAtualizacao {
   // seria surpresa.
   if (estado.phase === "ready" && version !== undefined) return { tipo: "pronta", version };
   // Verificador que não subiu (dev, desligado, bundle intocável) não tem fase
-  // que valha mostrar. Falha também fica de fora: a Configuração explica.
+  // que valha mostrar: a Configuração explica.
   if (estado.reason !== null) return { tipo: "versao" };
   switch (estado.phase) {
+    case "idle":
+      // Armado e ainda sem a primeira pergunta: a barra já vale, para não
+      // haver um vazio entre abrir a janela e a conferência começar.
+      return estado.armed && estado.lastCheckAt === null ? { tipo: "procurando" } : { tipo: "versao" };
     case "checking":
       return { tipo: "procurando" };
+    case "uptodate":
+      return { tipo: "atualizado" };
+    case "failed":
+      return { tipo: "falhou" };
     case "downloading":
       return version === undefined ? { tipo: "procurando" } : { tipo: "baixando", version, percent: estado.progress };
     case "ready":
@@ -48,6 +58,16 @@ export function rodapeDaAtualizacao(estado: UpdaterState): RodapeDaAtualizacao {
     default:
       return { tipo: "versao" };
   }
+}
+
+/**
+ * O que o clique na versão faz: conferir agora, ou, com o verificador fora do
+ * ar, levar à Configuração, que diz o porquê (`motivo` serve ao `title`).
+ */
+export function cliqueNaVersao(
+  estado: UpdaterState,
+): { acao: "conferir" } | { acao: "configuracao"; motivo: NonNullable<UpdaterState["reason"]> } {
+  return estado.reason === null ? { acao: "conferir" } : { acao: "configuracao", motivo: estado.reason };
 }
 
 /** A versão para a qual o modal deve estar aberto, ou `null`. A dispensa vem no estado, guardada no processo principal. */

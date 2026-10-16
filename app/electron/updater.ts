@@ -49,6 +49,8 @@ let disponivel: { version: string; notes: string } | null = null;
 let preparado: string | null = null;
 let reabrir = false;
 let trocaRegistrada = false;
+/** Quantas conferências foram pedidas, mesmo as que o plano recusou. Serve ao smoke. */
+let conferenciasPedidas = 0;
 
 /**
  * Pelo `net` do Electron, que respeita o proxy do sistema, e procurado na hora
@@ -131,6 +133,11 @@ export function updaterArmed(): boolean {
   return armado;
 }
 
+/** Quantas vezes `conferir` foi chamada nesta subida. Serve ao smoke. */
+export function totalDeConferencias(): number {
+  return conferenciasPedidas;
+}
+
 /** O estado para a tela de configuração. */
 export function updaterState(): Promise<UpdaterState> {
   return planUpdater();
@@ -142,6 +149,7 @@ export function updaterState(): Promise<UpdaterState> {
  * arquivo corromperiam os dois.
  */
 export const conferir = umaDeCadaVez(async (): Promise<void> => {
+  conferenciasPedidas += 1;
   // O real, e não o de exemplo: o smoke nunca pode sair para a rede.
   const plano = await planoReal();
   if (plano.reason !== null) return;

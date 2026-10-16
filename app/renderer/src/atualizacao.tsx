@@ -1,14 +1,74 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Streamdown } from "streamdown";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { call } from "@/lib/bridge";
 import { useAtualizacao } from "@/lib/atualizacao";
-import { rodapeDaAtualizacao, versaoParaOModal } from "../../src/update/rodape.js";
+import type { UpdaterState } from "../../src/update/state.js";
+import { cliqueNaVersao, rodapeDaAtualizacao, versaoParaOModal, type RodapeDaAtualizacao } from "../../src/update/rodape.js";
+
+/** A barra de procurando fica visível ao menos isto, para não piscar quando a conferência é rápida. */
+const PROCURANDO_MINIMO_MS = 1_200;
+/** Quanto tempo o "atualizado" fica ao lado da versão. */
+const ATUALIZADO_MS = 4_000;
 
 /**
- * A atualização no rodapé da barra lateral, debaixo da versão, e o modal que
+ * O que o rodapé mostra de fato: o `rodape` do estado, com a barra de
+ * procurando segurada pelo mínimo e o "atualizado" tirado depois de uns
+ * segundos. A espera mora aqui e não no estado: o processo principal segue
+ * dizendo a verdade, e baixando e pronta passam direto.
+ *
+ * `pedir` cobre o clique: mostra a barra já, antes de o empurrão do main chegar,
+ * e solta quando a chamada volta.
+ */
+function useRodapeSegurado(
+  rodape: RodapeDaAtualizacao | null,
+  conferidaEm: number | null,
+): [RodapeDaAtualizacao | null, (chamada: Promise<unknown>) => void] {
+  const [mostrado, setMostrado] = useState<RodapeDaAtualizacao | null>(null);
+  const [rodada, setRodada] = useState(0);
+  const procurandoDesde = useRef<number | null>(null);
+  const chave = JSON.stringify([rodape, conferidaEm, rodada]);
+
+  useEffect(() => {
+    if (rodape === null) return;
+    const agora = Date.now();
+    if (rodape.tipo === "procurando") {
+      procurandoDesde.current ??= agora;
+      setMostrado(rodape);
+      return;
+    }
+    const segura = rodape.tipo === "versao" || rodape.tipo === "atualizado" || rodape.tipo === "falhou";
+    const espera =
+      segura && procurandoDesde.current !== null
+        ? Math.max(0, PROCURANDO_MINIMO_MS - (agora - procurandoDesde.current))
+        : 0;
+    procurandoDesde.current = null;
+
+    const relogios: ReturnType<typeof setTimeout>[] = [];
+    const mostrar = (): void => {
+      setMostrado(rodape);
+      if (rodape.tipo === "atualizado") relogios.push(setTimeout(() => setMostrado({ tipo: "versao" }), ATUALIZADO_MS));
+    };
+    if (espera > 0) relogios.push(setTimeout(mostrar, espera));
+    else mostrar();
+    return () => relogios.forEach(clearTimeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `chave` é o conteúdo de `rodape`
+  }, [chave]);
+
+  const pedir = (chamada: Promise<unknown>): void => {
+    procurandoDesde.current ??= Date.now();
+    setMostrado({ tipo: "procurando" });
+    const soltar = (): void => setRodada((r) => r + 1);
+    chamada.then(soltar, soltar);
+  };
+
+  return [mostrado ?? rodape, pedir];
+}
+
+/**
+ * A atualização no rodapé da barra lateral, a versão e a atualização debaixo dela, e o modal que
  * abre quando a versão fica baixada.
  *
  * A regra de o que mostrar mora em `src/update/rodape.ts`; aqui só se desenha.
@@ -16,17 +76,55 @@ import { rodapeDaAtualizacao, versaoParaOModal } from "../../src/update/rodape.j
  * o modal não reabre para ela, nem com a janela fechada e reaberta, e o link do
  * rodapé limpa a dispensa e reabre.
  */
-export function AtualizacaoNoRodape() {
+export function AtualizacaoNoRodape({ versao, aoConfigurar }: { versao: string; aoConfigurar: () => void }) {
   const { t } = useTranslation();
-  const [estado] = useAtualizacao();
+  const [estado, gravar] = useAtualizacao();
   const [aplicando, setAplicando] = useState(false);
+  const [rodapeDoEstado, pedir] = useRodapeSegurado(
+    estado === undefined ? null : rodapeDaAtualizacao(estado),
+    estado?.lastCheckAt ?? null,
+  );
 
-  if (estado === undefined) return null;
-  const rodape = rodapeDaAtualizacao(estado);
+  const versaoDesenhada = (
+    <button
+      className="num px-3 text-left text-[11px] text-muted-foreground hover:text-muted-foreground"
+      data-locum-probe="versao"
+      onClick={() => clicarNaVersao(estado)}
+      title={tituloDaVersao(estado)}
+      type="button"
+    >
+      {t("nav.version", { version: versao })}
+      {rodapeDoEstado?.tipo === "atualizado" || rodapeDoEstado?.tipo === "falhou" ? (
+        <span data-locum-rodape-estado={rodapeDoEstado.tipo}>
+          {" · "}
+          {rodapeDoEstado.tipo === "atualizado" ? t("update.footer.upToDate") : t("update.footer.failed")}
+        </span>
+      ) : null}
+    </button>
+  );
+
+  if (estado === undefined || rodapeDoEstado === null) return versaoDesenhada;
+  const rodape = rodapeDoEstado;
   const doModal = versaoParaOModal(estado);
 
   // O estado volta empurrado pelo main, então a janela não guarda a dispensa.
   const dispensar = (versao: string | null): void => void call("updates.dismiss", versao).catch(() => undefined);
+
+  function clicarNaVersao(atual: UpdaterState | undefined): void {
+    if (atual === undefined) return;
+    const clique = cliqueNaVersao(atual);
+    if (clique.acao === "configuracao") return aoConfigurar();
+    // A falha fica no estado do main, e a tela mostra de lá.
+    pedir(call("updates.check").then(gravar));
+  }
+
+  function tituloDaVersao(atual: UpdaterState | undefined): string {
+    if (atual === undefined) return t("nav.versionHint");
+    const clique = cliqueNaVersao(atual);
+    if (clique.acao === "conferir") return t("update.footer.checkNow");
+    if (clique.motivo === "disabled") return t("update.footer.hintDisabled");
+    return clique.motivo === "dev" ? t("update.footer.hintDev") : t("update.footer.hintNotReplaceable");
+  }
 
   const reiniciar = (): void => {
     setAplicando(true);
@@ -37,7 +135,8 @@ export function AtualizacaoNoRodape() {
   };
 
   return (
-    <div data-locum-probe="atualizacao-rodape" data-locum-rodape={rodape.tipo}>
+    <div className="flex flex-col gap-1" data-locum-probe="atualizacao-rodape" data-locum-rodape={rodape.tipo}>
+      {versaoDesenhada}
       {rodape.tipo === "procurando" || rodape.tipo === "baixando" ? (
         <div className="flex flex-col gap-1 px-3 text-[11px] text-muted-foreground">
           <div
