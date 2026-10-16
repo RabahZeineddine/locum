@@ -31,6 +31,7 @@ import {
 } from "@/lib/automacao";
 import { call, read, useRead, type ReadResult } from "@/lib/bridge";
 import { semPrefixoDoIpc } from "@/lib/erro-da-ponte";
+import { rotuloDoMotivoDeEvento } from "@/lib/rotulos";
 import { gatilhosParaGravar, mesclar, type Conflito, type Escolhas } from "@/lib/mesclar-automacao";
 import {
   apagarProvisoria,
@@ -219,7 +220,7 @@ function EditorCarregado({
   const [nota, setNota] = useState("");
   const [ocupado, setOcupado] = useState<"salvar" | "rodar" | "ligar" | null>(null);
   const executarAgora = useExecutarAgora();
-  const [aviso, setAviso] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
+  const [aviso, setAviso] = useState<{ tipo: "ok" | "erro" | "aviso"; texto: string } | null>(null);
   // O rascunho de uma edição que não chegou ao Salvar (ou um reservado antes): espera a decisão da pessoa. `reservada` diz que ele já saiu da chave ativa.
   const [oferta, setOferta] = useState<(OfertaDeRascunho & { reservada: boolean }) | null>(() => {
     const atual = { versao: automacao.version.version, criadaEm: automacao.createdAt, rascunho: provisoria?.rascunho ?? paraRascunho(automacao) };
@@ -376,7 +377,19 @@ function EditorCarregado({
         setIdOcupado(false);
         setOcupado(null);
         if (comId !== undefined) setIrPara(comId);
-        setAviso({ tipo: "ok", texto: t("automations.editor.saved", { version: gravada.version.version }) });
+        const semEvento = gravada.avisos[0];
+        setAviso(
+          semEvento === undefined
+            ? { tipo: "ok", texto: t("automations.editor.saved", { version: gravada.version.version }) }
+            : {
+                tipo: "aviso",
+                texto: t("automations.editor.eventWarning", {
+                  version: gravada.version.version,
+                  reason: rotuloDoMotivoDeEvento(t, semEvento.motivo),
+                  triggers: semEvento.gatilhos.map((k) => t(`automations.triggers.${k}.title`)).join(", "),
+                }),
+              },
+        );
         return true;
       },
       async (e: unknown) => {
@@ -778,7 +791,7 @@ function EditorCarregado({
 
       {aviso === null ? null : (
         <p className="text-muted-foreground flex items-center gap-1.5 text-xs">
-          <StatusDot estado={aviso.tipo === "erro" ? "erro" : "ok"} />
+          <StatusDot estado={aviso.tipo === "erro" ? "erro" : aviso.tipo === "aviso" ? "aviso" : "ok"} />
           {aviso.texto}
         </p>
       )}

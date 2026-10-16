@@ -1,5 +1,7 @@
 import { StatusDot } from "@/components/ui/status-dot";
+import { seguirRun } from "@/lib/acompanhar-run";
 import { read } from "@/lib/bridge";
+import { rotuloDoErroDeRun } from "@/lib/rotulos";
 import { X } from "lucide-react";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -29,10 +31,8 @@ const Contexto = createContext<Toasts>(SEM_TOASTS);
 /** O que a tela usa para dizer o resultado de "Executar agora" e levar ao run. */
 export const useToasts = (): Toasts => useContext(Contexto);
 
-const RELER_MS = 1500;
 /** Quanto o aviso de desfecho fica na tela. Erro fica mais, para dar tempo de ler. */
 const FICA_MS = { ok: 8_000, erro: 20_000 } as const;
-const DESISTE_DE_SEGUIR_MS = 30 * 60_000;
 
 /**
  * Os avisos do canto da janela.
@@ -45,25 +45,40 @@ const DESISTE_DE_SEGUIR_MS = 30 * 60_000;
 export function ProvedorDeToasts({ children, navegar }: { children: ReactNode; navegar: (id: RotaId, detalhe?: string) => void }) {
   const { t } = useTranslation();
   const [avisos, setAvisos] = useState<Aviso[]>([]);
-  const seguindo = useRef(new Set<string>());
-  const timers = useRef(new Set<number>());
+  const seguindo = useRef(new Map<string, { parar: () => void }>());
+  const timers = useRef(new Map<string, number>());
 
   useEffect(() => {
+    const acompanhamentos = seguindo.current;
     const abertos = timers.current;
-    return () => abertos.forEach((id) => window.clearTimeout(id));
+    return () => {
+      acompanhamentos.forEach((a) => a.parar());
+      abertos.forEach((id) => window.clearTimeout(id));
+    };
   }, []);
 
-  const trocar = useCallback((aviso: Aviso) => {
-    setAvisos((atuais) => (atuais.some((a) => a.id === aviso.id) ? atuais.map((a) => (a.id === aviso.id ? aviso : a)) : [...atuais, aviso]));
+  const mostrar = useCallback((aviso: Aviso) => setAvisos((atuais) => [...atuais.filter((a) => a.id !== aviso.id), aviso]), []);
+  // Só troca o que ainda está na tela: o aviso fechado não volta com o desfecho.
+  const atualizar = useCallback((aviso: Aviso) => setAvisos((atuais) => atuais.map((a) => (a.id === aviso.id ? aviso : a))), []);
+  const tirar = useCallback((id: string) => {
+    seguindo.current.get(id)?.parar();
+    seguindo.current.delete(id);
+    const timer = timers.current.get(id);
+    if (timer !== undefined) window.clearTimeout(timer);
+    timers.current.delete(id);
+    setAvisos((atuais) => atuais.filter((a) => a.id !== id));
   }, []);
-  const tirar = useCallback((id: string) => setAvisos((atuais) => atuais.filter((a) => a.id !== id)), []);
   const sumirDepois = useCallback(
     (id: string, ms: number) => {
-      const timer = window.setTimeout(() => {
-        timers.current.delete(timer);
-        tirar(id);
-      }, ms);
-      timers.current.add(timer);
+      const anterior = timers.current.get(id);
+      if (anterior !== undefined) window.clearTimeout(anterior);
+      timers.current.set(
+        id,
+        window.setTimeout(() => {
+          timers.current.delete(id);
+          tirar(id);
+        }, ms),
+      );
     },
     [tirar],
   );
@@ -73,48 +88,41 @@ export function ProvedorDeToasts({ children, navegar }: { children: ReactNode; n
 
     const recusar = (texto: string): void => {
       const id = `recusa-${Date.now()}`;
-      trocar({ id, tom: "erro", texto });
+      mostrar({ id, tom: "erro", texto });
       sumirDepois(id, FICA_MS.erro);
     };
 
     const acompanhar: Toasts["acompanhar"] = ({ runId, nome, aviso, aoTerminar }) => {
       if (seguindo.current.has(runId)) return;
-      seguindo.current.add(runId);
-      trocar({ id: runId, tom: "andando", texto: `${t("toast.running", { name: nome })}${aviso === undefined ? "" : `. ${aviso}`}`, runId });
-      const comeco = Date.now();
-
-      const olhar = (): void => {
-        read("runs.get", runId).then(
-          (run) => {
-            const desfecho = run === undefined ? null : desfechoDe(run.status);
-            if (run === undefined || desfecho === null) {
-              if (Date.now() - comeco > DESISTE_DE_SEGUIR_MS) return tirar(runId);
-              const timer = window.setTimeout(olhar, RELER_MS);
-              timers.current.add(timer);
-              return;
-            }
-            const motivo = run.failedStep?.error ?? run.error ?? "";
+      mostrar({ id: runId, tom: "andando", texto: `${t("toast.running", { name: nome })}${aviso === undefined ? "" : `. ${aviso}`}`, runId });
+      seguindo.current.set(
+        runId,
+        seguirRun({
+          ler: () => read("runs.get", runId),
+          aoDesistir: () => tirar(runId),
+          aoTerminar: (run, desfecho) => {
+            seguindo.current.delete(runId);
+            // Falha sem passo que falhou (a recusa de começar, um run cancelado)
+            // também diz o erro do run, e não que "não começou".
+            const motivo = rotuloDoErroDeRun(t, run.failedStep?.error ?? run.error ?? "");
             const texto =
               desfecho === "ok"
                 ? t("toast.done", { name: nome })
                 : desfecho === "parou"
                   ? t("toast.paused", { name: nome })
-                  : t(run.failedStep === null ? "toast.refused" : "toast.failed", { name: nome, error: motivo });
-            trocar({ id: runId, tom: desfecho === "erro" ? "erro" : "ok", texto, runId });
+                  : motivo === ""
+                    ? t("toast.failedBare", { name: nome })
+                    : t("toast.failed", { name: nome, error: motivo });
+            atualizar({ id: runId, tom: desfecho === "erro" ? "erro" : "ok", texto, runId });
             aoTerminar?.();
             sumirDepois(runId, desfecho === "erro" ? FICA_MS.erro : FICA_MS.ok);
           },
-          () => {
-            const timer = window.setTimeout(olhar, RELER_MS * 2);
-            timers.current.add(timer);
-          },
-        );
-      };
-      olhar();
+        }),
+      );
     };
 
     return { acompanhar, recusar, abrirRun };
-  }, [navegar, sumirDepois, t, tirar, trocar]);
+  }, [atualizar, mostrar, navegar, sumirDepois, t, tirar]);
 
   return (
     <Contexto.Provider value={api}>
@@ -157,11 +165,4 @@ export function ProvedorDeToasts({ children, navegar }: { children: ReactNode; n
       </div>
     </Contexto.Provider>
   );
-}
-
-function desfechoDe(status: string): "ok" | "erro" | "parou" | null {
-  if (status === "done") return "ok";
-  if (status === "failed" || status === "cancelled") return "erro";
-  if (status === "paused") return "parou";
-  return null;
 }

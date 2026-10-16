@@ -2166,7 +2166,8 @@
         "retry": "Tentar de novo",
         "done": "Ligada à iniciativa.",
         "pending": "A automação foi criada, mas ainda não está ligada à iniciativa."
-      }
+      },
+      "eventWarning": "Versão {{version}} gravada. Este fluxo usa o evento ({{reason}}), mas {{triggers}} não traz evento: quando esse gatilho disparar, o run sai sem ele. Use um gatilho que grava evento ou tire a dependência."
     },
     "palette": {
       "title": "Componentes",
@@ -2637,7 +2638,12 @@
         "slack": "Slack",
         "github": "GitHub",
         "manual": "Link"
-      }
+      },
+      "reason": {
+        "marker": "usa {{marcador}}",
+        "action": "tem a ação {{acao}}"
+      },
+      "refused": "Esta automação precisa de um evento ({{reason}}). Escolha um evento recente ou cole um link."
     }
   },
   "library": {
@@ -3085,9 +3091,9 @@
     "running": "Rodando {{name}}",
     "done": "{{name}} terminou",
     "failed": "{{name}} falhou: {{error}}",
-    "refused": "{{name}} não começou: {{error}}",
     "paused": "{{name}} parou e espera sua decisão",
     "open": "Ver execução",
-    "dismiss": "Fechar"
+    "dismiss": "Fechar",
+    "failedBare": "{{name}} falhou"
   }
 }

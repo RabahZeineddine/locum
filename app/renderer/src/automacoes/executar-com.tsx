@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { call, read, type ReadResult } from "@/lib/bridge";
 import { semPrefixoDoIpc } from "@/lib/erro-da-ponte";
 import { quandoSolta } from "@/lib/limites";
-import { rotuloDaFonte, rotuloDoProvedor } from "@/lib/rotulos";
+import { rotuloDaFonte, rotuloDoErroDeRun, rotuloDoMotivoDeEvento, rotuloDoProvedor } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
 import { useCallback, useState, type ReactNode } from "react";
@@ -24,7 +24,7 @@ interface Opcoes {
 interface Pedido extends Opcoes {
   agentId: string;
   nome: string;
-  precisaDeEvento: string;
+  precisaDeEvento: NonNullable<Contexto["precisaDeEvento"]>;
   recentes: Evento[];
 }
 
@@ -70,12 +70,12 @@ export function useExecutarAgora(): {
         }
         setPedido({ agentId, nome, precisaDeEvento: contexto.precisaDeEvento, recentes: contexto.recentes, ...opcoes });
       } catch (e) {
-        toasts.recusar(semPrefixoDoIpc(e instanceof Error ? e.message : String(e)));
+        toasts.recusar(rotuloDoErroDeRun(t, semPrefixoDoIpc(e instanceof Error ? e.message : String(e))));
       } finally {
         setPedindo(false);
       }
     },
-    [iniciar, toasts],
+    [iniciar, t, toasts],
   );
 
   const dialogo =
@@ -113,7 +113,7 @@ function ExecutarCom({
     setErro(null);
     aoExecutar(evento).then(aoFechar, (e: unknown) => {
       setIniciando(false);
-      setErro(semPrefixoDoIpc(e instanceof Error ? e.message : String(e)));
+      setErro(rotuloDoErroDeRun(t, semPrefixoDoIpc(e instanceof Error ? e.message : String(e))));
     });
   };
 
@@ -122,7 +122,7 @@ function ExecutarCom({
       <DialogContent data-locum-executar-com={pedido.agentId}>
         <DialogHeader>
           <DialogTitle>{t("automations.runWith.title")}</DialogTitle>
-          <DialogDescription>{t("automations.runWith.lead", { reason: pedido.precisaDeEvento })}</DialogDescription>
+          <DialogDescription>{t("automations.runWith.lead", { reason: rotuloDoMotivoDeEvento(t, pedido.precisaDeEvento) })}</DialogDescription>
         </DialogHeader>
 
         <div className="flex min-h-0 flex-col gap-4 overflow-y-auto">

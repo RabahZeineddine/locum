@@ -2117,7 +2117,8 @@
         "retry": "Try again",
         "done": "Linked to the initiative.",
         "pending": "The automation was created, but it is not linked to the initiative yet."
-      }
+      },
+      "eventWarning": "Version {{version}} saved. This flow uses the event ({{reason}}), but {{triggers}} does not bring an event: when that trigger fires, the run goes out without it. Use a trigger that records events or drop the dependency."
     },
     "palette": {
       "title": "Components",
@@ -2587,7 +2588,12 @@
         "slack": "Slack",
         "github": "GitHub",
         "manual": "Link"
-      }
+      },
+      "reason": {
+        "marker": "uses {{marcador}}",
+        "action": "has the {{acao}} action"
+      },
+      "refused": "This automation needs an event ({{reason}}). Choose a recent event or paste a link."
     }
   },
   "library": {
@@ -3026,9 +3032,9 @@
     "running": "Running {{name}}",
     "done": "{{name}} finished",
     "failed": "{{name}} failed: {{error}}",
-    "refused": "{{name}} did not start: {{error}}",
     "paused": "{{name}} stopped and waits for your decision",
     "open": "View run",
-    "dismiss": "Close"
+    "dismiss": "Close",
+    "failedBare": "{{name}} failed"
   }
 }

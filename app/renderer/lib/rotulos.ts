@@ -1,4 +1,5 @@
 import type { TFunction } from "i18next";
+import { motivoDaMensagem, type MotivoDeEvento } from "../../src/executor/dependencia-de-evento.js";
 
 /**
  * Os rótulos de severidade e de estado, que a inbox e as execuções mostram nos
@@ -62,6 +63,23 @@ export function rotuloDoMotivo(t: TFunction, motivo: string): string {
   return (MOTIVOS_DE_PASSO as readonly string[]).includes(motivo)
     ? t(`runs.stepReason.${motivo}`)
     : motivo;
+}
+
+/**
+ * O erro de um run como a pessoa lê. A recusa de rodar sem evento chega com o
+ * código e os parâmetros do motivo, e o texto sai na língua da janela; o resto
+ * é do passo ou da API e passa como veio.
+ */
+export function rotuloDoErroDeRun(t: TFunction, mensagem: string): string {
+  const motivo = motivoDaMensagem(mensagem);
+  return motivo === null ? mensagem : t("automations.runWith.refused", { reason: rotuloDoMotivoDeEvento(t, motivo) });
+}
+
+/** "usa {{event.repo}}" ou "tem a ação teams.post", na língua da janela. */
+export function rotuloDoMotivoDeEvento(t: TFunction, motivo: MotivoDeEvento): string {
+  return motivo.codigo === "marcador"
+    ? t("automations.runWith.reason.marker", { marcador: motivo.marcador })
+    : t("automations.runWith.reason.action", { acao: motivo.acao });
 }
 
 const PROVEDORES_CONHECIDOS: Record<string, string> = {

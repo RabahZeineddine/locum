@@ -24,6 +24,7 @@ import {
   rotuloDaFonte,
   rotuloDeEstado,
   rotuloDeSeveridade,
+  rotuloDoErroDeRun,
   rotuloDoModelo,
   rotuloDoMotivo,
 } from "@/lib/rotulos";
@@ -317,9 +318,9 @@ export function LinhaDeExecucao({
           {run.stepFailed > 0 && <span className="num">{t("runs.failed_steps", { count: run.stepFailed })}</span>}
           {run.findingCount > 0 && <span className="num">{t("runs.findings", { count: run.findingCount })}</span>}
           {run.status === "failed" && (run.failedStep?.error ?? run.error) !== null ? (
-            <span className="text-destructive min-w-0 truncate" data-locum-run-erro={run.id} title={run.failedStep?.error ?? run.error ?? undefined}>
+            <span className="text-destructive min-w-0 truncate" data-locum-run-erro={run.id} title={rotuloDoErroDeRun(t, run.failedStep?.error ?? run.error ?? "")}>
               {run.failedStep === null ? "" : `${run.failedStep.name}: `}
-              {run.failedStep?.error ?? run.error}
+              {rotuloDoErroDeRun(t, run.failedStep?.error ?? run.error ?? "")}
             </span>
           ) : null}
         </span>
@@ -402,7 +403,7 @@ function Execucao({ navegar, runId }: { navegar: TelaProps["navegar"]; runId: st
           <StatusDot className="mt-1.5" estado="erro" />
           <span className="flex min-w-0 flex-col gap-0.5">
             {detalhe.failedStep === null ? null : <span className="font-medium">{t("runs.failedAt", { step: detalhe.failedStep.name })}</span>}
-            <span className="break-words">{detalhe.error}</span>
+            <span className="break-words">{rotuloDoErroDeRun(t, detalhe.error)}</span>
           </span>
         </p>
       ) : null}
