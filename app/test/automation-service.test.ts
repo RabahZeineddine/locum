@@ -186,3 +186,26 @@ test("salvar sem dizer enabled mantém o ligado que entrou depois da base, pelo 
   });
   assert.equal(salva.triggers[0]?.enabled, true);
 });
+
+test("com knownTriggerIds, o gatilho criado por fora depois que o editor abriu fica, e o que a pessoa tirou sai", async () => {
+  const { automations, triggers } = montar();
+  const criada = await automations.save({
+    spec,
+    triggers: [{ config: { kind: "manual" } }, { config: { kind: "cron", expression: "0 9 * * 1-5" } }],
+    note: "",
+    create: true,
+  });
+  const manual = criada.triggers.find((g) => g.config.kind === "manual")!;
+  const cron = criada.triggers.find((g) => g.config.kind === "cron")!;
+  // Pelo MCP, sem versão nova, com o editor aberto.
+  const deFora = await triggers.set(spec.id, { kind: "cron", expression: "0 18 * * 1-5" });
+
+  const salva = await automations.save({
+    spec: { ...spec, name: "Outro nome" },
+    triggers: [{ id: manual.id, config: { kind: "manual" } }],
+    note: "tira o cron",
+    expectedVersion: 1,
+    knownTriggerIds: [manual.id, cron.id],
+  });
+  assert.deepEqual(salva.triggers.map((g) => g.id).sort(), [manual.id, deFora.id].sort());
+});

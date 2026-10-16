@@ -342,6 +342,7 @@ function EditorCarregado({
     return call("automations.save", {
       spec,
       triggers: gatilhosParaGravar(resultado.gatilhos, gravadoAgora.gatilhos),
+      knownTriggerIds: gravadoAgora.gatilhos.flatMap((g) => (g.id === undefined ? [] : [g.id])),
       note: nota.trim() || (nova ? provisoria?.nota : undefined) || t("automations.editor.noteDefault"),
       ...(nova ? { create: true } : { expectedVersion: sobre?.version.version ?? versao }),
     }).then(

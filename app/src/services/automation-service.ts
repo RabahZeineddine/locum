@@ -29,6 +29,12 @@ export interface AutomationSaveInput {
    * é recusado em vez de passar por cima do que entrou no meio.
    */
   expectedVersion?: number;
+  /**
+   * Os gatilhos que quem grava tinha na mão. Com a lista, só esses podem ser
+   * removidos por terem ficado de fora: um gatilho criado por fora depois que o
+   * editor abriu fica. Sem ela, a lista de `triggers` é a lista inteira.
+   */
+  knownTriggerIds?: string[];
 }
 
 export interface Automation {
@@ -118,7 +124,9 @@ export class AutomationService {
       mantidos.add(salvo.id);
     }
     for (const antigo of atuais) {
-      if (!mantidos.has(antigo.id)) await this.triggers.remove(antigo.id);
+      if (mantidos.has(antigo.id)) continue;
+      if (input.knownTriggerIds !== undefined && !input.knownTriggerIds.includes(antigo.id)) continue;
+      await this.triggers.remove(antigo.id);
     }
 
     return { version, createdAt: (await this.agents.get(agentId))!.createdAt, triggers: await this.triggers.list(agentId) };
