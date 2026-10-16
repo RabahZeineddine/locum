@@ -44,3 +44,10 @@ test("conexão autorizada ou servidor testado conta", () => {
 test("agent criado marca o passo do agent", () => {
   assert.deepEqual(feitos({ agents: 1 }), ["model", "agent"]);
 });
+
+test("automação criada e desligada: o último passo é ligar, não criar", () => {
+  const base = { modelo: true, conexoes: [], agents: 1 };
+  assert.equal(passosDoComeco({ ...base, gatilho: false, temGatilho: true }).at(-1)?.id, "enable");
+  assert.equal(passosDoComeco({ ...base, gatilho: false, temGatilho: false }).at(-1)?.id, "trigger");
+  assert.deepEqual(passosDoComeco({ ...base, gatilho: true, temGatilho: true }).at(-1), { id: "trigger", feito: true });
+});
