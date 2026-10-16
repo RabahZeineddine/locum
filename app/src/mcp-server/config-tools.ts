@@ -203,7 +203,7 @@ export function registerConfigTools(server: McpServer): void {
     "list_server_tools",
     {
       description:
-        "Tools a registered server exposes, with description and estimated schema tokens, to choose which ones a step uses. A disabled server is refused, because listing runs its command.",
+        "Tools a registered server exposes, with description, inputSchema (JSON Schema of the arguments), outputSchema when declared, readOnlyHint when annotated and estimated schema tokens, to choose which ones a step uses. A disabled server is refused, because listing runs its command.",
       inputSchema: { name: z.string().min(1) },
     },
     async ({ name }) =>

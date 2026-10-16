@@ -17,6 +17,8 @@ export const McpCallProposal = z.object({
   server: z.string({ error: "escolha o app (servidor MCP)" }).trim().min(1, "escolha o app (servidor MCP)"),
   tool: z.string({ error: "escolha a ferramenta" }).trim().min(1, "escolha a ferramenta"),
   args: z.record(z.string(), z.unknown()).default({}),
+  /** Por que a chamada parou na Fila mesmo em automático: o executor grava, a tela explica. */
+  aviso: z.enum(["nao-e-leitura"]).optional(),
 });
 export type McpCallProposal = z.infer<typeof McpCallProposal>;
 
@@ -25,19 +27,50 @@ export interface McpCallOptions {
   call: (server: string, tool: string, args: Record<string, unknown>) => Promise<unknown>;
 }
 
+/** Quanto da resposta da ferramenta fica gravado na saída do passo; o resto é cortado com `truncado: true`. */
+export const TETO_DA_RESPOSTA = 20_000;
+
+type RespostaMcp = { isError?: boolean; structuredContent?: unknown; content?: { type?: string; text?: string }[] };
+
+const ehObjeto = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
+
+/**
+ * A resposta da ferramenta como saída do passo. `structuredContent` vale
+ * primeiro; depois o texto, parseado quando é JSON de objeto ou lista, e
+ * `{ text }` quando não é. Sem conteúdo, nada: o passo guarda só o estado.
+ */
+export function saidaDaResposta(resultado: RespostaMcp | undefined): unknown {
+  let saida: unknown;
+  if (ehObjeto(resultado?.structuredContent)) {
+    saida = resultado!.structuredContent;
+  } else {
+    const texto = (resultado?.content ?? [])
+      .filter((c) => c.type === undefined || c.type === "text")
+      .map((c) => c.text ?? "")
+      .join("\n");
+    if (texto.trim() === "") return undefined;
+    try {
+      const lido: unknown = JSON.parse(texto);
+      saida = lido !== null && typeof lido === "object" ? lido : { text: texto };
+    } catch {
+      saida = { text: texto };
+    }
+  }
+  const json = JSON.stringify(saida);
+  return json.length > TETO_DA_RESPOSTA ? { truncado: true, text: json.slice(0, TETO_DA_RESPOSTA) } : saida;
+}
+
 export function mcpCallHandler(options: McpCallOptions): ActionHandler {
   return {
     async propose(payload) {
-      // Só os três campos: o resto do evento que o executor junta não é
+      // Só os campos da chamada: o resto do evento que o executor junta não é
       // argumento da ferramenta, e não entra na pendência.
       const p = (payload ?? {}) as Record<string, unknown>;
-      return McpCallProposal.parse({ server: p.server, tool: p.tool, args: p.args ?? {} });
+      return McpCallProposal.parse({ server: p.server, tool: p.tool, args: p.args ?? {}, ...(p.aviso === undefined ? {} : { aviso: p.aviso }) });
     },
     async publish(payload) {
       const proposta = McpCallProposal.parse(payload);
-      const resultado = (await options.call(proposta.server, proposta.tool, proposta.args)) as
-        | { isError?: boolean; content?: { type?: string; text?: string }[] }
-        | undefined;
+      const resultado = (await options.call(proposta.server, proposta.tool, proposta.args)) as RespostaMcp | undefined;
       // Ferramenta MCP que falha costuma responder normalmente com `isError`.
       // Tratar isso como sucesso fecharia a pendência como publicada sem nada
       // ter saído.
@@ -45,6 +78,8 @@ export function mcpCallHandler(options: McpCallOptions): ActionHandler {
         const texto = (resultado.content ?? []).map((c) => c.text ?? "").join(" ").trim();
         throw new Error(`${proposta.server}.${proposta.tool} recusou: ${texto || "sem detalhe"}`);
       }
+      const output = saidaDaResposta(resultado);
+      return output === undefined ? undefined : { output };
     },
   };
 }

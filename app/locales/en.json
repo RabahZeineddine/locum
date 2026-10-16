@@ -422,7 +422,8 @@
       "issue": "Issue",
       "digest": "Digest",
       "counts": "{{reply}} need a reply · {{info}} info",
-      "call": "Call"
+      "call": "Call",
+      "notRead": "the tool is not marked as read; confirm"
     },
     "stuckTitle": "Stopped while publishing",
     "stuckHint": "Locum crashed or lost the network while publishing. Check the destination before choosing.",
@@ -2153,7 +2154,14 @@
       "agents": "Agents",
       "newAgent": "Create agent",
       "agentsEmpty": "No agent yet.",
-      "logic": "Logic"
+      "logic": "Logic",
+      "search": "Search nodes or tools",
+      "read": "read",
+      "write": "write",
+      "loadTools": "load tools",
+      "loadingTools": "loading...",
+      "showAll": "show all ({{count}})",
+      "noMatch": "Nothing found."
     },
     "canvas": {
       "approval": "click to send",
@@ -2450,7 +2458,26 @@
         "tool": "Tool",
         "chooseTool": "Choose the tool",
         "loading": "Reading the app's tools...",
-        "argsJson": "Arguments (JSON)"
+        "argsJson": "Arguments (JSON)",
+        "modeFixed": "value",
+        "modeRef": "reference",
+        "refChoose": "Choose where it comes from",
+        "refEvent": "Trigger event",
+        "refSteps": "Previous steps",
+        "refType": "or type: steps.step.field",
+        "enumChoose": "Choose",
+        "yes": "yes",
+        "no": "no",
+        "arrayHint": "one value per line",
+        "jsonInvalid": "This is not valid JSON.",
+        "viewJson": "view as JSON",
+        "viewForm": "view as form",
+        "refresh": "refresh",
+        "refreshing": "reading...",
+        "refreshHint": "Reads the server's tools again",
+        "autoWrite": "Automatic writing",
+        "autoWriteHint": "In automatic mode, a write waits in the Queue. Check this to let it go out on its own.",
+        "autoWriteWarning": "Publishes in your name without asking."
       },
       "http.request": {
         "title": "Call API",
@@ -2549,7 +2576,10 @@
       "noTool": "Choose the app and the tool for this action.",
       "noUrl": "Fill in the API address, starting with http:// or https://.",
       "noValue": "Say what this step looks at, with a variable.",
-      "noCases": "Add at least one case to the switch."
+      "noCases": "Add at least one case to the switch.",
+      "argRequired": "\"{{campo}}\" is missing in the app action.",
+      "argType": "The value of \"{{campo}}\" is not the type the tool asks for.",
+      "refNotBefore": "The action cites {{ref}}, which does not come before it in the flow."
     },
     "github": {
       "repos": {

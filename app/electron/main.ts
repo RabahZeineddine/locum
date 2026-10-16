@@ -1124,6 +1124,7 @@ async function checkRenderer(): Promise<string> {
     await checkEditorSaida(window);
     await checkListaDoTeams(window);
     await checkAutomacaoNova(window);
+    await checkPaletaPorConexao(window);
     await checkPassoDeAgent(window);
     const configuracao = await checkConfig(window);
     const revisao = await checkReviewVerdict(window);
@@ -2310,6 +2311,69 @@ async function checkAutomacaoNova(window: BrowserWindow): Promise<void> {
       db.delete(schema.agentVersions).where(eq(schema.agentVersions.agentId, id)).run();
       db.delete(schema.agents).where(eq(schema.agents.id, id)).run();
     }
+  }
+}
+
+/**
+ * A paleta do editor tem uma seção por conexão ligada, com as ferramentas dela
+ * e o selo de leitura ou escrita; a busca filtra; criar um nó a partir da
+ * ferramenta abre o formulário com servidor e ferramenta preenchidos. Nada é
+ * gravado: a automação nova só existe como provisória na janela.
+ */
+async function checkPaletaPorConexao(window: BrowserWindow): Promise<void> {
+  const { FIXTURE_SERVER } = await import("../src/fixtures/mcp-fixture.js");
+  const js = (codigo: string): Promise<unknown> =>
+    window.webContents.executeJavaScript(codigo).catch((e: unknown) => {
+      throw new Error(`paleta por conexao: ${e instanceof Error ? e.message : String(e)} em ${codigo.slice(0, 120)}`);
+    });
+  const existe = (seletor: string): Promise<boolean> => js(`document.querySelector(${JSON.stringify(seletor)}) !== null`) as Promise<boolean>;
+  const clicar = (seletor: string): Promise<boolean> =>
+    js(`(() => { const e = document.querySelector(${JSON.stringify(seletor)}); e?.click(); return e !== null; })()`) as Promise<boolean>;
+  const esperar = async (nome: string, ok: () => Promise<boolean>): Promise<void> => {
+    await esperarDoServico(nome, async () => ((await ok()) ? true : undefined), 15_000);
+  };
+  const buscar = (texto: string): Promise<unknown> =>
+    js(`(() => {
+      const campo = document.querySelector("[data-locum-paleta-busca]");
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(campo, ${JSON.stringify(texto)});
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+      return null;
+    })()`);
+  const ferramenta = (nome: string): string => `[data-locum-paleta-ferramenta="${FIXTURE_SERVER}/${nome}"]`;
+  try {
+    await irPara(window, "automations");
+    await esperar("a lista de automacoes", () => existe("[data-locum-automacao-nova]"));
+    await clicar("[data-locum-automacao-nova]");
+    await esperar("o formulario de nova automacao", () => existe("[data-locum-modelo=blank]"));
+    await clicar("[data-locum-modelo=blank]");
+    await clicar("[data-locum-automacao-criar]");
+    await esperar("o editor da automacao nova", () => existe("[data-locum-probe=automacao-editor]"));
+
+    await esperar("a secao do servidor de brinquedo", () => existe(`[data-locum-paleta-conexao="${FIXTURE_SERVER}"]`));
+    // Sem lista guardada a seção pede para carregar; com ela, as ferramentas já estão lá.
+    if (await existe(`[data-locum-paleta-carregar="${FIXTURE_SERVER}"]`)) await clicar(`[data-locum-paleta-carregar="${FIXTURE_SERVER}"]`);
+    await esperar("as ferramentas da conexao na paleta", () => existe(`[data-locum-paleta-conexao="${FIXTURE_SERVER}"] [data-locum-paleta-ferramenta]`));
+
+    await buscar("pid");
+    await esperar("a ferramenta pid na busca", () => existe(ferramenta("pid")));
+    const classe = (nome: string): Promise<unknown> => js(`document.querySelector(${JSON.stringify(ferramenta(nome))})?.dataset.locumPaletaClasse ?? null`);
+    if ((await classe("pid")) !== "leitura") throw new Error("o pid, anotado como leitura, nao veio com o selo de leitura");
+    await buscar("echo");
+    await esperar("a ferramenta echo na busca", () => existe(ferramenta("echo")));
+    if ((await classe("echo")) !== "escrita") throw new Error("o echo, sem anotacao, nao veio como escrita");
+    if (await existe('[data-locum-paleta="mcp.call"]')) throw new Error("a busca por echo deixou o no fixo de acao em app na paleta");
+    await buscar("zzz-nao-existe");
+    await esperar("a busca sem resultado esconder a conexao", async () => !(await existe(`[data-locum-paleta-conexao="${FIXTURE_SERVER}"]`)));
+    await buscar("echo");
+    await esperar("a ferramenta echo de volta", () => existe(ferramenta("echo")));
+
+    await clicar(ferramenta("echo"));
+    await esperar("o formulario da ferramenta", () => existe('[data-locum-arg="text"]'));
+    const servidor = await js(`document.querySelector("[data-locum-acao-servidor]")?.value ?? null`);
+    const tool = await js(`document.querySelector("[data-locum-acao-ferramenta]")?.value ?? null`);
+    if (servidor !== FIXTURE_SERVER || tool !== "echo") throw new Error(`o no criado pela paleta veio com ${String(servidor)}/${String(tool)}`);
+  } finally {
+    await js(`(Object.keys(localStorage).filter((k) => k.startsWith("locum.rascunho-automacao") || k.startsWith("locum.automacao-provisoria")).forEach((k) => localStorage.removeItem(k)), null)`);
   }
 }
 

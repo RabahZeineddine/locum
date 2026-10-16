@@ -85,6 +85,13 @@
       "when": 1792111966062,
       "tag": "0011_gasto-por-provedor",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1792171699560,
+      "tag": "0012_resposta-da-aprovacao",
+      "breakpoints": true
     }
   ]
 }

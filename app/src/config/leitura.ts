@@ -71,6 +71,16 @@ export function ehLeituraDa(f: FerramentaClassificavel): boolean {
   return ehLeitura(f.name);
 }
 
+/**
+ * Se o passo `mcp.call` desta ferramenta só lê: o servidor tem de ter anotado
+ * `readOnlyHint` (o nome sozinho engana: `query`, `report_issue`), e o nome não
+ * pode escrever. Sem anotação conta como escrita. É o critério do executor
+ * para o ensaio e o da paleta do editor para o selo e o modo de nascimento.
+ */
+export function ehLeituraNaAcao(f: FerramentaClassificavel): boolean {
+  return f.readOnlyHint === true && ehLeituraDa(f);
+}
+
 /** Servidor com mais leituras que isto não liga todas por padrão: a pessoa escolhe as que o agent precisa. */
 export const LIMITE_DE_LEITURA_PADRAO = 30;
 

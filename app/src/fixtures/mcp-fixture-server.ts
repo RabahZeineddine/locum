@@ -62,6 +62,18 @@ server.registerTool(
   async () => ({ content: [{ type: "text", text: String(process.pid) }] }),
 );
 
+// Resposta estruturada com outputSchema (MCP 2025-06): o teste confere que o catálogo guarda o esquema de saída.
+server.registerTool(
+  "totais",
+  {
+    description: "Devolve totais de exemplo, com esquema de saída declarado.",
+    inputSchema: {},
+    outputSchema: { total: z.number(), itens: z.array(z.string()) },
+    annotations: { readOnlyHint: true },
+  },
+  async () => ({ structuredContent: { total: 2, itens: ["a", "b"] }, content: [{ type: "text", text: '{"total":2,"itens":["a","b"]}' }] }),
+);
+
 server.registerTool(
   "slow",
   {

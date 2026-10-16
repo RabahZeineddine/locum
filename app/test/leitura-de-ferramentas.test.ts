@@ -200,3 +200,11 @@ test("conexão adicionada sem lista em cache: quando a lista chega, leitura liga
   assert.equal(escolhaInicial([{ nome: "gh", ferramentas: [] }]).linhaDeBase, "feita");
 });
 
+
+test("leitura na ação: só a que o servidor anotou como leitura, sem anotação conta como escrita", async () => {
+  const { ehLeituraNaAcao } = await import("../src/config/leitura.js");
+  assert.equal(ehLeituraNaAcao({ name: "pid", readOnlyHint: true }), true);
+  assert.equal(ehLeituraNaAcao({ name: "get_pull_request" }), false, "sem anotação, o nome não basta");
+  assert.equal(ehLeituraNaAcao({ name: "add_reaction", readOnlyHint: true }), false, "nome que escreve vence a anotação");
+  assert.equal(ehLeituraNaAcao({ name: "list_things", readOnlyHint: false }), false);
+});

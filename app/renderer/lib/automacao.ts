@@ -15,6 +15,7 @@ import { topoSort, type AgentSpec, type LogicStep, type Step, type TriggerConfig
 import { SLACK_REPLY_SCHEMA } from "../../src/slack/proposal";
 import { CONVERSATION_ISSUE_SCHEMA, ISSUE_CONTENT_SCHEMA } from "../../src/trackers/proposal";
 import prReview from "../../../examples/agents/pr-review.json";
+import { camposDoSchema, referenciasDoArgs, validarArgs } from "./formulario-de-schema";
 import { ALTURA_DO_NO, LARGURA_DO_NO, montarGrafo } from "./grafo";
 
 export type PassoDoSpec = Step;
@@ -573,6 +574,83 @@ export function variaveis(r: Rascunho, chave: string): string[] {
   return [...doEvento, ...antes];
 }
 
+export interface ReferenciaDisponivel {
+  /** `event.text` ou `steps.analisar.verdict`, sem as chaves. */
+  caminho: string;
+  grupo: "event" | "step";
+}
+
+/**
+ * O que um campo pode citar no ponto do fluxo: os campos do evento dos
+ * gatilhos e a saída dos passos anteriores. Passo de IA com formato de saída
+ * (`outputSchema`) traz também cada propriedade; ação e passo sem formato só
+ * o passo inteiro, e a pessoa digita o caminho do resto.
+ */
+export function referenciasDisponiveis(
+  r: Rascunho,
+  chave: string,
+  fontes: {
+    /** A saída de cada passo no último run da automação, pela chave do passo. */
+    saidas?: Readonly<Record<string, unknown>>;
+    /** `outputSchema` das ferramentas de conexão, por `servidor/ferramenta`. */
+    esquemasDeSaida?: Readonly<Record<string, unknown>>;
+  } = {},
+): ReferenciaDisponivel[] {
+  const porChave = new Map(r.spec.steps.map((p) => [p.key, p]));
+  const lista: ReferenciaDisponivel[] = [];
+  for (const caminho of variaveis(r, chave)) {
+    if (caminho.startsWith("event.")) {
+      lista.push({ caminho, grupo: "event" });
+      continue;
+    }
+    lista.push({ caminho, grupo: "step" });
+    const k = caminho.slice("steps.".length);
+    const passo = porChave.get(k);
+    const params = passo?.type === "action" ? ((passo.params ?? {}) as { server?: unknown; tool?: unknown }) : {};
+    const doSchema =
+      passo?.type === "model"
+        ? passo.outputSchema
+        : passo?.type === "action" && typeof params.server === "string" && typeof params.tool === "string"
+          ? fontes.esquemasDeSaida?.[`${params.server}/${params.tool}`]
+          : undefined;
+    const props = Object.keys((doSchema as { properties?: Record<string, unknown> } | undefined)?.properties ?? {});
+    const vistos = new Set<string>();
+    for (const sub of [...props, ...caminhosDaSaida(fontes.saidas?.[k])]) {
+      if (vistos.has(sub)) continue;
+      vistos.add(sub);
+      lista.push({ caminho: `${caminho}.${sub}`, grupo: "step" });
+    }
+  }
+  return lista;
+}
+
+/** A saída mais recente de cada passo, dos runs do mais novo para o mais velho. Ensaio e saída vazia não contam. */
+export function saidasDosRuns(runs: readonly { steps: readonly { stepKey: string; output: unknown }[] }[]): Record<string, unknown> {
+  const saidas: Record<string, unknown> = {};
+  for (const run of runs) {
+    for (const p of run.steps) {
+      const o = p.output;
+      if (o === null || o === undefined || p.stepKey in saidas) continue;
+      if (typeof o === "object" && (o as { state?: unknown }).state === "ensaio") continue;
+      saidas[p.stepKey] = o;
+    }
+  }
+  return saidas;
+}
+
+/**
+ * Os caminhos que dá para citar numa saída já gravada: cada campo, o primeiro
+ * item de cada lista e os objetos aninhados até a terceira camada.
+ */
+export function caminhosDaSaida(valor: unknown, prefixo = "", profundidade = 0): string[] {
+  if (valor === null || typeof valor !== "object" || profundidade >= 3) return [];
+  const entradas = Array.isArray(valor) ? valor.slice(0, 1).map((v, i) => [String(i), v] as const) : Object.entries(valor);
+  return entradas.flatMap(([nome, v]) => {
+    const caminho = prefixo === "" ? nome : `${prefixo}.${nome}`;
+    return [caminho, ...caminhosDaSaida(v, caminho, profundidade + 1)];
+  });
+}
+
 /** Todo passo de que `chave` depende, direta ou indiretamente. */
 export function anteriores(spec: AgentSpec, chave: string): string[] {
   const porChave = new Map(spec.steps.map((p) => [p.key, p]));
@@ -597,6 +675,8 @@ export interface Problema {
   no?: string;
   /** Impede salvar. Os outros são aviso. */
   bloqueia: boolean;
+  /** Valores para o texto do dicionário (`{{campo}}`, `{{ref}}`). */
+  valores?: Record<string, string>;
   /** Para onde levar a pessoa a resolver. */
   atalho?: { rota: "connections" | "agents"; detalhe: string };
 }
@@ -609,6 +689,8 @@ export interface Contexto {
   agents?: readonly string[];
   /** O GitHub tem token. Ausente enquanto a lista de conexões não chegou: não acusa nada. */
   githubComToken?: boolean;
+  /** `inputSchema` das ferramentas de conexão, por `servidor/ferramenta`. Ausente (cache antigo, lista não lida): os argumentos não são conferidos. */
+  esquemas?: Readonly<Record<string, unknown>>;
 }
 
 /**
@@ -676,6 +758,8 @@ export function problemas(r: Rascunho, ctx: Contexto): Problema[] {
       const prm = (p.params ?? {}) as { server?: unknown; tool?: unknown };
       if (typeof prm.server !== "string" || prm.server === "" || typeof prm.tool !== "string" || prm.tool === "") {
         lista.push({ chave: "automations.problems.noTool", no: p.key, bloqueia: true });
+      } else {
+        lista.push(...problemasDosArgumentos(r.spec, p.key, prm.server, prm.tool, (p.params ?? {}).args, ctx.esquemas));
       }
     }
     if (p.action === "http.request") {
@@ -715,6 +799,44 @@ export function problemas(r: Rascunho, ctx: Contexto): Problema[] {
     if (p.action === "tracker.create_issue" && (p.target === undefined || !ctx.trackers.includes(p.target))) {
       lista.push({ chave: "automations.problems.noTracker", no: p.key, bloqueia: true });
     }
+  }
+  return lista;
+}
+
+/**
+ * Os argumentos de um `mcp.call` contra o schema da ferramenta, e as
+ * referências contra o que vem antes no fluxo. O que o schema não cobre (cache
+ * antigo, lista não lida) fica sem conferir; a referência a passo que não vem
+ * antes sempre é conferida, porque no run ela viraria `null` calado.
+ */
+function problemasDosArgumentos(
+  spec: AgentSpec,
+  chave: string,
+  servidor: string,
+  ferramenta: string,
+  argsGravados: unknown,
+  esquemas: Contexto["esquemas"],
+): Problema[] {
+  const lista: Problema[] = [];
+  const args = argsGravados !== null && typeof argsGravados === "object" && !Array.isArray(argsGravados) ? (argsGravados as Record<string, unknown>) : {};
+  const esquema = esquemas?.[`${servidor}/${ferramenta}`];
+  if (esquema !== undefined) {
+    for (const erro of validarArgs(camposDoSchema(esquema), args)) {
+      lista.push({
+        chave: erro.motivo === "obrigatorio" ? "automations.problems.argRequired" : "automations.problems.argType",
+        no: chave,
+        bloqueia: true,
+        valores: { campo: erro.caminho },
+      });
+    }
+  }
+  const antes = new Set(anteriores(spec, chave));
+  const vistas = new Set<string>();
+  for (const ref of referenciasDoArgs(args)) {
+    const [raiz, passo] = ref.split(".");
+    if (raiz !== "steps" || passo === undefined || antes.has(passo) || vistas.has(passo)) continue;
+    vistas.add(passo);
+    lista.push({ chave: "automations.problems.refNotBefore", no: chave, bloqueia: true, valores: { ref: `steps.${passo}` } });
   }
   return lista;
 }
