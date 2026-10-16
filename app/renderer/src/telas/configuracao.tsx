@@ -1,6 +1,7 @@
 import { Badge } from "@/components/ui/badge";
-import { ProtecaoDeLimites } from "./limites";
+import { AjustesDeLimites } from "./limites";
 import { Input } from "@/components/ui/input";
+import { Kbd } from "@/components/ui/kbd";
 import { Select } from "@/components/ui/select";
 import { StatusDot } from "@/components/ui/status-dot";
 import { pontoDaFerramenta } from "@/lib/estado-do-ponto";
@@ -10,11 +11,21 @@ import { call, useRead, type ReadResult } from "@/lib/bridge";
 import { useAtualizacao } from "@/lib/atualizacao";
 import { cn } from "@/lib/utils";
 import { EscolhaDoModelo } from "../assistente-modelo";
-import { GrupoDeLinhas, LinhaDePreferencia, Vazio } from "./blocos";
-import { SlidersHorizontal, Sparkles, SquareTerminal, type LucideIcon } from "lucide-react";
-import { quando } from "./sessoes";
+import { Vazio } from "./blocos";
+import { BlocoDeAjustes, Interruptor, LinhaDeAjuste } from "./linhas-de-ajuste";
+import {
+  Clock,
+  Download,
+  Gauge,
+  Languages,
+  SlidersHorizontal,
+  Sparkles,
+  SquareTerminal,
+  Wrench,
+  type LucideIcon,
+} from "lucide-react";
 import { useIdioma } from "../idioma";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { Language } from "../../../src/services/i18n-service.js";
 import type { WorkingHoursConfig } from "../../../src/config/types.js";
@@ -27,16 +38,20 @@ type EstadoDoOpencode = ReadResult<"opencode.status">;
 
 /**
  * A tela de configuração: só o comportamento do app. Idioma, atualização,
- * horário de trabalho, o assistente, e o Locum dentro das ferramentas de
- * código. Provedores de modelo moram em Modelos, e tudo que é externo, em
+ * limites, horário de trabalho, o assistente, e o Locum dentro das ferramentas
+ * de código. Provedores de modelo moram em Modelos, e tudo que é externo, em
  * Conexões.
  *
  * Segredo nenhum passa por aqui: o que a tela mostra de credencial é o
  * endereço dela e se existe valor guardado.
  */
 
-/** As seções da Configuração, cada uma com rota própria. */
-export const SECOES = ["general", "assistant", "tools"] as const;
+/**
+ * As seções da Configuração, cada uma com rota própria (`#/settings/<id>`),
+ * na ordem da lista. `general`, `assistant` e `tools` já eram endereços
+ * antes de a lista crescer, e seguem valendo.
+ */
+export const SECOES = ["general", "language", "updates", "limits", "hours", "assistant", "tools", "advanced"] as const;
 export type SecaoId = (typeof SECOES)[number];
 
 export function Configuracao({ detalhe, navegar }: TelaProps) {
@@ -60,7 +75,7 @@ export function Configuracao({ detalhe, navegar }: TelaProps) {
 
   return (
     <div
-      className="mx-auto flex w-full max-w-5xl flex-col gap-6"
+      className="mx-auto flex w-full max-w-4xl flex-col gap-6"
       data-estado={estado}
       data-locum-cofre={credenciais.data?.available === true ? "legivel" : "fechado"}
       data-locum-fallbacks={fallbacks.data?.length ?? -1}
@@ -68,7 +83,10 @@ export function Configuracao({ detalhe, navegar }: TelaProps) {
       data-locum-secao-ativa={secao}
       data-locum-probe="settings"
     >
-      <CabecalhoDaTela descricao={t("settings.lead")} titulo={t("nav.settings")} />
+      <CabecalhoDaTela
+        acoes={<Kbd aria-label={t("settings.shortcut")}>⌘,</Kbd>}
+        titulo={t("nav.settings")}
+      />
 
       {erro === undefined ? null : (
         <p className="text-destructive text-sm">
@@ -80,45 +98,38 @@ export function Configuracao({ detalhe, navegar }: TelaProps) {
         <NavDaConfiguracao atual={secao} navegar={navegar} />
 
         <div className="flex min-w-0 max-w-2xl flex-1 flex-col gap-6">
-          <TopoDaSecao secao={secao} />
+          <h2 className="text-[15px] font-medium tracking-tight">{t(`settings.sections.${secao}`)}</h2>
 
           {secao === "general" ? (
-            <GrupoDeLinhas>
-              <LinhaDePreferencia descricao={t("settings.language.description")} titulo={t("settings.language.title")}>
-                <EscolhaDoIdioma />
-              </LinhaDePreferencia>
-              <LinhaDePreferencia descricao={t("settings.updates.description")} titulo={t("settings.updates.title")}>
-                <Atualizacao />
-              </LinhaDePreferencia>
-              <LinhaDePreferencia descricao={t("settings.staleDays.description")} titulo={t("settings.staleDays.title")}>
+            <>
+              <BlocoDeAjustes titulo={t("settings.groups.initiatives")}>
                 <EscolhaDeStaleDays />
-              </LinhaDePreferencia>
-              <LinhaDePreferencia descricao={t("settings.workingHours.description")} titulo={t("settings.workingHours.title")}>
-                <EscolhaDeWorkingHours />
-              </LinhaDePreferencia>
-              <LinhaDePreferencia descricao={t("limits.settings.description")} empilhado titulo={t("limits.settings.title")}>
-                <ProtecaoDeLimites />
-              </LinhaDePreferencia>
-              <LinhaDePreferencia
-                descricao={t("settings.initiativesRoot.description")}
-                empilhado
-                titulo={t("settings.initiativesRoot.title")}
-              >
-                <EscolhaDaRaiz />
-              </LinhaDePreferencia>
-            </GrupoDeLinhas>
+              </BlocoDeAjustes>
+              <BlocoDeAjustes titulo={t("settings.groups.sessions")}>
+                <EscolhaDoTerminal />
+              </BlocoDeAjustes>
+            </>
           ) : null}
+
+          {secao === "language" ? (
+            <BlocoDeAjustes>
+              <EscolhaDoIdioma />
+            </BlocoDeAjustes>
+          ) : null}
+
+          {secao === "updates" ? <Atualizacao /> : null}
+
+          {secao === "limits" ? <AjustesDeLimites navegar={navegar} /> : null}
+
+          {secao === "hours" ? <EscolhaDeWorkingHours /> : null}
 
           {secao === "assistant" ? (
             <>
-              <GrupoDeLinhas
-                descricao={t("settings.assistantModel.description")}
-                titulo={t("settings.assistantModel.title")}
-              >
+              <BlocoDeAjustes titulo={t("settings.assistantModel.title")}>
                 <EscolhaDoModelo />
-              </GrupoDeLinhas>
+              </BlocoDeAjustes>
 
-              <GrupoDeLinhas
+              <BlocoDeAjustes
                 descricao={t("settings.fallbacks.description", { machine: machineId ?? "..." })}
                 titulo={t("settings.fallbacks.title")}
               >
@@ -129,28 +140,21 @@ export function Configuracao({ detalhe, navegar }: TelaProps) {
                     <LinhaDoFallback fallback={fallback} key={`${fallback.fromModel}>${fallback.toModel}`} />
                   ))
                 )}
-              </GrupoDeLinhas>
+              </BlocoDeAjustes>
             </>
           ) : null}
 
           {secao === "tools" ? (
-            <>
-              <GrupoDeLinhas
-                descricao={t("settings.toolsLocum.description")}
-                titulo={t("settings.toolsLocum.title")}
-              >
-                <ClaudeCode />
-                <Opencode />
-              </GrupoDeLinhas>
-              <GrupoDeLinhas>
-                <LinhaDePreferencia
-                  descricao={t("settings.sessionTerminal.description")}
-                  titulo={t("settings.sessionTerminal.title")}
-                >
-                  <EscolhaDoTerminal />
-                </LinhaDePreferencia>
-              </GrupoDeLinhas>
-            </>
+            <BlocoDeAjustes descricao={t("settings.toolsLocum.description")} titulo={t("settings.toolsLocum.title")}>
+              <ClaudeCode />
+              <Opencode />
+            </BlocoDeAjustes>
+          ) : null}
+
+          {secao === "advanced" ? (
+            <BlocoDeAjustes titulo={t("settings.groups.folders")}>
+              <EscolhaDaRaiz />
+            </BlocoDeAjustes>
           ) : null}
         </div>
       </div>
@@ -160,22 +164,59 @@ export function Configuracao({ detalhe, navegar }: TelaProps) {
 
 const ICONE_DA_SECAO: Record<SecaoId, LucideIcon> = {
   general: SlidersHorizontal,
+  language: Languages,
+  updates: Download,
+  limits: Gauge,
+  hours: Clock,
   assistant: Sparkles,
   tools: SquareTerminal,
+  advanced: Wrench,
 };
 
+/** Campo onde as setas movem o cursor ou escolhem opção: ali elas não trocam de seção. */
+function digitando(alvo: EventTarget | null): boolean {
+  return alvo instanceof HTMLElement && alvo.closest("input, select, textarea, [contenteditable=true]") !== null;
+}
+
 /**
- * A navegação entre as seções, de lado, como nas preferências do sistema: com
- * quatro seções e mais por vir, abas em linha viravam uma fila de palavras sem
- * dizer o que cada uma guarda.
+ * A lista de seções, de lado, como nas preferências do sistema.
+ *
+ * ↑ e ↓ trocam de seção, com o foco na lista ou com a tela em repouso (sem
+ * campo em edição). Um só botão da lista entra na ordem do Tab, o da seção
+ * ativa, como numa lista de abas.
  */
 function NavDaConfiguracao({ atual, navegar }: { atual: SecaoId; navegar: TelaProps["navegar"] }) {
   const { t } = useTranslation();
+  const lista = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const aoTeclar = (evento: KeyboardEvent): void => {
+      if (evento.key !== "ArrowDown" && evento.key !== "ArrowUp") return;
+      if (evento.metaKey || evento.ctrlKey || evento.altKey || evento.shiftKey || evento.defaultPrevented) return;
+      if (digitando(evento.target)) return;
+      const alvo = evento.target as HTMLElement | null;
+      const naLista = alvo !== null && lista.current?.contains(alvo) === true;
+      // Em repouso o foco está no corpo; em outro botão ou link, a seta é dele.
+      if (!naLista && alvo !== document.body) return;
+      const proxima = SECOES[SECOES.indexOf(atual) + (evento.key === "ArrowDown" ? 1 : -1)];
+      if (proxima === undefined) return;
+      evento.preventDefault();
+      navegar("settings", proxima);
+      if (naLista) {
+        requestAnimationFrame(() => lista.current?.querySelector<HTMLElement>(`[data-locum-secao="${proxima}"]`)?.focus());
+      }
+    };
+    window.addEventListener("keydown", aoTeclar);
+    return () => window.removeEventListener("keydown", aoTeclar);
+  }, [atual, navegar]);
+
   return (
     <nav
       aria-label={t("nav.settings")}
-      className="flex shrink-0 gap-0.5 overflow-x-auto md:sticky md:top-4 md:w-44 md:flex-col"
+      aria-orientation="vertical"
+      className="flex shrink-0 gap-0.5 overflow-x-auto md:sticky md:top-4 md:w-52 md:flex-col"
       data-locum-probe="secoes"
+      ref={lista}
       role="tablist"
     >
       {SECOES.map((id) => {
@@ -194,25 +235,15 @@ function NavDaConfiguracao({ atual, navegar }: { atual: SecaoId; navegar: TelaPr
             key={id}
             onClick={() => navegar("settings", id)}
             role="tab"
+            tabIndex={ativo ? 0 : -1}
             type="button"
           >
             <Icone aria-hidden className="size-3.5" />
-            <span>{t(`settings.sections.${id}`)}</span>
+            <span className="truncate">{t(`settings.sections.${id}`)}</span>
           </button>
         );
       })}
     </nav>
-  );
-}
-
-/** Título grande e o que a seção guarda, no topo do conteúdo. */
-function TopoDaSecao({ secao }: { secao: SecaoId }) {
-  const { t } = useTranslation();
-  return (
-    <div className="flex flex-col gap-0.5">
-      <h2 className="text-[15px] font-medium tracking-tight">{t(`settings.sections.${secao}`)}</h2>
-      <p className="text-muted-foreground max-w-[68ch] text-xs">{t(`settings.sectionLead.${secao}`)}</p>
-    </div>
   );
 }
 
@@ -255,12 +286,17 @@ function EscolhaDoIdioma() {
   };
 
   return (
-    <div
-      className="flex flex-col items-end gap-1.5"
+    <LinhaDeAjuste
+      abaixo={erro === null ? undefined : (
+        <p className="text-sev-critical text-xs">{t("settings.language.refused", { message: erro })}</p>
+      )}
       data-locum-idioma-ativo={language}
       data-locum-idioma-preferencia={preference ?? ""}
       data-locum-idioma-sistema={system}
       data-locum-probe="idioma-escolha"
+      descricao={t("settings.language.active", { language: autonimo(language) })}
+      dica={t("settings.language.description")}
+      titulo={t("settings.language.title")}
     >
       <div aria-label={t("settings.language.title")} className="flex flex-wrap justify-end gap-1" role="group">
         <Button
@@ -285,17 +321,7 @@ function EscolhaDoIdioma() {
           </Button>
         ))}
       </div>
-
-      <p className="text-muted-foreground text-xs">
-        {t("settings.language.active", { language: autonimo(language) })}
-      </p>
-
-      {erro === null ? null : (
-        <p className="text-destructive text-xs">
-          {t("settings.language.refused", { message: erro })}
-        </p>
-      )}
-    </div>
+    </LinhaDeAjuste>
   );
 }
 
@@ -313,7 +339,13 @@ function Atualizacao() {
   const [estado, setRecarregado] = useAtualizacao();
   const [ocupado, setOcupado] = useState(false);
 
-  if (estado === undefined) return <Vazio>{t("settings.updates.loading")}</Vazio>;
+  if (estado === undefined) {
+    return (
+      <BlocoDeAjustes>
+        <Vazio>{t("settings.updates.loading")}</Vazio>
+      </BlocoDeAjustes>
+    );
+  }
 
   const agir = (canal: "updates.check" | "updates.setEnabled", ligar?: boolean): void => {
     setOcupado(true);
@@ -332,25 +364,17 @@ function Atualizacao() {
         });
 
   return (
-    <div
-      className="flex max-w-80 flex-col items-end gap-1.5 text-right"
-      data-locum-probe="atualizacao"
-      data-locum-atualizacao-fase={estado.phase}
-      data-locum-atualizacao-motivo={estado.reason ?? ""}
-    >
-      <p className="text-[13px]">
-        {t("settings.updates.current", { version: estado.current })}
-        <span className="text-muted-foreground"> · {situacao}</span>
-      </p>
-      {estado.lastCheckAt === null ? null : (
-        <p className="text-muted-foreground text-xs">
-          {t("settings.updates.lastCheck", { when: new Date(estado.lastCheckAt).toLocaleString() })}
-        </p>
-      )}
-      <div className="flex flex-wrap justify-end gap-1">
+    <BlocoDeAjustes>
+      <LinhaDeAjuste
+        data-locum-atualizacao-fase={estado.phase}
+        data-locum-atualizacao-motivo={estado.reason ?? ""}
+        data-locum-probe="atualizacao"
+        descricao={situacao}
+        titulo={t("settings.updates.current", { version: estado.current })}
+      >
         {estado.phase === "ready" ? (
           <Button onClick={() => void call("updates.apply")} size="sm">
-            {t("settings.updates.apply", { version: estado.available?.version ?? "" })}
+            {t("settings.updates.apply")}
           </Button>
         ) : null}
         <Button
@@ -361,16 +385,27 @@ function Atualizacao() {
         >
           {ocupado ? t("settings.updates.checking") : t("settings.updates.check")}
         </Button>
-        <Button
-          disabled={ocupado}
-          onClick={() => agir("updates.setEnabled", !estado.enabled)}
-          size="sm"
-          variant="ghost"
-        >
-          {estado.enabled ? t("settings.updates.turnOff") : t("settings.updates.turnOn")}
-        </Button>
-      </div>
-    </div>
+      </LinhaDeAjuste>
+      <LinhaDeAjuste
+        descricao={t("settings.updates.autoDescription")}
+        dica={t("settings.updates.description")}
+        titulo={t("settings.updates.auto")}
+      >
+        <Interruptor
+          ativo={estado.enabled}
+          desabilitado={ocupado}
+          mudar={(ligar) => agir("updates.setEnabled", ligar)}
+          rotulo={t("settings.updates.auto")}
+        />
+      </LinhaDeAjuste>
+      {estado.lastCheckAt === null ? null : (
+        <LinhaDeAjuste titulo={t("settings.updates.lastCheck")}>
+          <span className="text-muted-foreground text-xs tabular-nums">
+            {new Date(estado.lastCheckAt).toLocaleString()}
+          </span>
+        </LinhaDeAjuste>
+      )}
+    </BlocoDeAjustes>
   );
 }
 
@@ -405,7 +440,12 @@ function EscolhaDeStaleDays() {
   };
 
   return (
-    <div className="flex items-center gap-2" data-locum-probe="stale-days">
+    <LinhaDeAjuste
+      data-locum-probe="stale-days"
+      descricao={t("settings.staleDays.description")}
+      titulo={t("settings.staleDays.title")}
+    >
+      {erro && <span className="text-sev-critical text-xs">{erro}</span>}
       <label className="text-muted-foreground text-xs" htmlFor="stale-days">
         {t("settings.staleDays.label")}
       </label>
@@ -426,8 +466,7 @@ function EscolhaDeStaleDays() {
       >
         {t("common.save")}
       </Button>
-      {erro && <span className="text-sev-critical text-xs">{erro}</span>}
-    </div>
+    </LinhaDeAjuste>
   );
 }
 
@@ -435,7 +474,6 @@ function EscolhaDeWorkingHours() {
   const { t } = useTranslation();
   const lido = useRead("scheduler.getWorkingHours");
   const [config, setConfig] = useState<WorkingHoursConfig | null>(null);
-  const [ocupado, setOcupado] = useState(false);
   const [salvo, setSalvo] = useState(false);
 
   const atual: WorkingHoursConfig = config ?? lido.data ?? {
@@ -449,34 +487,30 @@ function EscolhaDeWorkingHours() {
 
   const salvar = (novo: WorkingHoursConfig) => {
     setConfig(novo);
-    setOcupado(true);
-    call("scheduler.setWorkingHours", novo)
-      .then(() => {
-        setSalvo(true);
-        setTimeout(() => setSalvo(false), 1500);
-      })
-      .finally(() => setOcupado(false));
+    call("scheduler.setWorkingHours", novo).then(() => {
+      setSalvo(true);
+      setTimeout(() => setSalvo(false), 1500);
+    });
   };
 
   return (
-    <div className="flex flex-col items-end gap-2 text-[13px]" data-locum-probe="working-hours">
-      <div className="flex items-center gap-3">
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            checked={atual.enabled}
-            className="size-4 rounded border-border"
-            onChange={(e) => salvar({ ...atual, enabled: e.target.checked })}
-            type="checkbox"
-          />
-          <span className="text-[13px]">{t("settings.workingHours.enableLabel")}</span>
-        </label>
+    <BlocoDeAjustes>
+      <LinhaDeAjuste
+        data-locum-probe="working-hours"
+        descricao={t("settings.workingHours.enableDescription")}
+        dica={t("settings.workingHours.description")}
+        titulo={t("settings.workingHours.enableLabel")}
+      >
         {salvo && <span className="text-muted-foreground text-xs">{t("settings.workingHours.saved")}</span>}
-      </div>
-
-      {atual.enabled && (
-        <div className="flex flex-wrap items-center justify-end gap-3">
-          <div className="flex items-center gap-2">
-            <span className="text-muted-foreground text-xs">{t("settings.workingHours.start")}</span>
+        <Interruptor
+          ativo={atual.enabled}
+          mudar={(ligado) => salvar({ ...atual, enabled: ligado })}
+          rotulo={t("settings.workingHours.enableLabel")}
+        />
+      </LinhaDeAjuste>
+      {atual.enabled ? (
+        <>
+          <LinhaDeAjuste titulo={t("settings.workingHours.shift")}>
             <Input
               aria-label={t("settings.workingHours.start")}
               className="h-7 w-24 font-mono text-xs"
@@ -484,7 +518,7 @@ function EscolhaDeWorkingHours() {
               type="time"
               value={atual.start}
             />
-            <span className="text-muted-foreground text-xs">{t("settings.workingHours.end")}</span>
+            <span className="text-muted-foreground text-xs">{t("settings.workingHours.to")}</span>
             <Input
               aria-label={t("settings.workingHours.end")}
               className="h-7 w-24 font-mono text-xs"
@@ -492,10 +526,8 @@ function EscolhaDeWorkingHours() {
               type="time"
               value={atual.end}
             />
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-muted-foreground text-xs">{t("settings.workingHours.offHoursLabel")}</span>
+          </LinhaDeAjuste>
+          <LinhaDeAjuste titulo={t("settings.workingHours.offHoursLabel")}>
             <Select
               aria-label={t("settings.workingHours.offHoursLabel")}
               className="h-7 text-xs"
@@ -506,10 +538,10 @@ function EscolhaDeWorkingHours() {
               <option value="slow">{t("settings.workingHours.behaviorSlow")}</option>
               <option value="unrestricted">{t("settings.workingHours.behaviorUnrestricted")}</option>
             </Select>
-          </div>
-        </div>
-      )}
-    </div>
+          </LinhaDeAjuste>
+        </>
+      ) : null}
+    </BlocoDeAjustes>
   );
 }
 
@@ -540,12 +572,17 @@ function EscolhaDaRaiz() {
   };
 
   return (
-    <div className="flex items-center gap-2" data-locum-probe="initiatives-root">
+    <LinhaDeAjuste
+      abaixo={erro === null ? undefined : <span className="text-sev-critical text-xs">{erro}</span>}
+      data-locum-probe="initiatives-root"
+      descricao={t("settings.initiativesRoot.description")}
+      titulo={t("settings.initiativesRoot.title")}
+    >
       <label className="sr-only" htmlFor="initiatives-root">
         {t("settings.initiativesRoot.label")}
       </label>
       <Input
-        className="h-8 flex-1 font-mono text-xs"
+        className="h-7 w-72 font-mono text-xs"
         id="initiatives-root"
         onChange={(e) => setRascunho(e.target.value)}
         placeholder={t("settings.initiativesRoot.label")}
@@ -555,8 +592,7 @@ function EscolhaDaRaiz() {
       <Button disabled={ocupado || valor === lido.data} onClick={gravar} size="sm" variant="secondary">
         {t("common.save")}
       </Button>
-      {erro && <span className="text-sev-critical text-xs">{erro}</span>}
-    </div>
+    </LinhaDeAjuste>
   );
 }
 
@@ -584,24 +620,28 @@ function EscolhaDoTerminal() {
   };
 
   return (
-    <div
-      aria-label={t("settings.sessionTerminal.title")}
-      className="flex flex-wrap items-center justify-end gap-1"
+    <LinhaDeAjuste
+      abaixo={erro === null ? undefined : <span className="text-sev-critical text-xs">{erro}</span>}
       data-locum-probe="session-terminal"
-      role="group" data-locum-terminal={atual}>
-      {TERMINAIS.filter((terminal) => terminal === atual || (instalados.data ?? TERMINAIS).includes(terminal)).map((terminal) => (
-        <Button
-          data-locum-escolhido={atual === terminal ? "sim" : "nao"}
-          key={terminal}
-          onClick={() => escolher(terminal)}
-          size="sm"
-          variant={atual === terminal ? "secondary" : "ghost"}
-        >
-          {t(`settings.sessionTerminal.${terminal}`)}
-        </Button>
-      ))}
-      {erro && <span className="text-sev-critical text-xs">{erro}</span>}
-    </div>
+      data-locum-terminal={atual}
+      descricao={t("settings.sessionTerminal.description")}
+      titulo={t("settings.sessionTerminal.title")}
+    >
+      <Select
+        aria-label={t("settings.sessionTerminal.title")}
+        className="h-7 text-xs"
+        onChange={(e) => escolher(e.target.value as SessionTerminal)}
+        value={atual}
+      >
+        {TERMINAIS.filter((terminal) => terminal === atual || (instalados.data ?? TERMINAIS).includes(terminal)).map(
+          (terminal) => (
+            <option key={terminal} value={terminal}>
+              {t(`settings.sessionTerminal.${terminal}`)}
+            </option>
+          ),
+        )}
+      </Select>
+    </LinhaDeAjuste>
   );
 }
 
@@ -629,7 +669,17 @@ function LinhaDoFallback({ fallback }: { fallback: Fallback }) {
   );
 }
 
-
+/** O estado de uma ferramenta: ponto colorido e texto neutro. */
+function EstadoDaFerramenta({ situacao }: { situacao: "connected" | "stale" | "absent" | null }) {
+  const { t } = useTranslation();
+  if (situacao === null) return null;
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <StatusDot estado={pontoDaFerramenta(situacao)} />
+      {t(`settings.claudeCode.${situacao}`)}
+    </span>
+  );
+}
 
 /**
  * O Locum dentro do Claude Code, num clique.
@@ -637,7 +687,7 @@ function LinhaDoFallback({ fallback }: { fallback: Fallback }) {
  * O botão roda o `claude mcp add` apontando para este aplicativo, que serve o
  * MCP por `--mcp` com o mesmo cofre da janela: é o que deixa o token guardado
  * aqui valer numa sessão do terminal sem a pessoa exportar nada. A linha do
- * comando aparece para quem preferir colar ela mesma.
+ * comando fica recolhida, para quem preferir colar ela mesma.
  */
 export function ClaudeCode() {
   const { t } = useTranslation();
@@ -673,50 +723,47 @@ export function ClaudeCode() {
           : "absent";
 
   return (
-    <div
-      className="border-border flex flex-col gap-2 border-b px-3 py-2.5 last:border-b-0"
+    <LinhaDeAjuste
+      abaixo={
+        <>
+          {erro === null ? null : <p className="text-sev-critical mb-1 text-xs">{erro}</p>}
+          {estado === null ? null : (
+            <details>
+              <summary className="text-muted-foreground hover:text-foreground w-fit cursor-pointer text-xs">
+                {t("settings.claudeCode.showCommand")}
+              </summary>
+              <code className="bg-muted text-muted-foreground mt-2 block overflow-x-auto rounded-md px-2 py-1 font-mono text-[11px] whitespace-nowrap">
+                {estado.command}
+              </code>
+            </details>
+          )}
+        </>
+      }
       data-locum-claude-code={situacao ?? ""}
       data-locum-probe="claude-code"
+      descricao={<EstadoDaFerramenta situacao={situacao} />}
+      dica={t(situacao === "connected" ? "settings.claudeCode.connectedHint" : "settings.claudeCode.description")}
+      titulo={t("settings.claudeCode.title")}
     >
-      <div className="flex flex-wrap items-center gap-3 text-[13px]">
-        <span className="font-medium">{t("settings.claudeCode.title")}</span>
-        {situacao === null ? null : (
-          <span className="text-muted-foreground flex items-center gap-1.5 text-xs">
-            <StatusDot estado={pontoDaFerramenta(situacao)} />
-            {t(`settings.claudeCode.${situacao}`)}
-          </span>
-        )}
-        {estado !== null && estado.cli === null ? (
-          <Badge variant="outline">{t("settings.claudeCode.noCli")}</Badge>
-        ) : null}
-        <div className="ml-auto">
-          <Button
-            data-locum-claude-code-ligar=""
-            disabled={ligando || estado === null || estado.cli === null || estado.current}
-            onClick={ligar}
-            size="sm"
-            variant={estado?.current === true ? "ghost" : "default"}
-          >
-            {t(
-              ligando
-                ? "settings.claudeCode.connecting"
-                : situacao === "stale"
-                  ? "settings.claudeCode.reconnect"
-                  : "settings.claudeCode.connect",
-            )}
-          </Button>
-        </div>
-      </div>
-      {situacao === "connected" ? (
-        <p className="text-muted-foreground text-xs">{t("settings.claudeCode.connectedHint")}</p>
+      {estado !== null && estado.cli === null ? (
+        <Badge variant="outline">{t("settings.claudeCode.noCli")}</Badge>
       ) : null}
-      {erro === null ? null : <p className="text-sev-critical text-xs">{erro}</p>}
-      {estado === null ? null : (
-        <code className="bg-muted text-muted-foreground block overflow-x-auto rounded-md px-2 py-1 font-mono text-[11px] whitespace-nowrap">
-          {estado.command}
-        </code>
-      )}
-    </div>
+      <Button
+        data-locum-claude-code-ligar=""
+        disabled={ligando || estado === null || estado.cli === null || estado.current}
+        onClick={ligar}
+        size="sm"
+        variant={estado?.current === true ? "ghost" : "default"}
+      >
+        {t(
+          ligando
+            ? "settings.claudeCode.connecting"
+            : situacao === "stale"
+              ? "settings.claudeCode.reconnect"
+              : "settings.claudeCode.connect",
+        )}
+      </Button>
+    </LinhaDeAjuste>
   );
 }
 
@@ -755,50 +802,45 @@ export function Opencode() {
   const situacao = estado === null ? null : estado.current ? "connected" : estado.registered ? "stale" : "absent";
 
   return (
-    <div className="border-border flex flex-col gap-2 border-b px-3 py-2.5 last:border-b-0" data-locum-probe="opencode">
-      <div className="flex flex-wrap items-center gap-3 text-[13px]">
-        <span className="font-medium">{t("settings.opencode.title")}</span>
-        {situacao === null ? null : (
-          <span className="text-muted-foreground flex items-center gap-1.5 text-xs">
-            <StatusDot estado={pontoDaFerramenta(situacao)} />
-            {t(`settings.claudeCode.${situacao}`)}
-          </span>
+    <LinhaDeAjuste
+      abaixo={
+        <>
+          {erro === null ? null : <p className="text-sev-critical mb-1 text-xs">{erro}</p>}
+          {estado === null ? null : (
+            // Recolhido: o botão resolve quase sempre, e o trecho só interessa a
+            // quem precisa colar à mão. Abre sozinho quando o botão falhou.
+            <details className="group" open={erro !== null}>
+              <summary className="text-muted-foreground hover:text-foreground w-fit cursor-pointer text-xs">
+                {t("settings.opencode.showSnippet")}
+              </summary>
+              <p className="text-muted-foreground mt-2 text-xs">{t("settings.opencode.snippet", { path: estado.configPath })}</p>
+              <code className="bg-muted text-muted-foreground mt-2 block overflow-x-auto rounded-md px-2 py-1 font-mono text-[11px] whitespace-pre">
+                {estado.snippet}
+              </code>
+            </details>
+          )}
+        </>
+      }
+      data-locum-probe="opencode"
+      descricao={<EstadoDaFerramenta situacao={situacao} />}
+      dica={situacao === "connected" ? t("settings.opencode.connectedHint") : undefined}
+      titulo={t("settings.opencode.title")}
+    >
+      <Button
+        disabled={ligando || estado === null || estado.current}
+        onClick={ligar}
+        size="sm"
+        variant={estado?.current === true ? "ghost" : "default"}
+      >
+        {t(
+          ligando
+            ? "settings.claudeCode.connecting"
+            : situacao === "stale"
+              ? "settings.claudeCode.reconnect"
+              : "settings.claudeCode.connect",
         )}
-        <div className="ml-auto">
-          <Button
-            disabled={ligando || estado === null || estado.current}
-            onClick={ligar}
-            size="sm"
-            variant={estado?.current === true ? "ghost" : "default"}
-          >
-            {t(
-              ligando
-                ? "settings.claudeCode.connecting"
-                : situacao === "stale"
-                  ? "settings.claudeCode.reconnect"
-                  : "settings.claudeCode.connect",
-            )}
-          </Button>
-        </div>
-      </div>
-      {situacao === "connected" ? (
-        <p className="text-muted-foreground text-xs">{t("settings.opencode.connectedHint")}</p>
-      ) : null}
-      {erro === null ? null : <p className="text-sev-critical text-xs">{erro}</p>}
-      {estado === null ? null : (
-        // Recolhido: o botão resolve quase sempre, e o trecho só interessa a
-        // quem precisa colar à mão. Abre sozinho quando o botão falhou.
-        <details className="group" open={erro !== null}>
-          <summary className="text-muted-foreground hover:text-foreground w-fit cursor-pointer text-xs">
-            {t("settings.opencode.showSnippet")}
-          </summary>
-          <p className="text-muted-foreground mt-2 text-xs">{t("settings.opencode.snippet", { path: estado.configPath })}</p>
-          <code className="bg-muted text-muted-foreground mt-2 block overflow-x-auto rounded-md px-2 py-1 font-mono text-[11px] whitespace-pre">
-            {estado.snippet}
-          </code>
-        </details>
-      )}
-    </div>
+      </Button>
+    </LinhaDeAjuste>
   );
 }
 
