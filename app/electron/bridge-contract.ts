@@ -378,6 +378,8 @@ interface ServiceApi {
   "connections.openSlackManifest": ConnectionService["openSlackManifest"];
   /** Teams pelo Graph, com o app que a organização registrou no Entra. */
   "connections.teamsApp": ConnectionService["teamsApp"];
+  "connections.teamsPeloMcp": ConnectionService["teamsPeloMcp"];
+  "connections.usarTeamsDoClaude": ConnectionService["usarTeamsDoClaude"];
   "connections.connectTeams": ConnectionService["connectTeams"];
   "connections.disconnectTeams": ConnectionService["disconnectTeams"];
   "connections.teamsAdminConsent": ConnectionService["teamsAdminConsent"];
@@ -704,6 +706,8 @@ export const BRIDGE_CHANNELS = [
   "connections.disconnectSlack",
   "connections.openSlackManifest",
   "connections.teamsApp",
+  "connections.teamsPeloMcp",
+  "connections.usarTeamsDoClaude",
   "connections.connectTeams",
   "connections.disconnectTeams",
   "connections.teamsAdminConsent",

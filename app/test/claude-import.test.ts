@@ -153,3 +153,91 @@ test("outras ferramentas: opencode, Cursor, VS Code e Claude Desktop entram com 
   assert.equal(por.arquivos?.origem, "Claude Desktop");
   assert.equal((await servico.origens()).jira, "opencode");
 });
+
+test("importar um só servidor, ligado: cadastra só ele e o deixa ligado", async () => {
+  const home = mkdtempSync(join(tmpdir(), "locum-import-um-"));
+  writeFileSync(
+    join(home, ".claude.json"),
+    JSON.stringify({
+      mcpServers: {
+        ms365: { command: "npx", args: ["-y", "@softeria/ms-365-mcp-server"] },
+        grafana: { type: "http", url: "https://grafana.exemplo/mcp" },
+      },
+    }),
+  );
+  const registrados: string[] = [];
+  const ligacoes: [string, boolean][] = [];
+  const servico = new ClaudeImportService({
+    home,
+    ambiente: async () => ({}),
+    mcp: {
+      list: async () => [],
+      register: async (c) => {
+        registrados.push(c.name);
+        return {} as never;
+      },
+      setEnabled: async (n, ligado) => void ligacoes.push([n, ligado]),
+      setCredentialRef: async () => undefined,
+      vincular: async () => undefined,
+    },
+    secrets: { set: () => undefined },
+    settings: { set: async () => undefined, get: async () => undefined },
+  });
+
+  const { importados } = await servico.importar(["ms365"], { ligar: true });
+  assert.deepEqual(importados, ["ms365"]);
+  assert.deepEqual(registrados, ["ms365"]);
+  assert.deepEqual(ligacoes, [["ms365", true]]);
+});
+
+function casaComMs365NosDoisLugares(): string {
+  const home = mkdtempSync(join(tmpdir(), "locum-import-dois-"));
+  const raiz = join(home, ".claude", "plugins", "cache", "akad", "akad", "1.0.0");
+  mkdirSync(raiz, { recursive: true });
+  writeFileSync(
+    join(raiz, ".mcp.json"),
+    JSON.stringify({ mcpServers: { ms365: { command: "${CLAUDE_PLUGIN_ROOT}/bin/ms365.sh", args: ["--org-mode"] } } }),
+  );
+  writeFileSync(join(home, ".claude", "plugins", "installed_plugins.json"), JSON.stringify({ version: 2, plugins: { "akad@akad": [{ installPath: raiz }] } }));
+  writeFileSync(join(home, ".claude", "settings.json"), JSON.stringify({ enabledPlugins: { "akad@akad": true } }));
+  writeFileSync(join(home, ".claude.json"), JSON.stringify({ mcpServers: { ms365: { command: "npx", args: ["-y", "@softeria/ms-365-mcp-server"] } } }));
+  return home;
+}
+
+test("listarTodos mostra o mesmo nome em cada origem; listar continua com um só", async () => {
+  const servico = new ClaudeImportService({
+    home: casaComMs365NosDoisLugares(),
+    ambiente: async () => ({}),
+    mcp: { list: async () => [], register: async () => ({}) as never, setEnabled: async () => undefined, setCredentialRef: async () => undefined, vincular: async () => undefined },
+    secrets: { set: () => undefined },
+    settings: { set: async () => undefined, get: async () => undefined },
+  });
+  assert.equal((await servico.listar()).length, 1);
+  const todos = await servico.listarTodos();
+  assert.deepEqual(todos.map((c) => `${c.name}:${c.origem}`).sort(), ["ms365:akad@akad", "ms365:usuário"]);
+});
+
+test("importar de uma origem escolhida grava o vínculo dela, de plugin com a raiz resolvida", async () => {
+  const registrados: { nome: string; command?: string[]; source: unknown }[] = [];
+  const servico = new ClaudeImportService({
+    home: casaComMs365NosDoisLugares(),
+    ambiente: async () => ({}),
+    mcp: {
+      list: async () => [],
+      register: async (c, o) => {
+        registrados.push({ nome: c.name, ...(c.command === undefined ? {} : { command: c.command }), source: o?.source });
+        return {} as never;
+      },
+      setEnabled: async () => undefined,
+      setCredentialRef: async () => undefined,
+      vincular: async () => undefined,
+    },
+    secrets: { set: () => undefined },
+    settings: { set: async () => undefined, get: async () => undefined },
+  });
+  await servico.importar(["ms365"], { ligar: true, origem: "akad@akad" });
+  assert.equal(registrados.length, 1);
+  assert.deepEqual(registrados[0]!.source, { kind: "claude-plugin", plugin: "akad", marketplace: "akad", server: "ms365" });
+  assert.ok(registrados[0]!.command?.[0]?.endsWith("/bin/ms365.sh"));
+  assert.ok(!registrados[0]!.command?.[0]?.includes("${CLAUDE_PLUGIN_ROOT}"));
+});

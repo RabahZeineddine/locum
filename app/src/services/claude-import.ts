@@ -173,7 +173,7 @@ export class ClaudeImportService {
     },
   ) {}
 
-  private async preparados(): Promise<(Preparado & { source: McpSource; hash: string })[]> {
+  private async preparados(porOrigem = false): Promise<(Preparado & { source: McpSource; hash: string })[]> {
     const cadastrados = new Set((await this.deps.mcp.list()).map((s) => s.config.name));
     const lidas = fontes(this.deps.home);
 
@@ -187,7 +187,7 @@ export class ClaudeImportService {
       for (const [nome, entrada] of Object.entries(f.servidores)) {
         // O próprio Locum, que a pessoa registrou na ferramenta, não se importa.
         if (nome === "locum" || (entrada.command ?? "").includes("Locum")) continue;
-        if (saida.some((p) => p.name === nome)) continue;
+        if (saida.some((p) => p.name === nome && (!porOrigem || p.origem === f.origem))) continue;
         const source = origemEstruturada(f, nome);
         const p = preparar(nome, f.origem, entrada, f.raiz, ambiente, cadastrados);
         saida.push({ ...p, source, hash: impressao(p.config, source, f.raiz) });
@@ -223,15 +223,31 @@ export class ClaudeImportService {
   }
 
   /**
+   * Como `listar`, mas com o mesmo nome em cada origem que o declara (plugin e
+   * `~/.claude.json`, por exemplo). Quem escolhe um servidor só diz de qual
+   * origem importar com `importar(..., { origem })`.
+   */
+  async listarTodos(): Promise<Candidato[]> {
+    return (await this.preparados(true)).map(({ config: _c, segredo: _s, cliente: _k, source: _o, hash: _h, semValor: _v, ...candidato }) => candidato);
+  }
+
+  /**
    * Cadastra os escolhidos, vinculados à origem e desligados: ligar é da
    * pessoa, como em todo servidor que não nasce pela tela. Reimportar um já
    * cadastrado vincula de novo e aceita a configuração que a origem tem agora.
+   *
+   * `ligar` é para quando a pessoa escolheu um servidor só, de propósito (o
+   * "usar o ms365" do Teams): ele já entra ligado. `origem` escolhe de qual
+   * origem importar quando o mesmo nome vem de mais de uma.
    */
-  async importar(nomes: string[]): Promise<{ importados: string[] }> {
-    const escolhidos = (await this.preparados()).filter((p) => nomes.includes(p.name));
+  async importar(nomes: string[], opcoes: { ligar?: boolean; origem?: string } = {}): Promise<{ importados: string[] }> {
+    const escolhidos = (await this.preparados(opcoes.origem !== undefined)).filter(
+      (p) => nomes.includes(p.name) && (opcoes.origem === undefined || p.origem === opcoes.origem),
+    );
     for (const p of escolhidos) {
       await this.deps.mcp.register(p.config, { source: p.source, hash: p.hash });
-      if (!p.jaCadastrado) await this.deps.mcp.setEnabled(p.name, false);
+      if (opcoes.ligar === true) await this.deps.mcp.setEnabled(p.name, true);
+      else if (!p.jaCadastrado) await this.deps.mcp.setEnabled(p.name, false);
       if (p.cliente !== undefined) await this.deps.settings.set(chaveDoClienteOAuth(p.name), JSON.stringify(p.cliente));
       if (p.segredo !== undefined) {
         const ref = `mcp/${p.name}`;

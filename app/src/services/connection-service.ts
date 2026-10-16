@@ -3,7 +3,8 @@ import { SERVIDOR_NATIVO } from "../config/types.js";
 import { temCredencialLiteral } from "./mcp-credencial.js";
 import { CATALOG, conexaoDoServidor, type CatalogEntry } from "./conexao-catalogo.js";
 import { IMAGEM_DO_GRAFANA } from "./grafana-service.js";
-import { claudeImportService } from "./claude-import.js";
+import { claudeImportService, type Candidato } from "./claude-import.js";
+import { candidatosDoTeams, trazOTeams } from "./teams-ms365.js";
 import { estadoDoServidor, type ConnectionReason, type ConnectionState } from "./conexao-estado.js";
 import { carregarFontesDeUso, quemUsa, type FontesDeUso, type UsoDaConexao } from "./conexao-uso.js";
 import { githubService, type GithubService } from "./github-service.js";
@@ -19,7 +20,7 @@ import {
   slackManifestUrl,
   validSlackClientId,
 } from "./slack-app.js";
-import { teamsNoMcp } from "../teams/graph.js";
+import { capacidadesDoTeams, teamsNoMcp } from "../teams/graph.js";
 import { slackService, type SlackService } from "./slack-service.js";
 import { trackerService } from "./tracker-service.js";
 import {
@@ -162,7 +163,33 @@ export interface ConnectionServiceDeps {
   trackers?: () => Promise<{ kind: string; enabled: boolean }[]>;
   /** De onde sai "quem usa": automações, agents e toolsets gravados. */
   fontesDeUso?: () => Promise<FontesDeUso>;
+  /** Os servidores que as ferramentas da máquina declaram, para o Teams oferecer o ms365 do Claude Code. */
+  importacao?: {
+    listarTodos: () => Promise<Candidato[]>;
+    importar: (nomes: string[], opcoes?: { ligar?: boolean; origem?: string }) => Promise<{ importados: string[] }>;
+  };
 }
+
+/** O Teams pelo servidor MCP: o que já está cadastrado, ou o que o Claude Code e as outras ferramentas têm para importar. */
+export interface TeamsPeloMcp {
+  /** O login nativo no Graph (app no Entra) está conectado: o servidor MCP vira alternativa. */
+  conectadoPeloEntra: boolean;
+  cadastrado: {
+    server: string;
+    ligado: boolean;
+    lastOkAt: number | null;
+    lastFailureAt: number | null;
+    lastError: string | null;
+    /** Falso quando o servidor já foi testado e não traz as ferramentas de leitura do Teams. */
+    traz: boolean;
+  } | null;
+  /** Quem traz o Teams para importar, o mais indicado primeiro. Vazio quando já há servidor cadastrado. */
+  candidatos: { name: string; origem: string; destino: string; faltando: string[] }[];
+}
+
+/** O que se diz quando o servidor sobe mas não traz o Teams: no ms365 da Softeria o Teams vem com `--org-mode`. */
+const semFerramentasDoTeams = (nome: string): string =>
+  `o ${nome} subiu, mas não traz as ferramentas do Teams; no ms365 da Softeria isso pede --org-mode`;
 
 /**
  * A vitrine de conexões: o catálogo somado ao estado de cada uma nesta máquina.
@@ -183,6 +210,7 @@ export class ConnectionService {
       clienteDoClaude: (nome) => claudeImportService.clienteOAuth(nome),
       fontesDeUso: carregarFontesDeUso,
       trackers: () => trackerService.list(),
+      importacao: { listarTodos: () => claudeImportService.listarTodos(), importar: (n, o) => claudeImportService.importar(n, o) },
       ...deps,
     };
   }
@@ -428,6 +456,76 @@ export class ConnectionService {
       clientId: (await this.deps.settings.get(CHAVE_CLIENT_ID_TEAMS)) ?? null,
       connected: this.deps.oauth.status(TEAMS_SERVER).connected,
     };
+  }
+
+  /**
+   * Como o Teams chega por servidor MCP: o cadastrado que o traz (as
+   * ferramentas guardadas dizem, e na falta delas o nome e o pacote) ou, não
+   * havendo, o do Claude Code que vale importar. Só lê arquivos e cadastro, sem
+   * subir servidor.
+   */
+  async teamsPeloMcp(): Promise<TeamsPeloMcp> {
+    const conectadoPeloEntra = this.deps.oauth.status(TEAMS_SERVER).connected;
+    const cadastro = await this.deps.mcp.list();
+    const achado = await teamsNoMcp(this.deps.mcp);
+    let nome = achado?.server;
+    let traz = true;
+    if (nome === undefined) {
+      // Sem ferramentas guardadas só o nome e o pacote dizem; com elas e sem o Teams, o servidor está lá e não serve.
+      for (const e of cadastro) {
+        if (e.config.name === SERVIDOR_NATIVO) continue;
+        if (!trazOTeams({ name: e.config.name, destino: (e.config.command ?? [e.config.url ?? ""]).join(" ") })) continue;
+        nome = e.config.name;
+        traz = (await this.deps.mcp.cachedTools(nome)) === null;
+        break;
+      }
+    }
+    const entrada = nome === undefined ? undefined : cadastro.find((e) => e.config.name === nome);
+    if (entrada !== undefined) {
+      const { health } = entrada;
+      return {
+        conectadoPeloEntra,
+        cadastrado: {
+          server: entrada.config.name,
+          ligado: entrada.enabled,
+          lastOkAt: health.lastOkAt,
+          lastFailureAt: health.lastFailureAt,
+          lastError: health.lastError,
+          traz,
+        },
+        candidatos: [],
+      };
+    }
+    const doClaude = await this.deps.importacao!.listarTodos().catch(() => [] as Candidato[]);
+    return {
+      conectadoPeloEntra,
+      cadastrado: null,
+      candidatos: candidatosDoTeams(doClaude).map((c) => ({ name: c.name, origem: c.origem, destino: c.destino, faltando: c.faltando })),
+    };
+  }
+
+  /**
+   * O clique em "usar" de um servidor do Teams: importa só esse, da origem
+   * escolhida, vinculado e ligado, e testa. Servidor que sobe mas não traz as
+   * ferramentas de leitura do Teams volta como falha, não como sucesso.
+   */
+  async usarTeamsDoClaude(nome: string, origem?: string): Promise<{ ok: boolean; toolCount: number; error?: string }> {
+    const doClaude = await this.deps.importacao!.listarTodos();
+    const escolhido = doClaude.find((c) => c.name === nome && (origem === undefined || c.origem === origem));
+    if (escolhido === undefined || !trazOTeams(escolhido)) {
+      throw new Error(`"${nome}" não é um servidor do Teams nas ferramentas desta máquina`);
+    }
+    if (escolhido.faltando.length > 0) {
+      throw new Error(`falta definir ${escolhido.faltando.join(", ")} para o ${nome} conectar`);
+    }
+    await this.deps.importacao!.importar([nome], { ligar: true, origem: escolhido.origem });
+    const teste = await this.deps.mcp.testConnection(nome);
+    if (!teste.ok) return { ok: false, toolCount: teste.toolCount, ...(teste.error === undefined ? {} : { error: teste.error }) };
+    const ferramentas = await this.deps.mcp.cachedTools(nome);
+    if (ferramentas !== null && !capacidadesDoTeams(ferramentas.tools.map((t) => t.name)).leitura) {
+      return { ok: false, toolCount: teste.toolCount, error: semFerramentasDoTeams(nome) };
+    }
+    return { ok: true, toolCount: teste.toolCount };
   }
 
   /**

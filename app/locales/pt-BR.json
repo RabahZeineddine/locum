@@ -279,7 +279,7 @@
     "saveFirst": "Salve o agent para conversar com ele.",
     "unsaved": "A conversa usa a versão salva. As mudanças ainda não salvas valem depois de Salvar.",
     "internal": "Ferramentas do Locum",
-      "noServer": "A conexão {{connection}} está sem servidor agora: {{reason}}. O agent conversa sem as ferramentas dela.",
+    "noServer": "A conexão {{connection}} está sem servidor agora: {{reason}}. O agent conversa sem as ferramentas dela.",
     "card": {
       "title": {
         "pendente": "Escrita à espera",
@@ -1240,8 +1240,8 @@
       "dms": "Só mensagens diretas"
     },
     "teams": {
-      "title": "Teams pelo Microsoft Graph",
-      "description": "O Locum fala com o Teams pelo Microsoft Graph, com a sua conta e um app registrado no Microsoft Entra da sua organização. O app é cliente público com PKCE: não há segredo, e tenant e client id ficam só nesta máquina.",
+      "title": "Teams",
+      "description": "Leia e responda no Teams por um servidor MCP do Microsoft 365 ou por um app no Entra.",
       "stepRegister": "Registre o app no Entra (App registrations, New registration): só esta organização, plataforma \"Mobile and desktop applications\" com o retorno {{redirect}}. O comando abaixo faz o mesmo pela CLI do Azure.",
       "stepPermissions": "Não precisa adicionar permissão: o Locum pede ao conectar as permissões delegadas do Graph {{scopes}}, e nenhuma exige administrador.",
       "stepIds": "Cole o Directory (tenant) ID e o Application (client) ID da página do app e conecte. O navegador abre para você autorizar.",
@@ -1259,7 +1259,29 @@
       "adminHow": "Se a sua empresa não deixa o usuário autorizar app sozinho, um administrador do tenant clica em \"Consentimento do administrador\" uma vez, e o app fica liberado para todos.",
       "adminDone": "Consentimento do administrador registrado. Agora é só conectar.",
       "waiting": "Esperando a autorização no navegador.",
-      "stepPermissionsChannels": "Não precisa adicionar permissão: o Locum pede ao conectar as permissões delegadas do Graph {{scopes}}. Com canais ligados, ChannelMessage.Read.All só vale depois do consentimento do administrador."
+      "stepPermissionsChannels": "Não precisa adicionar permissão: o Locum pede ao conectar as permissões delegadas do Graph {{scopes}}. Com canais ligados, ChannelMessage.Read.All só vale depois do consentimento do administrador.",
+      "via": {
+        "title": "Como conectar",
+        "byEntra": "Conectado pelo app no Entra",
+        "byServer": "Pelo servidor {{name}}",
+        "on": "ligado",
+        "off": "desligado",
+        "neverTested": "nunca testado",
+        "testedAt": "último teste {{when}}",
+        "test": "Testar",
+        "turnOn": "Ligar e testar",
+        "use": "Usar o {{name}} do {{from}}",
+        "recommended": "(recomendado)",
+        "useButton": "Usar este",
+        "using": "Importando e testando",
+        "failed": "o teste do servidor falhou",
+        "noTeamsTools": "O {{name}} responde, mas não traz as ferramentas do Teams. No ms365 da Softeria isso pede --org-mode.",
+        "missing": "falta {{names}}: defina e volte para poder usar",
+        "none": "Não achei um servidor MCP do Microsoft 365. Instale um (por exemplo o ms-365-mcp-server da Softeria) no Claude Code e volte.",
+        "importLink": "Importar de outras ferramentas"
+      },
+      "advanced": "Avançado: registrar app no Entra",
+      "entraDescription": "O Locum fala com o Teams pelo Microsoft Graph, com a sua conta e um app registrado no Microsoft Entra da sua organização. O app é cliente público com PKCE: não há segredo, e tenant e client id ficam só nesta máquina."
     },
     "teamsInbox": {
       "description": "Acorda um agent quando alguém menciona você ou manda mensagem num chat do Teams. O Locum lê pelo Graph, com a sua conta, as conversas que se mexeram a cada 5 minutos; a resposta que o agent propuser para na fila. Canais de equipe ainda não entram."
@@ -1699,7 +1721,7 @@
       },
       "teams": {
         "tagline": "Menções, chats e canais do Microsoft Teams",
-        "description": "Teams pelo Microsoft Graph, com um app registrado no Entra da sua organização. Acorda agents com menções e mensagens de chat, e a resposta proposta sai com o seu nome depois da sua aprovação."
+        "description": "Teams por um servidor MCP do Microsoft 365 (como o ms365 do Claude Code) ou por um app no Entra. Acorda agents com menções e mensagens de chat, e a resposta proposta sai com o seu nome depois da sua aprovação."
       },
       "sentry": {
         "tagline": "Erros e issues de produção",
@@ -2575,11 +2597,11 @@
       "search": "Buscar ferramenta por nome ou descrição",
       "noMatch": "Nenhuma ferramenta com \"{{termo}}\".",
       "areas": {
-          "teams": "Teams (chats, canais, times)",
-          "mail": "E-mail",
-          "calendar": "Agenda",
-          "files": "Arquivos",
-          "other": "Outras"
+        "teams": "Teams (chats, canais, times)",
+        "mail": "E-mail",
+        "calendar": "Agenda",
+        "files": "Arquivos",
+        "other": "Outras"
       },
       "counts": "{{read}} de leitura, {{write}} de escrita",
       "writeNote": "Escrita ligada não roda sozinha: no chat do agent ela só roda depois do seu Executar. Numa automação, escrever é um nó de ação com aprovação.",

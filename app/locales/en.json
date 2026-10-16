@@ -270,7 +270,7 @@
     "saveFirst": "Save the agent to talk to it.",
     "unsaved": "The chat uses the saved version. Changes you have not saved yet apply after Save.",
     "internal": "Locum tools",
-      "noServer": "The connection {{connection}} has no server right now: {{reason}}. The agent talks without its tools.",
+    "noServer": "The connection {{connection}} has no server right now: {{reason}}. The agent talks without its tools.",
     "card": {
       "title": {
         "pendente": "Write waiting",
@@ -1204,8 +1204,8 @@
       "dms": "Direct messages only"
     },
     "teams": {
-      "title": "Teams through Microsoft Graph",
-      "description": "Locum talks to Teams through Microsoft Graph, with your account and an app registered in your organization's Microsoft Entra. The app is a public client with PKCE: there is no secret, and tenant and client id stay on this machine.",
+      "title": "Teams",
+      "description": "Read and reply in Teams through a Microsoft 365 MCP server or an app in Entra.",
       "stepRegister": "Register the app in Entra (App registrations, New registration): this organization only, platform \"Mobile and desktop applications\" with the redirect {{redirect}}. The command below does the same through the Azure CLI.",
       "stepPermissions": "No need to add permissions: when connecting, Locum asks for the delegated Graph permissions {{scopes}}, and none of them needs an admin.",
       "stepIds": "Paste the Directory (tenant) ID and the Application (client) ID from the app page and connect. The browser opens for you to authorize.",
@@ -1223,7 +1223,29 @@
       "adminHow": "If your company does not let users authorize apps on their own, a tenant admin clicks \"Admin consent\" once, and the app is allowed for everyone.",
       "adminDone": "Admin consent recorded. Now just connect.",
       "waiting": "Waiting for authorization in the browser.",
-      "stepPermissionsChannels": "No need to add permissions: Locum requests the delegated Graph permissions {{scopes}} when connecting. With channels on, ChannelMessage.Read.All only works after admin consent."
+      "stepPermissionsChannels": "No need to add permissions: Locum requests the delegated Graph permissions {{scopes}} when connecting. With channels on, ChannelMessage.Read.All only works after admin consent.",
+      "via": {
+        "title": "How to connect",
+        "byEntra": "Connected through the Entra app",
+        "byServer": "Through the {{name}} server",
+        "on": "on",
+        "off": "off",
+        "neverTested": "never tested",
+        "testedAt": "last tested {{when}}",
+        "test": "Test",
+        "turnOn": "Turn on and test",
+        "use": "Use the {{name}} from {{from}}",
+        "recommended": "(recommended)",
+        "useButton": "Use this one",
+        "using": "Importing and testing",
+        "failed": "the server test failed",
+        "noTeamsTools": "{{name}} answers, but does not bring the Teams tools. On Softeria's ms365 that takes --org-mode.",
+        "missing": "missing {{names}}: set it and come back to use this one",
+        "none": "No Microsoft 365 MCP server found. Install one (for example Softeria's ms-365-mcp-server) in Claude Code and come back.",
+        "importLink": "Import from other tools"
+      },
+      "advanced": "Advanced: register an app in Entra",
+      "entraDescription": "Locum talks to Teams through Microsoft Graph, with your account and an app registered in your organization's Microsoft Entra. The app is a public client with PKCE: there is no secret, and tenant and client id stay on this machine only."
     },
     "teamsInbox": {
       "description": "Wakes an agent when someone mentions you or messages you in a Teams chat. Every 5 minutes Locum reads, through Graph and with your account, the chats that changed; any reply the agent proposes waits in the queue. Team channels are not covered yet."
@@ -1660,7 +1682,7 @@
       },
       "teams": {
         "tagline": "Microsoft Teams mentions, chats and channels",
-        "description": "Teams through Microsoft Graph, with an app registered in your organization's Entra. Wakes agents on mentions and chat messages, and a proposed reply goes out under your name after you approve it."
+        "description": "Teams through a Microsoft 365 MCP server (such as the ms365 in Claude Code) or an app in Entra. Wakes agents on mentions and chat messages, and a proposed reply goes out under your name after you approve it."
       },
       "sentry": {
         "tagline": "Production errors and issues",
@@ -2519,11 +2541,11 @@
       "search": "Search tools by name or description",
       "noMatch": "No tool matches \"{{termo}}\".",
       "areas": {
-          "teams": "Teams (chats, channels, teams)",
-          "mail": "Email",
-          "calendar": "Calendar",
-          "files": "Files",
-          "other": "Other"
+        "teams": "Teams (chats, channels, teams)",
+        "mail": "Email",
+        "calendar": "Calendar",
+        "files": "Files",
+        "other": "Other"
       },
       "counts": "{{read}} read, {{write}} write",
       "writeNote": "A write that is on does not run by itself: in the agent's chat it only runs after you click Run. In an automation, writing is an action node with approval.",
