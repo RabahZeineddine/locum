@@ -197,7 +197,7 @@ test("falha ao ler o Teams volta como resultado com a mensagem", async () => {
   recusa(await client.callTool({ name: "list_teams_chats", arguments: {} }), /Teams não conectado/);
 });
 
-test("a fila sai com a credencial do payload escondida, e decidir passa pela gate que o servidor recebeu", async () => {
+test("a fila devolve o texto como está, e decidir passa pela gate que o servidor recebeu", async () => {
   const decisoes: [string, string][] = [];
   const client = await ligarCliente({
     decidir: async (approvalId, decision) => {
@@ -221,18 +221,16 @@ test("a fila sai com a credencial do payload escondida, e decidir passa pela gat
     runId: run,
     stepId: passo,
     kind: "slack.post",
-    payload: { text: `o token é ${TOKEN}`, channel: "C1", apiToken: "valor-solto-123" },
+    payload: { text: "Missing null check on token: it can be undefined", channel: "C1" },
   });
 
   const lista = await client.callTool({ name: "list_pending_approvals", arguments: {} });
   const pendentes = ok<{ id: string; status: string; agentId: string }[]>(lista);
   assert.equal(pendentes.find((p) => p.id === aprovacao)?.agentId, agentId);
-  assert.doesNotMatch(texto(lista), new RegExp(TOKEN));
-  assert.doesNotMatch(texto(lista), /valor-solto-123/);
 
   const uma = ok<{ id: string; payload: { text: string; channel: string } }>(await client.callTool({ name: "get_approval", arguments: { approvalId: aprovacao } }));
   assert.equal(uma.payload.channel, "C1");
-  assert.match(uma.payload.text, /segredo removido/);
+  assert.equal(uma.payload.text, "Missing null check on token: it can be undefined");
   recusa(await client.callTool({ name: "get_approval", arguments: { approvalId: "nao-existe" } }), /nao encontrada/);
 
   assert.deepEqual(ok(await client.callTool({ name: "decide_approval", arguments: { approvalId: aprovacao, decision: "rejected" } })), {
@@ -558,7 +556,7 @@ test("perfil da biblioteca que alimenta ação auto muda pelo MCP como pela tela
   assert.equal((await libraryService.getProfile(perfil))?.spec.instructions, "nova instrução");
 });
 
-test("a redação cobre token solto, linha de ambiente, JSON serializado e cookie", async () => {
+test("a fila esconde o literal dos headers e deixa o texto livre e os templates como estão", async () => {
   const client = await ligarCliente();
   const agentId = id("fila");
   const versao = await agentService.upsert({ id: agentId, name: "Fila", steps: [ler, { type: "action", key: "publicar", name: "P", action: "slack.post", needs: ["ler"] }] } as never, undefined, "human");
@@ -567,34 +565,20 @@ test("a redação cobre token solto, linha de ambiente, JSON serializado e cooki
   const aprovacao = id("apr");
   await db.insert(schema.runs).values({ id: run, agentVersionId: versao.id, status: "paused" });
   await db.insert(schema.steps).values({ id: passo, runId: run, idx: 1, stepKey: "publicar", name: "P", status: "awaiting_approval" });
-  const segredos = ["valor-um-9f8e7d", "valor-dois-1a2b3c", "valor-tres-4d5e6f", "valor-quatro-7a8b9c", "valor-cinco-0a1b2c", "valor-seis-3c4d5e", "valor-sete-6f7a8b", "valor-oito-9c0d1e"];
+  const segredo = "valor-um-9f8e7d";
+  const livre = "Missing null check on token: it can be undefined\nconst apiKey = process.env.API_KEY";
   await db.insert(schema.approvals).values({
     id: aprovacao,
     runId: run,
     stepId: passo,
-    kind: "slack.post",
-    payload: {
-      text: [
-        `token: ${segredos[0]}`,
-        `GITHUB_TOKEN=${segredos[1]}`,
-        `API_KEY=${segredos[2]}`,
-        `{"access_token":"${segredos[3]}"}`,
-        `Cookie: sessao=${segredos[4]}; outra=1`,
-        `Set-Cookie: sid=${segredos[5]}`,
-      ].join("\n"),
-      clientSecret: segredos[6],
-      privateKey: segredos[7],
-      credential: "abc",
-      refresh_token: "r",
-      id_token: "i",
-      credentialRef: "nome-no-cofre",
-    },
+    kind: "http.request",
+    payload: { text: livre, headers: { "X-Api-Key": segredo, Authorization: "Bearer {{steps.auth.token}}" }, credentialRef: "nome-no-cofre" },
   });
   const res = await client.callTool({ name: "get_approval", arguments: { approvalId: aprovacao } });
-  const corpo = texto(res);
-  for (const segredo of segredos) assert.doesNotMatch(corpo, new RegExp(segredo), segredo);
-  const { payload } = ok<{ payload: Record<string, string> }>(res);
-  for (const chave of ["clientSecret", "privateKey", "credential", "refresh_token", "id_token"]) assert.equal(payload[chave], "<oculto>", chave);
+  assert.doesNotMatch(texto(res), new RegExp(segredo));
+  const { payload } = ok<{ payload: { text: string; headers: Record<string, string>; credentialRef: string } }>(res);
+  assert.equal(payload.text, livre);
+  assert.deepEqual(payload.headers, { "X-Api-Key": "<oculto>", Authorization: "Bearer {{steps.auth.token}}" });
   assert.equal(payload.credentialRef, "nome-no-cofre");
 });
 

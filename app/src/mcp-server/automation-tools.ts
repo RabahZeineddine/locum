@@ -8,6 +8,9 @@ import { scheduler } from "../triggers/scheduler.js";
 import { lerDescartes } from "../triggers/descartes.js";
 import { lerErro } from "../triggers/erros.js";
 import type { AgentSpec, TriggerConfigInput } from "../config/types.js";
+import { specAtual } from "./config-tools.js";
+import { restoreSpec } from "./redact.js";
+import { limparSegredos } from "../pacote/limpeza.js";
 import { def } from "./tool-def.js";
 
 /**
@@ -23,6 +26,11 @@ import { def } from "./tool-def.js";
 const EFEITO_DE_LIGAR =
   "Turning on makes the app act by itself with your accounts: it polls, spends model budget and starts runs, and an action step in auto mode publishes without asking. A Teams trigger with prLinks also reacts with 👀 (then ✅, ⚠️ or 💬 by the review verdict) on Teams messages in your name.";
 
+/** O erro do gatilho é texto de fora (resposta de API, mensagem de rede), que só se lê: pode trazer token colado. */
+function semSegredo<E extends { texto: string }>(erro: E | null): E | null {
+  return erro === null ? null : { ...erro, texto: limparSegredos(erro.texto) };
+}
+
 async function paraLeitura(entrada: TriggerEntry) {
   return {
     id: entrada.id,
@@ -30,7 +38,7 @@ async function paraLeitura(entrada: TriggerEntry) {
     kind: entrada.config.kind,
     enabled: entrada.enabled,
     config: entrada.config,
-    lastError: await lerErro(db, entrada.id),
+    lastError: semSegredo(await lerErro(db, entrada.id)),
     ...(esperaChats(entrada.config) ? { blockedUntil: "chats are chosen: set the chats of the trigger, or allow_all_chats_for_trigger" } : {}),
   };
 }
@@ -121,8 +129,9 @@ export function registerAutomationTools(server: McpServer): void {
       create: z.boolean().optional().describe("true for a new automation: refused when the id already exists"),
     },
     async ({ spec, triggers, note, create }) => {
+      const { spec: inteiro, semValor } = restoreSpec(await specAtual(spec), spec);
       const salvo = await automationService.save({
-        spec: spec as unknown as AgentSpec,
+        spec: inteiro as unknown as AgentSpec,
         triggers: triggers.map((t) => ({
           ...(t.id === undefined ? {} : { id: t.id }),
           config: t.config as unknown as TriggerConfigInput,
@@ -132,7 +141,12 @@ export function registerAutomationTools(server: McpServer): void {
         note,
         ...(create === undefined ? {} : { create }),
       });
-      return { agentId: salvo.version.agentId, version: salvo.version.version, triggers: await Promise.all(salvo.triggers.map(paraLeitura)) };
+      return {
+        agentId: salvo.version.agentId,
+        version: salvo.version.version,
+        ...(semValor.length > 0 ? { hiddenWithoutValue: semValor } : {}),
+        triggers: await Promise.all(salvo.triggers.map(paraLeitura)),
+      };
     });
 
   def(server, "set_automation_enabled", "publish",

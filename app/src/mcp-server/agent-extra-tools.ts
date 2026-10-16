@@ -5,6 +5,8 @@ import { REPLY_SPECS } from "../examples/agents.js";
 import { agentService } from "../services/agent-service.js";
 import { instalarTemplate } from "../services/template-install.js";
 import type { Ambiente } from "./ambiente.js";
+import { specAtual } from "./config-tools.js";
+import { redactSecrets, restoreSpec } from "./redact.js";
 import { def } from "./tool-def.js";
 
 /**
@@ -13,6 +15,18 @@ import { def } from "./tool-def.js";
  * resposta pronta. `upsert_agent`, ao contrário de `save_agent_edited`, grava
  * como agent e rebaixa a ação para aprovação.
  */
+/** O texto de um spec exportado, com o que veio oculto devolvido pela versão atual do mesmo agent. */
+async function restaurarTexto(texto: string): Promise<{ texto: string; semValor: string[] }> {
+  let spec: unknown;
+  try {
+    spec = JSON.parse(texto);
+  } catch {
+    return { texto, semValor: [] };
+  }
+  const { spec: inteiro, semValor } = restoreSpec(await specAtual(spec), spec);
+  return { texto: JSON.stringify(inteiro), semValor };
+}
+
 export function registerAgentExtraTools(server: McpServer, amb: Ambiente): void {
   def(server, "list_agent_budgets", "read",
     "Spending cap of each agent with what was spent today (dollars, tokens, runs) and the models that have no registered price.",
@@ -30,8 +44,9 @@ export function registerAgentExtraTools(server: McpServer, amb: Ambiente): void 
       note: z.string().min(1).describe("what changed, stored with the version"),
     },
     async ({ agentId, spec, note }) => {
-      const v = await agentService.saveEdited(agentId, spec as unknown as AgentSpec, note);
-      return { agentId: v.agentId, version: v.version, note: v.note };
+      const { spec: inteiro, semValor } = restoreSpec(await specAtual({ id: agentId }), spec);
+      const v = await agentService.saveEdited(agentId, inteiro as unknown as AgentSpec, note);
+      return { agentId: v.agentId, version: v.version, note: v.note, ...(semValor.length > 0 ? { hiddenWithoutValue: semValor } : {}) };
     });
 
   def(server, "duplicate_agent", "write",
@@ -44,21 +59,27 @@ export function registerAgentExtraTools(server: McpServer, amb: Ambiente): void 
 
   def(server, "export_agent", "read",
     "The spec of an agent as JSON text, ready to save as a file (the screen opens a save dialog; here the text comes back).",
-    { agentId: z.string() }, async ({ agentId }) => ({ fileName: `${agentId}.json`, text: await agentService.exportSpec(agentId) }));
+    { agentId: z.string() },
+    async ({ agentId }) => ({
+      fileName: `${agentId}.json`,
+      // Sai para outra máquina: o valor literal de headers e env fica de fora, e só a referência vai no texto.
+      text: `${JSON.stringify(redactSecrets(JSON.parse(await agentService.exportSpec(agentId))), null, 2)}\n`,
+    }));
 
   def(server, "import_agent", "danger",
     "Imports an agent spec from JSON text as a person, like the Import button: a new agent, or a new version of the one with the same id. The modes of action steps are kept as the text has them, so an auto action in the file publishes without approval when the agent runs.",
     { text: z.string().min(1), origin: z.string().optional().describe("a label for the error messages, like the file name") },
     async ({ text, origin }) => {
-      const { version, created } = await agentService.importSpec(text, origin ?? "texto");
-      return { agentId: version.agentId, version: version.version, created };
+      const { texto, semValor } = await restaurarTexto(text);
+      const { version, created } = await agentService.importSpec(texto, origin ?? "texto");
+      return { agentId: version.agentId, version: version.version, created, ...(semValor.length > 0 ? { hiddenWithoutValue: semValor } : {}) };
     });
 
   def(server, "save_agent_draft", "write",
     "Records a draft written from a description (what the 'create with AI' screen saves after the person accepts it) as a new agent. Refused if the id exists. Action steps start in approval mode.",
     { spec: z.record(z.string(), z.unknown()), description: z.string().min(1).describe("the request that produced the draft, stored in the note") },
     async ({ spec, description }) => {
-      const v = await agentService.saveDraft(spec as unknown as AgentSpec, description);
+      const v = await agentService.saveDraft(restoreSpec(undefined, spec).spec as unknown as AgentSpec, description);
       return { agentId: v.agentId, version: v.version };
     });
 

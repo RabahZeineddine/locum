@@ -74,8 +74,17 @@ corrigir a própria chamada. Falha de validação sai com o caminho de cada camp
 
 Segredo entra e não sai: as ferramentas que guardam token ou chave aceitam o
 valor e devolvem só o estado, e toda saída passa por `redactSecrets` antes de
-voltar. O teste de paridade guarda um segredo de cada tipo pelas próprias
-ferramentas e confere que nenhuma leitura o devolve.
+voltar. A redação esconde só segredo de verdade: o que está no cofre, o valor
+literal de `env` e `headers` (e o argumento que segue `--api-key`, `--token` e
+parecidos no comando de um servidor) que não seja referência (`${credential}`,
+`{{steps.x.campo}}`). Prompt, achado e instrução passam inteiros, porque o ciclo
+ler, editar e gravar de volta não pode gravar texto mutilado. O que voltou
+`<oculto>` numa escrita (`save_agent_edited`, `save_automation`, `upsert_agent`,
+`import_agent`, `register_mcp_server`) recupera o valor da versão que já estava,
+e o que não tem original cai fora, com `hiddenWithoutValue` na resposta. O
+`export_agent` sai sem o literal, só com as referências. O teste de paridade
+guarda um segredo de cada tipo pelas próprias ferramentas e confere que nenhuma
+leitura o devolve.
 
 ## Quem confirma cada escrita
 

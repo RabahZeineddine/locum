@@ -6,7 +6,7 @@ import { mcpService } from "../services/mcp-service.js";
 import { providerService } from "../services/provider-service.js";
 import { triggerService } from "../services/trigger-service.js";
 import { type AgentSpec, type McpServerConfig, type McpServerInput, type TriggerConfigInput } from "../config/types.js";
-import { redactServerConfig, restoreHidden } from "./redact.js";
+import { redactServerConfig, restoreCommand, restoreHidden, restoreSpec } from "./redact.js";
 import { respond } from "./respond.js";
 
 /**
@@ -33,7 +33,10 @@ import { respond } from "./respond.js";
  * que o OAuth tinha posto. Com transporte novo, comando e endereco do antigo
  * nao fazem sentido e nao sao herdados.
  */
-export function mergeRegistration(atual: McpServerConfig | undefined, novo: McpServerInput): McpServerInput {
+export function mergeRegistration(atual: McpServerConfig | undefined, enviado: McpServerInput): McpServerInput {
+  // Argumento que voltou oculto (`--api-key <oculto>`) é o do cadastro, na mesma posição.
+  const novo =
+    enviado.command === undefined ? enviado : { ...enviado, command: restoreCommand(atual?.transport === enviado.transport ? atual.command : undefined, enviado.command) };
   if (atual === undefined) return novo;
   const herda = <K extends keyof McpServerInput>(campo: K, deAtual: McpServerInput[K]) =>
     novo[campo] === undefined && deAtual !== undefined ? { [campo]: deAtual } : {};
@@ -69,6 +72,12 @@ function mesmaLista(a: string[], b: string[] | undefined): boolean {
 /** O marcador de valor oculto, sem o cadastro antigo para devolvê-lo, cai fora. */
 function semOcultos(valores: Record<string, string>): Record<string, string> {
   return restoreHidden(undefined, valores) ?? {};
+}
+
+/** O spec da versão mais recente do agent que o spec novo diz ser, de onde voltam os valores ocultos. */
+export async function specAtual(spec: unknown): Promise<unknown> {
+  const id = (spec as { id?: unknown } | null)?.id;
+  return typeof id === "string" ? (await agentService.getLatestVersion(id))?.spec : undefined;
 }
 
 /** Mesmo critério do serviço para desfazer a credencial: outro destino. */
@@ -107,8 +116,10 @@ export function registerConfigTools(server: McpServer): void {
         // "agent" e o teto: passo de acao gravado daqui nasce em aprovacao, e
         // qualquer tentativa de subir para rascunho ou automatico volta
         // rebaixada, com o rebaixamento declarado na resposta.
-        const version = await agentService.upsert(spec as unknown as AgentSpec, note, "agent");
+        const { spec: inteiro, semValor } = restoreSpec(await specAtual(spec), spec);
+        const version = await agentService.upsert(inteiro as unknown as AgentSpec, note, "agent");
         return {
+          ...(semValor.length > 0 ? { hiddenWithoutValue: semValor } : {}),
           agentId: version.agentId,
           version: version.version,
           note: version.note,

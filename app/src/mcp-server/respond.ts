@@ -15,8 +15,9 @@ import { redactSecrets } from "./redact.js";
  */
 export async function respond(produce: () => Promise<unknown>) {
   try {
-    // Toda saída passa pela redação: nenhuma ferramenta devolve credencial,
-    // mesmo a que lê texto livre (payload da fila, erro de gatilho, conversa).
+    // Toda saída passa pela redação: nenhuma ferramenta devolve o que está no
+    // cofre nem o valor literal de env, headers e argumentos de comando. O
+    // texto livre passa inteiro, para o que se lê voltar igual ao que se grava.
     const value = redactSecrets(await produce());
     return {
       content: [{ type: "text" as const, text: JSON.stringify(value ?? null, null, 2) }],

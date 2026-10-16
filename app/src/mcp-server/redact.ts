@@ -1,31 +1,50 @@
 import type { McpServerConfig } from "../config/types.js";
 import type { McpServerEntry, McpVinculo } from "../services/mcp-service.js";
-import { limparSegredos } from "../pacote/limpeza.js";
-import { CREDENTIAL_PLACEHOLDER } from "../services/secret-service.js";
+import { mascararArgs } from "../services/mcp-origem.js";
+import { CREDENTIAL_PLACEHOLDER, secretService } from "../services/secret-service.js";
 
 /**
- * O que aparece no lugar de um valor de `env` ou `headers` na saída das
- * ferramentas.
+ * O que aparece no lugar de um valor secreto na saída das ferramentas.
  *
- * Quem cadastra um token direto no `env`, sem passar pelo cofre, não espera
- * vê-lo na conversa de um modelo que só listou os servidores. O marcador
- * `${credential}` sai como está, porque não é segredo: é o lugar onde o cofre
- * entra.
+ * Quem cadastra um token direto no `env` ou nos `headers`, sem passar pelo
+ * cofre, não espera vê-lo na conversa de um modelo que só listou os servidores.
+ * Referência não é segredo e sai como está: o marcador `${credential}`, o
+ * `${VAR}` de uma origem e o template `{{steps.x.campo}}` de um passo.
  */
 export const HIDDEN_VALUE = "<oculto>";
 
-function ocultar(valores: Record<string, string> | undefined): Record<string, string> | undefined {
-  if (valores === undefined) return undefined;
+const REFERENCIA = /\{\{[^}]*\}\}|\$\{[^}]*\}/g;
+const TEM_REFERENCIA = /\{\{[^}]*\}\}|\$\{[^}]*\}/;
+const ESQUEMA_DE_AUTORIZACAO = /\b(?:Bearer|Basic|Digest|Token)\b/gi;
+
+/** Valor feito só de referência (e do esquema de autorização, como `Bearer {{x}}`): não há literal a esconder. */
+function ehReferencia(valor: string): boolean {
+  return TEM_REFERENCIA.test(valor) && valor.replace(REFERENCIA, "").replace(ESQUEMA_DE_AUTORIZACAO, "").trim() === "";
+}
+
+/** Cabeçalho que nunca carrega credencial: sai como está, para o dado voltar igual. */
+const CABECALHO_COMUM = new Set(["content-type", "accept", "accept-language", "accept-encoding", "user-agent", "content-length", "cache-control"]);
+
+function ocultar(valores: Record<string, string>, comoCabecalho: boolean): Record<string, string> {
   return Object.fromEntries(
-    Object.entries(valores).map(([chave, valor]) => [chave, valor === CREDENTIAL_PLACEHOLDER ? valor : HIDDEN_VALUE]),
+    Object.entries(valores).map(([chave, valor]) => {
+      const comum = comoCabecalho && CABECALHO_COMUM.has(chave.toLowerCase()) && !/^(?:Bearer|Basic|Digest|Token)\s/i.test(valor);
+      return [chave, valor === CREDENTIAL_PLACEHOLDER || ehReferencia(valor) || comum ? valor : HIDDEN_VALUE];
+    }),
   );
+}
+
+/** O comando de um servidor com o valor dos argumentos secretos (`--api-key x`) oculto. */
+function comandoOculto(command: string[]): string[] {
+  return command.length === 0 ? command : [command[0]!, ...mascararArgs(command.slice(1))];
 }
 
 export function redactServerConfig<T extends McpServerConfig>(config: T): T {
   return {
     ...config,
-    ...(config.env !== undefined ? { env: ocultar(config.env) } : {}),
-    ...(config.headers !== undefined ? { headers: ocultar(config.headers) } : {}),
+    ...(config.command !== undefined ? { command: comandoOculto(config.command) } : {}),
+    ...(config.env !== undefined ? { env: ocultar(config.env, false) } : {}),
+    ...(config.headers !== undefined ? { headers: ocultar(config.headers, true) } : {}),
   };
 }
 
@@ -47,6 +66,55 @@ export function restoreHidden(
     else if (atual?.[chave] !== undefined) saida[chave] = atual[chave];
   }
   return saida;
+}
+
+/**
+ * O comando de volta com o que estava oculto no lugar de cada argumento: onde
+ * o novo é o mascarado do que já estava na mesma posição, vale o original.
+ * Argumento oculto sem original recusa, porque cortá-lo deslocaria os outros.
+ */
+export function restoreCommand(atual: string[] | undefined, novo: string[]): string[] {
+  const mascarado = atual === undefined ? [] : comandoOculto(atual);
+  return novo.map((arg, i) => {
+    if (!arg.includes(HIDDEN_VALUE)) return arg;
+    if (atual !== undefined && mascarado[i] === arg && atual[i] !== undefined) return atual[i]!;
+    throw new Error(`o argumento ${i} do comando veio oculto (${HIDDEN_VALUE}) e não há valor anterior na mesma posição; informe o valor`);
+  });
+}
+
+/**
+ * Um spec de volta, com o que estava oculto nos `headers` e no `env` dos
+ * passos devolvido pelo passo de mesma chave da versão anterior. O que não tem
+ * original cai fora, e `semValor` diz quais para a pessoa preencher.
+ */
+export function restoreSpec<T>(atual: unknown, novo: T): { spec: T; semValor: string[] } {
+  const semValor: string[] = [];
+  const passos = (novo as { steps?: unknown }).steps;
+  if (!Array.isArray(passos)) return { spec: novo, semValor };
+  const anteriores = new Map<string, Record<string, unknown>>();
+  for (const p of ((atual as { steps?: unknown } | undefined)?.steps as unknown[] | undefined) ?? []) {
+    const chave = (p as { key?: unknown }).key;
+    if (typeof chave === "string") anteriores.set(chave, ((p as { params?: Record<string, unknown> }).params ?? {}) as Record<string, unknown>);
+  }
+  const steps = passos.map((passo) => {
+    const params = (passo as { params?: unknown } | null)?.params;
+    if (typeof params !== "object" || params === null) return passo;
+    const antes = anteriores.get(String((passo as { key?: unknown }).key));
+    const restaurados: Record<string, unknown> = { ...(params as Record<string, unknown>) };
+    for (const campo of ["headers", "env"]) {
+      const valores = restaurados[campo];
+      if (typeof valores !== "object" || valores === null) continue;
+      const refeito = restoreHidden(antes?.[campo] as Record<string, string> | undefined, valores as Record<string, string>) ?? {};
+      for (const chave of Object.keys(valores)) {
+        if ((valores as Record<string, string>)[chave] === HIDDEN_VALUE && refeito[chave] === undefined) {
+          semValor.push(`${String((passo as { key?: unknown }).key)}.${campo}.${chave}`);
+        }
+      }
+      restaurados[campo] = refeito;
+    }
+    return { ...(passo as object), params: restaurados };
+  });
+  return { spec: { ...(novo as object), steps } as T, semValor };
 }
 
 /**
@@ -73,34 +141,44 @@ export function origemParaLeitura(entrada: McpServerEntry, vinculo: McpVinculo |
   };
 }
 
-/**
- * Chave que, pelo nome, guarda credencial. Ancorada no fim: `perRunTokens` e
- * `maxTokens` são contagem, e `credentialRef` é o nome no cofre.
- */
-const CHAVE_SECRETA =
-  /(token|secret|password|senha|authorization|api[_-]?key|cookie|credential|private[_-]?key|client[_-]?secret|refresh[_-]?token|id[_-]?token)$/i;
+function mapaDeTexto(v: unknown): v is Record<string, string> {
+  return typeof v === "object" && v !== null && !Array.isArray(v) && Object.values(v).every((x) => typeof x === "string");
+}
 
-/** O que um campo `credential` diz sobre o cofre sem ser o segredo: estado, e o marcador. */
-const ESTADO_DE_CREDENCIAL = /^(ok|falta|dispensa|true|false)$/;
+/** Os valores guardados no cofre, para tirar da saída quem os repetir. Curto demais não é segredo, é palavra. */
+function valoresDoCofre(): string[] {
+  const valores: string[] = [];
+  for (const ref of secretService.list()) {
+    const valor = secretService.get(ref);
+    if (valor !== undefined && valor.length >= 8) valores.push(valor);
+  }
+  return valores.sort((a, b) => b.length - a.length);
+}
 
 /**
- * Passa pelo valor inteiro, em profundidade, antes de ele sair numa ferramenta
- * de leitura: o texto que tem cara de credencial é trocado, e o valor de uma
- * chave que se chama token ou senha sai oculto. Serve para o que nasce de texto
- * livre (payload de aprovação, erro de gatilho, conversa), onde ninguém garante
- * que um token colado não esteja no meio.
+ * Passa pelo valor inteiro, em profundidade, antes de ele sair numa ferramenta:
+ * esconde o que é segredo de verdade, e nada além disso.
+ *
+ * - o valor que está no cofre, onde quer que apareça;
+ * - o valor literal de `env` e `headers`, e o argumento de comando que segue
+ *   uma opção de credencial; referência e template ficam.
+ *
+ * Texto livre (prompt, achado, instrução, conversa) passa inteiro: o ciclo ler,
+ * editar e gravar de volta não pode gravar texto mutilado por heurística.
  */
 export function redactSecrets<T>(valor: T): T {
-  const passar = (v: unknown): unknown => {
-    if (typeof v === "string") return limparSegredos(v);
-    if (Array.isArray(v)) return v.map(passar);
+  const cofre = valoresDoCofre();
+  const passar = (v: unknown, chave?: string): unknown => {
+    if (typeof v === "string") return cofre.reduce((texto, segredo) => texto.split(segredo).join(HIDDEN_VALUE), v);
+    if (Array.isArray(v)) {
+      const itens = chave === "command" && v.every((x) => typeof x === "string") ? comandoOculto(v as string[]) : v;
+      return itens.map((x) => passar(x));
+    }
     if (typeof v === "object" && v !== null) {
       return Object.fromEntries(
-        Object.entries(v).map(([chave, x]) => [
-          chave,
-          typeof x === "string" && CHAVE_SECRETA.test(chave) && x !== CREDENTIAL_PLACEHOLDER && x !== "" && !ESTADO_DE_CREDENCIAL.test(x)
-            ? HIDDEN_VALUE
-            : passar(x),
+        Object.entries(v).map(([k, x]) => [
+          k,
+          (k === "env" || k === "headers") && mapaDeTexto(x) ? passar(ocultar(x, k === "headers")) : passar(x, k),
         ]),
       );
     }

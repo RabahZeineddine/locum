@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { limparSegredos } from "../pacote/limpeza.js";
 import { claudeSessionsService } from "../services/claude-sessions-service.js";
 import { sessionService, TERMINALS } from "../services/session-service.js";
 import type { Ambiente } from "./ambiente.js";
@@ -20,7 +21,15 @@ export function registerSessionTools(server: McpServer, amb: Ambiente): void {
     { includeText: z.boolean().optional() },
     async ({ includeText }) => {
       const sessoes = await amb.sessions();
-      return includeText === true ? sessoes : sessoes.map(({ lastPrompt: _p, lastReply: _r, ...resto }) => resto);
+      // O texto da conversa só se lê, e pode ter token colado: sai limpo.
+      if (includeText === true) {
+        return sessoes.map((s) => ({
+          ...s,
+          ...(s.lastPrompt == null ? {} : { lastPrompt: limparSegredos(s.lastPrompt) }),
+          ...(s.lastReply == null ? {} : { lastReply: limparSegredos(s.lastReply) }),
+        }));
+      }
+      return sessoes.map(({ lastPrompt: _p, lastReply: _r, ...resto }) => resto);
     });
 
   def(server, "mark_claude_session_done", "write",
