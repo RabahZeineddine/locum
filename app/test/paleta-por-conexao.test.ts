@@ -1,58 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { casaBusca, humanizar, passoDeFerramenta, secoesDaPaleta, type ConexaoParaPaleta } from "../renderer/lib/paleta-conexoes.js";
+import { casaBusca, humanizar, passoDeFerramenta, slug } from "../renderer/lib/paleta-conexoes.js";
 import { adicionarPasso, problemas, type Rascunho } from "../renderer/lib/automacao.js";
 import type { Step } from "../src/config/types.js";
-
-/** Conexões falsas: nada sobe, nada é chamado. */
-const CONEXOES: ConexaoParaPaleta[] = [
-  {
-    servidor: "slack",
-    ferramentas: [
-      { name: "add_reaction", description: "Reage a uma mensagem com um emoji." },
-      { name: "get_channel_history", description: "Lê o histórico do canal.", readOnlyHint: true },
-      { name: "list_channels", description: "Lista os canais." },
-    ],
-  },
-  { servidor: "ms365", ferramentas: [{ name: "set-chat-message-reaction", description: "Reage a mensagem de chat do Teams." }] },
-  { servidor: "novo", ferramentas: null },
-];
-
-test("a paleta tem uma seção por conexão, e conexão sem lista guardada pede para carregar", () => {
-  const secoes = secoesDaPaleta(CONEXOES, {});
-  assert.deepEqual(secoes.map((s) => [s.servidor, s.itens.length, s.semLista]), [
-    ["slack", 3, false],
-    ["ms365", 1, false],
-    ["novo", 0, true],
-  ]);
-});
-
-test("conexão nova ou ferramenta nova aparece sem mudar código", () => {
-  const depois = secoesDaPaleta([...CONEXOES, { servidor: "tracker", ferramentas: [{ name: "create_ticket" }] }], {});
-  assert.equal(depois.at(-1)!.itens[0]!.titulo, "Create ticket");
-});
-
-test("selo: leitura só com anotação de leitura; sem anotação conta como escrita", () => {
-  const [slack] = secoesDaPaleta(CONEXOES, {});
-  const por = Object.fromEntries(slack!.itens.map((i) => [i.nome, i.leitura]));
-  assert.deepEqual(por, { add_reaction: false, get_channel_history: true, list_channels: false });
-});
-
-test("a busca filtra ferramentas de todas as conexões pelo nome e pela descrição, sem acento", () => {
-  assert.deepEqual(secoesDaPaleta(CONEXOES, { busca: "reaction" }).map((s) => [s.servidor, s.itens.map((i) => i.nome)]), [
-    ["slack", ["add_reaction"]],
-    ["ms365", ["set-chat-message-reaction"]],
-  ]);
-  assert.deepEqual(secoesDaPaleta(CONEXOES, { busca: "historico" }).map((s) => s.itens.map((i) => i.nome)), [["get_channel_history"]]);
-  assert.deepEqual(secoesDaPaleta(CONEXOES, { busca: "ms365" }).map((s) => s.servidor), ["ms365"], "o nome da conexão traz as ferramentas dela");
-  assert.deepEqual(secoesDaPaleta(CONEXOES, { busca: "zzz" }), []);
-});
-
-test("ferramenta desligada aparece com o motivo", () => {
-  const [slack] = secoesDaPaleta(CONEXOES, { desligada: (s, n) => (s === "slack" && n === "list_channels" ? "desligada na conexão" : null) });
-  assert.equal(slack!.itens.find((i) => i.nome === "list_channels")!.desligada, "desligada na conexão");
-  assert.equal(slack!.itens.find((i) => i.nome === "add_reaction")!.desligada, null);
-});
 
 test("casaBusca olha qualquer texto, sem acento nem caixa", () => {
   assert.equal(casaBusca("REAÇÃO", "Reagir no Teams", "reacao"), true);

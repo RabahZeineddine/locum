@@ -4,7 +4,7 @@ import { tradutorDe } from "@/lib/operacao-da-ferramenta";
 import type { AgentSpec, Step } from "../../../src/config/types";
 import { ChevronsUpDown } from "lucide-react";
 import { Popover } from "radix-ui";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { FerramentasDasConexoes } from "./ferramentas-das-conexoes";
 import { OQueFazer } from "./o-que-fazer";
@@ -19,18 +19,23 @@ export function TrocaDeOperacao({
   spec,
   conexoes,
   trocar,
+  avisoDoApp,
 }: {
   passo: Extract<Step, { type: "action" }>;
   spec: AgentSpec;
   conexoes: FerramentasDasConexoes;
   trocar: (novo: Extract<Step, { type: "action" }>) => void;
+  avisoDoApp: (app: string) => string | null;
 }) {
   const { t, i18n } = useTranslation();
   const [aberto, setAberto] = useState(false);
-  const traduzir = tradutorDe(i18n);
+  const traduzir = useMemo(() => tradutorDe(i18n), [i18n, i18n.language]);
   const { app } = reconhecerPasso(passo);
-  const paleta = conexoes.servidores.map((servidor) => ({ servidor, ferramentas: conexoes.porServidor[servidor]?.tools ?? null }));
-  const doApp = appsDaPaleta(paleta).find((a) => a.id === app) ?? { id: app, nativas: [], servidores: [], semLista: false };
+  const paleta = useMemo(
+    () => conexoes.servidores.map((servidor) => ({ servidor, ferramentas: conexoes.porServidor[servidor]?.tools ?? null })),
+    [conexoes.servidores, conexoes.porServidor],
+  );
+  const doApp = useMemo(() => appsDaPaleta(paleta).find((a) => a.id === app) ?? { id: app, nativas: [], servidores: [], semLista: false }, [paleta, app]);
   const operacao = tituloDaOperacaoDoPasso(passo, traduzir) ?? t("automations.canvas.chooseWhat");
 
   const escolher = (nova: OperacaoDoApp): void => {
@@ -61,7 +66,7 @@ export function TrocaDeOperacao({
           data-locum-troca-lista=""
           sideOffset={4}
         >
-          <OQueFazer aoEscolher={escolher} app={app} conexoes={conexoes} semTitulo />
+          <OQueFazer aoEscolher={escolher} app={app} avisoDoApp={avisoDoApp} conexoes={conexoes} semTitulo />
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>

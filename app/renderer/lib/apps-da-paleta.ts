@@ -6,10 +6,10 @@
  * do que já está gravado.
  */
 import { ehLeituraNaAcao, type FerramentaClassificavel } from "../../src/config/leitura";
-import type { AgentSpec, Step } from "../../src/config/types";
+import { SERVIDOR_NATIVO, type AgentSpec, type Step } from "../../src/config/types";
 import { novaChave, PASSOS } from "./automacao";
 import { agruparPor, classificarOperacao, tituloDaOperacao, type Traduzir } from "./operacao-da-ferramenta";
-import { casaBusca, humanizar, modoParaFerramenta, passoDeFerramenta, type ConexaoParaPaleta } from "./paleta-conexoes";
+import { casaBusca, humanizar, modoParaFerramenta, passoDeFerramenta, slug, type ConexaoParaPaleta } from "./paleta-conexoes";
 
 type PassoDeAcao = Extract<Step, { type: "action" }>;
 
@@ -17,7 +17,8 @@ type PassoDeAcao = Extract<Step, { type: "action" }>;
 const NATIVAS_POR_APP: Record<string, readonly string[]> = {
   teams: ["teams.post", "teams.react"],
   slack: ["slack.post", "slack.react"],
-  github: ["github.review_comment"],
+  // A publicação da review (`github.review_comment`) vem do modelo de revisão, não da paleta: depende de evento de PR.
+  github: [],
   tracker: ["tracker.create_issue"],
   http: ["http.request"],
 };
@@ -32,6 +33,7 @@ const APP_POR_NOME: readonly [RegExp, string][] = [
 ];
 
 export function appDoServidor(servidor: string): string {
+  if (servidor === SERVIDOR_NATIVO) return "locum";
   const nome = servidor.toLowerCase();
   return APP_POR_NOME.find(([padrao]) => padrao.test(nome))?.[1] ?? nome;
 }
@@ -60,15 +62,16 @@ export interface AppDaPaleta {
   semLista: boolean;
 }
 
-export function appsDaPaleta(conexoes: readonly ConexaoParaPaleta[]): AppDaPaleta[] {
+const SEM_TRADUCAO: Traduzir = () => undefined;
+
+function appsDe(conexoes: readonly ConexaoParaPaleta[], ferramentas: readonly OperacaoDoApp[]): AppDaPaleta[] {
   const apps = new Map<string, AppDaPaleta>();
   for (const [id, nativas] of Object.entries(NATIVAS_POR_APP)) apps.set(id, { id, nativas: [...nativas], servidores: [], semLista: false });
   for (const c of conexoes) {
     const padrao = appDoServidor(c.servidor);
-    const ids = new Set([padrao, ...(c.ferramentas ?? []).map((f) => appDaFerramenta(c.servidor, f.name))]);
-    // Servidor com ferramentas só aparece no app que as tem, mas o do próprio nome sempre existe.
+    // O servidor aparece em cada app que tem ferramenta dele, e sempre no do próprio nome.
+    const ids = new Set([padrao, ...ferramentas.filter((o) => o.servidor === c.servidor).map((o) => o.app)]);
     for (const id of ids) {
-      if (id !== padrao && (c.ferramentas ?? []).length === 0) continue;
       const app = apps.get(id) ?? { id, nativas: [], servidores: [], semLista: false };
       app.servidores.push(c.servidor);
       app.semLista ||= c.ferramentas === null && id === padrao;
@@ -76,6 +79,10 @@ export function appsDaPaleta(conexoes: readonly ConexaoParaPaleta[]): AppDaPalet
     }
   }
   return [...apps.values()];
+}
+
+export function appsDaPaleta(conexoes: readonly ConexaoParaPaleta[]): AppDaPaleta[] {
+  return appsDe(conexoes, conexoes.flatMap((c) => doServidor(c, SEM_TRADUCAO)));
 }
 
 /** O nome que `marcaDoServidor` reconhece para o ícone do app: o do catálogo de Conexões, ou o servidor. */
@@ -143,7 +150,24 @@ function doServidor(c: ConexaoParaPaleta, traduzir: Traduzir): OperacaoDoApp[] {
   }));
 }
 
-/** As ações do Locum primeiro; as ferramentas dos servidores do app, por recurso. */
+function separar(app: string, nativas: readonly OperacaoDoApp[], ferramentas: readonly OperacaoDoApp[]) {
+  const doApp = ferramentas.filter((o) => o.app === app);
+  return {
+    nativas: nativas.filter((o) => o.app === app),
+    grupos: agruparPor(doApp, (o) => o.recurso),
+    servidores: [...new Set(doApp.map((o) => o.servidor!))],
+  };
+}
+
+function nativasDaPaleta(traduzir: Traduzir): OperacaoDoApp[] {
+  return Object.entries(NATIVAS_POR_APP).flatMap(([app, acoes]) => acoes.map((a) => nativa(app, a, traduzir)));
+}
+
+/**
+ * As ações do Locum primeiro; as ferramentas dos servidores do app, por
+ * recurso. `servidores` são os que dão ferramenta ao app: com mais de um, cada
+ * operação mostra o dela.
+ */
 export function operacoesDoApp(
   app: string,
   conexoes: readonly ConexaoParaPaleta[],
@@ -151,32 +175,28 @@ export function operacoesDoApp(
 ): {
   nativas: OperacaoDoApp[];
   grupos: { recurso: string | null; itens: OperacaoDoApp[] }[];
-  /** Servidores que dão ferramentas ao app: com mais de um, cada operação mostra o dela. */
   servidores: string[];
 } {
-  const nativas = (NATIVAS_POR_APP[app] ?? []).map((a) => nativa(app, a, traduzir));
-  const ferramentas = conexoes.flatMap((c) => doServidor(c, traduzir)).filter((o) => o.app === app);
-  return {
-    nativas,
-    grupos: agruparPor(ferramentas, (o) => o.recurso),
-    servidores: [...new Set(ferramentas.map((o) => o.servidor!))],
-  };
+  return separar(app, nativasDaPaleta(traduzir), conexoes.flatMap((c) => doServidor(c, traduzir)));
 }
 
 /**
  * A busca global: apps pelo nome e operações pelo título, pelo nome da
  * ferramenta ou pela descrição. Ação nativa sai antes da ferramenta. Busca
- * vazia devolve só os apps, sem lista de operações.
+ * vazia devolve só os apps, sem lista de operações. Cada ferramenta é
+ * classificada uma vez.
  */
 export function buscarNaPaleta(
   conexoes: readonly ConexaoParaPaleta[],
   busca: string,
   traduzir: Traduzir,
 ): { apps: AppDaPaleta[]; operacoes: OperacaoDoApp[] } {
-  const apps = appsDaPaleta(conexoes);
+  const ferramentas = conexoes.flatMap((c) => doServidor(c, traduzir));
+  const apps = appsDe(conexoes, ferramentas);
   if (busca.trim() === "") return { apps, operacoes: [] };
-  const porApp = apps.map((a) => operacoesDoApp(a.id, conexoes, traduzir));
-  const todas = [...porApp.flatMap((o) => o.nativas), ...porApp.flatMap((o) => o.grupos.flatMap((g) => g.itens))];
+  const ordem = new Map(apps.map((a, i) => [a.id, i]));
+  const porApp = (a: OperacaoDoApp, b: OperacaoDoApp): number => (ordem.get(a.app) ?? 0) - (ordem.get(b.app) ?? 0);
+  const todas = [...nativasDaPaleta(traduzir), ...[...ferramentas].sort(porApp)];
   return {
     apps: apps.filter((a) => casaBusca(busca, nomeDoApp(a.id, traduzir), a.id)),
     operacoes: todas.filter((o) => casaBusca(busca, o.titulo, o.ferramenta, o.acao, o.descricao)),
@@ -212,7 +232,7 @@ export function reconhecerPasso(passo: Step): { app: string; operacao: OperacaoD
 export function passoSemOperacao(spec: AgentSpec, app: string, nome: string, servidor?: string): PassoDeAcao {
   return {
     type: "action",
-    key: novaChave(spec, app),
+    key: novaChave(spec, slug(app) || "acao-em-app"),
     name: nome,
     needs: [],
     optional: false,
@@ -225,6 +245,7 @@ export function passoSemOperacao(spec: AgentSpec, app: string, nome: string, ser
 /** O nome que o passo ganharia sozinho: se é este, a pessoa não renomeou. */
 function nomePadrao(passo: PassoDeAcao, spec: AgentSpec): string | null {
   const { operacao } = reconhecerPasso(passo);
+  if (operacao.tipo === "vazia") return passo.name;
   if (operacao.tipo === "ferramenta") return humanizar(operacao.ferramenta);
   if (operacao.tipo === "nativa") return PASSOS.find((p) => p.id === operacao.acao)?.novo(spec).name ?? null;
   return null;
@@ -240,7 +261,7 @@ export function fonteDaMarcaDoPasso(passo: Step): string {
 export function temTrocaDeOperacao(passo: Step): boolean {
   if (passo.type !== "action") return false;
   const { app, operacao } = reconhecerPasso(passo);
-  return operacao.tipo === "nativa" ? app in NATIVAS_POR_APP : app !== "mcp";
+  return operacao.tipo === "nativa" ? (NATIVAS_POR_APP[app] ?? []).includes(operacao.acao) : app !== "mcp";
 }
 
 /** Se a pessoa deu um nome ao passo, em vez de ficar com o que a operação põe sozinha. */
@@ -267,6 +288,7 @@ export function tituloDaOperacaoDoPasso(passo: Step, traduzir: Traduzir): string
  */
 export function passoDaOperacao(spec: AgentSpec, op: OperacaoDoApp, anterior?: Step): Step {
   const antes = anterior?.type === "action" ? anterior : undefined;
+  if (antes !== undefined && ehAOperacao(antes, op)) return antes;
   const novo: PassoDeAcao =
     op.tipo === "ferramenta"
       ? (passoDeFerramenta(spec, op.servidor!, op.classificavel ?? { name: op.ferramenta! }) as PassoDeAcao)
@@ -281,32 +303,34 @@ export function passoDaOperacao(spec: AgentSpec, op: OperacaoDoApp, anterior?: S
         };
   if (antes === undefined) return novo;
 
-  const renomeado = foiRenomeado(antes, spec);
+  // O nó sem operação nasce como o da busca: a leitura em automático, a escrita em aprovação.
+  const vazio = reconhecerPasso(antes).operacao.tipo === "vazia";
   const resultado: PassoDeAcao = {
     ...novo,
     key: antes.key,
-    name: renomeado ? antes.name : novo.name,
+    name: foiRenomeado(antes, spec) ? antes.name : novo.name,
     needs: antes.needs,
     optional: antes.optional,
     ...(antes.when !== undefined ? { when: antes.when } : {}),
     ...(antes.input !== undefined ? { input: antes.input } : {}),
-    ...(antes.target !== undefined ? { target: antes.target } : {}),
+    // O destino é o do tracker cadastrado: só a ação do tracker o entende.
+    ...(antes.target !== undefined && op.acao === "tracker.create_issue" ? { target: antes.target } : {}),
   };
   if (op.tipo === "ferramenta") {
-    const declarados = Object.keys(((op.inputSchema?.properties ?? {}) as Record<string, unknown>));
     const argsAntes = ((antes.params as { args?: Record<string, unknown> } | undefined)?.args ?? {}) as Record<string, unknown>;
-    const args = Object.fromEntries(Object.entries(argsAntes).filter(([nome]) => declarados.includes(nome)));
+    // Sem schema não há como saber o que a ferramenta aceita: os argumentos ficam.
+    const declarados = op.inputSchema === undefined ? null : Object.keys((op.inputSchema.properties ?? {}) as Record<string, unknown>);
+    const args = declarados === null ? argsAntes : Object.fromEntries(Object.entries(argsAntes).filter(([nome]) => declarados.includes(nome)));
     resultado.params = { server: op.servidor!, tool: op.ferramenta!, args };
-    resultado.mode = modoParaFerramenta(antes.mode, false, op.classificavel ?? { name: op.ferramenta! });
+    resultado.mode = vazio ? novo.mode : modoParaFerramenta(antes.mode, false, op.classificavel ?? { name: op.ferramenta! });
   } else {
-    const mesma = reconhecerPasso(antes).operacao;
-    if (mesma.tipo === "nativa" && mesma.acao === op.acao) {
-      if (antes.params !== undefined) resultado.params = antes.params;
-      resultado.mode = antes.mode;
-    } else {
-      resultado.mode = antes.mode === "auto" ? "approve" : antes.mode;
-    }
+    resultado.mode = vazio ? novo.mode : antes.mode === "auto" ? "approve" : antes.mode;
   }
   return resultado;
 }
 
+function ehAOperacao(passo: PassoDeAcao, op: OperacaoDoApp): boolean {
+  const { operacao } = reconhecerPasso(passo);
+  if (operacao.tipo === "nativa") return op.tipo === "nativa" && operacao.acao === op.acao;
+  return operacao.tipo === "ferramenta" && op.tipo === "ferramenta" && operacao.servidor === op.servidor && operacao.ferramenta === op.ferramenta;
+}

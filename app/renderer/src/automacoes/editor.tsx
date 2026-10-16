@@ -282,6 +282,12 @@ function EditorCarregado({
   };
 
   const viaDoTeams = (conexoes.data ?? []).find((c) => c.id === "teams")?.via;
+  const avisoDoComponente = (app: AppDoComponente): string | null =>
+    !appsLigados[app] ? t("automations.palette.needsApp") : app === "teams" && viaDoTeams !== undefined ? t("automations.palette.viaServer", { server: viaDoTeams }) : null;
+  const avisoDoApp = (id: string): string | null => {
+    const componente = ({ teams: "teams", slack: "slack", github: "github", tracker: "atlassian" } as const)[id as "teams" | "slack" | "github" | "tracker"];
+    return componente === undefined ? null : avisoDoComponente(componente);
+  };
 
   const mudou = temMudanca(rascunho, salvo);
   // O gatilho do Teams com link de PR já reagiu sozinho. O aviso aparece uma vez por automação: dispensar ou inserir os nós o encerra.
@@ -888,8 +894,8 @@ function EditorCarregado({
           aoApp={acrescentarApp}
           aoOperacao={acrescentarOperacao}
           conexoes={ferramentas}
-          appsLigados={appsLigados}
-          viaDoTeams={viaDoTeams}
+          avisoDoApp={avisoDoApp}
+          avisoDoComponente={avisoDoComponente}
           criarAgent={() =>
             abrirAgent("novo", (id, lista) => {
               const criado = lista.find((a) => a.id === id);
@@ -913,6 +919,7 @@ function EditorCarregado({
             conexoes={ferramentas}
             saidas={saidasDoUltimoRun}
             abrirAgent={abrirAgent}
+            avisoDoApp={avisoDoApp}
             chave={selecionado}
             navegar={navegar}
             relerBiblioteca={() => Promise.resolve(invalidateReads("library.profiles"))}
@@ -1108,34 +1115,9 @@ function EscolhaDosConflitos({
 
 /* ------------------------------------------------------------------ paleta */
 
-function Paleta({
-  appsLigados,
-  viaDoTeams,
-  agents,
-  aoGatilho,
-  aoPasso,
-  aoAgent,
-  aoLogica,
-  aoApp,
-  aoOperacao,
-  conexoes,
-  criarAgent,
-}: {
-  appsLigados: Record<AppDoComponente, boolean>;
-  /** O servidor MCP por onde o Teams vem, quando não há login nativo. */
-  viaDoTeams: string | undefined;
-  agents: readonly AgentDaBiblioteca[];
-  aoGatilho: (id: string) => void;
-  aoPasso: (id: string) => void;
-  aoAgent: (agent: AgentDaBiblioteca) => void;
-  aoLogica: (op: string) => void;
-  aoApp: (app: AppDaPaleta) => void;
-  aoOperacao: (operacao: OperacaoDoApp) => void;
-  conexoes: FerramentasDasConexoes;
-  criarAgent: () => void;
-}) {
-  const { t, i18n } = useTranslation();
-  const Item = ({ app, id, titulo, onClick }: { app: AppDoComponente; id: string; titulo: string; onClick: () => void }) => (
+/** Um componente fixo da paleta (gatilho, IA, lógica, agent), com o aviso de app desconectado. */
+function ItemDoComponente({ app, id, titulo, aviso, onClick }: { app: AppDoComponente; id: string; titulo: string; aviso: string | null; onClick: () => void }) {
+  return (
     <li>
       <button
         className="hover:bg-accent flex min-h-8 w-full cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-left text-[13px] transition-colors"
@@ -1147,18 +1129,63 @@ function Paleta({
         <Selo app={app} id={id} tamanho="sm" />
         <span className="flex min-w-0 flex-col">
           <span className="line-clamp-2 leading-4">{titulo}</span>
-          {appsLigados[app] ? (
-            app === "teams" && viaDoTeams !== undefined ? (
-              <span className="text-muted-foreground text-[11px]">{t("automations.palette.viaServer", { server: viaDoTeams })}</span>
-            ) : null
-          ) : (
-            <span className="text-muted-foreground text-[11px]">{t("automations.palette.needsApp")}</span>
+          {aviso === null ? null : (
+            <span className="text-muted-foreground text-[11px]" data-locum-paleta-aviso="">
+              {aviso}
+            </span>
           )}
         </span>
       </button>
     </li>
   );
+}
 
+/** Um grupo recolhível da paleta. Os itens ficam no DOM quando fechado, só escondidos. */
+function GrupoDaPaleta({ id, chave, aberto, alternar, children }: { id: string; chave: string; aberto: boolean; alternar: () => void; children: ReactNode }) {
+  const { t } = useTranslation();
+  return (
+    <section data-locum-paleta-grupo={id}>
+      <button
+        aria-expanded={aberto}
+        className="text-muted-foreground hover:text-foreground flex w-full cursor-pointer items-center gap-1 px-1.5 pb-0.5 text-left text-[11px] font-medium"
+        onClick={alternar}
+        type="button"
+      >
+        {aberto ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+        {t(chave)}
+      </button>
+      <div hidden={!aberto}>{children}</div>
+    </section>
+  );
+}
+
+function Paleta({
+  avisoDoComponente,
+  avisoDoApp,
+  agents,
+  aoGatilho,
+  aoPasso,
+  aoAgent,
+  aoLogica,
+  aoApp,
+  aoOperacao,
+  conexoes,
+  criarAgent,
+}: {
+  /** "conecte em Conexões", "pelo ms365" ou nada, para o componente de um app do Locum. */
+  avisoDoComponente: (app: AppDoComponente) => string | null;
+  avisoDoApp: (app: string) => string | null;
+  agents: readonly AgentDaBiblioteca[];
+  aoGatilho: (id: string) => void;
+  aoPasso: (id: string) => void;
+  aoAgent: (agent: AgentDaBiblioteca) => void;
+  aoLogica: (op: string) => void;
+  aoApp: (app: AppDaPaleta) => void;
+  aoOperacao: (operacao: OperacaoDoApp) => void;
+  conexoes: FerramentasDasConexoes;
+  criarAgent: () => void;
+}) {
+  const { t, i18n } = useTranslation();
   const [busca, setBusca] = useState("");
   const buscando = busca.trim() !== "";
   const descricaoDe = (id: string): string | undefined => (i18n.exists(`automations.steps.${id}.description`) ? t(`automations.steps.${id}.description`) : undefined);
@@ -1166,31 +1193,17 @@ function Paleta({
   const passos = PASSOS.filter((p) => p.id === "ai" && casaBusca(busca, tituloDoPasso(t, p.id), p.id, descricaoDe(p.id)));
   const logica = LOGICA.filter((l) => casaBusca(busca, tituloDoPasso(t, `logic.${l.id}`), l.id));
   const listaDeAgents = agents.filter((a) => casaBusca(busca, a.name));
-  const traduzir = tradutorDe(i18n);
-  const paleta = conexoes.servidores.map((servidor) => ({ servidor, ferramentas: conexoes.porServidor[servidor]?.tools ?? null }));
-  const { apps, operacoes } = buscarNaPaleta(paleta, busca, traduzir);
-  const todosOsApps = appsDaPaleta(paleta);
+  const traduzir = useMemo(() => tradutorDe(i18n), [i18n, i18n.language]);
+  const paleta = useMemo(
+    () => conexoes.servidores.map((servidor) => ({ servidor, ferramentas: conexoes.porServidor[servidor]?.tools ?? null })),
+    [conexoes.servidores, conexoes.porServidor],
+  );
+  const { apps, operacoes } = useMemo(() => buscarNaPaleta(paleta, busca, traduzir), [paleta, busca, traduzir]);
+  const todosOsApps = useMemo(() => appsDaPaleta(paleta), [paleta]);
   const Titulo = ({ chave }: { chave: string }) => <h3 className="text-muted-foreground px-1.5 pb-0.5 text-[11px] font-medium">{t(chave)}</h3>;
   // A paleta é curta: gatilhos, agents e lógica abrem com um clique; os apps ficam abertos. Na busca, tudo que casou aparece.
   const [abertos, setAbertos] = useState<ReadonlySet<string>>(new Set(["apps"]));
-  const Grupo = ({ id, chave, children }: { id: string; chave: string; children: ReactNode }) => {
-    const aberto = buscando || abertos.has(id);
-    return (
-      <section data-locum-paleta-grupo={id}>
-        <button
-          aria-expanded={aberto}
-          className="text-muted-foreground hover:text-foreground flex w-full cursor-pointer items-center gap-1 px-1.5 pb-0.5 text-left text-[11px] font-medium"
-          onClick={() => setAbertos((a) => new Set(a.has(id) ? [...a].filter((x) => x !== id) : [...a, id]))}
-          type="button"
-        >
-          {aberto ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
-          {t(chave)}
-        </button>
-        <div hidden={!aberto}>{children}</div>
-      </section>
-    );
-  };
-
+  const alternar = (id: string): void => setAbertos((a) => new Set(a.has(id) ? [...a].filter((x) => x !== id) : [...a, id]));
   return (
     <aside className="border-border bg-card flex w-60 shrink-0 flex-col gap-2 overflow-y-auto rounded-lg border p-1.5" data-locum-probe="automacao-paleta">
       <p className="text-muted-foreground px-2 pt-1 text-[11px]">{t("automations.palette.hint")}</p>
@@ -1203,22 +1216,22 @@ function Paleta({
         value={busca}
       />
       {gatilhos.length === 0 ? null : (
-        <Grupo chave="automations.palette.triggers" id="triggers">
+        <GrupoDaPaleta aberto={buscando || abertos.has("triggers")} alternar={() => alternar("triggers")} chave="automations.palette.triggers" id="triggers">
           <ul>
             {gatilhos.map((g) => (
-              <Item app={g.app} id={g.id} key={g.id} onClick={() => aoGatilho(g.id)} titulo={t(`automations.triggers.${g.id}.title`)} />
+              <ItemDoComponente app={g.app} aviso={avisoDoComponente(g.app)} id={g.id} key={g.id} onClick={() => aoGatilho(g.id)} titulo={t(`automations.triggers.${g.id}.title`)} />
             ))}
           </ul>
-        </Grupo>
+        </GrupoDaPaleta>
       )}
       {buscando && listaDeAgents.length === 0 && passos.length === 0 ? null : (
-        <Grupo chave="automations.palette.agentsAndAi" id="agents">
+        <GrupoDaPaleta aberto={buscando || abertos.has("agents")} alternar={() => alternar("agents")} chave="automations.palette.agentsAndAi" id="agents">
           <ul>
             {passos.map((p) => (
-              <Item app={p.app} id={p.id} key={p.id} onClick={() => aoPasso(p.id)} titulo={tituloDoPasso(t, p.id)} />
+              <ItemDoComponente app={p.app} aviso={avisoDoComponente(p.app)} id={p.id} key={p.id} onClick={() => aoPasso(p.id)} titulo={tituloDoPasso(t, p.id)} />
             ))}
             {listaDeAgents.map((a) => (
-              <Item app="locum" id="agent" key={a.id} onClick={() => aoAgent(a)} titulo={a.name} />
+              <ItemDoComponente app="locum" aviso={null} id="agent" key={a.id} onClick={() => aoAgent(a)} titulo={a.name} />
             ))}
           </ul>
           {agents.length === 0 ? <p className="text-muted-foreground px-2 text-[11px]">{t("automations.palette.agentsEmpty")}</p> : null}
@@ -1227,14 +1240,15 @@ function Paleta({
               {t("automations.palette.newAgent")}
             </button>
           )}
-        </Grupo>
+        </GrupoDaPaleta>
       )}
       {logica.length === 0 ? null : (
-        <Grupo chave="automations.palette.logic" id="logic">
+        <GrupoDaPaleta aberto={buscando || abertos.has("logic")} alternar={() => alternar("logic")} chave="automations.palette.logic" id="logic">
           <ul>
             {logica.map((l) => (
-              <Item
+              <ItemDoComponente
                 app={appDoPasso(`logic.${l.id}`)}
+                aviso={null}
                 id={`logic.${l.id}`}
                 key={l.id}
                 onClick={() => aoLogica(l.id)}
@@ -1242,10 +1256,10 @@ function Paleta({
               />
             ))}
           </ul>
-        </Grupo>
+        </GrupoDaPaleta>
       )}
       {apps.length === 0 ? null : (
-        <Grupo chave="automations.palette.apps" id="apps">
+        <GrupoDaPaleta aberto={buscando || abertos.has("apps")} alternar={() => alternar("apps")} chave="automations.palette.apps" id="apps">
           <ul>
             {apps.map((app) => (
               <li key={app.id}>
@@ -1256,12 +1270,19 @@ function Paleta({
                   type="button"
                 >
                   <MarcaLogo fonte={{ name: fonteDaMarca(app) }} tamanho="sm" />
-                  <span className="line-clamp-2 min-w-0 leading-4">{nomeDoApp(app.id, traduzir)}</span>
+                  <span className="flex min-w-0 flex-col">
+                    <span className="line-clamp-2 leading-4">{nomeDoApp(app.id, traduzir)}</span>
+                    {avisoDoApp(app.id) === null ? null : (
+                      <span className="text-muted-foreground text-[11px]" data-locum-paleta-aviso="">
+                        {avisoDoApp(app.id)}
+                      </span>
+                    )}
+                  </span>
                 </button>
               </li>
             ))}
           </ul>
-        </Grupo>
+        </GrupoDaPaleta>
       )}
       {operacoes.length === 0 ? null : (
         <section data-locum-paleta-operacoes="">
@@ -1382,7 +1403,10 @@ function CanvasDaAutomacao({
               ? foiRenomeado(p, rascunho.spec)
                 ? p.name
                 : p.action === "mcp.call"
-                  ? ""
+                  ? (() => {
+                      const { operacao } = reconhecerPasso(p);
+                      return operacao.tipo === "ferramenta" ? operacao.ferramenta : "";
+                    })()
                   : resumoDaAcao(p)
               : p.type === "logic"
               ? resumoDaLogica(p)

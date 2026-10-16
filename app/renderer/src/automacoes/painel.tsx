@@ -77,9 +77,12 @@ export function PainelDoNo({
   relerBiblioteca,
   conexoes,
   saidas,
+  avisoDoApp,
 }: {
   chave: string;
   conexoes: FerramentasDasConexoes;
+  /** "conecte em Conexões" para um app do Locum desconectado, ou nada. */
+  avisoDoApp: (app: string) => string | null;
   /** A saída de cada passo no último run, para o seletor de referências. */
   saidas: Readonly<Record<string, unknown>>;
   agents: readonly AgentDaBiblioteca[];
@@ -127,6 +130,7 @@ export function PainelDoNo({
         {passo !== undefined && passo.type === "action" && temTrocaDeOperacao(passo) ? (
           <>
             <TrocaDeOperacao
+            avisoDoApp={avisoDoApp}
             conexoes={conexoes}
             passo={passo}
             spec={rascunho.spec}
@@ -203,7 +207,15 @@ export function PainelDoNo({
       ) : passo!.type === "logic" ? (
         <ConfigDaLogica passo={passo as LogicStep} rascunho={rascunho} setRascunho={setRascunho} />
       ) : (
-        <ConfigDaAcao passo={passo as PassoDeAcao} conexoes={conexoes} rascunho={rascunho} saidas={saidas} setRascunho={setRascunho} trackers={trackers} />
+        <ConfigDaAcao
+          avisoDoApp={avisoDoApp}
+          conexoes={conexoes}
+          passo={passo as PassoDeAcao}
+          rascunho={rascunho}
+          saidas={saidas}
+          setRascunho={setRascunho}
+          trackers={trackers}
+        />
       )}
 
       <Button className="mt-auto cursor-pointer self-start" data-locum-painel-remover="" onClick={remover} size="sm" variant="ghost">
@@ -1004,8 +1016,10 @@ function ConfigDaAcao({
   trackers,
   conexoes,
   saidas,
+  avisoDoApp,
 }: {
   passo: PassoDeAcao;
+  avisoDoApp: (app: string) => string | null;
   saidas: Readonly<Record<string, unknown>>;
   rascunho: Rascunho;
   setRascunho: (f: (r: Rascunho) => Rascunho) => void;
@@ -1044,6 +1058,7 @@ function ConfigDaAcao({
       {passo.action === "mcp.call" && reconhecerPasso(passo).operacao.tipo === "vazia" && reconhecerPasso(passo).app !== "mcp" ? (
         <OQueFazer
           app={reconhecerPasso(passo).app}
+          avisoDoApp={avisoDoApp}
           conexoes={conexoes}
           aoEscolher={(operacao) => trocar(passoDaOperacao(rascunho.spec, operacao, passo) as PassoDeAcao)}
         />
@@ -1373,12 +1388,14 @@ function ConfigDaChamada({
                 onChange={(e) => {
                   const nova = lista.find((f) => f.name === e.target.value);
                   const nomePadrao = passo.name === "" || passo.name === "Ação em app";
-                  // Trocar a ferramenta recalcula o modo: escrita sem `autoEscrita` volta para aprovação.
-                  mudar(
-                    { tool: e.target.value, args: {} },
-                    nova !== undefined && nomePadrao ? humanizar(nova.name) : undefined,
-                    modoParaFerramenta(passo.mode, params.autoEscrita === true, nova),
-                  );
+                  // Trocar a ferramenta recalcula o modo, e `autoEscrita` não passa para a nova: é escolha da pessoa para aquela ferramenta.
+                  const { autoEscrita: _antigo, ...resto } = params;
+                  trocar({
+                    ...passo,
+                    ...(nova !== undefined && nomePadrao ? { name: humanizar(nova.name) } : {}),
+                    mode: modoParaFerramenta(passo.mode, false, nova),
+                    params: { ...resto, tool: e.target.value, args: {} },
+                  });
                 }}
                 value={params.tool ?? ""}
               >

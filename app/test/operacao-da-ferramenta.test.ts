@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { criarI18n } from "../renderer/lib/i18n.js";
 import {
-  agruparOperacoes,
+  agruparPor,
   classificarOperacao,
   tituloDaOperacao,
   tituloDoGrupo,
@@ -22,7 +22,7 @@ const SLACK: [string, string | undefined, string, string | null][] = [
   ["slack_get_thread_replies", "slack", "read", "thread"],
   ["slack_get_users", "slack", "read", "user"],
   ["slack_get_user_profile", "slack", "read", "user"],
-  ["conversations_history", "slack", "read", "channel"],
+  ["conversations_history", "slack", "read", "message"],
 ];
 const MS365: [string, string | undefined, string, string | null][] = [
   ["send-mail", "ms365", "write", "mail"],
@@ -35,6 +35,11 @@ const MS365: [string, string | undefined, string, string | null][] = [
   ["list-joined-teams", "ms365", "read", "team"],
   ["upload-file-content", "ms365", "write", "file"],
   ["download-bytes", "ms365", "read", null],
+  ["list-mail-folder-messages", "ms365", "read", "mail"],
+  ["list-mail-folders", "ms365", "read", "folder"],
+  ["list-drives", "ms365", "read", "drive"],
+  ["list-folder-files", "ms365", "read", "file"],
+  ["list-chat-message-replies", "ms365", "read", "message"],
 ];
 const GITHUB: [string, string | undefined, string, string | null][] = [
   ["create_pull_request", "github", "write", "pull_request"],
@@ -50,6 +55,8 @@ const GITHUB: [string, string | undefined, string, string | null][] = [
   ["create_branch", "github", "write", "branch"],
   ["get_me", "github", "read", null],
   ["search_code", "github", "read", null],
+  ["request_copilot_review", "github", "write", "review"],
+  ["submit_pending_pull_request_review", "github", "write", "review"],
 ];
 
 for (const [nome, servidor, acao, recurso] of [...SLACK, ...MS365, ...GITHUB]) {
@@ -96,7 +103,7 @@ test("sem tradução conhecida, cai no nome humanizado", () => {
 
 test("agrupa por recurso, na ordem em que aparecem, e deixa Outras por último", () => {
   const itens = ["get_me", "list_issues", "create_pull_request", "issue_write", "get_file_contents"].map((nome) => ({ nome }));
-  const grupos = agruparOperacoes(itens, "github");
+  const grupos = agruparPor(itens, (i) => classificarOperacao(i.nome, "github").recurso);
   assert.deepEqual(
     grupos.map((g) => [g.recurso, g.itens.map((i) => i.nome)]),
     [
@@ -109,4 +116,21 @@ test("agrupa por recurso, na ordem em que aparecem, e deixa Outras por último",
   assert.equal(tituloDoGrupo("issue", pt), "Issues");
   assert.equal(tituloDoGrupo(null, pt), "Outras");
   assert.equal(tituloDoGrupo("message", en), "Messages");
+});
+
+test("operações parecidas de um mesmo servidor não repetem o título", () => {
+  const pares: [string, string, string][] = [
+    ["ms365", "list-mail-messages", "list-mail-folders"],
+    ["ms365", "list-drives", "list-folder-files"],
+    ["ms365", "list-chat-messages", "list-chat-message-replies"],
+    ["slack", "slack_get_users", "slack_get_user_profile"],
+    ["github", "request_copilot_review", "submit_pending_pull_request_review"],
+    ["slack", "slack_get_channel_history", "slack_post_message"],
+  ];
+  for (const [servidor, a, b] of pares) {
+    assert.notEqual(tituloDaOperacao(a, pt, servidor), tituloDaOperacao(b, pt, servidor), `${a} e ${b}`);
+    assert.notEqual(tituloDaOperacao(a, en, servidor), tituloDaOperacao(b, en, servidor), `${a} e ${b} em inglês`);
+  }
+  assert.equal(tituloDaOperacao("conversations_history", pt, "slack"), "Ler mensagens do canal");
+  assert.equal(tituloDaOperacao("slack_get_user_profile", pt, "slack"), "Ler perfil do usuário");
 });

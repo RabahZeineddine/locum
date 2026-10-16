@@ -2391,6 +2391,10 @@ async function checkPaletaPorConexao(window: BrowserWindow): Promise<void> {
     await clicar('[data-locum-paleta-operacao="slack.react"]');
     await esperar("o no de reacao do Slack", () => existe("[data-locum-troca-operacao]"));
     if (!(await js(`document.querySelector("[data-locum-troca-operacao]")?.textContent?.includes("Slack") ?? false`))) throw new Error("o topo do painel nao diz o app da operacao");
+    // O app desconectado avisa na própria entrada, como o componente fixo de antes.
+    // O Slack mostra ou não o aviso conforme a conexão, igual no gatilho de antes e na entrada do app.
+    const avisaNoGatilho = await existe('[data-locum-paleta="slack-channel"] [data-locum-paleta-aviso]');
+    if ((await existe('[data-locum-paleta-app="slack"] [data-locum-paleta-aviso]')) !== avisaNoGatilho) throw new Error("a entrada do app Slack nao avisa como o gatilho do Slack");
     for (const id of ["teams", "slack", "github", "tracker", "http"]) {
       await buscar("");
       await esperar(`a entrada do app ${id}`, () => existe(`[data-locum-paleta-app="${id}"]`));

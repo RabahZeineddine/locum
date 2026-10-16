@@ -35,7 +35,7 @@ export function tradutorDe(i18n: Instancia): Traduzir {
 const VERBOS: Record<string, AcaoDaOperacao> = {};
 for (const [acao, verbos] of Object.entries({
   read: "get list read search find fetch query describe show view lookup retrieve download count history replies preview",
-  write: "send post create add upload reply write publish push fork draft invite schedule react",
+  write: "send post create add upload reply write publish push fork draft invite schedule react request submit",
   update: "update set edit modify move rename mark merge resolve close reopen assign pin unpin archive enable disable transition",
   delete: "delete remove trash purge drop clear destroy revoke cancel",
 })) {
@@ -50,7 +50,7 @@ const PALAVRAS_SOLTAS = new Set(["to", "in", "from", "the", "of", "by", "for", "
 /** Recursos conhecidos, e o nome pelo qual cada um aparece nas ferramentas. */
 const RECURSOS: Record<string, string> = Object.fromEntries(
   (
-    "message history=message chat channel conversation=channel reaction thread file folder drive=file issue comment review " +
+    "message history=message chat channel conversation=channel reaction thread file folder drive issue comment review " +
     "repository repo=repository branch commit user team mail email=mail event calendar page project label workflow " +
     "release document ticket=issue task member=user"
   )
@@ -65,7 +65,7 @@ const RECURSOS: Record<string, string> = Object.fromEntries(
 const FRASES: Record<string, string> = {
   "pull request": "pull_request",
   "mail message": "mail",
-  "mail folder": "mail",
+  "folder message": "mail",
   "chat message": "message",
   "channel message": "message",
   "calendar event": "event",
@@ -88,6 +88,16 @@ function singular(p: string): string {
   return p.endsWith("s") && !p.endsWith("ss") ? p.slice(0, -1) : p;
 }
 
+/** O que distingue a operação dentro do recurso, para o título não repetir: histórico, respostas, perfil. */
+function detalheDe(verbo: string | null, resto: readonly string[], subs: readonly string[], recurso: string | null): string | null {
+  if (verbo === "history") return "channel_history";
+  if (verbo === "replies") return "replies";
+  if (recurso === "message" && subs.includes("history")) return subs.includes("channel") ? "channel_history" : "history";
+  if (recurso === "message" && resto.includes("replies")) return "replies";
+  if (recurso === "user" && subs.includes("profile")) return "profile";
+  return null;
+}
+
 export function classificarOperacao(nome: string, servidor?: string): OperacaoClassificada {
   const todas = palavras(nome, servidor);
   let verbo: string | null = null;
@@ -105,7 +115,8 @@ export function classificarOperacao(nome: string, servidor?: string): OperacaoCl
     const frase = i > 0 ? FRASES[`${subs[i - 1]} ${subs[i]}`] : undefined;
     recurso = frase ?? RECURSOS[subs[i]!] ?? null;
   }
-  const detalhe = recurso !== "message" ? null : subs.includes("history") ? (subs.includes("channel") ? "channel_history" : "history") : null;
+  const detalhe = detalheDe(verbo, resto, subs, recurso);
+  if (verbo === "history" || verbo === "replies") recurso = "message";
   const acao = verbo !== null ? VERBOS[verbo]! : ehLeitura(nome) ? "read" : "write";
   return { acao, verbo, recurso, detalhe };
 }
@@ -139,8 +150,4 @@ export function agruparPor<T>(itens: readonly T[], recursoDe: (item: T) => strin
   const ordem: (string | null)[] = [...grupos.keys()].filter((k) => k !== null);
   if (grupos.has(null)) ordem.push(null);
   return ordem.map((recurso) => ({ recurso, itens: grupos.get(recurso)! }));
-}
-
-export function agruparOperacoes<T extends { nome: string }>(itens: readonly T[], servidor?: string) {
-  return agruparPor(itens, (i) => classificarOperacao(i.nome, servidor).recurso);
 }

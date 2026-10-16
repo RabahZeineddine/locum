@@ -2779,12 +2779,16 @@
         "clear": "Clear",
         "destroy": "Destroy",
         "revoke": "Revoke",
-        "cancel": "Cancel"
+        "cancel": "Cancel",
+        "request": "Request",
+        "submit": "Submit"
       },
       "combo": {
         "write_reaction": "React",
         "update_reaction": "React",
-        "read_message_channel_history": "Read channel messages"
+        "read_message_channel_history": "Read channel messages",
+        "read_message_replies": "Read message replies",
+        "read_user_profile": "Read user profile"
       },
       "resource": {
         "message_one": "message",
@@ -2838,7 +2842,9 @@
         "task_one": "task",
         "task_other": "tasks",
         "pull_request_one": "pull request",
-        "pull_request_other": "pull requests"
+        "pull_request_other": "pull requests",
+        "drive_one": "drive",
+        "drive_other": "drives"
       },
       "native": {
         "teams_post": "Send message",
@@ -2857,7 +2863,8 @@
         "http": "HTTP",
         "microsoft365": "Microsoft 365",
         "ia": "AI",
-        "logica": "Logic"
+        "logica": "Logic",
+        "locum": "Locum"
       }
     }
   },

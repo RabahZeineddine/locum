@@ -67,6 +67,7 @@ test("a paleta tem os apps do Locum e um por servidor desconhecido, sem duplicar
   assert.deepEqual(ids, ["teams", "slack", "github", "tracker", "http", "microsoft365", "locum-fixture", "novo"]);
   const slack = appsDaPaleta(CONEXOES).find((a) => a.id === "slack")!;
   assert.deepEqual([slack.nativas, slack.servidores], [["slack.post", "slack.react"], ["slack"]]);
+  assert.deepEqual(appsDaPaleta(CONEXOES).find((a) => a.id === "github")!.nativas, [], "a publicação da review não é da paleta");
   assert.equal(appsDaPaleta(CONEXOES).find((a) => a.id === "novo")!.semLista, true);
   assert.equal(appsDaPaleta(CONEXOES).find((a) => a.id === "teams")!.nativas.length, 2);
 });
@@ -177,7 +178,7 @@ test("escolher a operação vira o passo real, e a nativa vira a ação do Locum
   const vazio = passoSemOperacao(SPEC, "slack", "Slack", "slack");
   const leitura = passoDaOperacao(SPEC, op("slack", "slack_get_channel_history"), vazio) as Extract<Step, { type: "action" }>;
   assert.deepEqual([leitura.key, leitura.action, leitura.params], [vazio.key, "mcp.call", { server: "slack", tool: "slack_get_channel_history", args: {} }]);
-  assert.equal(leitura.mode, "approve");
+  assert.equal(leitura.mode, "auto", "o nó vazio nasce como o da busca: leitura em automático");
   const nativa = operacoesDoApp("teams", CONEXOES, pt).nativas.find((o) => o.acao === "teams.react")!;
   const passo = passoDaOperacao(SPEC, nativa, passoSemOperacao(SPEC, "teams", "Teams")) as Extract<Step, { type: "action" }>;
   assert.deepEqual([passo.action, passo.mode], ["teams.react", "approve"]);
@@ -258,4 +259,65 @@ test("o ícone do card vem do app do passo", () => {
     [acao("slack.react"), acao("mcp.call", { server: "jira", tool: "create_issue" }), acao("mcp.call", { server: "ms365", tool: "send-mail" }), acao("mcp.call", { server: "ms365", tool: "send-chat-message" })].map(fonteDaMarcaDoPasso),
     ["slack", "jira", "ms365", "teams"],
   );
+});
+
+test("o servidor do próprio Locum é o app Locum", () => {
+  assert.equal(appDoServidor("locum-ferramentas"), "locum");
+  assert.equal(appDoServidor("locum-fixture"), "locum-fixture");
+  assert.equal(nomeDoApp("locum", pt), "Locum");
+});
+
+test("a chave do nó vazio é um nome que {{steps.<chave>}} aceita, mesmo com espaço ou ponto no servidor", () => {
+  for (const servidor of ["Locum ferramentas", "meu.servidor", "Meu Servidor (v2)"]) {
+    const passo = passoSemOperacao(SPEC, servidor.toLowerCase(), servidor, servidor);
+    assert.match(passo.key, /^[\w.-]+$/, servidor);
+    assert.ok(passo.key.length > 0);
+  }
+  const duplo = passoSemOperacao({ ...SPEC, steps: [passoSemOperacao(SPEC, "x", "X")] } as AgentSpec, "x", "X");
+  assert.equal(duplo.key, "x-2");
+});
+
+test("escolher de novo a operação atual devolve o passo sem mudança", () => {
+  const anterior = {
+    ...base, type: "action", action: "mcp.call", mode: "auto",
+    params: { server: "slack", tool: "slack_post_message", args: { text: "oi" }, autoEscrita: true },
+  } as Step;
+  assert.equal(passoDaOperacao(SPEC, op("slack", "slack_post_message"), anterior), anterior);
+  const reacao = { ...base, type: "action", action: "slack.react", mode: "auto", params: { porValor: { de: "{{steps.x.v}}", mapa: { A: "x" } } } } as Step;
+  const nativa = operacoesDoApp("slack", CONEXOES, pt).nativas.find((o) => o.acao === "slack.react")!;
+  assert.equal(passoDaOperacao(SPEC, nativa, reacao), reacao);
+});
+
+test("ferramenta sem schema não perde os argumentos ao trocar", () => {
+  const anterior = { ...base, type: "action", action: "mcp.call", mode: "approve", params: { server: "ms365", tool: "send-mail", args: { to: "a" } } } as Step;
+  const novo = passoDaOperacao(SPEC, op("microsoft365", "list-mail-messages"), anterior) as Extract<Step, { type: "action" }>;
+  assert.deepEqual(novo.params, { server: "ms365", tool: "list-mail-messages", args: { to: "a" } });
+});
+
+test("de nativa para mcp.call não leva porValor nem destino, e o when e o input ficam", () => {
+  const nativaAntes = {
+    ...base, type: "action", action: "tracker.create_issue", mode: "approve", target: "jira-1", input: "analisar",
+    when: { step: "decide", branch: "sim" }, needs: ["analisar", "decide"],
+    params: { porValor: { de: "{{steps.x.v}}" } },
+  } as Step;
+  const novo = passoDaOperacao(SPEC, op("slack", "slack_post_message"), nativaAntes) as Extract<Step, { type: "action" }>;
+  assert.deepEqual(novo.params, { server: "slack", tool: "slack_post_message", args: {} });
+  assert.equal(novo.target, undefined);
+  assert.deepEqual([novo.input, novo.when, novo.needs], ["analisar", { step: "decide", branch: "sim" }, ["analisar", "decide"]]);
+  const volta = passoDaOperacao(SPEC, operacoesDoApp("tracker", CONEXOES, pt).nativas[0]!, novo) as Extract<Step, { type: "action" }>;
+  assert.equal(volta.target, undefined, "o destino do tracker não volta do nada");
+  const comDestino = passoDaOperacao(SPEC, operacoesDoApp("tracker", CONEXOES, pt).nativas[0]!, { ...nativaAntes, action: "mcp.call", params: { server: "slack", tool: "x", args: {} } } as Step) as Extract<Step, { type: "action" }>;
+  assert.equal(comDestino.target, "jira-1", "só a ação do tracker herda o destino");
+});
+
+test("escrever a mesma ferramenta de leitura pelo nó vazio e pela busca dá o mesmo modo", () => {
+  const leitura = op("slack", "slack_get_channel_history");
+  const direto = passoDaOperacao(SPEC, leitura) as Extract<Step, { type: "action" }>;
+  const pelo = passoDaOperacao(SPEC, leitura, passoSemOperacao(SPEC, "slack", "Slack", "slack")) as Extract<Step, { type: "action" }>;
+  assert.equal(direto.mode, pelo.mode);
+});
+
+test("a busca acha pela descrição sem acento, e nomes parecidos não classificam de novo por app", () => {
+  const conexoes: ConexaoParaPaleta[] = [{ servidor: "slack", ferramentas: [{ name: "get_channel_history", description: "Lê o histórico do canal.", readOnlyHint: true }] }];
+  assert.deepEqual(buscarNaPaleta(conexoes, "historico", pt).operacoes.map((o) => o.ferramenta), ["get_channel_history"]);
 });

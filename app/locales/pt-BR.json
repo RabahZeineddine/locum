@@ -2829,12 +2829,16 @@
         "clear": "Limpar",
         "destroy": "Apagar",
         "revoke": "Revogar",
-        "cancel": "Cancelar"
+        "cancel": "Cancelar",
+        "request": "Pedir",
+        "submit": "Enviar"
       },
       "combo": {
         "write_reaction": "Reagir",
         "update_reaction": "Reagir",
-        "read_message_channel_history": "Ler mensagens do canal"
+        "read_message_channel_history": "Ler mensagens do canal",
+        "read_message_replies": "Ler respostas da mensagem",
+        "read_user_profile": "Ler perfil do usuário"
       },
       "resource": {
         "branch_one": "branch",
@@ -2914,7 +2918,10 @@
         "user_zero": "usuários",
         "workflow_one": "workflow",
         "workflow_other": "workflows",
-        "workflow_zero": "workflows"
+        "workflow_zero": "workflows",
+        "drive_one": "unidade",
+        "drive_other": "unidades",
+        "drive_zero": "unidades"
       },
       "native": {
         "teams_post": "Enviar mensagem",
@@ -2933,7 +2940,8 @@
         "http": "HTTP",
         "microsoft365": "Microsoft 365",
         "ia": "IA",
-        "logica": "Lógica"
+        "logica": "Lógica",
+        "locum": "Locum"
       }
     }
   },
