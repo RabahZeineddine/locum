@@ -23,6 +23,8 @@ import { runLogic } from "./logic.js";
 import { discoverSkills, selectSkills, skillsAusentes, skillsIndisponiveis, skillsPreamble, type LoadedSkill, type SkillContext } from "../skills/loader.js";
 import { ApprovalGate, settleStep } from "../approval/gate.js";
 import { BudgetExceeded, assertWithinBudget, recordSpend, type Spend } from "./budget.js";
+import { ehLeituraDa, type FerramentaClassificavel } from "../config/leitura.js";
+import { ACOES_DE_CONVERSA, dependenciaDeEvento, recusaSemEvento } from "./dependencia-de-evento.js";
 import { SUBSCRIPTION_RUNTIMES } from "../runtimes/types.js";
 import { separarDaConta } from "../runtimes/claude-account.js";
 
@@ -43,7 +45,14 @@ type Deps = {
   skills?: Map<string, LoadedSkill>;
   /** Graph da reação do Teams. Ausente usa a conexão do Teams. Existe para o teste trocar. */
   teams?: TeamsReactionOptions;
+  /** As ferramentas que o servidor anotou, do cache da última leitura. Ausente usa o cache do banco. Existe para o teste trocar. */
+  ferramentasGuardadas?: (servidor: string) => Promise<readonly FerramentaClassificavel[] | null>;
 };
+
+async function ferramentasDoCache(servidor: string): Promise<readonly FerramentaClassificavel[] | null> {
+  const { mcpService } = await import("../services/mcp-service.js");
+  return (await mcpService.cachedTools(servidor))?.tools ?? null;
+}
 
 const nowSec = () => Math.floor(Date.now() / 1000);
 
@@ -190,6 +199,13 @@ export class Executor {
       : undefined;
     const payload = (event?.payload ?? { repo: "", changedFiles: [] }) as EventPayload;
 
+    // Antes do primeiro passo de modelo: sem o evento o prompt sai com `null`,
+    // e a chamada paga só para o modelo dizer que não há dado. Vale só para o
+    // run que alguém pediu (Executar agora, MCP): o gatilho de relógio nunca
+    // traz evento, e seguir com `null` é o que ele sempre fez.
+    const faltaEvento = event === undefined && !(await this.vemDeGatilho(run.triggerId)) ? dependenciaDeEvento(spec) : null;
+    if (faltaEvento !== null) return this.recusarSemEvento(runId, spec, recusaSemEvento(faltaEvento));
+
     await db
       .update(schema.runs)
       .set({ status: "running", startedAt: run.startedAt ?? nowSec() })
@@ -238,12 +254,15 @@ export class Executor {
     // `done`: o review para na fila antes de terminar, e gravar só no fim
     // deixava o teto diário sem ver gasto nenhum.
     const newRun = run.startedAt === null;
+    // O passo em andamento, para o erro ficar nele e não só no run.
+    let atual: string | null = null;
 
     try {
       for (const [idx, step] of topoSort(spec.steps).entries()) {
+        atual = step.key;
         const existing = await this.loadStep(runId, step.key);
 
-        if (existing?.status === "done" || existing?.status === "skipped") {
+        if (existing?.status === "done" || (existing?.status === "skipped" && existing.error !== NAO_RODOU)) {
           outputs.set(step.key, existing.output);
           if (existing.status === "skipped" && existing.error === PULADO_PELO_CAMINHO) foraDoCaminho.add(step.key);
           continue;
@@ -352,6 +371,8 @@ export class Executor {
       const message = err instanceof Error ? err.message : String(err);
       // Orcamento nao e falha: o run para e espera decisao sua.
       const status = err instanceof BudgetExceeded ? "paused" : "failed";
+      // O passo antes do run: quem vê o run falho já encontra o passo que falhou.
+      if (status === "failed") await this.marcarOQueFalhou(runId, spec, atual, message);
       await db
         .update(schema.runs)
         .set({ status, endedAt: status === "failed" ? nowSec() : null, error: message })
@@ -365,6 +386,48 @@ export class Executor {
       // O gasto já foi para o dia passo a passo; aqui só conta a execução.
       if (newRun) await recordSpend(spec.id, { usd: 0, tokens: 0 }, true);
     }
+  }
+
+  /**
+   * O run que falhou diz qual passo foi: o que estava em andamento fica
+   * `failed` com o erro, e os que não chegaram a rodar ficam `skipped` com
+   * `not_run`, e não `pending`, que a tela leria como "ainda vai rodar".
+   */
+  private async marcarOQueFalhou(runId: string, spec: AgentSpec, atual: string | null, message: string): Promise<void> {
+    const ordem = topoSort(spec.steps);
+    const daFalha = atual === null ? -1 : ordem.findIndex((s) => s.key === atual);
+    for (const [idx, step] of ordem.entries()) {
+      if (idx < daFalha) continue;
+      const existente = await this.loadStep(runId, step.key);
+      if (existente?.status === "done" || existente?.status === "skipped" || existente?.status === "awaiting_approval") continue;
+      if (idx === daFalha) {
+        if (existente === undefined) {
+          await db.insert(schema.steps).values({ id: randomUUID(), runId, idx, stepKey: step.key, name: step.name, status: "failed", error: message, endedAt: nowSec() });
+        } else if (existente.status !== "failed") {
+          await db.update(schema.steps).set({ status: "failed", error: message, endedAt: nowSec() }).where(eq(schema.steps.id, existente.id));
+        }
+        continue;
+      }
+      if (existente === undefined) {
+        await db.insert(schema.steps).values({ id: randomUUID(), runId, idx, stepKey: step.key, name: step.name, status: "skipped", error: NAO_RODOU, endedAt: nowSec() });
+      } else {
+        await db.update(schema.steps).set({ status: "skipped", error: NAO_RODOU, endedAt: nowSec() }).where(eq(schema.steps.id, existente.id));
+      }
+    }
+  }
+
+  /** Se o run nasceu de um gatilho que se dispara sozinho. O gatilho manual é o botão. */
+  private async vemDeGatilho(triggerId: string | null): Promise<boolean> {
+    if (triggerId === null) return false;
+    const [gatilho] = await db.select({ kind: schema.triggers.kind }).from(schema.triggers).where(eq(schema.triggers.id, triggerId));
+    return gatilho !== undefined && gatilho.kind !== "manual";
+  }
+
+  /** O run que não pode começar: falha inteiro, sem gastar passo, com todos os passos como "não rodou". */
+  private async recusarSemEvento(runId: string, spec: AgentSpec, message: string): Promise<"failed"> {
+    await db.update(schema.runs).set({ status: "failed", startedAt: nowSec(), endedAt: nowSec(), error: message }).where(eq(schema.runs.id, runId));
+    await this.marcarOQueFalhou(runId, spec, null, message);
+    return "failed";
   }
 
   private async pause(runId: string): Promise<"paused"> {
@@ -629,6 +692,19 @@ export class Executor {
     const source = step.input ?? step.needs[0];
     const saida = source ? outputs.get(source) : undefined;
 
+    // Evento montado de um link colado não deve publicar nada: a pessoa pediu
+    // para ver o que a automação faria com aquele PR. A ação não falha nem
+    // entra na Fila: o passo termina com o texto que sairia.
+    if (args.payload.semConversa === true && (await publicaParaFora(step, args.payload, outputs, this.deps.ferramentasGuardadas ?? ferramentasDoCache))) {
+      const motivo = ACOES_DE_CONVERSA.has(step.action) ? ENSAIO_SEM_CONVERSA : ENSAIO_EVENTO_COLADO;
+      const output = { state: "ensaio", motivo, text: textoDaResposta(saida) };
+      await db
+        .update(schema.steps)
+        .set({ status: "done", startedAt: nowSec(), endedAt: nowSec(), output })
+        .where(eq(schema.steps.id, stepId));
+      return { kind: "ok", output, costUsd: 0, tokens: 0, billable: false };
+    }
+
     // A saída do passo diz o que publicar; o evento diz onde. Sem juntar os
     // dois, a ação chega ao handler sem destino: a fila mostra "agent · passo"
     // em vez do pull request, e publicar falharia por falta de owner e repo.
@@ -695,6 +771,43 @@ export class Executor {
 }
 
 /**
+ * O texto que a resposta teria: o campo `text` da saída, escrita em JSON ou já
+ * como objeto, ou a saída inteira. Saída que é um Adaptive Card sem `text` mostra
+ * os textos do cartão, e o JSON dele quando não tem nenhum.
+ */
+function textoDaResposta(saida: unknown): string | null {
+  let valor = saida;
+  if (typeof valor === "string") {
+    try {
+      valor = JSON.parse(valor);
+    } catch {
+      return typeof saida === "string" ? saida : null;
+    }
+  }
+  const objeto = valor !== null && typeof valor === "object" ? (valor as { text?: unknown; card?: unknown }) : null;
+  if (typeof objeto?.text === "string") return objeto.text;
+  if (objeto === null) return typeof saida === "string" ? saida : null;
+  const card = objeto.card !== null && typeof objeto.card === "object" ? objeto.card : objeto;
+  return resumoDoCard(card) ?? (typeof saida === "string" ? saida : null);
+}
+
+/** Os textos do corpo de um Adaptive Card, um por linha; o JSON do cartão se não houver nenhum. */
+function resumoDoCard(card: object): string | null {
+  const textos: string[] = [];
+  const colher = (no: unknown): void => {
+    if (Array.isArray(no)) return no.forEach(colher);
+    if (no === null || typeof no !== "object") return;
+    const o = no as Record<string, unknown>;
+    if (typeof o.text === "string" && o.text.trim() !== "") textos.push(o.text);
+    for (const filho of [o.body, o.items, o.columns, o.facts]) colher(filho);
+  };
+  colher((card as { body?: unknown }).body);
+  if (textos.length > 0) return textos.join("\n");
+  const json = JSON.stringify(card, null, 2);
+  return json === undefined || json === "{}" ? null : json;
+}
+
+/**
  * Os campos do evento que identificam o destino de uma ação.
  *
  * Só o que nomeia o alvo, e não o evento inteiro: o diff de um pull request
@@ -724,8 +837,10 @@ export function alvoDoEvento(payload: EventPayload): Record<string, unknown> {
     "channel",
     "threadTs",
     "ts",
-    // A mensagem do Teams onde o review reage ao sair.
+    // A mensagem do Teams onde o review reage ao sair, e o `prOwner` que
+    // distingue o evento de PR do de conversa na hora de achar a resposta.
     ...TEAMS_REACAO,
+    "prOwner",
   ] as const;
   const alvo: Record<string, unknown> = {};
   for (const campo of campos) {
@@ -763,7 +878,7 @@ const TETO_DE_ATIVIDADES = 300;
 
 const TEAMS_REACAO = ["teamsChatId", "teamsTeamId", "teamsChannelId", "teamsMessageId", "teamsReplyToId", "teamsAccount"] as const;
 
-const DESTINO = ["owner", "repo", "pull", "headSha", ...TEAMS_REACAO] as const;
+const DESTINO = ["owner", "repo", "pull", "headSha", "prOwner", ...TEAMS_REACAO] as const;
 
 export function destinoDoEvento(alvo: Record<string, unknown>): Record<string, unknown> {
   const destino: Record<string, unknown> = {};
@@ -774,7 +889,9 @@ export function destinoDoEvento(alvo: Record<string, unknown>): Record<string, u
   // espalhados por cima da saída do modelo, apagam o que ele inventou. Sem
   // isso, evento de outra origem deixaria o modelo apontar a reação do review
   // para uma conversa qualquer do Teams.
-  for (const campo of TEAMS_REACAO) destino[campo] = alvo[campo];
+  // O `prOwner` também: com ele a saída do modelo trocaria o caminho de
+  // conversa pelo de PR, e o `teams*` que ela inventasse valeria.
+  for (const campo of [...TEAMS_REACAO, "prOwner"]) destino[campo] = alvo[campo];
   return destino;
 }
 
@@ -801,6 +918,36 @@ export function renderPrompt(
     return "";
   });
 }
+
+/** O que o passo de resposta diz quando o run de teste não tem conversa de origem. */
+/** Por que o passo virou ensaio, em código: o renderer traduz. */
+export const ENSAIO_SEM_CONVERSA = "sem-conversa";
+export const ENSAIO_EVENTO_COLADO = "evento-colado";
+
+/**
+ * Se a ação sairia do Locum. Só passa como leitura o `http.request` GET e o
+ * `mcp.call` de ferramenta que o servidor anotou como leitura (`readOnlyHint`,
+ * no cache da última leitura): o nome sozinho engana (`query`, `report_issue`).
+ * Sem anotação conhecida, conta como escrita.
+ */
+async function publicaParaFora(
+  step: ActionStep,
+  payload: EventPayload,
+  outputs: Map<string, unknown>,
+  guardadas: (servidor: string) => Promise<readonly FerramentaClassificavel[] | null>,
+): Promise<boolean> {
+  const params = step.params === undefined ? {} : (renderParams(step.params, payload, outputs) as Record<string, unknown>);
+  if (step.action === "mcp.call") {
+    if (typeof params.server !== "string" || typeof params.tool !== "string") return true;
+    const ferramenta = (await guardadas(params.server).catch(() => null))?.find((f) => f.name === params.tool);
+    return ferramenta?.readOnlyHint !== true || !ehLeituraDa(ferramenta);
+  }
+  if (step.action === "http.request") return String(params.method ?? "POST").toUpperCase() !== "GET";
+  return true;
+}
+
+/** Motivo gravado no passo que ficou sem rodar porque um anterior falhou. */
+export const NAO_RODOU = "not_run";
 
 /** Motivo gravado no passo que ficou de fora do caminho escolhido. */
 export const PULADO_PELO_CAMINHO = "branch_not_taken";

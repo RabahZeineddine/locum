@@ -688,7 +688,8 @@
         "took": "{{seconds}} s",
         "starting": "starting the model and tools…",
         "working": "working…"
-      }
+      },
+      "notRun": "did not run"
     },
     "progress": "{{done}}/{{total}} steps",
     "waiting_steps": "{{count}} waiting",
@@ -706,7 +707,8 @@
     "stepReason": {
       "outside_initiative": "step targets a server outside this initiative's scope",
       "rejected": "rejected",
-      "publish_conflict": "the target changed before this could be published"
+      "publish_conflict": "the target changed before this could be published",
+      "not_run": "an earlier step failed, so this one did not run"
     },
     "tabs": {
       "executive": "Executive View",
@@ -729,6 +731,20 @@
       "review": "PR reviews",
       "digest": "Watch and alerts",
       "failed": "Failed"
+    },
+    "event": {
+      "title": "Event used",
+      "none": "no event",
+      "dryRun": "Dry run: nothing was published. The action steps show the text that would be sent."
+    },
+    "failedAt": "Failed at step \"{{step}}\"",
+    "dryRun": {
+      "badge": "dry run",
+      "text": "Text that would be posted",
+      "reason": {
+        "sem-conversa": "no conversation to answer",
+        "evento-colado": "event from a pasted link, nothing is published"
+      }
     }
   },
   "settings": {
@@ -2105,7 +2121,8 @@
         "retry": "Try again",
         "done": "Linked to the initiative.",
         "pending": "The automation was created, but it is not linked to the initiative yet."
-      }
+      },
+      "eventWarning": "Version {{version}} saved. This flow uses the event ({{reason}}), but {{triggers}} does not bring an event: when that trigger fires, the run goes out without it. Use a trigger that records events or drop the dependency."
     },
     "palette": {
       "title": "Components",
@@ -2557,6 +2574,31 @@
       "full": "Limit of {{max}} reached. Remove one to pick another.",
       "keys": "↑ ↓ Enter Esc",
       "refresh": "Refresh"
+    },
+    "runWith": {
+      "title": "Run with",
+      "lead": "This automation depends on an event ({{reason}}). Choose where it comes from.",
+      "recent": "Recent event",
+      "link": "Paste a PR link",
+      "linkPlaceholder": "https://github.com/owner/repo/pull/123",
+      "linkHelp": "Builds the event the way the trigger would: owner, repository, title, description and diff. Because the event comes from a link, every action that publishes outside (Teams or Slack reply, GitHub comment, tracker task, a writing app or API call) becomes a dry run and nothing is published.",
+      "empty": "No trigger of this automation has recorded an event yet. Paste a PR link to try it.",
+      "run": "Run",
+      "starting": "starting...",
+      "cancel": "Cancel",
+      "noAuthor": "no author",
+      "source": {
+        "teams": "Teams",
+        "slack": "Slack",
+        "github": "GitHub",
+        "manual": "Link"
+      },
+      "reason": {
+        "marker": "uses {{marcador}}",
+        "action": "has the {{acao}} action"
+      },
+      "refused": "This automation needs an event ({{reason}}). Choose a recent event or paste a link.",
+      "publishWarning": "This event already happened: the automation really runs with it. {{actions}} is in automatic mode and publishes again in your name, without going through the queue."
     }
   },
   "library": {
@@ -2990,5 +3032,14 @@
       "create": "Create skill"
     },
     "removeConfirmAgents_zero": "Remove {{name}}? {{count}} agents use it: they show the warning and runs fail until the skill is back."
+  },
+  "toast": {
+    "running": "Running {{name}}",
+    "done": "{{name}} finished",
+    "failed": "{{name}} failed: {{error}}",
+    "paused": "{{name}} stopped and waits for your decision",
+    "open": "View run",
+    "dismiss": "Close",
+    "failedBare": "{{name}} failed"
   }
 }

@@ -49,9 +49,23 @@ export interface RunSummary extends RunRow {
   stepPending: number;
   stepFailed: number;
   findingCount: number;
+  /** O passo que derrubou o run, com o erro dele. Nulo em run que não falhou em passo. */
+  failedStep: { key: string; name: string; error: string | null } | null;
 }
 
-export interface RunDetail extends Omit<RunSummary, "stepTotal" | "stepDone" | "stepPending" | "stepFailed" | "findingCount"> {
+/** O evento que o run usou, ou nulo quando rodou sem evento. */
+export interface RunEvent {
+  id: string;
+  source: string;
+  author: string | null;
+  trecho: string;
+  /** Evento montado de um link colado: não há conversa para responder. */
+  semConversa: boolean;
+}
+
+export interface RunDetail extends Omit<RunSummary, "stepTotal" | "stepDone" | "stepPending" | "stepFailed" | "findingCount" | "failedStep"> {
+  event: RunEvent | null;
+  failedStep: RunSummary["failedStep"];
   /** A versao exata que executou, nao a mais recente do agent. */
   spec: AgentSpec;
   steps: StepRow[];
@@ -113,7 +127,9 @@ export class RunService {
       .limit(filter.limit ?? 20);
 
     const contagens = await this.stepCounts(rows.map((r) => r.run.id));
+    const falhos = await this.failedSteps(rows.filter((r) => r.run.status === "failed").map((r) => r.run.id));
     return rows.map((r) => ({
+      failedStep: falhos.get(r.run.id) ?? null,
       ...r.run,
       agentId: r.agentId,
       agentName: r.agentName,
@@ -121,6 +137,19 @@ export class RunService {
       target: alvo(r.evento),
       ...(contagens.get(r.run.id) ?? SEM_PASSOS),
     }));
+  }
+
+  /** O primeiro passo `failed` de cada run, para a lista dizer onde parou sem abrir o detalhe. */
+  private async failedSteps(runIds: string[]): Promise<Map<string, NonNullable<RunSummary["failedStep"]>>> {
+    const out = new Map<string, NonNullable<RunSummary["failedStep"]>>();
+    if (runIds.length === 0) return out;
+    const rows = await this.db
+      .select({ runId: schema.steps.runId, key: schema.steps.stepKey, name: schema.steps.name, error: schema.steps.error })
+      .from(schema.steps)
+      .where(and(inArray(schema.steps.runId, runIds), eq(schema.steps.status, "failed")))
+      .orderBy(asc(schema.steps.idx));
+    for (const r of rows) if (!out.has(r.runId)) out.set(r.runId, { key: r.key, name: r.name, error: r.error });
+    return out;
   }
 
   /**
@@ -185,14 +214,34 @@ export class RunService {
       .where(eq(schema.runs.id, runId));
     if (!row) return undefined;
 
+    const passos = await this.steps(runId);
+    const falho = passos.find((p) => p.status === "failed");
     return {
+      event: await this.eventOf(row.run.eventId, row.evento),
+      failedStep: falho === undefined ? null : { key: falho.stepKey, name: falho.name, error: falho.error },
       ...row.run,
       agentId: row.agentId,
       agentName: row.agentName,
       agentVersion: row.agentVersion,
       target: alvo(row.evento),
       spec: AgentSpec.parse(row.spec),
-      steps: await this.steps(runId),
+      steps: passos,
+    };
+  }
+
+  private async eventOf(eventId: string | null, payload: unknown): Promise<RunEvent | null> {
+    if (eventId === null) return null;
+    const [linha] = await this.db.select({ source: schema.events.source }).from(schema.events).where(eq(schema.events.id, eventId));
+    const texto = (nome: string): string | null => {
+      const v = (payload as Record<string, unknown> | null)?.[nome];
+      return typeof v === "string" && v.trim() !== "" ? v : null;
+    };
+    return {
+      id: eventId,
+      source: linha?.source ?? "",
+      author: texto("teamsAuthor") ?? texto("author"),
+      trecho: (texto("text") ?? texto("title") ?? texto("repo") ?? "").replace(/\s+/g, " ").trim().slice(0, 140),
+      semConversa: (payload as { semConversa?: unknown } | null)?.semConversa === true,
     };
   }
 

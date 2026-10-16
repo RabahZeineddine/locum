@@ -82,7 +82,7 @@ test("a lista de ferramentas traz as antigas e as novas, inclusive decidir, cone
   const client = await ligarCliente();
   const nomes = new Set((await client.listTools()).tools.map((t) => t.name));
   const antigas = ["locum_health", "list_agents", "get_agent", "list_runs", "get_run", "list_findings", "get_metrics", "list_mcp_servers", "list_providers", "get_machine_profile", "upsert_agent", "register_mcp_server", "test_mcp_server", "list_server_tools", "set_model_fallback", "set_budget", "set_trigger", "run_agent", "rerun_step", "describe_steps", "list_library_agents", "get_library_agent", "upsert_library_agent", "list_toolsets", "upsert_toolset"];
-  const novas = ["list_automations", "get_automation", "list_triggers", "list_trigger_discards", "list_connections", "list_teams_chats", "list_teams_channels", "list_pending_approvals", "get_approval", "list_claude_sessions", "preview_package", "save_automation", "set_automation_enabled", "set_trigger_enabled", "remove_trigger", "remove_library_agent", "remove_toolset", "export_package", "import_package", "run_automation_now"];
+  const novas = ["list_automations", "get_automation", "list_triggers", "list_trigger_discards", "list_connections", "list_teams_chats", "list_teams_channels", "list_pending_approvals", "get_approval", "list_claude_sessions", "preview_package", "save_automation", "set_automation_enabled", "set_trigger_enabled", "remove_trigger", "remove_library_agent", "remove_toolset", "export_package", "import_package", "run_automation_now", "list_automation_events"];
   // Paridade com a tela: decidir, conectar e guardar segredo também passam pelo MCP, e o cliente confirma.
   const daTela = ["decide_approval", "connect_teams", "save_github_token", "use_gh_account", "set_mcp_server_enabled", "save_provider_secret", "agent_chat_send"];
   for (const nome of [...antigas, ...novas, ...daTela]) assert.ok(nomes.has(nome), `falta ${nome}`);
@@ -615,3 +615,33 @@ test("Teams com o acesso nativo vencido pede para abrir o Locum, sem renovar", a
   }
 });
 
+
+test("run_automation_now ganha eventId e prUrl, e list_automation_events é leitura que diz se a automação precisa de evento", async () => {
+  const client = await ligarCliente();
+  const ferramentas = (await client.listTools()).tools;
+  const rodar = ferramentas.find((t) => t.name === "run_automation_now")!;
+  assert.deepEqual(Object.keys((rodar.inputSchema as { properties: object }).properties).sort(), ["agentId", "eventId", "prUrl"]);
+  assert.equal(rodar.annotations?.destructiveHint, true);
+  const eventos = ferramentas.find((t) => t.name === "list_automation_events")!;
+  assert.equal(eventos.annotations?.readOnlyHint, true);
+
+  const agentId = id("revisar");
+  await client.callTool({
+    name: "save_automation",
+    arguments: {
+      spec: {
+        id: agentId,
+        name: "Revisar PRs",
+        steps: [{ type: "model", key: "revisar", name: "revisar", model: "anthropic/modelo", prompt: "Revise {{event.repo}}" }],
+      },
+      triggers: [],
+      note: "x",
+      create: true,
+    },
+  });
+  const lista = ok<{ precisaDeEvento: string | null; recentes: unknown[] }>(await client.callTool({ name: "list_automation_events", arguments: { agentId } }));
+  assert.deepEqual(lista.precisaDeEvento, { codigo: "marcador", marcador: "{{event.repo}}" });
+  assert.deepEqual(lista.recentes, []);
+  recusa(await client.callTool({ name: "run_automation_now", arguments: { agentId } }), /precisa de um evento \(usa \{\{event\.repo\}\}\); escolha um evento recente ou cole um link/);
+  recusa(await client.callTool({ name: "run_automation_now", arguments: { agentId, prUrl: "https://example.com/x" } }), /link de um pull request do GitHub/);
+});

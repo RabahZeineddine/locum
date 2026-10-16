@@ -498,6 +498,7 @@ interface ServiceApi {
   "automations.save": AutomationService["save"];
   "automations.setEnabled": AutomationService["setEnabled"];
   "automations.runNow": AutomationService["runNow"];
+  "automations.eventsForRun": AutomationService["eventsForRun"];
   "automations.suggestId": AutomationService["suggestId"];
   /**
    * O pacote: a automação e os agents dela num `.locum.json`, sem segredo.
@@ -780,6 +781,7 @@ export const BRIDGE_CHANNELS = [
   "automations.save",
   "automations.setEnabled",
   "automations.runNow",
+  "automations.eventsForRun",
   "automations.suggestId",
   "pacote.exportFile",
   "pacote.chooseFile",

@@ -133,6 +133,8 @@ export const READ_CHANNELS = [
   // A automação aberta no canvas: spec da última versão e gatilhos. Leitura
   // pura; gravar e ligar ficam entre as ações.
   "automations.get",
+  // Se a automação depende de evento e os últimos que os gatilhos gravaram: o diálogo "Executar com". Leitura pura.
+  "automations.eventsForRun",
   "library.profiles",
   "library.profile",
   "library.profileVersions",

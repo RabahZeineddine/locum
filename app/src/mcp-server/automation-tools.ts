@@ -184,10 +184,20 @@ export function registerAutomationTools(server: McpServer): void {
       return paraLeitura(salvo);
     });
 
+  def(server, "list_automation_events", "read",
+    "Whether an automation depends on an event (its prompts use {{event.*}} or a step needs a conversation: teams.post, slack.post, github.review_comment without a target) and the latest events its triggers recorded, with source, author, excerpt and date. Use an id as eventId in run_automation_now.",
+    { agentId: z.string().describe("automation id, as shown by list_automations") },
+    ({ agentId }) => automationService.eventsForRun(agentId));
+
   def(server, "run_automation_now", "publish",
-    "Runs an automation once, without an event, like the Run now button. Returns the run id at once; follow it with get_run. An action step in approval mode stops at the approval queue; an action step in auto mode PUBLISHES IN YOUR NAME without asking (GitHub comment, Slack or Teams message, task in the tracker, external call).",
-    { agentId: z.string() },
-    ({ agentId }) => automationService.runNow(agentId));
+    "Runs an automation once, like the Run now button. Returns the run id at once; follow it with get_run. An automation that depends on an event (see list_automation_events) needs eventId, a recent event, or prUrl, a GitHub pull request link that is turned into the event the Teams trigger would build (reads GitHub with your token); without one it is refused before any model step. A run from prUrl is a dry run: every action that publishes outside (teams.post, slack.post, github.review_comment, tracker.create_issue, an mcp.call that writes, an http.request that is not GET) ends as a dry run that shows the text and nothing is published. With eventId from a trigger, an action step in approval mode stops at the approval queue; an action step in auto mode PUBLISHES IN YOUR NAME without asking (GitHub comment, Slack or Teams message, task in the tracker, external call).",
+    {
+      agentId: z.string(),
+      eventId: z.string().optional().describe("a recent event, as shown by list_automation_events"),
+      prUrl: z.string().optional().describe("link of a GitHub pull request, e.g. https://github.com/owner/repo/pull/123"),
+    },
+    ({ agentId, eventId, prUrl }) =>
+      automationService.runNow(agentId, { ...(eventId === undefined ? {} : { eventId }), ...(prUrl === undefined ? {} : { prUrl }) }));
 
   def(server, "tick_triggers", "publish",
     "Runs one polling round now over every enabled trigger, as the Check now button does, without waiting for the runs to finish. It reads GitHub, Slack or Teams with your accounts and starts runs (an action in auto mode publishes in your name; a Teams prLinks trigger reacts 👀 on messages in your name). Returns what each trigger did.",

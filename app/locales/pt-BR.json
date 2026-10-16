@@ -710,7 +710,8 @@
         "took": "{{seconds}} s",
         "starting": "subindo o modelo e as ferramentas…",
         "working": "trabalhando…"
-      }
+      },
+      "notRun": "não rodou"
     },
     "progress": "{{done}}/{{total}} passos",
     "waiting_steps": "{{count}} aguardando",
@@ -730,7 +731,8 @@
     "stepReason": {
       "outside_initiative": "o passo aponta para um servidor fora do escopo desta iniciativa",
       "rejected": "rejeitado",
-      "publish_conflict": "o alvo mudou antes disso poder ser publicado"
+      "publish_conflict": "o alvo mudou antes disso poder ser publicado",
+      "not_run": "um passo anterior falhou, então este não rodou"
     },
     "tabs": {
       "executive": "Visão Executiva",
@@ -753,6 +755,20 @@
       "review": "PR Reviews",
       "digest": "Vigilância & Alertas",
       "failed": "Com Falha"
+    },
+    "event": {
+      "title": "Evento usado",
+      "none": "sem evento",
+      "dryRun": "Ensaio: nada foi publicado. Os passos de ação mostram o texto que seria enviado."
+    },
+    "failedAt": "Falhou no passo \"{{step}}\"",
+    "dryRun": {
+      "badge": "ensaio",
+      "text": "Texto que seria postado",
+      "reason": {
+        "sem-conversa": "sem conversa para responder",
+        "evento-colado": "evento de link colado, nada é publicado"
+      }
     }
   },
   "settings": {
@@ -2154,7 +2170,8 @@
         "retry": "Tentar de novo",
         "done": "Ligada à iniciativa.",
         "pending": "A automação foi criada, mas ainda não está ligada à iniciativa."
-      }
+      },
+      "eventWarning": "Versão {{version}} gravada. Este fluxo usa o evento ({{reason}}), mas {{triggers}} não traz evento: quando esse gatilho disparar, o run sai sem ele. Use um gatilho que grava evento ou tire a dependência."
     },
     "palette": {
       "title": "Componentes",
@@ -2607,6 +2624,31 @@
       "full": "Máximo de {{max}} atingido. Tire um para escolher outro.",
       "keys": "↑ ↓ Enter Esc",
       "refresh": "Atualizar"
+    },
+    "runWith": {
+      "title": "Executar com",
+      "lead": "Esta automação depende de um evento ({{reason}}). Escolha de onde ele vem.",
+      "recent": "Evento recente",
+      "link": "Colar um link de PR",
+      "linkPlaceholder": "https://github.com/dono/repo/pull/123",
+      "linkHelp": "Monta o evento como o gatilho montaria: dono, repositório, título, descrição e diff. Como o evento vem de um link, toda ação que publica para fora (resposta no Teams ou no Slack, comentário no GitHub, tarefa no tracker, chamada de app ou de API que escreve) vira ensaio e nada é publicado.",
+      "empty": "Nenhum gatilho desta automação gravou evento ainda. Cole o link de um PR para testar.",
+      "run": "Executar",
+      "starting": "iniciando...",
+      "cancel": "Cancelar",
+      "noAuthor": "sem autor",
+      "source": {
+        "teams": "Teams",
+        "slack": "Slack",
+        "github": "GitHub",
+        "manual": "Link"
+      },
+      "reason": {
+        "marker": "usa {{marcador}}",
+        "action": "tem a ação {{acao}}"
+      },
+      "refused": "Esta automação precisa de um evento ({{reason}}). Escolha um evento recente ou cole um link.",
+      "publishWarning": "Este é um evento que já aconteceu: a automação roda de verdade com ele. {{actions}} está em modo automático e publica de novo em seu nome, sem passar pela Fila."
     }
   },
   "library": {
@@ -3049,5 +3091,14 @@
       "create": "Criar skill"
     },
     "removeConfirmAgents_zero": "Remover {{name}}? {{count}} agents a usam: eles mostram o aviso e a execução falha até a skill voltar."
+  },
+  "toast": {
+    "running": "Rodando {{name}}",
+    "done": "{{name}} terminou",
+    "failed": "{{name}} falhou: {{error}}",
+    "paused": "{{name}} parou e espera sua decisão",
+    "open": "Ver execução",
+    "dismiss": "Fechar",
+    "failedBare": "{{name}} falhou"
   }
 }

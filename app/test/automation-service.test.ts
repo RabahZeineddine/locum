@@ -83,8 +83,10 @@ test("gatilho que sai do canvas sai do cadastro, e o que fica mantém o interrup
 
 test("interruptor liga e desliga todos os gatilhos, e executar agora usa o manual", async () => {
   const { automations, iniciados } = montar();
+  // Sem {{event.*}} nem ação de conversa: o botão roda sem pedir evento.
+  const semEvento = { ...spec, steps: [{ type: "model" as const, key: "resumo", name: "resumo", model: "ollama/x", prompt: "Resuma o dia", needs: [], requiresServers: [], optional: false, maxSteps: 8 }] };
   const salva = await automations.save({
-    spec,
+    spec: semEvento,
     triggers: [{ config: { kind: "manual" } }, { config: { kind: "slack-channel", channels: ["C1"] } }],
     note: "",
     create: true,
@@ -208,4 +210,29 @@ test("com knownTriggerIds, o gatilho criado por fora depois que o editor abriu f
     knownTriggerIds: [manual.id, cron.id],
   });
   assert.deepEqual(salva.triggers.map((g) => g.id).sort(), [manual.id, deFora.id].sort());
+});
+
+test("salvar avisa quando o fluxo usa {{event.*}} e um gatilho de relógio não traz evento", async () => {
+  const { automations } = montar();
+  const comEvento = { ...spec, id: "revisa-pr", name: "Revisa PR", steps: [{ type: "model" as const, key: "a", name: "a", model: "ollama/x", prompt: "Revise {{event.repo}}", needs: [], optional: false, requiresServers: [], maxSteps: 4 }] };
+
+  const relogio = await automations.save({
+    spec: comEvento as never,
+    triggers: [{ config: { kind: "schedule", everyMinutes: 30 } }, { config: { kind: "cron", expression: "0 9 * * *" } }, { config: { kind: "manual" } }],
+    note: "",
+    create: true,
+  });
+  assert.deepEqual(relogio.avisos, [
+    { codigo: "evento-sem-gatilho", motivo: { codigo: "marcador", marcador: "{{event.repo}}" }, gatilhos: ["schedule", "cron"] },
+  ]);
+
+  const dePr = await automations.save({
+    spec: comEvento as never,
+    triggers: [{ config: { kind: "slack-channel", channels: ["C1"] } }],
+    note: "troca",
+  });
+  assert.deepEqual(dePr.avisos, []);
+
+  const livre = await automations.save({ spec: { ...comEvento, id: "livre", name: "Livre", steps: [{ ...comEvento.steps[0], prompt: "Resuma o dia" }] } as never, triggers: [{ config: { kind: "schedule", everyMinutes: 30 } }], note: "", create: true });
+  assert.deepEqual(livre.avisos, []);
 });

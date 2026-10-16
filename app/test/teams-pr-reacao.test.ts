@@ -295,7 +295,7 @@ const revisarOutraVez = (db: ReturnType<typeof bancoDeTeste>) => {
 async function semeiaReview(
   db: ReturnType<typeof bancoDeTeste>,
   status: string,
-  sobre: { headSha?: string; criadaHaS?: number } = {},
+  sobre: { headSha?: string; criadaHaS?: number; origem?: string } = {},
 ) {
   const agente = await new AgentService(db as never).upsert(
     AgentSpec.parse({ id: `r-${randomUUID()}`, name: "R", steps: [{ type: "model", key: "a", name: "A", model: "ollama/m", prompt: "p" }] }),
@@ -304,7 +304,12 @@ async function semeiaReview(
   );
   const runId = randomUUID();
   const stepId = randomUUID();
-  await db.insert(schema.runs).values({ id: runId, agentVersionId: agente.id, status: "done" });
+  let eventId: string | null = null;
+  if (sobre.origem !== undefined) {
+    eventId = randomUUID();
+    await db.insert(schema.events).values({ id: eventId, source: sobre.origem, externalId: eventId, payload: { semConversa: true } });
+  }
+  await db.insert(schema.runs).values({ id: runId, agentVersionId: agente.id, eventId, status: "done" });
   await db.insert(schema.steps).values({ id: stepId, runId, idx: 1, stepKey: "a", name: "A", status: "done" });
   await db.insert(schema.approvals).values({
     id: randomUUID(),
@@ -345,6 +350,19 @@ test("review publicada ou em andamento do mesmo PR e commit segura; rejeitada n�
     assert.equal(resultado.inWindow.length, segura ? 0 : 1, status);
     if (segura) assert.deepEqual(resultado.descartes, [{ pr: "acme/api#7", motivo: "repetido" }], status);
   }
+});
+
+test("review de um run de evento colado (manual) não segura o gatilho real", async () => {
+  const db = bancoDeTeste();
+  await semeiaReview(db, "pending", { origem: "manual" });
+  const resultado = await revisarOutraVez(db);
+  assert.equal(resultado.inWindow.length, 1);
+  assert.deepEqual(resultado.descartes, []);
+
+  // A mesma review vinda de um evento do gatilho continua segurando.
+  const doGatilho = bancoDeTeste();
+  await semeiaReview(doGatilho, "pending", { origem: "teams" });
+  assert.equal((await revisarOutraVez(doGatilho)).inWindow.length, 0);
 });
 
 test("review de outro commit, ou de mais de 24h, não segura", async () => {

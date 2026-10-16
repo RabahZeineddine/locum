@@ -1,4 +1,5 @@
 import type { TFunction } from "i18next";
+import { motivoDaMensagem, type MotivoDeEvento } from "../../src/executor/dependencia-de-evento.js";
 
 /**
  * Os rótulos de severidade e de estado, que a inbox e as execuções mostram nos
@@ -37,6 +38,13 @@ export const ESTADOS = [
 ] as const;
 export type Estado = (typeof ESTADOS)[number];
 
+/** De onde veio um evento. Fonte nova gravada no banco sai crua, pelo mesmo motivo dos estados. */
+export const FONTES_DE_EVENTO = ["teams", "slack", "github", "manual"] as const;
+
+export function rotuloDaFonte(t: TFunction, fonte: string): string {
+  return (FONTES_DE_EVENTO as readonly string[]).includes(fonte) ? t(`automations.runWith.source.${fonte}`) : fonte;
+}
+
 export function rotuloDeSeveridade(t: TFunction, severidade: string): string {
   return (SEVERIDADES as readonly string[]).includes(severidade)
     ? t(`severity.${severidade}`)
@@ -48,13 +56,35 @@ export function rotuloDeEstado(t: TFunction, estado: string): string {
 }
 
 /** Codigo de passo pulado ou rejeitado, gravado em ingles por `gate.ts` e `executor.ts`. */
-export const MOTIVOS_DE_PASSO = ["outside_initiative", "rejected", "publish_conflict"] as const;
+export const MOTIVOS_DE_PASSO = ["outside_initiative", "rejected", "publish_conflict", "not_run"] as const;
 export type MotivoDePasso = (typeof MOTIVOS_DE_PASSO)[number];
 
 export function rotuloDoMotivo(t: TFunction, motivo: string): string {
   return (MOTIVOS_DE_PASSO as readonly string[]).includes(motivo)
     ? t(`runs.stepReason.${motivo}`)
     : motivo;
+}
+
+/**
+ * O erro de um run como a pessoa lê. A recusa de rodar sem evento chega com o
+ * código e os parâmetros do motivo, e o texto sai na língua da janela; o resto
+ * é do passo ou da API e passa como veio.
+ */
+export function rotuloDoErroDeRun(t: TFunction, mensagem: string): string {
+  const motivo = motivoDaMensagem(mensagem);
+  return motivo === null ? mensagem : t("automations.runWith.refused", { reason: rotuloDoMotivoDeEvento(t, motivo) });
+}
+
+/** Por que o passo virou ensaio. Run gravado antes dos códigos traz o texto livre, que passa como veio. */
+export function rotuloDoMotivoDoEnsaio(t: TFunction, motivo: string): string {
+  return motivo === "sem-conversa" || motivo === "evento-colado" ? t(`runs.dryRun.reason.${motivo}`) : motivo;
+}
+
+/** "usa {{event.repo}}" ou "tem a ação teams.post", na língua da janela. */
+export function rotuloDoMotivoDeEvento(t: TFunction, motivo: MotivoDeEvento): string {
+  return motivo.codigo === "marcador"
+    ? t("automations.runWith.reason.marker", { marcador: motivo.marcador })
+    : t("automations.runWith.reason.action", { acao: motivo.acao });
 }
 
 const PROVEDORES_CONHECIDOS: Record<string, string> = {

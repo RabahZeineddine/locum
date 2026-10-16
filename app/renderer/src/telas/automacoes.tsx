@@ -18,19 +18,20 @@ import {
   listarProvisorias,
 } from "@/lib/rascunho-automacao";
 import { semPrefixoDoIpc } from "@/lib/erro-da-ponte";
-import { quandoSolta } from "@/lib/limites";
-import { rotuloDeEstado, rotuloDoProvedor } from "@/lib/rotulos";
+import { rotuloDeEstado, rotuloDoErroDeRun } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
 import { Loader2, Play, Plus, Upload } from "lucide-react";
 import { useEffect, useState, type DragEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { TriggerConfig } from "../../../src/config/types";
 import { EditorDeAutomacao } from "../automacoes/editor";
+import { useExecutarAgora } from "../automacoes/executar-com";
 import { ImportarPacote } from "../automacoes/importar-pacote";
 import { linhaDoGatilho } from "@/lib/titulo-do-gatilho";
 import { appDoGatilho, resumoDoGatilho, Selo } from "../automacoes/visual";
 import { InstalacaoDeTemplate } from "../instalar-template";
 import { AutomacoesLegado } from "./automacoes-legado";
+import { useToasts } from "../toasts";
 import type { TelaProps } from "../rotas";
 import { useAcaoDaTela } from "@/lib/acao-da-tela";
 
@@ -343,8 +344,10 @@ export function LinhaDaAutomacao({
   extra?: ReactNode;
 }) {
   const { t, i18n } = useTranslation();
-  const [agindo, setAgindo] = useState<"ligar" | "rodar" | null>(null);
+  const [agindo, setAgindo] = useState<"ligar" | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
+  const executar = useExecutarAgora();
+  const { abrirRun } = useToasts();
   const gatilhos = linha.triggers.map((g) => ({ ...g, config: g.config as TriggerConfig }));
   const ligada = gatilhos.some((g) => g.enabled);
   const temRelogio = gatilhos.some((g) => g.config.kind !== "manual" && g.config.kind !== "webhook");
@@ -354,26 +357,6 @@ export function LinhaDaAutomacao({
     call("automations.setEnabled", linha.id, !ligada).then(
       () => {
         setAgindo(null);
-        aoMudar();
-      },
-      (e: unknown) => {
-        setAgindo(null);
-        setAviso(e instanceof Error ? e.message : String(e));
-      },
-    );
-  };
-
-  const rodar = (): void => {
-    setAgindo("rodar");
-    call("automations.runNow", linha.id).then(
-      (r) => {
-        setAgindo(null);
-        // Manual sempre roda; com o provedor no limite, só avisa.
-        setAviso(
-          r.aviso === undefined
-            ? t("automations.list.started")
-            : `${t("automations.list.started")} ${t("limits.manualWarning", { provider: rotuloDoProvedor(r.aviso.provedor), time: quandoSolta(r.aviso.ate, i18n.language) })}`,
-        );
         aoMudar();
       },
       (e: unknown) => {
@@ -394,6 +377,20 @@ export function LinhaDaAutomacao({
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="truncate font-medium">{linha.name}</span>
         {aviso === null ? null : <span className="text-muted-foreground truncate text-xs">{aviso}</span>}
+        {linha.lastRun?.status === "failed" && linha.lastRun.error !== null ? (
+          <button
+            className="text-destructive w-fit max-w-full cursor-pointer truncate text-left text-xs hover:underline"
+            data-locum-ultimo-erro={linha.lastRun.id}
+            onClick={(e) => {
+              e.stopPropagation();
+              abrirRun(linha.lastRun!.id);
+            }}
+            title={rotuloDoErroDeRun(t, linha.lastRun.error)}
+            type="button"
+          >
+            {rotuloDoErroDeRun(t, linha.lastRun.error)}
+          </button>
+        ) : null}
       </span>
 
       <span className="flex w-72 shrink-0 flex-col gap-0.5 overflow-hidden">
@@ -449,15 +446,17 @@ export function LinhaDaAutomacao({
         ) : null}
         <Button
           className="cursor-pointer"
-          disabled={agindo !== null}
-          onClick={rodar}
+          data-locum-executar-agora={linha.id}
+          disabled={agindo !== null || executar.pedindo}
+          onClick={() => void executar.pedir(linha.id, linha.name, { aoIniciar: () => aoMudar(), aoTerminar: () => aoMudar() })}
           size="sm"
           title={t("automations.list.runNow")}
           variant="ghost"
         >
-          {agindo === "rodar" ? <Loader2 className="animate-spin" /> : <Play />}
+          {executar.pedindo ? <Loader2 className="animate-spin" /> : <Play />}
           {t("automations.list.runNow")}
         </Button>
+        {executar.dialogo}
         <Button className="cursor-pointer" onClick={abrir} size="sm" variant="outline">
           {t("automations.list.open")}
         </Button>
