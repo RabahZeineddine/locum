@@ -8,6 +8,8 @@ import { join } from "node:path";
  */
 export interface GhFalso {
   dir: string;
+  /** Quantas vezes o `auth token` foi executado, inclusive as recusadas. */
+  execucoes(): number;
   /** Cada chamada de `auth token`, uma linha: `host user configDir`. */
   chamadas(): string[];
 }
@@ -27,6 +29,7 @@ if [ "$1" = "auth" ] && [ "$2" = "status" ]; then
 fi
 if [ "$1" = "auth" ] && [ "$2" = "token" ]; then
   shift 2
+  echo "token" >> "$FAKE_GH_DIR/execucoes.log"
   host=""; user=""
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -41,7 +44,7 @@ if [ "$1" = "auth" ] && [ "$2" = "token" ]; then
   fi
   if [ -z "$user" ]; then user="$FAKE_GH_ATIVO"; fi
   echo "$host $user $GH_CONFIG_DIR" >> "$FAKE_GH_DIR/chamadas.log"
-  if [ "$user" = "deslogado" ]; then
+  if [ "$user" = "deslogado" ] || [ "$user" = "$FAKE_GH_DESLOGADO" ]; then
     echo "no oauth token found for $user: valor-secreto-que-nao-pode-vazar" >&2
     exit 1
   fi
@@ -61,6 +64,10 @@ export function criarGhFalso(opcoes: { json?: string; texto?: string; modo?: "js
   process.env["FAKE_GH_MODE"] = opcoes.modo ?? "json";
   return {
     dir,
+    execucoes: () => {
+      const arq = join(dir, "execucoes.log");
+      return existsSync(arq) ? readFileSync(arq, "utf8").split("\n").filter(Boolean).length : 0;
+    },
     chamadas: () => {
       const arq = join(dir, "chamadas.log");
       return existsSync(arq) ? readFileSync(arq, "utf8").split("\n").filter(Boolean) : [];

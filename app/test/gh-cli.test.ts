@@ -8,6 +8,7 @@ import {
   contasDoGh,
   erroLembradoDoGh,
   normalizarConfigDir,
+  lembrarFalhaDoGh,
   limparCacheDoGh,
   tokenDoGh,
 } from "../src/services/gh-cli.js";
@@ -49,6 +50,7 @@ afterEach(() => {
   delete process.env["GH_CONFIG_DIR"];
   delete process.env["FAKE_GH_ANTIGO"];
   delete process.env["FAKE_GH_ATIVO"];
+  delete process.env["FAKE_GH_DESLOGADO"];
   configurarGh({ semGh: false, ttlFalhaMs: 60_000 });
 });
 
@@ -68,20 +70,14 @@ test("detecta as contas pelo json, com ativa e escopos, sem token", async () => 
   assert.equal(JSON.stringify(contas).includes("valor-falso"), false);
 });
 
-test("sem suporte a json, lê o texto de gh auth status", async () => {
-  const gh = criarGhFalso({ texto: TEXTO_STATUS, modo: "texto" });
+test("gh sem --json (anterior à 2.40): a detecção mostra o aviso de atualizar em vez de listar contas", async () => {
+  const gh = criarGhFalso({ texto: "github.com\n  Logged in to github.com account octo (keyring)\n", modo: "texto" });
   process.env["PATH"] = `${gh.dir}:/usr/bin:/bin`;
 
-  const contas = await contasDoGh();
-  assert.deepEqual(
-    contas.map((c) => [c.host, c.login, c.active, c.scopes]),
-    [
-      ["github.com", "octo", true, "gist, read:org, repo"],
-      ["github.com", "outra", false, ""],
-    ],
+  await assert.rejects(
+    contasDoGh(),
+    (e: unknown) => e instanceof GhIndisponivelError && e.message === "o Locum precisa do gh 2.40 ou mais novo (brew upgrade gh)",
   );
-  // a linha do token mascarado nunca vira dado
-  assert.equal(JSON.stringify(contas).includes("****"), false);
 });
 
 test("acha o gh num diretório extra quando o PATH do app é curto", async () => {
@@ -157,17 +153,49 @@ test("a falha fica lembrada e o gh não roda de novo dentro do prazo", () => {
   assert.equal(gh.chamadas().length, 2);
 });
 
-test("gh antigo sem --user: usa o token da conta ativa só se for a vinculada", () => {
+test("gh sem --user (anterior à 2.40): um processo só, erro de atualizar, lembrado no cache de falha", () => {
   const gh = criarGhFalso({ json: JSON_STATUS, modo: "json" });
   process.env["PATH"] = `${gh.dir}:/usr/bin:/bin`;
   process.env["FAKE_GH_ANTIGO"] = "1";
   process.env["FAKE_GH_ATIVO"] = "octo";
+  const ref = { origem: "gh", host: "github.com", login: "octo" } as const;
 
-  assert.equal(tokenDoGh({ origem: "gh", host: "github.com", login: "octo" }), "valor-falso-de-octo");
-  assert.throws(
-    () => tokenDoGh({ origem: "gh", host: "github.com", login: "outra" }),
-    (e: unknown) => e instanceof GhIndisponivelError && /atualize o gh \(2\.40\+\) ou torne outra a conta ativa/.test(e.message),
-  );
+  for (let i = 0; i < 3; i++) {
+    assert.throws(
+      () => tokenDoGh(ref),
+      (e: unknown) => e instanceof GhIndisponivelError && e.message === "o Locum precisa do gh 2.40 ou mais novo (brew upgrade gh)",
+    );
+  }
+  assert.equal(gh.execucoes(), 1);
+  assert.deepEqual(gh.chamadas(), []);
+});
+
+test("configDir inválido vira GhIndisponivelError lembrado, sem abrir o gh", async () => {
+  const gh = criarGhFalso();
+  process.env["PATH"] = `${gh.dir}:/usr/bin:/bin`;
+  const ref = { origem: "gh", host: "github.com", login: "octo", configDir: "relativo/cfg" } as const;
+
+  for (let i = 0; i < 2; i++) {
+    assert.throws(() => tokenDoGh(ref), (e: unknown) => e instanceof GhIndisponivelError && /caminho absoluto/.test(e.message));
+  }
+  assert.equal(gh.execucoes(), 0);
+  assert.ok(erroLembradoDoGh(ref) instanceof GhIndisponivelError);
+  await assert.rejects(contasDoGh("relativo/cfg"), /caminho absoluto/);
+});
+
+test("lembrarFalhaDoGh segura só a conta dela e limparCacheDoGh limpa tudo", () => {
+  const gh = criarGhFalso();
+  process.env["PATH"] = `${gh.dir}:/usr/bin:/bin`;
+  const octo = { origem: "gh", host: "github.com", login: "octo" } as const;
+  const outra = { origem: "gh", host: "github.com", login: "outra" } as const;
+  tokenDoGh(octo);
+  tokenDoGh(outra);
+  lembrarFalhaDoGh(octo);
+  assert.throws(() => tokenDoGh(octo), GhIndisponivelError);
+  assert.equal(tokenDoGh(outra), "valor-falso-de-outra");
+  assert.equal(gh.execucoes(), 2);
+  limparCacheDoGh();
+  assert.equal(tokenDoGh(octo), "valor-falso-de-octo");
 });
 
 test("configDir relativo é recusado e ~ vira a casa; entrada relativa do PATH é ignorada", async () => {

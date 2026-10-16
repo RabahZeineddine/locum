@@ -171,18 +171,19 @@ export function Github({ embutido = false }: { embutido?: boolean } = {}) {
   // A pasta com que a busca rodou anda junto com as contas dela: é a que o Usar precisa mandar.
   const [busca, setBusca] = useState<{ configDir: string; contas: ContaDoGh[] } | null>(null);
   const [erroDoVinculo, setErroDoVinculo] = useState<string | null>(null);
+  const [erroDaBusca, setErroDaBusca] = useState<string | null>(null);
   const contas = busca?.contas ?? contasIniciais.data ?? [];
   // A recomendada é a ativa do github.com, que é a única que o Locum sabe usar.
   const recomendada = contas.find((c) => ehGithubCom(c) && c.active) ?? contas.find(ehGithubCom);
 
   const procurarContas = (): void => {
     const dir = configDir.trim();
-    setErroDoVinculo(null);
+    setErroDaBusca(null);
     read("github.ghAccounts", dir || undefined).then(
       (achadas) => setBusca({ configDir: dir, contas: achadas }),
       (erro: unknown) => {
         setBusca({ configDir: dir, contas: [] });
-        setErroDoVinculo(erro instanceof Error ? erro.message : String(erro));
+        setErroDaBusca(erro instanceof Error ? erro.message : String(erro));
       },
     );
   };
@@ -388,6 +389,11 @@ export function Github({ embutido = false }: { embutido?: boolean } = {}) {
             {t("settings.github.detect")}
           </Button>
         </div>
+        {erroDaBusca === null ? null : (
+          <p className="text-destructive text-xs" data-locum-github-erro-busca="">
+            {t("settings.github.searchFailed", { error: erroDaBusca })}
+          </p>
+        )}
         {erroDoVinculo === null ? null : (
           <p className="text-destructive text-xs" data-locum-github-erro-vinculo="">
             {t("settings.github.linkFailed", { error: erroDoVinculo })}

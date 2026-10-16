@@ -20,7 +20,7 @@ import {
 } from "./mcp-origem.js";
 import { conexaoDoServidor, itemDoHost } from "./conexao-catalogo.js";
 import { temCredencialLiteral } from "./mcp-credencial.js";
-import { githubToken } from "./github-service.js";
+import { githubToken, githubTokenSemProcesso, githubVinculoConfere } from "./github-service.js";
 import { CREDENTIAL_PLACEHOLDER, fillCredential, secretService, type SecretService } from "./secret-service.js";
 
 /**
@@ -572,7 +572,7 @@ export class McpService {
    * Servidor vinculado conecta com a configuração da origem, lida agora, e não
    * com a cópia que ficou no banco.
    */
-  private async connectable(row: McpServerRow): Promise<McpServerPronto> {
+  private async connectable(row: McpServerRow, opcoes: { semProcesso?: boolean } = {}): Promise<McpServerPronto> {
     const d = await this.decidir(row);
     const config = d === null ? toEntry(row).config : d.config;
     // O segredo que a origem traz literal vale enquanto a origem é a aceita; o
@@ -581,7 +581,7 @@ export class McpService {
     const proprio = (d?.estado === "ok" ? d.resolvido?.segredo : undefined) ?? doCofre;
     // A credencial própria do servidor vence; sem ela, o token do GitHub
     // guardado na conexão serve ao servidor do GitHub.
-    const secret = proprio ?? this.doServico(config);
+    const secret = proprio ?? this.doServico(config, opcoes.semProcesso === true);
     const env = fillCredential(config.env, secret, { envFallback: true });
     let headers = fillCredential(config.headers, secret, { envFallback: false });
     // O servidor do GitHub cadastrado sem cabeçalho de credencial usa o token da conexão.
@@ -602,11 +602,12 @@ export class McpService {
    * O cofre do servidor já guarda "Bearer ..."; o token pessoal do GitHub é
    * guardado puro, e o servidor não o aceita sem o esquema.
    */
-  private doServico(config: McpServerConfig): string | undefined {
+  private doServico(config: McpServerConfig, semProcesso: boolean): string | undefined {
     if (!ehDoGithub(config)) return undefined;
     let token: string | undefined;
     try {
-      token = githubToken(this.secrets);
+      // Listar não abre o gh: a vitrine lê o que o cache e o último resultado sabem.
+      token = semProcesso ? githubTokenSemProcesso(this.secrets) : githubToken(this.secrets);
     } catch {
       // O gh vinculado não respondeu: o servidor fica sem credencial e a
       // vitrine avisa "falta", sem derrubar quem lista os servidores.
@@ -623,12 +624,14 @@ export class McpService {
   async credencialDoServidor(name: string): Promise<"ok" | "falta" | "dispensa"> {
     const row = await this.row(name);
     if (row === undefined) throw new Error(`servidor MCP "${name}" nao cadastrado`);
-    const config = await this.connectable(row);
+    const config = await this.connectable(row, { semProcesso: true });
     const original = toEntry(row).config;
     const referencia = temMarcador(original) || ehDoGithub(original);
     // Cabeçalho de credencial escrito à mão também é credencial.
     if (!referencia) return temCredencialLiteral(original.headers) ? "ok" : "dispensa";
-    return config.credencialFaltando === undefined ? "ok" : "falta";
+    if (config.credencialFaltando === undefined) return "ok";
+    // Sem processo, o token do gh pode não estar no cache: vale o último resultado dele.
+    return ehDoGithub(original) && githubVinculoConfere(this.secrets) ? "ok" : "falta";
   }
 
   /**

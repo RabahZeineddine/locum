@@ -19,6 +19,21 @@ export interface GhRef {
   configDir?: string;
 }
 
+/**
+ * O último resultado conhecido de falar com o gh, guardado junto do vínculo.
+ * Não é o prazo de nova tentativa (isso é o cache em memória): é o que a tela
+ * mostra enquanto não há resposta mais nova. Nunca carrega token.
+ */
+export interface GhUltimo {
+  ok: boolean;
+  /** Segundos desde a época em que o resultado mudou. */
+  quando: number;
+  erro?: string;
+}
+
+/** O que o cofre guarda: a referência e, quando já se sabe, o último resultado. */
+export type GhVinculo = GhRef & { ultimo?: GhUltimo };
+
 /** Uma conta que o `gh` conhece. Nunca carrega o token. */
 export interface GhConta {
   host: string;
@@ -35,6 +50,8 @@ export class GhIndisponivelError extends Error {
     this.name = "GhIndisponivelError";
   }
 }
+
+export const GH_ANTIGO = "o Locum precisa do gh 2.40 ou mais novo (brew upgrade gh)";
 
 /** App aberto pelo Finder herda um PATH curto, sem o diretório do Homebrew. */
 const DIRETORIOS_EXTRAS = ["/opt/homebrew/bin", "/usr/local/bin"];
@@ -111,8 +128,8 @@ function ambienteDoGh(configDir?: string): NodeJS.ProcessEnv {
 type Saida = { stdout: string; stderr: string; ok: boolean };
 
 async function rodarAsync(bin: string, args: string[], configDir?: string): Promise<Saida> {
-  const env = ambienteDoGh(configDir);
   try {
+    const env = ambienteDoGh(configDir);
     const { stdout } = await execFileAsync(bin, args, { env, timeout: PRAZO_MS, encoding: "utf8" });
     return { stdout, stderr: "", ok: true };
   } catch (erro) {
@@ -122,8 +139,8 @@ async function rodarAsync(bin: string, args: string[], configDir?: string): Prom
 }
 
 function rodar(bin: string, args: string[], configDir?: string): Saida {
-  const env = ambienteDoGh(configDir);
   try {
+    const env = ambienteDoGh(configDir);
     const stdout = execFileSync(bin, args, { env, timeout: PRAZO_MS, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
     return { stdout, stderr: "", ok: true };
   } catch (erro) {
@@ -159,55 +176,21 @@ function dasContasJson(texto: string): GhConta[] | undefined {
   return contas;
 }
 
-function dasContasTexto(texto: string): GhConta[] {
-  const contas: GhConta[] = [];
-  let atual: GhConta | undefined;
-  for (const linha of texto.split("\n")) {
-    const entrou = /Logged in to (\S+) (?:account|as) (\S+)/.exec(linha);
-    if (entrou !== null) {
-      atual = { host: entrou[1]!, login: entrou[2]!, active: false, scopes: "" };
-      contas.push(atual);
-      continue;
-    }
-    if (atual === undefined) continue;
-    // A linha "Token:" é mascarada e nem é lida.
-    const ativa = /Active account:\s*(true|false)/.exec(linha);
-    if (ativa !== null) atual.active = ativa[1] === "true";
-    const escopos = /Token scopes:\s*(.*)$/.exec(linha);
-    if (escopos !== null) {
-      atual.scopes = escopos[1]!
-        .split(",")
-        .map((e) => e.trim().replace(/^'|'$/g, ""))
-        .filter((e) => e.length > 0)
-        .join(", ");
-    }
-  }
-  return contas;
-}
-
 /**
  * As contas que o `gh` tem, por host. Vazio quando não há `gh` ou ninguém logado.
  * Nunca pede o token: nem `--show-token` nem `auth token`.
+ *
+ * Exige o `gh` 2.40+, que é quem tem `--json` e `auth token --user`: o antigo
+ * vira o aviso de atualizar, e não uma lista que o Locum não saberia usar.
  */
 export async function contasDoGh(configDir?: string): Promise<GhConta[]> {
   const bin = achar();
   if (bin === undefined) return [];
+  if (configDir !== undefined && configDir.trim().length > 0) normalizarConfigDir(configDir);
 
-  const json = await rodarAsync(bin, ["auth", "status", "--json", "hosts"], configDir);
-  const doJson = dasContasJson(json.stdout);
-  if (doJson !== undefined) return doJson;
-
-  const texto = await rodarAsync(bin, ["auth", "status"], configDir);
-  return dasContasTexto(`${texto.stdout}\n${texto.stderr}`);
-}
-
-/** O mesmo, síncrono, só para o caminho raro do gh antigo dentro do `tokenDoGh`. */
-function contasDoGhSync(bin: string, configDir?: string): GhConta[] {
-  const json = rodar(bin, ["auth", "status", "--json", "hosts"], configDir);
-  const doJson = dasContasJson(json.stdout);
-  if (doJson !== undefined) return doJson;
-  const texto = rodar(bin, ["auth", "status"], configDir);
-  return dasContasTexto(`${texto.stdout}\n${texto.stderr}`);
+  const r = await rodarAsync(bin, ["auth", "status", "--json", "hosts"], configDir);
+  if (/unknown flag: --json/.test(r.stderr)) throw new GhIndisponivelError("", GH_ANTIGO);
+  return dasContasJson(r.stdout) ?? [];
 }
 
 /**
@@ -237,38 +220,56 @@ function pedirToken(ref: GhRef): string {
   const bin = achar();
   if (bin === undefined) throw new GhIndisponivelError(ref.login);
 
-  const base = ["auth", "token", "--hostname", ref.host];
-  let r = rodar(bin, [...base, "--user", ref.login], ref.configDir);
-  // gh anterior à 2.40 não conhece --user e só entrega o token da conta ativa.
-  if (!r.ok && /unknown flag: --user/.test(r.stderr)) {
-    const ativa = contasDoGhSync(bin, ref.configDir).find((c) => c.host === ref.host && c.active);
-    if (ativa?.login.toLowerCase() !== ref.login.toLowerCase()) {
-      throw new GhIndisponivelError(ref.login, `atualize o gh (2.40+) ou torne ${ref.login} a conta ativa de ${ref.host}`);
-    }
-    r = rodar(bin, base, ref.configDir);
+  let r: Saida;
+  try {
+    if (ref.configDir !== undefined) normalizarConfigDir(ref.configDir);
+    r = rodar(bin, ["auth", "token", "--hostname", ref.host, "--user", ref.login], ref.configDir);
+  } catch (erro) {
+    // Pasta de configuração inválida: o gh nem chega a rodar, e a mensagem é a da pasta.
+    throw new GhIndisponivelError(ref.login, erro instanceof Error ? erro.message : String(erro));
   }
+  if (/unknown flag: --user/.test(r.stderr)) throw new GhIndisponivelError(ref.login, GH_ANTIGO);
   const token = r.stdout.trim();
   if (!r.ok || token.length === 0) throw new GhIndisponivelError(ref.login);
   return token;
 }
 
+/**
+ * Lembra uma falha para esta conta pelo prazo de nova tentativa, sem esvaziar
+ * o cache das outras: um 401 numa rajada de requests não pode abrir um
+ * processo por request.
+ */
+export function lembrarFalhaDoGh(ref: GhRef, dica?: string): void {
+  cache.set(chaveDe(ref), { erro: new GhIndisponivelError(ref.login, dica), expiraEm: Date.now() + ttlFalhaMs });
+}
+
+/** O token já lembrado e ainda válido, sem abrir processo. */
+export function tokenLembradoDoGh(ref: GhRef): string | undefined {
+  const l = cache.get(chaveDe(ref));
+  return l !== undefined && l.expiraEm > Date.now() && "token" in l ? l.token : undefined;
+}
+
 const PREFIXO = "gh-ref:";
 
-export function serializarRef(ref: GhRef): string {
+export function serializarRef(ref: GhVinculo): string {
   return PREFIXO + JSON.stringify(ref);
 }
 
 /** `undefined` quando o valor guardado é um token comum. */
-export function lerRef(valor: string): GhRef | undefined {
+export function lerRef(valor: string): GhVinculo | undefined {
   if (!valor.startsWith(PREFIXO)) return undefined;
   try {
-    const r = JSON.parse(valor.slice(PREFIXO.length)) as Partial<GhRef>;
+    const r = JSON.parse(valor.slice(PREFIXO.length)) as Partial<GhVinculo>;
     if (r.origem !== "gh" || typeof r.host !== "string" || typeof r.login !== "string") return undefined;
+    const u = r.ultimo;
     return {
       origem: "gh",
       host: r.host,
       login: r.login,
       ...(typeof r.configDir === "string" && r.configDir.length > 0 ? { configDir: r.configDir } : {}),
+      ...(u !== undefined && typeof u.ok === "boolean" && typeof u.quando === "number"
+        ? { ultimo: { ok: u.ok, quando: u.quando, ...(typeof u.erro === "string" ? { erro: u.erro } : {}) } }
+        : {}),
     };
   } catch {
     return undefined;

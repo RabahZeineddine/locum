@@ -998,7 +998,8 @@
       "ghFailed": "o gh não entregou o token: {{error}}",
       "otherHost": "outro servidor do GitHub, ainda não suportado",
       "linkFailed": "não foi possível vincular: {{error}}",
-      "linkedBadge": "vinculado à conta {{login}} do gh"
+      "linkedBadge": "vinculado à conta {{login}} do gh",
+      "searchFailed": "a busca de contas falhou: {{error}}"
     },
     "watched": {
       "title": "Repositórios observados",

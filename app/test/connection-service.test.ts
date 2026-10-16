@@ -724,3 +724,18 @@ test("conta do gh vinculada que não responde deixa a conexão GitHub em erro, c
   assert.equal(github?.reason, "failing");
   assert.match(github?.detail ?? "", /a conta octo do gh não respondeu/);
 });
+
+test("vínculo com o gh que nunca foi conferido aparece como não conferido, e não como conectado", async () => {
+  const mcp = new McpService(undefined, new SecretService(mkdtempSync(join(tmpdir(), "locum-gh-nunca-"))));
+  const servico = new ConnectionService({
+    mcp,
+    oauth: { status: () => ({ connected: false, expiresAt: null, renewable: false }) } as unknown as McpOAuthService,
+    github: {
+      status: async () => ({ stored: true, env: false, identity: null, erro: null, ultimoGh: null, vinculo: { host: "github.com", login: "octo" } }),
+    } as unknown as GithubService,
+    slack: { get: async () => ({ server: null }) } as unknown as SlackService,
+  });
+  const github = (await servico.list()).find((c) => c.id === "github");
+  assert.notEqual(github?.state, "connected");
+  assert.equal(github?.reason, "untested");
+});

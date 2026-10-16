@@ -968,7 +968,8 @@
       "ghFailed": "gh did not hand over the token: {{error}}",
       "otherHost": "another GitHub server, not supported yet",
       "linkFailed": "could not link: {{error}}",
-      "linkedBadge": "linked to the gh account {{login}}"
+      "linkedBadge": "linked to the gh account {{login}}",
+      "searchFailed": "the account search failed: {{error}}"
     },
     "watched": {
       "title": "Watched repositories",

@@ -2,14 +2,17 @@ import type { Authorship } from "../config/types.js";
 import {
   GhIndisponivelError,
   contasDoGh,
-  erroLembradoDoGh,
   lerRef,
+  lembrarFalhaDoGh,
   limparCacheDoGh,
   normalizarConfigDir,
   serializarRef,
   tokenDoGh,
+  tokenLembradoDoGh,
   type GhConta,
   type GhRef,
+  type GhUltimo,
+  type GhVinculo,
 } from "./gh-cli.js";
 import { secretService, type SecretService } from "./secret-service.js";
 import { settingsService, type SettingsService } from "./settings-service.js";
@@ -73,7 +76,15 @@ export function githubToken(
     // Vínculo com o gh: o token é pedido ao gh agora. Se ele não responde, o
     // erro sobe em vez de cair no ambiente, porque a escolha foi explícita.
     const vinculo = lerRef(guardado);
-    return vinculo === undefined ? guardado : tokenDoGh(vinculo);
+    if (vinculo === undefined) return guardado;
+    try {
+      const token = tokenDoGh(vinculo);
+      registrarResultado(secrets, ref, vinculo, { ok: true });
+      return token;
+    } catch (erro) {
+      if (erro instanceof GhIndisponivelError) registrarResultado(secrets, ref, vinculo, { ok: false, erro: erro.message });
+      throw erro;
+    }
   }
 
   const ambiente = process.env[GITHUB_TOKEN_ENV];
@@ -81,12 +92,73 @@ export function githubToken(
 }
 
 /**
- * O GitHub respondeu 401: o token que o gh entregou deixou de valer, e o
- * cache dele não pode segurar a resposta velha. Sem vínculo, não faz nada.
+ * Guarda o último resultado do gh junto do vínculo, e só quando ele muda: a
+ * resolução roda a cada batida e não pode reescrever o cofre a cada uma. Só um
+ * sucesso apaga o erro, e é por isso que a tela não pisca entre erro e ok.
+ */
+function registrarResultado(
+  secrets: SecretService,
+  ref: string,
+  vinculo: GhVinculo,
+  resultado: { ok: boolean; erro?: string },
+): void {
+  const antes = vinculo.ultimo;
+  if (antes !== undefined && antes.ok === resultado.ok && antes.erro === resultado.erro) return;
+  const ultimo: GhUltimo = {
+    ok: resultado.ok,
+    quando: Math.floor(Date.now() / 1000),
+    ...(resultado.erro === undefined ? {} : { erro: resultado.erro }),
+  };
+  try {
+    secrets.set(ref, serializarRef({ ...vinculo, ultimo }));
+  } catch {
+    // Sem keychain neste processo não há onde gravar; o resultado vale só para esta execução.
+  }
+}
+
+/**
+ * O que se sabe do gh vinculado sem abrir processo: o token já lembrado, ou o
+ * último resultado. Para quem lista, e não para quem vai conectar.
+ */
+export function githubVinculoConfere(
+  secrets: SecretService = secretService,
+  ref: string = GITHUB_CREDENTIAL_REF,
+): boolean {
+  const guardado = secrets.get(ref);
+  const vinculo = guardado === undefined ? undefined : lerRef(guardado);
+  if (vinculo === undefined) return false;
+  return tokenLembradoDoGh(vinculo) !== undefined || vinculo.ultimo?.ok === true;
+}
+
+/** Como `githubToken`, mas só com o que o cache já tem: nunca abre o gh. */
+export function githubTokenSemProcesso(
+  secrets: SecretService = secretService,
+  ref: string = GITHUB_CREDENTIAL_REF,
+): string | undefined {
+  const guardado = secrets.get(ref);
+  const vinculo = guardado === undefined ? undefined : lerRef(guardado);
+  if (vinculo === undefined) return githubTokenSemVinculo(guardado);
+  return tokenLembradoDoGh(vinculo);
+}
+
+function githubTokenSemVinculo(guardado: string | undefined): string | undefined {
+  if (guardado !== undefined && guardado.length > 0) return guardado;
+  const ambiente = process.env[GITHUB_TOKEN_ENV];
+  return ambiente !== undefined && ambiente.length > 0 ? ambiente : undefined;
+}
+
+/**
+ * O GitHub respondeu 401: o token que o gh entregou deixou de valer. A recusa
+ * fica lembrada para esta conta pelo prazo de nova tentativa, de modo que uma
+ * rajada de requests não abre um processo por request. Sem vínculo, não faz nada.
  */
 export function invalidarTokenDoGh(secrets: SecretService = secretService, ref: string = GITHUB_CREDENTIAL_REF): void {
   const guardado = secrets.get(ref);
-  if (guardado !== undefined && lerRef(guardado) !== undefined) limparCacheDoGh();
+  const vinculo = guardado === undefined ? undefined : lerRef(guardado);
+  if (vinculo === undefined) return;
+  const dica = `o GitHub recusou o token que o gh entregou para a conta ${vinculo.login}; rode gh auth login ou troque a conexão`;
+  lembrarFalhaDoGh(vinculo, dica);
+  registrarResultado(secrets, ref, vinculo, { ok: false, erro: dica });
 }
 
 /** Quem é a conta do token e o que ela pode. Nunca o token. */
@@ -119,8 +191,10 @@ export interface GithubStatus {
   vault: boolean;
   /** A conta do gh a que a conexão está vinculada, quando é esse o caminho escolhido. */
   vinculo: { host: string; login: string; configDir?: string } | null;
-  /** O gh vinculado não respondeu agora: a mensagem clara, nunca a saída dele. */
+  /** O gh vinculado não respondeu na última vez: a mensagem clara, nunca a saída dele. */
   erro: string | null;
+  /** O último resultado conhecido do gh vinculado, ou nulo quando nunca foi conferido. */
+  ultimoGh: GhUltimo | null;
   /** Existe `GITHUB_TOKEN` no ambiente, que é o caminho de trás. */
   env: boolean;
   /** Segundos desde a época, ou nulo quando nunca foi conferido. */
@@ -199,12 +273,15 @@ export class GithubService {
     const guardado = this.secrets.has(this.ref) ? this.secrets.get(this.ref) : undefined;
     const ref = guardado === undefined ? undefined : lerRef(guardado);
 
-    // Só o que o cache já sabe: status roda a cada leitura da tela e não abre processo.
-    const erro = ref === undefined ? null : (erroLembradoDoGh(ref)?.message ?? null);
+    // O último resultado guardado, e não o cache: status roda a cada leitura da
+    // tela, não abre processo e não pisca quando o prazo de nova tentativa vence.
+    const ultimoGh = ref?.ultimo ?? null;
+    const erro = ultimoGh !== null && !ultimoGh.ok ? (ultimoGh.erro ?? null) : null;
 
     return {
       ref: this.ref,
       erro,
+      ultimoGh,
       vinculo: ref === undefined ? null : { host: ref.host, login: ref.login, ...(ref.configDir === undefined ? {} : { configDir: ref.configDir }) },
       stored: this.secrets.has(this.ref),
       vault: this.secrets.available,

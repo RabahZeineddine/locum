@@ -20,7 +20,7 @@ beforeEach(() => {
   pathAntes = process.env["PATH"];
   ambienteAntes = process.env["GITHUB_TOKEN"];
   delete process.env["GITHUB_TOKEN"];
-  configurarGh({ diretoriosExtras: [], ttlMs: 60_000 });
+  configurarGh({ diretoriosExtras: [], ttlMs: 60_000, ttlFalhaMs: 60_000 });
   limparCacheDoGh();
 });
 afterEach(() => {
@@ -29,7 +29,8 @@ afterEach(() => {
   else process.env["GITHUB_TOKEN"] = ambienteAntes;
   delete process.env["FAKE_GH_DIR"];
   delete process.env["FAKE_GH_MODE"];
-  configurarGh({ semGh: false });
+  delete process.env["FAKE_GH_DESLOGADO"];
+  configurarGh({ semGh: false, ttlFalhaMs: 60_000 });
 });
 
 function cofre(): SecretService {
@@ -226,19 +227,87 @@ test("esquecer e vincular de novo pede o token ao gh outra vez", async () => {
   assert.equal(gh.chamadas().length, 2);
 });
 
-test("401 do GitHub faz o token do gh ser pedido de novo", async () => {
+test("401 do GitHub fica lembrado para a conta: uma rajada de requests não abre um processo por request", async () => {
   const gh = criarGhFalso();
   process.env["PATH"] = `${gh.dir}:/usr/bin:/bin`;
   const { secrets, servico } = montar(async () => {
     throw Object.assign(new Error("Bad credentials"), { status: 401 });
   });
   await servico.usarGh(OCTO);
-  githubToken(secrets);
-  assert.equal(gh.chamadas().length, 1);
 
-  // check limpa o cache antes de pedir (2 chamadas) e o 401 limpa depois.
   await servico.check();
-  assert.equal(gh.chamadas().length, 2);
-  githubToken(secrets);
-  assert.equal(gh.chamadas().length, 3);
+  assert.equal(gh.execucoes(), 1);
+  for (let i = 0; i < 5; i++) assert.throws(() => githubToken(secrets), /o GitHub recusou o token que o gh entregou/);
+  assert.equal(gh.execucoes(), 1);
+  assert.match((await servico.status()).erro ?? "", /o GitHub recusou o token/);
+
+  // conferir de novo pede o token outra vez
+  await servico.check();
+  assert.equal(gh.execucoes(), 2);
+});
+
+test("logout e reabrir o app mostram o último resultado (erro), sem abrir o gh e sem piscar para ok", async () => {
+  const gh = criarGhFalso();
+  process.env["PATH"] = `${gh.dir}:/usr/bin:/bin`;
+  const secrets = cofre();
+  const settings = new SettingsService(bancoDeTeste());
+  const servico = new GithubService(secrets, settings, async () => ({ login: "octo", scopes: [] }));
+  await servico.usarGh(OCTO);
+
+  assert.equal((await servico.status()).ultimoGh, null, "vinculado e nunca conferido");
+
+  await servico.check();
+  assert.equal((await servico.status()).ultimoGh?.ok, true);
+  assert.equal((await servico.status()).erro, null);
+
+  // logout no gh; a batida seguinte descobre
+  process.env["FAKE_GH_DESLOGADO"] = "octo";
+  limparCacheDoGh();
+  assert.throws(() => githubToken(secrets), /rode gh auth login/);
+  const execucoes = gh.execucoes();
+
+  // reabrir: cache vazio, serviço novo sobre o mesmo cofre
+  limparCacheDoGh();
+  const reaberto = new GithubService(secrets, settings);
+  const s = await reaberto.status();
+  assert.equal(s.ultimoGh?.ok, false);
+  assert.match(s.erro ?? "", /rode gh auth login/);
+  assert.equal(gh.execucoes(), execucoes, "status não abre processo");
+
+  // prazo de nova tentativa vencido e gh voltou: o erro só some quando um sucesso acontece
+  configurarGh({ ttlFalhaMs: 0 });
+  delete process.env["FAKE_GH_DESLOGADO"];
+  assert.match((await reaberto.status()).erro ?? "", /rode gh auth login/);
+  assert.equal(githubToken(secrets), "valor-falso-de-octo");
+  const depois = await reaberto.status();
+  assert.equal(depois.ultimoGh?.ok, true);
+  assert.equal(depois.erro, null);
+  assert.equal(JSON.stringify(depois).includes("valor-falso"), false);
+});
+
+test("o servidor MCP, ao listar, não abre o gh: usa o último resultado", async () => {
+  const gh = criarGhFalso();
+  process.env["PATH"] = `${gh.dir}:/usr/bin:/bin`;
+  const secrets = cofre();
+  const servico = new GithubService(secrets, new SettingsService(bancoDeTeste()), async () => ({ login: "octo", scopes: [] }));
+  await servico.usarGh(OCTO);
+  await servico.check();
+  const mcp = new McpService(undefined, secrets);
+  await mcp.register({ name: "github", transport: "http", url: "https://api.githubcopilot.com/mcp/", headers: { Authorization: "${credential}" } });
+  try {
+    limparCacheDoGh();
+    const antes = gh.execucoes();
+    assert.equal(await mcp.credencialDoServidor("github"), "ok");
+    assert.equal(gh.execucoes(), antes);
+
+    // último resultado = erro: a vitrine diz que falta, sem abrir o gh
+    process.env["FAKE_GH_DESLOGADO"] = "octo";
+    assert.throws(() => githubToken(secrets));
+    limparCacheDoGh();
+    const meio = gh.execucoes();
+    assert.equal(await mcp.credencialDoServidor("github"), "falta");
+    assert.equal(gh.execucoes(), meio);
+  } finally {
+    await mcp.remove("github");
+  }
 });
