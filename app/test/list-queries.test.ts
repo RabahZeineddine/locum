@@ -162,3 +162,26 @@ test("a lista conta os passos que terminaram em ensaio, e só eles", async () =>
   assert.equal(porId.get(comEnsaio), 1);
   assert.equal(porId.get(semEnsaio), 0);
 });
+
+test("o detalhe do run traz o teto por run dos agents da biblioteca que os passos usam", async () => {
+  const db = bancoDeTeste();
+  const { LibraryService } = await import("../src/services/library-service.js");
+  const biblioteca = new LibraryService(db);
+  await biblioteca.saveProfile({ spec: { id: "com-teto", name: "Com teto", model: "ollama/x", budget: { perRunUsd: 0.3 } } });
+  await biblioteca.saveProfile({ spec: { id: "sem-teto", name: "Sem teto", model: "ollama/x" } });
+  const versao = await new AgentService(db).upsert(
+    AgentSpec.parse({
+      id: "com-agents",
+      name: "Com agents",
+      steps: [
+        { type: "model", key: "a", name: "A", profile: "com-teto", model: "ollama/x", prompt: "x" },
+        { type: "model", key: "b", name: "B", profile: "sem-teto", model: "ollama/x", prompt: "x" },
+      ],
+    }),
+    undefined,
+    "human",
+  );
+  const runId = randomUUID();
+  await db.insert(schema.runs).values({ id: runId, agentVersionId: versao.id, status: "done" });
+  assert.deepEqual((await new RunService(db).get(runId))?.tetosDosAgents, { "com-teto": 0.3 });
+});

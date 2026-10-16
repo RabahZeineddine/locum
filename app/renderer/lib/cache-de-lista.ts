@@ -30,6 +30,15 @@ export function chaveDaListaDoTeams(
   return `teams-${tipo}:${quem}:${gatilho.id ?? `novo/${gatilho.agentId}/${gatilho.chave}`}`;
 }
 
+/**
+ * A chave da lista de canais do Slack. Cada workspace tem o seu app, então o
+ * client id identifica de onde a lista veio, e desconectar não deixa a lista
+ * velha valendo para quem conectar de novo.
+ */
+export function chaveDaListaDoSlack(app: { clientId: string | null; connected: boolean } | undefined): string {
+  return `slack-canais:${app?.clientId ?? ""}:${app?.connected === true ? "on" : "off"}`;
+}
+
 const chaveDe = (chave: string): string => `locum.cache.${chave}`;
 
 /** O que está guardado e ainda vale, ou nulo. */

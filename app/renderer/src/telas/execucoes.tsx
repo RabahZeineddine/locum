@@ -381,6 +381,7 @@ function Execucao({ navegar, runId, passoAberto }: { navegar: TelaProps["navegar
   const comSaida = detalhe.steps.find((p) => p.output !== null)?.stepKey ?? null;
 
   const veredito = extrairVeredito(detalhe.steps);
+  const acimaDoTeto = estimativaAcimaDoTeto(detalhe);
   const achadosLista = achados.data ?? [];
   const target = detalhe.target;
   const ehPr = Boolean(target && (target.pull || target.repo));
@@ -416,11 +417,11 @@ function Execucao({ navegar, runId, passoAberto }: { navegar: TelaProps["navegar
         ) : null}
         <span className="num ml-auto text-[13px]">{dinheiro(t, detalhe)}</span>
       </div>
-      {estimativaAcimaDoTeto(detalhe) ? (
+      {acimaDoTeto === null ? null : (
         <p className="text-muted-foreground -mt-3 text-right text-xs" data-locum-run-acima-do-teto="">
-          {t("runs.overCap", { estimate: detalhe.estimateUsd.toFixed(2), cap: (detalhe.spec.budget.perRunUsd ?? 0).toFixed(2) })}
+          {t("runs.overCap", { estimate: acimaDoTeto.estimateUsd.toFixed(2), cap: acimaDoTeto.capUsd.toFixed(2) })}
         </p>
-      ) : null}
+      )}
 
       {detalhe.error !== null ? (
         <p className="border-border bg-card flex items-start gap-2 rounded-lg border px-3 py-2 text-[13px]" data-locum-run-falha={detalhe.failedStep?.key ?? ""}>

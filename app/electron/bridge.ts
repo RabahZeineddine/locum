@@ -445,7 +445,7 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "connections.setTeamsChannels": (ligado) => connectionService.setTeamsChannels(ligado),
     "connections.teamsChannels": () => listTeamsChannels(),
     "connections.teamsChats": (triggerId) => listTeamsChats({ triggerId }),
-    "connections.slackChannels": () => listSlackChannels(),
+    "connections.slackChannels": (ids) => listSlackChannels({ ...(ids === undefined ? {} : { ids }) }),
 
     "trackers.list": () => trackerService.list(),
     "trackers.register": (cadastro) => trackerService.register(cadastro),

@@ -3,6 +3,7 @@ import { db as defaultDb, schema } from "../db/index.js";
 import { AgentSpec } from "../config/types.js";
 import { buildExecutor } from "../executor/build.js";
 import { isReserved } from "./agent-service.js";
+import { LibraryService } from "./library-service.js";
 
 type Db = typeof defaultDb;
 
@@ -71,6 +72,8 @@ export interface RunDetail extends Omit<RunSummary, "stepTotal" | "stepDone" | "
   /** A versao exata que executou, nao a mais recente do agent. */
   spec: AgentSpec;
   steps: StepRow[];
+  /** Teto por run (USD) dos agents da biblioteca que os passos usam, pelo id do agent. Sem teto, fora. */
+  tetosDosAgents: Record<string, number>;
 }
 
 /** Achado de um run, ja normalizado, venha da tabela ou da saida do passo. */
@@ -218,6 +221,7 @@ export class RunService {
       .where(eq(schema.runs.id, runId));
     if (!row) return undefined;
 
+    const spec = AgentSpec.parse(row.spec);
     const passos = await this.steps(runId);
     const falho = passos.find((p) => p.status === "failed");
     return {
@@ -228,9 +232,21 @@ export class RunService {
       agentName: row.agentName,
       agentVersion: row.agentVersion,
       target: alvo(row.evento),
-      spec: AgentSpec.parse(row.spec),
+      spec,
       steps: passos,
+      tetosDosAgents: await this.tetosDosAgents(spec),
     };
+  }
+
+  /** O teto por run de cada agent da biblioteca que o fluxo usa, como o executor o lê a cada passo. */
+  private async tetosDosAgents(spec: AgentSpec): Promise<Record<string, number>> {
+    const tetos: Record<string, number> = {};
+    const biblioteca = new LibraryService(this.db);
+    for (const id of new Set(spec.steps.flatMap((s) => ("profile" in s && s.profile !== undefined ? [s.profile] : [])))) {
+      const teto = (await biblioteca.getProfile(id))?.spec.budget.perRunUsd;
+      if (teto !== undefined) tetos[id] = teto;
+    }
+    return tetos;
   }
 
   private async eventOf(eventId: string | null, payload: unknown): Promise<RunEvent | null> {

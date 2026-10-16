@@ -31,11 +31,29 @@ export function opcoesDeCanaisDoSlack(
 
 /**
  * O que foi digitado na busca, se for um id de canal que a lista não tem
- * (canal fora da lista, ou lista que não carregou). Nulo quando não é id ou
- * já está na lista.
+ * (canal fora da lista, ou lista que não carregou). Nulo quando não é id, já
+ * está na lista, ou já está marcado: o clique numa opção marcada a tira.
  */
-export function canalDoSlackDigitado(busca: string, lista: readonly CanalDoSlackListado[]): string | null {
+export function canalDoSlackDigitado(busca: string, lista: readonly CanalDoSlackListado[], marcados: ReadonlySet<string>): string | null {
   const id = busca.trim().toUpperCase();
   if (!/^[CG][A-Z0-9]{6,}$/.test(id)) return null;
-  return lista.some((c) => c.id === id) ? null : id;
+  return lista.some((c) => c.id === id) || marcados.has(id) ? null : id;
+}
+
+/**
+ * O rótulo do chip de um canal já escolhido: o nome, ou o id cru quando a
+ * lista não o conhece. Canal que o Slack diz arquivado, ou que não achou,
+ * leva a marca, para quem observa um canal morto saber por que ele não fala.
+ */
+export function rotuloDoChipDoSlack(
+  id: string,
+  resposta: { canais: readonly CanalDoSlackListado[]; arquivados: readonly CanalDoSlackListado[]; naoEncontrados: readonly string[] } | null,
+  rotulos: { arquivado: string; naoEncontrado: string },
+): string {
+  if (resposta === null) return id;
+  const vivo = resposta.canais.find((c) => c.id === id);
+  if (vivo !== undefined) return `#${vivo.name}`;
+  const morto = resposta.arquivados.find((c) => c.id === id);
+  if (morto !== undefined) return `#${morto.name} (${rotulos.arquivado})`;
+  return resposta.naoEncontrados.includes(id) ? `${id} (${rotulos.naoEncontrado})` : id;
 }

@@ -2298,7 +2298,16 @@
         "private": "privado",
         "search": "Buscar canal ou colar o ID",
         "useId": "Usar o ID {{id}}",
-        "openConnections": "Abrir Conexões"
+        "openConnections": "Abrir Conexões",
+        "archived": "arquivado",
+        "notFound": "não encontrado",
+        "openManifest": "Abrir o manifesto do app",
+        "truncated": "A lista parou em {{count}} canais. Cole o ID do canal que faltar na busca.",
+        "error": {
+          "sem-conexao": "O Slack não está conectado. Conecte em Conexões, pelo servidor oficial.",
+          "sem-escopo": "O token do Slack não tem os escopos de canal. Atualize o app com o manifesto novo e conecte de novo.",
+          "outro-servidor": "A lista só vem pela conexão oficial do Slack. Cole o ID do canal."
+        }
       },
       "slack-inbox": {
         "title": "Menção ou DM no Slack",
@@ -2659,7 +2668,7 @@
       },
       "refused": "Esta automação precisa de um evento ({{reason}}). Escolha um evento recente ou cole um link.",
       "publishWarning": "Este é um evento que já aconteceu: a automação roda de verdade com ele. {{actions}} está em modo automático e publica de novo em seu nome, sem passar pela Fila.",
-      "linkRuns": "Vai rodar a revisão de verdade (gasta modelo) e mostrar a resposta sem publicar nem pôr na Fila."
+      "linkRuns": "Vai rodar a automação de verdade (gasta modelo) e mostrar a resposta sem publicar nem pôr na Fila."
     }
   },
   "library": {

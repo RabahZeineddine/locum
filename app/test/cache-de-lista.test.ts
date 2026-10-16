@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chaveDaListaDoTeams, listaComCache, lerDoCache, TTL_DA_LISTA_MS } from "../renderer/lib/cache-de-lista.js";
+import { chaveDaListaDoSlack, chaveDaListaDoTeams, listaComCache, lerDoCache, TTL_DA_LISTA_MS } from "../renderer/lib/cache-de-lista.js";
 import type { ArmazemLocal } from "../renderer/lib/rascunho-automacao.js";
 
 /** A lista de canais e chats do Teams é carregada uma vez e guardada por alguns minutos. */
@@ -75,4 +75,11 @@ test("chats de gatilho sem id não compartilham a chave entre automações nem e
   assert.notEqual(um, chaveDaListaDoTeams("chats", conta, { agentId: "auto-a", chave: "gatilho-2" }));
   assert.notEqual(um, chaveDaListaDoTeams("chats", conta, { id: "g1", agentId: "auto-a", chave: "gatilho-1" }));
   assert.equal(chaveDaListaDoTeams("chats", conta, { id: "g1", agentId: "auto-a", chave: "gatilho-1" }), chaveDaListaDoTeams("chats", conta, { id: "g1", agentId: "auto-b", chave: "gatilho-9" }));
+});
+
+test("a chave da lista do Slack muda com o app (workspace) e com a conexão", () => {
+  const a = chaveDaListaDoSlack({ clientId: "1.2", connected: true });
+  assert.notEqual(a, chaveDaListaDoSlack({ clientId: "3.4", connected: true }));
+  assert.notEqual(a, chaveDaListaDoSlack({ clientId: "1.2", connected: false }));
+  assert.equal(a, chaveDaListaDoSlack({ clientId: "1.2", connected: true }));
 });

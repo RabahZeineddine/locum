@@ -2248,7 +2248,16 @@
         "private": "private",
         "search": "Search a channel or paste the ID",
         "useId": "Use ID {{id}}",
-        "openConnections": "Open Connections"
+        "openConnections": "Open Connections",
+        "archived": "archived",
+        "notFound": "not found",
+        "openManifest": "Open the app manifest",
+        "truncated": "The list stopped at {{count}} channels. Paste the ID of the channel that is missing in the search.",
+        "error": {
+          "sem-conexao": "Slack is not connected. Connect it in Connections, through the official server.",
+          "sem-escopo": "The Slack token lacks the channel scopes. Update the app with the new manifest and connect again.",
+          "outro-servidor": "The list only comes through the official Slack connection. Paste the channel ID."
+        }
       },
       "slack-inbox": {
         "title": "Slack mention or DM",
@@ -2609,7 +2618,7 @@
       },
       "refused": "This automation needs an event ({{reason}}). Choose a recent event or paste a link.",
       "publishWarning": "This event already happened: the automation really runs with it. {{actions}} is in automatic mode and publishes again in your name, without going through the queue.",
-      "linkRuns": "This runs the review for real (uses the model) and shows the answer without publishing it or putting it in the Queue."
+      "linkRuns": "This runs the automation for real (uses the model) and shows the answer without publishing it or putting it in the Queue."
     }
   },
   "library": {

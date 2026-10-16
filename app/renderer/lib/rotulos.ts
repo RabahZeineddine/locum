@@ -75,9 +75,16 @@ export function rotuloDoErroDeRun(t: TFunction, mensagem: string): string {
   return motivo === null ? mensagem : t("automations.runWith.refused", { reason: rotuloDoMotivoDeEvento(t, motivo) });
 }
 
-/** Por que o passo virou ensaio. Run gravado antes dos códigos traz o texto livre, que passa como veio. */
+/** Os textos livres que o executor gravava antes dos códigos, e o código de cada um. */
+const MOTIVOS_ANTIGOS: Record<string, "sem-conversa" | "evento-colado"> = {
+  "ensaio, sem conversa para responder": "sem-conversa",
+  "ensaio, evento de link colado: nada é publicado": "evento-colado",
+};
+
+/** Por que o passo virou ensaio. O texto de run antigo vira o código; outro texto livre passa como veio. */
 export function rotuloDoMotivoDoEnsaio(t: TFunction, motivo: string): string {
-  return motivo === "sem-conversa" || motivo === "evento-colado" ? t(`runs.dryRun.reason.${motivo}`) : motivo;
+  const codigo = MOTIVOS_ANTIGOS[motivo] ?? motivo;
+  return codigo === "sem-conversa" || codigo === "evento-colado" ? t(`runs.dryRun.reason.${codigo}`) : motivo;
 }
 
 /** "usa {{event.repo}}" ou "tem a ação teams.post", na língua da janela. */

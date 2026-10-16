@@ -385,6 +385,11 @@ export class McpOAuthService {
     return { token: valor.startsWith("Bearer ") ? valor.slice("Bearer ".length) : valor, vencido };
   }
 
+  /** Há grant de OAuth guardado: o token veio de uma autorização do Locum, e não de variável de ambiente de servidor importado. */
+  hasGrant(name: string): boolean {
+    return this.readGrant(name) !== undefined;
+  }
+
   /** Esquece token e registro. O cadastro do servidor fica, sem credencial. */
   async disconnect(name: string): Promise<void> {
     this.deps.secrets.remove(this.tokenRef(name));

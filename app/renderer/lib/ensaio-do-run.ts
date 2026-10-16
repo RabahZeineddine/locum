@@ -53,12 +53,47 @@ export function ondeSairia(acao: string | undefined): "teams" | "slack" | "githu
   return "outro";
 }
 
+interface PassoDeCusto {
+  stepKey: string;
+  costUsd: number;
+  billable: boolean;
+}
+
+/** Soma dos passos, separando o que foi cobrado do que só foi estimado (assinatura). */
+function somar(passos: readonly PassoDeCusto[]): { cobrado: number; naoCobrado: number } {
+  let cobrado = 0;
+  let naoCobrado = 0;
+  for (const p of passos) {
+    if (p.billable) cobrado += p.costUsd;
+    else naoCobrado += p.costUsd;
+  }
+  return { cobrado, naoCobrado };
+}
+
 /**
- * Run que não foi cobrado (assinatura) e cuja estimativa passou do teto por
- * run da automação. O orçamento não olha estimativa de run não cobrado; o
- * aviso existe só para a pessoa não achar que o teto foi respeitado.
+ * O teto por run (da automação, e o de cada agent da biblioteca nos passos que
+ * o usam) que a estimativa passou sem que o orçamento barrasse, porque parte do
+ * gasto saiu da assinatura e não conta em dólar. Só existe aviso quando há
+ * passo não cobrado com custo: modelo sem preço cadastrado é cobrado com custo
+ * zero e não é assinatura. Devolve o primeiro teto estourado, ou nulo.
  */
-export function estimativaAcimaDoTeto(run: { costUsd: number; estimateUsd: number; spec: { budget: { perRunUsd?: number | undefined } } }): boolean {
-  const teto = run.spec.budget.perRunUsd;
-  return teto !== undefined && run.costUsd === 0 && run.estimateUsd > teto;
+export function estimativaAcimaDoTeto(run: {
+  spec: { budget: { perRunUsd?: number | undefined }; steps: readonly { key: string; profile?: string | undefined }[] };
+  steps: readonly PassoDeCusto[];
+  tetosDosAgents: Readonly<Record<string, number>>;
+}): { estimateUsd: number; capUsd: number } | null {
+  const passou = (passos: readonly PassoDeCusto[], teto: number | undefined): { estimateUsd: number; capUsd: number } | null => {
+    if (teto === undefined) return null;
+    const { cobrado, naoCobrado } = somar(passos);
+    return naoCobrado > 0 && cobrado + naoCobrado > teto ? { estimateUsd: cobrado + naoCobrado, capUsd: teto } : null;
+  };
+
+  const daAutomacao = passou(run.steps, run.spec.budget.perRunUsd);
+  if (daAutomacao !== null) return daAutomacao;
+  for (const [agentId, teto] of Object.entries(run.tetosDosAgents)) {
+    const chaves = new Set(run.spec.steps.filter((s) => s.profile === agentId).map((s) => s.key));
+    const doAgent = passou(run.steps.filter((p) => chaves.has(p.stepKey)), teto);
+    if (doAgent !== null) return doAgent;
+  }
+  return null;
 }
