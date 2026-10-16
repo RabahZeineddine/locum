@@ -768,8 +768,16 @@
       "reason": {
         "sem-conversa": "sem conversa para responder",
         "evento-colado": "evento de link colado, nada é publicado"
+      },
+      "title": "Ensaio, não publicado",
+      "where": {
+        "teams": "sairia no Teams, no fio da conversa de origem",
+        "slack": "sairia no Slack, na thread de origem",
+        "github": "sairia no GitHub, no pull request",
+        "outro": "sairia no destino do passo"
       }
-    }
+    },
+    "overCap": "Estimativa de {{estimate}} USD acima do teto de {{cap}} USD por run, não cobrado (assinatura)."
   },
   "settings": {
     "refused": "a ponte recusou {{channel}}: {{message}}",
@@ -2650,7 +2658,8 @@
         "action": "tem a ação {{acao}}"
       },
       "refused": "Esta automação precisa de um evento ({{reason}}). Escolha um evento recente ou cole um link.",
-      "publishWarning": "Este é um evento que já aconteceu: a automação roda de verdade com ele. {{actions}} está em modo automático e publica de novo em seu nome, sem passar pela Fila."
+      "publishWarning": "Este é um evento que já aconteceu: a automação roda de verdade com ele. {{actions}} está em modo automático e publica de novo em seu nome, sem passar pela Fila.",
+      "linkRuns": "Vai rodar a revisão de verdade (gasta modelo) e mostrar a resposta sem publicar nem pôr na Fila."
     }
   },
   "library": {
@@ -3101,6 +3110,8 @@
     "paused": "{{name}} parou e espera sua decisão",
     "open": "Ver execução",
     "dismiss": "Fechar",
-    "failedBare": "{{name}} falhou"
+    "failedBare": "{{name}} falhou",
+    "dryRun": "Ensaio: nada foi publicado.",
+    "seeDryRun": "Ver o que sairia"
   }
 }

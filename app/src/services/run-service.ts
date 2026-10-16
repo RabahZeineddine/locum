@@ -49,6 +49,8 @@ export interface RunSummary extends RunRow {
   stepPending: number;
   stepFailed: number;
   findingCount: number;
+  /** Passos de ação que terminaram em ensaio: mostraram o texto em vez de publicar. */
+  stepDryRun: number;
   /** O passo que derrubou o run, com o erro dele. Nulo em run que não falhou em passo. */
   failedStep: { key: string; name: string; error: string | null } | null;
 }
@@ -63,7 +65,7 @@ export interface RunEvent {
   semConversa: boolean;
 }
 
-export interface RunDetail extends Omit<RunSummary, "stepTotal" | "stepDone" | "stepPending" | "stepFailed" | "findingCount" | "failedStep"> {
+export interface RunDetail extends Omit<RunSummary, "stepTotal" | "stepDone" | "stepPending" | "stepFailed" | "findingCount" | "stepDryRun" | "failedStep"> {
   event: RunEvent | null;
   failedStep: RunSummary["failedStep"];
   /** A versao exata que executou, nao a mais recente do agent. */
@@ -172,6 +174,7 @@ export class RunService {
         stepFailed: sql<number>`sum(${s.status} = 'failed')`,
         // O `case` protege o `json_each`: saída que não é objeto JSON, ou
         // objeto sem lista em `findings`, estouraria a consulta inteira.
+        stepDryRun: sql<number>`sum(case when json_valid(${s.output}) and json_extract(${s.output}, '$.state') = 'ensaio' then 1 else 0 end)`,
         findingCount: sql<number>`sum(case when json_valid(${s.output}) and json_type(${s.output}, '$.findings') = 'array' then (
           select count(*) from json_each(${s.output}, '$.findings') as f
           where f.type = 'object'
@@ -192,6 +195,7 @@ export class RunService {
           stepPending: Number(r.stepPending ?? 0),
           stepFailed: Number(r.stepFailed ?? 0),
           findingCount: Number(r.findingCount ?? 0),
+          stepDryRun: Number(r.stepDryRun ?? 0),
         },
       ]),
     );
@@ -424,7 +428,7 @@ export class RunService {
 
 type StepCounts = Pick<
   RunSummary,
-  "stepTotal" | "stepDone" | "stepPending" | "stepFailed" | "findingCount"
+  "stepTotal" | "stepDone" | "stepPending" | "stepFailed" | "findingCount" | "stepDryRun"
 >;
 
 const SEM_PASSOS: StepCounts = {
@@ -433,6 +437,7 @@ const SEM_PASSOS: StepCounts = {
   stepPending: 0,
   stepFailed: 0,
   findingCount: 0,
+  stepDryRun: 0,
 };
 
 /** O passo pedido mais o fecho transitivo de quem depende dele. */

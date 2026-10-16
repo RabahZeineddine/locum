@@ -744,8 +744,16 @@
       "reason": {
         "sem-conversa": "no conversation to answer",
         "evento-colado": "event from a pasted link, nothing is published"
+      },
+      "title": "Dry run, not published",
+      "where": {
+        "teams": "would go to Teams, in the thread of the source conversation",
+        "slack": "would go to Slack, in the source thread",
+        "github": "would go to GitHub, on the pull request",
+        "outro": "would go to the step destination"
       }
-    }
+    },
+    "overCap": "Estimate of {{estimate}} USD is above the {{cap}} USD per-run cap, not billed (subscription)."
   },
   "settings": {
     "refused": "the bridge refused {{channel}}: {{message}}",
@@ -2600,7 +2608,8 @@
         "action": "has the {{acao}} action"
       },
       "refused": "This automation needs an event ({{reason}}). Choose a recent event or paste a link.",
-      "publishWarning": "This event already happened: the automation really runs with it. {{actions}} is in automatic mode and publishes again in your name, without going through the queue."
+      "publishWarning": "This event already happened: the automation really runs with it. {{actions}} is in automatic mode and publishes again in your name, without going through the queue.",
+      "linkRuns": "This runs the review for real (uses the model) and shows the answer without publishing it or putting it in the Queue."
     }
   },
   "library": {
@@ -3042,6 +3051,8 @@
     "paused": "{{name}} stopped and waits for your decision",
     "open": "View run",
     "dismiss": "Close",
-    "failedBare": "{{name}} failed"
+    "failedBare": "{{name}} failed",
+    "dryRun": "Dry run: nothing was published.",
+    "seeDryRun": "See what would go out"
   }
 }

@@ -1,6 +1,7 @@
 import { StatusDot } from "@/components/ui/status-dot";
 import { seguirRun } from "@/lib/acompanhar-run";
 import { read } from "@/lib/bridge";
+import { detalheDoRunNoPasso, passosEmEnsaio } from "@/lib/ensaio-do-run";
 import { rotuloDoErroDeRun } from "@/lib/rotulos";
 import { X } from "lucide-react";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -15,6 +16,8 @@ interface Aviso {
   texto: string;
   /** Leva à execução. */
   runId?: string;
+  /** O passo que terminou em ensaio: o aviso leva a ele em vez de ao topo do run. */
+  passo?: string;
 }
 
 export interface Toasts {
@@ -105,17 +108,19 @@ export function ProvedorDeToasts({ children, navegar }: { children: ReactNode; n
             // Falha sem passo que falhou (a recusa de começar, um run cancelado)
             // também diz o erro do run, e não que "não começou".
             const motivo = rotuloDoErroDeRun(t, run.failedStep?.error ?? run.error ?? "");
+            // Run que terminou bem mas só mostrou o texto: sem isso a pessoa não sabe se publicou.
+            const ensaio = desfecho === "ok" ? passosEmEnsaio(run.steps)[0] : undefined;
             const texto =
               desfecho === "ok"
-                ? t("toast.done", { name: nome })
+                ? `${t("toast.done", { name: nome })}${ensaio === undefined ? "" : `. ${t("toast.dryRun")}`}`
                 : desfecho === "parou"
                   ? t("toast.paused", { name: nome })
                   : motivo === ""
                     ? t("toast.failedBare", { name: nome })
                     : t("toast.failed", { name: nome, error: motivo });
-            atualizar({ id: runId, tom: desfecho === "erro" ? "erro" : "ok", texto, runId });
+            atualizar({ id: runId, tom: desfecho === "erro" ? "erro" : "ok", texto, runId, ...(ensaio === undefined ? {} : { passo: ensaio.stepKey }) });
             aoTerminar?.();
-            sumirDepois(runId, desfecho === "erro" ? FICA_MS.erro : FICA_MS.ok);
+            sumirDepois(runId, desfecho === "erro" ? FICA_MS.erro : ensaio === undefined ? FICA_MS.ok : FICA_MS.erro);
           },
         }),
       );
@@ -143,12 +148,13 @@ export function ProvedorDeToasts({ children, navegar }: { children: ReactNode; n
                   className="text-primary w-fit cursor-pointer text-xs hover:underline"
                   data-locum-toast-abrir={aviso.runId}
                   onClick={() => {
-                    navegar("runs", aviso.runId);
+                    const { runId, passo } = aviso;
+                    navegar("runs", passo === undefined || runId === undefined ? runId : detalheDoRunNoPasso(runId, passo));
                     tirar(aviso.id);
                   }}
                   type="button"
                 >
-                  {t("toast.open")}
+                  {aviso.passo === undefined ? t("toast.open") : t("toast.seeDryRun")}
                 </button>
               )}
             </div>

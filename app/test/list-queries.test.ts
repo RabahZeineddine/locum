@@ -135,3 +135,30 @@ test("lote prefere a tabela de achados quando o reconciliador já gravou", async
   assert.deepEqual(porRun["run-que-nao-existe"], []);
   assert.deepEqual(await service.findings(gravado), porRun[gravado]);
 });
+
+test("a lista conta os passos que terminaram em ensaio, e só eles", async () => {
+  const db = bancoDeTeste();
+  const versao = await new AgentService(db).upsert(
+    AgentSpec.parse({
+      id: "ensaiado",
+      name: "Ensaiado",
+      steps: [{ type: "model", key: "ler", name: "Ler", model: "anthropic/modelo", prompt: "x" }],
+    }),
+    undefined,
+    "human",
+  );
+  const comEnsaio = randomUUID();
+  const semEnsaio = randomUUID();
+  for (const runId of [comEnsaio, semEnsaio]) {
+    await db.insert(schema.runs).values({ id: runId, agentVersionId: versao.id, status: "done" });
+  }
+  await db.insert(schema.steps).values([
+    { id: randomUUID(), runId: comEnsaio, idx: 0, stepKey: "ler", name: "Ler", status: "done", output: "texto solto" },
+    { id: randomUUID(), runId: comEnsaio, idx: 1, stepKey: "postar", name: "Postar", status: "done", output: { state: "ensaio", motivo: "sem-conversa", text: "oi" } },
+    { id: randomUUID(), runId: semEnsaio, idx: 0, stepKey: "postar", name: "Postar", status: "done", output: { state: "published" } },
+  ]);
+
+  const porId = new Map((await new RunService(db).list()).map((r) => [r.id, r.stepDryRun]));
+  assert.equal(porId.get(comEnsaio), 1);
+  assert.equal(porId.get(semEnsaio), 0);
+});
