@@ -150,6 +150,8 @@ export function updaterState(): Promise<UpdaterState> {
  */
 export const conferir = umaDeCadaVez(async (): Promise<void> => {
   conferenciasPedidas += 1;
+  // Com o estado de exemplo do smoke na tela, o pacote armado não pode perguntar ao GitHub.
+  if (deExemplo !== null) return;
   // O real, e não o de exemplo: o smoke nunca pode sair para a rede.
   const plano = await planoReal();
   if (plano.reason !== null) return;
