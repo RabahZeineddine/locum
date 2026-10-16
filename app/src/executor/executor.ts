@@ -797,7 +797,7 @@ export class Executor {
       return { kind: "paused" };
     }
 
-    const state = await this.deps.gate.submit(
+    const { state, output: resposta } = await this.deps.gate.submitComSaida(
       { runId, stepId, kind: step.action, payload, target: step.target ?? null },
       step.mode,
     );
@@ -810,11 +810,13 @@ export class Executor {
       return { kind: "paused" };
     }
 
+    // A resposta da ferramenta, quando houve, é a saída: os passos seguintes citam `{{steps.k.campo}}`.
+    const saidaDoPasso = resposta === undefined ? { state } : resposta;
     await db
       .update(schema.steps)
-      .set({ status: "done", endedAt: nowSec(), output: { state } })
+      .set({ status: "done", endedAt: nowSec(), output: saidaDoPasso as object })
       .where(eq(schema.steps.id, stepId));
-    return { kind: "ok", output: { state }, costUsd: 0, tokens: 0, billable: false };
+    return { kind: "ok", output: saidaDoPasso, costUsd: 0, tokens: 0, billable: false };
   }
 }
 

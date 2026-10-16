@@ -586,7 +586,16 @@ export interface ReferenciaDisponivel {
  * (`outputSchema`) traz também cada propriedade; ação e passo sem formato só
  * o passo inteiro, e a pessoa digita o caminho do resto.
  */
-export function referenciasDisponiveis(r: Rascunho, chave: string): ReferenciaDisponivel[] {
+export function referenciasDisponiveis(
+  r: Rascunho,
+  chave: string,
+  fontes: {
+    /** A saída de cada passo no último run da automação, pela chave do passo. */
+    saidas?: Readonly<Record<string, unknown>>;
+    /** `outputSchema` das ferramentas de conexão, por `servidor/ferramenta`. */
+    esquemasDeSaida?: Readonly<Record<string, unknown>>;
+  } = {},
+): ReferenciaDisponivel[] {
   const porChave = new Map(r.spec.steps.map((p) => [p.key, p]));
   const lista: ReferenciaDisponivel[] = [];
   for (const caminho of variaveis(r, chave)) {
@@ -595,11 +604,51 @@ export function referenciasDisponiveis(r: Rascunho, chave: string): ReferenciaDi
       continue;
     }
     lista.push({ caminho, grupo: "step" });
-    const passo = porChave.get(caminho.slice("steps.".length));
-    const props = passo?.type === "model" ? (passo.outputSchema as { properties?: Record<string, unknown> } | undefined)?.properties : undefined;
-    for (const prop of Object.keys(props ?? {})) lista.push({ caminho: `${caminho}.${prop}`, grupo: "step" });
+    const k = caminho.slice("steps.".length);
+    const passo = porChave.get(k);
+    const params = passo?.type === "action" ? ((passo.params ?? {}) as { server?: unknown; tool?: unknown }) : {};
+    const doSchema =
+      passo?.type === "model"
+        ? passo.outputSchema
+        : passo?.type === "action" && typeof params.server === "string" && typeof params.tool === "string"
+          ? fontes.esquemasDeSaida?.[`${params.server}/${params.tool}`]
+          : undefined;
+    const props = Object.keys((doSchema as { properties?: Record<string, unknown> } | undefined)?.properties ?? {});
+    const vistos = new Set<string>();
+    for (const sub of [...props, ...caminhosDaSaida(fontes.saidas?.[k])]) {
+      if (vistos.has(sub)) continue;
+      vistos.add(sub);
+      lista.push({ caminho: `${caminho}.${sub}`, grupo: "step" });
+    }
   }
   return lista;
+}
+
+/** A saída mais recente de cada passo, dos runs do mais novo para o mais velho. Ensaio e saída vazia não contam. */
+export function saidasDosRuns(runs: readonly { steps: readonly { stepKey: string; output: unknown }[] }[]): Record<string, unknown> {
+  const saidas: Record<string, unknown> = {};
+  for (const run of runs) {
+    for (const p of run.steps) {
+      const o = p.output;
+      if (o === null || o === undefined || p.stepKey in saidas) continue;
+      if (typeof o === "object" && (o as { state?: unknown }).state === "ensaio") continue;
+      saidas[p.stepKey] = o;
+    }
+  }
+  return saidas;
+}
+
+/**
+ * Os caminhos que dá para citar numa saída já gravada: cada campo, o primeiro
+ * item de cada lista e os objetos aninhados até a terceira camada.
+ */
+export function caminhosDaSaida(valor: unknown, prefixo = "", profundidade = 0): string[] {
+  if (valor === null || typeof valor !== "object" || profundidade >= 3) return [];
+  const entradas = Array.isArray(valor) ? valor.slice(0, 1).map((v, i) => [String(i), v] as const) : Object.entries(valor);
+  return entradas.flatMap(([nome, v]) => {
+    const caminho = prefixo === "" ? nome : `${prefixo}.${nome}`;
+    return [caminho, ...caminhosDaSaida(v, caminho, profundidade + 1)];
+  });
 }
 
 /** Todo passo de que `chave` depende, direta ou indiretamente. */

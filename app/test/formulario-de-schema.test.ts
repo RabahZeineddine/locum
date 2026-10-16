@@ -172,3 +172,45 @@ test("referências disponíveis: campos do evento do gatilho, passos anteriores 
   assert.ok(caminhos.includes("steps.revisar") && caminhos.includes("steps.revisar.verdict"));
   assert.ok(!caminhos.includes("steps.reagir"), "o próprio passo e os que vêm depois não entram");
 });
+
+test("caminhos de uma saída: campos, o primeiro item de cada lista e objetos aninhados, sem passar da profundidade", async () => {
+  const { caminhosDaSaida } = await import("../renderer/lib/automacao.js");
+  assert.deepEqual(caminhosDaSaida({ total: 7, itens: ["a", "b"], dono: { nome: "x", dados: { fundo: { raso: 1 } } } }), [
+    "total",
+    "itens",
+    "itens.0",
+    "dono",
+    "dono.nome",
+    "dono.dados",
+    "dono.dados.fundo",
+  ]);
+  assert.deepEqual(caminhosDaSaida("texto"), []);
+  assert.deepEqual(caminhosDaSaida(null), []);
+  assert.deepEqual(caminhosDaSaida([{ id: 1 }]), ["0", "0.id"]);
+});
+
+test("o seletor oferece os caminhos da saída do último run e o outputSchema da ferramenta", async () => {
+  const { referenciasDisponiveis } = await import("../renderer/lib/automacao.js");
+  const ler = { type: "action", key: "ler", name: "Ler", needs: [], optional: false, action: "mcp.call", mode: "auto", params: { server: "fx", tool: "totais", args: {} } };
+  const outro = { type: "action", key: "outro", name: "Outro", needs: [], optional: false, action: "mcp.call", mode: "auto", params: { server: "fx", tool: "sem_schema", args: {} } };
+  const usar = { type: "action", key: "usar", name: "Usar", needs: ["ler", "outro"], optional: false, action: "mcp.call", mode: "approve", params: {} };
+  const r = { spec: { id: "a", name: "A", model: "m", steps: [ler, outro, usar] }, gatilhos: [] } as never;
+  const sem = referenciasDisponiveis(r, "usar").map((x) => x.caminho);
+  assert.deepEqual(sem, ["steps.ler", "steps.outro"], "sem run anterior nem schema, só o passo inteiro");
+  const com = referenciasDisponiveis(r, "usar", {
+    saidas: { ler: { total: 7, itens: ["a"] }, outro: { text: "oi" } },
+    esquemasDeSaida: { "fx/totais": { type: "object", properties: { total: { type: "number" }, extra: { type: "string" } } } },
+  }).map((x) => x.caminho);
+  assert.deepEqual(com, ["steps.ler", "steps.ler.total", "steps.ler.extra", "steps.ler.itens", "steps.ler.itens.0", "steps.outro", "steps.outro.text"]);
+});
+
+test("as saídas do último run: a mais recente de cada passo, sem o estado de ensaio nem saída vazia", async () => {
+  const { saidasDosRuns } = await import("../renderer/lib/automacao.js");
+  const runs = [
+    { steps: [{ stepKey: "ler", output: { state: "ensaio", text: "x" } }, { stepKey: "outro", output: null }] },
+    { steps: [{ stepKey: "ler", output: { total: 1 } }, { stepKey: "outro", output: { ok: true } }] },
+    { steps: [{ stepKey: "ler", output: { total: 0 } }] },
+  ];
+  assert.deepEqual(saidasDosRuns(runs), { ler: { total: 1 }, outro: { ok: true } });
+  assert.deepEqual(saidasDosRuns([]), {});
+});

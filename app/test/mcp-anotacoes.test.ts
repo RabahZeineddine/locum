@@ -22,3 +22,17 @@ test("o catálogo do servidor traz o que ele anotou de cada ferramenta, e a anot
     await registro.closeAll();
   }
 });
+
+test("o catálogo guarda o outputSchema que o servidor declara, e só nas ferramentas que declaram", async () => {
+  const registro = McpRegistry.fromList([
+    { name: "fx", transport: "stdio", command: [process.execPath, "--import", "tsx", SERVIDOR], scope: "read", idleTimeoutMs: 1_000 },
+  ]);
+  try {
+    const porNome = new Map((await registro.describeTools("fx")).map((t) => [t.name, t]));
+    const saida = porNome.get("totais")?.outputSchema as { properties?: Record<string, unknown> } | undefined;
+    assert.deepEqual(Object.keys(saida?.properties ?? {}).sort(), ["itens", "total"]);
+    assert.equal(porNome.get("echo")?.outputSchema, undefined);
+  } finally {
+    await registro.closeAll();
+  }
+});

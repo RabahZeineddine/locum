@@ -17,6 +17,8 @@ export interface McpToolInfo {
   estimatedTokens: number;
   /** JSON Schema dos argumentos, para a tela montar o formulário da ação. */
   inputSchema?: Record<string, unknown>;
+  /** JSON Schema da resposta estruturada (MCP 2025-06), quando o servidor declara. */
+  outputSchema?: Record<string, unknown>;
   /** O que o servidor anotou: só lê, ou destrói. Ausente quando não anotou. */
   readOnlyHint?: boolean;
   destructiveHint?: boolean;
@@ -291,12 +293,14 @@ export class McpRegistry {
    */
   async describeTools(name: string): Promise<McpToolInfo[]> {
     const entry = await this.connect(name);
+    const saidas = await esquemasDeSaida(entry.client);
     return Object.entries(entry.tools)
       .map(([toolName, tool]) => ({
         name: toolName,
         description: tool.description ?? "",
         estimatedTokens: estimateTokens(toolName, tool.description, tool.inputSchema),
         inputSchema: esquemaCru(tool.inputSchema),
+        ...(saidas.get(toolName) === undefined ? {} : { outputSchema: saidas.get(toolName)! }),
         ...anotacoes(tool),
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
@@ -356,6 +360,30 @@ function fingerprint(cfg: McpServerConfig): string {
  * um contador de verdade exigiria saber o modelo antes de listar, e a diferenca
  * nao muda a decisao de marcar ou nao marcar a ferramenta.
  */
+/**
+ * O `outputSchema` de cada ferramenta. O embrulho do AI SDK o descarta, então
+ * vem da lista crua do servidor. É melhoria: servidor que não lista de novo, ou
+ * recusa, deixa o catálogo sem ele.
+ */
+async function esquemasDeSaida(client: Entry["client"]): Promise<Map<string, Record<string, unknown>>> {
+  const saidas = new Map<string, Record<string, unknown>>();
+  try {
+    let cursor: string | undefined;
+    for (let pagina = 0; pagina < 20; pagina++) {
+      const r = await client.listTools(cursor === undefined ? undefined : { params: { cursor } });
+      for (const t of r.tools) {
+        const o = (t as { outputSchema?: unknown }).outputSchema;
+        if (o !== null && typeof o === "object") saidas.set(t.name, o as Record<string, unknown>);
+      }
+      cursor = r.nextCursor;
+      if (cursor === undefined) break;
+    }
+  } catch {
+    // Sem o esquema de saída o seletor só perde as sugestões.
+  }
+  return saidas;
+}
+
 /** O JSON Schema original da ferramenta, tirado do embrulho do AI SDK. */
 function esquemaCru(inputSchema: unknown): Record<string, unknown> | undefined {
   const raw = (inputSchema as { jsonSchema?: unknown } | undefined)?.jsonSchema ?? inputSchema;

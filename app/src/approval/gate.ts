@@ -60,8 +60,12 @@ export type ActionHandler = {
    * sozinha mesmo quando o comentário da mesma ação pode.
    */
   holdForApproval?(payload: unknown): boolean;
-  /** Publica de verdade. Recebe o externalId ja gravado, para ser idempotente. */
-  publish(payload: unknown, externalId: string): Promise<void>;
+  /**
+   * Publica de verdade. Recebe o externalId ja gravado, para ser idempotente.
+   * Pode devolver `{ output }`, a resposta que vira a saida do passo; sem ela a
+   * saida e `{ state }`.
+   */
+  publish(payload: unknown, externalId: string): Promise<void | { output: unknown }>;
   /** Prepara sem publicar. No GitHub, review em estado pendente. */
   draft?(payload: unknown, externalId: string): Promise<void>;
   /**
@@ -161,10 +165,18 @@ export class ApprovalGate {
   }
 
   async submit(req: ActionRequest, mode: ActionMode): Promise<"pending" | "drafted" | "published"> {
+    return (await this.submitComSaida(req, mode)).state;
+  }
+
+  /** Como `submit`, e devolve também a resposta que a publicação trouxe, quando trouxe. */
+  async submitComSaida(
+    req: ActionRequest,
+    mode: ActionMode,
+  ): Promise<{ state: "pending" | "drafted" | "published"; output?: unknown }> {
     const prepared = await this.prepare(req.kind, req.payload, mode, req.target ?? null);
     const { id, externalId } = this.enqueue(db, req, prepared);
 
-    if (prepared.mode === "approve") return "pending";
+    if (prepared.mode === "approve") return { state: "pending" };
 
     const handler = this.handlers.get(req.kind);
     if (!handler) throw new Error(`acao "${req.kind}" sem handler registrado`);
@@ -174,12 +186,12 @@ export class ApprovalGate {
         if (!handler.draft) throw new Error(`acao "${req.kind}" nao suporta modo rascunho`);
         await handler.draft(prepared.payload, externalId);
         await this.close(id, "drafted");
-        return "drafted";
+        return { state: "drafted" };
       }
 
-      await handler.publish(prepared.payload, externalId);
+      const publicada = await handler.publish(prepared.payload, externalId);
       await this.close(id, "approved");
-      return "published";
+      return { state: "published", ...(publicada ? { output: publicada.output } : {}) };
     } catch (err) {
       await this.close(id, "failed");
       throw err;
@@ -200,6 +212,7 @@ export class ApprovalGate {
     if (row.status !== "pending") throw new Error(`aprovacao ${approvalId} ja resolvida: ${row.status}`);
 
     let status: "approved" | "rejected" | "conflict" = decision;
+    let resposta: { output: unknown } | undefined;
     if (decision === "approved") {
       const handler = this.handlers.get(row.kind);
       if (!handler) throw new Error(`acao "${row.kind}" sem handler registrado`);
@@ -216,7 +229,7 @@ export class ApprovalGate {
         .run();
       if (tomada.changes !== 1) throw new Error(`aprovacao ${approvalId} ja esta sendo resolvida`);
       try {
-        await handler.publish(row.payload, row.externalId!);
+        resposta = (await handler.publish(row.payload, row.externalId!)) || undefined;
       } catch (err) {
         if (!(err instanceof PublishConflict)) {
           // Falha antes de sair qualquer coisa: a pendência volta para quem
@@ -238,7 +251,7 @@ export class ApprovalGate {
       if (fechada.changes !== 1) throw new Error(`aprovacao ${approvalId} ja esta sendo resolvida`);
     }
     await this.close(approvalId, status);
-    await settleStep(row.stepId, status);
+    await settleStep(row.stepId, status, resposta);
     if (status !== "approved") {
       await this.handlers.get(row.kind)?.discard?.(row.payload).catch(() => undefined);
     }
@@ -303,7 +316,7 @@ export class ApprovalGate {
  * para sempre. Rejeitar pula o passo em vez de falhar, porque rejeitar é uma
  * resposta válida e o que vem depois ainda pode rodar.
  */
-export async function settleStep(stepId: string, status: string): Promise<{ output: unknown }> {
+export async function settleStep(stepId: string, status: string, resposta?: { output: unknown }): Promise<{ output: unknown }> {
   const endedAt = Math.floor(Date.now() / 1000);
   // Só o passo que ainda espera a decisão. O que foi zerado por uma
   // reexecução já é outra tentativa, e a decisão da pendência antiga não
@@ -314,7 +327,7 @@ export async function settleStep(stepId: string, status: string): Promise<{ outp
     await db.update(schema.steps).set({ status: "skipped", error, output: null, endedAt }).where(esperando);
     return { output: null };
   }
-  const output = { state: status === "drafted" ? "drafted" : "published" };
+  const output = resposta !== undefined && status === "approved" ? resposta.output : { state: status === "drafted" ? "drafted" : "published" };
   await db.update(schema.steps).set({ status: "done", output, endedAt }).where(esperando);
   return { output };
 }

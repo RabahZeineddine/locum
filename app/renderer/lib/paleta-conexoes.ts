@@ -13,6 +13,8 @@ export interface FerramentaDaConexao extends FerramentaClassificavel {
   description?: string;
   /** JSON Schema dos argumentos, quando o servidor publicou. */
   inputSchema?: Record<string, unknown>;
+  /** JSON Schema da resposta estruturada, quando o servidor declarou. */
+  outputSchema?: Record<string, unknown>;
 }
 
 export interface ConexaoParaPaleta {

@@ -75,7 +75,7 @@ import { ArrowLeft, Download, List, Loader2, Play } from "lucide-react";
 import { casaBusca, passoDeFerramenta, secoesDaPaleta, type ItemDaPaleta } from "@/lib/paleta-conexoes";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AgentSpec, Step } from "../../../src/config/types";
-import { esquemasDasConexoes, useFerramentasDasConexoes, type FerramentasDasConexoes } from "./ferramentas-das-conexoes";
+import { esquemasDasConexoes, useFerramentasDasConexoes, useSaidasDoUltimoRun, type FerramentasDasConexoes } from "./ferramentas-das-conexoes";
 import { useTranslation } from "react-i18next";
 import type { RotaId } from "../rotas";
 import { ModalDeAgent } from "./modal-de-agent";
@@ -254,6 +254,7 @@ function EditorCarregado({
 
   const conexoes = useRead("connections.list");
   const ferramentas = useFerramentasDasConexoes();
+  const saidasDoUltimoRun = useSaidasDoUltimoRun(agentId);
   const trackers = useRead("trackers.list");
   const biblioteca = useRead("library.profiles");
   // Relida depois de o painel transformar um passo em agent da biblioteca:
@@ -903,6 +904,7 @@ function EditorCarregado({
           <PainelDoNo
             agents={agentsDaBiblioteca}
             conexoes={ferramentas}
+            saidas={saidasDoUltimoRun}
             abrirAgent={abrirAgent}
             chave={selecionado}
             navegar={navegar}

@@ -40,7 +40,7 @@ import { resumoDoAgent } from "@/lib/resumo-do-agent";
 import { SeletorDeFerramentas, SeletorDeModelo, useCatalogo } from "../editor-agent";
 import type { RotaId } from "../rotas";
 import { Ajuda, Alternador, Campo, CAMPO, Minutos } from "./campos";
-import { type FerramentasDasConexoes } from "./ferramentas-das-conexoes";
+import { esquemasDeSaidaDasConexoes, type FerramentasDasConexoes } from "./ferramentas-das-conexoes";
 import { FormularioDaChamada } from "./formulario-da-chamada";
 import { ComboboxComChips, useListaEmCache, type OpcaoDoCombobox } from "./combobox";
 import { GatilhoDoGithub, ListaDeDescartes } from "./gatilho-github";
@@ -73,9 +73,12 @@ export function PainelDoNo({
   abrirAgent,
   relerBiblioteca,
   conexoes,
+  saidas,
 }: {
   chave: string;
   conexoes: FerramentasDasConexoes;
+  /** A saída de cada passo no último run, para o seletor de referências. */
+  saidas: Readonly<Record<string, unknown>>;
   agents: readonly AgentDaBiblioteca[];
   navegar: (id: RotaId, detalhe?: string) => void;
   /** Abre o agent da biblioteca num modal, sem sair do editor. */
@@ -183,7 +186,7 @@ export function PainelDoNo({
       ) : passo!.type === "logic" ? (
         <ConfigDaLogica passo={passo as LogicStep} rascunho={rascunho} setRascunho={setRascunho} />
       ) : (
-        <ConfigDaAcao passo={passo as PassoDeAcao} conexoes={conexoes} rascunho={rascunho} setRascunho={setRascunho} trackers={trackers} />
+        <ConfigDaAcao passo={passo as PassoDeAcao} conexoes={conexoes} rascunho={rascunho} saidas={saidas} setRascunho={setRascunho} trackers={trackers} />
       )}
 
       <Button className="mt-auto cursor-pointer self-start" data-locum-painel-remover="" onClick={remover} size="sm" variant="ghost">
@@ -983,8 +986,10 @@ function ConfigDaAcao({
   setRascunho,
   trackers,
   conexoes,
+  saidas,
 }: {
   passo: PassoDeAcao;
+  saidas: Readonly<Record<string, unknown>>;
   rascunho: Rascunho;
   setRascunho: (f: (r: Rascunho) => Rascunho) => void;
   trackers: readonly Tracker[];
@@ -1019,7 +1024,7 @@ function ConfigDaAcao({
           </select>
         </Campo>
       )}
-      {passo.action === "mcp.call" ? <ConfigDaChamada conexoes={conexoes} passo={passo} rascunho={rascunho} trocar={trocar} /> : null}
+      {passo.action === "mcp.call" ? <ConfigDaChamada conexoes={conexoes} passo={passo} rascunho={rascunho} saidas={saidas} trocar={trocar} /> : null}
       {passo.action === "http.request" ? <ConfigDoHttp passo={passo} rascunho={rascunho} trocar={trocar} /> : null}
       {passo.action === "teams.react" || passo.action === "slack.react" ? (
         <ConfigDaReacao passo={passo} rascunho={rascunho} trocar={trocar} />
@@ -1285,11 +1290,13 @@ function ConfigDaChamada({
   rascunho,
   trocar,
   conexoes,
+  saidas,
 }: {
   passo: PassoDeAcao;
   rascunho: Rascunho;
   trocar: (novo: PassoDeAcao) => void;
   conexoes: FerramentasDasConexoes;
+  saidas: Readonly<Record<string, unknown>>;
 }) {
   const { t } = useTranslation();
   const params = (passo.params ?? {}) as { server?: string; tool?: string; args?: Record<string, unknown> };
@@ -1383,7 +1390,7 @@ function ConfigDaChamada({
             campos={campos}
             focar={focar}
             mudar={(novo) => mudar({ args: novo })}
-            referencias={referenciasDisponiveis(rascunho, passo.key)}
+            referencias={referenciasDisponiveis(rascunho, passo.key, { saidas, esquemasDeSaida: esquemasDeSaidaDasConexoes(conexoes.porServidor) })}
           />
         </>
       )}

@@ -1,3 +1,4 @@
+import { saidasDosRuns } from "@/lib/automacao";
 import { call, read, useRead } from "@/lib/bridge";
 import type { FerramentaDaConexao } from "@/lib/paleta-conexoes";
 import { useCallback, useEffect, useState } from "react";
@@ -69,4 +70,33 @@ export function esquemasDasConexoes(porServidor: Readonly<Record<string, EstadoD
     for (const f of estado.tools ?? []) if (f.inputSchema !== undefined) esquemas[`${servidor}/${f.name}`] = f.inputSchema;
   }
   return esquemas;
+}
+
+/** `servidor/ferramenta` para o `outputSchema` guardado, que o seletor de referências usa. */
+export function esquemasDeSaidaDasConexoes(porServidor: Readonly<Record<string, EstadoDaConexao>>): Record<string, unknown> {
+  const esquemas: Record<string, unknown> = {};
+  for (const [servidor, estado] of Object.entries(porServidor)) {
+    for (const f of estado.tools ?? []) if (f.outputSchema !== undefined) esquemas[`${servidor}/${f.name}`] = f.outputSchema;
+  }
+  return esquemas;
+}
+
+/**
+ * A saída de cada passo nos últimos runs da automação, para o seletor de
+ * referências mostrar os campos que a pessoa pode clicar. Sem run, vazio.
+ */
+export function useSaidasDoUltimoRun(agentId: string): Record<string, unknown> {
+  const [saidas, setSaidas] = useState<Record<string, unknown>>({});
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+      const runs = await read("runs.list", { agentId, limit: 3 });
+      const detalhes = await Promise.all(runs.map((r) => read("runs.get", r.id)));
+      if (vivo) setSaidas(saidasDosRuns(detalhes.filter((d) => d !== undefined)));
+    })().catch(() => undefined);
+    return () => {
+      vivo = false;
+    };
+  }, [agentId]);
+  return saidas;
 }

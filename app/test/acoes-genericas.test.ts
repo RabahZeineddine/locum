@@ -72,3 +72,36 @@ test("renderParams: marcador sozinho com passo de chave com hífen devolve o val
   assert.deepEqual(renderParams("{{ steps.abrir-tarefa.lista }}", {} as never, saidas), ["a"]);
   assert.equal(renderParams("n={{steps.abrir-tarefa.total}}", {} as never, saidas), "n=3");
 });
+
+const respondendo = (resultado: unknown) => mcpCallHandler({ call: async () => resultado });
+
+test("mcp.call: o texto que é JSON vira a saída do passo já parseado", async () => {
+  const r = await respondendo({ content: [{ type: "text", text: '{"total": 3, "itens": ["a"]}' }] }).publish({ server: "s", tool: "t", args: {} }, "x");
+  assert.deepEqual(r, { output: { total: 3, itens: ["a"] } });
+});
+
+test("mcp.call: texto que não é JSON fica em { text }, e JSON escalar também", async () => {
+  const h = (texto: string) => respondendo({ content: [{ type: "text", text: texto }] }).publish({ server: "s", tool: "t" }, "x");
+  assert.deepEqual(await h("olá, mundo"), { output: { text: "olá, mundo" } });
+  assert.deepEqual(await h("42"), { output: { text: "42" } });
+  assert.deepEqual(await h('{"a":1}\n{"b":2}'), { output: { text: '{"a":1}\n{"b":2}' } });
+});
+
+test("mcp.call: structuredContent tem preferência sobre o texto", async () => {
+  const r = await respondendo({ structuredContent: { ok: true }, content: [{ type: "text", text: '{"ok": false}' }] }).publish({ server: "s", tool: "t" }, "x");
+  assert.deepEqual(r, { output: { ok: true } });
+});
+
+test("mcp.call: resposta sem conteúdo não vira saída", async () => {
+  assert.equal(await respondendo({ content: [] }).publish({ server: "s", tool: "t" }, "x"), undefined);
+  assert.equal(await respondendo(undefined).publish({ server: "s", tool: "t" }, "x"), undefined);
+});
+
+test("mcp.call: resposta grande é cortada com truncado visível", async () => {
+  const { TETO_DA_RESPOSTA } = await import("../src/actions/generic.js");
+  const grande = JSON.stringify({ lista: "x".repeat(TETO_DA_RESPOSTA * 2) });
+  const r = (await respondendo({ content: [{ type: "text", text: grande }] }).publish({ server: "s", tool: "t" }, "x")) as { output: { truncado: boolean; text: string } };
+  assert.equal(r.output.truncado, true);
+  assert.equal(r.output.text.length, TETO_DA_RESPOSTA);
+  assert.ok(grande.startsWith(r.output.text));
+});
