@@ -949,7 +949,7 @@
       "identity": "account {{login}} · {{scopes}}",
       "fineGrained": "fine-grained, permission per repository",
       "when": "checked on {{when}}",
-      "howTo": "Create the token at github.com/settings/tokens. For a classic one, ask for repo to read the diff and read:org for the organization sweep. For a fine-grained one, ask for read on Metadata, Contents and Pull requests, and write on Pull requests only if you want Locum to comment, which still requires your click in the queue.",
+      "howTo": "Recommended permissions: a fine-grained token with Pull requests read (write only if you want Locum to publish a review on GitHub, which still requires your click in the queue), Contents read, Metadata read and, for the team filter, organization Members read; or a classic token with repo and read:org. Create it at github.com/settings/tokens and, when the organization enforces SSO, authorize the token for it.",
       "answered": "answered {{login}} · {{scopes}}",
       "missing": "no token to check: store one above or export GITHUB_TOKEN",
       "failed": "GitHub refused: {{error}}",
@@ -965,7 +965,10 @@
       "ssh": "SSH does not work here: an SSH key only authenticates git (clone, push), and Locum talks to the GitHub API.",
       "tokenOption": "Token (PAT), pasted below and kept in the keychain",
       "linked": "linked to the gh account {{login}} on {{host}}; the token is requested from gh on every use and never copied",
-      "permissions": "Recommended permissions: a fine-grained token with Pull requests read (write only to publish a review on GitHub), Contents read, Metadata read and, for the team filter, organization Members read; or a classic token with repo and read:org. When the organization enforces SSO, authorize the token for it."
+      "ghFailed": "gh did not hand over the token: {{error}}",
+      "otherHost": "another GitHub server, not supported yet",
+      "linkFailed": "could not link: {{error}}",
+      "linkedBadge": "linked to the gh account {{login}}"
     },
     "watched": {
       "title": "Watched repositories",

@@ -29,6 +29,7 @@ afterEach(() => {
   else process.env["GITHUB_TOKEN"] = ambienteAntes;
   delete process.env["FAKE_GH_DIR"];
   delete process.env["FAKE_GH_MODE"];
+  configurarGh({ semGh: false });
 });
 
 function cofre(): SecretService {
@@ -104,7 +105,7 @@ test("gh sumido ou conta deslogada: githubToken lança o erro claro e o estado d
 
   const r = await servico.check();
   assert.equal(r.ok, false);
-  assert.equal(r.ok === false && r.reason === "refused" && /rode gh auth login/.test(r.message), true);
+  assert.equal(r.ok === false && r.reason === "gh" && /rode gh auth login/.test(r.message), true);
 });
 
 test("o token do gh não aparece no cofre, nas settings, nem no erro da conferência", async () => {
@@ -183,6 +184,61 @@ test("o status do serviço traz o erro claro quando o gh vinculado não responde
   const { servico } = montar();
   await servico.usarGh({ ...OCTO, login: "deslogado" });
   process.env["PATH"] = "/usr/bin:/bin";
+  await servico.check();
   const s = await servico.status();
   assert.match(s.erro ?? "", /a conta deslogado do gh não respondeu; rode gh auth login ou troque a conexão/);
+});
+
+test("conta de outro host é recusada, porque o token iria para o api.github.com", async () => {
+  const { servico } = montar();
+  await assert.rejects(servico.usarGh({ ...OCTO, host: "ghe.exemplo.com" }), /outro servidor do GitHub/);
+  assert.equal((await servico.status()).vinculo, null);
+});
+
+test("status não abre processo: só devolve a falha que o cache já tem", async () => {
+  const gh = criarGhFalso();
+  process.env["PATH"] = `${gh.dir}:/usr/bin:/bin`;
+  const { servico } = montar();
+  await servico.usarGh({ ...OCTO, login: "deslogado" });
+
+  assert.equal((await servico.status()).erro, null);
+  assert.equal(gh.chamadas().length, 0);
+
+  await servico.check();
+  assert.equal(gh.chamadas().length, 1);
+  assert.match((await servico.status()).erro ?? "", /rode gh auth login/);
+  assert.equal(gh.chamadas().length, 1);
+});
+
+test("esquecer e vincular de novo pede o token ao gh outra vez", async () => {
+  const gh = criarGhFalso();
+  process.env["PATH"] = `${gh.dir}:/usr/bin:/bin`;
+  const { secrets, servico } = montar();
+
+  await servico.usarGh(OCTO);
+  githubToken(secrets);
+  githubToken(secrets);
+  assert.equal(gh.chamadas().length, 1);
+
+  await servico.clearToken();
+  await servico.usarGh(OCTO);
+  githubToken(secrets);
+  assert.equal(gh.chamadas().length, 2);
+});
+
+test("401 do GitHub faz o token do gh ser pedido de novo", async () => {
+  const gh = criarGhFalso();
+  process.env["PATH"] = `${gh.dir}:/usr/bin:/bin`;
+  const { secrets, servico } = montar(async () => {
+    throw Object.assign(new Error("Bad credentials"), { status: 401 });
+  });
+  await servico.usarGh(OCTO);
+  githubToken(secrets);
+  assert.equal(gh.chamadas().length, 1);
+
+  // check limpa o cache antes de pedir (2 chamadas) e o 401 limpa depois.
+  await servico.check();
+  assert.equal(gh.chamadas().length, 2);
+  githubToken(secrets);
+  assert.equal(gh.chamadas().length, 3);
 });

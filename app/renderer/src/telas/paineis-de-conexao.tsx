@@ -6,6 +6,8 @@ import { quando } from "./sessoes";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
+const ehGithubCom = (conta: { host: string }): boolean => conta.host.toLowerCase() === "github.com";
+
 type EstadoDoGithub = ReadResult<"github.status">;
 type ConferenciaDoGithub = ReadResult<"github.check">;
 type ContaDoGh = ReadResult<"github.ghAccounts">[number];
@@ -166,29 +168,47 @@ export function Github({ embutido = false }: { embutido?: boolean } = {}) {
 
   const estado = recarregado ?? inicial.data ?? null;
   const [configDir, setConfigDir] = useState("");
-  const [contasAlternativas, setContasAlternativas] = useState<ContaDoGh[] | null>(null);
-  const contas = contasAlternativas ?? contasIniciais.data ?? [];
+  // A pasta com que a busca rodou anda junto com as contas dela: é a que o Usar precisa mandar.
+  const [busca, setBusca] = useState<{ configDir: string; contas: ContaDoGh[] } | null>(null);
+  const [erroDoVinculo, setErroDoVinculo] = useState<string | null>(null);
+  const contas = busca?.contas ?? contasIniciais.data ?? [];
+  // A recomendada é a ativa do github.com, que é a única que o Locum sabe usar.
+  const recomendada = contas.find((c) => ehGithubCom(c) && c.active) ?? contas.find(ehGithubCom);
 
   const procurarContas = (): void => {
-    read("github.ghAccounts", configDir.trim() || undefined).then(setContasAlternativas, () => setContasAlternativas([]));
+    const dir = configDir.trim();
+    setErroDoVinculo(null);
+    read("github.ghAccounts", dir || undefined).then(
+      (achadas) => setBusca({ configDir: dir, contas: achadas }),
+      (erro: unknown) => {
+        setBusca({ configDir: dir, contas: [] });
+        setErroDoVinculo(erro instanceof Error ? erro.message : String(erro));
+      },
+    );
   };
 
   const usarGh = (conta: ContaDoGh): void => {
     setSalvando(true);
-    const dir = configDir.trim();
+    setErroDoVinculo(null);
+    const dir = busca?.configDir ?? "";
     call("github.useGh", {
       origem: "gh",
       host: conta.host,
       login: conta.login,
-      ...(contasAlternativas !== null && dir.length > 0 ? { configDir: dir } : {}),
+      ...(dir.length > 0 ? { configDir: dir } : {}),
     })
-      .then(recarregar, () => undefined)
+      .then(
+        () => {
+          // Escolhida a conta, a conferência de sempre mostra login e escopos.
+          void recarregar();
+          conferir();
+        },
+        (erro: unknown) => setErroDoVinculo(erro instanceof Error ? erro.message : String(erro)),
+      )
       .finally(() => {
         setSalvando(false);
         invalidateReads("connections.list");
         invalidateReads("mcp.list");
-        // Escolhida a conta, a conferência de sempre mostra login e escopos.
-        conferir();
       });
   };
 
@@ -261,7 +281,9 @@ export function Github({ embutido = false }: { embutido?: boolean } = {}) {
           <>
             <span className="w-40 shrink-0 truncate font-medium">{estado?.ref ?? ""}</span>
             <Badge variant={estado?.stored === true ? "secondary" : "destructive"}>
-              {t(estado?.stored === true ? "settings.github.stored" : "settings.github.absent")}
+              {estado?.vinculo != null
+                ? t("settings.github.linkedBadge", { login: estado.vinculo.login })
+                : t(estado?.stored === true ? "settings.github.stored" : "settings.github.absent")}
             </Badge>
           </>
         )}
@@ -293,6 +315,12 @@ export function Github({ embutido = false }: { embutido?: boolean } = {}) {
         </div>
       </div>
 
+      {estado?.erro == null ? null : (
+        <p className="text-destructive text-xs" data-locum-github-erro-gh="">
+          {estado.erro}
+        </p>
+      )}
+
       {estado?.vinculo == null ? null : (
         <p className="text-muted-foreground text-xs" data-locum-github-vinculo="">
           {t("settings.github.linked", { login: estado.vinculo.login, host: estado.vinculo.host })}
@@ -314,20 +342,23 @@ export function Github({ embutido = false }: { embutido?: boolean } = {}) {
 
       <div className="flex flex-col gap-2" data-locum-github-como-conectar="">
         <p className="text-xs font-medium">{t("settings.github.howToConnect")}</p>
-        {contas.map((conta, i) => (
+        {contas.map((conta) => (
           <div
             className="flex flex-wrap items-center gap-2 text-sm"
             data-locum-github-conta-gh={`${conta.host}/${conta.login}`}
             key={`${conta.host}/${conta.login}`}
           >
             <span>{t("settings.github.ghAccount", { login: conta.login, host: conta.host })}</span>
-            {i === 0 ? <Badge variant="secondary">{t("settings.github.recommended")}</Badge> : null}
+            {conta === recomendada ? <Badge variant="secondary">{t("settings.github.recommended")}</Badge> : null}
+            {ehGithubCom(conta) ? null : (
+              <span className="text-muted-foreground text-xs">{t("settings.github.otherHost")}</span>
+            )}
             {conta.scopes.length === 0 ? null : (
               <span className="text-muted-foreground text-xs">{conta.scopes}</span>
             )}
             <Button
               data-locum-github-usar-gh=""
-              disabled={salvando}
+              disabled={salvando || !ehGithubCom(conta)}
               onClick={() => usarGh(conta)}
               size="sm"
               variant="secondary"
@@ -357,6 +388,11 @@ export function Github({ embutido = false }: { embutido?: boolean } = {}) {
             {t("settings.github.detect")}
           </Button>
         </div>
+        {erroDoVinculo === null ? null : (
+          <p className="text-destructive text-xs" data-locum-github-erro-vinculo="">
+            {t("settings.github.linkFailed", { error: erroDoVinculo })}
+          </p>
+        )}
         <p className="text-muted-foreground max-w-[68ch] text-xs">{t("settings.github.ssh")}</p>
         <p className="text-xs font-medium">{t("settings.github.tokenOption")}</p>
       </div>
@@ -391,9 +427,6 @@ export function Github({ embutido = false }: { embutido?: boolean } = {}) {
 
       <p className="text-muted-foreground max-w-[68ch] text-xs">
         {t("settings.github.howTo")}
-      </p>
-      <p className="text-muted-foreground max-w-[68ch] text-xs" data-locum-github-permissoes="">
-        {t("settings.github.permissions")}
       </p>
 
       <ResultadoDoGithub conferencia={conferencia} />
@@ -445,7 +478,9 @@ function ResultadoDoGithub({ conferencia }: { conferencia: Conferencia }) {
     >
       {resultado.reason === "missing"
         ? t("settings.github.missing")
-        : t("settings.github.failed", { error: resultado.message })}
+        : resultado.reason === "gh"
+          ? t("settings.github.ghFailed", { error: resultado.message })
+          : t("settings.github.failed", { error: resultado.message })}
     </p>
   );
 }

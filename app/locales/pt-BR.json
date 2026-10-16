@@ -979,7 +979,7 @@
       "identity": "conta {{login}} · {{scopes}}",
       "fineGrained": "escopo fino, permissão por repositório",
       "when": "conferido em {{when}}",
-      "howTo": "Crie o token em github.com/settings/tokens. No clássico, peça repo para ler o diff e read:org para a varredura por organização. No de escopo fino, peça leitura em Metadata, Contents e Pull requests, e escrita em Pull requests só se quiser que o Locum comente, o que continua exigindo o seu clique na fila.",
+      "howTo": "Permissões recomendadas: token de escopo fino com Pull requests em leitura (escrita só se quiser que o Locum publique review no GitHub, o que continua exigindo o seu clique na fila), Contents em leitura, Metadata em leitura e, para o filtro por time, Members da organização em leitura; ou token clássico com repo e read:org. Crie em github.com/settings/tokens e, quando a organização exige SSO, autorize o token nela.",
       "answered": "respondeu {{login}} · {{scopes}}",
       "missing": "não há token para conferir: guarde um acima ou exporte GITHUB_TOKEN",
       "failed": "o GitHub recusou: {{error}}",
@@ -995,7 +995,10 @@
       "ssh": "SSH não serve aqui: a chave SSH só autentica o git (clone, push), e o Locum fala com a API do GitHub.",
       "tokenOption": "Token (PAT), colado abaixo e guardado no keychain",
       "linked": "vinculado à conta {{login}} do gh em {{host}}; o token é pedido ao gh a cada uso e nunca é copiado",
-      "permissions": "Permissões recomendadas: token de escopo fino com Pull requests em leitura (escrita só para publicar review no GitHub), Contents em leitura, Metadata em leitura e, para o filtro por time, Members da organização em leitura; ou token clássico com repo e read:org. Quando a organização exige SSO, autorize o token nela."
+      "ghFailed": "o gh não entregou o token: {{error}}",
+      "otherHost": "outro servidor do GitHub, ainda não suportado",
+      "linkFailed": "não foi possível vincular: {{error}}",
+      "linkedBadge": "vinculado à conta {{login}} do gh"
     },
     "watched": {
       "title": "Repositórios observados",

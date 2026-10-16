@@ -26,7 +26,20 @@ if [ "$1" = "auth" ] && [ "$2" = "status" ]; then
   exit 0
 fi
 if [ "$1" = "auth" ] && [ "$2" = "token" ]; then
-  host="$4"; user="$6"
+  shift 2
+  host=""; user=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --hostname) host="$2"; shift 2 ;;
+      --user) user="$2"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+  if [ -n "$user" ] && [ "$FAKE_GH_ANTIGO" = "1" ]; then
+    echo "unknown flag: --user" >&2
+    exit 1
+  fi
+  if [ -z "$user" ]; then user="$FAKE_GH_ATIVO"; fi
   echo "$host $user $GH_CONFIG_DIR" >> "$FAKE_GH_DIR/chamadas.log"
   if [ "$user" = "deslogado" ]; then
     echo "no oauth token found for $user: valor-secreto-que-nao-pode-vazar" >&2

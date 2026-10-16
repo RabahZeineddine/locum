@@ -5,7 +5,7 @@ import { db as defaultDb, schema } from "../db/index.js";
 import type { ActionHandler } from "../approval/gate.js";
 import type { Authorship, PollFilters, ReviewFinding, ReviewVerdict } from "../config/types.js";
 import type { EventPayload } from "../executor/executor.js";
-import { GITHUB_TOKEN_ENV, githubService, githubToken } from "../services/github-service.js";
+import { GITHUB_TOKEN_ENV, githubService, githubToken, invalidarTokenDoGh } from "../services/github-service.js";
 import { fetchCiStatus, type ChecksClient, type CiStatus } from "./ci-status.js";
 import { limitDiff, type OmittedFile } from "./diff-limit.js";
 import {
@@ -128,6 +128,11 @@ export function octokit(opcoes: { timeoutMs?: number; fetch?: typeof fetch } = {
     ...(timeoutMs === undefined
       ? opcoes.fetch === undefined ? {} : { request: { fetch: opcoes.fetch } }
       : { request: { fetch: comPrazo }, retry: { enabled: false } }),
+  });
+  // 401 com token do gh: o que o cache guarda deixou de valer.
+  cliente.hook.error("request", (erro) => {
+    if ((erro as { status?: number }).status === 401) invalidarTokenDoGh();
+    throw erro;
   });
   return cliente;
 }
