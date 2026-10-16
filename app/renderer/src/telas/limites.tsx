@@ -3,6 +3,8 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { StatusDot } from "@/components/ui/status-dot";
+import { BlocoDeAjustes, Interruptor, LinhaDeAjuste } from "./linhas-de-ajuste";
+import type { TelaProps } from "../rotas";
 import { call, invalidateReads, useRead, type ReadResult } from "@/lib/bridge";
 import { haQuantoTempo, percentual, piorEstado, quandoReseta, quandoSolta } from "@/lib/limites";
 import { rotuloDoProvedor } from "@/lib/rotulos";
@@ -171,7 +173,7 @@ function MarcaDeGateway({ marcados, provedor }: { marcados: string[]; provedor: 
   );
 }
 
-function OrcamentoDoProvedor({ provedor }: { provedor: ProvedorComLimites }) {
+function OrcamentoDoProvedor({ comDica = true, provedor }: { comDica?: boolean; provedor: ProvedorComLimites }) {
   const { t } = useTranslation();
   const [dia, setDia] = useState<string | null>(null);
   const [mes, setMes] = useState<string | null>(null);
@@ -206,7 +208,7 @@ function OrcamentoDoProvedor({ provedor }: { provedor: ProvedorComLimites }) {
       <Button disabled={ocupado || (dia === null && mes === null)} onClick={gravar} size="sm" variant="secondary">
         {t("limits.budget.save")}
       </Button>
-      <span className="text-muted-foreground max-w-[60ch] text-[11px]">{t("limits.budget.hint")}</span>
+      {comDica ? <span className="text-muted-foreground max-w-[60ch] text-[11px]">{t("limits.budget.hint")}</span> : null}
     </div>
   );
 }
@@ -252,8 +254,12 @@ export function LimitesNaHoje() {
   );
 }
 
-/** Configuração > Geral: liga a pausa e ajusta os dois limiares globais. */
-export function ProtecaoDeLimites() {
+/**
+ * Configuração > Limites e orçamento: a proteção (pausar perto do limite), a
+ * leitura de cada provedor com o Atualizar, e o teto de gasto dos provedores
+ * de API.
+ */
+export function AjustesDeLimites({ navegar }: { navegar: TelaProps["navegar"] }) {
   const { t } = useTranslation();
   const lido = useRead("limites.overview");
   const [janela, setJanela] = useState<string | null>(null);
@@ -270,45 +276,95 @@ export function ProtecaoDeLimites() {
   };
   const janelaAtual = janela ?? String(Math.round(v.limiarJanela * 100));
   const orcamentoAtual = orcamento ?? String(Math.round(v.limiarOrcamento * 100));
+  const lidos = v.provedores.filter((p) => p.limites.length > 0 || p.assinatura);
+  const comTeto = v.provedores.filter((p) => p.aceitaOrcamento);
   return (
-    <div className="flex flex-wrap items-center gap-3" data-locum-probe="limites-protecao">
-      <label className="flex items-center gap-2 text-xs">
-        <input checked={v.protecao} onChange={(e) => gravar({ protecao: e.target.checked })} type="checkbox" />
-        {t("limits.settings.enable")}
-      </label>
-      <span className="flex items-center gap-1.5">
-        <label className="text-muted-foreground text-xs" htmlFor="limiar-janela">{t("limits.settings.window")}</label>
-        <Input className="h-7 w-16 text-right tabular-nums" id="limiar-janela" max={100} min={1} onChange={(e) => setJanela(e.target.value)} type="number" value={janelaAtual} />
-      </span>
-      <span className="flex items-center gap-1.5">
-        <label className="text-muted-foreground text-xs" htmlFor="limiar-orcamento">{t("limits.settings.budget")}</label>
-        <Input className="h-7 w-16 text-right tabular-nums" id="limiar-orcamento" max={150} min={1} onChange={(e) => setOrcamento(e.target.value)} type="number" value={orcamentoAtual} />
-      </span>
-      <Button
-        disabled={janela === null && orcamento === null}
-        onClick={() => {
-          // Vazio ou fora de 1 a 100 (150 no orçamento) não grava: zero pausaria tudo o tempo todo.
-          const j = Number(janelaAtual);
-          const o = Number(orcamentoAtual);
-          if (janelaAtual.trim() === "" || orcamentoAtual.trim() === "" || !(j >= 1 && j <= 100) || !(o >= 1 && o <= 150)) {
-            setErro(true);
-            return;
-          }
-          setErro(false);
-          gravar({ limiarJanela: j / 100, limiarOrcamento: o / 100 });
-        }}
-        size="sm"
-        variant="secondary"
-      >
-        {t("limits.settings.save")}
-      </Button>
-      {erro ? <span className="text-sev-critical text-xs">{t("limits.settings.invalid", { max: "100 / 150" })}</span> : null}
-      <label className="flex basis-full items-center gap-2 text-xs" title={t("limits.settings.useFallbackHint")}>
-        <input checked={v.usarSubstituto} onChange={(e) => gravar({ usarSubstituto: e.target.checked })} type="checkbox" />
-        {t("limits.settings.useFallback")}
-      </label>
-      <p className="text-muted-foreground basis-full text-[11px]">{t("limits.settings.useFallbackHint")}</p>
+    <div className="flex flex-col gap-6" data-locum-probe="limites-protecao">
+        <BlocoDeAjustes titulo={t("limits.settings.group")}>
+          <LinhaDeAjuste
+            descricao={t("limits.settings.enableDescription")}
+            dica={t("limits.settings.description")}
+            titulo={t("limits.settings.enable")}
+          >
+            <Interruptor ativo={v.protecao} mudar={(ligado) => gravar({ protecao: ligado })} rotulo={t("limits.settings.enable")} />
+          </LinhaDeAjuste>
+          <LinhaDeAjuste
+            descricao={t("limits.settings.useFallbackDescription")}
+            dica={t("limits.settings.useFallbackHint")}
+            titulo={t("limits.settings.useFallback")}
+          >
+            <Interruptor
+              ativo={v.usarSubstituto}
+              mudar={(ligado) => gravar({ usarSubstituto: ligado })}
+              rotulo={t("limits.settings.useFallback")}
+            />
+          </LinhaDeAjuste>
+          <LinhaDeAjuste
+            abaixo={erro ? <span className="text-sev-critical text-xs">{t("limits.settings.invalid", { max: "100 / 150" })}</span> : undefined}
+            titulo={t("limits.settings.threshold")}
+          >
+            <label className="text-muted-foreground text-xs" htmlFor="limiar-janela">{t("limits.settings.window")}</label>
+            <Input className="h-7 w-16 text-right tabular-nums" id="limiar-janela" max={100} min={1} onChange={(e) => setJanela(e.target.value)} type="number" value={janelaAtual} />
+            <label className="text-muted-foreground text-xs" htmlFor="limiar-orcamento">{t("limits.settings.budget")}</label>
+            <Input className="h-7 w-16 text-right tabular-nums" id="limiar-orcamento" max={150} min={1} onChange={(e) => setOrcamento(e.target.value)} type="number" value={orcamentoAtual} />
+            <Button
+              disabled={janela === null && orcamento === null}
+              onClick={() => {
+                // Vazio ou fora de 1 a 100 (150 no orçamento) não grava: zero pausaria tudo o tempo todo.
+                const j = Number(janelaAtual);
+                const o = Number(orcamentoAtual);
+                if (janelaAtual.trim() === "" || orcamentoAtual.trim() === "" || !(j >= 1 && j <= 100) || !(o >= 1 && o <= 150)) {
+                  setErro(true);
+                  return;
+                }
+                setErro(false);
+                gravar({ limiarJanela: j / 100, limiarOrcamento: o / 100 });
+              }}
+              size="sm"
+              variant="secondary"
+            >
+              {t("limits.settings.save")}
+            </Button>
+          </LinhaDeAjuste>
+        </BlocoDeAjustes>
+
+        {lidos.length === 0 ? null : (
+          <BlocoDeAjustes titulo={t("limits.title")}>
+            {lidos.map((p) => {
+              const recente = maisRecente(p);
+              return (
+                <LinhaDeAjuste
+                  abaixo={
+                    p.limites.length === 0 ? undefined : (
+                      <div className="flex flex-col">
+                        {p.limites.map((l) => <LinhaDoLimite comOrigem={false} key={`${l.chave}:${l.origem}`} limite={l} />)}
+                      </div>
+                    )
+                  }
+                  data-locum-limites-ajuste={p.provedor}
+                  descricao={recente === null ? t("limits.noReadingShort") : t("limits.updated", { when: haQuantoTempo(t, recente) })}
+                  key={p.provedor}
+                  titulo={rotuloDoProvedor(p.provedor)}
+                >
+                  <AtualizarLimites provedor={p} />
+                  <Button onClick={() => navegar("models")} size="sm" variant="ghost">
+                    {t("limits.settings.providers")}
+                  </Button>
+                </LinhaDeAjuste>
+              );
+            })}
+          </BlocoDeAjustes>
+        )}
+
+        {comTeto.length === 0 ? null : (
+          <BlocoDeAjustes titulo={t("limits.budget.title")}>
+            {comTeto.map((p) => (
+              <LinhaDeAjuste dica={t("limits.budget.hint")} key={p.provedor} titulo={rotuloDoProvedor(p.provedor)}>
+                <OrcamentoDoProvedor comDica={false} provedor={p} />
+              </LinhaDeAjuste>
+            ))}
+          </BlocoDeAjustes>
+        )}
     </div>
   );
 }
-

@@ -6169,6 +6169,31 @@ async function checkAtualizacaoNaTela(window: BrowserWindow): Promise<string> {
       `document.querySelector("[data-locum-probe=rota]")?.dataset.ativo === "settings" ? true : null`,
     );
     if (totalDeConferencias() !== conferidas) throw new Error("o clique na versão conferiu com o verificador fora do ar");
+    // O clique na versão abre a Configuração já na seção da atualização.
+    await esperarProbe<true>(
+      window,
+      "settings-na-atualizacao",
+      `document.querySelector("[data-locum-probe=settings]")?.dataset.locumSecaoAtiva === "updates" ? true : null`,
+    );
+    // ↓ na lista de seções troca para a seguinte, e ↑ volta.
+    const tecla = (key: string): Promise<unknown> =>
+      window.webContents.executeJavaScript(
+        `(document.querySelector("[data-locum-secao=updates]")?.focus(), document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: ${JSON.stringify(key)}, bubbles: true })), null)`,
+      );
+    await tecla("ArrowDown");
+    await esperarProbe<true>(
+      window,
+      "settings-seta-para-baixo",
+      `document.querySelector("[data-locum-probe=settings]")?.dataset.locumSecaoAtiva === "limits" ? true : null`,
+    );
+    await window.webContents.executeJavaScript(
+      `(document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true })), null)`,
+    );
+    await esperarProbe<true>(
+      window,
+      "settings-seta-para-cima",
+      `document.querySelector("[data-locum-probe=settings]")?.dataset.locumSecaoAtiva === "updates" ? true : null`,
+    );
 
     await irPara(window, "today");
     usarEstadoDeExemplo({ reason: null, phase: "ready", progress: null, available: nova });
@@ -6371,7 +6396,7 @@ async function checkLanguagePicker(window: BrowserWindow): Promise<string> {
 
   const dicionarios: Record<string, Dicionario> = { en, "pt-BR": ptBR };
 
-  await irPara(window, "settings");
+  await irPara(window, "settings", "language");
 
   const rotulos: string[] = [];
   const daBandeja: string[] = [];
@@ -6857,8 +6882,13 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
     ["sessions", undefined],
     // Uma foto por seção, com o nome dela.
     ["settings", "general"],
+    ["settings", "language"],
+    ["settings", "updates"],
+    ["settings", "limits"],
+    ["settings", "hours"],
     ["settings", "assistant"],
     ["settings", "tools"],
+    ["settings", "advanced"],
     ["connections", undefined],
     ["connections", primeiraConexao],
     ["models", undefined],

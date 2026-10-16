@@ -729,9 +729,9 @@
     "refused": "the bridge refused {{channel}}: {{message}}",
     "language": {
       "title": "Language",
-      "description": "Which language the window, the tray and the notifications speak. The choice applies right away, with no restart.",
+      "description": "Window, tray and notifications. Applies right away, no restart.",
       "system": "Follow the system",
-      "active": "Now in {{language}}.",
+      "active": "Now in {{language}}",
       "refused": "The language did not change: {{message}}"
     },
     "assistantModel": {
@@ -828,8 +828,8 @@
     },
     "fallbacks": {
       "title": "Model substitution",
-      "description": "Where each model falls when the request does not run on \"{{machine}}\".",
-      "empty": "No substitution registered: every step runs the model the spec asks for, or fails.",
+      "description": "When the model does not run on \"{{machine}}\"",
+      "empty": "No substitution registered.",
       "becomes": "becomes",
       "order": "order {{order}}"
     },
@@ -1109,72 +1109,75 @@
       "description": "Locum checks GitHub on launch and every six hours. A new version is downloaded, verified by hash and installed when the app quits.",
       "loading": "loading…",
       "current": "Version {{version}}",
-      "lastCheck": "Last check: {{when}}",
+      "lastCheck": "Last check",
       "check": "Check now",
       "checking": "Checking…",
-      "turnOn": "Turn on",
-      "turnOff": "Turn off",
-      "apply": "Restart and update to {{version}}",
+      "apply": "Restart to update",
       "reason": {
         "disabled": "off",
-        "dev": "running from source; update with git pull",
+        "dev": "running from source (git pull)",
         "not-replaceable": "this app cannot be replaced: {{detail}}"
       },
       "phase": {
         "idle": "not checked yet",
         "checking": "checking",
         "downloading": "downloading {{version}}",
-        "ready": "{{version}} downloaded, installs on quit",
+        "ready": "{{version}} ready to install",
         "uptodate": "up to date",
-        "failed": "the check failed: {{error}}"
+        "failed": "failed: {{error}}"
       },
       "network": {
-        "offline": "offline; Locum checks again in a few minutes",
-        "timeout": "GitHub did not answer in time; Locum checks again in a few minutes",
-        "rede": "the connection dropped; Locum checks again in a few minutes"
-      }
+        "offline": "offline",
+        "timeout": "GitHub did not answer",
+        "rede": "the connection dropped"
+      },
+      "auto": "Update automatically",
+      "autoDescription": "On launch and every 6 hours"
     },
     "sections": {
       "general": "General",
       "assistant": "Assistant",
-      "tools": "Tools"
-    },
-    "sectionLead": {
-      "general": "Language, updates, working hours and where Locum keeps initiative work.",
-      "assistant": "Who you talk to in ⌘J, and which model Locum switches to when the chosen one is unavailable.",
-      "tools": "Locum inside the coding tools you already use, and the terminal that opens sessions."
+      "tools": "Tools",
+      "language": "Language",
+      "updates": "Updates",
+      "limits": "Limits and budget",
+      "hours": "Working hours",
+      "advanced": "Advanced"
     },
     "toolsLocum": {
-      "title": "Locum in your coding tools",
-      "description": "One click registers Locum as an MCP server, and agents, runs and the queue show up inside the tool."
+      "title": "Locum in your tools",
+      "description": "One click registers Locum as an MCP server in the tool."
     },
     "staleDays": {
       "title": "Stalled initiative",
-      "description": "After how many days without an update the Today screen marks an initiative as stalled.",
+      "description": "Days without an update before Today marks it stalled",
       "label": "days",
       "refused": "The value was not saved: {{message}}"
     },
     "workingHours": {
-      "title": "Working Hours & Active Watch",
+      "title": "Working hours",
       "description": "Define business hours when background triggers and watches monitor at full cadence.",
-      "enableLabel": "Enable working hours (Quiet Hours outside business schedule)",
+      "enableLabel": "Use working hours",
       "start": "Start",
       "end": "End",
-      "offHoursLabel": "Outside schedule:",
-      "behaviorPause": "Pause triggers until next business window",
-      "behaviorSlow": "Slow cadence (every 60 min)",
-      "behaviorUnrestricted": "Unrestricted (24/7 continuous)",
-      "saved": "Saved"
+      "offHoursLabel": "Outside schedule",
+      "behaviorPause": "Pause watches",
+      "behaviorSlow": "Slow cadence (60 min)",
+      "behaviorUnrestricted": "Unrestricted (24/7)",
+      "saved": "Saved",
+      "enableDescription": "Outside the schedule, watches wait",
+      "shift": "Schedule",
+      "to": "to"
     },
     "initiativesRoot": {
       "title": "Initiatives root folder",
-      "description": "Where each initiative's context folder lives. Leave empty for the default.",
+      "description": "Empty uses the default",
       "label": "root folder",
       "refused": "The root folder was not saved"
     },
     "sessionTerminal": {
       "title": "Session terminal",
-      "description": "Which terminal opens the Claude session of an initiative.",
+      "description": "Where an initiative's session opens",
       "locum": "Inside Locum",
       "terminal": "Terminal",
       "iterm": "iTerm",
@@ -1183,7 +1186,7 @@
     },
     "claudeCode": {
       "title": "Claude Code",
-      "description": "Lets any Claude Code session use your agents, runs and queue, with the credentials stored here. One click, no file editing.",
+      "description": "Any Claude Code session can use your agents, runs and queue, with the credentials stored here.",
       "connected": "connected",
       "stale": "points to another copy",
       "absent": "not connected",
@@ -1191,7 +1194,8 @@
       "connect": "Connect",
       "reconnect": "Reconnect",
       "connecting": "connecting...",
-      "connectedHint": "Open a new Claude Code session and the Locum tools show up."
+      "connectedHint": "Open a new Claude Code session and the Locum tools show up.",
+      "showCommand": "Show the command"
     },
     "slackOfficial": {
       "title": "Slack through the official server",
@@ -1263,7 +1267,6 @@
     "teamsInbox": {
       "description": "Wakes an agent when someone mentions you or messages you in a Teams chat. Every 5 minutes Locum reads, through Graph and with your account, the chats that changed; any reply the agent proposes waits in the queue. Team channels are not covered yet."
     },
-    "lead": "How Locum behaves: language, updates, the assistant and the code tools.",
     "teamsChannels": {
       "toggle": "Include team channels",
       "toggleHint": "A mention in a chosen channel also wakes the agent, and the approved reply goes into the thread. Adds {{scopes}} to the request, and reading channels needs the tenant admin's consent.",
@@ -1286,8 +1289,15 @@
     "opencode": {
       "title": "opencode",
       "connectedHint": "Open a new opencode session and the Locum tools show up.",
-      "showSnippet": "Show the snippet to paste by hand",
+      "showSnippet": "Show the snippet",
       "snippet": "The button writes this to {{path}}. Or paste it yourself under the \"mcp\" key."
+    },
+    "hint": "Learn more",
+    "shortcut": "Shortcut: Command comma",
+    "groups": {
+      "initiatives": "Initiatives",
+      "sessions": "Sessions",
+      "folders": "Folders"
     }
   },
   "severity": {
@@ -2737,10 +2747,11 @@
       "gateway": "gateway"
     },
     "budget": {
-      "day": "Daily cap (USD)",
-      "month": "Monthly cap (USD)",
+      "day": "Daily (USD)",
+      "month": "Monthly (USD)",
       "save": "Save",
-      "hint": "Computed from the spend Locum records on this provider. Empty means no cap."
+      "hint": "Computed from the spend Locum records on this provider. Empty means no cap.",
+      "title": "Budget"
     },
     "pause": "automations paused until {{time}} ({{provider}} limit)",
     "manualWarning": "The {{provider}} limit holds until {{time}}: this manual run goes ahead anyway and may fail.",
@@ -2749,14 +2760,19 @@
       "title": "Pause automations near the limit",
       "description": "An automatic trigger that would use a provider at its limit waits for the reset, with the event kept, or uses the fallback model. Manual runs always go.",
       "enable": "Pause near the limit",
-      "window": "Subscription window (%)",
-      "budget": "Budget (%)",
+      "window": "Subscription %",
+      "budget": "Budget %",
       "save": "Save",
-      "useFallback": "When the provider is at its limit, use the registered fallback",
+      "useFallback": "Use the fallback at the limit",
       "useFallbackHint": "Only switches to an API provider that has a local budget; otherwise the automation waits for the reset. Off by default.",
       "invalid": "Use a value from 1 to {{max}}.",
       "litellm": "This is a LiteLLM gateway (ask the key budget on Refresh)",
-      "threshold": "Pause from (%)"
-    }
+      "threshold": "Pause from",
+      "group": "Protection",
+      "enableDescription": "Automations wait for the reset",
+      "useFallbackDescription": "Only with a local budget on the API provider",
+      "providers": "Providers"
+    },
+    "noReadingShort": "no reading yet"
   }
 }

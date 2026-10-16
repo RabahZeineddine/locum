@@ -202,7 +202,7 @@ export function Layout() {
           />
           {versao.data === undefined ? null : (
             <div className="pb-1">
-              <AtualizacaoNoRodape aoConfigurar={() => navegar("settings")} versao={versao.data} />
+              <AtualizacaoNoRodape aoConfigurar={() => navegar("settings", "updates")} versao={versao.data} />
             </div>
           )}
         </div>
