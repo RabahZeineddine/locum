@@ -5,7 +5,6 @@ import { i18nService, SUPPORTED_LANGUAGES } from "../services/i18n-service.js";
 import { settingsService } from "../services/settings-service.js";
 import { startupService } from "../services/startup-service.js";
 import { updateService } from "../services/update-service.js";
-import { discoverSkills } from "../skills/loader.js";
 import type { Ambiente } from "./ambiente.js";
 import { def } from "./tool-def.js";
 
@@ -15,7 +14,7 @@ const NA_PROXIMA_SUBIDA = "vale para o app na próxima vez que ele abrir";
 /**
  * A seção geral da Configuração: horário de trabalho, abrir com o login,
  * idioma, atualização automática, e o que o rodapé e o editor mostram
- * (versão e skills).
+ * (a versão).
  */
 export function registerSettingsTools(server: McpServer, amb: Ambiente): void {
   def(server, "get_working_hours", "read",
@@ -67,11 +66,4 @@ export function registerSettingsTools(server: McpServer, amb: Ambiente): void {
     });
 
   def(server, "get_app_version", "read", "The installed version of Locum.", {}, async () => ({ version: amb.appVersion() }));
-
-  def(server, "list_skills", "read",
-    "The skills Locum finds on disk (user, plugins and project), by name and description, to give to an agent.",
-    {}, async () =>
-      [...discoverSkills().values()]
-        .map(({ name, description }) => ({ name, description }))
-        .sort((a, b) => a.name.localeCompare(b.name)));
 }

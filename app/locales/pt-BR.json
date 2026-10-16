@@ -132,7 +132,10 @@
         "refreshing": "atualizando a lista",
         "write": "escrita",
         "count_zero": "nenhuma ferramenta",
-        "matches_zero": "nenhuma encontrada"
+        "matches_zero": "nenhuma encontrada",
+        "summaryRead": "{{on}} de {{total}} ferramentas, só leitura",
+        "summaryWrite": "{{on}} de {{total}} ferramentas, {{writes}} de escrita",
+        "summaryHint": "Escrita marcada altera coisas fora do Locum. Em passo de modelo ela roda sem confirmação."
       },
       "budget": {
         "title": "Orçamento",
@@ -315,7 +318,8 @@
       "noApiModel": "O provedor \"{{provider}}\" não expõe modelo de API.",
       "noResult": "A ferramenta não respondeu: a volta terminou antes do resultado."
     },
-    "accountIgnored": "{{count}} ferramenta(s) da conta Claude ficam de fora: conectores da conta Claude não entram no chat do agent por segurança, porque as configurações da sua conta poderiam liberar escrita sem o seu clique."
+    "accountIgnored": "{{count}} ferramenta(s) da conta Claude ficam de fora: conectores da conta Claude não entram no chat do agent por segurança, porque as configurações da sua conta poderiam liberar escrita sem o seu clique.",
+    "noSkill": "A skill {{name}} não existe mais nesta máquina. Numa execução, o agent falha até ela voltar."
   },
   "bridge": {
     "loading": "lendo pela ponte...",
@@ -584,7 +588,8 @@
     "sectionOperations": "Operações",
     "sectionResources": "Recursos",
     "connections": "Conexões",
-    "models": "Modelos"
+    "models": "Modelos",
+    "skills": "Skills"
   },
   "update": {
     "footer": {
@@ -2634,7 +2639,18 @@
       "counts": "{{read}} de leitura, {{write}} de escrita",
       "writeNote": "Escrita ligada não roda sozinha: no chat do agent ela só roda depois do seu Executar. Numa automação, escrever é um nó de ação com aprovação.",
       "declareRead": "é leitura",
-      "declareReadHint": "Marque quando o nome ou o servidor classificam a ferramenta como escrita, mas ela só lê. Ela passa a rodar sozinha."
+      "declareReadHint": "Marque quando o nome ou o servidor classificam a ferramenta como escrita, mas ela só lê. Ela passa a rodar sozinha.",
+      "summaryRead": "{{on}} de {{total}} ferramentas, só leitura",
+      "summaryWrite": "{{on}} de {{total}} ferramentas, {{writes}} de escrita",
+      "summaryNoList": "{{on}} ligadas, lista ainda não carregada",
+      "summaryHint": "Leitura roda sozinha. Escrita só roda depois do seu Executar no chat, ou como ação com aprovação numa automação. Ferramenta nova do servidor nunca entra ligada.",
+      "newTools_one": "{{count}} ferramenta nova, desligada",
+      "newTools_other": "{{count}} ferramentas novas, desligadas",
+      "implicit": "lista implícita",
+      "implicitHint": "Esta conexão ainda liga toda leitura que o servidor ganhar. Abra o agent e salve para fixar a lista, depois de ver as ferramentas.",
+      "reviewing_one": "Só a ferramenta nova.",
+      "reviewing_other": "Só as {{count}} ferramentas novas.",
+      "showAll": "Ver todas"
     },
     "skills": {
       "none": "Nenhuma skill escolhida.",
@@ -2642,7 +2658,9 @@
       "noneToAdd": "Nenhuma outra skill encontrada neste computador.",
       "add": "Adicionar skill",
       "remove": "Tirar {{name}}",
-      "missing": "não encontrada"
+      "missing": "não encontrada",
+      "missingHint": "A skill saiu desta máquina. O agent mostra este aviso e a execução falha até ela voltar ou você tirá-la daqui.",
+      "manage": "Gerenciar skills"
     },
     "budget": {
       "perRunUsd": "Por execução (USD)",
@@ -2838,5 +2856,63 @@
       "providers": "Provedores"
     },
     "noReadingShort": "sem leitura ainda"
+  },
+  "tools": {
+    "group": {
+      "leitura": "Leitura",
+      "escrita": "Escrita",
+      "count": "{{on}} de {{total}}",
+      "markAll": "Marcar todas",
+      "unmarkAll": "Desmarcar todas"
+    }
+  },
+  "skills": {
+    "importTitle": "Importar skill",
+    "title": "Skills",
+    "lead": "Instruções que o agent leva junto no prompt. As da máquina vêm da origem; as do Locum ficam guardadas aqui.",
+    "refresh": "Atualizar",
+    "import": "Importar",
+    "importHint": "Aceita uma pasta com SKILL.md ou um arquivo .md. Importar copia a skill para o Locum: ela não acompanha mais o arquivo de origem.",
+    "imported": "{{name}} entrou como cópia do Locum. Ela não acompanha mais o arquivo de origem.",
+    "new": "Nova skill",
+    "newLead": "Fica guardada no Locum e qualquer agent pode usá-la.",
+    "search": "Buscar skill, origem ou agent",
+    "loading": "lendo skills...",
+    "emptyTitle": "Nenhuma skill ainda",
+    "emptyBody": "O Locum lê ~/.claude/skills e os plugins instalados. Crie uma aqui ou importe um SKILL.md.",
+    "noMatch": "Nenhuma skill com \"{{termo}}\".",
+    "group": {
+      "minhas": "Minhas",
+      "plugin": "{{plugin}} · v{{version}}",
+      "projeto": "Projeto",
+      "locum": "Locum"
+    },
+    "usedBy_zero": "sem agents",
+    "usedBy_one": "{{count}} agent",
+    "usedBy_other": "{{count}} agents",
+    "back": "Skills",
+    "gone": "A skill {{name}} não existe nesta máquina",
+    "readOnly": "só leitura",
+    "readOnlyHint": "Vem da máquina e acompanha a origem, inclusive a atualização do plugin. Para mudar, edite lá.",
+    "reveal": "Mostrar no Finder",
+    "edit": "Editar",
+    "save": "Salvar",
+    "cancel": "Cancelar",
+    "remove": "Remover",
+    "removeYes": "Remover de vez",
+    "removeConfirm": "Remover {{name}}? Não tem volta.",
+    "removeConfirmAgents_one": "Remover {{name}}? {{count}} agent a usa: ele mostra o aviso e a execução falha até a skill voltar.",
+    "removeConfirmAgents_other": "Remover {{name}}? {{count}} agents a usam: eles mostram o aviso e a execução falha até a skill voltar.",
+    "emptyBodyText": "Sem texto depois do cabeçalho.",
+    "agents": "Agents que a usam",
+    "noAgents": "Nenhum agent usa esta skill.",
+    "form": {
+      "name": "Nome",
+      "nameHint": "Minúsculas, dígitos e hífens, até 64 caracteres. Não pode repetir o nome de uma skill da máquina.",
+      "description": "Descrição",
+      "descriptionHint": "Uma linha dizendo quando usar a skill.",
+      "body": "Corpo (markdown)",
+      "create": "Criar skill"
+    }
   }
 }

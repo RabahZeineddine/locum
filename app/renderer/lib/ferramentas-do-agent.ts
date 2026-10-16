@@ -1,3 +1,5 @@
+import { ehLeituraDa, escolhaDe, ligadaPorPadrao, type EscolhaDeFerramenta } from "../../src/config/leitura.js";
+
 export type Area = "teams" | "mail" | "calendar" | "files" | "other";
 
 /** A ordem em que as áreas aparecem. */
@@ -34,4 +36,54 @@ export function filtrarFerramentas<T extends { name: string; description?: strin
 export function agruparPorArea<T extends { name: string }>(lista: readonly T[], total = lista.length): { area: Area | null; itens: T[] }[] {
   if (total <= LIMITE_PARA_AGRUPAR) return lista.length === 0 ? [] : [{ area: null, itens: [...lista] }];
   return AREAS.map((area) => ({ area, itens: lista.filter((f) => areaDaFerramenta(f.name) === area) })).filter((g) => g.itens.length > 0);
+}
+
+export type TipoDeFerramenta = "leitura" | "escrita";
+
+/** Leitura e escrita, nesta ordem, sem o grupo que ficou vazio. */
+export function agruparPorTipo<T>(lista: readonly T[], eLeitura: (f: T) => boolean): { tipo: TipoDeFerramenta; itens: T[] }[] {
+  const grupos: { tipo: TipoDeFerramenta; itens: T[] }[] = [
+    { tipo: "leitura", itens: lista.filter(eLeitura) },
+    { tipo: "escrita", itens: lista.filter((f) => !eLeitura(f)) },
+  ];
+  return grupos.filter((g) => g.itens.length > 0);
+}
+
+export interface ContagemDaConexao {
+  total: number;
+  ligadas: number;
+  /** Ligadas que escrevem. */
+  escrita: number;
+  /** Ferramentas do servidor que o mapa da conexão não cita: na lista explícita, nascem desligadas. */
+  novas: number;
+  /** Havia lista guardada de todos os servidores. Sem ela, `total` é 0 e `ligadas` conta só o que está marcado. */
+  conhecida: boolean;
+}
+
+/** O que o cabeçalho recolhido da conexão diz, a partir da última lista guardada de cada servidor. */
+export function contarDaConexao(
+  conexao: { tools: Readonly<Record<string, EscolhaDeFerramenta>>; leituraPadrao?: "todas" | "limitada" },
+  servidores: readonly { nome: string; ferramentas: readonly { name: string; readOnlyHint?: boolean; destructiveHint?: boolean }[] | null }[],
+): ContagemDaConexao {
+  const conhecida = servidores.length > 0 && servidores.every((s) => s.ferramentas !== null);
+  if (!conhecida) {
+    return { total: 0, ligadas: Object.values(conexao.tools).filter((e) => e !== false).length, escrita: 0, novas: 0, conhecida: false };
+  }
+  const explicita = conexao.leituraPadrao === "limitada" && Object.keys(conexao.tools).length > 0;
+  let total = 0;
+  let ligadas = 0;
+  let escrita = 0;
+  let novas = 0;
+  for (const { nome, ferramentas } of servidores) {
+    for (const f of ferramentas ?? []) {
+      const escolha = escolhaDe(conexao.tools, nome, f.name);
+      const ligada = escolha === undefined ? ligadaPorPadrao(f, conexao.leituraPadrao) : escolha !== false;
+      total += 1;
+      if (escolha === undefined && explicita) novas += 1;
+      if (!ligada) continue;
+      ligadas += 1;
+      if (!(ehLeituraDa(f) || escolha === "read")) escrita += 1;
+    }
+  }
+  return { total, ligadas, escrita, novas, conhecida };
 }

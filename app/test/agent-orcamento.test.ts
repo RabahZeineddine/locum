@@ -97,7 +97,7 @@ test("as skills do agent entram no system do passo", async () => {
   const perfil = `skill-${randomUUID().slice(0, 8)}`;
   await biblioteca.saveProfile({ spec: { id: perfil, name: "Skill", model: "ollama/x", skills: ["revisao"] } });
   const catalogo = new Map<string, LoadedSkill>([
-    ["revisao", { name: "revisao", description: "d", body: "Confira os testes.", origin: "/x/SKILL.md", hash: "abc" }],
+    ["revisao", { name: "revisao", description: "d", body: "Confira os testes.", origin: "/x/SKILL.md", hash: "abc", fonte: { tipo: "minhas" } }],
   ]);
   const { modelo, chamadas } = modeloQueGasta(1);
   const { executor, runId } = await fluxoComAgent(biblioteca, perfil, modelo, catalogo);

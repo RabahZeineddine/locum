@@ -40,6 +40,7 @@ export function ChatDoAgent({ id, modelo, versao, naoSalvo }: { id: string; mode
   const [outro, setOutro] = useState(false);
   const [resumido, setResumido] = useState(false);
   const [semServidor, setSemServidor] = useState<ConexaoSemServidor[]>([]);
+  const [semSkill, setSemSkill] = useState<string[]>([]);
   const [contaIgnorada, setContaIgnorada] = useState(0);
   const [carregado, setCarregado] = useState(false);
   const [rascunho, setRascunho] = useState("");
@@ -78,6 +79,7 @@ export function ChatDoAgent({ id, modelo, versao, naoSalvo }: { id: string; mode
         setOutro(estado.outroProcesso);
         setResumido(estado.resumido);
         setSemServidor(estado.semServidor);
+        setSemSkill(estado.semSkill);
         setContaIgnorada(estado.contaIgnorada);
         setCarregado(true);
         for (const evento of guardados) if (evento.seq > estado.seq) aplicar(evento);
@@ -187,12 +189,18 @@ export function ChatDoAgent({ id, modelo, versao, naoSalvo }: { id: string; mode
         ) : null}
       </div>
 
-      {semServidor.length === 0 && !naoSalvo && contaIgnorada === 0 ? null : (
+      {semServidor.length === 0 && semSkill.length === 0 && !naoSalvo && contaIgnorada === 0 ? null : (
         <div className="flex flex-col gap-1 border-b border-border px-3 py-2 text-xs text-muted-foreground" data-locum-agent-chat-avisos="">
           {semServidor.map((c) => (
             <p className="flex items-start gap-1.5" key={c.connectionId}>
               <StatusDot className="mt-[5px]" estado="aviso" />
               {t("agentChat.noServer", { connection: nomes.get(c.connectionId) ?? c.connectionId, reason: c.motivo })}
+            </p>
+          ))}
+          {semSkill.map((nome) => (
+            <p className="flex items-start gap-1.5" data-locum-agent-chat-sem-skill={nome} key={nome}>
+              <StatusDot className="mt-[5px]" estado="aviso" />
+              {t("agentChat.noSkill", { name: nome })}
             </p>
           ))}
           {contaIgnorada === 0 ? null : (

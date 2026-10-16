@@ -133,7 +133,7 @@ export function fixarLista<C extends ConexaoDoAgent>(
       tools[`${nome}/${f.name}`] = atual ?? (conexao.leituraPadrao === "limitada" ? false : ehLeituraDa(f));
     }
   }
-  return { ...conexao, tools, leituraPadrao: "limitada" };
+  return { ...conexao, tools, leituraPadrao: "limitada" as const };
 }
 
 /** Valor de `AgentConnection.tools`: liga, desliga, ou liga declarando que a ferramenta lê. */

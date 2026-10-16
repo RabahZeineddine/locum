@@ -130,7 +130,10 @@
         "refreshing": "refreshing the list",
         "write": "write",
         "count_zero": "no tools",
-        "matches_zero": "no matches"
+        "matches_zero": "no matches",
+        "summaryRead": "{{on}} of {{total}} tools, read only",
+        "summaryWrite": "{{on}} of {{total}} tools, {{writes}} write",
+        "summaryHint": "A selected write tool changes things outside Locum. In a model step it runs without confirmation."
       },
       "budget": {
         "title": "Budget",
@@ -306,7 +309,8 @@
       "noApiModel": "The provider \"{{provider}}\" does not expose an API model.",
       "noResult": "The tool did not answer: the turn ended before the result."
     },
-    "accountIgnored": "{{count}} Claude account tool(s) are left out: Claude account connectors do not enter the agent chat for safety, because your account settings could allow writes without your click."
+    "accountIgnored": "{{count}} Claude account tool(s) are left out: Claude account connectors do not enter the agent chat for safety, because your account settings could allow writes without your click.",
+    "noSkill": "The skill {{name}} no longer exists on this machine. In a run, the agent fails until it is back."
   },
   "bridge": {
     "loading": "reading through the bridge...",
@@ -565,7 +569,8 @@
     "sectionOperations": "Operations",
     "sectionResources": "Resources",
     "connections": "Connections",
-    "models": "Models"
+    "models": "Models",
+    "skills": "Skills"
   },
   "update": {
     "footer": {
@@ -2578,7 +2583,18 @@
       "counts": "{{read}} read, {{write}} write",
       "writeNote": "A write that is on does not run by itself: in the agent's chat it only runs after you click Run. In an automation, writing is an action node with approval.",
       "declareRead": "is a read",
-      "declareReadHint": "Tick it when the name or the server classifies the tool as a write but it only reads. It then runs by itself."
+      "declareReadHint": "Tick it when the name or the server classifies the tool as a write but it only reads. It then runs by itself.",
+      "summaryRead": "{{on}} of {{total}} tools, read only",
+      "summaryWrite": "{{on}} of {{total}} tools, {{writes}} write",
+      "summaryNoList": "{{on}} on, list not loaded yet",
+      "summaryHint": "Reads run on their own. Writes only run after your Run in the chat, or as an action with approval in an automation. A tool the server adds later never comes on by itself.",
+      "newTools_one": "{{count}} new tool, off",
+      "newTools_other": "{{count}} new tools, off",
+      "implicit": "implicit list",
+      "implicitHint": "This connection still turns on every read the server gains. Open the agent and save to pin the list, after looking at the tools.",
+      "reviewing_one": "Only the new tool.",
+      "reviewing_other": "Only the {{count}} new tools.",
+      "showAll": "Show all"
     },
     "skills": {
       "none": "No skill chosen.",
@@ -2586,7 +2602,9 @@
       "noneToAdd": "No other skill found on this computer.",
       "add": "Add skill",
       "remove": "Remove {{name}}",
-      "missing": "not found"
+      "missing": "not found",
+      "missingHint": "The skill is gone from this machine. The agent shows this warning and runs fail until it is back or you remove it here.",
+      "manage": "Manage skills"
     },
     "budget": {
       "perRunUsd": "Per run (USD)",
@@ -2779,5 +2797,63 @@
       "providers": "Providers"
     },
     "noReadingShort": "no reading yet"
+  },
+  "tools": {
+    "group": {
+      "leitura": "Read",
+      "escrita": "Write",
+      "count": "{{on}} of {{total}}",
+      "markAll": "Select all",
+      "unmarkAll": "Clear all"
+    }
+  },
+  "skills": {
+    "importTitle": "Import skill",
+    "title": "Skills",
+    "lead": "Instructions the agent carries in its prompt. Machine skills come from their origin; Locum skills are kept here.",
+    "refresh": "Refresh",
+    "import": "Import",
+    "importHint": "Takes a folder with SKILL.md or a .md file. Importing copies the skill into Locum: it no longer follows the original file.",
+    "imported": "{{name}} came in as a Locum copy. It no longer follows the original file.",
+    "new": "New skill",
+    "newLead": "Kept in Locum, and any agent can use it.",
+    "search": "Search skill, origin or agent",
+    "loading": "reading skills...",
+    "emptyTitle": "No skills yet",
+    "emptyBody": "Locum reads ~/.claude/skills and the installed plugins. Create one here or import a SKILL.md.",
+    "noMatch": "No skill matches \"{{termo}}\".",
+    "group": {
+      "minhas": "Mine",
+      "plugin": "{{plugin}} · v{{version}}",
+      "projeto": "Project",
+      "locum": "Locum"
+    },
+    "usedBy_zero": "no agents",
+    "usedBy_one": "{{count}} agent",
+    "usedBy_other": "{{count}} agents",
+    "back": "Skills",
+    "gone": "The skill {{name}} does not exist on this machine",
+    "readOnly": "read only",
+    "readOnlyHint": "It comes from the machine and follows its origin, plugin updates included. To change it, edit it there.",
+    "reveal": "Show in Finder",
+    "edit": "Edit",
+    "save": "Save",
+    "cancel": "Cancel",
+    "remove": "Remove",
+    "removeYes": "Remove for good",
+    "removeConfirm": "Remove {{name}}? There is no undo.",
+    "removeConfirmAgents_one": "Remove {{name}}? {{count}} agent uses it: it shows the warning and runs fail until the skill is back.",
+    "removeConfirmAgents_other": "Remove {{name}}? {{count}} agents use it: they show the warning and runs fail until the skill is back.",
+    "emptyBodyText": "No text after the header.",
+    "agents": "Agents that use it",
+    "noAgents": "No agent uses this skill.",
+    "form": {
+      "name": "Name",
+      "nameHint": "Lowercase, digits and dashes, up to 64 characters. It cannot repeat the name of a machine skill.",
+      "description": "Description",
+      "descriptionHint": "One line saying when to use the skill.",
+      "body": "Body (markdown)",
+      "create": "Create skill"
+    }
   }
 }

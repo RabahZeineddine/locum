@@ -297,7 +297,7 @@ test("skill que sumiu da máquina aparece como aviso, e a conversa segue", async
   const base = perfilDe("skill");
   const c = montar("skill", {
     perfil: { ...base, version: { ...base.version, spec } },
-    deps: { skills: new Map([["presente", { name: "presente", description: "d", body: "b", origin: "/x", hash: "h", fonte: { tipo: "minhas" } }]]) },
+    deps: { skills: new Map([["presente", { name: "presente", description: "d", body: "b", origin: "/x", hash: "h", fonte: { tipo: "minhas" as const } }]]) },
   });
   assert.deepEqual((await c.conversas.estado("skill")).semSkill, ["sumiu"]);
   await c.conversas.enviar("skill", "oi");
@@ -429,7 +429,7 @@ test("o Claude Code que morre com cartão pendente expira o cartão, e o clique 
 });
 
 test("as skills do agent entram no system, como na consulta entre agents", async () => {
-  const skills = new Map([["estilo", { name: "estilo", description: "d", body: "Responda sempre em haicai.", origin: "teste", hash: "h" }]]);
+  const skills = new Map([["estilo", { name: "estilo", description: "d", body: "Responda sempre em haicai.", origin: "teste", hash: "h", fonte: { tipo: "minhas" as const } }]]);
   const perfil = perfilDe("com-skill");
   perfil.version.spec.skills = [{ skill: "estilo", when: { always: true } }];
   const c = montar("com-skill", { perfil, deps: { skills } });

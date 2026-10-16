@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { agruparPorArea, areaDaFerramenta, filtrarFerramentas } from "../renderer/lib/ferramentas-do-agent.js";
+import { agruparPorArea, agruparPorTipo, areaDaFerramenta, contarDaConexao, filtrarFerramentas } from "../renderer/lib/ferramentas-do-agent.js";
 
 test("a área sai das palavras do nome", () => {
   assert.equal(areaDaFerramenta("list-chats"), "teams");
@@ -32,4 +32,26 @@ test("servidor pequeno não agrupa, e o grande agrupa na ordem das áreas, sem g
     agruparPorArea(muitas, 100).map((g) => [g.area, g.itens.map((i) => i.name)]),
     [["teams", ["list-chats"]], ["mail", ["list-mail"]], ["other", ["x"]]],
   );
+});
+
+test("agrupar por tipo põe a leitura primeiro e some com o grupo vazio", () => {
+  const lista = [{ name: "create_issue" }, { name: "get_issue" }, { name: "list_commits" }];
+  const eLeitura = (f: { name: string }): boolean => /^(get|list)_/.test(f.name);
+  assert.deepEqual(
+    agruparPorTipo(lista, eLeitura).map((g) => [g.tipo, g.itens.map((f) => f.name)]),
+    [["leitura", ["get_issue", "list_commits"]], ["escrita", ["create_issue"]]],
+  );
+  assert.deepEqual(agruparPorTipo([{ name: "get_x" }], eLeitura).map((g) => g.tipo), ["leitura"]);
+  assert.deepEqual(agruparPorTipo([], eLeitura), []);
+});
+
+test("a contagem da conexão diz quantas ligadas, quantas de escrita e quantas ferramentas novas", () => {
+  const catalogo = [{ nome: "gh", ferramentas: [{ name: "get_a" }, { name: "get_b" }, { name: "create_c" }, { name: "get_nova" }] }];
+  const conexao = { connectionId: "github", leituraPadrao: "limitada" as const, tools: { "gh/get_a": true, "gh/get_b": false, "gh/create_c": true } };
+  assert.deepEqual(contarDaConexao(conexao, catalogo), { total: 4, ligadas: 2, escrita: 1, novas: 1, conhecida: true });
+  // Sem lista guardada não há total: só o que está marcado.
+  assert.deepEqual(contarDaConexao(conexao, [{ nome: "gh", ferramentas: null }]), { total: 0, ligadas: 2, escrita: 0, novas: 0, conhecida: false });
+  // Regra antiga: leitura sem escolha liga, e nada é "novo".
+  const antiga = { tools: {} };
+  assert.deepEqual(contarDaConexao(antiga, catalogo), { total: 4, ligadas: 3, escrita: 0, novas: 0, conhecida: true });
 });

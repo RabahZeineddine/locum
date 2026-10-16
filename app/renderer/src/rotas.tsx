@@ -1,4 +1,4 @@
-import { Blocks, Bot, Cpu, Inbox as InboxIcon, ListTree, Settings, Sun, Target, TerminalSquare, Workflow } from "lucide-react";
+import { Blocks, Bot, Cpu, Inbox as InboxIcon, ListTree, Settings, Sparkles, Sun, Target, TerminalSquare, Workflow } from "lucide-react";
 import type { ComponentType } from "react";
 import type { Antigos } from "@/lib/router";
 import { Agents } from "./telas/agents";
@@ -11,6 +11,7 @@ import { Inbox } from "./telas/inbox";
 import { Initiatives } from "./telas/initiatives";
 import { Modelos } from "./telas/modelos";
 import { Sessoes } from "./telas/sessoes";
+import { Skills } from "./telas/skills";
 
 /**
  * O que uma tela recebe do layout.
@@ -48,6 +49,7 @@ export const ROTAS = [
 
   // RECURSOS & CONTEXTO
   { id: "agents", rotulo: "nav.agents", icone: Bot, Tela: Agents, secao: "recursos" },
+  { id: "skills", rotulo: "nav.skills", icone: Sparkles, Tela: Skills, secao: "recursos" },
   { id: "initiatives", rotulo: "nav.initiatives", icone: Target, Tela: Initiatives, secao: "recursos" },
   { id: "connections", rotulo: "nav.connections", icone: Blocks, Tela: Conexoes, secao: "recursos" },
   { id: "models", rotulo: "nav.models", icone: Cpu, Tela: Modelos, secao: "recursos" },

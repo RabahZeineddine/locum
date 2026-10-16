@@ -143,11 +143,11 @@ test("limitada nunca liga nada por padrão, e sem modo toda leitura liga", () =>
 
 test("fixar a lista liga o que hoje vale ligado, desliga o resto e fecha a porta para ferramenta nova", () => {
   const catalogo = [{ nome: "gh", ferramentas: [{ name: "get_issue" }, { name: "list_commits" }, { name: "create_comment" }, { name: "get_pr" }] }];
-  const antes = { connectionId: "github", tools: { "gh/get_pr": false, create_comment: true } };
+  const antes: { connectionId: string; tools: Record<string, boolean> } = { connectionId: "github", tools: { "gh/get_pr": false, create_comment: true } };
   const depois = fixarLista(antes, catalogo);
   assert.deepEqual(depois, {
     connectionId: "github",
-    leituraPadrao: "limitada",
+    leituraPadrao: "limitada" as const,
     tools: { "gh/get_issue": true, "gh/list_commits": true, "gh/create_comment": true, "gh/get_pr": false },
   });
   // Ferramenta que o servidor ganhar depois não está no mapa, e na lista explícita ausente é desligada.
