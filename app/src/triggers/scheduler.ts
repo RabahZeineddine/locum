@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
 import { type Authorship, type PollFilters, type TriggerConfig, type WorkingHoursConfig } from "../config/types.js";
 import { executionService, type ExecutionService } from "../services/execution-service.js";
+import { AgentService } from "../services/agent-service.js";
 import { mcpService, type McpService } from "../services/mcp-service.js";
 import { pollMcpServer } from "../sources/mcp-poll.js";
 import { proximaOcorrencia } from "./cron.js";
@@ -529,7 +530,18 @@ export class Scheduler {
       }
 
       case "teams-inbox": {
-        const caixa = await this.teamsInbox(config, { db: this.db, triggerId: trigger.id });
+        // O teto do agent vale para o filtro com IA: estourado, ele adia em vez de gastar mais.
+        const orcamento =
+          config.filtroIa === undefined
+            ? undefined
+            : (await new AgentService(this.db).getLatestVersion(trigger.agentId))?.spec.budget;
+        const caixa = await this.teamsInbox(config, {
+          db: this.db,
+          triggerId: trigger.id,
+          agentId: trigger.agentId,
+          ...(orcamento === undefined ? {} : { orcamento }),
+        });
+        await registrarDescartes(this.db, trigger.id, caixa.descartes ?? [], at);
         const runs = await this.runsFor(trigger, caixa.inWindow, at, wait);
         return { events: caixa.eventIds.length, runs, detail: slackInboxDetail(caixa) };
       }
@@ -727,13 +739,15 @@ function slackInboxDetail(
   caixa: Pick<SlackInboxOutcome, "eventIds" | "seen"> & {
     errors: { kind: string; error: string }[];
     descartes?: { pr: string; motivo: string }[];
+    avisos?: string[];
   },
 ): string | undefined {
   const partes: string[] = [];
   const repetidos = caixa.seen - caixa.eventIds.length;
   if (repetidos > 0) partes.push(`${repetidos} mensagem(ns) ja conhecida(s)`);
   for (const falha of caixa.errors) partes.push(`${falha.kind}: ${falha.error}`);
-  for (const d of caixa.descartes ?? []) partes.push(`PR ${d.pr} sem review: ${d.motivo}`);
+  for (const aviso of caixa.avisos ?? []) partes.push(aviso);
+  for (const d of caixa.descartes ?? []) partes.push(`${d.pr.includes("#") ? "PR " : ""}${d.pr} sem review: ${d.motivo}`);
   return partes.length === 0 ? undefined : partes.join("; ");
 }
 

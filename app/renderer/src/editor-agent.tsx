@@ -342,10 +342,16 @@ export function SeletorDeModelo({
   trocar,
   valor,
   larguraTotal = false,
+  automatico,
+  excluir = [],
 }: {
   catalogo: Catalogo | null;
   trocar: (v: string) => void;
   valor: string;
+  /** Texto da primeira opção, que vale `""`: a máquina escolhe. Ausente, o modelo é obrigatório. */
+  automatico?: string;
+  /** Provedores que não aparecem na lista, por não servirem a este uso. */
+  excluir?: readonly string[];
   /** Ocupa a largura da coluna (Agents). Sem isto o seletor tem a largura do conteúdo, e o aviso fica ao lado. */
   larguraTotal?: boolean;
 }) {
@@ -367,7 +373,7 @@ export function SeletorDeModelo({
   // que é o caso em que o passo de fato não roda.
   const fora = valor !== "" && !conhecidos.has(valor);
   const desligado = fora && !catalogo.some((c) => valor.startsWith(`${c.provedor}/`));
-  const comModelo = catalogo.filter((c) => c.modelos.length > 0);
+  const comModelo = catalogo.filter((c) => c.modelos.length > 0 && !excluir.includes(c.provedor));
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -378,6 +384,7 @@ export function SeletorDeModelo({
         title={valor}
         value={valor}
       >
+        {automatico !== undefined && <option value="">{automatico}</option>}
         {fora && <option value={valor}>{rotuloDoModelo(valor)}</option>}
         {comModelo.map((c) => (
           <optgroup key={c.provedor} label={rotuloDoProvedor(c.provedor)}>

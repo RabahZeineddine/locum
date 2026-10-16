@@ -47,7 +47,10 @@ export class NativeRuntime implements Runtime {
       // O mesmo teto do `claude -p`. Sem ele, um provedor que para de
       // responder deixava o run em `running` para sempre, e run em andamento
       // não aceita reexecução.
-      abortSignal: AbortSignal.timeout(NATIVE_TIMEOUT_MS),
+      abortSignal:
+        req.abortSignal === undefined
+          ? AbortSignal.timeout(NATIVE_TIMEOUT_MS)
+          : AbortSignal.any([AbortSignal.timeout(NATIVE_TIMEOUT_MS), req.abortSignal]),
       // Cada volta do laço conta o que chamou e o que voltou. Sem o tempo de
       // cada ferramenta: o AI SDK entrega a volta inteira de uma vez.
       onStepFinish: (volta) => {

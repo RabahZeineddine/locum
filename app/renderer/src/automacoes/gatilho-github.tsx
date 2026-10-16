@@ -423,7 +423,7 @@ function DescartesReais({ triggerId }: { triggerId?: string }) {
   );
 }
 
-function ListaDeDescartes({ triggerId }: { triggerId: string }) {
+export function ListaDeDescartes({ triggerId }: { triggerId: string }) {
   const { t, i18n } = useTranslation();
   const lida = useRead("triggers.discards", triggerId);
   if (lida.status === "loading") return null;

@@ -26,6 +26,10 @@ export type RuntimeRequest = {
   temperature?: number;
   /** JSON Schema. Presente, a saida e validada. */
   outputSchema?: Record<string, unknown>;
+  /** Cancela a chamada: o runtime de CLI mata o processo, o de API aborta a requisição. */
+  abortSignal?: AbortSignal;
+  /** Manda o prompt pela entrada padrão em vez de argumento, para ele não aparecer no `ps`. Só o Claude Code usa. */
+  promptPorStdin?: boolean;
   /**
    * O que o passo vai fazendo, para a tela acompanhar: cada ferramenta chamada,
    * o resultado dela e o que o modelo escreve entre uma e outra.
