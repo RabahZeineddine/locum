@@ -2315,10 +2315,12 @@ async function checkAutomacaoNova(window: BrowserWindow): Promise<void> {
 }
 
 /**
- * A paleta do editor tem uma seção por conexão ligada, com as ferramentas dela
- * e o selo de leitura ou escrita; a busca filtra; criar um nó a partir da
- * ferramenta abre o formulário com servidor e ferramenta preenchidos. Nada é
- * gravado: a automação nova só existe como provisória na janela.
+ * A paleta do editor tem uma entrada por app (o servidor de brinquedo é o
+ * próprio app); clicar cria o nó sem operação e o painel pergunta "O que
+ * fazer?", com as ferramentas e o selo de leitura ou escrita; escolher abre o
+ * formulário com servidor e ferramenta preenchidos. A busca da paleta acha a
+ * operação e cria o nó já com ela. Nada é gravado: a automação nova só existe
+ * como provisória na janela.
  */
 async function checkPaletaPorConexao(window: BrowserWindow): Promise<void> {
   const { FIXTURE_SERVER } = await import("../src/fixtures/mcp-fixture.js");
@@ -2339,7 +2341,16 @@ async function checkPaletaPorConexao(window: BrowserWindow): Promise<void> {
       campo.dispatchEvent(new Event("input", { bubbles: true }));
       return null;
     })()`);
-  const ferramenta = (nome: string): string => `[data-locum-paleta-ferramenta="${FIXTURE_SERVER}/${nome}"]`;
+  const operacao = (nome: string): string => `[data-locum-operacao="${FIXTURE_SERVER}/${nome}"]`;
+  const naBusca = (nome: string): string => `[data-locum-paleta-operacao="${FIXTURE_SERVER}/${nome}"]`;
+  const app = `[data-locum-paleta-app="${FIXTURE_SERVER}"]`;
+  const classe = (seletor: string, atributo: string): Promise<unknown> => js(`document.querySelector(${JSON.stringify(seletor)})?.dataset.${atributo} ?? null`);
+  const confereNo = async (nome: string): Promise<void> => {
+    await esperar("o formulario da ferramenta", () => existe('[data-locum-arg="text"]'));
+    const servidor = await js(`document.querySelector("[data-locum-acao-servidor]")?.value ?? null`);
+    const tool = await js(`document.querySelector("[data-locum-acao-ferramenta]")?.value ?? null`);
+    if (servidor !== FIXTURE_SERVER || tool !== nome) throw new Error(`o no criado pela paleta veio com ${String(servidor)}/${String(tool)}`);
+  };
   try {
     await irPara(window, "automations");
     await esperar("a lista de automacoes", () => existe("[data-locum-automacao-nova]"));
@@ -2349,29 +2360,57 @@ async function checkPaletaPorConexao(window: BrowserWindow): Promise<void> {
     await clicar("[data-locum-automacao-criar]");
     await esperar("o editor da automacao nova", () => existe("[data-locum-probe=automacao-editor]"));
 
-    await esperar("a secao do servidor de brinquedo", () => existe(`[data-locum-paleta-conexao="${FIXTURE_SERVER}"]`));
-    // Sem lista guardada a seção pede para carregar; com ela, as ferramentas já estão lá.
-    if (await existe(`[data-locum-paleta-carregar="${FIXTURE_SERVER}"]`)) await clicar(`[data-locum-paleta-carregar="${FIXTURE_SERVER}"]`);
-    await esperar("as ferramentas da conexao na paleta", () => existe(`[data-locum-paleta-conexao="${FIXTURE_SERVER}"] [data-locum-paleta-ferramenta]`));
+    await esperar("a entrada do app de brinquedo na paleta", () => existe(app));
+    if (await existe('[data-locum-paleta="mcp.call"]')) throw new Error("a paleta ainda tem o no fixo de acao em app");
+    if (await existe("[data-locum-paleta-conexao]")) throw new Error("a paleta ainda lista as ferramentas da conexao sem escolher o app");
 
+    // Clicar no app: nó sem operação, e o painel pergunta o que fazer.
+    await clicar(app);
+    await esperar("o painel O que fazer?", () => existe(`[data-locum-o-que-fazer="${FIXTURE_SERVER}"]`));
+    if (await existe('[data-locum-arg="text"]')) throw new Error("o no sem operacao ja mostrou um formulario");
+    if (!(await existe("[data-locum-no-vazio]"))) throw new Error("o card do no sem operacao nao pediu para escolher o que fazer");
+    // Sem lista guardada o painel pede para carregar; com ela, as operações já estão lá.
+    if (await existe(`[data-locum-operacao-carregar="${FIXTURE_SERVER}"]`)) await clicar(`[data-locum-operacao-carregar="${FIXTURE_SERVER}"]`);
+    await esperar("as operacoes do app", () => existe(operacao("echo")));
+    if ((await classe(operacao("pid"), "locumOperacaoClasse")) !== "leitura") throw new Error("o pid, anotado como leitura, nao veio com o selo de leitura");
+    if ((await classe(operacao("echo"), "locumOperacaoClasse")) !== "escrita") throw new Error("o echo, sem anotacao, nao veio como escrita");
+    await clicar(operacao("echo"));
+    await confereNo("echo");
+    if (await existe("[data-locum-no-vazio]")) throw new Error("o card continuou pedindo a operacao depois de escolhida");
+    if (!(await existe("[data-locum-no-automacao] [data-locum-marca]"))) throw new Error("o card do passo de app veio sem o icone do app");
+
+    // O topo do painel troca a operação do mesmo app, e o formulário acompanha.
+    await clicar("[data-locum-troca-operacao]");
+    await esperar("a lista de operacoes no topo do painel", () => existe(`[data-locum-troca-lista] ${operacao("pid")}`));
+    await clicar(`[data-locum-troca-lista] ${operacao("pid")}`);
+    await esperar("a ferramenta pid no painel", async () => (await js(`document.querySelector("[data-locum-acao-ferramenta]")?.value ?? null`)) === "pid");
+
+    // "reagir" acha a ação do Teams e a do Slack, de apps diferentes, e o clique cria o nó já com a operação.
+    await buscar("reagir");
+    await esperar("as reacoes do Teams e do Slack na busca", async () => (await existe('[data-locum-paleta-operacao="teams.react"]')) && (await existe('[data-locum-paleta-operacao="slack.react"]')));
+    await clicar('[data-locum-paleta-operacao="slack.react"]');
+    await esperar("o no de reacao do Slack", () => existe("[data-locum-troca-operacao]"));
+    if (!(await js(`document.querySelector("[data-locum-troca-operacao]")?.textContent?.includes("Slack") ?? false`))) throw new Error("o topo do painel nao diz o app da operacao");
+    // O app desconectado avisa na própria entrada, como o componente fixo de antes.
+    // O Slack mostra ou não o aviso conforme a conexão, igual no gatilho de antes e na entrada do app.
+    const avisaNoGatilho = await existe('[data-locum-paleta="slack-channel"] [data-locum-paleta-aviso]');
+    if ((await existe('[data-locum-paleta-app="slack"] [data-locum-paleta-aviso]')) !== avisaNoGatilho) throw new Error("a entrada do app Slack nao avisa como o gatilho do Slack");
+    for (const id of ["teams", "slack", "github", "tracker", "http"]) {
+      await buscar("");
+      await esperar(`a entrada do app ${id}`, () => existe(`[data-locum-paleta-app="${id}"]`));
+    }
+
+    // A busca da paleta acha a operação, e o clique cria o nó já com ela.
     await buscar("pid");
-    await esperar("a ferramenta pid na busca", () => existe(ferramenta("pid")));
-    const classe = (nome: string): Promise<unknown> => js(`document.querySelector(${JSON.stringify(ferramenta(nome))})?.dataset.locumPaletaClasse ?? null`);
-    if ((await classe("pid")) !== "leitura") throw new Error("o pid, anotado como leitura, nao veio com o selo de leitura");
-    await buscar("echo");
-    await esperar("a ferramenta echo na busca", () => existe(ferramenta("echo")));
-    if ((await classe("echo")) !== "escrita") throw new Error("o echo, sem anotacao, nao veio como escrita");
-    if (await existe('[data-locum-paleta="mcp.call"]')) throw new Error("a busca por echo deixou o no fixo de acao em app na paleta");
+    await esperar("a operacao pid na busca", () => existe(naBusca("pid")));
+    if ((await classe(naBusca("pid"), "locumPaletaClasse")) !== "leitura") throw new Error("o pid na busca nao veio como leitura");
     await buscar("zzz-nao-existe");
-    await esperar("a busca sem resultado esconder a conexao", async () => !(await existe(`[data-locum-paleta-conexao="${FIXTURE_SERVER}"]`)));
+    await esperar("a busca sem resultado esconder o app", async () => !(await existe(app)));
     await buscar("echo");
-    await esperar("a ferramenta echo de volta", () => existe(ferramenta("echo")));
-
-    await clicar(ferramenta("echo"));
-    await esperar("o formulario da ferramenta", () => existe('[data-locum-arg="text"]'));
-    const servidor = await js(`document.querySelector("[data-locum-acao-servidor]")?.value ?? null`);
-    const tool = await js(`document.querySelector("[data-locum-acao-ferramenta]")?.value ?? null`);
-    if (servidor !== FIXTURE_SERVER || tool !== "echo") throw new Error(`o no criado pela paleta veio com ${String(servidor)}/${String(tool)}`);
+    await esperar("a operacao echo na busca", () => existe(naBusca("echo")));
+    await clicar(naBusca("echo"));
+    await esperar("o no criado pela busca", () => existe('[data-locum-arg="text"]'));
+    await confereNo("echo");
   } finally {
     await js(`(Object.keys(localStorage).filter((k) => k.startsWith("locum.rascunho-automacao") || k.startsWith("locum.automacao-provisoria")).forEach((k) => localStorage.removeItem(k)), null)`);
   }
@@ -7564,6 +7603,82 @@ async function capturarSkills(janela: BrowserWindow): Promise<void> {
 }
 
 /**
+ * O editor com a paleta por app, nas cenas que mostram a mudança: a paleta, a
+ * busca por "reagir", o painel "O que fazer?", o nó configurado com o topo
+ * "App · Operação" e o canvas com apps diferentes. `prefixo` separa antes e depois.
+ */
+async function capturarNoPorApp(janela: BrowserWindow, destino: string, prefixo: string): Promise<void> {
+  const { FIXTURE_SERVER } = await import("../src/fixtures/mcp-fixture.js");
+  const pausa = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+  const foto = async (nome: string): Promise<void> => {
+    await pausa(600);
+    writeFileSync(join(destino, `${prefixo}${nome}.png`), (await janela.webContents.capturePage()).toPNG());
+  };
+  const js = (codigo: string): Promise<unknown> => janela.webContents.executeJavaScript(codigo);
+  const existe = (seletor: string): Promise<boolean> => js(`document.querySelector(${JSON.stringify(seletor)}) !== null`) as Promise<boolean>;
+  const clicar = (seletor: string): Promise<boolean> =>
+    js(`(() => { const e = document.querySelector(${JSON.stringify(seletor)}); e?.click(); return e !== null; })()`) as Promise<boolean>;
+  const buscar = (texto: string): Promise<unknown> =>
+    js(`(() => {
+      const campo = document.querySelector("[data-locum-paleta-busca]");
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(campo, ${JSON.stringify(texto)});
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+      return null;
+    })()`);
+  await js(`(localStorage.clear(), sessionStorage.clear(), null)`);
+  try {
+    await irPara(janela, "automations");
+    await pausa(1200);
+    await clicar("[data-locum-automacao-nova]");
+    await pausa(600);
+    await clicar("[data-locum-modelo=blank]");
+    await pausa(300);
+    await clicar("[data-locum-automacao-criar]");
+    await pausa(1800);
+
+    await foto("no-1-paleta");
+    await buscar("reagir");
+    await foto("no-2-busca-reagir");
+    await buscar("");
+
+    // Um app com ações do Locum: o painel pergunta o que fazer.
+    await clicar('[data-locum-paleta-app="slack"]');
+    await pausa(600);
+    await foto("no-3-o-que-fazer");
+    await clicar('[data-locum-operacao="slack.react"]');
+    await pausa(600);
+    await foto("no-4-no-configurado");
+
+    // Um app de servidor MCP: as ferramentas por recurso, e o formulário do schema.
+    await clicar(`[data-locum-paleta-app="${FIXTURE_SERVER}"]`);
+    await pausa(600);
+    if (await existe(`[data-locum-operacao-carregar="${FIXTURE_SERVER}"]`)) {
+      await clicar(`[data-locum-operacao-carregar="${FIXTURE_SERVER}"]`);
+      await pausa(2500);
+    }
+    await foto("no-3b-o-que-fazer-servidor");
+    await clicar(`[data-locum-operacao="${FIXTURE_SERVER}/echo"]`);
+    await pausa(600);
+    await foto("no-4b-formulario");
+
+    // O canvas com apps diferentes.
+    await clicar('[data-locum-paleta-app="teams"]');
+    await pausa(400);
+    await clicar('[data-locum-operacao="teams.react"]');
+    await pausa(400);
+    await clicar('[data-locum-paleta-app="github"]');
+    await pausa(400);
+    await clicar('[data-locum-operacao="github.review_comment"]');
+    await pausa(400);
+    await clicar(".react-flow__pane");
+    await clicar(".react-flow__controls-fitview");
+    await foto("no-5-canvas");
+  } finally {
+    await js(`(Object.keys(localStorage).filter((k) => k.startsWith("locum.rascunho-automacao") || k.startsWith("locum.automacao-provisoria")).forEach((k) => localStorage.removeItem(k)), null)`);
+  }
+}
+
+/**
  * O editor de automação do modelo "Revisar PR do Teams", nos momentos em que
  * as queixas apareceram: o gatilho com o modo de link de PR, o painel do passo
  * de IA com agent da biblioteca, sair com mudança não salva e reabrir depois.
@@ -7718,6 +7833,12 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
   const destino = flagValue("--capturas-em") ?? join(process.cwd(), "capturas");
   mkdirSync(destino, { recursive: true });
   janela.setSize(1280, 860);
+
+  // `--capturas-so no-por-app` fotografa a paleta por app e o nó com operação.
+  if (flagValue("--capturas-so") === "no-por-app") {
+    await capturarNoPorApp(janela, destino, flagValue("--capturas-prefixo") ?? "");
+    return;
+  }
 
   // `--capturas-so editor` fotografa só o editor de automação, para comparar antes e depois de uma mudança.
   if (flagValue("--capturas-so") === "editor") {
@@ -8126,7 +8247,7 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
     await irPara(janela, "automations", primeiroAgent);
     await new Promise((resolve) => setTimeout(resolve, 1200));
     await janela.webContents.executeJavaScript(
-      `(document.querySelector('[data-locum-paleta="mcp.call"]')?.click(), null)`,
+      `(document.querySelector('[data-locum-paleta-app="slack"]')?.click(), null)`,
     );
     await new Promise((resolve) => setTimeout(resolve, 800));
     writeFileSync(join(destino, "automations-acao.png"), (await janela.webContents.capturePage()).toPNG());

@@ -42,6 +42,9 @@ import type { RotaId } from "../rotas";
 import { Ajuda, Alternador, Campo, CAMPO, Minutos } from "./campos";
 import { esquemasDeSaidaDasConexoes, type FerramentasDasConexoes } from "./ferramentas-das-conexoes";
 import { FormularioDaChamada } from "./formulario-da-chamada";
+import { OQueFazer } from "./o-que-fazer";
+import { TrocaDeOperacao } from "./troca-de-operacao";
+import { passoDaOperacao, reconhecerPasso, temTrocaDeOperacao } from "@/lib/apps-da-paleta";
 import { ComboboxComChips, useListaEmCache, type OpcaoDoCombobox } from "./combobox";
 import { GatilhoDoGithub, ListaDeDescartes } from "./gatilho-github";
 import { escopoDoGatilho } from "@/lib/titulo-do-gatilho";
@@ -74,9 +77,12 @@ export function PainelDoNo({
   relerBiblioteca,
   conexoes,
   saidas,
+  avisoDoApp,
 }: {
   chave: string;
   conexoes: FerramentasDasConexoes;
+  /** "conecte em Conexões" para um app do Locum desconectado, ou nada. */
+  avisoDoApp: (app: string) => string | null;
   /** A saída de cada passo no último run, para o seletor de referências. */
   saidas: Readonly<Record<string, unknown>>;
   agents: readonly AgentDaBiblioteca[];
@@ -121,6 +127,19 @@ export function PainelDoNo({
       data-locum-painel={chave}
     >
       <div className="flex items-center gap-2">
+        {passo !== undefined && passo.type === "action" && temTrocaDeOperacao(passo) ? (
+          <>
+            <TrocaDeOperacao
+            avisoDoApp={avisoDoApp}
+            conexoes={conexoes}
+            passo={passo}
+            spec={rascunho.spec}
+            trocar={(novo) => setRascunho((r) => ({ ...r, spec: trocarPasso(r.spec, passo.key, novo) }))}
+          />
+          {ajudaDoNo === null ? null : <Ajuda texto={ajudaDoNo} />}
+        </>
+        ) : (
+          <>
         <Selo app={cabecalho.app} id={cabecalho.id} tamanho="sm" />
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="flex items-center gap-1.5 text-[13px] font-medium">
@@ -135,6 +154,8 @@ export function PainelDoNo({
             </span>
           )}
         </span>
+          </>
+        )}
         <button
           aria-label={t("automations.panel.close")}
           className="text-muted-foreground hover:text-foreground cursor-pointer rounded p-1"
@@ -186,7 +207,15 @@ export function PainelDoNo({
       ) : passo!.type === "logic" ? (
         <ConfigDaLogica passo={passo as LogicStep} rascunho={rascunho} setRascunho={setRascunho} />
       ) : (
-        <ConfigDaAcao passo={passo as PassoDeAcao} conexoes={conexoes} rascunho={rascunho} saidas={saidas} setRascunho={setRascunho} trackers={trackers} />
+        <ConfigDaAcao
+          avisoDoApp={avisoDoApp}
+          conexoes={conexoes}
+          passo={passo as PassoDeAcao}
+          rascunho={rascunho}
+          saidas={saidas}
+          setRascunho={setRascunho}
+          trackers={trackers}
+        />
       )}
 
       <Button className="mt-auto cursor-pointer self-start" data-locum-painel-remover="" onClick={remover} size="sm" variant="ghost">
@@ -987,8 +1016,10 @@ function ConfigDaAcao({
   trackers,
   conexoes,
   saidas,
+  avisoDoApp,
 }: {
   passo: PassoDeAcao;
+  avisoDoApp: (app: string) => string | null;
   saidas: Readonly<Record<string, unknown>>;
   rascunho: Rascunho;
   setRascunho: (f: (r: Rascunho) => Rascunho) => void;
@@ -1024,7 +1055,15 @@ function ConfigDaAcao({
           </select>
         </Campo>
       )}
-      {passo.action === "mcp.call" ? <ConfigDaChamada conexoes={conexoes} passo={passo} rascunho={rascunho} saidas={saidas} trocar={trocar} /> : null}
+      {passo.action === "mcp.call" && reconhecerPasso(passo).operacao.tipo === "vazia" && reconhecerPasso(passo).app !== "mcp" ? (
+        <OQueFazer
+          app={reconhecerPasso(passo).app}
+          avisoDoApp={avisoDoApp}
+          conexoes={conexoes}
+          aoEscolher={(operacao) => trocar(passoDaOperacao(rascunho.spec, operacao, passo) as PassoDeAcao)}
+        />
+      ) : null}
+      {passo.action === "mcp.call" && (reconhecerPasso(passo).operacao.tipo !== "vazia" || reconhecerPasso(passo).app === "mcp") ? <ConfigDaChamada conexoes={conexoes} passo={passo} rascunho={rascunho} saidas={saidas} trocar={trocar} /> : null}
       {passo.action === "http.request" ? <ConfigDoHttp passo={passo} rascunho={rascunho} trocar={trocar} /> : null}
       {passo.action === "teams.react" || passo.action === "slack.react" ? (
         <ConfigDaReacao passo={passo} rascunho={rascunho} trocar={trocar} />
@@ -1349,12 +1388,14 @@ function ConfigDaChamada({
                 onChange={(e) => {
                   const nova = lista.find((f) => f.name === e.target.value);
                   const nomePadrao = passo.name === "" || passo.name === "Ação em app";
-                  // Trocar a ferramenta recalcula o modo: escrita sem `autoEscrita` volta para aprovação.
-                  mudar(
-                    { tool: e.target.value, args: {} },
-                    nova !== undefined && nomePadrao ? humanizar(nova.name) : undefined,
-                    modoParaFerramenta(passo.mode, params.autoEscrita === true, nova),
-                  );
+                  // Trocar a ferramenta recalcula o modo, e `autoEscrita` não passa para a nova: é escolha da pessoa para aquela ferramenta.
+                  const { autoEscrita: _antigo, ...resto } = params;
+                  trocar({
+                    ...passo,
+                    ...(nova !== undefined && nomePadrao ? { name: humanizar(nova.name) } : {}),
+                    mode: modoParaFerramenta(passo.mode, false, nova),
+                    params: { ...resto, tool: e.target.value, args: {} },
+                  });
                 }}
                 value={params.tool ?? ""}
               >
