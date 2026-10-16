@@ -1124,6 +1124,8 @@ async function checkRenderer(): Promise<string> {
     const ponte = await esperarPonte(window);
     // Por ultimo de proposito: o exame recarrega a janela, e recarregar antes
     // jogaria fora o destino em que os outros exames deixaram a pagina.
+    const limites = await checkLimitesNaTela(window);
+    console.log(limites);
     const atualizacao = await checkAtualizacaoNaTela(window);
     const idioma = await checkI18n(window);
 
@@ -6004,6 +6006,67 @@ async function recarregar(window: BrowserWindow): Promise<void> {
 }
 
 /**
+ * Os limites dos provedores nas telas Hoje e Modelos, com um retrato falso.
+ *
+ * Nada sai para a rede nem chama o `claude`: o retrato entra pelo serviço, como
+ * entraria a leitura de uma chamada, e a janela confere que a linha aparece com
+ * o uso e o ponto de estado certos. `LOCUM_LIMITES_CAPTURAS` pede as capturas.
+ */
+async function checkLimitesNaTela(window: BrowserWindow): Promise<string> {
+  const { limitesService } = await import("../src/services/limites-service.js");
+  const { settingsService } = await import("../src/services/settings-service.js");
+  const pasta = process.env.LOCUM_LIMITES_CAPTURAS;
+  const foto = async (nome: string): Promise<void> => {
+    if (pasta === undefined || pasta === "") return;
+    mkdirSync(pasta, { recursive: true });
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    writeFileSync(join(pasta, `${nome}.png`), (await window.webContents.capturePage()).toPNG());
+  };
+  const ler = (seletor: string): Promise<string | null> =>
+    window.webContents.executeJavaScript(`document.querySelector(${JSON.stringify(seletor)})?.innerText ?? null`) as Promise<string | null>;
+  const esperar = async (seletor: string): Promise<string> => {
+    const limite = Date.now() + 8000;
+    while (Date.now() < limite) {
+      const texto = await ler(seletor);
+      if (texto !== null) return texto;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    throw new Error(`a janela não mostrou ${seletor}`);
+  };
+  const agora = Date.now();
+  const em = (min: number): number => Math.floor((agora + min * 60_000) / 1000);
+  const janela = (chave: string, uso: number, resetaEm: number) => ({ chave, tipo: "janela" as const, uso, unidade: "%" as const, resetaEm, origem: "assinatura" as const });
+  try {
+    await limitesService.registrar("claude-code", [janela("5h", 0.89, em(90)), janela("semana", 0.15, em(3 * 24 * 60))], agora - 4 * 60_000);
+    await limitesService.registrar("openai", [{ chave: "rpm", tipo: "taxa", uso: 0.2, usado: 20, teto: 100, unidade: "req", resetaEm: em(1), origem: "cabecalho-api" }], agora - 60_000);
+    await limitesService.definirOrcamento("anthropic", { diaUsd: 10, mesUsd: 100 });
+    await limitesService.gastar("anthropic", { usd: 8.1, tokens: 1000 });
+
+    await irPara(window, "today");
+    const hoje = await esperar("[data-locum-limites-hoje]");
+    if (!hoje.includes("89%") || !hoje.includes("15%")) throw new Error(`Hoje não mostrou os dois limites do Claude Code: ${hoje}`);
+    await foto("hoje-limites");
+
+    await irPara(window, "models");
+    const modelos = await esperar("[data-locum-limites-provedor=anthropic]");
+    if (!modelos.includes("81%")) throw new Error(`Modelos não mostrou o orçamento do dia da anthropic: ${modelos}`);
+    await foto("modelos-limites");
+
+    // Acima do limiar: a automação espera, e Hoje diz até quando.
+    await limitesService.registrar("claude-code", [janela("5h", 0.97, em(90))], agora);
+    await irPara(window, "inbox");
+    await irPara(window, "today");
+    const pausa = await esperar("[data-locum-pausa=claude-code]");
+    if (!/pausa|paused/.test(pausa)) throw new Error(`Hoje não anunciou a pausa: ${pausa}`);
+    await foto("hoje-pausa");
+    return "limites: Hoje e Modelos com o retrato falso, uso e pausa na tela";
+  } finally {
+    await settingsService.remove("limites.retrato");
+    await settingsService.remove("limites.config");
+  }
+}
+
+/**
  * O rodapé da barra lateral e o modal da atualização, sem rede.
  *
  * Não há release de verdade para baixar na fumaça, e sair para o GitHub é
@@ -6609,6 +6672,8 @@ async function serveMcp(): Promise<void> {
 
   const { providerService } = await import("../src/services/provider-service.js");
   await providerService.loadSecrets();
+  // Gasto e leitura de limite de quem roda modelo por este processo também contam.
+  (await import("../src/services/limites-padrao.js")).ligarLimites();
 
   const { closeMcpPool } = await import("../src/executor/build.js");
   const { buildMcpServer } = await import("../src/mcp-server/server.js");

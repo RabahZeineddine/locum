@@ -68,6 +68,8 @@ export const READ_CHANNELS = [
   "sessions.list",
   // As sessões do Claude Code da máquina. Só lê `~/.claude`, nunca escreve.
   "claudeSessions.list",
+  // Limites de cada provedor: leitura do que o app já guardou, sem chamar provedor.
+  "limites.overview",
   // Prompts salvos, para a aba de acoes da iniciativa copiar.
   "prompts.list",
   "runs.list",
@@ -224,6 +226,10 @@ export const ACTION_CHANNELS = [
   "mcp.setCredential",
   "mcp.tools",
   "claudeAccount.list",
+  // Atualizar limite é clique: no Claude Code custa uma chamada mínima.
+  "limites.refresh",
+  "limites.setBudget",
+  "limites.setConfig",
   "mcp.setEnabled",
   // Aceitar, manter, desvincular e mostrar o arquivo: decisão de quem olhou o aviso.
   "mcp.aceitarOrigem",

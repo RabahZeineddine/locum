@@ -5,6 +5,8 @@ import { join } from "node:path";
 import type { McpServerConfig } from "../config/types.js";
 import { claudeBinary } from "./claude-binary.js";
 import { ehLeitura, flagsDaConta } from "./claude-account.js";
+import { lerLinhaDeLimite, lerTextoDeLimite, limitesDaLeitura } from "./claude-limites.js";
+import { publicarLimites } from "./limites-lidos.js";
 import { cortar, nomeDaFerramenta, type Atividade, type Runtime, type RuntimeRequest, type RuntimeResult } from "./types.js";
 
 /** O mesmo teto de sempre para um passo inteiro, com todas as voltas de ferramenta. */
@@ -187,6 +189,7 @@ export class ClaudeCodeRuntime implements Runtime {
         if (resto.length > 0) leitor.linha(resto);
         if (leitor.final !== null) return pronto();
         // O claude trata o SIGTERM e sai com 143, então o sinal não serve para saber se foi o prazo.
+        publicarLeituraDeLimite(lerTextoDeLimite(erros));
         const motivo = estourou ? `passou de ${TIMEOUT_MS / 60000} min` : `saiu com ${codigo ?? sinal}`;
         falhou(new Error(`claude -p ${motivo}: ${erros.trim().slice(-800) || "sem detalhe"}`));
       });
@@ -208,6 +211,12 @@ export class ClaudeCodeRuntime implements Runtime {
       toolsUsed: [...leitor.ferramentas],
     };
   }
+}
+
+/** Entrega a leitura do Claude Code ao serviço dos limites, já no modelo único. */
+export function publicarLeituraDeLimite(leitura: ReturnType<typeof lerLinhaDeLimite>, agora: number = Date.now()): void {
+  if (leitura === null) return;
+  publicarLimites("claude-code", limitesDaLeitura(leitura, agora), agora);
 }
 
 type Final = {
@@ -238,6 +247,9 @@ export class LeitorDoStream {
 
   linha(texto: string): void {
     if (texto.trim() === "") return;
+    // Toda chamada por assinatura traz o retrato dos limites; o que não for
+    // reconhecido é ignorado e a chamada segue.
+    publicarLeituraDeLimite(lerLinhaDeLimite(texto));
     let evento: { type?: string; message?: { content?: unknown } } & Final;
     try {
       evento = JSON.parse(texto);

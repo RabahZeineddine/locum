@@ -10,7 +10,8 @@ import { pontoDoEstado } from "@/lib/estado-do-ponto";
 import { MODELOS, rascunhoDoModelo, type ModeloId } from "@/lib/automacao";
 import { call, read, useRead, type ReadResult } from "@/lib/bridge";
 import { semPrefixoDoIpc } from "@/lib/erro-da-ponte";
-import { rotuloDeEstado } from "@/lib/rotulos";
+import { quandoSolta } from "@/lib/limites";
+import { rotuloDeEstado, rotuloDoProvedor } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
 import { Loader2, Play, Plus, Upload } from "lucide-react";
 import { useState, type DragEvent, type ReactNode } from "react";
@@ -314,9 +315,14 @@ export function LinhaDaAutomacao({
   const rodar = (): void => {
     setAgindo("rodar");
     call("automations.runNow", linha.id).then(
-      () => {
+      (r) => {
         setAgindo(null);
-        setAviso(t("automations.list.started"));
+        // Manual sempre roda; com o provedor no limite, só avisa.
+        setAviso(
+          r.aviso === undefined
+            ? t("automations.list.started")
+            : `${t("automations.list.started")} ${t("limits.manualWarning", { provider: rotuloDoProvedor(r.aviso.provedor), time: quandoSolta(r.aviso.ate, i18n.language) })}`,
+        );
         aoMudar();
       },
       (e: unknown) => {

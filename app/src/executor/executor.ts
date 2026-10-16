@@ -148,7 +148,33 @@ export class Executor {
     return ids;
   }
 
-  async execute(runId: string): Promise<"done" | "paused" | "failed"> {
+  /** Veio de gatilho que não é o botão: só essas execuções cedem ao limite do provedor. */
+  private async ehAutomatica(runId: string): Promise<boolean> {
+    if (this.manuais.has(runId)) return false;
+    const [run] = await db.select({ triggerId: schema.runs.triggerId }).from(schema.runs).where(eq(schema.runs.id, runId));
+    if (run?.triggerId == null) return false;
+    const [gatilho] = await db.select({ kind: schema.triggers.kind }).from(schema.triggers).where(eq(schema.triggers.id, run.triggerId));
+    return gatilho !== undefined && gatilho.kind !== "manual";
+  }
+
+  /** Runs que uma pessoa pediu (reexecução de passo): nunca cedem ao limite do provedor. */
+  private readonly manuais = new Set<string>();
+
+  /**
+   * `manual` marca quem pediu: reexecutar um passo é clique de pessoa, mesmo num
+   * run que nasceu de gatilho automático, e a origem do run não decide isso.
+   */
+  async execute(runId: string, opcoes: { manual?: boolean } = {}): Promise<"done" | "paused" | "failed"> {
+    if (opcoes.manual !== true) return this.executarRun(runId);
+    this.manuais.add(runId);
+    try {
+      return await this.executarRun(runId);
+    } finally {
+      this.manuais.delete(runId);
+    }
+  }
+
+  private async executarRun(runId: string): Promise<"done" | "paused" | "failed"> {
     const [run] = await db.select().from(schema.runs).where(eq(schema.runs.id, runId));
     if (!run) throw new Error(`run ${runId} nao encontrado`);
 
@@ -459,7 +485,17 @@ export class Executor {
       return { kind: "skipped" };
     }
 
-    const resolution = resolveModel(modelo, fallbacks, providerService.entries());
+    let resolution = resolveModel(modelo, fallbacks, providerService.entries());
+    // Execução automática com o provedor no limite troca pelo substituto da
+    // cadeia de fallback, se houver. A manual nunca é trocada nem barrada.
+    if (await this.ehAutomatica(runId)) {
+      const { limitesService } = await import("../services/limites-service.js");
+      const entradas = providerService.entries();
+      const decisao = await limitesService.decidir(resolution.used, { fallbacks, disponivel: (p) => entradas[p]?.available() ?? false });
+      if (decisao.tipo === "substitui") {
+        resolution = { ...resolveModel(decisao.modelo, fallbacks, entradas), requested: modelo, substitutionReason: decisao.motivo };
+      }
+    }
     const runtime =
       this.deps.runtimes.get(SUBSCRIPTION_RUNTIMES.has(resolution.provider) ? resolution.provider : "native");
     if (!runtime) throw new Error(`runtime indisponivel para "${resolution.provider}"`);

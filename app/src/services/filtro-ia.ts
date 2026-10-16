@@ -108,6 +108,21 @@ function tentarJson(texto: string): unknown {
 /** O filtro não tem modelo que rode nesta máquina: configuração, não falha da chamada. */
 export class ErroDeConfiguracaoDoFiltro extends Error {}
 
+/**
+ * O provedor do filtro está no limite e não há substituto: a mensagem espera.
+ * Não é falha do modelo (não conta para as três tentativas) nem configuração
+ * (não passa sem filtro): o cursor fica onde está e a pergunta volta depois do
+ * reset, porque passar sem filtro soltaria run para cada mensagem do período.
+ */
+export class ErroDeLimiteDoFiltro extends Error {
+  constructor(
+    mensagem: string,
+    readonly ate: number,
+  ) {
+    super(mensagem);
+  }
+}
+
 /** O Haiku mais novo da lista: versão maior primeiro, e a data do id desempata. */
 export function maisNovoHaiku(ids: readonly string[]): string | null {
   const chave = (id: string): [number[], number] => {
@@ -138,6 +153,11 @@ export interface DependenciasDoJulgador {
   haikuDaApi?: () => Promise<string | null>;
   /** O runtime que fala com o provedor. */
   runtime: (provedor: string) => Runtime;
+  /**
+   * O provedor está no limite? Devolve o modelo a usar (o pedido ou o
+   * substituto), ou a hora em que o limite solta quando não há saída.
+   */
+  limite?: (modelo: string) => Promise<{ modelo: string } | { ate: number; provedor: string }>;
   prazoMs?: number;
 }
 
@@ -193,7 +213,12 @@ export function criarJulgador(deps: DependenciasDoJulgador): Julgador {
     return id;
   };
   return async (pedido) => {
-    const id = await modeloEmCache(pedido.filtro, deps);
+    let id = await modeloEmCache(pedido.filtro, deps);
+    if (deps.limite !== undefined) {
+      const l = await deps.limite(id);
+      if ("ate" in l) throw new ErroDeLimiteDoFiltro(`o limite do ${l.provedor} acabou, o filtro espera até ${new Date(l.ate).toISOString()}`, l.ate);
+      id = l.modelo;
+    }
     const { provider, model } = splitModelId(id);
     const runtime = deps.runtime(provider);
     const prazo = deps.prazoMs ?? PRAZO_MS;
@@ -241,6 +266,14 @@ export const julgadorPadrao: Julgador = criarJulgador({
     if (comPreco !== null) return comPreco;
     const { modelos } = await providerService.listModels("anthropic").catch(() => ({ modelos: [] as string[] }));
     return maisNovoHaiku(modelos);
+  },
+  limite: async (modelo) => {
+    const { limitesService } = await import("./limites-service.js");
+    const d = await limitesService.decidir(modelo, {
+      fallbacks: await providerService.getFallbacks(machineId),
+      disponivel: (p) => providerService.isAvailable(p),
+    });
+    return d.tipo === "pausa" ? { ate: d.bloqueio.ate, provedor: d.bloqueio.provedor } : { modelo: d.modelo };
   },
   runtime: (provedor): Runtime => {
     if (provedor === "claude-code") return new ClaudeCodeRuntime(new Map());

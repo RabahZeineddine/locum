@@ -403,6 +403,8 @@ export class ProviderService {
     await this.setCredentialRef(name, null);
     await this.esquecerConferencia(ref);
     await this.loadSecrets();
+    // Sem a chave, o orçamento e a leitura de limite do provedor não valem mais.
+    await (await import("./limites-service.js")).limitesService.esquecer(name).catch(() => undefined);
     return havia;
   }
 
@@ -600,6 +602,7 @@ export class ProviderService {
     await this.esquecerConferencia(ref);
     await this.db.delete(schema.providers).where(eq(schema.providers.id, id));
     await this.loadSecrets();
+    await (await import("./limites-service.js")).limitesService.esquecer(id).catch(() => undefined);
     return { removed: true, usedBy: usos };
   }
 

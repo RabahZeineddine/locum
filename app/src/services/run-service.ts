@@ -11,7 +11,7 @@ export type StepRow = typeof schema.steps.$inferSelect;
 
 /** O minimo do executor que este servico usa, para poder trocar em teste. */
 export interface StepRunner {
-  execute(runId: string): Promise<"done" | "paused" | "failed">;
+  execute(runId: string, opcoes?: { manual?: boolean }): Promise<"done" | "paused" | "failed">;
 }
 
 export interface RunFilter {
@@ -312,10 +312,10 @@ export class RunService {
 
     const runner = await this.makeRunner();
     if (options.wait === false) {
-      void runner.execute(runId).catch(() => undefined);
+      void runner.execute(runId, { manual: true }).catch(() => undefined);
       return "queued";
     }
-    return runner.execute(runId);
+    return runner.execute(runId, { manual: true });
   }
 
   private async reset(run: RunRow, targets: StepRow[]): Promise<void> {

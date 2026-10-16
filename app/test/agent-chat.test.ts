@@ -243,6 +243,21 @@ test("o gasto da volta, em tokens e dólar, entra na chave do agent da bibliotec
   assert.deepEqual(c.gastos, [{ chave: "biblioteca:gasta", usd: 20, tokens: 15 }]);
 });
 
+test("o chat do agent conta o gasto no provedor do modelo, para o orçamento local", async () => {
+  const { aoGastar } = await import("../src/runtimes/limites-lidos.js");
+  const vistos: unknown[] = [];
+  const parar = aoGastar((provedor, gasto) => vistos.push([provedor, gasto]));
+  try {
+    const c = montar("conta", {
+      deps: { preco: async () => ({ provider: "falso", model: "roteiro", inputUsdPerMtok: 1_000_000, outputUsdPerMtok: 2_000_000, updatedAt: 0 }) },
+    });
+    await c.conversas.enviar("conta", "oi");
+  } finally {
+    parar();
+  }
+  assert.deepEqual(vistos, [["falso", { usd: 20, tokens: 15 }]]);
+});
+
 test("cada agent tem a sua conversa guardada, e ela volta com o histórico para o modelo", async () => {
   const settings = new SettingsService(bancoDeTeste());
   const a = montar("um", { settings });

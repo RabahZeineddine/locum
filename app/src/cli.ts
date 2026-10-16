@@ -21,6 +21,7 @@ import { triggerService } from "./services/trigger-service.js";
 import { collectSlackDigest, buildDigestEvent } from "./digest/ingest.js";
 import { slackService } from "./services/slack-service.js";
 import { pollOpenPullRequests } from "./sources/github.js";
+import { ligarLimites } from "./services/limites-padrao.js";
 import { scheduler, type TickResult } from "./triggers/scheduler.js";
 
 /**
@@ -442,6 +443,7 @@ function migrarAntes(): void {
 
 async function main(): Promise<void> {
   migrarAntes();
+  ligarLimites();
   const [cmd, ...todos] = process.argv.slice(2);
   const { agentId, resto: args } = opcaoAgent(todos);
   const arg = args[0];

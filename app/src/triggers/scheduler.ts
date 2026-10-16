@@ -23,8 +23,41 @@ import { ajustarPorHorario } from "./working-hours.js";
 // import dinamico la embaixo.
 import type { SweepOptions, SweepReport } from "../services/reconcile-service.js";
 import type { PullRequestScan } from "../sources/github.js";
+import type { Bloqueio } from "../services/limites-service.js";
 
 type Db = typeof defaultDb;
+
+/**
+ * Se o agent está barrado pelo limite de um provedor. Import dinâmico pelo
+ * mesmo motivo das outras: os serviços de provedor e biblioteca não precisam
+ * subir junto com o agendador.
+ */
+export type PausaFn = (agentId: string, at: number) => Promise<Bloqueio | null>;
+
+const pausaDoLimite: PausaFn = async (agentId, at) => {
+  const { pausaPadrao } = await import("../services/limites-padrao.js");
+  return pausaPadrao(agentId, at);
+};
+
+/** Por que um evento guardado deixou de valer, ou nulo. Existe para o teste trocar. */
+export type ReavaliarFn = (eventId: string) => Promise<string | null>;
+
+const reavaliarGuardado: ReavaliarFn = async (eventId) => {
+  const { motivoDoEventoGuardado } = await import("./reavaliar.js");
+  return motivoDoEventoGuardado(eventId);
+};
+
+/** "automações em pausa até 14:00 (limite do claude-code)"; com data quando não é hoje. */
+export function textoDaPausa(b: Bloqueio, agora: number = Date.now()): string {
+  const quando = new Date(b.ate);
+  const hoje = new Date(agora);
+  const mesmoDia = quando.toDateString() === hoje.toDateString();
+  const hora = quando.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  const ate = mesmoDia
+    ? hora
+    : `${quando.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", "")} ${quando.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })} ${hora}`;
+  return `automações em pausa até ${ate} (limite do ${b.provedor})${b.nota === undefined ? "" : `; ${b.nota}`}`;
+}
 
 /** Fonte do cursor de tempo. Uma linha por gatilho, guardando o ultimo disparo. */
 const CURSOR_SOURCE = "scheduler";
@@ -39,7 +72,13 @@ const RETRY_SOURCE = "scheduler-retry";
 /** Depois disto o evento sai da lista: falha que dura um dia não é passageira. */
 const RETRY_TTL_MS = 24 * 60 * 60 * 1000;
 
-type Pendente = { eventId: string; since: number };
+type Pendente = { eventId: string; since: number; emPausa?: boolean };
+
+/** Quantos eventos guardados pelo limite abrem run por batida depois do reset. */
+export const LOTE_DA_PAUSA = 5;
+
+/** Quantos eventos a lista de espera do limite guarda; o mais velho sai primeiro. */
+export const TETO_DOS_PENDENTES = 200;
 
 /**
  * De onde veio a batida. `wake` e o que o M3 vai mandar quando o Mac acordar,
@@ -210,7 +249,13 @@ export class Scheduler {
     private readonly settings: SettingsService = settingsService,
     /** Tira o 👀 do Teams do evento que desistiu de abrir run. Existe para o teste trocar. */
     private readonly soltar: (payload: unknown) => Promise<void> = soltarOPr,
+    /** A proteção de limite de provedor. Existe para o teste trocar. */
+    private readonly pausa: PausaFn = pausaDoLimite,
+    private readonly reavaliar: ReavaliarFn = reavaliarGuardado,
   ) {}
+
+  /** O que a batida guardou por causa do limite, por gatilho, para entrar no detail. */
+  private readonly pausadas = new Map<string, string>();
 
   /** Batida vinda do evento de acordar da maquina, que o M3 vai ligar. */
   async onWake(): Promise<TickResult> {
@@ -376,6 +421,13 @@ export class Scheduler {
       return { ...base, status: "waiting", nextDueAt: devido };
     }
 
+    // Gatilho de relógio não tem evento para guardar: com o provedor no limite
+    // ele não toma a batida, e a próxima depois do reset o acha vencido.
+    if (trigger.config.kind === "cron" || trigger.config.kind === "schedule") {
+      const bloqueio = await this.pausa(trigger.agentId, at).catch(() => null);
+      if (bloqueio !== null) return { ...base, status: "waiting", detail: textoDaPausa(bloqueio), nextDueAt: bloqueio.ate };
+    }
+
     // A batida toma o gatilho antes de disparar, numa escrita condicional ao
     // valor que leu. O app serializa as próprias batidas, mas `locum tick` no
     // terminal bate no mesmo banco: as duas veriam o gatilho vencido e cada
@@ -393,6 +445,9 @@ export class Scheduler {
     const nextDueAt = vencimento(trigger.config, at, at, globalHours);
     try {
       const { configuracao, ...fired } = await this.fire(trigger, at, wait);
+      const emPausa = this.pausadas.get(trigger.id);
+      this.pausadas.delete(trigger.id);
+      if (emPausa !== undefined) fired.detail = [fired.detail, emPausa].filter(Boolean).join("; ");
       // O que a batida não conseguiu ler fica visível no gatilho; batida limpa apaga o erro.
       if (configuracao === undefined) await limparErro(this.db, trigger.id);
       else await registrarErro(this.db, trigger.id, { em: at, tipo: "configuracao", texto: configuracao });
@@ -583,17 +638,64 @@ export class Scheduler {
     // `Date.now()` aqui, quem passa `at` veria a cadência andar e o prazo
     // parado.
     const agora = at;
-    const antes = new Map((await this.readRetry(trigger.id)).map((p) => [p.eventId, p.since]));
+    const guardados = await this.readRetry(trigger.id);
+    const antes = new Map(guardados.map((p) => [p.eventId, p]));
     const pendentes: Pendente[] = [];
+
+    // Provedor no limite: o evento já está gravado e o cursor andou, então ele
+    // fica na lista de tentativas com o carimbo original, sem envelhecer até
+    // sumir, e roda depois do reset. A lista tem teto: passado dele, o mais
+    // velho sai com descarte registrado.
+    const bloqueio = await this.pausa(trigger.agentId, at).catch(() => null);
+    if (bloqueio !== null) {
+      for (const eventId of new Set([...antes.keys(), ...eventIds])) {
+        if (await this.alreadyRan(trigger.id, eventId)) continue;
+        pendentes.push({ eventId, since: antes.get(eventId)?.since ?? agora, emPausa: true });
+      }
+      pendentes.sort((a, b) => a.since - b.since);
+      const excesso = pendentes.splice(0, Math.max(0, pendentes.length - TETO_DOS_PENDENTES));
+      if (excesso.length > 0) {
+        await registrarDescartes(this.db, trigger.id, excesso.map((p) => ({ pr: p.eventId, motivo: `lista de espera do limite passou de ${TETO_DOS_PENDENTES}, o mais velho saiu` })), at);
+        for (const p of excesso) await this.soltarDoEvento(p.eventId);
+      }
+      if (antes.size > 0 || pendentes.length > 0) await this.writeRetry(trigger.id, pendentes);
+      if (pendentes.length > 0) this.pausadas.set(trigger.id, `${textoDaPausa(bloqueio)}, ${pendentes.length} evento(s) guardado(s)`);
+      return runs;
+    }
+
+    // Soltando: o mais velho primeiro, e os que esperaram em pausa são
+    // reavaliados pela regra da fonte antes de abrir run, em lotes, para o
+    // reset não despejar dezenas de runs de uma vez.
+    const candidatos = [...new Set([...antes.keys(), ...eventIds])]
+      .map((eventId) => ({ eventId, since: antes.get(eventId)?.since ?? agora, emPausa: antes.get(eventId)?.emPausa === true }))
+      .sort((a, b) => a.since - b.since);
+    let abertosDaPausa = 0;
+    let descartados = 0;
+    let adiados = 0;
     // Um evento que não abre run não segura os outros. O cursor da fonte já
     // andou quando chega aqui, e parar no primeiro erro deixaria o resto da
     // janela sem run e fora da próxima varredura. O que falhou fica anotado
     // e volta na batida seguinte, junto com a janela nova.
-    for (const eventId of new Set([...antes.keys(), ...eventIds])) {
-      if (await this.alreadyRan(trigger.id, eventId)) continue;
+    for (const c of candidatos) {
+      if (await this.alreadyRan(trigger.id, c.eventId)) continue;
+      if (c.emPausa) {
+        if (abertosDaPausa >= LOTE_DA_PAUSA) {
+          pendentes.push({ eventId: c.eventId, since: c.since, emPausa: true });
+          adiados += 1;
+          continue;
+        }
+        const motivo = await this.reavaliar(c.eventId).catch(() => null);
+        if (motivo !== null) {
+          await registrarDescartes(this.db, trigger.id, [{ pr: c.eventId, motivo: `depois da pausa: ${motivo}` }], at);
+          await this.soltarDoEvento(c.eventId);
+          descartados += 1;
+          continue;
+        }
+        abertosDaPausa += 1;
+      }
       try {
         const { runId } = await this.executions.startForEvent({
-          eventId,
+          eventId: c.eventId,
           agentId: trigger.agentId,
           triggerId: trigger.id,
           wait,
@@ -601,12 +703,19 @@ export class Scheduler {
         runs.push(runId);
       } catch (err) {
         falhas.push(message(err));
-        const since = antes.get(eventId) ?? agora;
-        if (agora - since < RETRY_TTL_MS) pendentes.push({ eventId, since });
-        else await this.soltarDoEvento(eventId);
+        // Quem esperou em pausa começa o prazo de um dia agora, e não com o carimbo de dias atrás.
+        const since = c.emPausa ? agora : c.since;
+        if (agora - since < RETRY_TTL_MS) pendentes.push({ eventId: c.eventId, since });
+        else await this.soltarDoEvento(c.eventId);
       }
     }
     if (antes.size > 0 || pendentes.length > 0) await this.writeRetry(trigger.id, pendentes);
+    if (adiados > 0 || descartados > 0) {
+      this.pausadas.set(
+        trigger.id,
+        `depois da pausa: ${runs.length} run(s) aberto(s), ${adiados} esperando o próximo lote, ${descartados} descartado(s) por não valerem mais`,
+      );
+    }
     if (falhas.length > 0) {
       const abertos = runs.length === 0 ? "" : `, ${runs.length} run(s) aberto(s)`;
       throw new Error(`${falhas.length} evento(s) sem run${abertos}: ${falhas[0]}`);

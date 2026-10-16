@@ -1,8 +1,9 @@
-import { and, desc, eq, lte, type SQL } from "drizzle-orm";
+import { and, desc, eq, inArray, like, lte, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { ReviewFinding, ReviewVerdict } from "../config/types.js";
 import { STUCK_AFTER_SECONDS } from "../approval/gate.js";
 import { db as defaultDb, schema } from "../db/index.js";
+import { PREFIXO_DA_TROCA_POR_LIMITE } from "./limites-service.js";
 
 type Db = typeof defaultDb;
 
@@ -23,6 +24,8 @@ export interface ApprovalSummary extends ApprovalRow {
   agentId: string;
   agentName: string;
   agentVersion: number;
+  /** "feito com <modelo> por limite do <provedor>", quando um passo do run trocou de modelo por limite. */
+  trocaPorLimite: string | null;
 }
 
 /**
@@ -235,8 +238,19 @@ export class ApprovalService {
       .where(where)
       .orderBy(desc(schema.approvals.createdAt));
 
+    const runs = [...new Set(rows.map((r) => r.approval.runId))];
+    const trocas = new Map<string, string>();
+    if (runs.length > 0) {
+      const passos = await this.db
+        .select({ runId: schema.steps.runId, motivo: schema.steps.substitutionReason })
+        .from(schema.steps)
+        .where(and(inArray(schema.steps.runId, runs), like(schema.steps.substitutionReason, `${PREFIXO_DA_TROCA_POR_LIMITE}%`)));
+      for (const p of passos) if (p.motivo !== null) trocas.set(p.runId, p.motivo);
+    }
+
     return rows.map((r) => ({
       ...r.approval,
+      trocaPorLimite: trocas.get(r.approval.runId) ?? null,
       stepKey: r.stepKey,
       stepName: r.stepName,
       agentId: r.agentId,

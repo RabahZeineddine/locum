@@ -4,7 +4,7 @@ import { TEAMS_SERVER } from "../services/teams-app.js";
 import { pollMcpServer, CURSOR_TOKEN, type Admissao, type McpCaller, type McpPollShape } from "./mcp-poll.js";
 import { assertWithinBudget, BudgetExceeded, recordSpend, type Spend } from "../executor/budget.js";
 import type { AgentBudget } from "../config/types.js";
-import { ErroDeConfiguracaoDoFiltro, julgadorPadrao, type FiltroIa, type Julgador, type MensagemDoFiltro } from "../services/filtro-ia.js";
+import { ErroDeConfiguracaoDoFiltro, ErroDeLimiteDoFiltro, julgadorPadrao, type FiltroIa, type Julgador, type MensagemDoFiltro } from "../services/filtro-ia.js";
 import { abrirTeams, type GraphGet, type TeamsGraphOptions } from "../teams/graph.js";
 import { alvoDaReacao, reagirNoTeams, REACAO_PEGOU } from "../teams/reaction.js";
 import { githubService } from "../services/github-service.js";
@@ -436,6 +436,12 @@ function filtroDaBatida(
           avisar("sem-modelo", `filtro com IA sem modelo: ${err.message}; mensagens passando sem filtro`);
           return { admissao: { kind: "passa" } };
         }
+        // No limite do provedor a mensagem espera o reset: sem contar falha e sem passar sem filtro.
+        if (err instanceof ErroDeLimiteDoFiltro) {
+          falhou = true;
+          avisar("limite", `filtro com IA em pausa: ${err.message}; as mensagens esperam o reset`);
+          return adia;
+        }
         falhou = true;
         erros.push(`filtro com IA: ${err instanceof Error ? err.message : String(err)}`);
         const vezes = (await tentativas(id)) + 1;
@@ -666,7 +672,7 @@ function memoizar<T>(fn: () => Promise<T>): () => Promise<T> {
  * pegou o PR naquele commit, que é o link colado de novo. O evento do poll do
  * GitHub sozinho não conta: outro agent revisando não é este.
  */
-async function carregarRevisados(db: Db): Promise<Set<string>> {
+export async function carregarRevisados(db: Db, opcoes: { comEventosDoTeams?: boolean } = {}): Promise<Set<string>> {
   const desde = Math.floor(Date.now() / 1000) - JANELA_DO_MESMO_COMMIT_S;
   const chave = (p: Record<string, unknown> | null | undefined, repo: unknown) =>
     p?.headSha === undefined || p.owner === undefined
@@ -683,10 +689,13 @@ async function carregarRevisados(db: Db): Promise<Set<string>> {
         notInArray(schema.approvals.status, ["rejected", "failed", "conflict"]),
       ),
     );
-  const doTeams = await db
-    .select({ payload: schema.events.payload })
-    .from(schema.events)
-    .where(and(eq(schema.events.source, TEAMS_SOURCE), gte(schema.events.receivedAt, desde)));
+  const doTeams =
+    opcoes.comEventosDoTeams === false
+      ? []
+      : await db
+          .select({ payload: schema.events.payload })
+          .from(schema.events)
+          .where(and(eq(schema.events.source, TEAMS_SOURCE), gte(schema.events.receivedAt, desde)));
 
   const vistos = new Set<string>();
   for (const { payload } of revisoes) {
@@ -704,7 +713,7 @@ async function carregarRevisados(db: Db): Promise<Set<string>> {
 }
 
 /** Por que o PR não merece revisão agora, ou nulo se merece. */
-async function motivoDeDescarte(
+export async function motivoDeDescarte(
   contexto: PrBasico,
   quemSouNoGithub: () => Promise<string | null>,
   revisados: () => Promise<Set<string>>,
