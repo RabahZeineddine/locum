@@ -7200,9 +7200,39 @@ async function capturarEditor(janela: BrowserWindow, destino: string, prefixo: s
     // As listas de chats e de canais do Teams.
     await irPara(janela, "automations", agentId);
     await pausa(1500);
+    // O smoke não alcança o Graph: a lista entra pelo cache da janela, que é por onde ela chega depois da primeira leitura.
+    const { TriggerService } = await import("../src/services/trigger-service.js");
+    const { db } = await import("../src/db/index.js");
+    const gatilhoId = (await new TriggerService(db).list(agentId))[0]?.id;
+    const chats = ["Ana Souza", "Bruno Lima", "Integrados - Devs", "Integrados - Plataforma", "Time de revisão", "Carla Mendes", "Squad Seguros", "Diego Alves"].map((label, i) => ({
+      chatId: `19:chat-${i}`,
+      label,
+      chatType: i % 3 === 1 ? "group" : "oneOnOne",
+    }));
+    const canais = ["Integrados", "Plataforma"].flatMap((equipe, e) =>
+      ["geral", "deploys", "revisao"].map((canal, c) => ({ teamId: `t${e}`, teamName: equipe, channelId: `c${e}${c}`, channelName: canal })),
+    );
+    await js(`(() => {
+      sessionStorage.setItem(${JSON.stringify(`locum.cache.teams-chats:${gatilhoId}`)}, JSON.stringify({ em: Date.now(), dados: ${JSON.stringify(chats)} }));
+      sessionStorage.setItem("locum.cache.teams-canais", JSON.stringify({ em: Date.now(), dados: ${JSON.stringify(canais)} }));
+      return null;
+    })()`);
+    await irPara(janela, "agents");
+    await irPara(janela, "automations", agentId);
+    await pausa(1500);
+    await clicar("[data-locum-rascunho-descartar]");
     await clicar("[data-locum-no-automacao^=gatilho-]");
     await pausa(600);
     await foto("editor-4-lista-de-chats");
+    await clicar("[data-locum-combobox=teams-chats] input");
+    await pausa(500);
+    await foto("editor-4b-chats-aberta");
+    await js(`(document.querySelector("[data-locum-combobox=teams-chats] input").dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })), null)`);
+    await js(`(document.querySelector("[data-locum-combobox=teams-chats] input").dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })), null)`);
+    await pausa(400);
+    await clicar("[data-locum-combobox=teams-canais] input");
+    await pausa(500);
+    await foto("editor-4c-canais-aberta");
   } finally {
     await libraryService.removeProfile(revisor).catch(() => undefined);
   }

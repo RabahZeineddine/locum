@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { PollFilters, TriggerConfig } from "../../../src/config/types";
-import { Alternador, Campo, CAMPO, Minutos } from "./campos";
+import { Ajuda, Alternador, Campo, CAMPO, Minutos } from "./campos";
 
 type Poll = Extract<TriggerConfig, { kind: "poll" }>;
 type Previa = ReadResult<"triggers.previewGithub">;
@@ -200,8 +200,10 @@ export function GatilhoDoGithub({
 function Secao({ titulo, ajuda, children }: { titulo: string; ajuda: string; children: ReactNode }) {
   return (
     <section className="border-border flex min-w-0 flex-col gap-2 border-t pt-3">
-      <h4 className="text-[13px] font-medium">{titulo}</h4>
-      <p className="text-muted-foreground text-xs">{ajuda}</p>
+      <h4 className="flex items-center gap-1 text-[13px] font-medium">
+        {titulo}
+        <Ajuda texto={ajuda} />
+      </h4>
       {children}
     </section>
   );
@@ -307,8 +309,10 @@ function PreviaDoGatilho({ config }: { config: Poll }) {
 
   return (
     <section className="border-border flex min-w-0 flex-col gap-2 border-t pt-3" data-locum-previa={estado.fase}>
-      <h4 className="text-[13px] font-medium">{t("automations.github.preview.title")}</h4>
-      <p className="text-muted-foreground text-xs">{t("automations.github.preview.help")}</p>
+      <h4 className="flex items-center gap-1 text-[13px] font-medium">
+        {t("automations.github.preview.title")}
+        <Ajuda texto={t("automations.github.preview.help")} />
+      </h4>
       <Button
         className="cursor-pointer self-start"
         data-locum-previa-ver=""
@@ -412,8 +416,10 @@ function DescartesReais({ triggerId }: { triggerId?: string }) {
   const { t } = useTranslation();
   return (
     <section className="border-border flex min-w-0 flex-col gap-2 border-t pt-3" data-locum-descartes="">
-      <h4 className="text-[13px] font-medium">{t("automations.github.discards.title")}</h4>
-      <p className="text-muted-foreground text-xs">{t("automations.github.discards.help")}</p>
+      <h4 className="flex items-center gap-1 text-[13px] font-medium">
+        {t("automations.github.discards.title")}
+        <Ajuda texto={t("automations.github.discards.help")} />
+      </h4>
       {triggerId === undefined ? (
         <p className="text-muted-foreground text-xs">{t("automations.github.discards.unsaved")}</p>
       ) : (

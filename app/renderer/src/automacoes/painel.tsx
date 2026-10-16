@@ -29,7 +29,7 @@ import { PROVEDORES_FORA_DO_FILTRO } from "../../../src/config/filtro-ia";
 import { descreverCron } from "@/lib/descricao-do-cron";
 import { SeletorDeFerramentas, SeletorDeModelo, useCatalogo } from "../editor-agent";
 import type { RotaId } from "../rotas";
-import { Alternador, Campo, CAMPO, Minutos } from "./campos";
+import { Ajuda, Alternador, Campo, CAMPO, Minutos } from "./campos";
 import { ComboboxComChips, useListaEmCache, type OpcaoDoCombobox } from "./combobox";
 import { GatilhoDoGithub, ListaDeDescartes } from "./gatilho-github";
 import { escopoDoGatilho } from "@/lib/titulo-do-gatilho";
@@ -79,6 +79,10 @@ export function PainelDoNo({
   const passo = ehGatilho(chave) ? undefined : rascunho.spec.steps.find((p) => p.key === chave);
   if (gatilho === undefined && passo === undefined) return null;
 
+  // A descrição longa do componente vai no ⓘ do cabeçalho, e não num parágrafo acima dos campos.
+  const chaveDaAjuda = gatilho !== undefined ? `automations.triggers.${gatilho.config.kind}.help` : `automations.steps.${componenteDoPasso(passo!)}.description`;
+  const ajudaDoNo = i18n.exists(chaveDaAjuda) ? t(chaveDaAjuda) : null;
+
   const cabecalho =
     gatilho !== undefined
       ? { app: appDoGatilho(gatilho.config.kind), id: gatilho.config.kind, titulo: tituloDoGatilho(t, gatilho.config), escopo: escopoDoGatilho(t, gatilho.config) }
@@ -102,8 +106,11 @@ export function PainelDoNo({
       <div className="flex items-center gap-2">
         <Selo app={cabecalho.app} id={cabecalho.id} tamanho="sm" />
         <span className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate text-[13px] font-medium" title={cabecalho.titulo}>
-            {cabecalho.titulo}
+          <span className="flex items-center gap-1.5 text-[13px] font-medium">
+            <span className="truncate" title={cabecalho.titulo}>
+              {cabecalho.titulo}
+            </span>
+            {ajudaDoNo === null ? null : <Ajuda texto={ajudaDoNo} />}
           </span>
           {cabecalho.escopo === "" ? null : (
             <span className="text-muted-foreground truncate text-[11px]" title={cabecalho.escopo}>
@@ -139,9 +146,6 @@ export function PainelDoNo({
 
       {gatilho !== undefined ? (
         <>
-          {i18n.exists(`automations.triggers.${gatilho.config.kind}.help`) && (
-            <p className="text-muted-foreground text-xs">{t(`automations.triggers.${gatilho.config.kind}.help`)}</p>
-          )}
           <ConfigDoGatilho config={gatilho.config} key={chave} trocar={trocarGatilho} triggerId={gatilho.id} />
           <Alternador
             ligado={gatilho.enabled}
@@ -312,7 +316,7 @@ function CanaisDoSlack({ canais, trocar }: { canais: readonly string[]; trocar: 
     setNovo("");
   };
   return (
-    <Campo rotulo={t("automations.triggers.slack-channel.channels")}>
+    <Campo ajuda={t("automations.triggers.slack-channel.hint")} rotulo={t("automations.triggers.slack-channel.channels")}>
       <div className="flex flex-wrap gap-1.5">
         {canais.map((c) => (
           <span className="bg-muted flex items-center gap-1 rounded-full py-0.5 pr-1 pl-2.5 font-mono text-xs" key={c}>
@@ -343,7 +347,6 @@ function CanaisDoSlack({ canais, trocar }: { canais: readonly string[]; trocar: 
           {t("automations.triggers.slack-channel.add")}
         </Button>
       </div>
-      <p className="text-muted-foreground text-[11px]">{t("automations.triggers.slack-channel.hint")}</p>
     </Campo>
   );
 }
@@ -368,7 +371,14 @@ function CanaisDoTeams({ canais, trocar }: { canais: readonly CanalDoTeams[]; tr
   const porId = new Map((lista.dados ?? []).map((o) => [idDe(o.teamId, o.channelId), o]));
 
   return (
-    <Campo rotulo={t("automations.triggers.teams-inbox.channels")}>
+    <Campo
+      ajuda={
+        viaDoTeams === undefined
+          ? t("automations.triggers.teams-inbox.channelsHint")
+          : t("automations.triggers.teams-inbox.channelsHintVia", { server: viaDoTeams })
+      }
+      rotulo={t("automations.triggers.teams-inbox.channels")}
+    >
       <ComboboxComChips
         aoAbrir={() => lista.pedir()}
         aoAlternar={(o) => {
@@ -393,11 +403,6 @@ function CanaisDoTeams({ canais, trocar }: { canais: readonly CanalDoTeams[]; tr
         selecionados={canais.map((c) => ({ id: idDe(c.teamId, c.channelId), rotulo: c.label ?? c.channelId }))}
         sonda="teams-canais"
       />
-      <p className="text-muted-foreground text-[11px]">
-        {viaDoTeams === undefined
-          ? t("automations.triggers.teams-inbox.channelsHint")
-          : t("automations.triggers.teams-inbox.channelsHintVia", { server: viaDoTeams })}
-      </p>
       {lista.erro === null ? null : <p className="text-destructive text-xs">{lista.erro}</p>}
     </Campo>
   );
@@ -435,7 +440,7 @@ function FiltroComIa({ filtro, trocar }: { filtro: FiltroIaConfig | undefined; t
   // O modelo escolhido sobrevive a apagar a pergunta: sem pergunta o filtro sai do cadastro, e a pessoa volta a escrevê-la.
   const [modelo, setModelo] = useState(filtro?.modelo);
   return (
-    <Campo rotulo={t("automations.triggers.teams-inbox.filtroIa")}>
+    <Campo ajuda={t("automations.triggers.teams-inbox.filtroIaHint")} rotulo={t("automations.triggers.teams-inbox.filtroIa")}>
       <textarea
         className={cn(CAMPO, "min-h-16 resize-y")}
         data-locum-filtro-ia=""
@@ -456,7 +461,6 @@ function FiltroComIa({ filtro, trocar }: { filtro: FiltroIaConfig | undefined; t
           valor={modelo ?? ""}
         />
       )}
-      <p className="text-muted-foreground text-[11px]">{t("automations.triggers.teams-inbox.filtroIaHint")}</p>
     </Campo>
   );
 }
@@ -483,7 +487,7 @@ function ChatsDoTeams({
       : lista.dados.map((o) => ({ id: o.chatId, rotulo: o.label, detalhe: t(`automations.triggers.teams-inbox.chatType.${o.chatType}`) }));
 
   return (
-    <Campo rotulo={t("automations.triggers.teams-inbox.chats")}>
+    <Campo ajuda={t("automations.triggers.teams-inbox.chatsHint")} rotulo={t("automations.triggers.teams-inbox.chats")}>
       {pendentes && chats.length === 0 ? (
         <div className="flex flex-col items-start gap-1.5">
           <p className="text-xs text-amber-600 dark:text-amber-400">{t("automations.triggers.teams-inbox.chatsPending")}</p>
@@ -513,7 +517,6 @@ function ChatsDoTeams({
         selecionados={chats.map((c) => ({ id: c.chatId, rotulo: c.label ?? c.chatId }))}
         sonda="teams-chats"
       />
-      <p className="text-muted-foreground text-[11px]">{t("automations.triggers.teams-inbox.chatsHint")}</p>
       {lista.erro === null ? null : <p className="text-destructive text-xs">{lista.erro}</p>}
     </Campo>
   );
@@ -556,7 +559,7 @@ function TarefaEFormato({
 
   return (
     <>
-      <Campo rotulo={rotulo}>
+      <Campo ajuda={dica} rotulo={rotulo}>
         <textarea
           className={cn(CAMPO, "min-h-40 resize-y font-mono text-xs leading-relaxed")}
           data-locum-prompt=""
@@ -564,7 +567,6 @@ function TarefaEFormato({
           ref={caixa}
           value={passo.prompt}
         />
-        {dica === undefined ? null : <p className="text-muted-foreground text-[11px]">{dica}</p>}
         {disponiveis.length > 0 ? (
           <div className="flex flex-col gap-1">
             <span className="text-muted-foreground text-[11px]">{t("automations.steps.ai.variables")}</span>
@@ -785,7 +787,6 @@ function ConfigDaAcao({
 
   return (
     <>
-      <p className="text-muted-foreground text-xs">{t(`automations.steps.${passo.action}.description`, { defaultValue: "" })}</p>
       <Campo rotulo={t("automations.panel.name")}>
         <input className={CAMPO} onChange={(e) => trocar({ ...passo, name: e.target.value })} value={passo.name} />
       </Campo>
@@ -906,7 +907,6 @@ function ConfigDaLogica({
 
   return (
     <>
-      <p className="text-muted-foreground text-xs">{t(`automations.steps.logic.${passo.op}.description`)}</p>
       <Campo rotulo={t("automations.panel.name")}>
         <input className={CAMPO} onChange={(e) => trocar({ ...passo, name: e.target.value })} value={passo.name} />
       </Campo>
@@ -932,7 +932,7 @@ function ConfigDaLogica({
       </Campo>
       {passo.op === "if" ? (
         <>
-          <Campo rotulo={t("automations.steps.logic.compare")}>
+          <Campo ajuda={t("automations.steps.logic.ifHint")} rotulo={t("automations.steps.logic.compare")}>
             <select
               className={CAMPO}
               onChange={(e) => trocar({ ...passo, compare: e.target.value as LogicStep["compare"] })}
@@ -955,11 +955,10 @@ function ConfigDaLogica({
               />
             </Campo>
           )}
-          <p className="text-muted-foreground text-[11px]">{t("automations.steps.logic.ifHint")}</p>
         </>
       ) : null}
       {passo.op === "switch" ? (
-        <Campo rotulo={t("automations.steps.logic.cases")}>
+        <Campo ajuda={t("automations.steps.logic.switchHint")} rotulo={t("automations.steps.logic.cases")}>
           <div className="flex flex-wrap gap-1.5">
             {passo.cases.map((c) => (
               <span className="bg-muted flex items-center gap-1 rounded-full py-0.5 pr-1 pl-2.5 text-xs" key={c}>
@@ -1002,7 +1001,6 @@ function ConfigDaLogica({
               {t("automations.steps.logic.addCase")}
             </Button>
           </div>
-          <p className="text-muted-foreground text-[11px]">{t("automations.steps.logic.switchHint")}</p>
         </Campo>
       ) : null}
     </>
@@ -1257,7 +1255,7 @@ function ConfigDoHttp({
           value={params.url ?? ""}
         />
       </div>
-      <Campo rotulo={t("automations.steps.http.request.headers")}>
+      <Campo ajuda={t("automations.steps.http.request.headersHint")} rotulo={t("automations.steps.http.request.headers")}>
         {cabecalhos.map(([nome, valor]) => {
           const aplicar = (v: string): void => mudar({ headers: { ...params.headers, [nome]: v } });
           return (
@@ -1303,10 +1301,9 @@ function ConfigDoHttp({
             {t("automations.steps.http.request.addHeader")}
           </Button>
         </div>
-        <p className="text-muted-foreground text-[11px]">{t("automations.steps.http.request.headersHint")}</p>
       </Campo>
       {params.method === "GET" ? null : (
-        <Campo rotulo={t("automations.steps.http.request.body")}>
+        <Campo ajuda={t("automations.steps.http.request.bodyHint")} rotulo={t("automations.steps.http.request.body")}>
           <textarea
             className={cn(CAMPO, "min-h-28 font-mono text-xs")}
             data-locum-http-corpo=""
@@ -1314,7 +1311,6 @@ function ConfigDoHttp({
             onFocus={focar((body) => mudar({ body }))}
             value={textoDoValor(params.body)}
           />
-          <p className="text-muted-foreground text-[11px]">{t("automations.steps.http.request.bodyHint")}</p>
         </Campo>
       )}
     </>

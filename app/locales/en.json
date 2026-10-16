@@ -2098,7 +2098,8 @@
       },
       "autoHint": "Goes out on its own, skipping the queue. Use it once you trust what this flow sends.",
       "approvalOnly": "This action always waits in the queue for your approval.",
-      "variablesFocused": "Click to insert into the selected field:"
+      "variablesFocused": "Click to insert into the selected field:",
+      "help": "Learn more"
     },
     "triggers": {
       "manual": {
@@ -2181,17 +2182,17 @@
         "mentions": "Mentions of you",
         "dms": "Direct chats",
         "prLinks": "Message with a PR link",
-        "filtroIa": "AI filter (optional)",
+        "filtroIa": "AI filter",
         "filtroIaPlaceholder": "Is this a request for a pull request review?",
         "filtroIaModeloAuto": "This machine's Haiku (default)",
         "filtroIaHint": "Each message that passes the trigger filters is read by a cheap model before waking the agent. If the answer is no, the message is left out and the reason shows in the discards. If the model fails, the message waits for the next poll and, on the third failure in a row, goes through without the filter, with a warning. A message edited after being discarded does not come back. At most 20 per poll.",
         "discards": "Latest discarded messages",
-        "channels": "Team channels (mention or PR link wakes it)",
+        "channels": "Team channels",
         "search": "Search team or channel",
         "countOf": "{{marked}} of {{total}} selected",
-        "channelsHintVia": "Teams comes through {{server}}, which already brings channels. Each channel is one call per beat.",
-        "channelsHint": "Turn on channels in the Teams connection, under Connections. Each channel is one Graph call per beat.",
-        "chats": "Only these chats (empty = all chats)",
+        "channelsHintVia": "A mention or PR link in these channels wakes the agent. Teams comes through {{server}}, which already brings channels. Each channel is one call per tick.",
+        "channelsHint": "A mention or PR link in these channels wakes the agent. Turn on channels in the Teams connection, under Connections. Each channel is one Graph call per tick.",
+        "chats": "Chats",
         "searchChats": "Search chat or person",
         "chatsHint": "Empty means every group and direct chat. With chats picked, direct messages, PR links and mentions only count in them, the others are not even read, and mentions in meeting chats stop counting.",
         "chatsPending": "This trigger was limited to chats in the package. Pick the chats before turning it on: empty would mean all of them.",
@@ -2478,7 +2479,7 @@
       "loading": "Loading the list...",
       "noMatch": "Nothing matches \"{{termo}}\".",
       "full": "Limit of {{max}} reached. Remove one to pick another.",
-      "keys": "↑ ↓ move, Enter picks, Esc closes",
+      "keys": "↑ ↓ Enter Esc",
       "refresh": "Refresh"
     }
   },
