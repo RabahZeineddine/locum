@@ -419,7 +419,7 @@ export class Executor {
     // O disco só é lido quando o agent cita skill.
     const skillsDoAgent = perfil?.version.spec.skills ?? [];
     const catalogoDeSkills = this.deps.skills ?? (skillsDoAgent.length > 0 ? discoverSkills() : undefined);
-    const semSkill = catalogoDeSkills === undefined ? [] : skillsAusentes(skillsDoAgent, catalogoDeSkills);
+    const semSkill = catalogoDeSkills === undefined ? [] : skillsAusentes(skillsDoAgent, catalogoDeSkills, { repo: payload.repo, changedFiles: payload.changedFiles });
     if (perfil !== null && (perfil.semServidor.length > 0 || semSkill.length > 0)) {
       const motivo = [
         ...(perfil.semServidor.length > 0 ? [conexoesIndisponiveis(perfil.version.profileId, perfil.semServidor)] : []),

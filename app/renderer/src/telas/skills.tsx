@@ -148,7 +148,7 @@ function ListaDeSkills({ navegar }: { navegar: TelaProps["navegar"] }) {
             </h2>
             <ListGroup>
               {g.itens.map((s) => (
-                <LinhaDaSkill abrir={() => navegar("skills", s.name)} key={`${g.chave}/${s.name}`} skill={s} />
+                <LinhaDaSkill abrir={() => navegar("skills", s.name)} key={`${g.chave}/${s.name}/${s.fonte.tipo}`} skill={s} />
               ))}
             </ListGroup>
           </section>
@@ -178,6 +178,11 @@ function LinhaDaSkill({ skill, abrir }: { skill: Skill; abrir: () => void }) {
       <Badge className="hidden shrink-0 md:inline-flex" variant="secondary">
         {rotuloDaFonte(skill.fonte, t)}
       </Badge>
+      {skill.conflito === undefined ? null : (
+        <Badge className="shrink-0" title={t("skills.conflict", { origem: rotuloDaFonte(skill.conflito, t) })} variant="outline">
+          {t("skills.conflictBadge")}
+        </Badge>
+      )}
       <span className="num w-28 shrink-0 truncate text-right text-xs text-muted-foreground" title={quem}>
         {t("skills.usedBy", { count: skill.agents.length })}
       </span>
@@ -248,6 +253,7 @@ function DetalheDaSkill({ nome, navegar }: { nome: string; navegar: TelaProps["n
       />
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
         <Badge variant="secondary">{rotuloDaFonte(skill.fonte, t)}</Badge>
+        {skill.conflito === undefined ? null : <span className="text-destructive">{t("skills.conflict", { origem: rotuloDaFonte(skill.conflito, t) })}</span>}
         {skill.editavel ? null : (
           <span className="inline-flex items-center gap-1">
             {t("skills.readOnly")}

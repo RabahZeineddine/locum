@@ -1,6 +1,6 @@
 import { before, test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -37,11 +37,12 @@ test("cada ferramenta de skill diz o que faz: leitura, escrita e a remoção com
   const client = await cliente();
   const por = new Map((await client.listTools()).tools.map((t) => [t.name, t.annotations]));
   for (const nome of ["list_skills", "get_skill"]) assert.equal(por.get(nome)?.readOnlyHint, true, nome);
-  for (const nome of ["create_skill", "update_skill", "import_skill", "add_skill_to_agent"]) {
+  for (const nome of ["create_skill", "import_skill", "add_skill_to_agent"]) {
     assert.equal(por.get(nome)?.readOnlyHint, false, nome);
     assert.equal(por.get(nome)?.destructiveHint, false, nome);
   }
   assert.equal(por.get("remove_skill")?.destructiveHint, true);
+  assert.equal(por.get("update_skill")?.destructiveHint, true, "substitui o arquivo inteiro");
 });
 
 test("criar, ler, editar, usar num agent e remover uma skill do Locum", async () => {
@@ -83,4 +84,36 @@ test("importar pelo caminho copia para o Locum", async () => {
   const importada = await json<{ fonte: { tipo: string } }>(client.callTool({ name: "import_skill", arguments: { path: arquivo } }));
   assert.equal(importada.fonte.tipo, "locum");
   await json(client.callTool({ name: "remove_skill", arguments: { name: "importada-mcp" } }));
+});
+
+test("skill da pasta do projeto aparece no MCP, mas não entra num agent da biblioteca", async () => {
+  const repo = mkdtempSync(join(tmpdir(), "locum-mcp-repo-"));
+  mkdirSync(join(repo, ".claude", "skills", "do-repo"), { recursive: true });
+  writeFileSync(join(repo, ".claude", "skills", "do-repo", "SKILL.md"), "---\nname: do-repo\ndescription: do repo\n---\nCorpo");
+  const antes = process.cwd();
+  process.chdir(repo);
+  try {
+    const client = await cliente();
+    const lista = await json<{ name: string; fonte: { tipo: string } }[]>(client.callTool({ name: "list_skills", arguments: { refresh: true } }));
+    assert.equal(lista.find((s) => s.name === "do-repo")?.fonte.tipo, "projeto");
+    await libraryService.saveProfile({ spec: { id: "sem-projeto", name: "Sem projeto", model: "anthropic/claude-sonnet-5" } });
+    const recusa = (await client.callTool({ name: "add_skill_to_agent", arguments: { agentId: "sem-projeto", skill: "do-repo" } })) as { isError?: boolean; content: { text: string }[] };
+    assert.equal(recusa.isError, true);
+    assert.match(recusa.content[0]!.text, /pasta do projeto/);
+    assert.deepEqual((await libraryService.getProfile("sem-projeto"))?.spec.skills, []);
+  } finally {
+    process.chdir(antes);
+  }
+});
+
+test("update_skill e remove_skill recusam nome com caminho", async () => {
+  const client = await cliente();
+  const alheia = join(claude, "skills", "da-maquina", "SKILL.md");
+  for (const name of ["../../../skills/da-maquina", "../skills/da-maquina"]) {
+    const a = (await client.callTool({ name: "update_skill", arguments: { name, description: "x", body: "invadida" } })) as { isError?: boolean };
+    const b = (await client.callTool({ name: "remove_skill", arguments: { name } })) as { isError?: boolean };
+    assert.equal(a.isError, true);
+    assert.equal(b.isError, true);
+  }
+  assert.match(readFileSync(alheia, "utf8"), /^---\nname: da-maquina/);
 });

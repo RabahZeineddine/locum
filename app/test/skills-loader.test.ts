@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  descobrirComSombra,
   discoverSkills,
   globToRegExp,
   parseFrontmatter,
@@ -61,7 +62,7 @@ test("seleção pelos arquivos alterados, pelo repo e por always, sem repetir", 
 test("preâmbulo traz só nome e descrição, ou o corpo quando inline", () => {
   assert.equal(skillsPreamble([], false), "");
   assert.equal(skillsPreamble([skill("a")], false), "Skills disponiveis para esta tarefa:\n- a: sobre a");
-  assert.equal(skillsPreamble([skill("a", "faça X")], true), "## Skill: a\n\nfaça X");
+  assert.equal(skillsPreamble([skill("a", "faça X")], true), "## Skill: a\n\nArquivos desta skill em: /x/a\n\nfaça X");
 });
 
 test("descoberta usa o installPath dos plugins instalados e ignora versão velha e fonte de marketplace", () => {
@@ -134,4 +135,40 @@ test("skills ausentes: as que o agent cita e o catálogo não tem", () => {
     skillsAusentes([{ skill: "presente", when: { always: true } }, { skill: "sumiu", when: { always: true } }], catalogo),
     ["sumiu"],
   );
+});
+
+test("inline recusa skill acima de 64 KB e o total acima de 256 KB, com o nome e o tamanho", () => {
+  assert.throws(() => skillsPreamble([skill("pesada", "x".repeat(65 * 1024))], true), /pesada.*65 KB/);
+  const quatro = ["a", "b", "c", "d", "e"].map((n) => skill(n, "x".repeat(60 * 1024)));
+  assert.throws(() => skillsPreamble(quatro, true), /256 KB/);
+  assert.doesNotThrow(() => skillsPreamble(quatro.slice(0, 4), true));
+});
+
+test("skills ausentes olha só as regras que casam com o evento", () => {
+  const catalogo = new Map([skill("presente")].map((s) => [s.name, s]));
+  const regras = [
+    { skill: "presente", when: { always: true } },
+    { skill: "so-cs", when: { filesMatch: ["**/*.cs"] } },
+    { skill: "so-acme", when: { repoMatch: ["acme/*"] } },
+  ];
+  assert.deepEqual(skillsAusentes(regras, catalogo, { repo: "outro/x", changedFiles: ["a.ts"] }), []);
+  assert.deepEqual(skillsAusentes(regras, catalogo, { repo: "acme/x", changedFiles: ["a.cs"] }), ["so-cs", "so-acme"]);
+});
+
+test("sem projeto, a raiz do cwd não entra na descoberta", () => {
+  const home = mkdtempSync(join(tmpdir(), "locum-skills-"));
+  escreveSkill(join(home, "projeto", ".claude", "skills", "do-projeto"), "do-projeto");
+  const locum = join(home, "locum-skills");
+  assert.ok(discoverSkills(home, join(home, "projeto"), locum).has("do-projeto"));
+  assert.equal(descobrirComSombra(home, join(home, "projeto"), locum, { projeto: false }).achadas.has("do-projeto"), false);
+});
+
+test("nome do Locum igual ao de uma skill da máquina: a da máquina vence e a do Locum volta como sombreada", () => {
+  const home = mkdtempSync(join(tmpdir(), "locum-skills-"));
+  escreveSkill(join(home, ".claude", "skills", "igual"), "igual");
+  const locum = join(home, "locum-skills");
+  escreveSkill(join(locum, "igual"), "igual");
+  const { achadas, sombreadas } = descobrirComSombra(home, join(home, "projeto"), locum);
+  assert.deepEqual(achadas.get("igual")?.fonte, { tipo: "minhas" });
+  assert.deepEqual(sombreadas.map((s) => [s.name, s.fonte.tipo]), [["igual", "locum"]]);
 });

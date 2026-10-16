@@ -19,7 +19,7 @@ import { ArrowLeft, Bot, ChevronDown, ChevronRight, Copy, Loader2, Plug, Plus, R
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { ehLeitura, ehLeituraDa, escolhaDe, escolhaInicial, ligadaPorPadrao, type EscolhaDeFerramenta } from "../../../src/config/leitura.js";
-import { agruparPorTipo, contarDaConexao, filtrarFerramentas, LIMITE_PARA_AGRUPAR } from "@/lib/ferramentas-do-agent";
+import { agruparPorTipo, contarDaConexao, filtrarFerramentas, LIMITE_PARA_AGRUPAR, revisarNovas } from "@/lib/ferramentas-do-agent";
 import { SERVIDOR_NATIVO, type AgentBudget, type AgentConnection, type AgentProfile, type ToolRef, type Toolset } from "../../../src/config/types";
 import { Dica, GrupoPorTipo } from "../ferramentas-agrupadas";
 import { rotuloDaFonte } from "@/lib/skills";
@@ -997,6 +997,18 @@ function FerramentasDoServidor({
       {paraRevisar === null ? null : (
         <p className="flex items-center gap-2 text-xs text-muted-foreground" data-locum-agent-revisando="">
           {t("library.connections.reviewing", { count: paraRevisar.size })}
+          <Button
+            className="cursor-pointer"
+            data-locum-agent-manter-desligadas=""
+            onClick={() => {
+              mudar({ ...escolha_, tools: revisarNovas(escolha_, [{ nome: servidor, ferramentas }]) });
+              setParaRevisar(null);
+            }}
+            size="xs"
+            variant="outline"
+          >
+            {t("library.connections.keepOff")}
+          </Button>
           <Button className="cursor-pointer" onClick={() => setParaRevisar(null)} size="xs" variant="ghost">
             {t("library.connections.showAll")}
           </Button>
@@ -1049,8 +1061,10 @@ function SkillsDoAgent({
   const achadas = useRead("skills.list");
   const nomes = new Set(skills.map((s) => s.skill));
   const todas = achadas.data ?? [];
-  const porNome = new Map(todas.map((s) => [s.name, s]));
-  const livres = todas.filter((s) => !nomes.has(s.name));
+  // A que vence nos runs vem primeiro; a sombreada do Locum não a substitui.
+  const porNome = new Map<string, (typeof todas)[number]>();
+  for (const s of todas) if (!porNome.has(s.name)) porNome.set(s.name, s);
+  const livres = todas.filter((s, i) => !nomes.has(s.name) && todas.findIndex((o) => o.name === s.name) === i);
   return (
     <div className="flex flex-col gap-3" data-locum-agent-skills={skills.length}>
       {skills.length === 0 ? (
@@ -1063,6 +1077,12 @@ function SkillsDoAgent({
               <ListRow className="min-h-9 py-1" data-locum-agent-skill={s.skill} key={s.skill}>
                 <span className="font-mono text-xs">{s.skill}</span>
                 {achada === undefined ? null : <span className="text-xs text-muted-foreground">{rotuloDaFonte(achada.fonte, t)}</span>}
+                {achada?.conflito === undefined ? null : (
+                  <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground" data-locum-agent-skill-conflito={s.skill}>
+                    <StatusDot estado="aviso" />
+                    {t("skills.conflict", { origem: rotuloDaFonte(achada.conflito, t) })}
+                  </span>
+                )}
                 {achadas.status === "ready" && achada === undefined ? (
                   <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground" data-locum-agent-skill-ausente={s.skill}>
                     <StatusDot estado="aviso" />

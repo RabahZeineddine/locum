@@ -1,7 +1,7 @@
-import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { basename, extname, join } from "node:path";
+import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { basename, extname, isAbsolute, join, relative, resolve } from "node:path";
 import {
-  discoverSkills,
+  descobrirComSombra,
   parseFrontmatter,
   pastaDasSkillsDoLocum,
   type FonteDaSkill,
@@ -17,6 +17,8 @@ export interface SkillResumo {
   /** O SKILL.md de onde ela vem. */
   arquivo: string;
   hash: string;
+  /** Há outra skill com este nome, de outra origem: a da máquina vence a do Locum nos runs. */
+  conflito?: FonteDaSkill;
   /** Só as skills do Locum se editam: as da máquina seguem a origem. */
   editavel: boolean;
   /** Os agents da biblioteca que a citam. */
@@ -34,6 +36,8 @@ export interface SkillsDeps {
   home?: string;
   cwd?: string;
   locumDir?: string;
+  /** Só o processo que roda dentro de um repositório enxerga as skills dele; o app não. */
+  comProjeto?: boolean;
   agentes?: () => Promise<{ id: string; name: string; skills: string[] }[]>;
   agora?: () => number;
 }
@@ -42,6 +46,7 @@ const CACHE_MS = 15_000;
 const NOME = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const LIMITE_DE_ARQUIVOS = 200;
 const LIMITE_DE_BYTES = 5 * 1024 * 1024;
+const LIMITE_DO_ARQUIVO_AVULSO = 256 * 1024;
 const PULADAS = new Set(["node_modules", ".git"]);
 
 /** O nome que o arquivo ou a pasta daria: minúsculas, sem acento, hífen no lugar do resto. */
@@ -74,6 +79,7 @@ function descricaoDoCorpo(corpo: string): string {
  */
 export class SkillsService {
   private cache: { em: number; lista: SkillResumo[] } | null = null;
+  private cacheDoCatalogo: { em: number; mapa: Map<string, LoadedSkill> } | null = null;
 
   constructor(private readonly deps: SkillsDeps = {}) {}
 
@@ -85,15 +91,33 @@ export class SkillsService {
     return (this.deps.agora ?? Date.now)();
   }
 
+  private descobrirTudo(): { achadas: Map<string, LoadedSkill>; sombreadas: LoadedSkill[] } {
+    return descobrirComSombra(this.deps.home, this.deps.cwd, this.locumDir, { projeto: this.deps.comProjeto ?? false });
+  }
+
   private descobrir(): Map<string, LoadedSkill> {
-    return discoverSkills(this.deps.home, this.deps.cwd, this.locumDir);
+    return this.descobrirTudo().achadas;
+  }
+
+  /** O catálogo que o chat consulta a cada leitura, com o mesmo cache curto da lista. */
+  catalogo(): Map<string, LoadedSkill> {
+    if (this.cacheDoCatalogo !== null && this.agora() - this.cacheDoCatalogo.em < CACHE_MS) return this.cacheDoCatalogo.mapa;
+    const mapa = this.descobrir();
+    this.cacheDoCatalogo = { em: this.agora(), mapa };
+    return mapa;
+  }
+
+  private esquecer(): void {
+    this.cache = null;
+    this.cacheDoCatalogo = null;
   }
 
   async listar(opcoes: { atualizar?: boolean } = {}): Promise<SkillResumo[]> {
     if (!opcoes.atualizar && this.cache !== null && this.agora() - this.cache.em < CACHE_MS) return this.cache.lista;
     const agentes = await (this.deps.agentes ?? (() => libraryService.skillsPorAgent()))();
-    const lista = [...this.descobrir().values()]
-      .map((s) => this.resumo(s, agentes))
+    const { achadas, sombreadas } = this.descobrirTudo();
+    const lista = [...achadas.values(), ...sombreadas]
+      .map((s) => this.resumo(s, agentes, achadas, sombreadas))
       .sort((a, b) => a.name.localeCompare(b.name));
     this.cache = { em: this.agora(), lista };
     return lista;
@@ -125,8 +149,8 @@ export class SkillsService {
   async remover(name: string): Promise<{ name: string; agents: { id: string; name: string }[] }> {
     this.exigirDoLocum(name);
     const agents = (await this.deLocum(name)).agents;
-    rmSync(join(this.locumDir, name), { recursive: true, force: true });
-    this.cache = null;
+    rmSync(this.pastaDaSkill(name), { recursive: true, force: true });
+    this.esquecer();
     return { name, agents };
   }
 
@@ -140,6 +164,9 @@ export class SkillsService {
     const arquivo = pasta ? join(caminho, "SKILL.md") : caminho;
     if (pasta && !existsSync(arquivo)) throw new Error(`a pasta não tem SKILL.md: ${caminho}`);
     if (!pasta && extname(caminho).toLowerCase() !== ".md") throw new Error("escolha um arquivo .md ou uma pasta com SKILL.md");
+    const info = lstatSync(arquivo);
+    if (info.isSymbolicLink()) throw new Error(`"${arquivo}" é um link; importe o arquivo de verdade`);
+    if (!pasta && info.size > LIMITE_DO_ARQUIVO_AVULSO) throw new Error("o arquivo é grande demais para uma skill (256 KB)");
 
     const bruto = readFileSync(arquivo, "utf8");
     const { name: declarado, description, body } = parseFrontmatter(bruto);
@@ -157,43 +184,69 @@ export class SkillsService {
     return this.deLocum(name);
   }
 
-  private resumo(s: LoadedSkill, agentes: { id: string; name: string; skills: string[] }[]): SkillResumo {
+  private resumo(
+    s: LoadedSkill,
+    agentes: { id: string; name: string; skills: string[] }[],
+    achadas?: Map<string, LoadedSkill>,
+    sombreadas: LoadedSkill[] = [],
+  ): SkillResumo {
+    const vencedora = achadas?.get(s.name);
+    const outra = vencedora !== undefined && vencedora !== s ? vencedora : sombreadas.find((o) => o.name === s.name && o !== s);
     return {
       name: s.name,
       description: s.description,
       fonte: s.fonte,
       arquivo: s.origin,
       hash: s.hash,
+      ...(outra === undefined ? {} : { conflito: outra.fonte }),
       editavel: s.fonte.tipo === "locum",
       agents: agentes.filter((a) => a.skills.includes(s.name)).map(({ id, name }) => ({ id, name })),
     };
   }
 
   private async deLocum(name: string): Promise<SkillResumo> {
-    this.cache = null;
+    this.esquecer();
     const agentes = await (this.deps.agentes ?? (() => libraryService.skillsPorAgent()))();
     const achada = this.descobrir().get(name);
     if (achada === undefined) throw new Error(`a skill "${name}" não ficou legível depois de gravar`);
     return this.resumo(achada, agentes);
   }
 
+  /** A pasta da skill do Locum, conferida: nome válido e, com link no meio, ainda dentro do home do Locum. */
+  private pastaDaSkill(name: string): string {
+    if (!NOME.test(name)) throw new Error("o nome usa minúsculas, dígitos e hífens, até 64 caracteres");
+    const raiz = resolve(this.locumDir);
+    const pasta = resolve(raiz, name);
+    const dentro = (base: string, alvo: string): boolean => {
+      const rel = relative(base, alvo);
+      return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+    };
+    if (!dentro(raiz, pasta)) throw new Error(`"${name}" fica fora da pasta de skills do Locum`);
+    if (existsSync(pasta) && !dentro(realpathSync(raiz), realpathSync(pasta))) {
+      throw new Error(`"${name}" fica fora da pasta de skills do Locum`);
+    }
+    return pasta;
+  }
+
   private exigirDoLocum(name: string): void {
+    this.pastaDaSkill(name);
     if (!existsSync(join(this.locumDir, name, "SKILL.md"))) {
       throw new Error(`só as skills do Locum se alteram aqui; "${name}" ${this.descobrir().has(name) ? "vem da máquina, edite na origem" : "não existe"}`);
     }
   }
 
   private nomeLivre(name: string): string {
-    if (!NOME.test(name)) throw new Error("o nome usa minúsculas, dígitos e hífens, até 64 caracteres");
+    this.pastaDaSkill(name);
     if (existsSync(join(this.locumDir, name, "SKILL.md"))) throw new Error(`já existe uma skill do Locum chamada "${name}"`);
     if (this.descobrir().has(name)) throw new Error(`já existe uma skill da máquina chamada "${name}"; ela vence a do Locum`);
     return name;
   }
 
   private gravar(name: string, texto: string): void {
-    mkdirSync(join(this.locumDir, name), { recursive: true });
-    writeFileSync(join(this.locumDir, name, "SKILL.md"), texto);
-    this.cache = null;
+    const pasta = this.pastaDaSkill(name);
+    mkdirSync(pasta, { recursive: true });
+    writeFileSync(join(pasta, "SKILL.md"), texto);
+    this.esquecer();
   }
 
   /** Copia a pasta sem seguir link e sem node_modules, com teto de arquivos e de tamanho. */
@@ -218,7 +271,7 @@ export class SkillsService {
     };
     andar(origem);
     for (const arquivo of arquivos) {
-      const alvo = join(destino, arquivo.slice(origem.length + 1));
+      const alvo = join(destino, relative(origem, arquivo));
       mkdirSync(join(alvo, ".."), { recursive: true });
       cpSync(arquivo, alvo);
     }

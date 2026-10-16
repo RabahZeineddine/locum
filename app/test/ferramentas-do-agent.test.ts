@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { agruparPorArea, agruparPorTipo, areaDaFerramenta, contarDaConexao, filtrarFerramentas } from "../renderer/lib/ferramentas-do-agent.js";
+import { agruparPorArea, agruparPorTipo, areaDaFerramenta, contarDaConexao, filtrarFerramentas, revisarNovas } from "../renderer/lib/ferramentas-do-agent.js";
 
 test("a área sai das palavras do nome", () => {
   assert.equal(areaDaFerramenta("list-chats"), "teams");
@@ -54,4 +54,17 @@ test("a contagem da conexão diz quantas ligadas, quantas de escrita e quantas f
   // Regra antiga: leitura sem escolha liga, e nada é "novo".
   const antiga = { tools: {} };
   assert.deepEqual(contarDaConexao(antiga, catalogo), { total: 4, ligadas: 3, escrita: 0, novas: 0, conhecida: true });
+});
+
+test("revisar as novas grava a escolha explícita, true ou false, e só então o aviso some", () => {
+  const catalogo = [{ nome: "gh", ferramentas: [{ name: "get_a" }, { name: "create_b" }, { name: "get_nova" }, { name: "create_nova" }] }];
+  const conexao = { connectionId: "github", leituraPadrao: "limitada" as const, tools: { "gh/get_a": true } };
+  assert.equal(contarDaConexao(conexao, catalogo).novas, 3);
+  // Escolher uma só deixa as outras no aviso.
+  const umaEscolhida = { ...conexao, tools: revisarNovas(conexao, catalogo, { "gh/get_nova": true }, false) };
+  assert.equal(contarDaConexao(umaEscolhida, catalogo).novas, 2);
+  // Concluir a revisão grava `false` no que ficou sem resposta.
+  const revisada = { ...conexao, tools: revisarNovas(conexao, catalogo, { "gh/get_nova": true }) };
+  assert.deepEqual(revisada.tools, { "gh/get_a": true, "gh/create_b": false, "gh/get_nova": true, "gh/create_nova": false });
+  assert.deepEqual(contarDaConexao(revisada, catalogo), { total: 4, ligadas: 2, escrita: 0, novas: 0, conhecida: true });
 });

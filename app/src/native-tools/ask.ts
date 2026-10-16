@@ -44,7 +44,7 @@ export async function consultarAgent(id: string, pergunta: string, deps: Consult
   const spec = perfil.version.spec;
   if (perfil.semServidor.length > 0) throw new Error(conexoesIndisponiveis(spec.id, perfil.semServidor));
   const catalogoDeSkills = deps.skills ?? (spec.skills.length > 0 ? discoverSkills() : undefined);
-  const semSkill = catalogoDeSkills === undefined ? [] : skillsAusentes(spec.skills, catalogoDeSkills);
+  const semSkill = catalogoDeSkills === undefined ? [] : skillsAusentes(spec.skills, catalogoDeSkills, { repo: "", changedFiles: [] });
   if (semSkill.length > 0) throw new Error(skillsIndisponiveis(spec.id, semSkill));
 
   const chave = `biblioteca:${spec.id}`;

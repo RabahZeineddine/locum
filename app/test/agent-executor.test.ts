@@ -191,8 +191,8 @@ test("a skill do Locum e a da máquina chegam inteiras no system, e o claude-cod
   const runId = await executor.createRun(versao.id, null);
   assert.equal(await executor.execute(runId), "done");
   const system = pedidos[0]!.system ?? "";
-  assert.match(system, /## Skill: so-do-locum\n\nCorpo criada no Locum/);
-  assert.match(system, /## Skill: da-maquina\n\nCorpo da da-maquina/);
+  assert.match(system, /## Skill: so-do-locum\n\nArquivos desta skill em: .*\n\nCorpo criada no Locum/);
+  assert.match(system, /## Skill: da-maquina\n\nArquivos desta skill em: .*\n\nCorpo da da-maquina/);
   const usadas = (await passo(runId, "tarefa"))?.skillsUsed as { name: string }[];
   assert.deepEqual(usadas.map((s) => s.name).sort(), ["da-maquina", "so-do-locum"]);
   // O claude-code roda sem as configurações da máquina: o mesmo `system` vai no argumento, e é só por ele que a skill chega.
@@ -218,6 +218,19 @@ test("skill que o agent usa e sumiu da máquina derruba o passo obrigatório com
   assert.equal(falho?.status, "failed");
   assert.match(falho?.error ?? "", new RegExp(`o agent "${perfil}" usa a skill "sumiu", que não existe mais nesta máquina`));
   assert.equal(pedidos.length, 0);
+});
+
+test("skill ausente de uma regra que não casa com o evento não derruba o passo", async () => {
+  const { catalogo } = skillsEmDisco();
+  const biblioteca = new LibraryService(db, catalogo2());
+  const perfil = `regra-fora-${randomUUID().slice(0, 8)}`;
+  await biblioteca.saveProfile({ spec: { id: perfil, name: "Regra fora", model: "ollama/x", skills: [{ skill: "sumiu", when: { filesMatch: ["**/*.cs"] } }] } });
+  const pedidos: RuntimeRequest[] = [];
+  const executor = new Executor({ mcp: registroFalso, runtimes: new Map([["native", runtimeQueRegistra(pedidos)]]), gate: new ApprovalGate(new Map()), machineId: "m", profiles: biblioteca, skills: catalogo() });
+  const { versao } = await fluxo(perfil);
+  const runId = await executor.createRun(versao.id, null);
+  assert.equal(await executor.execute(runId), "done");
+  assert.equal(pedidos.length, 1);
 });
 
 test("o passo opcional com skill ausente é pulado com o motivo", async () => {

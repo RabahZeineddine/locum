@@ -567,7 +567,10 @@ export class PacoteService {
     for (const agent of pacote.agents) {
       const atual = await this.library.getProfile(agent.id);
       const mesmoNome = existentes.find((e) => e.id !== agent.id && norm(e.name) === norm(agent.name));
-      const diferencas = atual === null ? [] : diferencasDoAgent(await this.perfilParaPacote(atual.spec), agent);
+      const diferencas =
+        atual === null
+          ? []
+          : diferencasDoAgent(await this.perfilParaPacote(atual.spec), { ...agent, connections: await this.library.normalizarConexoes(agent.connections) });
       let situacao: SituacaoDoAgent = "novo";
       if (atual !== null) situacao = diferencas.length === 0 ? "igual" : "mesmo-id";
       else if (mesmoNome !== undefined) situacao = "nome-igual";
@@ -928,7 +931,8 @@ export function diferencasDoAgent(daqui: AgentDoPacote, pacote: AgentDoPacote): 
     ["model", (a) => a.model],
     ["temperature", (a) => (a.temperature === undefined ? "" : String(a.temperature))],
     ["tools", ferramentas],
-    ["connections", (a) => canonico(a.connections.map((c) => ({ ...c, tools: Object.fromEntries(Object.entries(c.tools).map(([k, v]) => [k, v === "read" ? true : v])) })))],
+    // Na lista explícita ausente vale desligada, então `false` e ausente são o mesmo comportamento.
+    ["connections", (a) => canonico(a.connections.map((c) => ({ ...c, tools: Object.fromEntries(Object.entries(c.tools).filter(([, v]) => c.leituraPadrao !== "limitada" || v !== false).map(([k, v]) => [k, v === "read" ? true : v])) })))],
     ["skills", (a) => [...new Set(a.skills.map((k) => k.skill))].sort().join(", ")],
     ["budget", (a) => canonico(a.budget)],
     ["maxSteps", (a) => String(a.maxSteps)],

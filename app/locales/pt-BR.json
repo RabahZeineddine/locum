@@ -397,6 +397,7 @@
     "expand_zero": "ver os {{count}}",
     "failures_zero": "{{count}} execuções falharam",
     "findings_zero": "{{count}} achados",
+    "conflictBadge": "Conflito",
     "conflict": "Isso mudou desde que entrou na fila. Abra para ver o que aconteceu.",
     "context_update": {
       "target": "Atualização de contexto: {{slug}}",
@@ -2651,6 +2652,7 @@
       "reviewing_one": "Só a ferramenta nova.",
       "reviewing_other": "Só as {{count}} ferramentas novas.",
       "showAll": "Ver todas",
+      "keepOff": "Manter desligadas",
       "newTools_zero": "{{count}} ferramentas novas, desligadas",
       "reviewing_zero": "Só as {{count}} ferramentas novas."
     },
@@ -2865,7 +2867,12 @@
       "escrita": "Escrita",
       "count": "{{on}} de {{total}}",
       "markAll": "Marcar todas",
-      "unmarkAll": "Desmarcar todas"
+      "unmarkAll": "Desmarcar todas",
+      "confirmWrite_one": "Ligar {{count}} ferramenta de escrita?",
+      "confirmWrite_other": "Ligar {{count}} ferramentas de escrita?",
+      "confirmWrite_zero": "Ligar {{count}} ferramentas de escrita?",
+      "confirmYes": "Ligar",
+      "confirmNo": "Cancelar"
     }
   },
   "skills": {
@@ -2896,6 +2903,7 @@
     "gone": "A skill {{name}} não existe nesta máquina",
     "readOnly": "só leitura",
     "readOnlyHint": "Vem da máquina e acompanha a origem, inclusive a atualização do plugin. Para mudar, edite lá.",
+    "conflict": "Mesmo nome em {{origem}}. A da máquina vence nos runs; renomeie ou remova uma das duas.",
     "reveal": "Mostrar no Finder",
     "edit": "Editar",
     "save": "Salvar",

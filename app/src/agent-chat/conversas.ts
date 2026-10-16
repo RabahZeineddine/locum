@@ -2,13 +2,14 @@ import { randomUUID } from "node:crypto";
 import { contarGastoDoProvedor } from "../runtimes/limites-lidos.js";
 import { stepCountIs, streamText, type LanguageModel, type ModelMessage, type ToolSet } from "ai";
 import { SERVIDOR_CONTA, type ToolRef } from "../config/types.js";
-import { discoverSkills, selectSkills, skillsAusentes, skillsPreamble, type LoadedSkill } from "../skills/loader.js";
+import { selectSkills, skillsAusentes, skillsPreamble, type LoadedSkill } from "../skills/loader.js";
 import { BudgetExceeded, type assertWithinBudget, type recordSpend } from "../executor/budget.js";
 import type { McpRegistry } from "../mcp/registry.js";
 import { prefixoDoServidor } from "../runtimes/claude-account.js";
 import { compactarHistorico, TETO_DO_HISTORICO } from "../services/chat-history.js";
 import type { LibraryService, ResolvedProfile } from "../services/library-service.js";
 import { costOf, type ModelPrice } from "../services/price-service.js";
+import { skillsService } from "../services/skills-service.js";
 import type { SettingsService } from "../services/settings-service.js";
 import {
   aplicarEvento,
@@ -175,7 +176,7 @@ export class ConversasDeAgent {
   private skillsAusentes(perfil: ResolvedProfile): string[] {
     const skills = perfil.version.spec.skills;
     if (skills.length === 0) return [];
-    return skillsAusentes(skills, this.deps.skills ?? discoverSkills());
+    return skillsAusentes(skills, this.deps.skills ?? skillsService.catalogo(), { repo: "", changedFiles: [] });
   }
 
   async estado(id: string): Promise<EstadoDaConversa> {
@@ -573,7 +574,7 @@ export class ConversasDeAgent {
 
   private systemDe(perfil: ResolvedProfile): string {
     // Sem evento por trás, só valem as skills de regra "sempre", como na consulta entre agents.
-    const skills = selectSkills(perfil.version.spec.skills, { repo: "", changedFiles: [] }, this.deps.skills);
+    const skills = selectSkills(perfil.version.spec.skills, { repo: "", changedFiles: [] }, this.deps.skills ?? skillsService.catalogo());
     return [perfil.system, skillsPreamble(skills, true)].filter((p) => p.length > 0).join("\n\n");
   }
 

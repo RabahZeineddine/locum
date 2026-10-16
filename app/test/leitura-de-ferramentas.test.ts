@@ -160,3 +160,13 @@ test("sem lista guardada de algum servidor a conexão fica como estava", () => {
   assert.equal(fixarLista(antes, [{ nome: "gh", ferramentas: null }]), antes);
   assert.equal(fixarLista(antes, []), antes);
 });
+
+test("fixar a lista não grava escolha por ferramenta que ninguém escolheu: só liga o que já valia ligado", () => {
+  const catalogo = [{ nome: "gh", ferramentas: [{ name: "get_issue" }, { name: "create_comment" }, { name: "get_nova" }, { name: "create_nova" }] }];
+  // Modo antigo: a leitura ligada de hoje vira true; a escrita sem escolha não ganha entrada.
+  const migrada = fixarLista({ connectionId: "github", tools: { "gh/get_nova": false } }, catalogo);
+  assert.deepEqual(migrada.tools, { "gh/get_issue": true, "gh/get_nova": false });
+  // Já explícita: fixar de novo não acrescenta `false` para o que o mapa não cita.
+  const explicita = { connectionId: "github", leituraPadrao: "limitada" as const, tools: { "gh/get_issue": true } };
+  assert.deepEqual(fixarLista(explicita, catalogo).tools, { "gh/get_issue": true });
+});

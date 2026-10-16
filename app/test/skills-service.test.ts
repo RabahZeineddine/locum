@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { SkillsService } from "../src/services/skills-service.js";
 
 /** A área de Skills: o que a máquina tem, o que o Locum guarda, e o vínculo com a origem. */
@@ -131,4 +131,86 @@ test("skill da máquina vem ao vivo com cache curto, e atualizar força a leitur
   daMaquina("terceira");
   passar(60_000);
   assert.equal((await servico.listar()).length, 3, "o cache vence sozinho");
+});
+
+test("nome com caminho é recusado em criar, atualizar e remover, e nada fora do Locum muda", async () => {
+  const { servico, raiz, home } = ambiente();
+  const alheia = join(home, ".claude", "skills", "x");
+  mkdirSync(alheia, { recursive: true });
+  writeFileSync(join(alheia, "SKILL.md"), "---\nname: x\ndescription: d\n---\nintacta");
+  const fuga = relative(join(raiz, "locum", "skills"), alheia);
+  await assert.rejects(servico.atualizar(fuga, { description: "d", body: "invadida" }), /minúsculas, dígitos e hífens/);
+  await assert.rejects(servico.remover(fuga), /minúsculas, dígitos e hífens/);
+  await assert.rejects(servico.criar({ name: fuga, description: "d", body: "x" }), /minúsculas, dígitos e hífens/);
+  assert.match(readFileSync(join(alheia, "SKILL.md"), "utf8"), /intacta/);
+});
+
+test("pasta do Locum que é link para fora não se edita nem se remove", async () => {
+  const { servico, raiz, locumDir } = ambiente();
+  const fora = join(raiz, "fora");
+  mkdirSync(fora, { recursive: true });
+  writeFileSync(join(fora, "SKILL.md"), "---\nname: espelho\ndescription: d\n---\nintacta");
+  mkdirSync(locumDir, { recursive: true });
+  symlinkSync(fora, join(locumDir, "espelho"));
+  await assert.rejects(servico.atualizar("espelho", { description: "d", body: "invadida" }), /fora da pasta de skills do Locum/);
+  await assert.rejects(servico.remover("espelho"), /fora da pasta de skills do Locum/);
+  assert.match(readFileSync(join(fora, "SKILL.md"), "utf8"), /intacta/);
+});
+
+test("importar recusa SKILL.md e .md avulso que sejam link, e arquivo avulso acima do teto", async () => {
+  const { servico, raiz } = ambiente();
+  const segredo = join(raiz, "segredo.txt");
+  writeFileSync(segredo, "conteudo-privado");
+  const pasta = join(raiz, "com-link");
+  mkdirSync(pasta);
+  symlinkSync(segredo, join(pasta, "SKILL.md"));
+  await assert.rejects(servico.importar(pasta), /link/);
+  const avulso = join(raiz, "avulso.md");
+  symlinkSync(segredo, avulso);
+  await assert.rejects(servico.importar(avulso), /link/);
+  const grande = join(raiz, "grande.md");
+  writeFileSync(grande, "x".repeat(257 * 1024));
+  await assert.rejects(servico.importar(grande), /256 KB/);
+  assert.deepEqual(await servico.listar({ atualizar: true }), []);
+});
+
+test("importar pasta com barra no fim copia os nomes inteiros", async () => {
+  const { servico, raiz, locumDir } = ambiente();
+  const pasta = join(raiz, "com-barra");
+  mkdirSync(join(pasta, "refs"), { recursive: true });
+  writeFileSync(join(pasta, "SKILL.md"), "---\nname: com-barra\ndescription: d\n---\ncorpo");
+  writeFileSync(join(pasta, "refs", "guia.md"), "guia");
+  await servico.importar(`${pasta}/`);
+  assert.equal(existsSync(join(locumDir, "com-barra", "SKILL.md")), true);
+  assert.equal(readFileSync(join(locumDir, "com-barra", "refs", "guia.md"), "utf8"), "guia");
+});
+
+test("o grupo Projeto só existe quando o serviço é criado com projeto", async () => {
+  const { raiz, home, locumDir } = ambiente();
+  const dir = join(raiz, "projeto", ".claude", "skills", "do-repo");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "SKILL.md"), "---\nname: do-repo\ndescription: d\n---\ncorpo");
+  const opcoes = { home, cwd: join(raiz, "projeto"), locumDir, agentes: async () => [] };
+  assert.deepEqual((await new SkillsService(opcoes).listar()).map((s) => s.name), []);
+  const comProjeto = await new SkillsService({ ...opcoes, comProjeto: true }).listar();
+  assert.deepEqual(comProjeto.map((s) => [s.name, s.fonte.tipo]), [["do-repo", "projeto"]]);
+});
+
+test("nome repetido entre o Locum e a máquina aparece nas duas, cada uma com o aviso do conflito", async () => {
+  const { servico, daMaquina, locumDir } = ambiente();
+  daMaquina("repetida");
+  mkdirSync(join(locumDir, "repetida"), { recursive: true });
+  writeFileSync(join(locumDir, "repetida", "SKILL.md"), "---\nname: repetida\ndescription: do Locum\n---\ncorpo");
+  const lista = (await servico.listar()).filter((s) => s.name === "repetida");
+  assert.deepEqual(lista.map((s) => [s.fonte.tipo, s.conflito?.tipo]).sort(), [["locum", "minhas"], ["minhas", "locum"]]);
+});
+
+test("o catálogo para o chat usa o mesmo cache curto da lista", async () => {
+  const { servico, daMaquina, passar } = ambiente();
+  daMaquina("primeira");
+  assert.deepEqual([...servico.catalogo().keys()], ["primeira"]);
+  daMaquina("segunda");
+  assert.deepEqual([...servico.catalogo().keys()], ["primeira"], "dentro do cache");
+  passar(60_000);
+  assert.deepEqual([...servico.catalogo().keys()].sort(), ["primeira", "segunda"]);
 });

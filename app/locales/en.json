@@ -382,6 +382,7 @@
     "diff": "{{files}} files · +{{additions}} −{{deletions}}",
     "draft": "draft",
     "branch": "{{head}} → {{base}}",
+    "conflictBadge": "Conflict",
     "conflict": "This item changed since it was queued. Open it to see what happened.",
     "context_update": {
       "target": "Context update: {{slug}}",
@@ -2595,6 +2596,7 @@
       "reviewing_one": "Only the new tool.",
       "reviewing_other": "Only the {{count}} new tools.",
       "showAll": "Show all",
+      "keepOff": "Keep them off",
       "newTools_zero": "{{count}} new tools, off",
       "reviewing_zero": "Only the {{count}} new tools."
     },
@@ -2806,7 +2808,12 @@
       "escrita": "Write",
       "count": "{{on}} of {{total}}",
       "markAll": "Select all",
-      "unmarkAll": "Clear all"
+      "unmarkAll": "Clear all",
+      "confirmWrite_one": "Turn on {{count}} write tool?",
+      "confirmWrite_other": "Turn on {{count}} write tools?",
+      "confirmWrite_zero": "Turn on {{count}} write tools?",
+      "confirmYes": "Turn on",
+      "confirmNo": "Cancel"
     }
   },
   "skills": {
@@ -2837,6 +2844,7 @@
     "gone": "The skill {{name}} does not exist on this machine",
     "readOnly": "read only",
     "readOnlyHint": "It comes from the machine and follows its origin, plugin updates included. To change it, edit it there.",
+    "conflict": "Same name in {{origem}}. The machine one wins in runs; rename or remove one of them.",
     "reveal": "Show in Finder",
     "edit": "Edit",
     "save": "Save",

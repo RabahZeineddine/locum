@@ -115,8 +115,9 @@ type ConexaoDoAgent = {
 
 /**
  * Passa a conexão para a lista explícita, sem mudar o que está ligado hoje:
- * cada ferramenta do catálogo sem escolha vira `true` se hoje liga sozinha
- * (leitura, no modo antigo) e `false` se não. Chave só pelo nome vira
+ * a ferramenta sem escolha vira `true` se hoje liga sozinha (leitura, no modo
+ * antigo) e não ganha entrada se não liga, porque ausente já vale desligada.
+ * Chave só pelo nome vira
  * `servidor/ferramenta`. Sem lista guardada de algum servidor não dá para
  * saber o que existe, e a conexão volta como estava.
  */
@@ -130,7 +131,9 @@ export function fixarLista<C extends ConexaoDoAgent>(
     for (const f of ferramentas ?? []) {
       const atual = escolhaDe(conexao.tools, nome, f.name);
       delete tools[f.name];
-      tools[`${nome}/${f.name}`] = atual ?? (conexao.leituraPadrao === "limitada" ? false : ehLeituraDa(f));
+      // Só a escolha que já existe, ou a leitura que hoje liga sozinha, é gravada: ausente vale desligada, e é o que o aviso de "novas" conta.
+      if (atual !== undefined) tools[`${nome}/${f.name}`] = atual;
+      else if (conexao.leituraPadrao !== "limitada" && ehLeituraDa(f)) tools[`${nome}/${f.name}`] = true;
     }
   }
   return { ...conexao, tools, leituraPadrao: "limitada" as const };

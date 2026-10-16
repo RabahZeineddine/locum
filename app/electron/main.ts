@@ -7768,9 +7768,6 @@ async function main(): Promise<void> {
   if (esquema.criado) console.log(t("schema.created", { count: esquema.disponiveis }));
   else if (esquema.adotado) console.log(t("schema.adopted", { count: esquema.disponiveis }));
 
-  // Agent que veio da regra antiga (leitura toda, ferramenta nova ligada) passa para a lista explícita onde o servidor já tem lista em cache.
-  await (await import("../src/services/library-service.js")).libraryService.migrarListasExplicitas().catch(() => undefined);
-
   if (flagValue("--set-secret") !== undefined || flagValue("--remove-secret") !== undefined) {
     await runSecretCommand();
     app.exit(0);
@@ -7816,6 +7813,16 @@ async function main(): Promise<void> {
   if (modoMcp) {
     await serveMcp();
     return;
+  }
+
+  // Agent que veio da regra antiga (leitura toda, ferramenta nova ligada) passa para a lista explícita onde o servidor já tem lista em cache.
+  // Só o app principal migra: `--mcp`, `--ferramentas` e os comandos de cofre sobem o mesmo binário e não devem mexer no banco por isso.
+  try {
+    const { migrados, falhas } = await (await import("../src/services/library-service.js")).libraryService.migrarListasExplicitas();
+    if (migrados.length > 0) console.log(`agents: lista de ferramentas explícita em ${migrados.join(", ")}`);
+    for (const f of falhas) console.error(`agents: não consegui migrar "${f.id}": ${f.erro}`);
+  } catch (erro) {
+    console.error(`agents: migração da lista de ferramentas falhou: ${erro instanceof Error ? erro.message : String(erro)}`);
   }
 
   // O servidor das ferramentas nativas é este binário com `--ferramentas`.

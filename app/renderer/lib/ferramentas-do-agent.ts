@@ -87,3 +87,24 @@ export function contarDaConexao(
   }
   return { total, ligadas, escrita, novas, conhecida };
 }
+
+/**
+ * O mapa depois de revisar as ferramentas novas: grava as escolhas dadas e,
+ * ao concluir, `false` para as que continuam sem resposta. É só aí que o
+ * aviso de "novas" some. Chave `servidor/ferramenta`.
+ */
+export function revisarNovas(
+  conexao: { tools: Readonly<Record<string, EscolhaDeFerramenta>> },
+  servidores: readonly { nome: string; ferramentas: readonly { name: string }[] | null }[],
+  escolhas: Readonly<Record<string, EscolhaDeFerramenta>> = {},
+  concluir = true,
+): Record<string, EscolhaDeFerramenta> {
+  const tools: Record<string, EscolhaDeFerramenta> = { ...conexao.tools, ...escolhas };
+  if (!concluir) return tools;
+  for (const { nome, ferramentas } of servidores) {
+    for (const f of ferramentas ?? []) {
+      if (escolhaDe(tools, nome, f.name) === undefined) tools[`${nome}/${f.name}`] = false;
+    }
+  }
+  return tools;
+}

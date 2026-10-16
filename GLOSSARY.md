@@ -14,6 +14,10 @@ tela grava as leituras ligadas; servidor com mais de 30 leituras (ms365, por
 exemplo) começa sem nenhuma, e a pessoa escolhe as que o agent precisa. O agent
 salvo antes mantém toda leitura ligada. A escrita ligada só sai
 com confirmação, no chat do agent.
+Ferramenta que o mapa da conexão não cita vale desligada (`leituraPadrao:
+"limitada"`). O aviso de "novas" é o que o servidor oferece e o mapa não cita;
+só some quando a pessoa grava a escolha, ligada ou desligada. Migrar o agent
+antigo e salvar não gravam escolha por ela.
 
 **Automação**: fluxo de nós ligados que começa num gatilho. Decide quando os
 agents trabalham e o que acontece com a saída deles.

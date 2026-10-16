@@ -343,6 +343,11 @@ export class LibraryService {
    * explícita: o que fica ligado é o que está no mapa, e a ferramenta que o
    * servidor ganhar depois nasce desligada. Sem cache a conexão segue como veio.
    */
+  /** As conexões como o `saveProfile` as guardaria: quem compara com o que está salvo normaliza os dois lados. */
+  async normalizarConexoes(conexoes: readonly AgentConnection[]): Promise<AgentConnection[]> {
+    return this.comListaExplicita(conexoes);
+  }
+
   private async comListaExplicita(conexoes: readonly AgentConnection[]): Promise<AgentConnection[]> {
     const saida: AgentConnection[] = [];
     for (const conexao of conexoes) {
@@ -360,17 +365,26 @@ export class LibraryService {
    * nova só onde algo muda. Quem não tem lista em cache fica em `pendentes`,
    * com o comportamento antigo, até alguém abrir e salvar.
    */
-  async migrarListasExplicitas(): Promise<{ migrados: string[]; pendentes: string[] }> {
+  async migrarListasExplicitas(): Promise<{ migrados: string[]; pendentes: string[]; falhas: { id: string; erro: string }[] }> {
     const migrados: string[] = [];
     const pendentes: string[] = [];
+    const falhas: { id: string; erro: string }[] = [];
     for (const perfil of await this.db.select().from(schema.agentProfiles)) {
-      const atual = await this.latestProfile(perfil.id);
-      if (atual === undefined) continue;
-      const nova = await this.saveProfile({ spec: atual.spec, note: "lista de ferramentas explícita" });
-      if (nova.version !== atual.version) migrados.push(perfil.id);
-      if (nova.spec.connections.some((c) => c.leituraPadrao !== "limitada")) pendentes.push(perfil.id);
+      try {
+        const atual = await this.latestProfile(perfil.id);
+        if (atual === undefined) continue;
+        const nova = await this.saveProfile({ spec: atual.spec, note: "lista de ferramentas explícita" });
+        if (nova.version !== atual.version) migrados.push(perfil.id);
+        if (nova.spec.connections.some((c) => c.leituraPadrao !== "limitada")) pendentes.push(perfil.id);
+      } catch (erro) {
+        // Outro processo migrou o mesmo agent entre a leitura e a gravação: o índice único da versão barra a segunda, e o que ele gravou vale.
+        const jaFeita = (await this.latestProfile(perfil.id))?.spec.connections.every((c) => c.leituraPadrao === "limitada") === true;
+        if (!(jaFeita && /UNIQUE/i.test(erro instanceof Error ? erro.message : String(erro)))) {
+          falhas.push({ id: perfil.id, erro: erro instanceof Error ? erro.message : String(erro) });
+        }
+      }
     }
-    return { migrados, pendentes };
+    return { migrados, pendentes, falhas };
   }
 
   /** Remove o agent e as versões. Recusa enquanto algum fluxo o usar. */

@@ -807,3 +807,20 @@ test("skill do agent entra nos requisitos e a prévia diz se existe aqui", async
   const com = maquina();
   assert.equal((await com.pacotes.previa(texto)).dependencias.find((d) => d.tipo === "skill")?.estado, "ok");
 });
+
+test("importar um pacote de conexão antiga vira lista explícita aqui, e a prévia seguinte continua dizendo igual", async () => {
+  const texto = await pacoteDoDono();
+  const bruno = maquina();
+  const catalogo = {
+    servidoresDe: async (id: string) => [{ nome: id, ligado: true }],
+    ferramentasDe: async (servidor: string) => (servidor === "github" ? [{ name: "get_pull_request" }, { name: "create_comment" }] : [{ name: "list-chats" }, { name: "send-chat-message" }]),
+    guardadasDe: async (servidor: string) => (servidor === "github" ? [{ name: "get_pull_request" }, { name: "create_comment" }] : [{ name: "list-chats" }, { name: "send-chat-message" }]),
+  };
+  const library = new LibraryService(bruno.db, catalogo);
+  const pacotes = new PacoteService(bruno.agents, library, bruno.automations, bruno.ambiente, HOME);
+  await pacotes.importar(texto);
+  assert.equal((await library.getProfile("revisor"))?.spec.connections[0]?.leituraPadrao, "limitada");
+  const previa = await pacotes.previa(texto);
+  assert.equal(previa.agents[0]!.situacao, "igual");
+  assert.deepEqual(previa.agents[0]!.diferencas, []);
+});
