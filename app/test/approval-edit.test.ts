@@ -117,3 +117,21 @@ test("texto vazio, longo demais ou em pendência que não é mensagem é recusad
   const review = await pendencia();
   await assert.rejects(review.updateText("pendencia", "oi"), /só resposta de Slack ou Teams/);
 });
+
+test("a Fila não cria tarefa de tracker a partir de uma review: abrir tarefa é nó do fluxo", async () => {
+  const service = await pendencia();
+  assert.equal("createTrackerIssueProposal" in service, false);
+});
+
+test("pendência de tracker.create_issue gravada antes continua na Fila e decidível", async () => {
+  const service = await pendencia("tracker.create_issue", {
+    tracker: "shortcut",
+    project: "123",
+    title: "Fix PR #42: ajuste",
+    body: "### Apontamentos a Resolver",
+    pullRequestUrl: "https://github.com/dono/repositorio/pull/42",
+  });
+
+  const fila = await service.listPending();
+  assert.deepEqual(fila.map((p) => [p.id, p.kind]), [["pendencia", "tracker.create_issue"]]);
+});

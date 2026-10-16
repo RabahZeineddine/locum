@@ -67,7 +67,7 @@ B35 (tentativas de GET, transporte).
 | C7 | `services/github-service.ts` | diff de 200 000 caracteres, setter sem chamador | parâmetro do nó | pendente |
 | C8 | `services/filtro-ia.ts` | prazo e corte de texto do filtro | parâmetros | pendente |
 | C9 | `executor.ts` | contexto da iniciativa cortado em 40 000 | aviso no run | pendente |
-| C21 | `trackers/proposal.ts`, `services/approval-service.ts` | dois modelos de texto de tarefa | template no nó `tracker.create_issue` | pendente |
+| C21 | `trackers/proposal.ts`, `services/approval-service.ts` | dois modelos de texto de tarefa | template no nó `tracker.create_issue` | feito (este PR): o segundo modelo saiu junto com o botão |
 
 Legítimos ou só precisam aparecer: C1 (marca técnica `<!-- locum -->`), C6, C10,
 C11, C12, C13, C14, C15, C16, C17, C18, C19, C20, C22, C23, C24, C25 (tetos e
@@ -83,10 +83,11 @@ validações; mostrar quando cortam).
 | D6 | `electron/notify.ts`, `services/notice-service.ts` | notificação do macOS sem interruptor | configuração desligável | pendente |
 | D7 | `electron/updater.ts` | troca a versão ao sair sem perguntar | padrão explícito | pendente |
 | D8 | `services/limites-service.ts` | consulta gateways a cada 10 min | listar em Limites | pendente |
+| D10 | `renderer/src/telas/revisao.tsx`, `approval-service.ts`, MCP `propose_tracker_issue` | botão "Criar história no Shortcut" na Fila, fixo num tracker | tirar; abrir tarefa é o nó `tracker.create_issue` | feito (este PR) |
 | D11 | `services/execution-service.ts` | alvo demo grava evento no banco real | marcar como ensaio | pendente |
 | D12 | `scheduler.ts` `pausadas` | aviso de pausa some ao reiniciar | persistir | pendente |
 | D13 | `services/trigger-service.ts` `remove` | deixa os cursores do gatilho | limpar | pendente |
 
 Legítimos: D2, D3 (estado do evento e gasto, mostrar no detalhe), D9 (segurança),
-D10 (clique da pessoa), D14 (chat do agent: escrita por cartão de confirmação,
+D14 (chat do agent: escrita por cartão de confirmação,
 exceção nomeada na trava).

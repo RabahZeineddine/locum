@@ -46,11 +46,6 @@ export function registerApprovalTools(server: McpServer, amb: Ambiente): void {
     { approvalId: z.string().min(1), text: z.string() },
     ({ approvalId, text }) => approvalService.updateText(approvalId, text));
 
-  def(server, "propose_tracker_issue", "write",
-    "Creates, from a code review approval, a new pending approval to open a task in a registered tracker (Jira, Shortcut, GitHub Issues). Nothing is created in the tracker until that approval is decided.",
-    { approvalId: z.string().min(1), trackerId: z.string().min(1) },
-    ({ approvalId, trackerId }) => approvalService.createTrackerIssueProposal(approvalId, trackerId));
-
   def(server, "decide_approval", "publish",
     "Decides an approval of the queue. approved PUBLISHES IN YOUR NAME what the approval holds: a GitHub review comment, a Slack or Teams message, a task in the tracker, or a call to an external server. rejected publishes nothing. Irreversible once published. hash is the one get_approval or list_pending_approvals showed: if the approval changed since (an edit of the text or of the findings), nothing is decided, so the confirmation is tied to the content that was seen.",
     { approvalId: z.string().min(1), decision: z.enum(["approved", "rejected"]), hash: z.string().min(1).describe("the hash of the approval as get_approval showed it") },

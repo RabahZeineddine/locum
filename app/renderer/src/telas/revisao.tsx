@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { StatusDot, type Estado as EstadoDoPonto } from "@/components/ui/status-dot";
-import { gravarRevisao, gravarTexto, decidir, criarTarefaDoTracker } from "@/lib/aprovar";
+import { gravarRevisao, gravarTexto, decidir } from "@/lib/aprovar";
 import { BridgeError, read, useRead, type ReadResult, type ReadState } from "@/lib/bridge";
 import { comContexto, diffLinhas, type LinhaDoDiff } from "@/lib/diff";
 import {
@@ -404,27 +404,6 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
         >
           {t("review.discard")}
         </Button>
-
-        {achados.length > 0 && (
-          <Button
-            className="cursor-pointer text-xs"
-            disabled={resolvendo || jaResolvida}
-            onClick={async () => {
-              try {
-                setResolvendo(true);
-                await criarTarefaDoTracker(pendencia.id, "shortcut");
-                navegar("inbox");
-              } catch (e) {
-                alert(e instanceof Error ? e.message : String(e));
-              } finally {
-                setResolvendo(false);
-              }
-            }}
-            variant="outline"
-          >
-            {t("review.create_shortcut_issue", { defaultValue: "Criar história no Shortcut" })}
-          </Button>
-        )}
 
         <span className="text-muted-foreground ml-auto text-xs">
           {gravando
