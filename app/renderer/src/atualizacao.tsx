@@ -121,7 +121,9 @@ export function AtualizacaoNoRodape({ versao, aoConfigurar }: { versao: string; 
   function tituloDaVersao(atual: UpdaterState | undefined): string {
     if (atual === undefined) return t("nav.versionHint");
     const clique = cliqueNaVersao(atual);
-    if (clique.acao === "conferir") return t("update.footer.checkNow");
+    if (clique.acao === "conferir") {
+      return atual.phase === "failed" && atual.error !== null ? t("update.footer.failedHint", { error: atual.error }) : t("update.footer.checkNow");
+    }
     if (clique.motivo === "disabled") return t("update.footer.hintDisabled");
     return clique.motivo === "dev" ? t("update.footer.hintDev") : t("update.footer.hintNotReplaceable");
   }

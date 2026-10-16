@@ -564,7 +564,8 @@
   "update": {
     "footer": {
       "upToDate": "up to date",
-      "failed": "couldn't check",
+      "failed": "retry",
+      "failedHint": "Couldn't check ({{error}}). Click to try again",
       "checkNow": "Check for updates now",
       "hintDisabled": "Updates are off, turn them on in Settings",
       "hintDev": "Running from source: update with git pull. Details in Settings",
@@ -1333,7 +1334,7 @@
     "slackPost": "written reply became a pending item in channel {{channel}}, thread {{thread}}, with the model's text word for word, channel and thread taken from the event, made-up timestamp refused, and the gate refusing draft",
     "slackWindow": "Slack: {{server}} saved through the window and the old-setup channel {{channel}} visible, no bridge channel that posts",
     "claudeSessions": "{{count}} Claude sessions classified, Mark done and Reopen round trip",
-    "updateScreen": "update footer went through checking, up to date, could not check, downloading 42% and ready, with the version click checking, the modal and notes, no network",
+    "updateScreen": "update footer went through checking, up to date, retry, downloading 42% and ready, with the version click checking, the modal and notes, no network",
     "vinculo": "imported linked, origin changed and asked for acceptance, accepted, new plugin version without a prompt"
   },
   "status": {
