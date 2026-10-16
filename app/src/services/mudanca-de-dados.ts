@@ -11,8 +11,9 @@ import Database from "better-sqlite3";
  * em tabela, então com o banco parado a conferência é quase de graça.
  *
  * Uma rajada de escritas entre duas conferências vira um aviso só. Ainda não
- * sabemos qual tabela mudou, então o aviso diz `*`; o renderer relê só o que `AO_VIVO` declara de banco, e o renderer
- * relê sem piscar, e quem quiser refinar por área troca só este valor.
+ * sabemos qual tabela mudou, então o aviso diz `*`: o renderer relê, sem
+ * piscar, só os canais que `AO_VIVO` declara de banco. Quem quiser refinar por
+ * área troca só este valor.
  */
 export const INTERVALO_DO_DETECTOR_MS = 1000;
 

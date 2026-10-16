@@ -192,7 +192,7 @@ export const AO_VIVO: Record<ReadChannel, boolean> = {
   "initiatives.root": false,
   "sessions.terminal": false,
   "sessions.installedTerminals": false,
-  "sessions.list": true,
+  "sessions.list": false, // lê o arquivo de passagem de cada sessão no disco
   "claudeSessions.list": false,
   "limites.overview": true,
   "prompts.list": true,
@@ -205,7 +205,7 @@ export const AO_VIVO: Record<ReadChannel, boolean> = {
   "approvals.get": true,
   "mcp.list": true,
   "mcp.usage": true,
-  "mcp.vinculos": true,
+  "mcp.vinculos": false, // relê os arquivos de origem (~/.claude.json, plugins) e pode gravar
   "mcp.toolsCached": true,
   "providers.list": false,
   "providers.fallbacks": false,
