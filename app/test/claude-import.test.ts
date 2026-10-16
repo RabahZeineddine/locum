@@ -153,3 +153,39 @@ test("outras ferramentas: opencode, Cursor, VS Code e Claude Desktop entram com 
   assert.equal(por.arquivos?.origem, "Claude Desktop");
   assert.equal((await servico.origens()).jira, "opencode");
 });
+
+test("importar um só servidor, ligado: cadastra só ele e o deixa ligado", async () => {
+  const home = mkdtempSync(join(tmpdir(), "locum-import-um-"));
+  writeFileSync(
+    join(home, ".claude.json"),
+    JSON.stringify({
+      mcpServers: {
+        ms365: { command: "npx", args: ["-y", "@softeria/ms-365-mcp-server"] },
+        grafana: { type: "http", url: "https://grafana.exemplo/mcp" },
+      },
+    }),
+  );
+  const registrados: string[] = [];
+  const ligacoes: [string, boolean][] = [];
+  const servico = new ClaudeImportService({
+    home,
+    ambiente: async () => ({}),
+    mcp: {
+      list: async () => [],
+      register: async (c) => {
+        registrados.push(c.name);
+        return {} as never;
+      },
+      setEnabled: async (n, ligado) => void ligacoes.push([n, ligado]),
+      setCredentialRef: async () => undefined,
+      vincular: async () => undefined,
+    },
+    secrets: { set: () => undefined },
+    settings: { set: async () => undefined, get: async () => undefined },
+  });
+
+  const { importados } = await servico.importar(["ms365"], { ligar: true });
+  assert.deepEqual(importados, ["ms365"]);
+  assert.deepEqual(registrados, ["ms365"]);
+  assert.deepEqual(ligacoes, [["ms365", true]]);
+});

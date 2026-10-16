@@ -3,7 +3,8 @@ import { SERVIDOR_NATIVO } from "../config/types.js";
 import { temCredencialLiteral } from "./mcp-credencial.js";
 import { CATALOG, conexaoDoServidor, type CatalogEntry } from "./conexao-catalogo.js";
 import { IMAGEM_DO_GRAFANA } from "./grafana-service.js";
-import { claudeImportService } from "./claude-import.js";
+import { claudeImportService, type Candidato } from "./claude-import.js";
+import { escolherRecomendado, trazOTeams } from "./teams-ms365.js";
 import { estadoDoServidor, type ConnectionReason, type ConnectionState } from "./conexao-estado.js";
 import { carregarFontesDeUso, quemUsa, type FontesDeUso, type UsoDaConexao } from "./conexao-uso.js";
 import { githubService, type GithubService } from "./github-service.js";
@@ -162,6 +163,23 @@ export interface ConnectionServiceDeps {
   trackers?: () => Promise<{ kind: string; enabled: boolean }[]>;
   /** De onde sai "quem usa": automações, agents e toolsets gravados. */
   fontesDeUso?: () => Promise<FontesDeUso>;
+  /** Os servidores que as ferramentas da máquina declaram, para o Teams oferecer o ms365 do Claude Code. */
+  importacao?: {
+    listar: () => Promise<Candidato[]>;
+    importar: (nomes: string[], opcoes?: { ligar?: boolean }) => Promise<{ importados: string[] }>;
+  };
+}
+
+/** O Teams pelo servidor MCP: o que já está cadastrado, ou o que o Claude Code tem para importar. */
+export interface TeamsPeloMcp {
+  cadastrado: {
+    server: string;
+    ligado: boolean;
+    lastOkAt: number | null;
+    lastFailureAt: number | null;
+    lastError: string | null;
+  } | null;
+  recomendado: { name: string; origem: string; destino: string } | null;
 }
 
 /**
@@ -183,6 +201,7 @@ export class ConnectionService {
       clienteDoClaude: (nome) => claudeImportService.clienteOAuth(nome),
       fontesDeUso: carregarFontesDeUso,
       trackers: () => trackerService.list(),
+      importacao: { listar: () => claudeImportService.listar(), importar: (n, o) => claudeImportService.importar(n, o) },
       ...deps,
     };
   }
@@ -428,6 +447,53 @@ export class ConnectionService {
       clientId: (await this.deps.settings.get(CHAVE_CLIENT_ID_TEAMS)) ?? null,
       connected: this.deps.oauth.status(TEAMS_SERVER).connected,
     };
+  }
+
+  /**
+   * Como o Teams chega por servidor MCP: o cadastrado que o traz (as
+   * ferramentas guardadas dizem, e na falta delas o nome e o pacote) ou, não
+   * havendo, o do Claude Code que vale importar. Só lê arquivos e cadastro, sem
+   * subir servidor.
+   */
+  async teamsPeloMcp(): Promise<TeamsPeloMcp> {
+    const cadastro = await this.deps.mcp.list();
+    const achado = await teamsNoMcp(this.deps.mcp);
+    const entrada =
+      achado !== null
+        ? cadastro.find((e) => e.config.name === achado.server)
+        : cadastro.find((e) => e.config.name !== SERVIDOR_NATIVO && trazOTeams({ name: e.config.name, destino: (e.config.command ?? [e.config.url ?? ""]).join(" ") }));
+    if (entrada !== undefined) {
+      const { health } = entrada;
+      return {
+        cadastrado: {
+          server: entrada.config.name,
+          ligado: entrada.enabled,
+          lastOkAt: health.lastOkAt,
+          lastFailureAt: health.lastFailureAt,
+          lastError: health.lastError,
+        },
+        recomendado: null,
+      };
+    }
+    const doClaude = await this.deps.importacao!.listar().catch(() => [] as Candidato[]);
+    const r = escolherRecomendado(doClaude);
+    return { cadastrado: null, recomendado: r === null ? null : { name: r.name, origem: r.origem, destino: r.destino } };
+  }
+
+  /**
+   * O clique em "usar o ms365 do Claude Code": importa só esse servidor,
+   * vinculado à origem e ligado, e testa. A conexão Teams passa a usá-lo por
+   * `abrirTeams`, que acha o servidor pelas ferramentas que o teste guarda.
+   */
+  async usarTeamsDoClaude(nome: string): Promise<{ ok: boolean; toolCount: number; error?: string }> {
+    const doClaude = await this.deps.importacao!.listar();
+    const escolhido = doClaude.find((c) => c.name === nome);
+    if (escolhido === undefined || !trazOTeams(escolhido)) {
+      throw new Error(`"${nome}" não é um servidor do Teams no Claude Code`);
+    }
+    await this.deps.importacao!.importar([nome], { ligar: true });
+    const teste = await this.deps.mcp.testConnection(nome);
+    return { ok: teste.ok, toolCount: teste.toolCount, ...(teste.error === undefined ? {} : { error: teste.error }) };
   }
 
   /**

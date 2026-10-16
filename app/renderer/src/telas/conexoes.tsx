@@ -51,7 +51,7 @@ const PAINEIS: Record<string, () => ReactNode> = {
       <Slack />
     </>
   ),
-  teams: () => <TeamsPeloGraph />,
+  teams: () => <TeamsPeloGraph importar={(onPronto) => <ImportarDoClaude onPronto={onPronto} />} />,
   atlassian: () => <Trackers kinds={["jira-atlassian", "jira"]} />,
   shortcut: () => <Trackers kinds={["shortcut"]} />,
 };

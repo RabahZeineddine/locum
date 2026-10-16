@@ -226,12 +226,16 @@ export class ClaudeImportService {
    * Cadastra os escolhidos, vinculados à origem e desligados: ligar é da
    * pessoa, como em todo servidor que não nasce pela tela. Reimportar um já
    * cadastrado vincula de novo e aceita a configuração que a origem tem agora.
+   *
+   * `ligar` é para quando a pessoa escolheu um servidor só, de propósito (o
+   * "usar o ms365" do Teams): ele já entra ligado.
    */
-  async importar(nomes: string[]): Promise<{ importados: string[] }> {
+  async importar(nomes: string[], opcoes: { ligar?: boolean } = {}): Promise<{ importados: string[] }> {
     const escolhidos = (await this.preparados()).filter((p) => nomes.includes(p.name));
     for (const p of escolhidos) {
       await this.deps.mcp.register(p.config, { source: p.source, hash: p.hash });
-      if (!p.jaCadastrado) await this.deps.mcp.setEnabled(p.name, false);
+      if (opcoes.ligar === true) await this.deps.mcp.setEnabled(p.name, true);
+      else if (!p.jaCadastrado) await this.deps.mcp.setEnabled(p.name, false);
       if (p.cliente !== undefined) await this.deps.settings.set(chaveDoClienteOAuth(p.name), JSON.stringify(p.cliente));
       if (p.segredo !== undefined) {
         const ref = `mcp/${p.name}`;

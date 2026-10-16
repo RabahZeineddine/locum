@@ -113,6 +113,7 @@ export const READ_CHANNELS = [
   "claudeImport.origins",
   "connections.slackApp",
   "connections.teamsApp",
+  "connections.teamsPeloMcp",
   // Mesma razão de `github.status`: endereço, sim ou não, e o que a última
   // conferência contou. A credencial do tracker não volta por canal nenhum, e
   // criar tarefa não tem canal em lista nenhuma.
@@ -205,6 +206,7 @@ export const ACTION_CHANNELS = [
   "connections.disconnectSlack",
   "connections.openSlackManifest",
   "connections.connectTeams",
+  "connections.usarTeamsDoClaude",
   "connections.disconnectTeams",
   "connections.teamsAdminConsent",
   // Ligar canais muda o que o próximo conectar pede, e listar canais vai ao

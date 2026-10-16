@@ -1,9 +1,12 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ListGroup, ListRow } from "@/components/ui/list-row";
+import { StatusDot } from "@/components/ui/status-dot";
+import { origemLegivel, pareceProducao } from "@/lib/importacao-origem";
 import { call, invalidateReads, read, useRead, type ReadResult } from "@/lib/bridge";
 import { cn } from "@/lib/utils";
 import { quando } from "./sessoes";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 const ehGithubCom = (conta: { host: string }): boolean => conta.host.toLowerCase() === "github.com";
@@ -1150,6 +1153,120 @@ export function SlackOficial() {
 /* -------------------------------------------------------------------- teams */
 
 /**
+ * "Como conectar" do Teams, pelo servidor MCP: o ms365 que a pessoa já tem no
+ * Claude Code é o caminho recomendado. O clique em "usar" é a escolha explícita
+ * desse servidor (nada vem marcado), e importa só ele, vinculado e ligado.
+ */
+function TeamsPeloServidor({ importar }: { importar: (onPronto: () => void) => ReactNode }) {
+  const { t, i18n } = useTranslation();
+  const achado = useRead("connections.teamsPeloMcp");
+  const [ocupado, setOcupado] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [verImportar, setVerImportar] = useState(false);
+
+  const atualizar = (): void => {
+    invalidateReads("connections.teamsPeloMcp");
+    invalidateReads("connections.list");
+    invalidateReads("mcp.list");
+    invalidateReads("mcp.vinculos");
+  };
+  const agir = (acao: () => Promise<{ ok: boolean; error?: string } | unknown>): void => {
+    setOcupado(true);
+    setErro(null);
+    acao()
+      .then(
+        (r) => {
+          const falha = (r as { ok?: boolean; error?: string } | undefined)?.ok === false ? (r as { error?: string }).error : undefined;
+          if (falha !== undefined) setErro(falha);
+        },
+        (e: unknown) => setErro(e instanceof Error ? e.message : String(e)),
+      )
+      .finally(() => {
+        setOcupado(false);
+        atualizar();
+      });
+  };
+
+  const { cadastrado, recomendado } = achado.data ?? { cadastrado: null, recomendado: null };
+  const falhou = cadastrado !== null && cadastrado.lastFailureAt !== null && (cadastrado.lastOkAt === null || cadastrado.lastFailureAt > cadastrado.lastOkAt);
+  const ultimo = cadastrado === null ? null : Math.max(cadastrado.lastOkAt ?? 0, cadastrado.lastFailureAt ?? 0);
+  const quandoTestou = ultimo === null || ultimo === 0 ? t("settings.teams.via.neverTested") : t("settings.teams.via.testedAt", { when: quando(i18n.language, ultimo / 1000) });
+
+  return (
+    <section className="flex flex-col gap-2" data-locum-teams-como-conectar="">
+      <h3 className="text-[13px] font-medium">{t("settings.teams.via.title")}</h3>
+      {cadastrado !== null ? (
+        <ListGroup>
+          <ListRow data-locum-teams-via={cadastrado.server}>
+            <StatusDot estado={falhou ? "erro" : cadastrado.ligado ? "ok" : "ocioso"} />
+            <div className="flex min-w-0 flex-1 flex-col">
+              <span className="truncate font-medium">{t("settings.teams.via.byServer", { name: cadastrado.server })}</span>
+              <span className="text-muted-foreground truncate text-xs">
+                {t(cadastrado.ligado ? "settings.teams.via.on" : "settings.teams.via.off")} · {quandoTestou}
+              </span>
+            </div>
+            {cadastrado.ligado ? (
+              <Button disabled={ocupado} onClick={() => agir(() => call("mcp.test", cadastrado.server))} size="sm" variant="outline">
+                {t("settings.teams.via.test")}
+              </Button>
+            ) : (
+              <Button
+                data-locum-teams-ligar-via=""
+                disabled={ocupado}
+                onClick={() => agir(async () => { await call("mcp.setEnabled", cadastrado.server, true); return call("mcp.test", cadastrado.server); })}
+                size="sm"
+              >
+                {t("settings.teams.via.turnOn")}
+              </Button>
+            )}
+          </ListRow>
+        </ListGroup>
+      ) : recomendado !== null ? (
+        <ListGroup>
+          <ListRow data-locum-teams-recomendado={recomendado.name}>
+            <StatusDot estado="ocioso" />
+            <div className="flex min-w-0 flex-1 flex-col">
+              <span className="truncate font-medium">{t("settings.teams.via.useClaude", { name: recomendado.name })}</span>
+              <span className="text-muted-foreground truncate text-xs">
+                {t(`connections.import.origin.${origemLegivel(recomendado.origem).tipo}`, { name: origemLegivel(recomendado.origem).nome })}
+                {" · "}
+                <span className="font-mono">{recomendado.destino}</span>
+              </span>
+              {pareceProducao(recomendado) ? (
+                <span className="text-xs" data-locum-teams-producao="">
+                  {t("connections.import.production")}
+                </span>
+              ) : null}
+            </div>
+            <Button
+              data-locum-teams-usar-claude=""
+              disabled={ocupado}
+              onClick={() => agir(() => call("connections.usarTeamsDoClaude", recomendado.name))}
+              size="sm"
+            >
+              {t(ocupado ? "settings.teams.via.using" : "settings.teams.via.use")}
+            </Button>
+          </ListRow>
+        </ListGroup>
+      ) : (
+        <p className="text-muted-foreground text-xs" data-locum-teams-sem-ms365="">
+          {t("settings.teams.via.none")}{" "}
+          <button className="text-foreground cursor-pointer underline" data-locum-teams-importar="" onClick={() => setVerImportar(!verImportar)} type="button">
+            {t("settings.teams.via.importLink")}
+          </button>
+        </p>
+      )}
+      {verImportar ? importar(() => { setVerImportar(false); atualizar(); }) : null}
+      {erro !== null ? (
+        <p className="text-destructive text-xs" data-locum-teams-via-erro="">
+          {erro}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+/**
  * Teams pelo Microsoft Graph, com o app que a organização registra no Entra.
  *
  * O caminho é guiado como o do Slack: registrar o app (pelo portal ou pelo
@@ -1157,7 +1274,7 @@ export function SlackOficial() {
  * dois é segredo, e os dois ficam na máquina. O consentimento do administrador
  * é opcional e só serve à empresa que não deixa o usuário consentir sozinho.
  */
-export function TeamsPeloGraph() {
+export function TeamsPeloGraph({ importar = () => null }: { importar?: (onPronto: () => void) => ReactNode } = {}) {
   const { t } = useTranslation();
   const inicial = useRead("connections.teamsApp");
   const [relido, setRelido] = useState<AppDoTeams | null>(null);
@@ -1212,6 +1329,11 @@ export function TeamsPeloGraph() {
       </div>
       <p className="text-muted-foreground text-xs">{t("settings.teams.description")}</p>
 
+      <TeamsPeloServidor importar={importar} />
+
+      <details className="flex flex-col gap-3" data-locum-teams-avancado="" open={app?.connected === true}>
+        <summary className="text-muted-foreground cursor-pointer text-xs font-medium">{t("settings.teams.advanced")}</summary>
+      <div className="mt-3 flex flex-col gap-3">
       <ol className="text-muted-foreground flex list-decimal flex-col gap-1 pl-5 text-xs">
         <li>{t("settings.teams.stepRegister", { redirect: app?.redirectUri ?? "" })}</li>
         <li>
@@ -1321,6 +1443,8 @@ export function TeamsPeloGraph() {
           {recusa}
         </p>
       ) : null}
+      </div>
+      </details>
     </div>
   );
 }

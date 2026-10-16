@@ -6788,6 +6788,43 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
     `(window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })), null)`,
   );
 
+  // Teams: o bloco "Como conectar" sem ms365 no Claude Code e depois com ele,
+  // lido da pasta de exemplo (`LOCUM_FERRAMENTAS_HOME`), nunca da casa de quem roda.
+  {
+    const pausa = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+    // O servidor de exemplo da fumaça expõe ferramentas de Teams e taparia os dois cenários:
+    // sai do cadastro durante estas fotos e volta igual depois.
+    const { mcpService } = await import("../src/services/mcp-service.js");
+    const { teamsNoMcp } = await import("../src/teams/graph.js");
+    const tirados: { config: Awaited<ReturnType<typeof mcpService.list>>[number]["config"]; enabled: boolean }[] = [];
+    for (let achado = await teamsNoMcp(); achado !== null; achado = await teamsNoMcp()) {
+      const entrada = (await mcpService.list()).find((e) => e.config.name === achado.server);
+      if (entrada === undefined) break;
+      tirados.push({ config: entrada.config, enabled: entrada.enabled });
+      await mcpService.remove(achado.server);
+    }
+    await irPara(janela, "connections", "teams");
+    await pausa(1800);
+    writeFileSync(join(destino, "teams-sem-ms365.png"), (await janela.webContents.capturePage()).toPNG());
+    const casa = process.env.LOCUM_FERRAMENTAS_HOME;
+    if (casa !== undefined) {
+      mkdirSync(casa, { recursive: true });
+      writeFileSync(
+        join(casa, ".claude.json"),
+        JSON.stringify({ mcpServers: { ms365: { command: "npx", args: ["-y", "@softeria/ms-365-mcp-server", "--org-mode"] } } }),
+      );
+      await irPara(janela, "today");
+      await irPara(janela, "connections", "teams");
+      await pausa(1800);
+      writeFileSync(join(destino, "teams-com-ms365.png"), (await janela.webContents.capturePage()).toPNG());
+      rmSync(join(casa, ".claude.json"), { force: true });
+    }
+    for (const t of tirados) {
+      await mcpService.register(t.config);
+      if (!t.enabled) await mcpService.setEnabled(t.config.name, false);
+    }
+  }
+
   // Ícones de marca na lista, a busca e o GitHub com token e servidor. Os
   // servidores são de mentira e saem no fim, porque o banco é o da fumaça.
   {

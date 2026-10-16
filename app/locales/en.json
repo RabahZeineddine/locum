@@ -270,7 +270,7 @@
     "saveFirst": "Save the agent to talk to it.",
     "unsaved": "The chat uses the saved version. Changes you have not saved yet apply after Save.",
     "internal": "Locum tools",
-      "noServer": "The connection {{connection}} has no server right now: {{reason}}. The agent talks without its tools.",
+    "noServer": "The connection {{connection}} has no server right now: {{reason}}. The agent talks without its tools.",
     "card": {
       "title": {
         "pendente": "Write waiting",
@@ -1223,7 +1223,23 @@
       "adminHow": "If your company does not let users authorize apps on their own, a tenant admin clicks \"Admin consent\" once, and the app is allowed for everyone.",
       "adminDone": "Admin consent recorded. Now just connect.",
       "waiting": "Waiting for authorization in the browser.",
-      "stepPermissionsChannels": "No need to add permissions: Locum requests the delegated Graph permissions {{scopes}} when connecting. With channels on, ChannelMessage.Read.All only works after admin consent."
+      "stepPermissionsChannels": "No need to add permissions: Locum requests the delegated Graph permissions {{scopes}} when connecting. With channels on, ChannelMessage.Read.All only works after admin consent.",
+      "via": {
+        "title": "How to connect",
+        "byServer": "Through the {{name}} server",
+        "on": "on",
+        "off": "off",
+        "neverTested": "never tested",
+        "testedAt": "last tested {{when}}",
+        "test": "Test",
+        "turnOn": "Turn on and test",
+        "useClaude": "Use the {{name}} from Claude Code (recommended)",
+        "use": "Use this one",
+        "using": "Importing and testing",
+        "none": "No ms365 found here. Install the ms365 server in Claude Code (the akad plugin brings it) and come back, or bring it from another tool.",
+        "importLink": "Import from other tools"
+      },
+      "advanced": "Advanced: register an app in Entra"
     },
     "teamsInbox": {
       "description": "Wakes an agent when someone mentions you or messages you in a Teams chat. Every 5 minutes Locum reads, through Graph and with your account, the chats that changed; any reply the agent proposes waits in the queue. Team channels are not covered yet."
@@ -2519,11 +2535,11 @@
       "search": "Search tools by name or description",
       "noMatch": "No tool matches \"{{termo}}\".",
       "areas": {
-          "teams": "Teams (chats, channels, teams)",
-          "mail": "Email",
-          "calendar": "Calendar",
-          "files": "Files",
-          "other": "Other"
+        "teams": "Teams (chats, channels, teams)",
+        "mail": "Email",
+        "calendar": "Calendar",
+        "files": "Files",
+        "other": "Other"
       },
       "counts": "{{read}} read, {{write}} write",
       "writeNote": "A write that is on does not run by itself: in the agent's chat it only runs after you click Run. In an automation, writing is an action node with approval.",
