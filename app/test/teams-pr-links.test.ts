@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { eq } from "drizzle-orm";
 import { schema } from "../src/db/index.js";
 import { TriggerConfig } from "../src/config/types.js";
-import { extractGithubPrLinks } from "../src/sources/github-pr-link.js";
+import { extractGithubPrLinks, extrairLinksDePr } from "../src/sources/github-pr-link.js";
 import { pollTeamsInbox } from "../src/sources/teams-inbox.js";
 import { bancoDeTeste as bancoVazio } from "./helpers/db.js";
 
@@ -191,19 +191,83 @@ test("mensagem do próprio usuário com link conta; sem link, não", async () =>
   assert.equal((await eventos(sem)).length, 0);
 });
 
-test("dois links na mesma mensagem viram um evento por PR, sem duplicar na batida seguinte", async () => {
-  const db = bancoDeTeste();
-  const chats = [
-    { id: "g", chatType: "group", mensagens: [mensagem("m1", 2, `${PR} e https://github.com/acme/web/pull/9`)] },
-  ];
-  const watch = { mentions: false, dms: false, prLinks: true };
-  const primeira = await pollTeamsInbox(watch, { db, token, ...semGithub, ...graphFalso({ chats }) });
-  assert.equal(primeira.eventIds.length, 2);
-  const prs = (await eventos(db)).map((e) => e.repo).sort();
-  assert.deepEqual(prs, ["acme/api", "acme/web"]);
+const WEB = "https://github.com/acme/web/pull/9";
+const WATCH_PR = { mentions: false, dms: false, prLinks: true };
+const chatCom = (html: string) => [{ id: "g", chatType: "group", mensagens: [mensagem("m1", 2, html)] }];
 
-  const segunda = await pollTeamsInbox(watch, { db, token, ...semGithub, ...graphFalso({ chats }) });
+test("dois links na mesma mensagem viram um evento só, com a lista de PRs, sem duplicar na batida seguinte", async () => {
+  const db = bancoDeTeste();
+  const chats = chatCom(`${PR} e ${WEB}`);
+  const primeira = await pollTeamsInbox(WATCH_PR, { db, token, ...semGithub, ...graphFalso({ chats }) });
+  assert.equal(primeira.eventIds.length, 1);
+  const [evento, ...resto] = await eventos(db);
+  assert.equal(resto.length, 0);
+  const prs = evento!.prs as Record<string, unknown>[];
+  assert.deepEqual(prs.map((p) => [p.repo, p.prNumber, p.diff]), [["acme/api", 7, "d"], ["acme/web", 9, "d"]]);
+  assert.deepEqual(prs.map((p) => p.prOwner), ["acme", "acme"]);
+  // O que as specs gravadas leem continua sendo o primeiro PR.
+  assert.deepEqual([evento!.repo, evento!.prNumber, evento!.diff, evento!.teamsMessageId], ["acme/api", 7, "d", "m1"]);
+  assert.match(String(evento!.prsTexto), /acme\/api#7[\s\S]*acme\/web#9/);
+  assert.equal(evento!.prsCortados, undefined);
+
+  const segunda = await pollTeamsInbox(WATCH_PR, { db, token, ...semGithub, ...graphFalso({ chats }) });
   assert.equal(segunda.eventIds.length, 0);
+});
+
+test("PR que já tem review sai da lista, e se todos já têm nada é gerado", async () => {
+  const db = bancoDeTeste();
+  const antes = await pollTeamsInbox(WATCH_PR, { db, token, ...semGithub, ...graphFalso({ chats: chatCom(PR) }) });
+  assert.equal(antes.eventIds.length, 1);
+
+  // Outra mensagem cita o PR já pego e um novo: só o novo entra.
+  const mista = [{ id: "g2", chatType: "group", mensagens: [mensagem("m2", 1, `${PR} ${WEB}`)] }];
+  const r = await pollTeamsInbox(WATCH_PR, { db, token, ...semGithub, ...graphFalso({ chats: mista }) });
+  assert.deepEqual(r.descartes.map((d) => [d.pr, d.motivo]), [["acme/api#7", "repetido"]]);
+  const segundo = (await eventos(db)).find((e) => e.messageId === "m2");
+  assert.deepEqual((segundo!.prs as { prNumber: number }[]).map((p) => p.prNumber), [9]);
+  assert.equal(segundo!.prNumber, 9);
+
+  // Agora os dois já foram: a mensagem nova não gera evento.
+  const todos = [{ id: "g3", chatType: "group", mensagens: [mensagem("m3", 1, `${PR} ${WEB}`)] }];
+  const nada = await pollTeamsInbox(WATCH_PR, { db, token, ...semGithub, ...graphFalso({ chats: todos }) });
+  assert.deepEqual(nada.inWindow, []);
+  assert.equal((await eventos(db)).filter((e) => e.prs !== undefined).length, 2);
+});
+
+test("PR que não deu para buscar sai da lista com o erro, e os outros seguem", async () => {
+  const db = bancoDeTeste();
+  const fetchPr = (async (owner: string, repo: string, pull: number) => {
+    if (pull === 7) throw new Error("fora do ar");
+    return (semGithub.fetchPr as (o: string, r: string, p: number) => Promise<unknown>)(owner, repo, pull);
+  }) as never;
+  const r = await pollTeamsInbox(WATCH_PR, { db, token, ...semGithub, fetchPr, ...graphFalso({ chats: chatCom(`${PR} ${WEB}`) }) });
+  assert.match(r.errors[0]!.error, /acme\/api#7: fora do ar/);
+  const [evento] = await eventos(db);
+  assert.deepEqual((evento!.prs as { prNumber: number }[]).map((p) => p.prNumber), [9]);
+  assert.equal(evento!.prNumber, 9);
+});
+
+test("mais de cinco links: cinco entram e o evento diz quantos ficaram de fora", async () => {
+  const db = bancoDeTeste();
+  const links = [1, 2, 3, 4, 5, 6, 7].map((n) => `https://github.com/acme/api/pull/${n}`).join(" ");
+  await pollTeamsInbox(WATCH_PR, { db, token, ...semGithub, ...graphFalso({ chats: chatCom(links) }) });
+  const [evento] = await eventos(db);
+  assert.equal((evento!.prs as unknown[]).length, 5);
+  assert.equal(evento!.prsCortados, 2);
+});
+
+test("spec gravada com os campos de um PR só segue renderizando pelo primeiro PR da lista", async () => {
+  const db = bancoDeTeste();
+  await pollTeamsInbox(WATCH_PR, { db, token, ...semGithub, ...graphFalso({ chats: chatCom(`${PR} ${WEB}`) }) });
+  const [evento] = await eventos(db);
+  const { renderPrompt } = await import("../src/executor/executor.js");
+  assert.equal(renderPrompt("{{event.repo}}#{{event.prNumber}}", evento as never, new Map()), "acme/api#7");
+});
+
+test("o limite de cinco links diz quantos ficaram de fora", () => {
+  const links = [1, 2, 2, 3, 4, 5, 6, 7].map((n) => `https://github.com/acme/api/pull/${n}`).join(" ");
+  const { prs, cortados } = extrairLinksDePr(links);
+  assert.deepEqual([prs.length, cortados], [5, 2]);
 });
 
 const CONTEXTO_DO_PR = {

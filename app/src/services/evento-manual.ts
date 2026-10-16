@@ -1,6 +1,7 @@
 import { desc, eq, ne, and } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
 import { fetchPr as defaultFetchPr, type PrContext } from "../sources/github.js";
+import { textoDosPrs } from "../sources/teams-inbox.js";
 import { ExecutionService, executionService, parseTarget } from "./execution-service.js";
 
 type Db = typeof defaultDb;
@@ -26,7 +27,7 @@ const TAMANHO_DO_TRECHO = 140;
  *
  * O evento do link sai como o gatilho do Teams o deixa depois de enriquecer um
  * `prLinks`: o contexto do PR por cima dos campos `prOwner`, `prRepo` e
- * `prNumber`. Os campos da conversa ficam vazios e `semConversa` avisa o
+ * `prNumber`, e a lista `prs` com esse PR. Os campos da conversa ficam vazios e `semConversa` avisa o
  * executor, que faz de toda ação que publica para fora um ensaio. Não passa pelos
  * descartes do gatilho (rascunho, PR já revisado): quem cola o link pediu aquele PR.
  */
@@ -49,6 +50,8 @@ export class EventoManual {
       throw new Error("cole o link de um pull request do GitHub, como https://github.com/dono/repo/pull/123");
     }
     const contexto = await this.fetchPr(alvo.owner, alvo.repo, alvo.pull);
+    const pr = { prOwner: alvo.owner, prRepo: alvo.repo, prNumber: alvo.pull };
+    const prs = [{ ...contexto, ...pr }];
     const payload = {
       kind: "pr",
       chatId: null,
@@ -58,6 +61,10 @@ export class EventoManual {
       prRepo: alvo.repo,
       prNumber: alvo.pull,
       ...contexto,
+      // A lista de um PR só, como o gatilho a grava, para o fluxo não precisar de dois caminhos.
+      prLinks: [{ owner: alvo.owner, repo: alvo.repo, pull: alvo.pull }],
+      prs,
+      prsTexto: textoDosPrs(prs),
       teamsAuthor: null,
       semConversa: true,
       // Para qual automação o link foi colado: só ela pode rodar com este evento.

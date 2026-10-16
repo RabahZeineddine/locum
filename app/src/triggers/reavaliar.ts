@@ -22,13 +22,23 @@ export async function motivoDoEventoGuardado(eventId: string, db: Db = defaultDb
   const [evento] = await db.select({ payload: schema.events.payload }).from(schema.events).where(eq(schema.events.id, eventId)).limit(1);
   const p = (evento?.payload ?? null) as Record<string, unknown> | null;
   if (p === null) return null;
-  const owner = p.owner ?? p.prOwner;
-  const repo = p.repoName ?? p.prRepo;
-  const pull = p.pull ?? p.prNumber;
-  if (typeof owner !== "string" || typeof repo !== "string" || typeof pull !== "number") return null;
+  // Evento de mensagem com vários PRs: só deixa de valer quando nenhum deles vale.
+  const lista = Array.isArray(p.prs) && p.prs.length > 0 ? (p.prs as Record<string, unknown>[]) : [p];
+  const alvos = lista.flatMap((q) => {
+    const owner = q.owner ?? q.prOwner;
+    const repo = q.repoName ?? q.prRepo;
+    const pull = q.pull ?? q.prNumber;
+    return typeof owner === "string" && typeof repo === "string" && typeof pull === "number" ? [{ owner, repo, pull }] : [];
+  });
+  if (alvos.length === 0 || alvos.length < lista.length) return null;
   try {
-    const contexto = await fetchPrBasico(owner, repo, pull);
-    return await motivoDeDescarte(contexto, () => githubService.viewerLogin(), () => carregarRevisados(db, { comEventosDoTeams: false }));
+    let motivo: string | null = null;
+    for (const a of alvos) {
+      const contexto = await fetchPrBasico(a.owner, a.repo, a.pull);
+      motivo = await motivoDeDescarte(contexto, () => githubService.viewerLogin(), () => carregarRevisados(db, { comEventosDoTeams: false }));
+      if (motivo === null) return null;
+    }
+    return motivo;
   } catch {
     return null;
   }

@@ -213,7 +213,9 @@ test("mensagem com dois links é perguntada uma vez", async () => {
   const modelo = modeloFalso(() => true);
   await pollTeamsInbox(watch, { db, token, graphUrl: GRAPH, ...semGithub, fetchFn: graph.fetchFn, julgar: modelo.julgar });
   assert.equal(modelo.pedidos.length, 1);
-  assert.equal((await eventos(db)).length, 2);
+  const [evento, ...resto] = await eventos(db);
+  assert.equal(resto.length, 0);
+  assert.equal((evento as { prs: unknown[] }).prs.length, 2);
 });
 
 test("limite por batida: o excedente fica para a próxima, na ordem em que chegou", async () => {

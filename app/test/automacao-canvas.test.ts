@@ -213,22 +213,24 @@ test("automação gravada sem nó de reação ganha o aviso, e o botão insere o
   assert.equal(gravado.spec.steps.length, 2);
 });
 
-test("o modelo de PR no Teams monta o prompt com o diff do evento e não exige servidor", () => {
+test("o modelo de PR no Teams monta o prompt com os PRs do evento e não exige servidor", () => {
   const r = rascunhoDoModelo("teamsPrReview", "t", "T", null);
   const revisar = r.spec.steps.find((x) => x.key === "revisar")!;
   assert.equal(revisar.type, "model");
   assert.deepEqual(revisar.type === "model" && revisar.requiresServers, []);
+  assert.equal(r.spec.budget.perRunUsd, 0.5);
   const prompt = renderPrompt(
     revisar.type === "model" ? revisar.prompt : "",
     {
       repo: "acme/api", prNumber: 7, author: "ana", text: "olhem isso",
-      title: "Corrige o saldo", description: "Arredonda para baixo", diff: "@@ -1 +1 @@\n-a\n+b",
+      prsTexto: "### PR 1 de 2: acme/api#7\nTítulo: Corrige o saldo\n\n### PR 2 de 2: acme/web#9\nTítulo: Ajusta o menu\nDiff:\n+b",
     } as unknown as Parameters<typeof renderPrompt>[1],
     new Map(),
   );
   assert.match(prompt, /Corrige o saldo/);
-  assert.match(prompt, /Arredonda para baixo/);
+  assert.match(prompt, /acme\/web#9/);
   assert.match(prompt, /\+b/);
+  assert.match(prompt, /uma seção por PR/);
   assert.doesNotMatch(prompt, /\{\{/);
 });
 
