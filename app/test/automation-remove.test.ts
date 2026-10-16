@@ -16,11 +16,8 @@ function montar() {
   const db = bancoDeTeste();
   const agents = new AgentService(db);
   const triggers = new TriggerService(db);
-  const soltos: unknown[] = [];
-  const automations = new AutomationService(agents, triggers, {} as unknown as ExecutionService, undefined, db, async (payload) => {
-    soltos.push(payload);
-  });
-  return { db, agents, triggers, automations, soltos };
+  const automations = new AutomationService(agents, triggers, {} as unknown as ExecutionService, undefined, db);
+  return { db, agents, triggers, automations };
 }
 type Banco = ReturnType<typeof montar>["db"];
 
@@ -153,28 +150,6 @@ test("a prévia traz as mesmas contagens e os motivos de recusa", async () => {
   await assert.rejects(m.automations.removePreview("nao-existe"), /nao cadastrada/);
 });
 
-test("depois do commit solta o 👀 dos eventos que esperavam retentativa", async () => {
-  const m = montar();
-  await semear(m, "acme-a");
-  m.db.insert(schema.events).values({ id: "ev-espera", source: "teams-inbox", externalId: "espera", payload: { chatId: "c1" } }).run();
-  m.db.update(schema.cursors).set({ value: JSON.stringify([{ eventId: "ev-espera", since: 1 }]) }).where(eq(schema.cursors.source, "scheduler-retry")).run();
-
-  await m.automations.remove("acme-a");
-  assert.deepEqual(m.soltos, [{ chatId: "c1" }]);
-});
-
-test("falha ao soltar o 👀 não desfaz nem falha o remove", async () => {
-  const m = montar();
-  await semear(m, "acme-a");
-  m.db.insert(schema.events).values({ id: "ev-espera", source: "teams-inbox", externalId: "espera", payload: {} }).run();
-  m.db.update(schema.cursors).set({ value: JSON.stringify([{ eventId: "ev-espera", since: 1 }]) }).where(eq(schema.cursors.source, "scheduler-retry")).run();
-  const falho = new AutomationService(m.agents, m.triggers, {} as unknown as ExecutionService, undefined, m.db, async () => {
-    throw new Error("graph fora");
-  });
-  assert.equal((await falho.remove("acme-a")).removed, true);
-  assert.equal(tabela(m.db, schema.agents), 0);
-});
-
 test("remove de automação que sumiu entre a checagem e a transação recusa como não cadastrada", async () => {
   const m = montar();
   await semear(m, "acme-a");
@@ -183,25 +158,8 @@ test("remove de automação que sumiu entre a checagem e a transação recusa co
   // a checagem de fora ainda enxerga o agent (o outro remove ainda não tinha commitado)
   const agents = Object.create(m.agents) as AgentService;
   agents.get = async () => antigo;
-  const automations = new AutomationService(agents, m.triggers, {} as unknown as ExecutionService, undefined, m.db, async () => {});
+  const automations = new AutomationService(agents, m.triggers, {} as unknown as ExecutionService, undefined, m.db);
   await assert.rejects(automations.remove("acme-a"), /nao cadastrada/);
-});
-
-test("solta o 👀 do pendente que o scheduler gravou entre a leitura de fora e a transação", async () => {
-  const m = montar();
-  await semear(m, "acme-a");
-  m.db.insert(schema.events).values({ id: "ev-tarde", source: "teams-inbox", externalId: "tarde", payload: { chatId: "c9" } }).run();
-  // o scheduler de outro processo grava o pendente depois da leitura de fora e antes do BEGIN IMMEDIATE
-  const db = Object.create(m.db) as Banco;
-  db.transaction = ((fn: never, opts: never) => {
-    m.db.update(schema.cursors).set({ value: JSON.stringify([{ eventId: "ev-tarde", since: 1 }]) }).where(eq(schema.cursors.source, "scheduler-retry")).run();
-    return m.db.transaction(fn, opts);
-  }) as Banco["transaction"];
-  const automations = new AutomationService(m.agents, m.triggers, {} as unknown as ExecutionService, undefined, db, async (payload) => {
-    m.soltos.push(payload);
-  });
-  await automations.remove("acme-a");
-  assert.deepEqual(m.soltos, [{ chatId: "c9" }]);
 });
 
 test("evento manual da automação usado por run de outra automação fica", async () => {

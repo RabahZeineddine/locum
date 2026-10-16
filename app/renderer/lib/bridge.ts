@@ -239,6 +239,7 @@ export const AO_VIVO: Record<ReadChannel, boolean> = {
   // compara com ela. Reler em silencio trocaria a base e o aviso sumiria.
   "automations.get": false,
   "automations.eventsForRun": true,
+  "automations.removePreview": true,
   "library.profiles": true,
   "library.profile": true,
   "library.profileVersions": true,

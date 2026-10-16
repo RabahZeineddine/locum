@@ -8,15 +8,12 @@ import { agentService, ID_DE_AGENT, mensagemDeVersao, isReserved, type AgentServ
 import { dependenciaDeEvento, recusaSemEvento, type MotivoDeEvento } from "../executor/dependencia-de-evento.js";
 import { eventoManual, type EventoManual, type EventoRecente } from "./evento-manual.js";
 import { executionService, type ExecutionService } from "./execution-service.js";
-import { soltarOPr } from "../teams/reaction.js";
 import { esperaChats, MOTIVO_CHATS, recusaDaGravacao, triggerService, type TriggerEntry, type TriggerService } from "./trigger-service.js";
 
 type Db = typeof defaultDb;
 
 /** Fontes de cursor presas a um gatilho, com o id dele na chave. As demais (mcp-poll, teams-inbox, github, digest) são da conexão. */
 const FONTES_DO_GATILHO = ["gatilho-descartes", "gatilho-erro", "scheduler", "scheduler-retry"];
-/** Onde o agendador guarda os eventos que esperam nova tentativa (ver `RETRY_SOURCE` em scheduler.ts). */
-const FONTE_DA_RETENTATIVA = "scheduler-retry";
 
 /** O que a exclusão leva, e o que a impede. Mesma resposta para a prévia e para o remove. */
 export interface PreviaDeRemocao {
@@ -104,7 +101,6 @@ export class AutomationService {
     private readonly executions: ExecutionService = executionService,
     private readonly eventos: EventoManual = eventoManual,
     private readonly db: Db = defaultDb,
-    private readonly soltar: (payload: unknown) => Promise<void> = soltarOPr,
   ) {}
 
   async get(agentId: string): Promise<Automation | null> {
@@ -319,15 +315,12 @@ export class AutomationService {
   async remove(agentId: string): Promise<{ agentId: string; removed: true; triggers: number; runs: number }> {
     await this.recusarSeNaoExiste(agentId);
 
-    const { triggers, runs, esperando } = this.db.transaction(
+    const { triggers, runs } = this.db.transaction(
       (tx) => {
         // Outro remove pode ter apagado o agent depois da checagem de fora.
         if (tx.select({ id: schema.agents.id }).from(schema.agents).where(eq(schema.agents.id, agentId)).get() === undefined) {
           throw new Error(`automacao "${agentId}" nao cadastrada`);
         }
-        // Lido aqui: depois da transação os gatilhos e o cursor não existem mais, e antes dela
-        // o scheduler de outro processo ainda poderia gravar um pendente novo.
-        const esperando = this.eventosEsperandoRetentativa(tx, agentId);
         const previa = this.inspecionar(tx, agentId);
         if (previa.blockers.length > 0) throw new Error(previa.blockers.join("; "));
 
@@ -359,45 +352,17 @@ export class AutomationService {
           .run();
         tx.delete(schema.agentVersions).where(eq(schema.agentVersions.agentId, agentId)).run();
         tx.delete(schema.agents).where(eq(schema.agents.id, agentId)).run();
-        return { triggers: previa.triggers, runs: previa.runs, esperando };
+        return { triggers: previa.triggers, runs: previa.runs };
       },
       { behavior: "immediate" },
     );
 
-    // Melhor esforço: a automação já saiu, e o 👀 que sobra no Teams não pode fazer o remove falhar.
-    for (const eventId of esperando) {
-      try {
-        const [evento] = await this.db.select().from(schema.events).where(eq(schema.events.id, eventId)).limit(1);
-        await this.soltar(evento?.payload);
-      } catch (err) {
-        console.error(`soltar o evento ${eventId} depois de excluir ${agentId} falhou: ${err instanceof Error ? err.message : String(err)}`);
-      }
-    }
     return { agentId, removed: true, triggers, runs };
   }
 
   private async recusarSeNaoExiste(agentId: string): Promise<void> {
     if ((await this.agents.get(agentId)) === undefined) throw new Error(`automacao "${agentId}" nao cadastrada`);
     if (isReserved(agentId)) throw new Error(`"${agentId}" e um agent do sistema e nao aceita escrita`);
-  }
-
-  /** Eventos que ficaram com 👀 esperando nova tentativa nos gatilhos da automação. Síncrona, para rodar dentro da transação do `remove`. */
-  private eventosEsperandoRetentativa(leitor: Pick<Db, "select">, agentId: string): string[] {
-    const ids = leitor.select({ id: schema.triggers.id }).from(schema.triggers).where(eq(schema.triggers.agentId, agentId)).all().map((g) => g.id);
-    if (ids.length === 0) return [];
-    const linhas = leitor
-      .select({ value: schema.cursors.value })
-      .from(schema.cursors)
-      .where(and(eq(schema.cursors.source, FONTE_DA_RETENTATIVA), inArray(schema.cursors.key, ids)))
-      .all();
-    const eventos = new Set<string>();
-    for (const { value } of linhas) {
-      try {
-        const lista = JSON.parse(value) as unknown;
-        if (Array.isArray(lista)) for (const p of lista) if (typeof p?.eventId === "string") eventos.add(p.eventId);
-      } catch {}
-    }
-    return [...eventos];
   }
 
   /** Contagens e recusas. Síncrona, para rodar dentro da transação do `remove` com o mesmo resultado da prévia. */
