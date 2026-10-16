@@ -18,6 +18,8 @@ import {
   PASSOS,
   passoDoAgent,
   caminhosDe,
+  comNosDeReacao,
+  faltaReacaoNoGatilho,
   LOGICA,
   PREFIXO_DE_GATILHO,
   posicoes,
@@ -274,6 +276,14 @@ function EditorCarregado({
   const viaDoTeams = (conexoes.data ?? []).find((c) => c.id === "teams")?.via;
 
   const mudou = temMudanca(rascunho, salvo);
+  // O gatilho do Teams com link de PR já reagiu sozinho. O aviso aparece uma vez por automação: dispensar ou inserir os nós o encerra.
+  const chaveDoAviso = `locum.aviso-reacao.${agentId}`;
+  const [avisoDispensado, setAvisoDispensado] = useState<boolean>(() => globalThis.localStorage?.getItem(chaveDoAviso) === "1");
+  const dispensarAvisoDeReacao = (): void => {
+    globalThis.localStorage?.setItem(chaveDoAviso, "1");
+    setAvisoDispensado(true);
+  };
+  const avisoDeReacao = !avisoDispensado && faltaReacaoNoGatilho(salvo) && faltaReacaoNoGatilho(rascunho);
   const lista = problemas(rascunho, ctx);
   const bloqueado = lista.some((p) => p.bloqueia);
   const ligada = salvo.gatilhos.some((g) => g.enabled);
@@ -795,6 +805,28 @@ function EditorCarregado({
           {aviso.texto}
         </p>
       )}
+
+      {avisoDeReacao ? (
+        <p className="text-muted-foreground flex items-center gap-1.5 text-xs" data-locum-aviso-reacao="">
+          <StatusDot estado="aviso" />
+          <span className="mr-auto">{t("automations.editor.reactionNotice.text")}</span>
+          <Button
+            className="cursor-pointer"
+            data-locum-aviso-reacao-adicionar=""
+            onClick={() => {
+              setRascunho((r) => comNosDeReacao(r, { pegou: t("automations.reactionNodes.pegou"), veredito: t("automations.reactionNodes.verdict") }));
+              dispensarAvisoDeReacao();
+            }}
+            size="sm"
+            variant="outline"
+          >
+            {t("automations.editor.reactionNotice.add")}
+          </Button>
+          <Button className="cursor-pointer" data-locum-aviso-reacao-dispensar="" onClick={dispensarAvisoDeReacao} size="sm" variant="ghost">
+            {t("automations.editor.reactionNotice.dismiss")}
+          </Button>
+        </p>
+      ) : null}
 
       {lista.length > 0 ? (
         <details className="text-xs" data-locum-problemas={lista.length}>
@@ -1347,6 +1379,12 @@ function resumoDaAcao(p: Extract<Rascunho["spec"]["steps"][number], { type: "act
   const prm = (p.params ?? {}) as Record<string, unknown>;
   if (p.action === "mcp.call") return [prm.server, prm.tool].filter((x) => typeof x === "string" && x !== "").join(" · ");
   if (p.action === "http.request") return typeof prm.url === "string" && prm.url !== "" ? `${String(prm.method ?? "POST")} ${prm.url}` : "";
+  if (p.action === "teams.react" || p.action === "slack.react") {
+    const op = prm.operacao === "unset" ? "unset" : "set";
+    const por = prm.porValor as { mapa?: Record<string, string>; padrao?: string } | undefined;
+    if (por !== undefined) return `${op} ${[...Object.values(por.mapa ?? {}), por.padrao ?? ""].filter((e) => e !== "").join(" ")}`;
+    return `${op} ${typeof prm.emoji === "string" ? prm.emoji : ""}`.trim();
+  }
   return p.target ?? "";
 }
 

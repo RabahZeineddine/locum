@@ -3,7 +3,7 @@ import type { AgentSpec, Step } from "../config/types.js";
 // O renderer importa este arquivo para traduzir a recusa: nada de Node aqui.
 
 /** Ações que respondem a uma conversa e não têm o que fazer sem o evento dela. */
-export const ACOES_DE_CONVERSA = new Set(["teams.post", "slack.post"]);
+export const ACOES_DE_CONVERSA = new Set(["teams.post", "slack.post", "teams.react", "slack.react"]);
 
 /**
  * Por que a automação depende de evento, em código e parâmetros. Quem mostra

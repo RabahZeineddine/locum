@@ -13,7 +13,6 @@ import { precisaDaConta, type Descarte } from "../sources/github-filtros.js";
 import { pollSlack, slackWatchFor, type SlackPollOutcome } from "../sources/slack.js";
 import { pollSlackInbox, type SlackInboxOutcome } from "../sources/slack-inbox.js";
 import { pollTeamsInbox } from "../sources/teams-inbox.js";
-import { soltarOPr } from "../teams/reaction.js";
 import { slackService, type SlackService } from "../services/slack-service.js";
 import { settingsService, type SettingsService } from "../services/settings-service.js";
 import { triggerService, type TriggerEntry, type TriggerService } from "../services/trigger-service.js";
@@ -247,8 +246,6 @@ export class Scheduler {
     private readonly slackInbox: typeof pollSlackInbox = pollSlackInbox,
     private readonly teamsInbox: typeof pollTeamsInbox = pollTeamsInbox,
     private readonly settings: SettingsService = settingsService,
-    /** Tira o 👀 do Teams do evento que desistiu de abrir run. Existe para o teste trocar. */
-    private readonly soltar: (payload: unknown) => Promise<void> = soltarOPr,
     /** A proteção de limite de provedor. Existe para o teste trocar. */
     private readonly pausa: PausaFn = pausaDoLimite,
     private readonly reavaliar: ReavaliarFn = reavaliarGuardado,
@@ -656,7 +653,6 @@ export class Scheduler {
       const excesso = pendentes.splice(0, Math.max(0, pendentes.length - TETO_DOS_PENDENTES));
       if (excesso.length > 0) {
         await registrarDescartes(this.db, trigger.id, excesso.map((p) => ({ pr: p.eventId, motivo: `lista de espera do limite passou de ${TETO_DOS_PENDENTES}, o mais velho saiu` })), at);
-        for (const p of excesso) await this.soltarDoEvento(p.eventId);
       }
       if (antes.size > 0 || pendentes.length > 0) await this.writeRetry(trigger.id, pendentes);
       if (pendentes.length > 0) this.pausadas.set(trigger.id, `${textoDaPausa(bloqueio)}, ${pendentes.length} evento(s) guardado(s)`);
@@ -687,7 +683,6 @@ export class Scheduler {
         const motivo = await this.reavaliar(c.eventId).catch(() => null);
         if (motivo !== null) {
           await registrarDescartes(this.db, trigger.id, [{ pr: c.eventId, motivo: `depois da pausa: ${motivo}` }], at);
-          await this.soltarDoEvento(c.eventId);
           descartados += 1;
           continue;
         }
@@ -706,7 +701,6 @@ export class Scheduler {
         // Quem esperou em pausa começa o prazo de um dia agora, e não com o carimbo de dias atrás.
         const since = c.emPausa ? agora : c.since;
         if (agora - since < RETRY_TTL_MS) pendentes.push({ eventId: c.eventId, since });
-        else await this.soltarDoEvento(c.eventId);
       }
     }
     if (antes.size > 0 || pendentes.length > 0) await this.writeRetry(trigger.id, pendentes);
@@ -721,14 +715,6 @@ export class Scheduler {
       throw new Error(`${falhas.length} evento(s) sem run${abertos}: ${falhas[0]}`);
     }
     return runs;
-  }
-
-  /** O evento desistiu de virar run: a mensagem do Teams não pode ficar com o 👀 de "peguei". */
-  private async soltarDoEvento(eventId: string): Promise<void> {
-    try {
-      const [evento] = await this.db.select().from(schema.events).where(eq(schema.events.id, eventId)).limit(1);
-      await this.soltar(evento?.payload);
-    } catch {}
   }
 
   private async notYetRan(triggerId: string, eventIds: string[]): Promise<string[]> {

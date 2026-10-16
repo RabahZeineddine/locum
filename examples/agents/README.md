@@ -23,8 +23,10 @@ campo recente pode instalar sem ele em versão velha.
 ## PR review por link no Teams
 
 O `pr-review.json` também roda a partir de um link de pull request colado no
-Teams, com reação na própria mensagem: 👀 quando o Locum pega o PR, e no fim ✅
-(APPROVE), ⚠️ (REQUEST_CHANGES) ou 💬 (COMMENT). Para montar:
+Teams. O gatilho não reage a nada: a reação na própria mensagem é nó do fluxo
+(`teams.react`), como no modelo "Teams: revisar o PR do link" do canvas, com 👀
+no começo e, no fim, ✅ (APPROVE), ⚠️ (REQUEST_CHANGES) ou 💬 (COMMENT) no lugar
+do 👀. Para montar:
 
 1. Conecte o Teams em Apps com os **canais ligados**. Ler canal pede
    `ChannelMessage.Read.All`, que só o administrador do tenant libera: o painel
@@ -37,14 +39,14 @@ Teams, com reação na própria mensagem: 👀 quando o Locum pega o PR, e no fi
 3. Cole um link como `https://github.com/<dono>/<repo>/pull/<n>` (vale
    `/files` e query). Chat de reunião só acorda com menção.
 
-Uma mensagem com vários links gera um evento por PR, até cinco, e editar a
+Por padrão cada link gera um evento, um por PR. Com `agruparPrs` ligado no gatilho, a mensagem inteira vira um evento só, com a lista `prs` (até `maxPrs`, cinco por padrão; `prsCortados` diz quantos ficaram de fora, `prsFalharam` quais não deu para buscar) e `prsTexto` pronto para o prompt. Os campos do primeiro PR seguem no evento (`repo`, `prNumber`, `diff`). Editar a
 mensagem não gera evento repetido. Link dentro de código (`<code>`, `<pre>`) é
 ignorado, e `www.github.com` vale. O evento leva o contexto do PR nos mesmos
 campos que o agent lê (`repo`, `title`, `description`, `diff`, `omittedSummary`,
 `ci.summary`), buscado com o token do GitHub da configuração. A mensagem do
 próprio usuário também conta.
 
-Não acordam o agent, e não ganham 👀: o PR que não deu para buscar (o erro
+Não acordam o agent: o PR que não deu para buscar (o erro
 aparece no resultado do gatilho), o seu próprio PR, o PR fechado, mergeado ou
 em rascunho, e o PR no mesmo commit que já tem review publicada ou em andamento
 da ação `github.review_comment`, ou evento do Teams que já o pegou, nas últimas
@@ -57,10 +59,12 @@ mensagem. Um gatilho que já varria antes continua de onde o cursor compartilhad
 antigo parou, se ele tiver menos de 24h; mais velho que isso conta como gatilho novo. Um gatilho novo, ou um canal novo nele, só olha link de PR de
 mensagem criada depois de ligado: ligar não revisa o dia de ontem.
 
-O 👀 sai quando a review é publicada, trocado pelo veredito, e também quando ela
-não vai sair: rascunho, proposta rejeitada, run que falha ou sem orçamento, e
-evento que desiste de abrir run só perdem o 👀. A reação do veredito sai quando a review é publicada,
-não quando o agent termina, e aprovar e pedir mudanças continuam parando na fila.
+Nenhuma reação sai sozinha: nem ao pegar o PR, nem ao publicar a review, nem
+quando o run falha ou o evento é descartado. Quem quer o 👀 ou o veredito monta
+os nós `teams.react` (ou `slack.react`) onde quiser. O motor não tem ramo de
+falha, então tirar o 👀 de um run que falhou não tem como ser um nó: marque os
+nós de reação como `optional` para que uma reação recusada não derrube a revisão.
+Aprovar e pedir mudanças continuam parando na fila.
 O `repo` do evento é o do PR, então este fluxo não serve ao `teams-reply`, que
 recusa o evento de PR.
 

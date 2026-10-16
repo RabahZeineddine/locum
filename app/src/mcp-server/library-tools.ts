@@ -162,8 +162,8 @@ function catalogo() {
       key: "unique id of the step inside the automation",
       name: "label shown in the app",
       needs: "keys of the steps this one waits for",
-      optional: "true lets the run go on when this step fails",
-      when: "{ step, branch }: runs only when the decision step `step` (which must be in needs) chose `branch`. Steps off the chosen path are skipped, and so is whatever depends only on skipped steps. A step that joins two paths runs.",
+      optional: "true lets the run go on when this step fails (an action step stays failed with its error and its output is null)",
+      when: "{ step, branch }: runs only when the decision step `step` (which must be in needs) chose `branch`. Steps off the chosen path are skipped, and so is whatever depends only on skipped steps. A step that joins two paths runs. A step rejected in the Queue skips every step that depends on it, even a join (`dependency_rejected:<step>`); a publish conflict does not.",
     },
     steps: {
       model: {
@@ -175,7 +175,7 @@ function catalogo() {
       action: {
         fields: "action (kind below), mode, target, input (key of the step whose output goes in), params",
         params:
-          "for mcp.call: { server, tool, args }; for http.request: { method, url, headers, body }. Accept markers and go on top of the input step output.",
+          "for mcp.call: { server, tool, args }; for http.request: { method, url, headers, body }; for teams.react and slack.react (a reaction on the event's own message, never on one the model names): { emoji, operacao: 'set'|'unset' (default set), tirar (a reaction removed first), porValor: { de: '{{steps.revisar.verdict}}', mapa: { APPROVE: '✅', REQUEST_CHANGES: '⚠️', COMMENT: '💬' }, padrao: '💬' } }. porValor picks the emoji from a value and wins over emoji. Slack takes emoji names (eyes, :eyes:) or the common unicode ones. Without an event message they become a dry run. Nothing reacts unless a step does: triggers never react. Accept markers and go on top of the input step output.",
         target: "tracker.create_issue: id of the registered tracker",
         modes:
           "approve stops in the queue for a person; auto publishes on its own; draft prepares without publishing. upsert_agent lowers every action step to approve. save_automation, save_agent_edited, import_agent and restore_agent_version record the mode as given, like the editor, so an auto action recorded there publishes without asking; the client confirms each of those calls.",

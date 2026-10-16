@@ -601,6 +601,14 @@ export const TeamsInboxTrigger = z.object({
    */
   prLinks: z.boolean().default(false),
   /**
+   * Com `prLinks`, uma mensagem com vários links vira um evento só, com a
+   * lista `prs`, para um run revisar todos e responder uma vez. Desligado (o
+   * padrão e o que já estava gravado) é um evento por PR.
+   */
+  agruparPrs: z.boolean().default(false),
+  /** Quantos PRs de uma mensagem entram. O resto é contado em `prsCortados` do evento. */
+  maxPrs: z.number().int().min(1).max(20).default(5),
+  /**
    * Depois dos filtros acima, cada mensagem é lida por um modelo barato com a
    * pergunta da pessoa, e só acorda o agent se a resposta for sim. Ausente é o
    * comportamento de antes: tudo que passou nos filtros acorda.

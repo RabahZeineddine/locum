@@ -1,15 +1,5 @@
 import { abrirTeams, type TeamsGraphOptions } from "./graph.js";
 
-/** Pegou o PR. */
-export const REACAO_PEGOU = "👀";
-
-/** A reação do veredito, que troca a de "pegou". */
-export const REACAO_DO_VEREDITO = {
-  APPROVE: "✅",
-  REQUEST_CHANGES: "⚠️",
-  COMMENT: "💬",
-} as const;
-
 /** A mensagem do Teams onde o Locum reage. */
 export type AlvoDaReacao = (
   | { tipo: "chat"; chatId: string; messageId: string }
@@ -50,21 +40,6 @@ function caminhoDe(alvo: AlvoDaReacao): string {
   return alvo.replyToId === undefined
     ? `${canal}/${enc(alvo.messageId)}`
     : `${canal}/${enc(alvo.replyToId)}/replies/${enc(alvo.messageId)}`;
-}
-
-/**
- * Tira o 👀 da mensagem do evento, se ele veio do Teams com PR, e não põe nada.
- * É o fim de quem pegou o PR e não vai publicar review: fila rejeitada, run
- * falho ou sem orçamento. Recusa do Graph vira log.
- */
-export async function soltarOPr(payload: unknown, options: TeamsReactionOptions = {}): Promise<void> {
-  const alvo = alvoDaReacao(payload);
-  if (alvo === null) return;
-  try {
-    await reagirNoTeams(alvo, "unset", REACAO_PEGOU, options);
-  } catch (err) {
-    console.error(`tirar ${REACAO_PEGOU} no Teams falhou: ${err instanceof Error ? err.message : String(err)}`);
-  }
 }
 
 /** Põe ou tira uma reação. Estoura se o Graph recusar: quem chama decide se engole. */

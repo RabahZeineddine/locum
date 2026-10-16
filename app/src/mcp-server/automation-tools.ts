@@ -24,7 +24,7 @@ import { def } from "./tool-def.js";
  */
 
 const EFEITO_DE_LIGAR =
-  "Turning on makes the app act by itself with your accounts: it polls, spends model budget and starts runs, and an action step in auto mode publishes without asking. A Teams trigger with prLinks also reacts with 👀 (then ✅, ⚠️ or 💬 by the review verdict) on Teams messages in your name.";
+  "Turning on makes the app act by itself with your accounts: it polls, spends model budget and starts runs, and an action step in auto mode publishes without asking. The trigger itself never reacts or writes anywhere: reactions (teams.react, slack.react) are steps of the flow.";
 
 /** O erro do gatilho é texto de fora (resposta de API, mensagem de rede), que só se lê: pode trazer token colado. */
 function semSegredo<E extends { texto: string }>(erro: E | null): E | null {
@@ -200,6 +200,6 @@ export function registerAutomationTools(server: McpServer): void {
       automationService.runNow(agentId, { ...(eventId === undefined ? {} : { eventId }), ...(prUrl === undefined ? {} : { prUrl }) }));
 
   def(server, "tick_triggers", "publish",
-    "Runs one polling round now over every enabled trigger, as the Check now button does, without waiting for the runs to finish. It reads GitHub, Slack or Teams with your accounts and starts runs (an action in auto mode publishes in your name; a Teams prLinks trigger reacts 👀 on messages in your name). Returns what each trigger did.",
+    "Runs one polling round now over every enabled trigger, as the Check now button does, without waiting for the runs to finish. It reads GitHub, Slack or Teams with your accounts and starts runs (an action in auto mode publishes in your name; triggers never react or write on their own, that is what steps are for). Returns what each trigger did.",
     {}, () => scheduler.tick({ reason: "manual", wait: false }));
 }

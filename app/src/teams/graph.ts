@@ -104,7 +104,7 @@ export interface TeamsNoMcp {
   canal: boolean;
   /** Mandar mensagem no chat, na thread do canal ou os dois. */
   responder: boolean;
-  /** Reagir à mensagem, que é o 👀 de "peguei o PR". */
+  /** Reagir à mensagem, pelo passo `teams.react`. */
   reagir: boolean;
 }
 
@@ -234,7 +234,7 @@ export function graphPeloMcp(
       if (arg !== null) args[arg.nome] = noTipoDe(valor, arg.prop);
     }
     // O ms365 pede confirmação em toda escrita; quando o Locum chega aqui a
-    // pessoa já aprovou na Fila (ou é o 👀 que a regra da reação autoriza).
+    // pessoa já aprovou na Fila (ou o passo é de reação em modo automático, que a pessoa montou).
     const confirmar = escrita ? achar(tool, "confirm", "confirm") : null;
     if (confirmar !== null) args[confirmar.nome] = true;
     // Com mais de uma conta no servidor, a padrão muda quando a pessoa troca de

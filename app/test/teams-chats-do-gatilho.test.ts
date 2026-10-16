@@ -93,13 +93,12 @@ test("lista vazia mantém o atual: todos os chats", async () => {
   assert.deepEqual(ids, ["ma", "mb"]);
 });
 
-test("chat fora da lista não gera evento, não é lido e não ganha reação", async () => {
+test("chat fora da lista não gera evento, não é lido", async () => {
   const { r, chamadas, ids } = await rodar([{ chatId: "grupo-a", label: "Revisões" }]);
   assert.deepEqual(r.errors, []);
   assert.deepEqual(ids, ["ma"]);
   assert.equal(chamadas.some((c) => c.includes("grupo-b")), false, chamadas.join("\n"));
-  const reacoes = chamadas.filter((c) => c.startsWith("POST") && c.includes("setReaction"));
-  assert.deepEqual(reacoes, ["POST /chats/grupo-a/messages/ma/setReaction"]);
+  assert.deepEqual(chamadas.filter((c) => c.startsWith("POST")), []);
 });
 
 test("dm e menção também só contam no chat da lista", async () => {
@@ -144,7 +143,7 @@ test("a tela lista os chats com tópico ou nomes dos membros sem a própria pess
   ].sort((a, b) => a.label.localeCompare(b.label)));
 });
 
-test("id de chat no formato real (unq.gbl.spaces) filtra e reage pelo caminho certo", async () => {
+test("id de chat no formato real (unq.gbl.spaces) filtra pela lista", async () => {
   const real = "19:a1b2c3d4-0000-4000-8000-000000000001_e5f6a7b8-0000-4000-8000-000000000002@unq.gbl.spaces";
   const outro = "19:a1b2c3d4-0000-4000-8000-000000000001_99999999-0000-4000-8000-000000000003@unq.gbl.spaces";
   const db = bancoDeTeste();
@@ -156,5 +155,5 @@ test("id de chat no formato real (unq.gbl.spaces) filtra e reage pelo caminho ce
   const linhas = await db.select().from(schema.events).where(eq(schema.events.source, "teams"));
   assert.deepEqual(linhas.map((e) => (e.payload as { messageId: string }).messageId), ["m1"]);
   assert.equal(g.chamadas.some((c) => c.includes("99999999")), false);
-  assert.deepEqual(g.chamadas.filter((c) => c.includes("setReaction")), [`POST /chats/${real}/messages/m1/setReaction`]);
+  assert.deepEqual(g.chamadas.filter((c) => c.includes("Reaction")), []);
 });

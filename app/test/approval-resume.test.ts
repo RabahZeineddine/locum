@@ -111,7 +111,9 @@ test("execução rejeitada sai de paused sem publicar, com a ação pulada", asy
 
   assert.equal(await estadoDoRun(runId), "done");
   assert.equal((await passo(runId, "publicar"))?.status, "skipped");
-  assert.equal((await passo(runId, "depois"))?.status, "done");
+  // O que depende da ação recusada não roda: o motivo diz qual passo foi recusado.
+  assert.equal((await passo(runId, "depois"))?.status, "skipped");
+  assert.equal((await passo(runId, "depois"))?.error, "dependency_rejected:publicar");
   assert.deepEqual(publicados, []);
 });
 

@@ -12,8 +12,10 @@ import { machineId } from "../services/machine-service.js";
 import { mcpService } from "../services/mcp-service.js";
 import { providerService } from "../services/provider-service.js";
 import { slackPostHandler } from "../slack/action.js";
+import { slackReactHandler } from "../slack/react-action.js";
 import { githubReviewHandler } from "../sources/github.js";
 import { teamsPostHandler } from "../teams/action.js";
+import { teamsReactHandler } from "../teams/react-action.js";
 import { trackerIssueHandler } from "../trackers/issue-action.js";
 
 /**
@@ -81,6 +83,8 @@ export function buildGate(): ApprovalGate {
       ["digest.deliver", digestDeliverHandler()],
       ["slack.post", slackPostHandler()],
       ["teams.post", teamsPostHandler()],
+      ["slack.react", slackReactHandler()],
+      ["teams.react", teamsReactHandler()],
       ["context.update", contextUpdateHandler()],
       ["mcp.call", mcpCallHandler({ call: chamarNoPool })],
       ["http.request", httpRequestHandler()],

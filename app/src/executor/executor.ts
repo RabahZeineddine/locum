@@ -1,4 +1,3 @@
-import { soltarOPr, type TeamsReactionOptions } from "../teams/reaction.js";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -24,6 +23,7 @@ import { discoverSkills, selectSkills, skillsAusentes, skillsIndisponiveis, skil
 import { ApprovalGate, settleStep } from "../approval/gate.js";
 import { BudgetExceeded, assertWithinBudget, recordSpend, type Spend } from "./budget.js";
 import { ehLeituraDa, type FerramentaClassificavel } from "../config/leitura.js";
+import { ACOES_DE_REACAO, descreverReacao, reacaoDoPasso } from "../reacao/passo.js";
 import { ACOES_DE_CONVERSA, dependenciaDeEvento, recusaSemEvento } from "./dependencia-de-evento.js";
 import { SUBSCRIPTION_RUNTIMES } from "../runtimes/types.js";
 import { separarDaConta } from "../runtimes/claude-account.js";
@@ -43,8 +43,6 @@ type Deps = {
   profiles?: Pick<LibraryService, "resolveProfile">;
   /** Skills disponíveis. Ausente varre o disco, como sempre. Existe para o teste trocar. */
   skills?: Map<string, LoadedSkill>;
-  /** Graph da reação do Teams. Ausente usa a conexão do Teams. Existe para o teste trocar. */
-  teams?: TeamsReactionOptions;
   /** As ferramentas que o servidor anotou, do cache da última leitura. Ausente usa o cache do banco. Existe para o teste trocar. */
   ferramentasGuardadas?: (servidor: string) => Promise<readonly FerramentaClassificavel[] | null>;
 };
@@ -235,6 +233,8 @@ export class Executor {
     // depende só deles também pula; quem junta dois caminhos roda com o que
     // chegou.
     const foraDoCaminho = new Set<string>();
+    // Os passos recusados na Fila, e os que pularam por causa deles.
+    const recusados = new Set<string>();
     let runCost = run.costUsd;
     let runTokens = run.tokens;
     let runEstimate = run.estimateUsd;
@@ -262,9 +262,18 @@ export class Executor {
         atual = step.key;
         const existing = await this.loadStep(runId, step.key);
 
+        // Passo opcional que já falhou não roda de novo na retomada: o run seguiu sem ele.
+        if (existing?.status === "failed" && step.optional) {
+          outputs.set(step.key, null);
+          continue;
+        }
         if (existing?.status === "done" || (existing?.status === "skipped" && existing.error !== NAO_RODOU)) {
           outputs.set(step.key, existing.output);
           if (existing.status === "skipped" && existing.error === PULADO_PELO_CAMINHO) foraDoCaminho.add(step.key);
+          if (existing.status === "skipped" && (existing.error === "rejected" || ehPuladoPorRecusa(existing.error))) {
+            foraDoCaminho.add(step.key);
+            recusados.add(step.key);
+          }
           continue;
         }
         if (existing?.status === "awaiting_approval") {
@@ -282,6 +291,11 @@ export class Executor {
             return this.pause(runId);
           }
           outputs.set(step.key, (await settleStep(existing.id, approval.status)).output);
+          // Recusado na Fila: o que depende só dele não roda.
+          if (approval.status === "rejected") {
+            foraDoCaminho.add(step.key);
+            recusados.add(step.key);
+          }
           continue;
         }
 
@@ -297,10 +311,14 @@ export class Executor {
           });
         }
 
-        if (foraDoCaminhoEscolhido(step, outputs, foraDoCaminho)) {
+        // Recusa é um "não" explícito: qualquer need recusado pula o passo, mesmo numa junção.
+        const recusado = step.needs.find((n) => recusados.has(n));
+        if (recusado !== undefined || foraDoCaminhoEscolhido(step, outputs, foraDoCaminho)) {
+          const motivoDoPulo = recusado === undefined ? PULADO_PELO_CAMINHO : `${PULADO_POR_RECUSA}${recusado}`;
+          if (recusado !== undefined) recusados.add(step.key);
           await db
             .update(schema.steps)
-            .set({ status: "skipped", error: PULADO_PELO_CAMINHO, output: null, endedAt: nowSec() })
+            .set({ status: "skipped", error: motivoDoPulo, output: null, endedAt: nowSec() })
             .where(eq(schema.steps.id, stepId));
           outputs.set(step.key, null);
           foraDoCaminho.add(step.key);
@@ -332,7 +350,7 @@ export class Executor {
                 gastoDosAgents,
                 initiativeServers,
               })
-            : await this.runActionStep({ runId, stepId, step, outputs, payload });
+            : await this.runActionStepOpcional({ runId, stepId, step, outputs, payload });
 
         if (outcome.kind === "paused") return this.pause(runId);
         if (outcome.kind === "skipped") {
@@ -377,8 +395,6 @@ export class Executor {
         .update(schema.runs)
         .set({ status, endedAt: status === "failed" ? nowSec() : null, error: message })
         .where(eq(schema.runs.id, runId));
-      // Run que não chegou ao review: o 👀 que anunciou o PR sai da mensagem.
-      await soltarOPr(payload, this.deps.teams);
       return status;
     } finally {
       // Servidor MCP não fecha aqui: o registro vive entre execuções e cada
@@ -681,6 +697,33 @@ export class Executor {
     }
   }
 
+  /**
+   * Passo de ação marcado `optional` não derruba o run quando falha: fica
+   * `failed` com o erro e a saída vira `null`. Existe para a reação, que é
+   * cortesia (o 👀 não pode impedir a revisão), mas vale para qualquer ação que
+   * a pessoa tenha marcado assim. Estouro de orçamento não entra: ele pausa.
+   */
+  private async runActionStepOpcional(args: {
+    runId: string;
+    stepId: string;
+    step: ActionStep;
+    outputs: Map<string, unknown>;
+    payload: EventPayload;
+  }): Promise<StepOutcome | { kind: "paused" } | { kind: "skipped" }> {
+    if (!args.step.optional) return this.runActionStep(args);
+    try {
+      return await this.runActionStep(args);
+    } catch (err) {
+      if (err instanceof BudgetExceeded) throw err;
+      const message = err instanceof Error ? err.message : String(err);
+      await db
+        .update(schema.steps)
+        .set({ status: "failed", endedAt: nowSec(), error: message })
+        .where(eq(schema.steps.id, args.stepId));
+      return { kind: "skipped" };
+    }
+  }
+
   private async runActionStep(args: {
     runId: string;
     stepId: string;
@@ -697,7 +740,7 @@ export class Executor {
     // entra na Fila: o passo termina com o texto que sairia.
     if (args.payload.semConversa === true && (await publicaParaFora(step, args.payload, outputs, this.deps.ferramentasGuardadas ?? ferramentasDoCache))) {
       const motivo = ACOES_DE_CONVERSA.has(step.action) ? ENSAIO_SEM_CONVERSA : ENSAIO_EVENTO_COLADO;
-      const output = { state: "ensaio", motivo, text: textoDaResposta(saida) };
+      const output = { state: "ensaio", motivo, text: ACOES_DE_REACAO.has(step.action) ? textoDaReacao(step, args.payload, outputs) : textoDaResposta(saida) };
       await db
         .update(schema.steps)
         .set({ status: "done", startedAt: nowSec(), endedAt: nowSec(), output })
@@ -714,8 +757,13 @@ export class Executor {
     // faria a ação publicar em outro lugar, com o token da pessoa. Título e
     // corpo continuam vindo da saída, que é o conteúdo da ação.
     const alvo = alvoDoEvento(args.payload);
-    const doPasso =
-      saida !== null && typeof saida === "object"
+    //
+    // Reação não escreve texto: ela não lê a saída de passo nenhum, e o emoji vem
+    // dos `params`. O evento é o que diz em que mensagem ela cai, mesmo quando o
+    // passo não depende de nenhum outro (o 👀 do início).
+    const doPasso = ACOES_DE_REACAO.has(step.action)
+      ? { ...alvo, ...destinoDoEvento(alvo) }
+      : saida !== null && typeof saida === "object"
         ? { ...alvo, ...(saida as object), ...destinoDoEvento(alvo) }
         : saida;
     // `params` é de quem montou o fluxo, e não do modelo: por isso vale por
@@ -767,6 +815,16 @@ export class Executor {
       .set({ status: "done", endedAt: nowSec(), output: { state } })
       .where(eq(schema.steps.id, stepId));
     return { kind: "ok", output: { state }, costUsd: 0, tokens: 0, billable: false };
+  }
+}
+
+/** A reação que o ensaio faria, como `set 👀`; nula quando o passo ainda não a define. */
+function textoDaReacao(step: ActionStep, payload: EventPayload, outputs: Map<string, unknown>): string | null {
+  try {
+    const params = renderParams(step.params ?? {}, payload, outputs);
+    return descreverReacao(reacaoDoPasso(params));
+  } catch {
+    return null;
   }
 }
 
@@ -837,6 +895,9 @@ export function alvoDoEvento(payload: EventPayload): Record<string, unknown> {
     "channel",
     "threadTs",
     "ts",
+    // Onde a reação do Slack cai, quando o evento ganhou o contexto de um PR.
+    "slackChannel",
+    "slackTs",
     // A mensagem do Teams onde o review reage ao sair, e o `prOwner` que
     // distingue o evento de PR do de conversa na hora de achar a resposta.
     ...TEAMS_REACAO,
@@ -880,6 +941,9 @@ const TEAMS_REACAO = ["teamsChatId", "teamsTeamId", "teamsChannelId", "teamsMess
 
 const DESTINO = ["owner", "repo", "pull", "headSha", "prOwner", ...TEAMS_REACAO] as const;
 
+/** A mensagem do Slack onde a reação cai: o evento diz, e a saída do modelo não troca. */
+const SLACK_REACAO = ["slackChannel", "slackTs", "channel", "ts"] as const;
+
 export function destinoDoEvento(alvo: Record<string, unknown>): Record<string, unknown> {
   const destino: Record<string, unknown> = {};
   for (const campo of DESTINO) {
@@ -891,7 +955,7 @@ export function destinoDoEvento(alvo: Record<string, unknown>): Record<string, u
   // para uma conversa qualquer do Teams.
   // O `prOwner` também: com ele a saída do modelo trocaria o caminho de
   // conversa pelo de PR, e o `teams*` que ela inventasse valeria.
-  for (const campo of [...TEAMS_REACAO, "prOwner"]) destino[campo] = alvo[campo];
+  for (const campo of [...TEAMS_REACAO, ...SLACK_REACAO, "prOwner"]) destino[campo] = alvo[campo];
   return destino;
 }
 
@@ -948,6 +1012,10 @@ async function publicaParaFora(
 
 /** Motivo gravado no passo que ficou sem rodar porque um anterior falhou. */
 export const NAO_RODOU = "not_run";
+
+/** Prefixo do motivo do passo que pulou porque um passo de que depende foi recusado na Fila; a chave dele vem depois. */
+export const PULADO_POR_RECUSA = "dependency_rejected:";
+export const ehPuladoPorRecusa = (erro: string | null | undefined): boolean => erro?.startsWith(PULADO_POR_RECUSA) === true;
 
 /** Motivo gravado no passo que ficou de fora do caminho escolhido. */
 export const PULADO_PELO_CAMINHO = "branch_not_taken";

@@ -6,10 +6,9 @@ import { assertWithinBudget, BudgetExceeded, recordSpend, type Spend } from "../
 import type { AgentBudget } from "../config/types.js";
 import { ErroDeConfiguracaoDoFiltro, ErroDeLimiteDoFiltro, julgadorPadrao, type FiltroIa, type Julgador, type MensagemDoFiltro } from "../services/filtro-ia.js";
 import { abrirTeams, type GraphGet, type TeamsGraphOptions } from "../teams/graph.js";
-import { alvoDaReacao, reagirNoTeams, REACAO_PEGOU } from "../teams/reaction.js";
 import { githubService } from "../services/github-service.js";
 import { fetchPr as defaultFetchPr, fetchPrBasico as defaultFetchPrBasico, type PrBasico } from "./github.js";
-import { extractGithubPrLinks } from "./github-pr-link.js";
+import { extrairLinksDePr } from "./github-pr-link.js";
 import type { ParsedGithubPr } from "./slack.js";
 
 type Db = typeof defaultDb;
@@ -56,9 +55,12 @@ export interface TeamsInboxWatch {
   /**
    * Link de pull request do GitHub acorda, sem menção, nos canais da lista e
    * nos chats em grupo e diretos. Chat de reunião segue só com menção. Uma
-   * mensagem com vários links vira um evento por PR, até `MAX_PR_POR_MENSAGEM`.
+   * mensagem com vários links vira um evento por PR, ou um só com `agruparPrs`,
+   * até `maxPrs` (padrão 5).
    */
   prLinks?: boolean;
+  agruparPrs?: boolean;
+  maxPrs?: number;
   /**
    * Só para a varredura: link de PR de mensagem criada antes disto não conta.
    * Preenchido na primeira batida de um cursor, para ligar o gatilho não
@@ -221,10 +223,14 @@ async function varrer(
     channel?: string,
   ) => {
     await filtro?.limpar(chaveDoCursor);
-    const { erros, fora, descartes } = await enriquecerPrs(varredura.inWindow, kind, channel, db, { ...options, graph: teams }, revisados);
+    // O evento com PR que não deu para buscar volta a cada batida, mesmo que a
+    // mensagem já tenha saído da janela da varredura.
+    const emEspera = (await pendentesDoGatilho(db, options.triggerId)).filter((id) => !varredura.inWindow.includes(id));
+    const aEnriquecer = [...varredura.inWindow, ...emEspera];
+    const { erros, fora, descartes } = await enriquecerPrs(aEnriquecer, kind, channel, db, { ...options, graph: teams }, revisados);
     outcome.descartes.push(...descartes);
     outcome.eventIds.push(...varredura.eventIds.filter((id) => !fora.has(id)));
-    for (const id of varredura.inWindow) {
+    for (const id of aEnriquecer) {
       if (!fora.has(id) && !outcome.inWindow.includes(id)) outcome.inWindow.push(id);
     }
     outcome.seen += varredura.seen;
@@ -364,11 +370,12 @@ function filtroDaBatida(
 
   /** Já se sabe que o GitHub descartaria todos os PRs da mensagem. */
   const descartadaPeloGithub = async (itens: unknown[]): Promise<boolean> => {
-    const prs = itens.map(prDoItem);
-    if (prs.length === 0 || prs.some((pr) => pr === null)) return false;
+    if (itens.some((item) => prDoItem(item) === null)) return false;
+    const prs = itens.flatMap(prsDoItem);
+    if (prs.length === 0) return false;
     for (const pr of prs) {
       try {
-        const contexto = await buscar(pr!.owner, pr!.repo, pr!.pull);
+        const contexto = await buscar(pr.owner, pr.repo, pr.pull);
         if ((await motivoDeDescarte(contexto, quemSouNoGithub, revisados)) === null) return false;
       } catch {
         return false;
@@ -513,10 +520,10 @@ function filtroDaBatida(
         const { admissao, motivo } = await decisaoDe(item);
         if (admissao.kind !== "adia") guardados.delete(guardado(String(bruto.id)));
         if (motivo !== undefined) {
-          const pr = prDoItem(item);
+          const prs = prsDoItem(item);
           const autor = paraOFiltro(bruto).autor ?? undefined;
           descartes.push({
-            pr: pr === null ? `mensagem de ${autor ?? "alguém"}` : `${pr.owner}/${pr.repo}#${pr.pull}`,
+            pr: prs.length === 0 ? `mensagem de ${autor ?? "alguém"}` : prs.map(nomeDoPr).join(", "),
             motivo,
             ...(autor === undefined ? {} : { autor }),
             ...(typeof bruto.webUrl === "string" ? { url: bruto.webUrl } : {}),
@@ -584,7 +591,7 @@ async function prepararCursor(db: Db, chave: string, antiga: string): Promise<bo
  * diff, CI e o dono e número que a ação de review precisa, como o Slack faz.
  *
  * O que não deve acordar o agent sai do resultado (`fora`) em vez de virar
- * run: PR que não deu para buscar (o erro sobe em `erros`, sem 👀), PR da
+ * run: PR que não deu para buscar (o erro sobe em `erros`, e o evento espera a próxima batida), PR da
  * própria pessoa, PR fechado, já mergeado ou em rascunho, e PR no mesmo commit
  * que um evento das últimas 24h já pegou. O evento fica gravado com
  * `prDescartado` ou `prError`, para a mensagem não voltar como novidade.
@@ -620,38 +627,141 @@ async function enriquecerPrs(
         fora.add(id);
         continue;
       }
-      if (payload.diff !== undefined) continue;
+      if (payload.diff !== undefined || payload.prs !== undefined) continue;
+      const tentativas = typeof payload.prTentativas === "number" ? payload.prTentativas : 0;
 
-      const nome = `${payload.prOwner}/${payload.prRepo}#${payload.prNumber}`;
-      let contexto: Awaited<ReturnType<typeof defaultFetchPr>>;
-      try {
-        contexto = await buscar(String(payload.prOwner), String(payload.prRepo), Number(payload.prNumber));
-      } catch (err) {
-        const erro = err instanceof Error ? err.message : String(err);
-        await gravar(id, { ...payload, prError: erro });
+      // Cada PR da mensagem é examinado sozinho: o que falhou, foi descartado
+      // ou já tem review sai da lista, e o evento segue com o resto.
+      const links = linksDoPayload(payload);
+      const aceitos: { link: ParsedGithubPr; contexto: Awaited<ReturnType<typeof defaultFetchPr>> }[] = [];
+      const falhas: string[] = [];
+      const motivos: string[] = [];
+      for (const link of links) {
+        const nome = nomeDoPr(link);
+        let contexto: Awaited<ReturnType<typeof defaultFetchPr>>;
+        try {
+          contexto = await buscar(link.owner, link.repo, link.pull);
+        } catch (err) {
+          const erro = err instanceof Error ? err.message : String(err);
+          falhas.push(`PR ${nome}: ${erro}`);
+          continue;
+        }
+        const motivo = await motivoDeDescarte(contexto, quemSouNoGithub, revisados);
+        if (motivo !== null) {
+          motivos.push(motivo);
+          descartes.push({ pr: nome, motivo });
+          continue;
+        }
+        aceitos.push({ link, contexto });
+      }
+      for (const erro of falhas) falha(erro);
+
+      // PR que não deu para buscar fica pendente: o evento espera, e a batida
+      // seguinte (a mensagem ainda está na janela) tenta de novo. Depois de
+      // `TENTATIVAS_DO_PR` rodadas o evento segue com os PRs que deram, para um
+      // PR que não existe mais não segurar os outros para sempre.
+      const pendentes = links.filter((l) => falhas.some((f) => f.startsWith(`PR ${nomeDoPr(l)}:`)));
+      const { prError: _resolvido, prsPendentes: _pendentes, prTentativas: _tentativas, ...resto } = payload;
+      const esgotou = tentativas + 1 >= TENTATIVAS_DO_PR;
+      if (pendentes.length > 0 && aceitos.length === 0 && esgotou) {
+        // Nenhum PR deu para buscar em todas as rodadas: o evento sai da espera, e o motivo aparece nos descartes.
+        descartes.push({ pr: pendentes.map(nomeDoPr).join(", "), motivo: MOTIVO_PR_NAO_BUSCADO });
+        await gravar(id, { ...resto, prDescartado: MOTIVO_PR_NAO_BUSCADO });
         fora.add(id);
-        falha(`PR ${nome}: ${erro}`);
+        continue;
+      }
+      if (pendentes.length > 0 && (aceitos.length === 0 || !esgotou)) {
+        await gravar(id, {
+          ...payload,
+          prError: falhas.join("; "),
+          prsPendentes: links,
+          prTentativas: tentativas + 1,
+          prGatilho: options.triggerId ?? "",
+        });
+        fora.add(id);
+        continue;
+      }
+      for (const a of aceitos) (await revisados()).add(chaveDoCommit(a.contexto));
+
+      if (aceitos.length === 0) {
+        await gravar(id, { ...resto, prDescartado: motivos[0] ?? "repetido" });
+        fora.add(id);
         continue;
       }
 
-      const motivo = await motivoDeDescarte(contexto, quemSouNoGithub, revisados);
-      if (motivo !== null) {
-        const { prError: _resolvido, ...resto } = payload;
-        await gravar(id, { ...resto, prDescartado: motivo });
-        fora.add(id);
-        descartes.push({ pr: nome, motivo });
-        continue;
-      }
-      (await revisados()).add(chaveDoCommit(contexto));
-
-      const { prError: _resolvido, ...resto } = payload;
-      await gravar(id, { ...resto, ...contexto, teamsAuthor: payload.author });
-      await reagirAoPegar(payload, options);
+      const prs = aceitos.map(({ link, contexto }) => ({ ...contexto, prOwner: link.owner, prRepo: link.repo, prNumber: link.pull }));
+      const [primeiro] = aceitos;
+      await gravar(id, {
+        ...resto,
+        ...primeiro!.contexto,
+        prOwner: primeiro!.link.owner,
+        prRepo: primeiro!.link.repo,
+        prNumber: primeiro!.link.pull,
+        prLinks: aceitos.map((a) => a.link),
+        prs,
+        prsTexto: textoDosPrs(prs, { cortados: Number(payload.prsCortados ?? 0), limite: Number(payload.prsLimite ?? links.length), falharam: pendentes.map(nomeDoPr) }),
+        ...(pendentes.length > 0 ? { prsFalharam: pendentes.map(nomeDoPr).join(", ") } : {}),
+        teamsAuthor: payload.author,
+      });
     } catch (err) {
       falha(err instanceof Error ? err.message : String(err));
     }
   }
   return { erros, fora, descartes };
+}
+
+/**
+ * Os eventos deste gatilho que esperam um PR que falhou ao buscar, das últimas
+ * 24h. A espera acaba quando o PR responde, ou na terceira tentativa.
+ */
+async function pendentesDoGatilho(db: Db, triggerId: string | undefined): Promise<string[]> {
+  const desde = Math.floor(Date.now() / 1000) - JANELA_DO_MESMO_COMMIT_S;
+  const linhas = await db
+    .select({ id: schema.events.id, payload: schema.events.payload })
+    .from(schema.events)
+    .where(and(eq(schema.events.source, TEAMS_SOURCE), gte(schema.events.receivedAt, desde)));
+  return linhas
+    .filter(({ payload }) => {
+      const p = payload as Record<string, unknown> | null;
+      return p?.prsPendentes !== undefined && p.prs === undefined && (p.prGatilho ?? "") === (triggerId ?? "");
+    })
+    .map((l) => l.id);
+}
+
+/** Rodadas em que um PR que falha ao buscar segura o evento antes de ele seguir sem esse PR. */
+const TENTATIVAS_DO_PR = 3;
+
+/** O motivo do descarte do evento cujos PRs não deram para buscar em nenhuma das rodadas. */
+const MOTIVO_PR_NAO_BUSCADO = "não deu para buscar o PR";
+
+/** Os PRs que o evento cita: a lista gravada, ou o PR único de um evento de antes dela. */
+function linksDoPayload(payload: Record<string, unknown>): ParsedGithubPr[] {
+  const lista = payload.prLinks;
+  if (Array.isArray(lista) && lista.length > 0) return lista as ParsedGithubPr[];
+  return [{ owner: String(payload.prOwner), repo: String(payload.prRepo), pull: Number(payload.prNumber) }];
+}
+
+/** Um bloco legível por PR, para o prompt citar `{{event.prsTexto}}` sem montar laço. */
+export function textoDosPrs(prs: { prOwner: string; prRepo: string; prNumber: number; title?: unknown; description?: unknown; author?: unknown; diff?: unknown; url?: unknown; omittedSummary?: unknown }[], corte: { cortados: number; limite: number; falharam?: string[] } = { cortados: 0, limite: 0 }): string {
+  const blocos = prs
+    .map((p, i) =>
+      [
+        `### PR ${i + 1} de ${prs.length}: ${p.prOwner}/${p.prRepo}#${p.prNumber}`,
+        `Título: ${String(p.title ?? "")}`,
+        ...(typeof p.author === "string" ? [`Autor: ${p.author}`] : []),
+        ...(typeof p.url === "string" ? [`Link: ${p.url}`] : []),
+        "",
+        "Descrição:",
+        String(p.description ?? ""),
+        "",
+        "Diff:",
+        String(p.diff ?? ""),
+        ...(typeof p.omittedSummary === "string" && p.omittedSummary !== "" ? ["", `Fora do diff: ${p.omittedSummary}`] : []),
+      ].join("\n"),
+    );
+  if (corte.cortados > 0) blocos.push(`(mais ${corte.cortados} ${corte.cortados === 1 ? "PR não entrou" : "PRs não entraram"} (limite de ${corte.limite} por mensagem))`);
+  for (const nome of corte.falharam ?? []) blocos.push(`(o PR ${nome} não foi revisado: não deu para buscar)`);
+  return blocos.join("\n\n");
 }
 
 /** Janela em que o mesmo PR no mesmo commit não é revisado de novo. */
@@ -711,8 +821,12 @@ export async function carregarRevisados(db: Db, opcoes: { comEventosDoTeams?: bo
   for (const { payload } of doTeams) {
     const p = payload as Record<string, unknown> | null;
     if (p?.prDescartado !== undefined) continue;
-    const k = chave(p, p?.repoName);
-    if (k !== null) vistos.add(k);
+    // Evento com lista: cada PR dela conta, e não só o primeiro.
+    const lista = Array.isArray(p?.prs) ? (p.prs as Record<string, unknown>[]) : [p];
+    for (const um of lista) {
+      const k = chave(um, um?.repoName);
+      if (k !== null) vistos.add(k);
+    }
   }
   return vistos;
 }
@@ -733,17 +847,6 @@ export async function motivoDeDescarte(
   if (eu !== null && contexto.author.toLowerCase() === eu.toLowerCase()) return "proprio";
 
   return (await revisados()).has(chaveDoCommit(contexto)) ? "repetido" : null;
-}
-
-/** O 👀 de "peguei". Recusa do Graph vira log: a revisão não depende da reação. */
-async function reagirAoPegar(payload: Record<string, unknown>, options: TeamsInboxOptions): Promise<void> {
-  const alvo = alvoDaReacao(payload);
-  if (alvo === null) return;
-  try {
-    await reagirNoTeams(alvo, "set", REACAO_PEGOU, options);
-  } catch (err) {
-    console.error(`reagir com ${REACAO_PEGOU} no Teams falhou: ${err instanceof Error ? err.message : String(err)}`);
-  }
 }
 
 /**
@@ -843,9 +946,9 @@ function canalShape(
     key: chave,
     initialCursor: inicial(),
     ...filtro,
-    items: (payload) => umEventoPorPr(channelMessages(payload, eu, watch), watch),
+    items: (payload) => umEventoPorMensagem(channelMessages(payload, eu, watch), watch),
     externalId: (item) =>
-      `teams:channel:${canal.channelId}:${traduzir(item).mensagem.messageId}${sufixoDoPr(prDoItem(item))}`,
+      `teams:channel:${canal.channelId}:${traduzir(item).mensagem.messageId}${sufixoDoPr(item)}`,
     stamp: (item) => traduzir(item).mensagem.createdAt,
     payload: (item) => {
       const { mensagem, threadId, pr } = traduzir(item);
@@ -870,6 +973,7 @@ function canalShape(
           ? {}
           : {
               ...camposDoPr(pr),
+              ...listaDeLinks(item),
               teamsTeamId: canal.teamId,
               teamsChannelId: canal.channelId,
               teamsMessageId: mensagem.messageId,
@@ -1020,9 +1124,9 @@ export function inboxMessages(payload: unknown, eu: string, watch: TeamsInboxWat
 }
 
 /** Os links de PR do corpo cru da mensagem, onde o `href` ainda existe. */
-function linksDe(bruto: Record<string, unknown>): ParsedGithubPr[] {
+function linksDe(bruto: Record<string, unknown>, max?: number): { prs: ParsedGithubPr[]; cortados: number } {
   const corpo = (bruto.body ?? {}) as { content?: unknown };
-  return typeof corpo.content === "string" ? extractGithubPrLinks(corpo.content) : [];
+  return typeof corpo.content === "string" ? extrairLinksDePr(corpo.content, max) : { prs: [], cortados: 0 };
 }
 
 /**
@@ -1033,21 +1137,26 @@ function comLinkDePr(bruto: Record<string, unknown>, chatType: string, watch: Te
   if (!watch.prLinks) return false;
   if (antesDaAtivacao(bruto, watch)) return false;
   if (chatType !== "channel" && chatType !== "oneOnOne" && chatType !== "group") return false;
-  return linksDe(bruto).length > 0;
+  return linksDe(bruto, watch.maxPrs).prs.length > 0;
 }
 
 /**
- * Com `prLinks`, a mensagem com link vira um item por PR, cada um com o seu
- * `prLink`. O evento é do PR e não da mensagem, e a chave de deduplicação leva
- * o PR junto: editar a mensagem não duplica, e acrescentar um segundo link
- * gera só o evento novo.
+ * Com `prLinks`, a mensagem com link vira um item por PR (o padrão), ou, com
+ * `agruparPrs`, um item só com a lista dos PRs em `prLinks` e o primeiro
+ * também em `prLink`: um run revisa todos os PRs citados e responde uma vez. A chave de deduplicação leva
+ * a lista junto, então editar a mensagem sem mudar os links não duplica, e
+ * acrescentar um link gera um evento novo, de onde o PR já revisado sai no
+ * enriquecimento.
  */
-function umEventoPorPr(itens: unknown[], watch: TeamsInboxWatch): unknown[] {
+function umEventoPorMensagem(itens: unknown[], watch: TeamsInboxWatch): unknown[] {
   if (!watch.prLinks) return itens;
   return itens.flatMap((item) => {
     if (antesDaAtivacao((item ?? {}) as Record<string, unknown>, watch)) return [item];
-    const prs = linksDe((item ?? {}) as Record<string, unknown>);
-    return prs.length === 0 ? [item] : prs.map((prLink) => ({ ...(item as object), prLink }));
+    const { prs, cortados } = linksDe((item ?? {}) as Record<string, unknown>, watch.maxPrs);
+    if (prs.length === 0) return [item];
+    if (watch.agruparPrs === true) return [{ ...(item as object), prLink: prs[0], prLinks: prs, prsCortados: cortados, prsLimite: prs.length }];
+    // Um evento por PR: quem passou do teto fica contado no primeiro.
+    return prs.map((prLink, i) => ({ ...(item as object), prLink, ...(i === 0 && cortados > 0 ? { prsCortados: cortados, prsLimite: prs.length } : {}) }));
   });
 }
 
@@ -1066,8 +1175,28 @@ function prDoItem(item: unknown): ParsedGithubPr | null {
   return pr ?? null;
 }
 
-const sufixoDoPr = (pr: ParsedGithubPr | null): string =>
-  pr === null ? "" : `:pr:${pr.owner}/${pr.repo}#${pr.pull}`.toLowerCase();
+/** Todos os PRs que a mensagem cita, na ordem em que aparecem. */
+function prsDoItem(item: unknown): ParsedGithubPr[] {
+  const lista = (item as { prLinks?: ParsedGithubPr[] } | null)?.prLinks;
+  if (Array.isArray(lista) && lista.length > 0) return lista;
+  const um = prDoItem(item);
+  return um === null ? [] : [um];
+}
+
+const nomeDoPr = (pr: ParsedGithubPr): string => `${pr.owner}/${pr.repo}#${pr.pull}`;
+
+/** O fim da chave do evento: os PRs da mensagem. Um PR só dá o mesmo texto de antes da lista. */
+const sufixoDoPr = (item: unknown): string => {
+  const prs = prsDoItem(item);
+  return prs.length === 0 ? "" : `:pr:${prs.map(nomeDoPr).join("+")}`.toLowerCase();
+};
+
+/** Os PRs da mensagem e quantos ficaram de fora do teto, como o evento os grava antes de enriquecer. */
+function listaDeLinks(item: unknown) {
+  const cortados = (item as { prsCortados?: number } | null)?.prsCortados ?? 0;
+  const limite = (item as { prsLimite?: number } | null)?.prsLimite;
+  return { prLinks: prsDoItem(item), ...(cortados > 0 ? { prsCortados: cortados, ...(limite === undefined ? {} : { prsLimite: limite }) } : {}) };
+}
 
 function camposDoPr(pr: ParsedGithubPr) {
   return { repo: `${pr.owner}/${pr.repo}`, prOwner: pr.owner, prRepo: pr.repo, prNumber: pr.pull };
@@ -1134,10 +1263,10 @@ function inboxShape(
     key: chave,
     initialCursor: inicial(),
     ...filtro,
-    items: (payload) => umEventoPorPr(inboxMessages(payload, eu, watch), watch),
+    items: (payload) => umEventoPorMensagem(inboxMessages(payload, eu, watch), watch),
     externalId: (item) => {
       const mensagem = normalizeInbox(item, tipo(item));
-      return `teams:${mensagem.chatId}:${mensagem.messageId}${sufixoDoPr(prDoItem(item))}`;
+      return `teams:${mensagem.chatId}:${mensagem.messageId}${sufixoDoPr(item)}`;
     },
     stamp: (item) => normalizeInbox(item, tipo(item)).createdAt,
     payload: (item) => {
@@ -1157,7 +1286,7 @@ function inboxShape(
         webUrl: mensagem.webUrl,
         item,
         ...daConta(conta),
-        ...(pr === null ? {} : { ...camposDoPr(pr), teamsChatId: mensagem.chatId, teamsMessageId: mensagem.messageId }),
+        ...(pr === null ? {} : { ...camposDoPr(pr), ...listaDeLinks(item), teamsChatId: mensagem.chatId, teamsMessageId: mensagem.messageId }),
       };
     },
   };

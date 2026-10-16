@@ -357,7 +357,8 @@ test("ligar e desligar pela ferramenta, um gatilho ou a automação inteira, e a
   for (const nome of ["set_trigger_enabled", "set_automation_enabled"]) {
     const descricao = ferramentas.find((t) => t.name === nome)?.description ?? "";
     assert.match(descricao, /act by itself with your accounts/);
-    assert.match(descricao, /👀/);
+    assert.match(descricao, /never reacts/);
+    assert.doesNotMatch(descricao, /👀/);
   }
 });
 

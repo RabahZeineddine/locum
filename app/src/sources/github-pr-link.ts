@@ -1,6 +1,6 @@
 import type { ParsedGithubPr } from "./slack.js";
 
-/** Quantos PRs de uma mensagem viram evento. Passou disso é lista de colar, não pedido de revisão. */
+/** Padrão de `maxPrs` do gatilho: quantos PRs de uma mensagem entram. Passou disso é lista de colar, não pedido de revisão. */
 export const MAX_PR_POR_MENSAGEM = 5;
 
 /**
@@ -11,22 +11,29 @@ export const MAX_PR_POR_MENSAGEM = 5;
 const LINK = /https?:\/\/(?:www\.)?github\.com\/([\w.-]+)\/([\w.-]+)\/pull\/(\d+)(?!\w)/gi;
 
 /**
- * Os PRs citados num texto, na ordem em que aparecem, sem repetir.
+ * Os PRs citados num texto, na ordem em que aparecem, sem repetir, até o teto,
+ * e quantos ficaram de fora por causa dele.
  *
  * Serve a HTML cru: o link vive no `href` e some quando as tags saem.
  */
-export function extractGithubPrLinks(texto: string): ParsedGithubPr[] {
+export function extrairLinksDePr(texto: string, max: number = MAX_PR_POR_MENSAGEM): { prs: ParsedGithubPr[]; cortados: number } {
   // Link dentro de código ou bloco de código é exemplo, não pedido de revisão.
   texto = texto.replace(/<(code|pre)\b[^>]*>[\s\S]*?<\/\1>/gi, " ");
   const vistos = new Set<string>();
-  const achados: ParsedGithubPr[] = [];
+  const prs: ParsedGithubPr[] = [];
+  let cortados = 0;
   for (const m of texto.matchAll(LINK)) {
     const pr = { owner: m[1]!, repo: m[2]!, pull: Number(m[3]!) };
     const chave = `${pr.owner}/${pr.repo}#${pr.pull}`.toLowerCase();
     if (vistos.has(chave)) continue;
     vistos.add(chave);
-    achados.push(pr);
-    if (achados.length === MAX_PR_POR_MENSAGEM) break;
+    if (prs.length < max) prs.push(pr);
+    else cortados += 1;
   }
-  return achados;
+  return { prs, cortados };
+}
+
+/** Só os PRs que entram, sem a contagem dos que ficaram de fora. */
+export function extractGithubPrLinks(texto: string): ParsedGithubPr[] {
+  return extrairLinksDePr(texto).prs;
 }

@@ -10,7 +10,7 @@ import { AgentService } from "../src/services/agent-service.js";
 import { pollTeamsInbox } from "../src/sources/teams-inbox.js";
 import { ApprovalGate } from "../src/approval/gate.js";
 import { destinoDe, teamsPostHandler } from "../src/teams/action.js";
-import { reagirNoTeams, REACAO_PEGOU } from "../src/teams/reaction.js";
+import { reagirNoTeams } from "../src/teams/reaction.js";
 import { listTeamsChannels } from "../src/teams/channels.js";
 import { alvoDaReacao } from "../src/teams/reaction.js";
 import { capacidadesDoTeams, compartilhar, soltarSessoes, teamsNoMcp } from "../src/teams/graph.js";
@@ -220,7 +220,7 @@ test("a mensagem da própria pessoa não acorda, a menos que traga link de PR", 
   assert.deepEqual((await eventos(db)).map((e) => e.messageId), ["m1"]);
 });
 
-test("chat em grupo com link de PR vira evento do PR e o 👀 sai pela ferramenta de reação", async () => {
+test("chat em grupo com link de PR vira evento do PR e e o gatilho não reage", async () => {
   const db = bancoDeTeste();
   const { call, chamadas } = servidorFalso({
     chats: [{ id: "g", chatType: "group", mensagens: [mensagem("m1", 2, `<p>revisa ${PR}</p>`)] }],
@@ -234,8 +234,7 @@ test("chat em grupo com link de PR vira evento do PR e o 👀 sai pela ferrament
   assert.deepEqual(resultado.errors, []);
   const [evento] = await eventos(db);
   assert.deepEqual([evento?.kind, evento?.prOwner, evento?.prRepo, evento?.prNumber], ["pr", "acme", "api", 7]);
-  const reacao = chamadas.find((c) => c.tool === "set-chat-message-reaction")!;
-  assert.deepEqual(reacao.args, { chatId: "g", chatMessageId: "m1", body: { reactionType: REACAO_PEGOU }, confirm: true });
+  assert.deepEqual(chamadas.filter((c) => c.tool.includes("reaction")), []);
 });
 
 test("canal de equipe: threads e respostas chegam pelas ferramentas de canal", async () => {

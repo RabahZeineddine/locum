@@ -97,7 +97,7 @@ const eventos = async (db: ReturnType<typeof bancoDeTeste>["db"]) =>
 const cursorDoCanal = async (db: ReturnType<typeof bancoDeTeste>["db"]) =>
   (await db.select().from(schema.cursors).where(eq(schema.cursors.key, `channel:${EQUIPE}:${CANAL}`)))[0]?.value;
 
-const watch: TeamsInboxWatch = { mentions: false, dms: false, prLinks: true, channels: CANAIS, filtroIa: FILTRO };
+const watch: TeamsInboxWatch = { mentions: false, dms: false, prLinks: true, agruparPrs: true, channels: CANAIS, filtroIa: FILTRO };
 
 /** Modelo de mentira: decide pelo texto e guarda o que foi perguntado. */
 function modeloFalso(decide: (p: PedidoDoFiltro) => boolean | Error) {
@@ -113,7 +113,7 @@ function modeloFalso(decide: (p: PedidoDoFiltro) => boolean | Error) {
 
 const pedeReview = (p: PedidoDoFiltro) => /review/i.test(p.mensagem.texto);
 
-test("passa: vira evento, ganha 👀 e o custo é contado", async () => {
+test("passa: vira evento, sem reação, e o custo é contado", async () => {
   const { db } = bancoDeTeste();
   const graph = graphFalso([mensagem("300", 3, `<p>Pessoal, preciso de review: <a href="${link(7)}">PR</a></p>`)]);
   const modelo = modeloFalso(() => true);
@@ -125,7 +125,7 @@ test("passa: vira evento, ganha 👀 e o custo é contado", async () => {
   });
   assert.deepEqual(r.errors, []);
   assert.equal((await eventos(db)).length, 1);
-  assert.deepEqual(graph.reacoes, [`/teams/${EQUIPE}/channels/${CANAL}/messages/300/setReaction`]);
+  assert.deepEqual(graph.reacoes, []);
   assert.deepEqual(gastos, [{ usd: 0.001, tokens: 100 }]);
   assert.equal(modelo.pedidos[0]?.filtro.pergunta, FILTRO.pergunta);
   assert.equal(modelo.pedidos[0]?.mensagem.autor, "Outra Pessoa");
@@ -163,7 +163,7 @@ test("erro do modelo: falha fechada, o cursor não anda e a próxima batida reav
   await pollTeamsInbox(watch, { db, token, graphUrl: GRAPH, ...semGithub, fetchFn: graph.fetchFn, julgar: volta.julgar });
   assert.equal(volta.pedidos.length, 1);
   assert.equal((await eventos(db)).length, 1);
-  assert.equal(graph.reacoes.length, 1);
+  assert.deepEqual(graph.reacoes, []);
 });
 
 test("o cursor para antes da mensagem que não foi avaliada, mas passa pelas anteriores", async () => {
@@ -213,7 +213,9 @@ test("mensagem com dois links é perguntada uma vez", async () => {
   const modelo = modeloFalso(() => true);
   await pollTeamsInbox(watch, { db, token, graphUrl: GRAPH, ...semGithub, fetchFn: graph.fetchFn, julgar: modelo.julgar });
   assert.equal(modelo.pedidos.length, 1);
-  assert.equal((await eventos(db)).length, 2);
+  const [evento, ...resto] = await eventos(db);
+  assert.equal(resto.length, 0);
+  assert.equal((evento as { prs: unknown[] }).prs.length, 2);
 });
 
 test("limite por batida: o excedente fica para a próxima, na ordem em que chegou", async () => {
@@ -358,9 +360,9 @@ test("mensagem que sempre falha passa na terceira vez, com aviso, e não trava a
   const ultima = await batida();
   assert.deepEqual(ultima.avisos, ["o filtro falhou 3 vezes nesta mensagem; deixei passar"]);
   assert.deepEqual(ultima.descartes, []);
-  // A ruim virou evento e ganhou 👀 como sem filtro; a boa tem um evento só.
+  // A ruim virou evento como sem filtro; a boa tem um evento só.
   assert.deepEqual((await eventos(db)).map((e) => e.messageId).sort(), ["1", "2"]);
-  assert.ok(graph.reacoes.some((r) => r.endsWith("/messages/1/setReaction")));
+  assert.deepEqual(graph.reacoes, []);
   // Cursor andou: a próxima batida não pergunta nada.
   const antes = modelo.pedidos.length;
   await batida();
@@ -540,7 +542,7 @@ test("erro de configuração do modelo: passa na hora, com aviso, sem contar fal
   assert.deepEqual(r.errors, []);
   assert.deepEqual(r.avisos, ["filtro com IA sem modelo: sem provedor com modelo barato; mensagens passando sem filtro"]);
   assert.equal((await eventos(db)).length, 2);
-  assert.equal(graph.reacoes.length, 2);
+  assert.deepEqual(graph.reacoes, []);
   assert.deepEqual((await db.select().from(schema.cursors)).filter((c) => c.source.startsWith("teams-filtro-ia-falhas")), []);
 });
 

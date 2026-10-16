@@ -85,6 +85,10 @@ test("o link colado vira o evento enriquecido como o gatilho do Teams monta, sem
   assert.equal(p.chatId, null);
   assert.equal(p.messageId, null);
   assert.equal(p.text, "");
+  // O evento colado leva a lista de um PR, como o do gatilho, e o texto pronto para o prompt.
+  const prs = p.prs as { prNumber: number; title: string }[];
+  assert.deepEqual(prs.map((x) => [x.prNumber, x.title]), [[482, "Corrige o fechamento do lote"]]);
+  assert.match(String(p.prsTexto), /akad\/pagamentos#482[\s\S]*diff --git a\/a\.ts/);
 });
 
 test("link que não é de pull request do GitHub é recusado sem buscar nada", async () => {

@@ -64,6 +64,10 @@ export interface RunEvent {
   trecho: string;
   /** Evento montado de um link colado: não há conversa para responder. */
   semConversa: boolean;
+  /** Links de PR além do teto `maxPrs` do gatilho, que ficaram fora do evento. */
+  prsCortados: number;
+  /** Os PRs da mensagem que não deu para buscar, separados por vírgula; null quando todos foram. */
+  prsFalharam: string | null;
 }
 
 export interface RunDetail extends Omit<RunSummary, "stepTotal" | "stepDone" | "stepPending" | "stepFailed" | "findingCount" | "stepDryRun" | "failedStep"> {
@@ -262,6 +266,8 @@ export class RunService {
       author: texto("teamsAuthor") ?? texto("author"),
       trecho: (texto("text") ?? texto("title") ?? texto("repo") ?? "").replace(/\s+/g, " ").trim().slice(0, 140),
       semConversa: (payload as { semConversa?: unknown } | null)?.semConversa === true,
+      prsCortados: Number((payload as { prsCortados?: unknown } | null)?.prsCortados ?? 0) || 0,
+      prsFalharam: texto("prsFalharam"),
     };
   }
 
