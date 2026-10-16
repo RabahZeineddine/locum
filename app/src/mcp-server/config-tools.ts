@@ -4,8 +4,8 @@ import { agentService } from "../services/agent-service.js";
 import { machineId } from "../services/machine-service.js";
 import { mcpService } from "../services/mcp-service.js";
 import { providerService } from "../services/provider-service.js";
-import { triggerService } from "../services/trigger-service.js";
-import type { AgentSpec, McpServerConfig, McpServerInput, TriggerConfigInput } from "../config/types.js";
+import { esperaChats, MOTIVO_CHATS, triggerService } from "../services/trigger-service.js";
+import { TriggerConfig, type AgentSpec, type McpServerConfig, type McpServerInput, type TriggerConfigInput } from "../config/types.js";
 import { redactServerConfig, restoreHidden } from "./redact.js";
 import { respond } from "./respond.js";
 
@@ -264,7 +264,7 @@ export function registerConfigTools(server: McpServer): void {
     "set_trigger",
     {
       description:
-        "Registers or updates an agent trigger. It starts disabled, and only a person enables it, in the app or the command line. Changing the config of an enabled trigger disables it again.",
+        "Registers or updates an agent trigger. It starts disabled; turning it on is set_trigger_enabled (enabled true is refused here). Changing the config of an enabled trigger disables it again. For teams-inbox, chats lists the group and direct chats to watch (ids from list_teams_chats; empty means all chats), chatsPendentes is the count a package left to choose (it blocks turning on until chats are chosen, so it cannot be cleared here without choosing chats), and filtroIa is the optional AI filter described below.",
       inputSchema: {
         agentId: z.string(),
         config: z
@@ -277,12 +277,27 @@ export function registerConfigTools(server: McpServer): void {
       },
     },
     async ({ agentId, config, triggerId, enabled }) =>
-      respond(() =>
-        triggerService.set(agentId, config as unknown as TriggerConfigInput, {
+      respond(async () => {
+        await recusarSoltarChats(triggerId, config);
+        return triggerService.set(agentId, config as unknown as TriggerConfigInput, {
           id: triggerId,
           enabled,
           fromTool: true,
-        }),
-      ),
+        });
+      }),
   );
+}
+
+/**
+ * Gatilho do pacote que espera escolha de chats não pode ser liberado zerando a
+ * pendência sem escolher: vazio vale para todos os chats, e é isso que ela evita.
+ */
+async function recusarSoltarChats(triggerId: string | undefined, config: Record<string, unknown>): Promise<void> {
+  if (triggerId === undefined) return;
+  const atual = await triggerService.get(triggerId);
+  if (atual === undefined || !esperaChats(atual.config)) return;
+  const novo = TriggerConfig.safeParse(config);
+  if (novo.success && novo.data.kind === "teams-inbox" && novo.data.chats.length === 0 && novo.data.chatsPendentes === 0) {
+    throw new Error(MOTIVO_CHATS);
+  }
 }

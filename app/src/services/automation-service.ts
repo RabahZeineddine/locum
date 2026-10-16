@@ -51,11 +51,21 @@ export class AutomationService {
     return { version, triggers: await this.triggers.list(agentId) };
   }
 
-  async save(input: AutomationSaveInput): Promise<Automation> {
+  /**
+   * `actor` "agent" é o servidor MCP: o passo de ação sobe de modo só até
+   * aprovação, escrita nova de servidor `write` e teto de gasto maior são
+   * recusados, e gatilho não é ligado nem herda o ligado quando a configuração
+   * muda. Sem isso a automação gravada de fora contornaria o que o `upsert_agent`
+   * e o `set_trigger` já travam.
+   */
+  async save(input: AutomationSaveInput, actor: "human" | "agent" = "human"): Promise<Automation> {
     const agentId = input.spec.id;
     // Antes de qualquer escrita: um gatilho inválido não pode deixar para
     // trás um spec novo gravado com os gatilhos antigos.
     for (const gatilho of input.triggers) TriggerConfig.parse(gatilho.config);
+    if (actor === "agent" && input.triggers.some((g) => g.enabled === true)) {
+      throw new Error("gatilho so e ligado por uma pessoa, pela interface ou pela linha de comando");
+    }
 
     let version: AgentVersion;
     if (input.create === true) {
@@ -64,9 +74,12 @@ export class AutomationService {
       }
       if ((await this.agents.get(agentId)) !== undefined) throw new Error(`já existe uma automação "${agentId}"`);
       const nota = input.note.trim() || "criada no canvas";
-      version = await this.agents.upsert(input.spec, nota, "human");
-    } else {
+      version = await this.agents.upsert(input.spec, nota, actor);
+    } else if (actor === "human") {
       version = await this.agents.saveEdited(agentId, input.spec, input.note);
+    } else {
+      if (!(await this.agents.get(agentId))) throw new Error(`agent "${agentId}" não existe`);
+      version = await this.agents.upsert(input.spec, input.note.trim() || undefined, actor);
     }
 
     const atuais = await this.triggers.list(agentId);
@@ -75,6 +88,7 @@ export class AutomationService {
       const salvo = await this.triggers.set(agentId, gatilho.config, {
         ...(gatilho.id === undefined ? {} : { id: gatilho.id }),
         ...(gatilho.enabled === undefined ? {} : { enabled: gatilho.enabled }),
+        ...(actor === "agent" ? { fromTool: true } : {}),
       });
       mantidos.add(salvo.id);
     }

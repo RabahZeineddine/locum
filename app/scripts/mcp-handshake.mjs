@@ -21,7 +21,20 @@ import { createInterface } from "node:readline";
 const TETO_MS = 60_000;
 
 const ESPERADAS = {
-  "--mcp": ["run_agent", "list_agents", "get_run", "describe_steps", "upsert_library_agent"],
+  "--mcp": [
+    "run_agent",
+    "list_agents",
+    "get_run",
+    "describe_steps",
+    "upsert_library_agent",
+    "list_automations",
+    "save_automation",
+    "set_trigger_enabled",
+    "list_connections",
+    "list_pending_approvals",
+    "export_package",
+    "import_package",
+  ],
   "--ferramentas": ["http_get", "json_query", "ask_agent"],
 };
 

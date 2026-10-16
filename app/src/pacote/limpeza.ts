@@ -19,7 +19,8 @@ const SEGREDO = "[segredo removido]";
 
 const ID = "[id removido]";
 
-const PADROES: readonly [RegExp, string][] = [
+/** Só o que é credencial: token, senha, cabeçalho de autorização, webhook e senha em URL. */
+const PADROES_DE_SEGREDO: readonly [RegExp, string][] = [
   // Cabeçalho de autorização inteiro, qualquer esquema.
   [/\bAuthorization\s*[:=]\s*(?:Basic|Bearer|token|Digest)\s+\S+/gi, `Authorization: ${SEGREDO}`],
   // Webhook de entrada: o caminho é o segredo.
@@ -40,6 +41,10 @@ const PADROES: readonly [RegExp, string][] = [
   [/\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g, SEGREDO],
   [/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,}/g, SEGREDO],
   [/\bBearer\s+[A-Za-z0-9._~+/-]{16,}=*/gi, `Bearer ${SEGREDO}`],
+];
+
+/** Identificadores, e-mail e caminho do home: dado pessoal, que não é credencial. */
+const PADROES_PESSOAIS: readonly [RegExp, string][] = [
   // Teams, explícitos: chat e canal (`@thread.v2`, `@thread.tacv2`), reunião e DM (`@unq.gbl.spaces`).
   [/\b19:[A-Za-z0-9_.=-]+@(?:thread\.[A-Za-z0-9]+|unq\.gbl\.spaces)/g, "[chat removido]"],
   [/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, ID],
@@ -52,6 +57,20 @@ const PADROES: readonly [RegExp, string][] = [
 
 function escapar(texto: string): string {
   return texto.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+const PADROES: readonly [RegExp, string][] = [...PADROES_DE_SEGREDO, ...PADROES_PESSOAIS];
+
+/**
+ * Só as credenciais, sem tocar em id, e-mail nem caminho. Para o que sai de uma
+ * leitura em que o id é o que a pessoa procura, como a fila de aprovação.
+ */
+export function limparSegredos(texto: string): string {
+  let saida = texto;
+  for (const [padrao, por] of PADROES_DE_SEGREDO) {
+    saida = saida.replace(padrao, (...args: unknown[]) => por.replace(/\$(\d)/g, (_, n: string) => String(args[Number(n)])));
+  }
+  return saida;
 }
 
 export function limparTexto(texto: string, home: string = homedir()): Limpeza {

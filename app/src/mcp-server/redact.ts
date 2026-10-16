@@ -1,5 +1,6 @@
 import type { McpServerConfig } from "../config/types.js";
 import type { McpServerEntry, McpVinculo } from "../services/mcp-service.js";
+import { limparSegredos } from "../pacote/limpeza.js";
 import { CREDENTIAL_PLACEHOLDER } from "../services/secret-service.js";
 
 /**
@@ -70,4 +71,33 @@ export function origemParaLeitura(entrada: McpServerEntry, vinculo: McpVinculo |
     },
     note: "linked: command, args, env and url come from the origin and cannot be edited here; edit the origin file or unlink in the app",
   };
+}
+
+/** Chave que, pelo nome, guarda credencial. `perRunTokens` e `maxTokens` são contagem e não entram. */
+const CHAVE_SECRETA = /(token|secret|password|senha|authorization|api[_-]?key|cookie)$/i;
+
+/**
+ * Passa pelo valor inteiro, em profundidade, antes de ele sair numa ferramenta
+ * de leitura: o texto que tem cara de credencial é trocado, e o valor de uma
+ * chave que se chama token ou senha sai oculto. Serve para o que nasce de texto
+ * livre (payload de aprovação, erro de gatilho, conversa), onde ninguém garante
+ * que um token colado não esteja no meio.
+ */
+export function redactSecrets<T>(valor: T): T {
+  const passar = (v: unknown): unknown => {
+    if (typeof v === "string") return limparSegredos(v);
+    if (Array.isArray(v)) return v.map(passar);
+    if (typeof v === "object" && v !== null) {
+      return Object.fromEntries(
+        Object.entries(v).map(([chave, x]) => [
+          chave,
+          typeof x === "string" && CHAVE_SECRETA.test(chave) && x !== CREDENTIAL_PLACEHOLDER && x !== ""
+            ? HIDDEN_VALUE
+            : passar(x),
+        ]),
+      );
+    }
+    return v;
+  };
+  return passar(valor) as T;
 }

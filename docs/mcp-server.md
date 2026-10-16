@@ -47,7 +47,7 @@ linha de comando escreve. Não existe cópia nem sincronização.
 
 ## O que o servidor expõe
 
-São 38 ferramentas, todas casca fina sobre a camada de serviço em
+São 58 ferramentas, todas casca fina sobre a camada de serviço em
 `app/src/services/`. A regra mora no serviço, não aqui, e por isso um
 assistente externo não consegue contornar nenhuma delas: versão de agent
 continua imutável, ciclo na tabela de substituição continua recusado na
@@ -93,7 +93,7 @@ interface aplicam. Um schema duplicado aqui viraria a porta larga.
 | `list_server_tools` | Ferramentas que um servidor expõe, com descrição e estimativa de tokens do schema, para escolher quais marcar num passo. |
 | `set_model_fallback` | Grava uma substituição de modelo para a máquina. Cadeia circular é recusada na gravação. |
 | `set_budget` | Ajusta o teto de gasto por execução e por dia. Como o orçamento mora no spec, isso grava versão nova. |
-| `set_trigger` | Cadastra ou atualiza um gatilho do agent. Nasce desabilitado: habilitar é o passo que deixa o agent acordar sozinho. |
+| `set_trigger` | Cadastra ou atualiza um gatilho do agent. Nasce desabilitado, e `enabled: true` é recusado aqui: ligar é `set_trigger_enabled`. No `teams-inbox` documenta `chats` (até 20, vazio é todos), `chatsPendentes` (o que um pacote deixou por escolher; não dá para zerar sem escolher os chats) e `filtroIa`. |
 
 ### Biblioteca e catálogo
 
@@ -101,7 +101,7 @@ Para montar automação conversando: o catálogo diz o que um fluxo pode ter, e 
 biblioteca guarda agents e toolsets que os passos reutilizam. A gravação passa
 pelo mesmo `libraryService` da tela. Ferramenta nova de servidor `write` é
 recusada, direto no agent ou pelo toolset, como no `upsert_agent`. Remover
-agent ou toolset fica para a tela.
+agent ou toolset é possível, e o serviço recusa enquanto algo o usa.
 
 | ferramenta | o que faz |
 |---|---|
@@ -111,6 +111,51 @@ agent ou toolset fica para a tela.
 | `upsert_library_agent` | Grava versão nova de um agent da biblioteca: contexto, instruções, modelo, temperatura, toolsets e ferramentas. |
 | `list_toolsets` | Toolsets, com os agents que incluem cada um. |
 | `upsert_toolset` | Grava um toolset. Sem versão: vale na próxima execução de todo agent que o inclui. |
+| `remove_library_agent` | Apaga um agent da biblioteca com as versões dele. Irreversível, e recusado enquanto uma automação o usa. |
+| `remove_toolset` | Apaga um toolset, recusado enquanto um agent da biblioteca o inclui. |
+
+### Automações e gatilhos
+
+A automação não tem tabela: é o agent de fluxo mais os gatilhos dele. A gravação
+sai do `automationService` da tela, com o teto de quem escreve de fora: passo de
+ação sobe só até aprovação, escrita nova em servidor `write` e teto de gasto
+maior são recusados, e gatilho gravado daqui nasce desligado.
+
+Ligar é separado de gravar. Gatilho do Teams com `prLinks` faz o app reagir com
+👀 (depois ✅, ⚠️ ou 💬) na mensagem em nome da pessoa, e por isso
+`set_trigger_enabled` e `set_automation_enabled` exigem
+`confirmo_reacoes_em_meu_nome: true` para ligá-lo. Gatilho que veio de pacote e
+espera a escolha de chats (`chatsPendentes`) não liga de jeito nenhum.
+
+| ferramenta | o que faz |
+|---|---|
+| `list_automations` | Automações com versão, número de passos, se algum gatilho está ligado e cada gatilho com tipo, estado e último erro. |
+| `get_automation` | Uma automação com o spec do topo e os gatilhos. |
+| `list_triggers` | Gatilhos de todas as automações ou de uma, com configuração, estado e último erro. |
+| `list_trigger_discards` | Os últimos pull requests que o gatilho viu e não virou evento, com o motivo. |
+| `save_automation` | Grava spec e gatilhos numa chamada. Gatilho com `id` atualiza, sem `id` é novo, e o que ficou fora da lista sai. Nunca liga. |
+| `set_automation_enabled` | Liga ou desliga todos os gatilhos da automação. |
+| `set_trigger_enabled` | Liga ou desliga um gatilho. |
+| `remove_trigger` | Remove o gatilho, com os descartes e o último erro dele. |
+| `run_automation_now` | Roda a automação uma vez, sem evento. O passo de ação continua parando na fila. |
+
+### Conexões, fila, sessões e pacote
+
+Leituras sem segredo (o texto livre passa pela redação de credenciais) e o
+pacote `.locum.json`. A decisão da fila, conectar conta, guardar segredo, usar o
+vínculo do `gh`, o chat do agent e o terminal continuam só na tela.
+
+| ferramenta | o que faz |
+|---|---|
+| `list_connections` | Estado de cada conexão do catálogo e dos servidores próprios, e o status do GitHub (token guardado, vínculo com o `gh`, ambiente). Nunca o token. |
+| `list_teams_chats` | Chats em grupo e diretos do Teams, para preencher `chats` do gatilho. Lê o Teams. |
+| `list_teams_channels` | Canais do Teams, para preencher `channels` do gatilho. Lê o Teams. |
+| `list_pending_approvals` | A fila, só leitura, com o que sairia se aprovado. |
+| `get_approval` | Uma aprovação da fila. |
+| `list_sessions` | Sessões do Claude Code e do opencode desta máquina. |
+| `preview_package` | O que importar um pacote faria aqui. Não grava. |
+| `export_package` | O texto do pacote de uma automação, sem segredo. |
+| `import_package` | Importa como automação nova, com as decisões que a tela pede (criar ao lado ou atualizar, modelos, servidores). Gatilho nunca entra ligado, e pacote que liga ferramenta de escrita numa conexão fica para a tela. |
 
 ### Execução
 

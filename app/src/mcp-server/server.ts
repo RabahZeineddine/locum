@@ -5,9 +5,13 @@ import { db, schema } from "../db/index.js";
 import { dbPath } from "../db/path.js";
 import { RESERVED_AGENT_IDS } from "../services/agent-service.js";
 import { machineId } from "../services/machine-service.js";
+import { registerApprovalTools } from "./approval-tools.js";
+import { registerAutomationTools } from "./automation-tools.js";
 import { registerConfigTools } from "./config-tools.js";
+import { registerConnectionTools, leituraPadrao, type LeituraDeFora } from "./connection-tools.js";
 import { registerInitiativeTools } from "./initiative-tools.js";
 import { registerLibraryTools } from "./library-tools.js";
+import { registerPackageTools } from "./package-tools.js";
 import { registerReadTools } from "./read-tools.js";
 import { registerRunTools } from "./run-tools.js";
 
@@ -21,7 +25,7 @@ export const SERVER_VERSION = "0.1.0";
  * Aqui o Locum e servidor: ele se expoe a agents externos. O `McpRegistry` e o
  * papel oposto, de cliente. O ADR 0002 pede que os dois nomes nao se misturem.
  */
-export function buildMcpServer(): McpServer {
+export function buildMcpServer(fora: Partial<LeituraDeFora> = {}): McpServer {
   const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION });
 
   server.registerTool(
@@ -41,6 +45,10 @@ export function buildMcpServer(): McpServer {
   registerRunTools(server);
   registerInitiativeTools(server);
   registerLibraryTools(server);
+  registerAutomationTools(server);
+  registerConnectionTools(server, { ...leituraPadrao, ...fora });
+  registerApprovalTools(server);
+  registerPackageTools(server);
   return server;
 }
 

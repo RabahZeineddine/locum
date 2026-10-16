@@ -25,7 +25,7 @@ import { respond } from "./respond.js";
  *
  * Por cima vale a mesma regra do `upsert_agent`: ferramenta nova de servidor
  * `write` só entra pela tela, onde a pessoa vê o que está ligando. Remover
- * agent ou toolset também fica para a tela, porque apaga o histórico.
+ * agent ou toolset é interno e o serviço recusa enquanto algo o usa.
  */
 export function registerLibraryTools(server: McpServer): void {
   server.registerTool(
@@ -110,6 +110,36 @@ export function registerLibraryTools(server: McpServer): void {
         const anterior = await libraryService.getToolset(novo.id);
         await recusarEscritaNova(novo.tools, anterior?.tools ?? []);
         return libraryService.saveToolset({ toolset: novo as ToolsetInput, create });
+      }),
+  );
+
+  server.registerTool(
+    "remove_library_agent",
+    {
+      description:
+        "Deletes a library agent and all its versions. Irreversible: the version history goes with it. Refused while any automation still uses it; the error lists them.",
+      inputSchema: { id: z.string().min(1) },
+    },
+    async ({ id }) =>
+      respond(async () => {
+        if ((await libraryService.getProfile(id)) === null) throw new Error(`agent "${id}" não existe na biblioteca`);
+        await libraryService.removeProfile(id);
+        return { id, removed: true };
+      }),
+  );
+
+  server.registerTool(
+    "remove_toolset",
+    {
+      description:
+        "Deletes a toolset. Refused while any library agent still includes it; the error lists them.",
+      inputSchema: { id: z.string().min(1) },
+    },
+    async ({ id }) =>
+      respond(async () => {
+        if ((await libraryService.getToolset(id)) === null) throw new Error(`toolset "${id}" não existe`);
+        await libraryService.removeToolset(id);
+        return { id, removed: true };
       }),
   );
 }
