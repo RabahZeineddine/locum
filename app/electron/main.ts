@@ -112,13 +112,19 @@ function abrirOAppDeVerdade(url?: string): void {
   void import("node:child_process").then(({ spawn }) => {
     // Empacotado no macOS, quem abre é o LaunchServices (`open -a`), como um
     // clique no Finder: o app sobe ativo, com foco e barra de menu. Um `spawn`
-    // direto de um processo `LSUIElement` sobe o filho em segundo plano. A URL
-    // vai como argumento do `open`, que a entrega pelo `open-url`; as bandeiras
-    // só valem num lançamento novo, e com o app no ar o `open` o ativa.
+    // direto de um processo `LSUIElement` sobe o filho em segundo plano.
+    // `-n` porque este processo é do mesmo pacote: sem ele o `open` só reativa
+    // o `--mcp`, que não tem janela. A instância nova pega a trava ou entrega
+    // ao app no ar pelo `second-instance`, e por isso a URL vai na linha de
+    // comando, que chega nos dois casos, e não pelo `open-url`.
     if (app.isPackaged && process.platform === "darwin") {
       const bundle = dirname(dirname(dirname(process.execPath)));
-      const aberto = [bundle, ...(url === undefined ? [] : [url]), ...(args.length > 0 ? ["--args", ...args] : [])];
-      spawn("/usr/bin/open", ["-a", ...aberto], { detached: true, stdio: "ignore", env }).unref();
+      const linha = url === undefined ? args : [...args, url];
+      spawn("/usr/bin/open", ["-n", "-a", bundle, ...(linha.length > 0 ? ["--args", ...linha] : [])], {
+        detached: true,
+        stdio: "ignore",
+        env,
+      }).unref();
       return;
     }
     spawn(process.execPath, url === undefined ? args : [...args, url], { detached: true, stdio: "ignore", env }).unref();
