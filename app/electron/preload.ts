@@ -3,6 +3,7 @@ import {
   BRIDGE_CHANNELS,
   BRIDGE_GLOBAL,
   CHAT_EVENT_CHANNEL,
+  DADOS_EVENT_CHANNEL,
   MENU_NAVEGAR_CHANNEL,
   TERMINAL_EVENT_CHANNEL,
   UPDATES_EVENT_CHANNEL,
@@ -52,6 +53,14 @@ bridge["updates"]["onEvent"] = (ouvinte: (evento: unknown) => void) => {
   const encaminha = (_e: unknown, evento: unknown) => ouvinte(evento);
   ipcRenderer.on(UPDATES_EVENT_CHANNEL, encaminha);
   return () => ipcRenderer.removeListener(UPDATES_EVENT_CHANNEL, encaminha);
+};
+
+// O banco mudou: a janela relê o que está aberto, sem sondar.
+bridge["dados"] ??= {};
+bridge["dados"]["onMudou"] = (ouvinte: (areas: string[]) => void) => {
+  const encaminha = (_e: unknown, areas: unknown) => ouvinte(Array.isArray(areas) ? (areas as string[]) : ["*"]);
+  ipcRenderer.on(DADOS_EVENT_CHANNEL, encaminha);
+  return () => ipcRenderer.removeListener(DADOS_EVENT_CHANNEL, encaminha);
 };
 
 // O menu da aplicação pedindo uma rota: a janela navega pelo caminho de sempre.

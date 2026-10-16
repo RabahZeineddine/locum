@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Kbd } from "@/components/ui/kbd";
 import { useRead } from "@/lib/bridge";
+import { assinarMudancasDosDados } from "@/lib/dados-ao-vivo";
 import { useRota } from "@/lib/router";
 import { cn } from "@/lib/utils";
 import { assinarEventosDoTerminal } from "@/lib/terminal";
@@ -122,6 +123,9 @@ export function Layout() {
   const { ativa, detalhe, navegar } = useRota(ROTA_IDS, ROTA_PADRAO, ROTAS_ANTIGAS);
   const rota = ROTAS.find((r) => r.id === ativa) ?? ROTAS[0];
   const { Tela } = rota;
+
+  // Uma assinatura para a janela toda: o que mudou no banco relê as leituras abertas.
+  useEffect(() => assinarMudancasDosDados(), []);
 
   const agents = useRead("agents.list");
   const perfis = useRead("library.profiles");

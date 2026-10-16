@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { semPrefixoDoIpc } from "./erro-da-ponte";
+import {
+  estadoAoComecarLeitura,
+  estadoAoFalharLeitura,
+  estadoAoLerDados,
+  type EstadoDeLeitura,
+} from "./leitura";
 import type {
   BridgeChannel,
   LocumApi,
@@ -454,10 +460,7 @@ export async function call<C extends ActionChannel>(
   return invoke(channel, ...args);
 }
 
-export type ReadState<T> =
-  | { status: "loading"; data: undefined; error: undefined }
-  | { status: "ready"; data: T; error: undefined }
-  | { status: "error"; data: undefined; error: BridgeError };
+export type ReadState<T> = EstadoDeLeitura<T, BridgeError>;
 
 type InvalidationListener = (channel: string) => void;
 const invalidationListeners = new Set<InvalidationListener>();
@@ -504,13 +507,20 @@ export function useRead<C extends ReadChannel>(
     };
   }, [channel]);
 
+  // A leitura que o efeito anterior fez, para saber se esta é só uma releitura
+  // (mesmo canal e mesmos argumentos) e manter os dados na tela.
+  const ultimaLida = useRef<string | null>(null);
+
   useEffect(() => {
     let vivo = true;
-    setState({ status: "loading", data: undefined, error: undefined });
+    const id = `${channel}:${chave}`;
+    const porInvalidacao = ultimaLida.current === id;
+    ultimaLida.current = id;
+    setState((atual) => estadoAoComecarLeitura(atual, porInvalidacao));
 
     read(channel, ...ultimos.current).then(
       (data) => {
-        if (vivo) setState({ status: "ready", data, error: undefined });
+        if (vivo) setState((atual) => estadoAoLerDados(atual, data));
       },
       (erro: unknown) => {
         if (!vivo) return;
@@ -518,7 +528,7 @@ export function useRead<C extends ReadChannel>(
           erro instanceof BridgeError
             ? erro
             : new BridgeError(channel, erro instanceof Error ? erro.message : String(erro));
-        setState({ status: "error", data: undefined, error: embrulhado });
+        setState((atual) => estadoAoFalharLeitura(atual, embrulhado));
       },
     );
 
