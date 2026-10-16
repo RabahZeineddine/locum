@@ -87,6 +87,22 @@ export function ChatDoAgent({ id, modelo, versao, naoSalvo }: { id: string; mode
   }, [id]);
 
   const aguardando = falas.some((f) => f.cartoes.some((c) => c.estado === "pendente"));
+
+  // O servidor MCP (outro processo) grava na mesma conversa: ao voltar para a janela, relê o que ele deixou.
+  useEffect(() => {
+    const recarregar = (): void => {
+      if (respondendo || aguardando) return;
+      chatDoAgent.estado(id).then(
+        (estado) => {
+          setFalas(estado.falas);
+          setRespondendo(estado.respondendo);
+        },
+        () => undefined,
+      );
+    };
+    window.addEventListener("focus", recarregar);
+    return () => window.removeEventListener("focus", recarregar);
+  }, [id, respondendo, aguardando]);
   // Nome da conexão pelo id dela, e pelo nome de cada servidor que ela tem: o cartão traz o servidor.
   const nomes = new Map((conexoes.data ?? []).map((c) => [c.id, c.name]));
   const nomesPorServidor = new Map((conexoes.data ?? []).flatMap((c) => c.servers.map((s) => [s, c.name] as const)));
@@ -257,6 +273,7 @@ const PONTO_DO_CARTAO: Record<Cartao["estado"], Estado> = {
   falhou: "erro",
   recusado: "ocioso",
   expirado: "ocioso",
+  incerto: "aviso",
 };
 
 /** A chamada de escrita que o agent quer fazer, à espera do clique de quem conversa. */
@@ -296,6 +313,7 @@ function CartaoDeEscrita({ cartao, decidir, marca, nomeDaConexao }: { cartao: Ca
         </dl>
       )}
       {cartao.estado === "expirado" ? <p className="text-xs text-muted-foreground">{t("agentChat.card.expiredHint")}</p> : null}
+      {cartao.estado === "incerto" ? <p className="text-xs text-muted-foreground">{t("agentChat.card.uncertainHint")}</p> : null}
       {cartao.resultado === undefined ? null : <ResultadoDaFerramenta texto={cartao.resultado} />}
       {pendente ? (
         <div className="flex gap-2">

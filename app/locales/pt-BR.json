@@ -287,14 +287,16 @@
         "executado": "Executado",
         "falhou": "Falhou",
         "recusado": "Recusada",
-        "expirado": "Expirou"
+        "expirado": "Expirou",
+        "incerto": "Não se sabe se saiu"
       },
       "run": "Executar",
       "refuse": "Recusar",
       "argNull": "nulo",
       "argEmpty": "vazio",
       "result": "Resultado",
-      "expiredHint": "A conversa foi limpa ou interrompida, ou o app fechou, antes do clique. Nada foi executado."
+      "expiredHint": "A conversa foi limpa ou interrompida, ou o app fechou, antes do clique. Nada foi executado.",
+      "uncertainHint": "Você clicou em Executar e o app fechou antes de a ferramenta responder. A escrita pode ter saído: confira no serviço antes de pedir de novo."
     },
     "scopes": {
       "run": "da execução",
@@ -303,6 +305,7 @@
     "errors": {
       "busy": "O agent ainda está respondendo.",
       "pending": "Decida primeiro a escrita que está esperando o seu clique.",
+      "otherProcess": "Outro processo do Locum (o app aberto ou o servidor MCP) está no meio de uma fala deste agent. Espere ele terminar ou decida o cartão por lá.",
       "expired": "Esse cartão expirou: a conversa foi limpa ou interrompida, ou o app fechou antes do clique.",
       "budget": "O orçamento {{scope}} deste agent acabou: limite {{limit}}, gasto {{spent}}. Ajuste em Orçamento, na página do agent.",
       "codex": "O chat do agent não roda com modelo do Codex: ele não entrega o texto aos pedaços. Escolha outro modelo na aba Modelo.",

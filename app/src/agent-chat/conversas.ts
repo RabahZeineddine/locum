@@ -66,6 +66,20 @@ export interface DepsDoChat {
   teto?: number;
   /** Skills disponíveis. Ausente varre o disco. */
   skills?: Map<string, LoadedSkill>;
+  /** Quem é este processo e como saber se o outro ainda vive. Ausente, o pid real. */
+  processo?: { pid: number; vivo: (pid: number) => boolean };
+}
+
+/** Passado este tempo o dono da trava é dado como perdido, mesmo que o pid exista (reaproveitado). */
+const VALIDADE_DA_TRAVA_MS = 6 * 60 * 60 * 1000;
+
+function pidVivo(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === "EPERM";
+  }
 }
 
 type Decisao = "executar" | "recusar";
@@ -96,6 +110,8 @@ interface Conversa {
 
 const chaveDasFalas = (id: string): string => `chat.falas.${chaveDoAgent(id)}`;
 const chaveDaSessao = (id: string): string => `chat.sessao.${chaveDoAgent(id)}`;
+/** Quem está no meio de uma fala deste agent: o app aberto e o `--mcp` gravam as mesmas chaves. */
+const chaveDaTrava = (id: string): string => `chat.trava.${chaveDoAgent(id)}`;
 
 function cortar(texto: string): string {
   return texto.length > TETO_DO_RESULTADO ? `${texto.slice(0, TETO_DO_RESULTADO)}...` : texto;
@@ -135,10 +151,12 @@ export class ConversasDeAgent {
 
   async estado(id: string): Promise<EstadoDaConversa> {
     const conversa = await this.obter(id);
+    const outro = await this.outroNaConversa(id);
+    await this.reler(conversa, outro !== null);
     const perfil = await this.deps.library.resolveProfile(id);
     return {
       falas: conversa.falas.map((f) => ({ ...f, cartoes: f.cartoes.map((c) => ({ ...c })) })),
-      respondendo: conversa.respondendo,
+      respondendo: conversa.respondendo || outro !== null,
       resumido: conversa.resumido,
       semServidor: perfil.semServidor,
       contaIgnorada: perfil.tools.filter((t) => t.server === SERVIDOR_CONTA).length,
@@ -157,7 +175,12 @@ export class ConversasDeAgent {
       this.emitir(conversa, { tipo: "erro", mensagem: this.deps.texto("agentChat.errors.pending") });
       return;
     }
+    // O outro processo pode ter falado desde a última vez: parte do que está no disco, e não da memória.
+    await this.tomarTrava(conversa);
+    await this.reler(conversa, false);
     conversa.falas.push({ de: "user", texto, ferramentas: [], cartoes: [] }, { de: "assistant", texto: "", ferramentas: [], cartoes: [] });
+    // A pergunta fica guardada já: se o processo morrer no meio da volta, ela não some.
+    await this.salvar(conversa);
     await this.rodar(conversa, { texto });
   }
 
@@ -165,12 +188,17 @@ export class ConversasDeAgent {
   async decidir(id: string, cartao: string, decisao: Decisao): Promise<void> {
     const conversa = await this.obter(id);
     const pendente = conversa.pendentes.get(cartao);
-    if (pendente === undefined) throw new Error(this.deps.texto("agentChat.errors.expired"));
+    if (pendente === undefined) {
+      if ((await this.outroNaConversa(id)) !== null) throw new Error(this.deps.texto("agentChat.errors.otherProcess"));
+      throw new Error(this.deps.texto("agentChat.errors.expired"));
+    }
     // No caminho por API o cartão só vale com a volta terminada: antes, o passo ainda corre.
     if (pendente.resolver === undefined && conversa.respondendo) throw new Error(this.deps.texto("agentChat.errors.busy"));
 
     // "Executado" só depois que a ferramenta responde; até lá, executando.
     this.emitir(conversa, { tipo: "cartao-estado", id: cartao, estado: decisao === "executar" ? "executando" : "recusado" });
+    // O clique fica guardado antes de a ferramenta rodar: se o processo morrer no meio, o cartão volta como "sem saber se saiu".
+    await this.salvar(conversa);
     if (pendente.resolver !== undefined) {
       conversa.pendentes.delete(cartao);
       pendente.resolver(decisao);
@@ -196,13 +224,17 @@ export class ConversasDeAgent {
     if (pronta === undefined) return;
     void pronta.then(async (conversa) => {
       conversa.cancelar?.abort();
-      if (this.expirarPendentes(conversa)) await this.salvar(conversa);
+      if (this.expirarPendentes(conversa)) {
+        await this.salvar(conversa);
+        await this.soltarSeQuieta(conversa);
+      }
     });
   }
 
   /** Recomeça do zero: esquece as falas, a sessão do Claude Code e qualquer cartão pendente. */
   async limpar(id: string): Promise<void> {
     const conversa = await this.obter(id);
+    if ((await this.outroNaConversa(id)) !== null) throw new Error(this.deps.texto("agentChat.errors.otherProcess"));
     conversa.geracao += 1;
     conversa.cancelar?.abort();
     for (const p of conversa.pendentes.values()) p.resolver?.("expirou");
@@ -215,6 +247,7 @@ export class ConversasDeAgent {
     conversa.chamadas.clear();
     await this.deps.settings.set(chaveDasFalas(id), "[]");
     await this.deps.settings.set(chaveDaSessao(id), "");
+    await this.soltarSeQuieta(conversa);
   }
 
   /* -------------------------------------------------------------- interno */
@@ -229,20 +262,77 @@ export class ConversasDeAgent {
   }
 
   private async carregar(id: string): Promise<Conversa> {
-    let falas: FalaDoAgent[] = [];
+    const falas = await this.lerFalas(id, false);
+    return { id, falas, historico: null, pendentes: new Map(), chamadas: new Map(), respondendo: false, resumido: false, gasto: { usd: 0, tokens: 0 }, seq: 0, geracao: 0 };
+  }
+
+  /**
+   * As falas guardadas. Cartão velho de um processo que já não existe não tem
+   * quem o decida: o que esperava o clique expira, e o que já tinha o clique e
+   * não registrou o fim vira "incerto", porque a escrita pode ter saído. Com o
+   * outro processo vivo e dono da conversa, os cartões ficam como ele os deixou.
+   */
+  private async lerFalas(id: string, donoVivo: boolean): Promise<FalaDoAgent[]> {
     try {
       const guardadas = JSON.parse((await this.deps.settings.get(chaveDasFalas(id))) ?? "[]") as Partial<FalaDoAgent>[];
-      falas = guardadas.map((f) => ({
+      return guardadas.map((f) => ({
         de: f.de === "user" ? "user" : "assistant",
         texto: f.texto ?? "",
         ferramentas: f.ferramentas ?? [],
-        // Memória nova, cartão velho: quem decidiria já não está esperando.
-        cartoes: (f.cartoes ?? []).map((c) => (c.estado === "pendente" || c.estado === "executando" ? { ...c, estado: "expirado" as const } : c)),
+        cartoes: (f.cartoes ?? []).map((c) => {
+          if (donoVivo) return c;
+          if (c.estado === "pendente") return { ...c, estado: "expirado" as const };
+          if (c.estado === "executando") return { ...c, estado: "incerto" as const };
+          return c;
+        }),
       }));
     } catch {
-      falas = [];
+      return [];
     }
-    return { id, falas, historico: null, pendentes: new Map(), chamadas: new Map(), respondendo: false, resumido: false, gasto: { usd: 0, tokens: 0 }, seq: 0, geracao: 0 };
+  }
+
+  /** Quem é o outro processo com a conversa nas mãos, se houver um vivo. */
+  private async outroNaConversa(id: string): Promise<number | null> {
+    const processo = this.deps.processo ?? { pid: process.pid, vivo: pidVivo };
+    try {
+      const trava = JSON.parse((await this.deps.settings.get(chaveDaTrava(id))) || "null") as { pid?: number; em?: number } | null;
+      if (trava === null || typeof trava.pid !== "number" || trava.pid === processo.pid) return null;
+      if (Date.now() - (trava.em ?? 0) > VALIDADE_DA_TRAVA_MS || !processo.vivo(trava.pid)) return null;
+      return trava.pid;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Esta conversa passa a ser deste processo; recusa se o outro está no meio de uma fala. */
+  private async tomarTrava(conversa: Conversa): Promise<void> {
+    if ((await this.outroNaConversa(conversa.id)) !== null) throw new Error(this.deps.texto("agentChat.errors.otherProcess"));
+    const pid = this.deps.processo?.pid ?? process.pid;
+    await this.deps.settings.set(chaveDaTrava(conversa.id), JSON.stringify({ pid, em: Date.now() }));
+    // Quem gravou por último vale: se o outro tomou no mesmo instante, este recua.
+    if ((await this.outroNaConversa(conversa.id)) !== null) throw new Error(this.deps.texto("agentChat.errors.otherProcess"));
+  }
+
+  /** Sem volta em andamento nem cartão à espera, a conversa deixa de ser deste processo. */
+  private async soltarSeQuieta(conversa: Conversa): Promise<void> {
+    if (conversa.respondendo || conversa.pendentes.size > 0) return;
+    const pid = this.deps.processo?.pid ?? process.pid;
+    const trava = JSON.parse((await this.deps.settings.get(chaveDaTrava(conversa.id))) || "null") as { pid?: number } | null;
+    if (trava?.pid === pid) await this.deps.settings.set(chaveDaTrava(conversa.id), "");
+  }
+
+  /**
+   * Traz do disco o que o outro processo gravou. Só com a conversa quieta
+   * neste: durante uma volta daqui, a memória é a que vale. O histórico do
+   * modelo nasce de novo das falas quando elas mudaram.
+   */
+  private async reler(conversa: Conversa, donoVivo: boolean): Promise<void> {
+    if (conversa.respondendo || conversa.pendentes.size > 0) return;
+    const lidas = await this.lerFalas(conversa.id, donoVivo);
+    if (JSON.stringify(lidas) === JSON.stringify(conversa.falas)) return;
+    conversa.falas = lidas;
+    conversa.historico = null;
+    conversa.seq += 1;
   }
 
   private async salvar(conversa: Conversa): Promise<void> {
@@ -344,6 +434,7 @@ export class ConversasDeAgent {
           this.tirarPedidoSemResposta(conversa);
         }
         await this.salvar(conversa);
+        await this.soltarSeQuieta(conversa);
       }
     }
   }
