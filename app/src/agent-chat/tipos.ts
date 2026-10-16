@@ -57,6 +57,8 @@ export interface EstadoDaConversa {
   resumido: boolean;
   /** Conexões do agent sem servidor agora: avisa, e não impede de conversar. */
   semServidor: ConexaoSemServidor[];
+  /** Skills do agent que não existem mais nesta máquina: avisa, e a execução pelo fluxo é que falha. */
+  semSkill: string[];
   /** Quantas ferramentas da conta Claude o agent tem e ficam de fora do chat. */
   contaIgnorada: number;
   /** O `seq` do último evento já refletido nas falas. */

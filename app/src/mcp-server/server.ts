@@ -22,6 +22,7 @@ import { registerReadTools } from "./read-tools.js";
 import { registerRunTools } from "./run-tools.js";
 import { registerSessionTools } from "./session-tools.js";
 import { registerSettingsTools } from "./settings-tools.js";
+import { registerSkillsTools } from "./skills-tools.js";
 import { exigirAnotacoes } from "./tool-def.js";
 
 export const SERVER_NAME = "locum";
@@ -70,6 +71,7 @@ export function buildMcpServer(fora: Partial<Ambiente> = {}): McpServer {
   registerMcpAdminTools(server);
   registerSessionTools(server, amb);
   registerSettingsTools(server, amb);
+  registerSkillsTools(server);
   return server;
 }
 

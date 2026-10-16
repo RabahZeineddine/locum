@@ -9,7 +9,7 @@ import { AgentService } from "../src/services/agent-service.js";
 import { AutomationService } from "../src/services/automation-service.js";
 import { LibraryService } from "../src/services/library-service.js";
 import { McpService } from "../src/services/mcp-service.js";
-import { DecisaoPendenteError, PacoteService, pacoteDoComando, type AmbienteDoPacote } from "../src/services/pacote-service.js";
+import { DecisaoPendenteError, diferencasDoAgent, PacoteService, pacoteDoComando, type AmbienteDoPacote } from "../src/services/pacote-service.js";
 import { SecretService } from "../src/services/secret-service.js";
 import { TriggerService } from "../src/services/trigger-service.js";
 import { bancoDeTeste } from "./helpers/db.js";
@@ -806,4 +806,28 @@ test("skill do agent entra nos requisitos e a prévia diz se existe aqui", async
   assert.deepEqual(dep?.usadoPor, ["agent:revisor"]);
   const com = maquina();
   assert.equal((await com.pacotes.previa(texto)).dependencias.find((d) => d.tipo === "skill")?.estado, "ok");
+});
+
+test("importar um pacote de conexão antiga vira lista explícita aqui, e a prévia seguinte continua dizendo igual", async () => {
+  const texto = await pacoteDoDono();
+  const bruno = maquina();
+  const catalogo = {
+    servidoresDe: async (id: string) => [{ nome: id, ligado: true }],
+    ferramentasDe: async (servidor: string) => (servidor === "github" ? [{ name: "get_pull_request" }, { name: "create_comment" }] : [{ name: "list-chats" }, { name: "send-chat-message" }]),
+    guardadasDe: async (servidor: string) => (servidor === "github" ? [{ name: "get_pull_request" }, { name: "create_comment" }] : [{ name: "list-chats" }, { name: "send-chat-message" }]),
+  };
+  const library = new LibraryService(bruno.db, catalogo);
+  const pacotes = new PacoteService(bruno.agents, library, bruno.automations, bruno.ambiente, HOME);
+  await pacotes.importar(texto);
+  assert.equal((await library.getProfile("revisor"))?.spec.connections[0]?.leituraPadrao, "limitada");
+  const previa = await pacotes.previa(texto);
+  assert.equal(previa.agents[0]!.situacao, "igual");
+  assert.deepEqual(previa.agents[0]!.diferencas, []);
+});
+
+test("na lista explícita, false do pacote para ferramenta que aqui não consta é diferença: aplicar grava a escolha", () => {
+  const agent = (tools: Record<string, boolean>) =>
+    ({ id: "a", name: "A", description: "", context: "", instructions: "", model: "x", skills: [], tools: [], budget: {}, maxSteps: 4, connections: [{ connectionId: "gh", leituraPadrao: "limitada", linhaDeBase: "feita", tools }] }) as unknown as Parameters<typeof diferencasDoAgent>[0];
+  assert.deepEqual(diferencasDoAgent(agent({ "gh/get_a": true }), agent({ "gh/get_a": true, "gh/create_b": false })).map((d) => d.campo), ["connections"]);
+  assert.deepEqual(diferencasDoAgent(agent({ "gh/get_a": true }), agent({ "gh/get_a": true })), []);
 });

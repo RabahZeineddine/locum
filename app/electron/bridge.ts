@@ -24,7 +24,7 @@ import { automationService } from "../src/services/automation-service.js";
 import { libraryService } from "../src/services/library-service.js";
 import { pacoteService } from "../src/services/pacote-service.js";
 import { EXTENSAO_DO_PACOTE, TAMANHO_MAXIMO_DO_PACOTE } from "../src/pacote/formato.js";
-import { discoverSkills } from "../src/skills/loader.js";
+import { skillsService } from "../src/services/skills-service.js";
 import { claudeCodeService } from "../src/services/claude-code-service.js";
 import { opencodeService } from "../src/services/opencode-service.js";
 import { grafanaService } from "../src/services/grafana-service.js";
@@ -250,10 +250,27 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "library.saveToolset": (input) => libraryService.saveToolset(input),
     "library.removeToolset": (id) => libraryService.removeToolset(id),
     "library.suggestId": (nome, tipo) => libraryService.suggestId(nome, tipo),
-    "skills.list": async () =>
-      [...discoverSkills().values()]
-        .map(({ name, description }) => ({ name, description }))
-        .sort((a, b) => a.name.localeCompare(b.name)),
+    "skills.list": (atualizar) => skillsService.listar({ atualizar }),
+    "skills.get": (name) => skillsService.obter(name),
+    "skills.create": (input) => skillsService.criar(input),
+    "skills.update": (name, input) => skillsService.atualizar(name, input),
+    "skills.remove": (name) => skillsService.remover(name),
+    "skills.import": (caminho) => skillsService.importar(caminho),
+    "skills.chooseImport": async () => {
+      const janela = BrowserWindow.getFocusedWindow();
+      const opcoes = {
+        title: t("skills.importTitle"),
+        filters: [{ name: "Markdown", extensions: ["md"] }],
+        properties: ["openFile" as const, "openDirectory" as const],
+      };
+      const escolha = janela ? await dialog.showOpenDialog(janela, opcoes) : await dialog.showOpenDialog(opcoes);
+      return escolha.canceled ? null : (escolha.filePaths[0] ?? null);
+    },
+    "skills.reveal": async (name) => {
+      const { arquivo } = await skillsService.obter(name);
+      shell.showItemInFolder(arquivo);
+      return true;
+    },
 
     "approvals.listPending": () => approvalService.listPending(),
     "approvals.listStuck": () => approvalService.listStuck(),

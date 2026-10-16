@@ -218,6 +218,14 @@ export const AgentConnection = z.object({
    * liga por padrão, só o que está em `tools`.
    */
   leituraPadrao: z.enum(["todas", "limitada"]).optional(),
+  /**
+   * Se a lista explícita já tem a linha de base: toda ferramenta do catálogo
+   * de então está no mapa, ligada ou desligada, e a que falta é nova de
+   * verdade. `pendente`: a conexão foi adicionada sem lista em cache e a linha
+   * de base sai quando a lista chegar. Ausente em `limitada`: veio de antes do
+   * marcador, e a primeira leitura com catálogo grava a linha de base.
+   */
+  linhaDeBase: z.enum(["pendente", "feita"]).optional(),
 });
 export type AgentConnection = z.infer<typeof AgentConnection>;
 

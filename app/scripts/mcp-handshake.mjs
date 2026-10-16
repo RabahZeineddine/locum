@@ -45,7 +45,7 @@ const ESPERADAS = {
 };
 
 /** Quantas ferramentas o servidor do Locum tem hoje; ferramenta que some é regressão de paridade. */
-const MINIMO_DO_MCP = 189;
+const MINIMO_DO_MCP = 196;
 
 export async function examinarMcp(binario, argumentos = [], modo = "--mcp") {
   const pasta = mkdtempSync(join(tmpdir(), "locum-mcp-"));

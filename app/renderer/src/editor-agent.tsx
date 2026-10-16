@@ -8,11 +8,13 @@ import { call, read, useRead } from "@/lib/bridge";
 import { comContexto, diffJson, type LinhaDoDiff } from "@/lib/diff";
 import { salvarAgent } from "@/lib/editar-agent";
 import { rotuloDoModelo, rotuloDoProvedor } from "@/lib/rotulos";
+import { agruparPorTipo } from "@/lib/ferramentas-do-agent";
 import { cn } from "@/lib/utils";
 import { ChevronDown, ChevronRight, Loader2, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ehLeitura } from "../../src/config/leitura";
+import { Dica, GrupoPorTipo } from "./ferramentas-agrupadas";
 import { SERVIDOR_CONTA, type ActionMode, type AgentSpec, type ToolRef } from "../../src/config/types";
 import type { McpToolInfo } from "../../src/mcp/registry";
 
@@ -581,6 +583,7 @@ export function FerramentasDoServidor({
       : busca === ""
         ? ferramentas
         : ferramentas.filter((f) => f.name.toLowerCase().includes(busca) || f.description.toLowerCase().includes(busca));
+  const escritaMarcada = (ferramentas ?? []).filter((f) => marcadasPorNome.has(f.name) && !ehLeitura(f.name)).length;
   const tokens = (ferramentas ?? [])
     .filter((f) => marcadasPorNome.has(f.name))
     .reduce((acc, f) => acc + f.estimatedTokens, 0);
@@ -598,12 +601,15 @@ export function FerramentasDoServidor({
         {aberto ? <ChevronDown className="size-3.5" aria-hidden /> : <ChevronRight className="size-3.5" aria-hidden />}
         <span className="font-mono">{servidor === SERVIDOR_CONTA ? t("agents.editor.tools.account") : servidor}</span>
         {ferramentas === null ? null : (
-          <span className="text-muted-foreground">
-            {busca === ""
-              ? t("agents.editor.tools.count", { count: ferramentas.length })
-              : t("agents.editor.tools.matches", { count: visiveis?.length ?? 0 })}
+          <span className="num text-muted-foreground" data-locum-servidor-resumo={`${marcadas.length}/${ferramentas.length}`}>
+            {busca !== ""
+              ? t("agents.editor.tools.matches", { count: visiveis?.length ?? 0 })
+              : escritaMarcada > 0
+                ? t("agents.editor.tools.summaryWrite", { on: marcadas.length, total: ferramentas.length, writes: escritaMarcada })
+                : t("agents.editor.tools.summaryRead", { on: marcadas.length, total: ferramentas.length })}
           </span>
         )}
+        <Dica texto={t("agents.editor.tools.summaryHint")} />
         {atualizando && ferramentas !== null ? <Loader2 aria-label={t("agents.editor.tools.refreshing")} className="text-muted-foreground size-3 animate-spin" /> : null}
         {marcadas.length > 0 && (
           <span className="num ml-auto text-muted-foreground">
@@ -620,34 +626,52 @@ export function FerramentasDoServidor({
               {t("agents.editor.tools.loading")}
             </p>
           ) : (
-            <ListGroup className="max-h-72 overflow-y-auto rounded-none border-0">
-              {visiveis.map((f) => (
-                <ListRow className="min-h-9 py-1" key={f.name}>
-                  <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5">
-                    <input
-                      checked={marcadasPorNome.has(f.name)}
-                      className="cursor-pointer accent-primary"
-                      onChange={(e) =>
-                        trocar(
-                          e.target.checked
-                            ? [...marcadas, { server: servidor, tool: f.name, class: "read" }]
-                            : marcadas.filter((m) => m.tool !== f.name),
-                        )
-                      }
-                      type="checkbox"
-                    />
-                    <span className="shrink-0 font-mono text-xs">{f.name}</span>
-                    <SeloDeAcesso leitura={ehLeitura(f.name)} />
-                    <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground" title={f.description}>
-                      {f.description}
-                    </span>
-                    <span className="num shrink-0 font-mono text-[11px] text-muted-foreground">
-                      {t("agents.editor.tools.tokens", { tokens: f.estimatedTokens })}
-                    </span>
-                  </label>
-                </ListRow>
+            <div className="flex max-h-80 flex-col gap-3 overflow-y-auto p-3">
+              {agruparPorTipo(visiveis, (f) => ehLeitura(f.name)).map((g) => (
+                <GrupoPorTipo
+                  desmarcar={() => trocar(marcadas.filter((m) => !g.itens.some((f) => f.name === m.tool)))}
+                  key={g.tipo}
+                  ligadas={g.itens.filter((f) => marcadasPorNome.has(f.name)).length}
+                  marcar={() =>
+                    trocar([
+                      ...marcadas,
+                      ...g.itens.filter((f) => !marcadasPorNome.has(f.name)).map((f) => ({ server: servidor, tool: f.name, class: "read" as const })),
+                    ])
+                  }
+                  tipo={g.tipo}
+                  total={g.itens.length}
+                >
+                  <ListGroup className="bg-transparent">
+                    {g.itens.map((f) => (
+                      <ListRow className="min-h-9 py-1" key={f.name}>
+                        <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5">
+                          <input
+                            checked={marcadasPorNome.has(f.name)}
+                            className="cursor-pointer accent-primary"
+                            onChange={(e) =>
+                              trocar(
+                                e.target.checked
+                                  ? [...marcadas, { server: servidor, tool: f.name, class: "read" }]
+                                  : marcadas.filter((m) => m.tool !== f.name),
+                              )
+                            }
+                            type="checkbox"
+                          />
+                          <span className="shrink-0 font-mono text-xs">{f.name}</span>
+                          <SeloDeAcesso leitura={ehLeitura(f.name)} />
+                          <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground" title={f.description}>
+                            {f.description}
+                          </span>
+                          <span className="num shrink-0 font-mono text-[11px] text-muted-foreground">
+                            {t("agents.editor.tools.tokens", { tokens: f.estimatedTokens })}
+                          </span>
+                        </label>
+                      </ListRow>
+                    ))}
+                  </ListGroup>
+                </GrupoPorTipo>
               ))}
-            </ListGroup>
+            </div>
           )}
         </div>
       )}

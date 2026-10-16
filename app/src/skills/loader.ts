@@ -1,8 +1,16 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import type { SkillRule } from "../config/types.js";
+import { appHome } from "../db/path.js";
+
+/** De onde a skill vem. Quem lista na tela agrupa por isto. */
+export type FonteDaSkill =
+  | { tipo: "minhas" }
+  | { tipo: "plugin"; plugin: string; versao: string }
+  | { tipo: "projeto" }
+  | { tipo: "locum" };
 
 export type LoadedSkill = {
   name: string;
@@ -11,48 +19,90 @@ export type LoadedSkill = {
   origin: string;
   /** Sem o hash a metrica mente quando o plugin externo atualiza a skill. */
   hash: string;
+  fonte: FonteDaSkill;
 };
 
 const MAX_DEPTH = 6;
 const SKIPPED_DIRS = new Set(["node_modules", ".git"]);
 
+export type PluginInstalado = { plugin: string; versao: string; caminho: string };
+
 /**
- * Pastas de plugin que o Claude Code de fato carrega.
+ * Plugins que o Claude Code de fato carrega.
  *
  * O cache guarda uma pasta por versao, e `marketplaces` guarda o fonte de
  * plugin que nem foi instalado; varrer `~/.claude/plugins` inteiro mistura os
  * dois e decide a versao pela ordem do disco. O `installed_plugins.json` diz o
  * `installPath` de cada plugin instalado. Sem ele, ou ilegivel, volta a varrer
- * a pasta toda.
+ * a pasta toda (`null`).
  */
-export function pluginRoots(pluginsDir: string): string[] {
+export function pluginsInstalados(pluginsDir: string): PluginInstalado[] | null {
   const manifest = join(pluginsDir, "installed_plugins.json");
-  if (!existsSync(manifest)) return [pluginsDir];
+  if (!existsSync(manifest)) return null;
   try {
     const parsed = JSON.parse(readFileSync(manifest, "utf8")) as {
-      plugins?: Record<string, Array<{ installPath?: unknown }>>;
+      plugins?: Record<string, Array<{ installPath?: unknown; version?: unknown }>>;
     };
-    const paths = Object.values(parsed.plugins ?? {})
-      .flat()
-      .map((entry) => entry?.installPath)
-      .filter((p): p is string => typeof p === "string" && existsSync(p));
-    return [...new Set(paths)];
+    const vistos = new Set<string>();
+    const lista: PluginInstalado[] = [];
+    for (const [chave, entradas] of Object.entries(parsed.plugins ?? {})) {
+      for (const entrada of entradas) {
+        const caminho = entrada?.installPath;
+        if (typeof caminho !== "string" || !existsSync(caminho) || vistos.has(caminho)) continue;
+        vistos.add(caminho);
+        lista.push({
+          plugin: chave.split("@")[0] ?? chave,
+          versao: typeof entrada.version === "string" && entrada.version !== "" ? entrada.version : basename(caminho),
+          caminho,
+        });
+      }
+    }
+    return lista;
   } catch {
-    return [pluginsDir];
+    return null;
   }
 }
 
-function roots(home = homedir(), cwd = process.cwd()): string[] {
-  const plugins = join(home, ".claude", "plugins");
-  return [
-    join(home, ".claude", "skills"),
-    ...(existsSync(plugins) ? pluginRoots(plugins) : []),
-    join(cwd, ".claude", "skills"),
-  ].filter((p) => existsSync(p));
+export function pluginRoots(pluginsDir: string): string[] {
+  return pluginsInstalados(pluginsDir)?.map((p) => p.caminho) ?? [pluginsDir];
 }
 
-function findSkillFiles(dir: string, depth = 0): string[] {
-  if (depth > MAX_DEPTH) return [];
+/** A pasta `.claude` de quem usa: a do ambiente (testes e fumaça), ou a do home. */
+export function claudeDir(home?: string): string {
+  if (home !== undefined) return join(home, ".claude");
+  const trocada = process.env.LOCUM_CLAUDE_DIR;
+  return trocada !== undefined && trocada !== "" ? trocada : join(homedir(), ".claude");
+}
+
+/** Onde ficam as skills criadas no Locum. */
+export function pastaDasSkillsDoLocum(): string {
+  return join(appHome(), "skills");
+}
+
+type Raiz = { dir: string; fonte: FonteDaSkill };
+
+/**
+ * A ordem importa: quem vem depois vence o nome. A skill do Locum vem primeiro
+ * para a da maquina, que acompanha o plugin, nunca ser trocada por ela.
+ */
+function roots(home: string | undefined, cwd: string, locumDir: string, projeto: boolean): Raiz[] {
+  const claude = claudeDir(home);
+  const plugins = join(claude, "plugins");
+  const instalados = existsSync(plugins) ? pluginsInstalados(plugins) : [];
+  const dosPlugins: Raiz[] =
+    instalados === null
+      ? [{ dir: plugins, fonte: { tipo: "plugin", plugin: "plugins", versao: "" } }]
+      : instalados.map((p) => ({ dir: p.caminho, fonte: { tipo: "plugin", plugin: p.plugin, versao: p.versao } }));
+  return [
+    { dir: locumDir, fonte: { tipo: "locum" } },
+    { dir: join(claude, "skills"), fonte: { tipo: "minhas" } },
+    ...dosPlugins,
+    ...(projeto ? [{ dir: join(cwd, ".claude", "skills"), fonte: { tipo: "projeto" } }] : []),
+  ].filter((r) => existsSync(r.dir)) as Raiz[];
+}
+
+function findSkillFiles(dir: string, profundidade = MAX_DEPTH, depth = 0): string[] {
+  if (depth > profundidade) return [];
   const out: string[] = [];
   let entries: string[];
   try {
@@ -73,7 +123,7 @@ function findSkillFiles(dir: string, depth = 0): string[] {
       if (entry === "SKILL.md") out.push(full);
       continue;
     }
-    if (!SKIPPED_DIRS.has(entry)) out.push(...findSkillFiles(full, depth + 1));
+    if (!SKIPPED_DIRS.has(entry)) out.push(...findSkillFiles(full, profundidade, depth + 1));
   }
   return out;
 }
@@ -87,24 +137,59 @@ export function parseFrontmatter(raw: string): { name?: string; description?: st
   return { name: field("name"), description: field("description"), body };
 }
 
-/** Acervo do usuario e dos plugins, sem formato novo. */
-export function discoverSkills(home?: string, cwd?: string): Map<string, LoadedSkill> {
-  const found = new Map<string, LoadedSkill>();
-  for (const root of roots(home, cwd)) {
-    for (const file of findSkillFiles(root)) {
+/**
+ * O acervo, e as skills do Locum que uma da maquina de mesmo nome encobriu.
+ * `projeto: false` deixa de fora a raiz do cwd, que so o processo dentro de um
+ * repositorio enxerga.
+ */
+export function descobrirComSombra(
+  home?: string,
+  cwd: string = process.cwd(),
+  locumDir: string = pastaDasSkillsDoLocum(),
+  opcoes: { projeto?: boolean } = {},
+): { achadas: Map<string, LoadedSkill>; sombreadas: LoadedSkill[] } {
+  const achadas = new Map<string, LoadedSkill>();
+  const sombreadas: LoadedSkill[] = [];
+  for (const { dir, fonte } of roots(home, cwd, locumDir, opcoes.projeto ?? true)) {
+    // A raiz do Locum vale um nível (`<nome>/SKILL.md`): SKILL.md mais fundo é arquivo de apoio da skill, não outra skill.
+    for (const file of findSkillFiles(dir, fonte.tipo === "locum" ? 1 : MAX_DEPTH)) {
       const raw = readFileSync(file, "utf8");
       const { name, description, body } = parseFrontmatter(raw);
       if (!name) continue;
-      found.set(name, {
+      const anterior = achadas.get(name);
+      if (anterior?.fonte.tipo === "locum") sombreadas.push(anterior);
+      achadas.set(name, {
         name,
         description: description ?? "",
         body,
         origin: file,
+        fonte,
         hash: createHash("sha256").update(raw).digest("hex").slice(0, 12),
       });
     }
   }
-  return found;
+  return { achadas, sombreadas };
+}
+
+/** Acervo do usuario e dos plugins, sem formato novo. */
+export function discoverSkills(
+  home?: string,
+  cwd: string = process.cwd(),
+  locumDir: string = pastaDasSkillsDoLocum(),
+  opcoes: { projeto?: boolean } = {},
+): Map<string, LoadedSkill> {
+  return descobrirComSombra(home, cwd, locumDir, opcoes).achadas;
+}
+
+/** Nomes que o agent cita e esta maquina nao tem mais. */
+export function skillsAusentes(rules: SkillRule[], catalog: Map<string, LoadedSkill>, ctx?: SkillContext): string[] {
+  const valem = ctx === undefined ? rules : rules.filter((r) => regraCasa(r, ctx));
+  return [...new Set(valem.map((r) => r.skill))].filter((nome) => !catalog.has(nome));
+}
+
+/** A frase de quem recusa rodar o agent com skill que sumiu da maquina. */
+export function skillsIndisponiveis(agentId: string, nomes: readonly string[]): string {
+  return nomes.map((n) => `o agent "${agentId}" usa a skill "${n}", que não existe mais nesta máquina`).join("; ");
 }
 
 /**
@@ -121,6 +206,17 @@ export function globToRegExp(glob: string): RegExp {
 }
 
 export type SkillContext = { repo: string; changedFiles: string[] };
+
+function regraCasa(rule: SkillRule, ctx: SkillContext): boolean {
+  const { always, filesMatch, repoMatch } = rule.when;
+  if (always) return true;
+  if (repoMatch?.length && repoMatch.some((g) => globToRegExp(g).test(ctx.repo))) return true;
+  if (filesMatch?.length) {
+    const patterns = filesMatch.map(globToRegExp);
+    return ctx.changedFiles.some((f) => patterns.some((p) => p.test(f)));
+  }
+  return false;
+}
 
 /**
  * Selecao deterministica pelos arquivos alterados no evento, nao pela
@@ -139,17 +235,7 @@ export function selectSkills(
   const found = catalog ?? discoverSkills();
 
   for (const rule of rules) {
-    const { always, filesMatch, repoMatch } = rule.when;
-    let hit = Boolean(always);
-
-    if (!hit && repoMatch?.length) {
-      hit = repoMatch.some((g) => globToRegExp(g).test(ctx.repo));
-    }
-    if (!hit && filesMatch?.length) {
-      const patterns = filesMatch.map(globToRegExp);
-      hit = ctx.changedFiles.some((f) => patterns.some((p) => p.test(f)));
-    }
-    if (!hit) continue;
+    if (!regraCasa(rule, ctx)) continue;
 
     const skill = found.get(rule.skill);
     if (skill && !picked.some((s) => s.name === skill.name)) picked.push(skill);
@@ -166,10 +252,30 @@ export function selectSkills(
  * runtime de hoje sabe, porque o passo roda isolado das configuracoes da
  * maquina, e o executor sempre pede `inline`.
  */
-export function skillsPreamble(skills: LoadedSkill[], inline: boolean): string {
+export const TETO_DA_SKILL_BYTES = 64 * 1024;
+export const TETO_DAS_SKILLS_BYTES = 256 * 1024;
+/** Só o claude-code leva o system por argumento do processo (ARG_MAX); nos outros runtimes vale só o teto total. */
+const RUNTIME_COM_ARGV = "claude-code";
+const kb = (bytes: number): string => `${Math.round(bytes / 1024)} KB`;
+
+export function skillsPreamble(skills: LoadedSkill[], inline: boolean, runtimeId: string = RUNTIME_COM_ARGV): string {
+  const tetoPorSkill = runtimeId === RUNTIME_COM_ARGV ? TETO_DA_SKILL_BYTES : TETO_DAS_SKILLS_BYTES;
   if (skills.length === 0) return "";
   if (inline) {
-    return skills.map((s) => `## Skill: ${s.name}\n\n${s.body}`).join("\n\n");
+    let total = 0;
+    for (const s of skills) {
+      const bytes = Buffer.byteLength(s.body);
+      if (bytes > tetoPorSkill) {
+        throw new Error(`a skill "${s.name}" tem ${kb(bytes)}, acima do teto de ${kb(tetoPorSkill)} no prompt`);
+      }
+      total += bytes;
+    }
+    if (total > TETO_DAS_SKILLS_BYTES) {
+      throw new Error(`as skills deste passo somam ${kb(total)} (${skills.map((s) => s.name).join(", ")}), acima do teto de ${kb(TETO_DAS_SKILLS_BYTES)}`);
+    }
+    return skills
+      .map((s) => `## Skill: ${s.name}\n\nArquivos desta skill em: ${dirname(s.origin)}\n\n${s.body}`)
+      .join("\n\n");
   }
   return [
     "Skills disponiveis para esta tarefa:",

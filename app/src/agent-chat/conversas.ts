@@ -2,13 +2,14 @@ import { randomUUID } from "node:crypto";
 import { contarGastoDoProvedor } from "../runtimes/limites-lidos.js";
 import { stepCountIs, streamText, type LanguageModel, type ModelMessage, type ToolSet } from "ai";
 import { SERVIDOR_CONTA, type ToolRef } from "../config/types.js";
-import { selectSkills, skillsPreamble, type LoadedSkill } from "../skills/loader.js";
+import { selectSkills, skillsAusentes, skillsPreamble, type LoadedSkill } from "../skills/loader.js";
 import { BudgetExceeded, type assertWithinBudget, type recordSpend } from "../executor/budget.js";
 import type { McpRegistry } from "../mcp/registry.js";
 import { prefixoDoServidor } from "../runtimes/claude-account.js";
 import { compactarHistorico, TETO_DO_HISTORICO } from "../services/chat-history.js";
 import type { LibraryService, ResolvedProfile } from "../services/library-service.js";
 import { costOf, type ModelPrice } from "../services/price-service.js";
+import { skillsService } from "../services/skills-service.js";
 import type { SettingsService } from "../services/settings-service.js";
 import {
   aplicarEvento,
@@ -172,6 +173,12 @@ export class ConversasDeAgent {
     return this.deps.prazos?.travaMs ?? VALIDADE_DA_TRAVA_MS;
   }
 
+  private skillsAusentes(perfil: ResolvedProfile): string[] {
+    const skills = perfil.version.spec.skills;
+    if (skills.length === 0) return [];
+    return skillsAusentes(skills, this.deps.skills ?? skillsService.catalogo(), { repo: "", changedFiles: [] });
+  }
+
   async estado(id: string): Promise<EstadoDaConversa> {
     const conversa = await this.obter(id);
     await this.expirarVencidos(conversa);
@@ -185,6 +192,7 @@ export class ConversasDeAgent {
       outroProcesso: outro !== null,
       resumido: conversa.resumido,
       semServidor: perfil.semServidor,
+      semSkill: this.skillsAusentes(perfil),
       contaIgnorada: perfil.tools.filter((t) => t.server === SERVIDOR_CONTA).length,
       seq: conversa.seq,
     };
@@ -564,10 +572,10 @@ export class ConversasDeAgent {
     }
   }
 
-  private systemDe(perfil: ResolvedProfile): string {
+  private systemDe(perfil: ResolvedProfile, runtimeId: string): string {
     // Sem evento por trás, só valem as skills de regra "sempre", como na consulta entre agents.
-    const skills = selectSkills(perfil.version.spec.skills, { repo: "", changedFiles: [] }, this.deps.skills);
-    return [perfil.system, skillsPreamble(skills, true)].filter((p) => p.length > 0).join("\n\n");
+    const skills = selectSkills(perfil.version.spec.skills, { repo: "", changedFiles: [] }, this.deps.skills ?? skillsService.catalogo());
+    return [perfil.system, skillsPreamble(skills, true, runtimeId)].filter((p) => p.length > 0).join("\n\n");
   }
 
   private mensagemDeErro(err: unknown): string {
@@ -593,7 +601,7 @@ export class ConversasDeAgent {
     guardarCartao: (c: Cartao) => void,
   ): Promise<Gasto | null> {
     const spec = perfil.version.spec;
-    const system = this.systemDe(perfil);
+    const system = this.systemDe(perfil, "native");
     const historico = await this.historicoDe(conversa);
     if ("texto" in entrada) {
       historico.push({ role: "user", content: entrada.texto });
@@ -754,7 +762,7 @@ export class ConversasDeAgent {
     const { sessao: nova, gasto } = await assinatura({
       texto,
       modelo,
-      system: this.systemDe(perfil),
+      system: this.systemDe(perfil, "claude-code"),
       sessao,
       perfil,
       aprovar,

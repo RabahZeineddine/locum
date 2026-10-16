@@ -1,5 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { ToolRef } from "../src/config/types.js";
@@ -235,4 +238,30 @@ test("cadastro nasce ligado, segue o app instalado e respeita quem desligou", as
   atual = { config: { transport: "stdio", command: ["/tmp/sumiu/Locum", "--ferramentas"], scope: "read" } };
   await cadastrarFerramentasNativas(app, servico);
   assert.deepEqual(chamadas, [`register ${INSTALADO} --ferramentas`, "enabled true", `register ${INSTALADO} --ferramentas`]);
+});
+
+test("ask_agent usa o catálogo do app: skill que só existe no projeto do processo não vale", async () => {
+  const projeto = mkdtempSync(join(tmpdir(), "locum-ask-projeto-"));
+  mkdirSync(join(projeto, ".claude", "skills", "so-do-projeto"), { recursive: true });
+  writeFileSync(join(projeto, ".claude", "skills", "so-do-projeto", "SKILL.md"), "---\nname: so-do-projeto\ndescription: d\n---\ncorpo");
+  const antesDir = process.env.LOCUM_CLAUDE_DIR;
+  const antesCwd = process.cwd();
+  process.env.LOCUM_CLAUDE_DIR = mkdtempSync(join(tmpdir(), "locum-ask-claude-"));
+  process.chdir(projeto);
+  try {
+    const deps = depsDaConsulta([], [], []);
+    const resolve = deps.library!.resolveProfile;
+    deps.library = {
+      resolveProfile: async (id: string) => {
+        const perfil = await resolve(id);
+        perfil.version.spec.skills = [{ skill: "so-do-projeto", when: { always: true } }];
+        return perfil;
+      },
+    };
+    await assert.rejects(consultarAgent("chamados", "oi", deps), /so-do-projeto.*não existe mais/);
+  } finally {
+    process.chdir(antesCwd);
+    if (antesDir === undefined) delete process.env.LOCUM_CLAUDE_DIR;
+    else process.env.LOCUM_CLAUDE_DIR = antesDir;
+  }
 });

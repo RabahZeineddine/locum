@@ -88,31 +88,70 @@ export function ligadaPorPadrao(
   return ehLeituraDa(f);
 }
 
+/** Servidor com lista conhecida e de até `LIMITE_DE_LEITURA_PADRAO` leituras liga cada leitura; servidor grande não liga nada. */
+function ligaLeituras(ferramentas: readonly FerramentaClassificavel[]): boolean {
+  return ferramentas.filter(ehLeituraDa).length <= LIMITE_DE_LEITURA_PADRAO;
+}
+
 /**
- * O que a tela grava ao adicionar a conexão a um agent. Servidor com lista
- * conhecida e de até `LIMITE_DE_LEITURA_PADRAO` leituras: cada leitura vira
- * escolha explícita, e nenhuma regra reavaliada depois tira o que estava
- * ligado. Servidor grande, ou sem lista guardada ainda, fica em `limitada`: nada
- * ligado por padrão, só o que a pessoa escolher.
+ * O que a tela grava ao adicionar a conexão a um agent: sempre a lista
+ * explícita. Servidor com lista conhecida e de até `LIMITE_DE_LEITURA_PADRAO`
+ * leituras liga cada leitura; o resto fica desligado e registrado. Servidor
+ * grande não liga nada: a pessoa escolhe. Sem lista guardada de algum
+ * servidor, a linha de base fica `pendente` até a lista chegar. A ferramenta
+ * que o servidor ganhar depois não está no mapa, e ausente é desligada.
  */
 export function escolhaInicial(
   servidores: readonly { nome: string; ferramentas: readonly FerramentaClassificavel[] | null }[],
-): { tools: Record<string, boolean>; leituraPadrao?: "limitada" } {
+): { tools: Record<string, boolean>; leituraPadrao: "limitada"; linhaDeBase: "pendente" | "feita" } {
   const tools: Record<string, boolean> = {};
-  let limitada = false;
+  let pendente = false;
   for (const { nome, ferramentas } of servidores) {
     if (ferramentas === null) {
-      limitada = true;
+      pendente = true;
       continue;
     }
-    const leituras = ferramentas.filter(ehLeituraDa).length;
-    if (leituras > LIMITE_DE_LEITURA_PADRAO) {
-      limitada = true;
-      continue;
-    }
-    for (const f of ferramentas) if (ehLeituraDa(f)) tools[`${nome}/${f.name}`] = true;
+    const ligar = ligaLeituras(ferramentas);
+    for (const f of ferramentas) tools[`${nome}/${f.name}`] = ligar && ehLeituraDa(f);
   }
-  return limitada ? { tools, leituraPadrao: "limitada" } : { tools };
+  return { tools, leituraPadrao: "limitada", linhaDeBase: pendente ? "pendente" : "feita" };
+}
+
+/** O que `fixarLista` precisa de uma conexão: o mapa, o modo e a linha de base, que `AgentConnection` tem. */
+type ConexaoDoAgent = {
+  tools: Record<string, EscolhaDeFerramenta>;
+  leituraPadrao?: "todas" | "limitada";
+  linhaDeBase?: "pendente" | "feita";
+};
+
+/**
+ * Passa a conexão para a lista explícita e grava a linha de base: toda
+ * ferramenta do catálogo de agora fica no mapa, e a que a pessoa não escolheu
+ * ganha o que valia (modo antigo: `true` para leitura, `false` para o resto),
+ * a escolha inicial (conexão `pendente`) ou `false` (`limitada` que veio sem
+ * marcador). Daí em diante o save só preserva o mapa, e "novas" é o que o
+ * servidor ganhou depois. Chave só pelo nome vira `servidor/ferramenta`. Sem
+ * lista guardada de algum servidor não dá para saber o que existe, e a
+ * conexão volta como estava.
+ */
+export function fixarLista<C extends ConexaoDoAgent>(
+  conexao: C,
+  servidores: readonly { nome: string; ferramentas: readonly FerramentaClassificavel[] | null }[],
+): C {
+  if (servidores.length === 0 || servidores.some((s) => s.ferramentas === null)) return conexao;
+  if (conexao.leituraPadrao === "limitada" && conexao.linhaDeBase === "feita") return conexao;
+  const antigo = conexao.leituraPadrao !== "limitada";
+  const pendente = conexao.linhaDeBase === "pendente";
+  const tools: Record<string, EscolhaDeFerramenta> = { ...conexao.tools };
+  for (const { nome, ferramentas } of servidores) {
+    const ligar = pendente && ligaLeituras(ferramentas ?? []);
+    for (const f of ferramentas ?? []) {
+      const atual = escolhaDe(conexao.tools, nome, f.name);
+      delete tools[f.name];
+      tools[`${nome}/${f.name}`] = atual ?? (antigo ? ehLeituraDa(f) : pendente ? ligar && ehLeituraDa(f) : false);
+    }
+  }
+  return { ...conexao, tools, leituraPadrao: "limitada" as const, linhaDeBase: "feita" as const };
 }
 
 /** Valor de `AgentConnection.tools`: liga, desliga, ou liga declarando que a ferramenta lê. */

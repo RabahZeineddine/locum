@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ehLeitura, ehLeituraDa, escolhaDe, escolhaInicial, ligadaPorPadrao } from "../src/config/leitura.js";
+import { contarDaConexao } from "../renderer/lib/ferramentas-do-agent.js";
+import { ehLeitura, ehLeituraDa, escolhaDe, escolhaInicial, fixarLista, ligadaPorPadrao } from "../src/config/leitura.js";
 
 /** Nomes reais dos servidores que o Locum mais liga: GitHub, Atlassian e Grafana. */
 
@@ -104,11 +105,12 @@ test("só o verbo inicial ou to-file e upload derrubam a anotação de leitura",
 
 test("a escolha ao adicionar a conexão grava as leituras ligadas e não depende de regra reavaliada", () => {
   const pequeno = escolhaInicial([{ nome: "gh", ferramentas: [{ name: "get_issue" }, { name: "create_issue" }] }]);
-  assert.deepEqual(pequeno, { tools: { "gh/get_issue": true } });
+  assert.deepEqual(pequeno, { tools: { "gh/get_issue": true, "gh/create_issue": false }, leituraPadrao: "limitada", linhaDeBase: "feita" });
 
   const grande = Array.from({ length: 31 }, (_, i) => ({ name: `get_item_${i}` }));
-  assert.deepEqual(escolhaInicial([{ nome: "ms", ferramentas: grande }]), { tools: {}, leituraPadrao: "limitada" });
-  assert.deepEqual(escolhaInicial([{ nome: "novo", ferramentas: null }]), { tools: {}, leituraPadrao: "limitada" });
+  const todasDesligadas = Object.fromEntries(grande.map((f) => [`ms/${f.name}`, false]));
+  assert.deepEqual(escolhaInicial([{ nome: "ms", ferramentas: grande }]), { tools: todasDesligadas, leituraPadrao: "limitada", linhaDeBase: "feita" });
+  assert.deepEqual(escolhaInicial([{ nome: "novo", ferramentas: null }]), { tools: {}, leituraPadrao: "limitada", linhaDeBase: "pendente" });
 });
 
 test("run e request depois de and, then, or ou colados no verbo de leitura são ação", () => {
@@ -139,3 +141,62 @@ test("limitada nunca liga nada por padrão, e sem modo toda leitura liga", () =>
   assert.equal(ligadaPorPadrao({ name: "get_issue" }, "todas"), true);
   assert.equal(ligadaPorPadrao({ name: "create_issue" }, undefined), false);
 });
+
+test("fixar a lista liga o que hoje vale ligado, desliga o resto e fecha a porta para ferramenta nova", () => {
+  const catalogo = [{ nome: "gh", ferramentas: [{ name: "get_issue" }, { name: "list_commits" }, { name: "create_comment" }, { name: "get_pr" }] }];
+  const antes: { connectionId: string; tools: Record<string, boolean> } = { connectionId: "github", tools: { "gh/get_pr": false, create_comment: true } };
+  const depois = fixarLista(antes, catalogo);
+  assert.deepEqual(depois, {
+    connectionId: "github",
+    leituraPadrao: "limitada" as const,
+    linhaDeBase: "feita" as const,
+    tools: { "gh/get_issue": true, "gh/list_commits": true, "gh/create_comment": true, "gh/get_pr": false },
+  });
+  // Ferramenta que o servidor ganhar depois não está no mapa, e na lista explícita ausente é desligada.
+  assert.equal(ligadaPorPadrao({ name: "get_nova" }, depois.leituraPadrao), false);
+  assert.deepEqual(fixarLista(depois, catalogo), depois, "fixar de novo não muda nada");
+});
+
+test("sem lista guardada de algum servidor a conexão fica como estava", () => {
+  const antes = { connectionId: "github", tools: { "gh/get_pr": false } };
+  assert.equal(fixarLista(antes, [{ nome: "gh", ferramentas: null }]), antes);
+  assert.equal(fixarLista(antes, []), antes);
+});
+
+test("migrar o modo antigo grava true ou false para tudo do catálogo: só o que o servidor ganhar depois é novo", () => {
+  const antes = [{ name: "get_issue" }, { name: "create_comment" }, { name: "get_nova" }];
+  const catalogo = [{ nome: "gh", ferramentas: antes }];
+  const migrada = fixarLista({ connectionId: "github", tools: { "gh/get_nova": false } }, catalogo);
+  assert.deepEqual(migrada.tools, { "gh/get_issue": true, "gh/create_comment": false, "gh/get_nova": false });
+  assert.equal(contarDaConexao(migrada, catalogo).novas, 0);
+  const comGanho = [{ nome: "gh", ferramentas: [...antes, { name: "list_commits" }] }];
+  assert.equal(contarDaConexao(migrada, comGanho).novas, 1);
+  assert.equal(fixarLista(migrada, comGanho), migrada, "salvar de novo não decide pela pessoa");
+});
+
+test("agent limitada vindo da main, com mapa vazio ou parcial, ganha a linha de base uma vez e depois só conta o que o servidor ganhou", () => {
+  const base = [{ name: "list-chats" }, { name: "send-mail" }, { name: "get-event" }];
+  const catalogo = [{ nome: "ms365", ferramentas: base }];
+  for (const tools of [{}, { "ms365/get-event": true }] as Record<string, boolean>[]) {
+    const daMain: { connectionId: string; leituraPadrao: "limitada"; linhaDeBase?: "feita"; tools: Record<string, boolean> } = { connectionId: "ms365", leituraPadrao: "limitada", tools };
+    const fixada = fixarLista(daMain, catalogo);
+    assert.deepEqual(fixada.tools, { "ms365/list-chats": false, "ms365/send-mail": false, "ms365/get-event": tools["ms365/get-event"] ?? false });
+    assert.equal(fixada.linhaDeBase, "feita");
+    assert.equal(contarDaConexao(fixada, catalogo).novas, 0);
+    const comGanho = [{ nome: "ms365", ferramentas: [...base, { name: "list-files" }] }];
+    assert.equal(contarDaConexao(fixada, comGanho).novas, 1);
+    assert.equal(fixarLista(fixada, comGanho), fixada, "o segundo save não zera o aviso");
+  }
+});
+
+test("conexão adicionada sem lista em cache: quando a lista chega, leitura liga, escrita fica desligada e o estado é normal", () => {
+  const { tools, leituraPadrao, linhaDeBase } = escolhaInicial([{ nome: "gh", ferramentas: null }]);
+  assert.deepEqual(tools, {});
+  assert.equal(linhaDeBase, "pendente");
+  const chegou = [{ nome: "gh", ferramentas: [{ name: "get_issue" }, { name: "create_comment" }] }];
+  const fixada = fixarLista({ connectionId: "github", tools, leituraPadrao, linhaDeBase }, chegou);
+  assert.deepEqual(fixada.tools, { "gh/get_issue": true, "gh/create_comment": false });
+  assert.deepEqual(contarDaConexao(fixada, chegou), { total: 2, ligadas: 1, escrita: 0, novas: 0, conhecida: true });
+  assert.equal(escolhaInicial([{ nome: "gh", ferramentas: [] }]).linhaDeBase, "feita");
+});
+

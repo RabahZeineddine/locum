@@ -47,7 +47,7 @@ linha de comando escreve. Não existe cópia nem sincronização.
 
 ## O que o servidor expõe
 
-São 189 ferramentas, todas casca fina sobre a camada de serviço em
+São 196 ferramentas, todas casca fina sobre a camada de serviço em
 `app/src/services/`. A regra mora no serviço, não aqui: versão de agent
 continua imutável, ciclo na tabela de substituição continua recusado na
 gravação, gatilho do pacote que espera a escolha de chats não liga.
@@ -313,6 +313,12 @@ guardar segredo, e não é recomendado.
 | `set_updates_enabled` | write | `updates.setEnabled` |
 | `get_app_version` | read | `app.version` |
 | `list_skills` | read | `skills.list` |
+| `get_skill` | read | `skills.get` |
+| `create_skill` | write | `skills.create` |
+| `update_skill` | danger | `skills.update` |
+| `remove_skill` | danger | `skills.remove` |
+| `import_skill` | write | `skills.import` |
+| `add_skill_to_agent` | write | grava o agent da biblioteca (`library.saveProfile`) |
 
 Algumas ferramentas antigas mantêm o teto de quem grava como agent, e a tela tem
 a versão que grava como pessoa:

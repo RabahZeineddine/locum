@@ -25,6 +25,8 @@ import { escreverSessoesDeExemplo, SESSOES_DE_EXEMPLO } from "../src/services/cl
 
 const smoke = process.argv.includes("--smoke");
 const capturas = process.argv.includes("--capturas");
+/** Só as telas de Skills e a conexão recolhível, com a fumaça: `--smoke --capturas-skills --capturas-em <pasta>`. */
+const capturasDeSkills = process.argv.includes("--capturas-skills");
 
 /** `--set-secret <ref>` e `--remove-secret <ref>`, com o valor vindo do stdin. */
 function flagValue(name: string): string | undefined {
@@ -1168,7 +1170,8 @@ async function checkRenderer(): Promise<string> {
   } finally {
     // As capturas usam esta mesma janela, com a ponte ainda de pé: derrubar
     // antes deixaria a página sem quem responder e ela nem monta.
-    if (capturas) await capturarTelas(window);
+    if (capturasDeSkills) await capturarSkills(window);
+    else if (capturas) await capturarTelas(window);
     window.destroy();
     teardownBridge();
   }
@@ -1267,7 +1270,7 @@ async function irPara(window: BrowserWindow, id: string, detalhe?: string): Prom
  * so a exigencia da story, que sao estes quatro destinos.
  */
 async function checkRoutes(window: BrowserWindow): Promise<string> {
-  const esperados = ["today", "inbox", "automations", "runs", "sessions", "agents", "initiatives", "connections", "models", "settings"];
+  const esperados = ["today", "inbox", "automations", "runs", "sessions", "agents", "skills", "initiatives", "connections", "models", "settings"];
 
   const barra = (await window.webContents.executeJavaScript(
     `Array.from(document.querySelectorAll("[data-locum-rota]")).map((b) => ({
@@ -1814,7 +1817,9 @@ async function checkAgentsDoConceito(window: BrowserWindow): Promise<void> {
 
     // O editor mostra a conexão, e as ferramentas dela com a classe de cada uma.
     await clicar("[data-locum-agent-aba=tools]");
-    // O botão só existe depois que a lista de conexões chega com o servidor dela.
+    // A conexão abre recolhida; o botão só existe depois que a lista de conexões chega com o servidor dela e o bloco abre.
+    await esperarProbe(window, "conexao-bloco", `document.querySelector('[data-locum-agent-conexao-alternar="${FIXTURE_SERVER}"]') !== null ? true : null`);
+    await clicar(`[data-locum-agent-conexao-alternar="${FIXTURE_SERVER}"]`);
     await esperarProbe(window, "conexao", `document.querySelector('[data-locum-agent-carregar="${FIXTURE_SERVER}"]') !== null ? true : null`);
     await clicar(`[data-locum-agent-carregar="${FIXTURE_SERVER}"]`);
     const caixas = await esperarProbe<Record<string, boolean>>(
@@ -6835,6 +6840,105 @@ async function setupI18n(): Promise<string> {
 }
 
 /**
+ * A área de Skills e a conexão do agent recolhida, aberta e com ferramenta
+ * nova, sobre uma pasta de exemplo (`LOCUM_CLAUDE_DIR`) e o home da fumaça.
+ */
+async function capturarSkills(janela: BrowserWindow): Promise<void> {
+  const destino = flagValue("--capturas-em") ?? join(process.cwd(), "capturas");
+  mkdirSync(destino, { recursive: true });
+  janela.setSize(1280, 860);
+  const pausa = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+  const foto = async (nome: string): Promise<void> => writeFileSync(join(destino, `${nome}.png`), (await janela.webContents.capturePage()).toPNG());
+  const clicar = (seletor: string): Promise<unknown> =>
+    janela.webContents.executeJavaScript(`(document.querySelector(${JSON.stringify(seletor)})?.click(), null)`);
+
+  const claude = process.env.LOCUM_CLAUDE_DIR;
+  if (claude === undefined || claude === "") throw new Error("as capturas de skills precisam do LOCUM_CLAUDE_DIR da fumaça");
+  const escreverSkill = (dir: string, nome: string, descricao: string, corpo: string): void => {
+    mkdirSync(join(dir, nome), { recursive: true });
+    writeFileSync(join(dir, nome, "SKILL.md"), `---\nname: ${nome}\ndescription: ${descricao}\n---\n${corpo}`);
+  };
+  escreverSkill(join(claude, "skills"), "revisao-de-pr", "Revisa um pull request em cinco linhas, citando o arquivo.", "# Revisão de PR\n\nLeia o diff inteiro antes de comentar.\n\n- Aponte no máximo cinco problemas\n- Cite arquivo e linha\n- Nunca invente teste que não existe\n");
+  escreverSkill(join(claude, "skills"), "resumo-semanal", "Resume a semana de uma iniciativa para a reunião de quinta.", "# Resumo semanal\n\nTrês frases: o que andou, o que travou, o que vem.\n");
+  const plugin = join(claude, "plugins", "cache", "akad", "akad", "0.21.1", "skills");
+  escreverSkill(plugin, "tdd", "Desenvolvimento guiado por testes: vermelho antes do verde.", "# TDD\n\nEscreva o teste que falha, depois o código mínimo que o faz passar.\n\n```ts\nassert.equal(soma(1, 2), 3);\n```\n");
+  escreverSkill(plugin, "akad-escrita", "Como escrever PR, commit e comentário.", "# Escrita\n\nUma frase por ideia.\n");
+  writeFileSync(join(claude, "plugins", "installed_plugins.json"), JSON.stringify({ version: 2, plugins: { "akad@akad": [{ scope: "user", installPath: join(claude, "plugins", "cache", "akad", "akad", "0.21.1"), version: "0.21.1" }] } }));
+
+  const { skillsService } = await import("../src/services/skills-service.js");
+  const { libraryService } = await import("../src/services/library-service.js");
+  const { mcpService } = await import("../src/services/mcp-service.js");
+  const triagem = "# Triagem\n\nLeia o chamado e responda com a fila certa.\n";
+  const glossario = "# Glossário\n\n- **Fatia**: a menor entrega que fecha um critério.\n";
+  await skillsService.criar({ name: "triagem-de-chamado", description: "Classifica o chamado e diz quem deve pegar.", body: triagem });
+  await skillsService.criar({ name: "glossario-da-squad", description: "Os termos que a squad usa e o que cada um quer dizer.", body: glossario });
+
+  const leituras = ["get_me", "get_issue", "list_issues", "search_issues", "get_pull_request", "list_pull_requests", "pull_request_read", "get_file_contents", "list_commits", "get_commit", "list_branches", "search_code", "search_repositories", "get_label"];
+  const escritas = ["create_issue", "update_issue", "add_issue_comment", "create_pull_request", "merge_pull_request", "update_pull_request", "create_branch", "create_or_update_file", "delete_file", "push_files", "fork_repository", "create_repository", "request_copilot_review", "assign_copilot_to_issue"];
+  const ferramentas = [
+    ...leituras.map((name) => ({ name, description: `Lê ${name.replace(/_/g, " ")} do GitHub`, estimatedTokens: 120, readOnlyHint: true })),
+    ...escritas.map((name) => ({ name, description: `Escreve: ${name.replace(/_/g, " ")}`, estimatedTokens: 150 })),
+  ];
+  const guardar = (lista: unknown[]): Promise<void> => (mcpService as unknown as { guardarFerramentas(n: string, t: unknown[]): Promise<void> }).guardarFerramentas("github", lista);
+  await mcpService.register({ name: "github", transport: "http", url: "https://api.githubcopilot.com/mcp/", headers: { Authorization: "${credential}" } }).catch(() => undefined);
+  await guardar(ferramentas);
+  const id = "revisor-de-pr";
+  await libraryService.saveProfile({
+    spec: {
+      id,
+      name: "Revisor de PR",
+      description: "Lê o pull request e propõe os comentários.",
+      model: "claude-code/claude-sonnet-5",
+      instructions: "Revise em cinco linhas.",
+      connections: [{ connectionId: "github", tools: {} }],
+      skills: ["revisao-de-pr", "tdd", "triagem-de-chamado", "skill-que-sumiu"],
+      budget: {},
+    },
+  });
+  try {
+    await clicar("[data-locum-fechar]");
+    await pausa(400);
+    await irPara(janela, "skills");
+    await pausa(1500);
+    await foto("skills-lista");
+    await irPara(janela, "skills", "tdd");
+    await pausa(1000);
+    await foto("skills-detalhe-da-maquina");
+    await irPara(janela, "skills", "triagem-de-chamado");
+    await pausa(1000);
+    await foto("skills-detalhe-do-locum");
+    await irPara(janela, "agents", id);
+    await pausa(1200);
+    await clicar("[data-locum-agent-aba=skills]");
+    await pausa(500);
+    await foto("agent-aba-skills");
+    await clicar("[data-locum-agent-aba=tools]");
+    await pausa(1200);
+    await foto("conexao-github-recolhida");
+    await clicar("[data-locum-agent-conexao-alternar=github]");
+    await pausa(1000);
+    await foto("conexao-github-aberta");
+    // O servidor ganha duas ferramentas: o agent não as liga, e o cabeçalho avisa.
+    await guardar([...ferramentas, { name: "get_release", description: "Lê uma release", estimatedTokens: 90, readOnlyHint: true }, { name: "create_release", description: "Cria uma release", estimatedTokens: 90 }]);
+    await irPara(janela, "agents");
+    await pausa(500);
+    await irPara(janela, "agents", id);
+    await pausa(1200);
+    await clicar("[data-locum-agent-aba=tools]");
+    await pausa(1200);
+    await foto("conexao-github-ferramentas-novas");
+    await clicar("[data-locum-agent-conexao-novas=github]");
+    await pausa(800);
+    await foto("conexao-github-revisando-novas");
+  } finally {
+    await libraryService.removeProfile(id).catch(() => undefined);
+    await mcpService.remove("github").catch(() => undefined);
+    for (const nome of ["triagem-de-chamado", "glossario-da-squad"]) await skillsService.remover(nome).catch(() => undefined);
+  }
+  console.log(`capturas de skills em ${destino}`);
+}
+
+/**
  * Fotografa cada destino, para que a interface possa ser olhada e não só
  * descrita por linha de log.
  *
@@ -7151,6 +7255,8 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
       await new Promise((resolve) => setTimeout(resolve, 1000));
       await clicar("[data-locum-agent-aba=tools]");
       await new Promise((resolve) => setTimeout(resolve, 600));
+      await clicar(`[data-locum-agent-conexao-alternar="${FIXTURE_SERVER}"]`);
+      await new Promise((resolve) => setTimeout(resolve, 300));
       await clicar(`[data-locum-agent-carregar="${FIXTURE_SERVER}"]`);
       await new Promise((resolve) => setTimeout(resolve, 3500));
       writeFileSync(join(destino, "agents-editor-conexoes.png"), (await janela.webContents.capturePage()).toPNG());
@@ -7424,6 +7530,8 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
       await pausa(1000);
       await clicar("[data-locum-agent-aba=tools]");
       await pausa(2000);
+      await clicar("[data-locum-agent-conexao-alternar=teams]");
+      await pausa(600);
       await foto("atritos-agent-conexao-grande");
       await janela.webContents.executeJavaScript(`(() => {
         const campo = document.querySelector("[data-locum-agent-ferramentas-busca]");
@@ -7432,7 +7540,7 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
         campo.dispatchEvent(new Event("input", { bubbles: true }));
         return null;
       })()`);
-      await clicar("[data-locum-agent-ligar-leituras]");
+      await clicar("[data-locum-marcar-todas=leitura]");
       await pausa(600);
       await foto("atritos-agent-busca-e-leituras");
       await clicar("[data-locum-agent-aba=skills]");
@@ -7499,6 +7607,8 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
         }
         await clicar("[data-locum-agent-aba=tools]");
         await pausa(500);
+        await clicar(`[data-locum-agent-conexao-alternar="${FIXTURE_SERVER}"]`);
+        await new Promise((resolve) => setTimeout(resolve, 300));
         await clicar(`[data-locum-agent-carregar="${FIXTURE_SERVER}"]`);
         await pausa(3500);
         await foto("redesign-agents-editor-tools");
@@ -7506,6 +7616,8 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
         await pausa(1000);
         await clicar("[data-locum-agent-aba=tools]");
         await pausa(2000);
+        await clicar("[data-locum-agent-conexao-alternar=teams]");
+        await pausa(600);
         await foto("redesign-agents-conexao-grande");
         await janela.webContents.executeJavaScript(`(() => {
           const campo = document.querySelector("[data-locum-agent-ferramentas-busca]");
@@ -7514,7 +7626,7 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
           campo.dispatchEvent(new Event("input", { bubbles: true }));
           return null;
         })()`);
-        await clicar("[data-locum-agent-ligar-leituras]");
+        await clicar("[data-locum-marcar-todas=leitura]");
         await pausa(600);
         await foto("redesign-agents-conexao-grande-busca");
         await irPara(janela, "agents", ids[0]!);
@@ -7701,6 +7813,16 @@ async function main(): Promise<void> {
   if (modoMcp) {
     await serveMcp();
     return;
+  }
+
+  // Agent que veio da regra antiga (leitura toda, ferramenta nova ligada) passa para a lista explícita onde o servidor já tem lista em cache.
+  // Só o app principal migra: `--mcp`, `--ferramentas` e os comandos de cofre sobem o mesmo binário e não devem mexer no banco por isso.
+  try {
+    const { migrados, falhas } = await (await import("../src/services/library-service.js")).libraryService.migrarListasExplicitas();
+    if (migrados.length > 0) console.log(`agents: lista de ferramentas explícita em ${migrados.join(", ")}`);
+    for (const f of falhas) console.error(`agents: não consegui migrar "${f.id}": ${f.erro}`);
+  } catch (erro) {
+    console.error(`agents: migração da lista de ferramentas falhou: ${erro instanceof Error ? erro.message : String(erro)}`);
   }
 
   // O servidor das ferramentas nativas é este binário com `--ferramentas`.

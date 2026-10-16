@@ -7,7 +7,7 @@ import type { Runtime } from "../runtimes/types.js";
 import { SUBSCRIPTION_RUNTIMES } from "../runtimes/types.js";
 import { conexoesIndisponiveis, libraryService, type LibraryService } from "../services/library-service.js";
 import { machineId } from "../services/machine-service.js";
-import { selectSkills, skillsPreamble, type LoadedSkill } from "../skills/loader.js";
+import { discoverSkills, selectSkills, skillsAusentes, skillsIndisponiveis, skillsPreamble, type LoadedSkill } from "../skills/loader.js";
 import { providerService } from "../services/provider-service.js";
 
 export { SERVIDOR_NATIVO };
@@ -43,6 +43,9 @@ export async function consultarAgent(id: string, pergunta: string, deps: Consult
   const perfil = await (deps.library ?? libraryService).resolveProfile(id);
   const spec = perfil.version.spec;
   if (perfil.semServidor.length > 0) throw new Error(conexoesIndisponiveis(spec.id, perfil.semServidor));
+  const catalogoDeSkills = deps.skills ?? (spec.skills.length > 0 ? discoverSkills(undefined, undefined, undefined, { projeto: false }) : undefined);
+  const semSkill = catalogoDeSkills === undefined ? [] : skillsAusentes(spec.skills, catalogoDeSkills, { repo: "", changedFiles: [] });
+  if (semSkill.length > 0) throw new Error(skillsIndisponiveis(spec.id, semSkill));
 
   const chave = `biblioteca:${spec.id}`;
   await (deps.budget ?? assertWithinBudget)(chave, { usd: 0, tokens: 0 }, spec.budget, spec.name);
@@ -57,8 +60,8 @@ export async function consultarAgent(id: string, pergunta: string, deps: Consult
   const { doLocum, daConta } = separarDaConta(refs, runtime.id);
   const { tools, release } = await mcp.toolsFor(doLocum);
   // Sem evento por trás, só valem as skills de regra "sempre".
-  const skills = selectSkills(spec.skills, { repo: "", changedFiles: [] }, deps.skills);
-  const system = [perfil.system, skillsPreamble(skills, true)].filter((p) => p.length > 0).join("\n\n");
+  const skills = selectSkills(spec.skills, { repo: "", changedFiles: [] }, catalogoDeSkills);
+  const system = [perfil.system, skillsPreamble(skills, true, runtime.id)].filter((p) => p.length > 0).join("\n\n");
   try {
     const resultado = await runtime.run({
       provider: resolucao.provider,

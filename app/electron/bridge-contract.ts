@@ -7,6 +7,7 @@ import type { AutomationService } from "../src/services/automation-service.js";
 import type { ConversasDeAgent } from "../src/agent-chat/conversas.js";
 import type { LibraryService } from "../src/services/library-service.js";
 import type { PacoteService } from "../src/services/pacote-service.js";
+import type { SkillResumo, SkillsService } from "../src/services/skills-service.js";
 import type { ClaudeCodeService } from "../src/services/claude-code-service.js";
 import type { OpencodeService } from "../src/services/opencode-service.js";
 import type { GrafanaService } from "../src/services/grafana-service.js";
@@ -517,8 +518,21 @@ interface ServiceApi {
   "library.saveToolset": LibraryService["saveToolset"];
   "library.removeToolset": LibraryService["removeToolset"];
   "library.suggestId": LibraryService["suggestId"];
-  /** Skills que o Locum acha no disco (do usuário, de plugins e do projeto), para o agent escolher. */
-  "skills.list": () => Promise<{ name: string; description: string }[]>;
+  /**
+   * As skills: as da máquina (minhas, plugins, projeto), lidas ao vivo com
+   * cache curto, e as do Locum, guardadas no home dele. `atualizar` ignora o
+   * cache. Só a skill do Locum se cria, edita e remove; importar é cópia.
+   * Escolher o arquivo ou a pasta usa o seletor do sistema e devolve `null`
+   * quando a pessoa cancela.
+   */
+  "skills.list": (atualizar?: boolean) => Promise<SkillResumo[]>;
+  "skills.get": SkillsService["obter"];
+  "skills.create": SkillsService["criar"];
+  "skills.update": SkillsService["atualizar"];
+  "skills.remove": SkillsService["remover"];
+  "skills.import": SkillsService["importar"];
+  "skills.chooseImport": () => Promise<string | null>;
+  "skills.reveal": (name: string) => Promise<boolean>;
 
   /** A versão instalada, para o rodapé da barra lateral. */
   "app.version": () => Promise<string>;
@@ -781,6 +795,13 @@ export const BRIDGE_CHANNELS = [
   "library.removeToolset",
   "library.suggestId",
   "skills.list",
+  "skills.get",
+  "skills.create",
+  "skills.update",
+  "skills.remove",
+  "skills.import",
+  "skills.chooseImport",
+  "skills.reveal",
   "app.version",
   "startup.get",
   "startup.set",

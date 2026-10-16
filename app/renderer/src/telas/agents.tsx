@@ -15,12 +15,14 @@ import { call, invalidateReads, read, useRead, type ReadResult } from "@/lib/bri
 import { rotuloDoModelo } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
 import { ChatDoAgent } from "../agent-chat";
-import { ArrowLeft, Bot, Copy, Loader2, Plug, Plus, RefreshCw, Search, Trash2, Workflow, Wrench, X } from "lucide-react";
-import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import { ArrowLeft, Bot, ChevronDown, ChevronRight, Copy, Loader2, Plug, Plus, RefreshCw, Search, Trash2, Workflow, Wrench, X } from "lucide-react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { ehLeitura, ehLeituraDa, escolhaDe, escolhaInicial, ligadaPorPadrao, type EscolhaDeFerramenta } from "../../../src/config/leitura.js";
-import { agruparPorArea, filtrarFerramentas, LIMITE_PARA_AGRUPAR } from "@/lib/ferramentas-do-agent";
+import { ehLeitura, ehLeituraDa, escolhaDe, escolhaInicial, fixarLista, ligadaPorPadrao, type EscolhaDeFerramenta } from "../../../src/config/leitura.js";
+import { agruparPorTipo, contarDaConexao, filtrarFerramentas, LIMITE_PARA_AGRUPAR, revisarNovas } from "@/lib/ferramentas-do-agent";
 import { SERVIDOR_NATIVO, type AgentBudget, type AgentConnection, type AgentProfile, type ToolRef, type Toolset } from "../../../src/config/types";
+import { Dica, GrupoPorTipo } from "../ferramentas-agrupadas";
+import { rotuloDaFonte } from "@/lib/skills";
 import { SeletorDeModelo, ServidoresComBusca, servidoresDoModelo, useCatalogo } from "../editor-agent";
 import type { TelaProps } from "../rotas";
 
@@ -553,7 +555,7 @@ function FormularioDoAgent({
 
       <TabsContent className="flex flex-col gap-5" forceMount value="skills">
         <Pergunta texto={t("library.editor.leads.skills")} />
-        <SkillsDoAgent skills={spec.skills} trocar={(v) => trocar("skills", v)} />
+        <SkillsDoAgent navegar={navegar} skills={spec.skills} trocar={(v) => trocar("skills", v)} />
       </TabsContent>
 
       <TabsContent className="flex flex-col gap-5" forceMount value="budget">
@@ -738,22 +740,71 @@ function BlocoDaConexao({
     return achada === undefined ? !ehLeitura(nome) : !ehLeituraDa(achada);
   }).length;
   const nomeDaConexao = conexao?.name ?? escolha.connectionId;
+  const [aberto, setAberto] = useState(false);
+  const [revisao, setRevisao] = useState(0);
+  const catalogo = servidores.map((nome) => ({ nome, ferramentas: guardadas[nome] ?? null }));
+  // Conexão limitada sem a linha de base (adicionada sem lista, ou vinda de antes dela): quando a lista chega a linha de base entra no rascunho, e a contagem já sai normal.
+  const comBase = escolha.leituraPadrao === "limitada" ? fixarLista(escolha, catalogo) : escolha;
+  useEffect(() => {
+    if (comBase !== escolha) mudar(comBase);
+  });
+  const contagem = contarDaConexao(comBase, catalogo);
+  const implicita = escolha.leituraPadrao !== "limitada";
+  const resumo = contagem.conhecida
+    ? contagem.escrita > 0
+      ? t("library.connections.summaryWrite", { on: contagem.ligadas, total: contagem.total, writes: contagem.escrita })
+      : t("library.connections.summaryRead", { on: contagem.ligadas, total: contagem.total })
+    : t("library.connections.summaryNoList", { on: contagem.ligadas });
   return (
-    <div className="overflow-hidden rounded-lg border border-border bg-card" data-locum-agent-conexao={escolha.connectionId}>
-      <div className="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5">
-        <MarcaLogo fonte={{ name: escolha.connectionId, url: conexao?.url }} tamanho="sm" />
-        <span className="text-[13px] font-medium">{interno ? t("library.connections.internal") : nomeDaConexao}</span>
-        {conexao === undefined ? null : (
-          <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-            <StatusDot estado={pontoDaConexao(conexao)} />
-            {t(`connections.state.${estadoDaConexao(conexao)}`)}
+    <div className="overflow-hidden rounded-lg border border-border bg-card" data-locum-agent-conexao={escolha.connectionId} data-locum-agent-conexao-aberta={aberto ? "sim" : "nao"}>
+      <div className="flex min-h-11 items-center gap-2 px-3 py-1.5">
+        <button
+          aria-expanded={aberto}
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          data-locum-agent-conexao-alternar={escolha.connectionId}
+          onClick={() => setAberto((a) => !a)}
+          type="button"
+        >
+          {aberto ? <ChevronDown aria-hidden className="size-3.5 shrink-0 text-muted-foreground" /> : <ChevronRight aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />}
+          <MarcaLogo fonte={{ name: escolha.connectionId, url: conexao?.url }} tamanho="sm" />
+          <span className="shrink-0 text-[13px] font-medium">{interno ? t("library.connections.internal") : nomeDaConexao}</span>
+          {conexao === undefined ? null : (
+            <span className="inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+              <StatusDot estado={pontoDaConexao(conexao)} />
+              {t(`connections.state.${estadoDaConexao(conexao)}`)}
+            </span>
+          )}
+          <span className="num truncate text-xs text-muted-foreground" data-locum-agent-conexao-resumo={`${contagem.ligadas}/${contagem.total}`}>
+            {resumo}
           </span>
+        </button>
+        <Dica texto={t("library.connections.summaryHint")} />
+        {contagem.escrita === 0 && ligadas === 0 ? null : <AvisoDeEscrita count={contagem.conhecida ? contagem.escrita : ligadas} />}
+        {contagem.novas === 0 ? null : (
+          <Button
+            className="cursor-pointer"
+            data-locum-agent-conexao-novas={escolha.connectionId}
+            onClick={() => {
+              setAberto(true);
+              setRevisao((n) => n + 1);
+            }}
+            size="xs"
+            variant="outline"
+          >
+            <StatusDot estado="aviso" />
+            {t("library.connections.newTools", { count: contagem.novas })}
+          </Button>
         )}
-        <span className="text-xs text-muted-foreground">{t("library.connections.default")}</span>
-        {ligadas === 0 ? null : <AvisoDeEscrita count={ligadas} />}
+        {implicita ? (
+          <span className="inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground" data-locum-agent-conexao-implicita={escolha.connectionId}>
+            <StatusDot estado="aviso" />
+            {t("library.connections.implicit")}
+            <Dica texto={t("library.connections.implicitHint")} />
+          </span>
+        ) : null}
         <Button
           aria-label={t("library.connections.remove", { name: nomeDaConexao })}
-          className="ml-auto cursor-pointer"
+          className="cursor-pointer"
           onClick={() => mudar(null)}
           size="icon-sm"
           variant="ghost"
@@ -761,13 +812,17 @@ function BlocoDaConexao({
           <X aria-hidden />
         </Button>
       </div>
-      <div className="flex flex-col gap-4 border-t border-border px-3 py-3">
-        {servidores.length === 0 ? (
-          <p className="text-xs text-muted-foreground">{t("library.connections.noServer")}</p>
-        ) : (
-          servidores.map((servidor) => <FerramentasDoServidor escolha={escolha} key={servidor} mudar={mudar} servidor={servidor} />)
-        )}
-      </div>
+      {aberto ? (
+        <div className="flex flex-col gap-4 border-t border-border px-3 py-3">
+          {servidores.length === 0 ? (
+            <p className="text-xs text-muted-foreground">{t("library.connections.noServer")}</p>
+          ) : (
+            servidores.map((servidor) => (
+              <FerramentasDoServidor escolha={escolha} key={servidor} mudar={mudar} revisao={revisao} servidor={servidor} />
+            ))
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -789,10 +844,13 @@ function FerramentasDoServidor({
   servidor,
   escolha: escolha_,
   mudar,
+  revisao,
 }: {
   servidor: string;
   escolha: AgentConnection;
   mudar: (depois: AgentConnection) => void;
+  /** Sobe a cada clique em "ferramentas novas": o servidor passa a mostrar só as que o mapa não cita. */
+  revisao: number;
 }) {
   const { t } = useTranslation();
   const guardadas = useRead("mcp.toolsCached", servidor);
@@ -845,17 +903,28 @@ function FerramentasDoServidor({
         const v = x === undefined ? padrao(f) : x;
         return v === "read" && ehLeituraDa(f) ? true : v;
       };
-      tools = normal(valor) === normal(base) ? resto : { ...resto, [chave]: valor };
+      // Na lista explícita toda escolha fica registrada, inclusive o desligado: é o que separa a ferramenta decidida da que o servidor acabou de ganhar.
+      const registrar = escolha_.leituraPadrao === "limitada" || normal(valor) !== normal(base);
+      tools = registrar ? { ...resto, [chave]: valor === "read" && ehLeituraDa(f) ? true : valor } : resto;
     }
     mudar({ ...escolha_, tools });
   };
   const definir = (f: Ferramenta, valor: EscolhaDeFerramenta): void => definirVarias([[f, valor]]);
-  const ligarLeituras = (doGrupo: Ferramenta[]): void => definirVarias(doGrupo.filter((f) => ehLeituraDa(f)).map((f) => [f, true]));
+  const marcar = (doGrupo: Ferramenta[]): void => definirVarias(doGrupo.map((f) => [f, efetiva(f).declarada ? "read" : true]));
   const desligar = (doGrupo: Ferramenta[]): void => definirVarias(doGrupo.map((f) => [f, false]));
 
-  const visiveis = filtrarFerramentas(todas, busca);
-  const visiveisOrdenadas = [...visiveis.filter((f) => ehLeituraDa(f)), ...visiveis.filter((f) => !ehLeituraDa(f))];
-  const grupos = agruparPorArea(visiveisOrdenadas, todas.length);
+  // As ferramentas que o mapa não citava quando a pessoa clicou em "novas": a lista fica nelas até ela voltar a ver tudo.
+  const [paraRevisar, setParaRevisar] = useState<Set<string> | null>(null);
+  const jaVista = useRef(0);
+  useEffect(() => {
+    if (revisao === jaVista.current || ferramentas === null) return;
+    jaVista.current = revisao;
+    setParaRevisar(new Set(ferramentas.filter((f) => escolhaDe(escolha_.tools, servidor, f.name) === undefined).map((f) => f.name)));
+  }, [revisao, ferramentas, escolha_.tools, servidor]);
+
+  const buscadas = filtrarFerramentas(todas, busca);
+  const visiveis = paraRevisar === null ? buscadas : buscadas.filter((f) => paraRevisar.has(f.name));
+  const grupos = agruparPorTipo(visiveis, ehLeituraDa);
   const ligadasNoTotal = todas.filter((f) => efetiva(f).ligada).length;
   const grande = todas.length > LIMITE_PARA_AGRUPAR;
 
@@ -901,28 +970,6 @@ function FerramentasDoServidor({
           </span>
         )}
         <span className="flex-1" />
-        {ferramentas === null || todas.length === 0 ? null : (
-          <>
-            <Button
-              className="cursor-pointer"
-              data-locum-agent-ligar-leituras={servidor}
-              onClick={() => ligarLeituras(busca.trim() === "" ? todas : visiveis)}
-              size="sm"
-              variant="outline"
-            >
-              {t("library.connections.enableReads")}
-            </Button>
-            <Button
-              className="cursor-pointer"
-              data-locum-agent-desligar-todas={servidor}
-              onClick={() => desligar(busca.trim() === "" ? todas : visiveis)}
-              size="sm"
-              variant="outline"
-            >
-              {t("library.connections.disableAll")}
-            </Button>
-          </>
-        )}
         <Button
           className="cursor-pointer"
           data-locum-agent-carregar={servidor}
@@ -953,6 +1000,26 @@ function FerramentasDoServidor({
           />
         </div>
       ) : null}
+      {paraRevisar === null ? null : (
+        <p className="flex items-center gap-2 text-xs text-muted-foreground" data-locum-agent-revisando="">
+          {t("library.connections.reviewing", { count: paraRevisar.size })}
+          <Button
+            className="cursor-pointer"
+            data-locum-agent-manter-desligadas=""
+            onClick={() => {
+              mudar({ ...escolha_, tools: revisarNovas(escolha_, [{ nome: servidor, ferramentas }]) });
+              setParaRevisar(null);
+            }}
+            size="xs"
+            variant="outline"
+          >
+            {t("library.connections.keepOff")}
+          </Button>
+          <Button className="cursor-pointer" onClick={() => setParaRevisar(null)} size="xs" variant="ghost">
+            {t("library.connections.showAll")}
+          </Button>
+        </p>
+      )}
       {erro === null ? null : (
         <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <StatusDot estado="erro" />
@@ -965,25 +1032,17 @@ function FerramentasDoServidor({
         <p className="text-xs text-muted-foreground">{t("library.connections.noMatch", { termo: busca.trim() })}</p>
       ) : (
         grupos.map((g) => (
-          <div className="flex flex-col gap-1.5" data-locum-agent-grupo={g.area ?? ""} key={g.area ?? "todas"}>
-            {g.area === null ? null : (
-              <div className="mt-1 flex items-center gap-2">
-                <span className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
-                  {t(`library.connections.areas.${g.area}`)}
-                </span>
-                <span className="num text-[11px] text-muted-foreground">
-                  {t("library.connections.ligadas", { on: g.itens.filter((f) => efetiva(f).ligada).length, total: g.itens.length })}
-                </span>
-                <Button className="ml-auto cursor-pointer" onClick={() => ligarLeituras(g.itens)} size="xs" variant="ghost">
-                  {t("library.connections.enableReads")}
-                </Button>
-                <Button className="cursor-pointer" onClick={() => desligar(g.itens)} size="xs" variant="ghost">
-                  {t("library.connections.disableAll")}
-                </Button>
-              </div>
-            )}
+          <GrupoPorTipo
+            data-locum-agent-grupo={g.tipo}
+            desmarcar={() => desligar(g.itens)}
+            key={g.tipo}
+            ligadas={g.itens.filter((f) => efetiva(f).ligada).length}
+            marcar={() => marcar(g.itens)}
+            tipo={g.tipo}
+            total={g.itens.length}
+          >
             <ListGroup className="bg-transparent">{g.itens.map(linha)}</ListGroup>
-          </div>
+          </GrupoPorTipo>
         ))
       )}
       {escritas.some((f) => efetiva(f).ligada && !efetiva(f).leitura) ? (
@@ -995,50 +1054,73 @@ function FerramentasDoServidor({
 
 /* --------------------------------------------------------------- skills */
 
-function SkillsDoAgent({ skills, trocar }: { skills: AgentProfile["skills"]; trocar: (v: AgentProfile["skills"]) => void }) {
+function SkillsDoAgent({
+  skills,
+  trocar,
+  navegar,
+}: {
+  skills: AgentProfile["skills"];
+  trocar: (v: AgentProfile["skills"]) => void;
+  navegar: TelaProps["navegar"];
+}) {
   const { t } = useTranslation();
   const achadas = useRead("skills.list");
   const nomes = new Set(skills.map((s) => s.skill));
-  const livres = (achadas.data ?? []).filter((s) => !nomes.has(s.name));
-  const noDisco = new Set((achadas.data ?? []).map((s) => s.name));
+  const todas = achadas.data ?? [];
+  // A que vence nos runs vem primeiro; a sombreada do Locum não a substitui.
+  const porNome = new Map<string, (typeof todas)[number]>();
+  for (const s of todas) if (!porNome.has(s.name)) porNome.set(s.name, s);
+  const livres = todas.filter((s, i) => !nomes.has(s.name) && todas.findIndex((o) => o.name === s.name) === i);
   return (
     <div className="flex flex-col gap-3" data-locum-agent-skills={skills.length}>
       {skills.length === 0 ? (
         <p className="rounded-lg border border-dashed border-border px-3 py-3 text-[13px] text-muted-foreground">{t("library.skills.none")}</p>
       ) : (
         <ListGroup>
-          {skills.map((s) => (
-            <ListRow className="min-h-9 py-1" data-locum-agent-skill={s.skill} key={s.skill}>
-              <span className="font-mono text-xs">{s.skill}</span>
-              {achadas.status === "ready" && !noDisco.has(s.skill) ? (
-                <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <StatusDot estado="aviso" />
-                  {t("library.skills.missing")}
-                </span>
-              ) : null}
-              <Button
-                aria-label={t("library.skills.remove", { name: s.skill })}
-                className="ml-auto cursor-pointer"
-                onClick={() => trocar(skills.filter((x) => x.skill !== s.skill))}
-                size="icon-xs"
-                variant="ghost"
-              >
-                <X aria-hidden />
-              </Button>
-            </ListRow>
-          ))}
+          {skills.map((s) => {
+            const achada = porNome.get(s.skill);
+            return (
+              <ListRow className="min-h-9 py-1" data-locum-agent-skill={s.skill} key={s.skill}>
+                <span className="font-mono text-xs">{s.skill}</span>
+                {achada === undefined ? null : <span className="text-xs text-muted-foreground">{rotuloDaFonte(achada.fonte, t)}</span>}
+                {achada?.conflito === undefined ? null : (
+                  <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground" data-locum-agent-skill-conflito={s.skill}>
+                    <StatusDot estado="aviso" />
+                    {t("skills.conflict", { origem: rotuloDaFonte(achada.conflito, t) })}
+                  </span>
+                )}
+                {achadas.status === "ready" && achada === undefined ? (
+                  <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground" data-locum-agent-skill-ausente={s.skill}>
+                    <StatusDot estado="aviso" />
+                    {t("library.skills.missing")}
+                    <Dica texto={t("library.skills.missingHint")} />
+                  </span>
+                ) : null}
+                <Button
+                  aria-label={t("library.skills.remove", { name: s.skill })}
+                  className="ml-auto cursor-pointer"
+                  onClick={() => trocar(skills.filter((x) => x.skill !== s.skill))}
+                  size="icon-xs"
+                  variant="ghost"
+                >
+                  <X aria-hidden />
+                </Button>
+              </ListRow>
+            );
+          })}
         </ListGroup>
       )}
-      {livres.length === 0 ? (
-        <span className="text-xs text-muted-foreground">{t("library.skills.noneToAdd")}</span>
-      ) : (
+      <div className="flex flex-wrap items-center gap-3">
         <CampoComBusca
           aoEscolher={(nome) => trocar([...skills, { skill: nome, when: { always: true } }])}
-          opcoes={livres.map((s) => ({ name: s.name, description: s.description }))}
+          opcoes={livres.map((s) => ({ name: s.name, description: s.description, origem: rotuloDaFonte(s.fonte, t) }))}
           rotulo={t("library.skills.add")}
-          semResultado={t("library.skills.noMatch")}
+          semResultado={t(todas.length === 0 ? "library.skills.noneToAdd" : "library.skills.noMatch")}
         />
-      )}
+        <Button className="cursor-pointer" data-locum-agent-skills-gerenciar="" onClick={() => navegar("skills")} size="sm" variant="ghost">
+          {t("library.skills.manage")}
+        </Button>
+      </div>
     </div>
   );
 }
@@ -1055,7 +1137,7 @@ function CampoComBusca({
   semResultado,
 }: {
   aoEscolher: (nome: string) => void;
-  opcoes: { name: string; description?: string }[];
+  opcoes: { name: string; description?: string; origem?: string }[];
   rotulo: string;
   semResultado: string;
 }) {
@@ -1129,7 +1211,10 @@ function CampoComBusca({
                 onMouseEnter={() => setAtiva(i)}
                 role="option"
               >
-                <span className="font-mono text-xs">{o.name}</span>
+                <span className="flex items-baseline gap-2">
+                  <span className="font-mono text-xs">{o.name}</span>
+                  {o.origem === undefined ? null : <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">{o.origem}</span>}
+                </span>
                 {o.description ? <span className="line-clamp-1 text-[11px] text-muted-foreground">{o.description}</span> : null}
               </li>
             ))

@@ -62,3 +62,8 @@ test("execução não grava sessão no histórico pessoal", () => {
 test("não usa --bare, que derruba o login de assinatura", () => {
   assert.equal(claudeArgs(pedido()).includes("--bare"), false);
 });
+
+test("system grande demais para o argumento é recusado com o tamanho, antes de estourar o E2BIG", () => {
+  assert.doesNotThrow(() => claudeArgs(pedido({ system: "x".repeat(300 * 1024) })));
+  assert.throws(() => claudeArgs(pedido({ system: "x".repeat(700 * 1024) })), /700 KB.*argumento/);
+});

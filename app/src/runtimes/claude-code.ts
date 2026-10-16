@@ -12,6 +12,8 @@ import { cortar, nomeDaFerramenta, type Atividade, type Runtime, type RuntimeReq
 /** O mesmo teto de sempre para um passo inteiro, com todas as voltas de ferramenta. */
 const TIMEOUT_MS = 15 * 60 * 1000;
 
+const LIMITE_DO_SYSTEM_BYTES = 512 * 1024;
+
 /**
  * Argumentos da chamada, separados para o teste conferir o isolamento.
  *
@@ -38,7 +40,14 @@ export function claudeArgs(req: RuntimeRequest, mcpConfigPath?: string): string[
   // Sem o prompt no argumento, o `claude -p` lê a entrada padrão.
   const args = [...(req.promptPorStdin === true ? ["-p"] : ["-p", req.prompt]), "--model", req.model, "--output-format", "stream-json", "--verbose"];
 
-  if (req.system) args.push("--append-system-prompt", req.system);
+  if (req.system) {
+    // O system vai no argumento: o SO recusa (E2BIG) a partir de ~1 MB no total, e aí o `spawn` falha sem dizer por quê.
+    const bytes = Buffer.byteLength(req.system);
+    if (bytes > LIMITE_DO_SYSTEM_BYTES) {
+      throw new Error(`o prompt de sistema tem ${Math.round(bytes / 1024)} KB, grande demais para o argumento do claude (limite ${LIMITE_DO_SYSTEM_BYTES / 1024} KB); tire skill ou encurte a instrução`);
+    }
+    args.push("--append-system-prompt", req.system);
+  }
   if (req.outputSchema) args.push("--json-schema", JSON.stringify(req.outputSchema));
   if (servers.length > 0) {
     if (mcpConfigPath === undefined) throw new Error("passo com servidor MCP precisa do arquivo de configuração");

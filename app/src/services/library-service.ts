@@ -10,7 +10,7 @@ import {
   type ToolRef,
   type ToolsetInput,
 } from "../config/types.js";
-import { ehLeitura, ehLeituraDa, escolhaDe, ligadaPorPadrao } from "../config/leitura.js";
+import { ehLeitura, ehLeituraDa, escolhaDe, fixarLista, ligadaPorPadrao } from "../config/leitura.js";
 
 type Db = typeof defaultDb;
 
@@ -35,6 +35,8 @@ export interface ProfileSummary {
   /** Quantas ferramentas de escrita estão ligadas nas conexões. */
   writes: number;
   skills: number;
+  /** Conexões que ainda valem pela regra antiga (leitura toda, ferramenta nova entra ligada) por falta de lista em cache. */
+  listaImplicita: string[];
   /** Fluxos que referenciam este agent na versão mais recente deles. */
   usedBy: string[];
 }
@@ -232,6 +234,7 @@ export class LibraryService {
         connections: ultima.spec.connections.map((c) => c.connectionId),
         writes: await this.contarEscritaLigada(ultima.spec.connections),
         skills: ultima.spec.skills.length,
+        listaImplicita: ultima.spec.connections.filter((c) => c.leituraPadrao !== "limitada").map((c) => c.connectionId),
         usedBy: usos.get(perfil.id) ?? [],
       });
     }
@@ -266,6 +269,18 @@ export class LibraryService {
     return total;
   }
 
+  /** As skills que cada agent cita, na versão mais recente: a Skills mostra quem usa o quê. */
+  async skillsPorAgent(): Promise<{ id: string; name: string; skills: string[] }[]> {
+    const perfis = await this.db.select().from(schema.agentProfiles);
+    const lista: { id: string; name: string; skills: string[] }[] = [];
+    for (const perfil of perfis) {
+      const ultima = await this.latestProfile(perfil.id);
+      if (ultima === undefined) continue;
+      lista.push({ id: perfil.id, name: ultima.spec.name, skills: ultima.spec.skills.map((k) => k.skill) });
+    }
+    return lista.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
   async getProfile(id: string): Promise<ProfileVersion | null> {
     return (await this.latestProfile(id)) ?? null;
   }
@@ -292,7 +307,8 @@ export class LibraryService {
    * que já existe, para o "novo agent" não sobrescrever outro de mesmo nome.
    */
   async saveProfile(input: { spec: AgentProfileInput; note?: string; create?: boolean }): Promise<ProfileVersion> {
-    const spec = AgentProfile.parse(input.spec);
+    const lido = AgentProfile.parse(input.spec);
+    const spec = { ...lido, connections: await this.comListaExplicita(lido.connections) };
     recusarEscrita(spec.tools, `O agent "${spec.name}"`);
     const conhecidos = new Set((await this.db.select({ id: schema.toolsets.id }).from(schema.toolsets)).map((r) => r.id));
     const faltando = spec.toolsets.filter((t) => !conhecidos.has(t));
@@ -320,6 +336,55 @@ export class LibraryService {
         .get();
     });
     return this.parse(row);
+  }
+
+  /**
+   * Cada conexão com a lista do servidor em cache passa a guardar a lista
+   * explícita: o que fica ligado é o que está no mapa, e a ferramenta que o
+   * servidor ganhar depois nasce desligada. Sem cache a conexão segue como veio.
+   */
+  /** As conexões como o `saveProfile` as guardaria: quem compara com o que está salvo normaliza os dois lados. */
+  async normalizarConexoes(conexoes: readonly AgentConnection[]): Promise<AgentConnection[]> {
+    return this.comListaExplicita(conexoes);
+  }
+
+  private async comListaExplicita(conexoes: readonly AgentConnection[]): Promise<AgentConnection[]> {
+    const saida: AgentConnection[] = [];
+    for (const conexao of conexoes) {
+      const servidores = await this.conexoes.servidoresDe(conexao.connectionId);
+      const catalogo = await Promise.all(
+        servidores.map(async ({ nome }) => ({ nome, ferramentas: (await this.conexoes.guardadasDe?.(nome)) ?? null })),
+      );
+      saida.push(fixarLista(conexao, catalogo));
+    }
+    return saida;
+  }
+
+  /**
+   * Passa os agents que já existem para a lista explícita, gravando versão
+   * nova só onde algo muda. Quem não tem lista em cache fica em `pendentes`,
+   * com o comportamento antigo, até alguém abrir e salvar.
+   */
+  async migrarListasExplicitas(): Promise<{ migrados: string[]; pendentes: string[]; falhas: { id: string; erro: string }[] }> {
+    const migrados: string[] = [];
+    const pendentes: string[] = [];
+    const falhas: { id: string; erro: string }[] = [];
+    for (const perfil of await this.db.select().from(schema.agentProfiles)) {
+      try {
+        const atual = await this.latestProfile(perfil.id);
+        if (atual === undefined) continue;
+        const nova = await this.saveProfile({ spec: atual.spec, note: "linha de base das ferramentas" });
+        if (nova.version !== atual.version) migrados.push(perfil.id);
+        if (nova.spec.connections.some((c) => c.leituraPadrao !== "limitada")) pendentes.push(perfil.id);
+      } catch (erro) {
+        // Outro processo migrou o mesmo agent entre a leitura e a gravação: o índice único da versão barra a segunda, e o que ele gravou vale.
+        const jaFeita = (await this.latestProfile(perfil.id))?.spec.connections.every((c) => c.leituraPadrao === "limitada") === true;
+        if (!(jaFeita && /UNIQUE/i.test(erro instanceof Error ? erro.message : String(erro)))) {
+          falhas.push({ id: perfil.id, erro: erro instanceof Error ? erro.message : String(erro) });
+        }
+      }
+    }
+    return { migrados, pendentes, falhas };
   }
 
   /** Remove o agent e as versões. Recusa enquanto algum fluxo o usar. */

@@ -14,6 +14,16 @@ tela grava as leituras ligadas; servidor com mais de 30 leituras (ms365, por
 exemplo) começa sem nenhuma, e a pessoa escolhe as que o agent precisa. O agent
 salvo antes mantém toda leitura ligada. A escrita ligada só sai
 com confirmação, no chat do agent.
+Ferramenta que o mapa da conexão não cita vale desligada (`leituraPadrao:
+"limitada"`). **Linha de base das ferramentas**: ao passar para a lista
+explícita (migração do agent antigo, primeiro save, ou a primeira leitura com
+catálogo de agent `limitada` sem o marcador, como os vindos da main), toda
+ferramenta do catálogo de então entra no mapa, `true` ou `false`. Conexão
+adicionada sem lista em cache fica `pendente` e ganha a linha de base quando a
+lista chega (leitura ligada, escrita desligada). Daí em diante o save só
+preserva o mapa. O aviso de "novas" é o que o servidor ganhou depois da linha de
+base e o mapa não cita; só some quando a pessoa grava a escolha, ligada ou
+desligada.
 
 **Automação**: fluxo de nós ligados que começa num gatilho. Decide quando os
 agents trabalham e o que acontece com a saída deles.
