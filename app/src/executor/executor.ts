@@ -22,7 +22,7 @@ import { runLogic } from "./logic.js";
 import { discoverSkills, selectSkills, skillsAusentes, skillsIndisponiveis, skillsPreamble, type LoadedSkill, type SkillContext } from "../skills/loader.js";
 import { ApprovalGate, settleStep } from "../approval/gate.js";
 import { BudgetExceeded, assertWithinBudget, recordSpend, type Spend } from "./budget.js";
-import { ehLeituraDa, type FerramentaClassificavel } from "../config/leitura.js";
+import { ehLeituraNaAcao, type FerramentaClassificavel } from "../config/leitura.js";
 import { ACOES_DE_REACAO, descreverReacao, reacaoDoPasso } from "../reacao/passo.js";
 import { ACOES_DE_CONVERSA, dependenciaDeEvento, recusaSemEvento } from "./dependencia-de-evento.js";
 import { SUBSCRIPTION_RUNTIMES } from "../runtimes/types.js";
@@ -972,7 +972,7 @@ export function renderPrompt(
     );
   const texto = (value: unknown) => (typeof value === "string" ? value : JSON.stringify(value ?? null, null, 2));
 
-  return template.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_match, path: string) => {
+  return template.replace(/\{\{\s*([\w.-]+)\s*\}\}/g, (_match, path: string) => {
     const [root, ...rest] = path.split(".");
     if (root === "steps") {
       const [chave, ...campo] = rest;
@@ -1004,7 +1004,7 @@ async function publicaParaFora(
   if (step.action === "mcp.call") {
     if (typeof params.server !== "string" || typeof params.tool !== "string") return true;
     const ferramenta = (await guardadas(params.server).catch(() => null))?.find((f) => f.name === params.tool);
-    return ferramenta?.readOnlyHint !== true || !ehLeituraDa(ferramenta);
+    return ferramenta === undefined || !ehLeituraNaAcao(ferramenta);
   }
   if (step.action === "http.request") return String(params.method ?? "POST").toUpperCase() !== "GET";
   return true;
@@ -1046,7 +1046,7 @@ export function foraDoCaminhoEscolhido(
  */
 export function renderParams(valor: unknown, payload: EventPayload, outputs: Map<string, unknown>): unknown {
   if (typeof valor === "string") {
-    const sozinho = /^\{\{\s*([\w.]+)\s*\}\}$/.exec(valor);
+    const sozinho = /^\{\{\s*([\w.-]+)\s*\}\}$/.exec(valor);
     if (sozinho !== null) {
       const [root, ...rest] = sozinho[1]!.split(".");
       const descer = (inicio: unknown, caminho: string[]) =>

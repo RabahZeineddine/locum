@@ -65,3 +65,10 @@ test("http.request manda JSON com content-type e falha fora de 2xx", async () =>
   await assert.rejects(handler.publish(proposta, "ext"), /respondeu 403: negado/);
   await assert.rejects(handler.propose!({ url: "file:///etc/passwd" }, null), /http/);
 });
+
+test("renderParams: marcador sozinho com passo de chave com hífen devolve o valor cru", () => {
+  const saidas = new Map<string, unknown>([["abrir-tarefa", { total: 3, lista: ["a"] }]]);
+  assert.equal(renderParams("{{steps.abrir-tarefa.total}}", {} as never, saidas), 3);
+  assert.deepEqual(renderParams("{{ steps.abrir-tarefa.lista }}", {} as never, saidas), ["a"]);
+  assert.equal(renderParams("n={{steps.abrir-tarefa.total}}", {} as never, saidas), "n=3");
+});

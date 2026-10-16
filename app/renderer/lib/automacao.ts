@@ -15,6 +15,7 @@ import { topoSort, type AgentSpec, type LogicStep, type Step, type TriggerConfig
 import { SLACK_REPLY_SCHEMA } from "../../src/slack/proposal";
 import { CONVERSATION_ISSUE_SCHEMA, ISSUE_CONTENT_SCHEMA } from "../../src/trackers/proposal";
 import prReview from "../../../examples/agents/pr-review.json";
+import { camposDoSchema, referenciasDoArgs, validarArgs } from "./formulario-de-schema";
 import { ALTURA_DO_NO, LARGURA_DO_NO, montarGrafo } from "./grafo";
 
 export type PassoDoSpec = Step;
@@ -597,6 +598,8 @@ export interface Problema {
   no?: string;
   /** Impede salvar. Os outros são aviso. */
   bloqueia: boolean;
+  /** Valores para o texto do dicionário (`{{campo}}`, `{{ref}}`). */
+  valores?: Record<string, string>;
   /** Para onde levar a pessoa a resolver. */
   atalho?: { rota: "connections" | "agents"; detalhe: string };
 }
@@ -609,6 +612,8 @@ export interface Contexto {
   agents?: readonly string[];
   /** O GitHub tem token. Ausente enquanto a lista de conexões não chegou: não acusa nada. */
   githubComToken?: boolean;
+  /** `inputSchema` das ferramentas de conexão, por `servidor/ferramenta`. Ausente (cache antigo, lista não lida): os argumentos não são conferidos. */
+  esquemas?: Readonly<Record<string, unknown>>;
 }
 
 /**
@@ -676,6 +681,8 @@ export function problemas(r: Rascunho, ctx: Contexto): Problema[] {
       const prm = (p.params ?? {}) as { server?: unknown; tool?: unknown };
       if (typeof prm.server !== "string" || prm.server === "" || typeof prm.tool !== "string" || prm.tool === "") {
         lista.push({ chave: "automations.problems.noTool", no: p.key, bloqueia: true });
+      } else {
+        lista.push(...problemasDosArgumentos(r.spec, p.key, prm.server, prm.tool, (p.params ?? {}).args, ctx.esquemas));
       }
     }
     if (p.action === "http.request") {
@@ -715,6 +722,44 @@ export function problemas(r: Rascunho, ctx: Contexto): Problema[] {
     if (p.action === "tracker.create_issue" && (p.target === undefined || !ctx.trackers.includes(p.target))) {
       lista.push({ chave: "automations.problems.noTracker", no: p.key, bloqueia: true });
     }
+  }
+  return lista;
+}
+
+/**
+ * Os argumentos de um `mcp.call` contra o schema da ferramenta, e as
+ * referências contra o que vem antes no fluxo. O que o schema não cobre (cache
+ * antigo, lista não lida) fica sem conferir; a referência a passo que não vem
+ * antes sempre é conferida, porque no run ela viraria `null` calado.
+ */
+function problemasDosArgumentos(
+  spec: AgentSpec,
+  chave: string,
+  servidor: string,
+  ferramenta: string,
+  argsGravados: unknown,
+  esquemas: Contexto["esquemas"],
+): Problema[] {
+  const lista: Problema[] = [];
+  const args = argsGravados !== null && typeof argsGravados === "object" && !Array.isArray(argsGravados) ? (argsGravados as Record<string, unknown>) : {};
+  const esquema = esquemas?.[`${servidor}/${ferramenta}`];
+  if (esquema !== undefined) {
+    for (const erro of validarArgs(camposDoSchema(esquema), args)) {
+      lista.push({
+        chave: erro.motivo === "obrigatorio" ? "automations.problems.argRequired" : "automations.problems.argType",
+        no: chave,
+        bloqueia: true,
+        valores: { campo: erro.caminho },
+      });
+    }
+  }
+  const antes = new Set(anteriores(spec, chave));
+  const vistas = new Set<string>();
+  for (const ref of referenciasDoArgs(args)) {
+    const [raiz, passo] = ref.split(".");
+    if (raiz !== "steps" || passo === undefined || antes.has(passo) || vistas.has(passo)) continue;
+    vistas.add(passo);
+    lista.push({ chave: "automations.problems.refNotBefore", no: chave, bloqueia: true, valores: { ref: `steps.${passo}` } });
   }
   return lista;
 }
