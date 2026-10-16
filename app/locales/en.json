@@ -2282,10 +2282,28 @@
         "task": "Task for this step",
         "taskHint": "What the agent does here. Who it is, the model and the tools come from the library.",
         "choose": "Agent",
-        "open": "Open in library",
+        "open": "Open agent",
         "none": "No agent in the library.",
         "toLibrary": "Turn into a library agent",
-        "toLibraryHint": "Moves model and tools into a new agent that other automations can use. This step's text becomes the task."
+        "toLibraryHint": "Moves model and tools into a new agent that other automations can use. This step's text becomes the task.",
+        "modes": {
+          "agent": "Agent",
+          "inline": "Inline instruction"
+        },
+        "pick": "Pick an agent",
+        "create": "Create agent",
+        "summary": {
+          "model": "Model",
+          "tools": "Tools",
+          "noTools": "none",
+          "single_one": "{{count}} single",
+          "single_other": "{{count}} single",
+          "single_zero": "{{count}} single",
+          "toolsets_one": "{{count}} toolset",
+          "toolsets_other": "{{count}} toolsets",
+          "toolsets_zero": "{{count}} toolsets",
+          "edit": "Edit in library"
+        }
       },
       "mcp.call": {
         "title": "App action",

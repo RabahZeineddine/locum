@@ -2332,10 +2332,28 @@
         "task": "Tarefa deste passo",
         "taskHint": "O que o agent faz aqui. Quem ele é, o modelo e as ferramentas vêm da biblioteca.",
         "choose": "Agent",
-        "open": "Abrir na biblioteca",
+        "open": "Abrir agent",
         "none": "Nenhum agent na biblioteca.",
         "toLibrary": "Transformar em agent da biblioteca",
-        "toLibraryHint": "Leva modelo e ferramentas para um agent novo, que outras automações podem usar. O texto deste passo vira a tarefa."
+        "toLibraryHint": "Leva modelo e ferramentas para um agent novo, que outras automações podem usar. O texto deste passo vira a tarefa.",
+        "modes": {
+          "agent": "Agent",
+          "inline": "Instrução embutida"
+        },
+        "pick": "Escolha um agent",
+        "create": "Criar agent",
+        "summary": {
+          "model": "Modelo",
+          "tools": "Ferramentas",
+          "noTools": "nenhuma",
+          "single_one": "{{count}} avulsa",
+          "single_other": "{{count}} avulsas",
+          "single_zero": "{{count}} avulsas",
+          "toolsets_one": "{{count}} toolset",
+          "toolsets_other": "{{count}} toolsets",
+          "toolsets_zero": "{{count}} toolsets",
+          "edit": "Editar na biblioteca"
+        }
       },
       "mcp.call": {
         "title": "Ação em app",

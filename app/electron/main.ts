@@ -1121,6 +1121,7 @@ async function checkRenderer(): Promise<string> {
     await checkPacote(window);
     await checkEditorSaida(window);
     await checkListaDoTeams(window);
+    await checkPassoDeAgent(window);
     const configuracao = await checkConfig(window);
     const revisao = await checkReviewVerdict(window);
     const sessoes = await checkClaudeSessions(window);
@@ -2068,6 +2069,81 @@ async function checkListaDoTeams(window: BrowserWindow): Promise<void> {
     db.delete(schema.triggers).where(eq(schema.triggers.agentId, id)).run();
     db.delete(schema.agentVersions).where(eq(schema.agentVersions.agentId, id)).run();
     db.delete(schema.agents).where(eq(schema.agents.id, id)).run();
+  }
+}
+
+/**
+ * O passo de IA escolhe um agent da biblioteca por padrão: o painel mostra o
+ * resumo dele só leitura, abre e cria agent num modal sem sair do editor, e a
+ * instrução embutida segue como alternativa.
+ */
+async function checkPassoDeAgent(window: BrowserWindow): Promise<void> {
+  const { automationService } = await import("../src/services/automation-service.js");
+  const { libraryService } = await import("../src/services/library-service.js");
+  const { db, schema } = await import("../src/db/index.js");
+  const { eq } = await import("drizzle-orm");
+  const { AgentSpec } = await import("../src/config/types.js");
+  const sufixo = randomUUID().slice(0, 6);
+  const id = `smoke-passo-agent-${sufixo}`;
+  const perfil = `smoke-perfil-${sufixo}`;
+  await libraryService.saveProfile({
+    spec: { id: perfil, name: "Revisor do smoke", description: "", model: "claude-code/claude-sonnet-5", instructions: "Revise o diff e cite a linha.", connections: [], skills: [], budget: {} },
+    create: true,
+  });
+  await automationService.save({
+    spec: AgentSpec.parse({ id, name: "Passo de agent", steps: [{ type: "model", key: "revisar", name: "Revisar", model: "claude-code/claude-sonnet-5", prompt: "" }] }),
+    triggers: [],
+    note: "smoke",
+    create: true,
+  });
+  const js = (codigo: string): Promise<unknown> => window.webContents.executeJavaScript(codigo);
+  const clicar = (seletor: string): Promise<boolean> =>
+    js(`(() => { const e = document.querySelector(${JSON.stringify(seletor)}); e?.click(); return e !== null; })()`) as Promise<boolean>;
+  const existe = (seletor: string): Promise<boolean> => js(`document.querySelector(${JSON.stringify(seletor)}) !== null`) as Promise<boolean>;
+  const rota = (): Promise<string> => js(`(() => { const p = document.querySelector("[data-locum-probe=rota]"); return p.dataset.ativo + "|" + p.dataset.detalhe; })()`) as Promise<string>;
+  const esperar = async (nome: string, ok: () => Promise<boolean>): Promise<void> => {
+    await esperarDoServico(nome, async () => ((await ok()) ? true : undefined), 5_000);
+  };
+  try {
+    await irPara(window, "automations", id);
+    await esperar("o nó do passo", () => existe("[data-locum-no-automacao=revisar]"));
+    await clicar("[data-locum-no-automacao=revisar]");
+    await esperar("o painel do passo", () => existe("[data-locum-passo-modos]"));
+    // O padrão é Agent, e o select dos agents da biblioteca está lá.
+    if (!(await existe("[data-locum-passo-modo=agent][aria-selected=true]"))) throw new Error("o passo de IA novo não abriu em Agent");
+    await esperar("o select de agents", () => existe("[data-locum-passo-agent]"));
+    await js(`(() => {
+      const s = document.querySelector("[data-locum-passo-agent]");
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set.call(s, ${JSON.stringify(perfil)});
+      s.dispatchEvent(new Event("change", { bubbles: true }));
+      return null;
+    })()`);
+    await esperar("o resumo do agent", () => existe(`[data-locum-agent-resumo=${JSON.stringify(perfil)}]`));
+    const resumo = (await js(`document.querySelector("[data-locum-agent-resumo]").textContent`)) as string;
+    if (!resumo.includes("claude-sonnet-5") || !resumo.includes("Revise o diff")) throw new Error(`o resumo do agent veio assim: ${resumo}`);
+
+    // Abrir e criar agent abrem sobre o editor, sem trocar de tela.
+    for (const botao of ["[data-locum-passo-abrir-agent]", "[data-locum-passo-criar-agent]"]) {
+      await clicar(botao);
+      await esperar("o modal do agent", () => existe("[data-locum-probe=agent-modal]"));
+      if ((await rota()) !== `automations|${id}`) throw new Error(`o botão ${botao} tirou a janela de ${id}: ${await rota()}`);
+      await clicar("[data-locum-agent-modal-fechar]");
+      await esperar("o modal fechar", async () => !(await existe("[data-locum-probe=agent-modal]")));
+    }
+    if (!(await existe("[data-locum-probe=automacao-editor]"))) throw new Error("fechar o modal levou para fora do editor");
+
+    // Instrução embutida: o select some e o passo deixa de apontar para o agent.
+    await clicar("[data-locum-passo-modo=inline]");
+    await esperar("a instrução embutida", async () => (await existe("[data-locum-prompt]")) && !(await existe("[data-locum-passo-agent]")));
+    await clicar("[data-locum-passo-modo=agent]");
+    await esperar("o select de volta", () => existe("[data-locum-passo-agent]"));
+    if (await existe("[data-locum-agent-resumo]")) throw new Error("o resumo do agent ficou depois de trocar para instrução embutida");
+  } finally {
+    await js(`(localStorage.removeItem(${JSON.stringify(`locum.rascunho-automacao.${id}`)}), null)`);
+    db.delete(schema.triggers).where(eq(schema.triggers.agentId, id)).run();
+    db.delete(schema.agentVersions).where(eq(schema.agentVersions.agentId, id)).run();
+    db.delete(schema.agents).where(eq(schema.agents.id, id)).run();
+    await libraryService.removeProfile(perfil).catch(() => undefined);
   }
 }
 
@@ -7131,6 +7207,9 @@ async function capturarEditor(janela: BrowserWindow, destino: string, prefixo: s
       return null;
     })()`);
 
+  // O armazém da janela sobrevive entre execuções: rascunho de uma captura anterior apareceria na foto.
+  await js(`(localStorage.clear(), sessionStorage.clear(), null)`);
+
   const revisor = "captura-revisor-de-pr";
   await libraryService.saveProfile({
     spec: {
@@ -7194,6 +7273,11 @@ async function capturarEditor(janela: BrowserWindow, destino: string, prefixo: s
     if (!(await clicar("[data-locum-passo-abrir-agent]"))) await clicarTexto("Abrir na biblioteca");
     await pausa(1500);
     await foto("editor-6-abrir-agent");
+    await clicar("[data-locum-agent-modal-fechar]");
+    await pausa(500);
+    await clicar("[data-locum-passo-criar-agent]");
+    await pausa(1200);
+    await foto("editor-7-criar-agent");
     await clicar("[data-locum-agent-modal-fechar]");
     await pausa(500);
 

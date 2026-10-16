@@ -27,6 +27,7 @@ import { LogicCompare, type LogicStep, type TriggerConfig } from "../../../src/c
 import { parseCron, proximaOcorrencia } from "../../../src/triggers/cron";
 import { PROVEDORES_FORA_DO_FILTRO } from "../../../src/config/filtro-ia";
 import { descreverCron } from "@/lib/descricao-do-cron";
+import { resumoDoAgent } from "@/lib/resumo-do-agent";
 import { SeletorDeFerramentas, SeletorDeModelo, useCatalogo } from "../editor-agent";
 import type { RotaId } from "../rotas";
 import { Ajuda, Alternador, Campo, CAMPO, Minutos } from "./campos";
@@ -65,7 +66,7 @@ export function PainelDoNo({
   agents: readonly AgentDaBiblioteca[];
   navegar: (id: RotaId, detalhe?: string) => void;
   /** Abre o agent da biblioteca num modal, sem sair do editor. */
-  abrirAgent: (detalhe: string) => void;
+  abrirAgent: AbrirAgent;
   relerBiblioteca: () => Promise<void>;
   rascunho: Rascunho;
   setRascunho: (f: (r: Rascunho) => Rascunho) => void;
@@ -155,11 +156,12 @@ export function PainelDoNo({
             }
           />
         </>
-      ) : passo!.type === "model" && passo!.profile !== undefined ? (
-        <ConfigDoAgent abrirAgent={abrirAgent} agents={agents} chave={chave} passo={passo as PassoDeIA} rascunho={rascunho} setRascunho={setRascunho} />
       ) : passo!.type === "model" ? (
-        <ConfigDaIA
+        <ConfigDoPassoDeIA
+          abrirAgent={abrirAgent}
+          agents={agents}
           chave={chave}
+          key={chave}
           passo={passo as PassoDeIA}
           rascunho={rascunho}
           relerBiblioteca={relerBiblioteca}
@@ -612,6 +614,72 @@ function TarefaEFormato({
   );
 }
 
+type AbrirAgent = (detalhe: string, aoFechar?: (id: string | null, lista: ReadResult<"library.profiles">) => void) => void;
+
+/**
+ * Passo de IA. O padrão é chamar um agent da biblioteca, que traz modelo,
+ * instruções e ferramentas, e o texto do passo vira só a tarefa. A instrução
+ * embutida continua como alternativa. Um passo que já tem texto ou ferramentas
+ * próprias abre na instrução embutida, para o painel não esconder o que existe.
+ */
+function ConfigDoPassoDeIA({
+  chave,
+  passo,
+  rascunho,
+  setRascunho,
+  agents,
+  abrirAgent,
+  relerBiblioteca,
+}: {
+  chave: string;
+  passo: PassoDeIA;
+  rascunho: Rascunho;
+  setRascunho: (f: (r: Rascunho) => Rascunho) => void;
+  agents: readonly AgentDaBiblioteca[];
+  abrirAgent: AbrirAgent;
+  relerBiblioteca: () => Promise<void>;
+}) {
+  const { t } = useTranslation();
+  const [modo, setModo] = useState<"agent" | "inline">(
+    passo.profile !== undefined || (passo.prompt.trim() === "" && passo.tools === undefined) ? "agent" : "inline",
+  );
+  const trocar = (novo: PassoDeIA): void => setRascunho((r) => ({ ...r, spec: trocarPasso(r.spec, passo.key, novo) }));
+  const paraEmbutida = (): void => {
+    setModo("inline");
+    if (passo.profile === undefined) return;
+    const { profile: _profile, ...resto } = passo;
+    trocar(resto);
+  };
+
+  return (
+    <>
+      <div className="bg-muted flex gap-0.5 rounded-md p-0.5" data-locum-passo-modos="" role="tablist">
+        {(["agent", "inline"] as const).map((m) => (
+          <button
+            aria-selected={modo === m}
+            className={cn(
+              "flex-1 cursor-pointer rounded px-2 py-1 text-xs transition-colors",
+              modo === m ? "bg-card text-foreground font-medium" : "text-muted-foreground hover:text-foreground",
+            )}
+            data-locum-passo-modo={m}
+            key={m}
+            onClick={() => (m === "inline" ? paraEmbutida() : setModo("agent"))}
+            role="tab"
+            type="button"
+          >
+            {t(`automations.steps.agent.modes.${m}`)}
+          </button>
+        ))}
+      </div>
+      {modo === "agent" ? (
+        <ConfigDoAgent abrirAgent={abrirAgent} agents={agents} chave={chave} passo={passo} rascunho={rascunho} setRascunho={setRascunho} />
+      ) : (
+        <ConfigDaIA chave={chave} passo={passo} rascunho={rascunho} relerBiblioteca={relerBiblioteca} setRascunho={setRascunho} />
+      )}
+    </>
+  );
+}
+
 /** Passo com agent da biblioteca: quem trabalha vem de lá, a tarefa é daqui. */
 function ConfigDoAgent({
   chave,
@@ -626,32 +694,37 @@ function ConfigDoAgent({
   rascunho: Rascunho;
   setRascunho: (f: (r: Rascunho) => Rascunho) => void;
   agents: readonly AgentDaBiblioteca[];
-  abrirAgent: (detalhe: string) => void;
+  abrirAgent: AbrirAgent;
 }) {
   const { t } = useTranslation();
   const trocar = (novo: PassoDeIA): void => setRascunho((r) => ({ ...r, spec: trocarPasso(r.spec, passo.key, novo) }));
   const atual = agents.find((a) => a.id === passo.profile);
+  // O nome acompanha a troca só quando ainda era o do agent antigo: nome escrito à mão pela pessoa fica.
+  const escolher = (escolhido: AgentDaBiblioteca): void => {
+    const nome = passo.name === (atual?.name ?? "") || passo.name.trim() === "" ? escolhido.name : passo.name;
+    trocar({ ...passo, profile: escolhido.id, model: escolhido.model, name: nome });
+  };
 
   return (
     <>
       <Campo rotulo={t("automations.steps.agent.choose")}>
-        {agents.length === 0 ? (
-          <p className="text-muted-foreground text-xs">{t("automations.steps.agent.none")}</p>
-        ) : (
+        {agents.length === 0 ? null : (
           <select
             className={CAMPO}
             data-locum-passo-agent=""
             onChange={(e) => {
               const escolhido = agents.find((a) => a.id === e.target.value);
-              if (escolhido === undefined) return;
-              // O nome acompanha a troca só quando ainda era o do agent antigo:
-              // nome escrito à mão pela pessoa fica.
-              const nome = passo.name === (atual?.name ?? "") ? escolhido.name : passo.name;
-              trocar({ ...passo, profile: escolhido.id, model: escolhido.model, name: nome });
+              if (escolhido !== undefined) escolher(escolhido);
             }}
-            value={passo.profile}
+            value={passo.profile ?? ""}
           >
-            {atual === undefined ? <option value={passo.profile}>{passo.profile}</option> : null}
+            {passo.profile === undefined ? (
+              <option disabled value="">
+                {t("automations.steps.agent.pick")}
+              </option>
+            ) : atual === undefined ? (
+              <option value={passo.profile}>{passo.profile}</option>
+            ) : null}
             {agents.map((a) => (
               <option key={a.id} value={a.id}>
                 {a.name}
@@ -659,17 +732,30 @@ function ConfigDoAgent({
             ))}
           </select>
         )}
-        {atual === undefined ? null : (
-          <button
-            className="text-primary w-fit cursor-pointer text-xs hover:underline"
-            data-locum-passo-abrir-agent=""
-            onClick={() => abrirAgent(atual.id)}
-            type="button"
+        {agents.length === 0 ? <p className="text-muted-foreground text-xs">{t("automations.steps.agent.none")}</p> : null}
+        <div className="flex gap-1.5">
+          <Button
+            className="cursor-pointer"
+            data-locum-passo-criar-agent=""
+            onClick={() =>
+              abrirAgent("novo", (id, lista) => {
+                const criado = lista.find((a) => a.id === id);
+                if (criado !== undefined) escolher(criado);
+              })
+            }
+            size="sm"
+            variant="outline"
           >
-            {t("automations.steps.agent.open")}
-          </button>
-        )}
+            {t("automations.steps.agent.create")}
+          </Button>
+          {atual === undefined ? null : (
+            <Button className="cursor-pointer" data-locum-passo-abrir-agent="" onClick={() => abrirAgent(atual.id)} size="sm" variant="outline">
+              {t("automations.steps.agent.open")}
+            </Button>
+          )}
+        </div>
       </Campo>
+      {atual === undefined ? null : <ResumoDoAgent abrirAgent={abrirAgent} id={atual.id} />}
       <Campo rotulo={t("automations.panel.name")}>
         <input className={CAMPO} onChange={(e) => trocar({ ...passo, name: e.target.value })} value={passo.name} />
       </Campo>
@@ -682,6 +768,49 @@ function ConfigDoAgent({
         trocar={trocar}
       />
     </>
+  );
+}
+
+/** Modelo, ferramentas e um trecho das instruções do agent escolhido, só leitura. */
+function ResumoDoAgent({ id, abrirAgent }: { id: string; abrirAgent: AbrirAgent }) {
+  const { t } = useTranslation();
+  const lido = useRead("library.profile", id);
+  if (lido.data === undefined || lido.data === null) return null;
+  const r = resumoDoAgent(lido.data.spec);
+  const ferramentas = r.conexoes.length + r.avulsas + r.toolsets;
+  return (
+    <div className="border-border bg-background/40 flex flex-col gap-2 rounded-md border p-2.5 text-xs" data-locum-agent-resumo={id}>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+        <dt className="text-muted-foreground">{t("automations.steps.agent.summary.model")}</dt>
+        <dd className="truncate font-mono" title={lido.data.spec.model}>
+          {r.modelo}
+        </dd>
+        <dt className="text-muted-foreground">{t("automations.steps.agent.summary.tools")}</dt>
+        <dd className="flex min-w-0 flex-wrap gap-1">
+          {ferramentas === 0 ? (
+            <span className="text-muted-foreground">{t("automations.steps.agent.summary.noTools")}</span>
+          ) : (
+            <>
+              {r.conexoes.map((c) => (
+                <span className="bg-muted rounded px-1.5 py-0.5 font-mono text-[11px]" key={c.id}>
+                  {c.ferramentas > 0 ? `${c.id} · ${c.ferramentas}` : c.id}
+                </span>
+              ))}
+              {r.avulsas > 0 ? <span className="bg-muted rounded px-1.5 py-0.5 text-[11px]">{t("automations.steps.agent.summary.single", { count: r.avulsas })}</span> : null}
+              {r.toolsets > 0 ? <span className="bg-muted rounded px-1.5 py-0.5 text-[11px]">{t("automations.steps.agent.summary.toolsets", { count: r.toolsets })}</span> : null}
+            </>
+          )}
+        </dd>
+      </dl>
+      {r.trecho === "" ? null : (
+        <p className="text-muted-foreground line-clamp-6 whitespace-pre-wrap" data-locum-agent-instrucoes="">
+          {r.trecho}
+        </p>
+      )}
+      <button className="text-primary w-fit cursor-pointer hover:underline" onClick={() => abrirAgent(id)} type="button">
+        {t("automations.steps.agent.summary.edit")}
+      </button>
+    </div>
   );
 }
 
@@ -752,6 +881,7 @@ function ConfigDaIA({
         />
       </Campo>
       <div className="border-border flex flex-col gap-1.5 border-t pt-3">
+        <div className="flex items-center gap-1.5">
         <Button
           className="cursor-pointer self-start"
           data-locum-levar-para-biblioteca=""
@@ -762,7 +892,8 @@ function ConfigDaIA({
         >
           {t("automations.steps.agent.toLibrary")}
         </Button>
-        <p className="text-muted-foreground text-[11px]">{t("automations.steps.agent.toLibraryHint")}</p>
+        <Ajuda texto={t("automations.steps.agent.toLibraryHint")} />
+        </div>
         {erro === null ? null : <p className="text-destructive text-xs">{erro}</p>}
       </div>
     </>
