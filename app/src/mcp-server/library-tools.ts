@@ -80,6 +80,22 @@ export function registerLibraryTools(server: McpServer): void {
       return { id: versao.profileId, version: versao.version, note: versao.note };
     });
 
+  def(server, "list_library_agent_versions", "read",
+    "Every version of a library agent, newest first, each with its full spec, note and date (get_library_agent lists the versions without the spec).",
+    { id: z.string().min(1) }, ({ id }) => libraryService.listProfileVersions(id));
+
+  def(server, "restore_library_agent_version", "danger",
+    "Restores an old version of a library agent by recording its spec as a NEW version: the current one stays in the history. The tools and toolsets of the old version come back with it, so the automations that use the agent run with them from the next run. Read the versions with list_library_agent_versions.",
+    { id: z.string().min(1), version: z.number().int().positive(), note: z.string().optional() },
+    async ({ id, version, note }) => {
+      const antiga = await libraryService.getProfileVersion(id, version);
+      if (antiga === null) throw new Error(`agent "${id}" não tem a versão ${version} na biblioteca`);
+      const spec = AgentProfile.parse(antiga.spec);
+      recusarEscritaDaConta(await ferramentasDoAgent(spec));
+      const v = await libraryService.saveProfile({ spec: spec as AgentProfileInput, note: note ?? `restaurada da versão ${version}` });
+      return { id: v.profileId, version: v.version, note: v.note };
+    });
+
   server.registerTool(
     "list_toolsets",
     {

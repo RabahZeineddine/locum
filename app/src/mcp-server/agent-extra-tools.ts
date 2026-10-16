@@ -49,6 +49,20 @@ export function registerAgentExtraTools(server: McpServer, amb: Ambiente): void 
       return { agentId: v.agentId, version: v.version, note: v.note, ...(semValor.length > 0 ? { hiddenWithoutValue: semValor } : {}) };
     });
 
+  def(server, "list_agent_versions", "read",
+    "Every version of an agent, newest first, each with its full spec, note and date (get_agent only lists the versions without the spec).",
+    { agentId: z.string() }, ({ agentId }) => agentService.listVersions(agentId));
+
+  def(server, "restore_agent_version", "danger",
+    "Restores an old version of an agent by recording its spec as a NEW version, AS A PERSON, like the editor: the current version stays in the history, and the action modes the old version had (draft or auto) come back with it, so an auto action publishes without approval whenever the agent runs. Read the versions with list_agent_versions.",
+    { agentId: z.string(), version: z.number().int().positive(), note: z.string().optional() },
+    async ({ agentId, version, note }) => {
+      const antiga = (await agentService.listVersions(agentId)).find((v) => v.version === version);
+      if (antiga === undefined) throw new Error(`agent "${agentId}" não tem a versão ${version}`);
+      const v = await agentService.saveEdited(agentId, antiga.spec, note ?? `restaurada da versão ${version}`);
+      return { agentId: v.agentId, version: v.version, note: v.note };
+    });
+
   def(server, "duplicate_agent", "write",
     "A new agent copied from an existing one, keeping the action modes of the original (the copy is made as a person).",
     { fromId: z.string(), newId: z.string().describe("lowercase, digits and dashes, 2 to 63 chars"), newName: z.string().min(1) },

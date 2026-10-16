@@ -9,7 +9,7 @@
 export const FERRAMENTA_DO_CANAL: Record<string, string> = {
   "agents.list": "list_agents",
   "agents.get": "get_agent",
-  "agents.versions": "get_agent",
+  "agents.versions": "list_agent_versions",
   "agents.budgets": "list_agent_budgets",
   "agents.overview": "get_agents_overview",
   "agents.saveEdited": "save_agent_edited",
@@ -183,7 +183,7 @@ export const FERRAMENTA_DO_CANAL: Record<string, string> = {
 
   "library.profiles": "list_library_agents",
   "library.profile": "get_library_agent",
-  "library.profileVersions": "get_library_agent",
+  "library.profileVersions": "list_library_agent_versions",
   "library.toolsets": "list_toolsets",
   "library.saveProfile": "upsert_library_agent",
   "library.removeProfile": "remove_library_agent",
