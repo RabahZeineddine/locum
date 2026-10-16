@@ -389,6 +389,8 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "github.save": (token) => githubService.setToken(token),
     "github.forget": () => githubService.clearToken(),
     "github.check": () => githubService.check(),
+    "github.ghAccounts": (configDir) => githubService.contasDoGh(configDir),
+    "github.useGh": (ref) => githubService.usarGh(ref),
     "claudeCode.status": () => claudeCodeService.status(),
     "claudeCode.connect": () => claudeCodeService.connect(),
     "opencode.status": () => opencodeService.status(),

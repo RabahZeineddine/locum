@@ -20,6 +20,7 @@ import type { AftermathFetcher } from "../src/services/reconcile-service.js";
 import type { SlackService } from "../src/services/slack-service.js";
 // Valor, e não só tipo, mas sem efeito no import: `path.ts` não abre banco.
 import { smokeHome } from "../src/db/path.js";
+import { configurarGh } from "../src/services/gh-cli.js";
 import { escreverSessoesDeExemplo, SESSOES_DE_EXEMPLO } from "../src/services/claude-sessions-sample.js";
 
 const smoke = process.argv.includes("--smoke");
@@ -56,6 +57,8 @@ process.env.LOCUM_SQLITE_BINDING = foraDoAsar(
 // Pelo mesmo motivo do binding: o banco abre no import do núcleo, e a fumaça
 // precisa trocar de pasta antes disso para não plantar dado no banco real.
 const pastaDaFumaca = smoke ? smokeHome() : undefined;
+// A fumaça roda na máquina de quem desenvolve e não pode abrir o gh de verdade, que tem as contas dela.
+if (smoke) configurarGh({ semGh: true });
 if (pastaDaFumaca?.temporary) {
   console.log(`fumaça em pasta de rascunho: ${pastaDaFumaca.dir}`);
   // `app.exit` não passa pelo `will-quit`, mas o `exit` do processo sai sempre.

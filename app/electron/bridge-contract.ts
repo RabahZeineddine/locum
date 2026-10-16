@@ -338,6 +338,9 @@ interface ServiceApi {
   "github.save": GithubService["setToken"];
   "github.forget": GithubService["clearToken"];
   "github.check": GithubService["check"];
+  /** As contas que o gh desta máquina conhece, e o vínculo da conexão com uma delas. Nunca o token. */
+  "github.ghAccounts": GithubService["contasDoGh"];
+  "github.useGh": GithubService["usarGh"];
   /** Se o Claude Code desta máquina enxerga o Locum, e o clique que o liga. */
   "claudeCode.status": ClaudeCodeService["status"];
   "claudeCode.connect": ClaudeCodeService["connect"];
@@ -678,6 +681,8 @@ export const BRIDGE_CHANNELS = [
   "github.save",
   "github.forget",
   "github.check",
+  "github.ghAccounts",
+  "github.useGh",
   "claudeCode.status",
   "claudeCode.connect",
   "opencode.status",

@@ -1,4 +1,19 @@
 import type { Authorship } from "../config/types.js";
+import {
+  GhIndisponivelError,
+  contasDoGh,
+  lerRef,
+  lembrarFalhaDoGh,
+  limparCacheDoGh,
+  normalizarConfigDir,
+  serializarRef,
+  tokenDoGh,
+  tokenLembradoDoGh,
+  type GhConta,
+  type GhRef,
+  type GhUltimo,
+  type GhVinculo,
+} from "./gh-cli.js";
 import { secretService, type SecretService } from "./secret-service.js";
 import { settingsService, type SettingsService } from "./settings-service.js";
 
@@ -46,6 +61,9 @@ const DIFF_MAX_CHARS_KEY = "github:diffMaxChars";
  * `GITHUB_TOKEN` esquecido no shell de onde o app subiu. O ambiente continua
  * atrás porque é o caminho da linha de comando, onde não há keychain.
  *
+ * O que o cofre guarda pode ser o token ou o vínculo com uma conta do `gh`
+ * (`GhIndisponivelError` quando ela não responde).
+ *
  * É síncrona porque o cofre é síncrono, e quem chama, o `octokit()` do source,
  * também é.
  */
@@ -54,10 +72,93 @@ export function githubToken(
   ref: string = GITHUB_CREDENTIAL_REF,
 ): string | undefined {
   const guardado = secrets.get(ref);
-  if (guardado !== undefined && guardado.length > 0) return guardado;
+  if (guardado !== undefined && guardado.length > 0) {
+    // Vínculo com o gh: o token é pedido ao gh agora. Se ele não responde, o
+    // erro sobe em vez de cair no ambiente, porque a escolha foi explícita.
+    const vinculo = lerRef(guardado);
+    if (vinculo === undefined) return guardado;
+    try {
+      const token = tokenDoGh(vinculo);
+      registrarResultado(secrets, ref, vinculo, { ok: true });
+      return token;
+    } catch (erro) {
+      if (erro instanceof GhIndisponivelError) registrarResultado(secrets, ref, vinculo, { ok: false, erro: erro.message });
+      throw erro;
+    }
+  }
 
   const ambiente = process.env[GITHUB_TOKEN_ENV];
   return ambiente !== undefined && ambiente.length > 0 ? ambiente : undefined;
+}
+
+/**
+ * Guarda o último resultado do gh junto do vínculo, e só quando ele muda: a
+ * resolução roda a cada batida e não pode reescrever o cofre a cada uma. Só um
+ * sucesso apaga o erro, e é por isso que a tela não pisca entre erro e ok.
+ */
+function registrarResultado(
+  secrets: SecretService,
+  ref: string,
+  vinculo: GhVinculo,
+  resultado: { ok: boolean; erro?: string },
+): void {
+  const antes = vinculo.ultimo;
+  if (antes !== undefined && antes.ok === resultado.ok && antes.erro === resultado.erro) return;
+  const ultimo: GhUltimo = {
+    ok: resultado.ok,
+    quando: Math.floor(Date.now() / 1000),
+    ...(resultado.erro === undefined ? {} : { erro: resultado.erro }),
+  };
+  try {
+    secrets.set(ref, serializarRef({ ...vinculo, ultimo }));
+  } catch {
+    // Sem keychain neste processo não há onde gravar; o resultado vale só para esta execução.
+  }
+}
+
+/**
+ * O que se sabe do gh vinculado sem abrir processo: o token já lembrado, ou o
+ * último resultado. Para quem lista, e não para quem vai conectar.
+ */
+export function githubVinculoConfere(
+  secrets: SecretService = secretService,
+  ref: string = GITHUB_CREDENTIAL_REF,
+): boolean {
+  const guardado = secrets.get(ref);
+  const vinculo = guardado === undefined ? undefined : lerRef(guardado);
+  if (vinculo === undefined) return false;
+  return tokenLembradoDoGh(vinculo) !== undefined || vinculo.ultimo?.ok === true;
+}
+
+/** Como `githubToken`, mas só com o que o cache já tem: nunca abre o gh. */
+export function githubTokenSemProcesso(
+  secrets: SecretService = secretService,
+  ref: string = GITHUB_CREDENTIAL_REF,
+): string | undefined {
+  const guardado = secrets.get(ref);
+  const vinculo = guardado === undefined ? undefined : lerRef(guardado);
+  if (vinculo === undefined) return githubTokenSemVinculo(guardado);
+  return tokenLembradoDoGh(vinculo);
+}
+
+function githubTokenSemVinculo(guardado: string | undefined): string | undefined {
+  if (guardado !== undefined && guardado.length > 0) return guardado;
+  const ambiente = process.env[GITHUB_TOKEN_ENV];
+  return ambiente !== undefined && ambiente.length > 0 ? ambiente : undefined;
+}
+
+/**
+ * O GitHub respondeu 401: o token que o gh entregou deixou de valer. A recusa
+ * fica lembrada para esta conta pelo prazo de nova tentativa, de modo que uma
+ * rajada de requests não abre um processo por request. Sem vínculo, não faz nada.
+ */
+export function invalidarTokenDoGh(secrets: SecretService = secretService, ref: string = GITHUB_CREDENTIAL_REF): void {
+  const guardado = secrets.get(ref);
+  const vinculo = guardado === undefined ? undefined : lerRef(guardado);
+  if (vinculo === undefined) return;
+  const dica = `o GitHub recusou o token que o gh entregou para a conta ${vinculo.login}; rode gh auth login ou troque a conexão`;
+  lembrarFalhaDoGh(vinculo, dica);
+  registrarResultado(secrets, ref, vinculo, { ok: false, erro: dica });
 }
 
 /** Quem é a conta do token e o que ela pode. Nunca o token. */
@@ -88,6 +189,12 @@ export interface GithubStatus {
   stored: boolean;
   /** Este processo alcança o keychain, isto é, dá para gravar e ler valor. */
   vault: boolean;
+  /** A conta do gh a que a conexão está vinculada, quando é esse o caminho escolhido. */
+  vinculo: { host: string; login: string; configDir?: string } | null;
+  /** O gh vinculado não respondeu na última vez: a mensagem clara, nunca a saída dele. */
+  erro: string | null;
+  /** O último resultado conhecido do gh vinculado, ou nulo quando nunca foi conferido. */
+  ultimoGh: GhUltimo | null;
   /** Existe `GITHUB_TOKEN` no ambiente, que é o caminho de trás. */
   env: boolean;
   /** Segundos desde a época, ou nulo quando nunca foi conferido. */
@@ -103,7 +210,9 @@ export type GithubCheck =
    * responder o que já se sabe daqui.
    */
   | { ok: false; reason: "missing" }
-  | { ok: false; reason: "refused"; message: string };
+  | { ok: false; reason: "refused"; message: string }
+  /** O gh vinculado não entregou o token: problema da máquina, e não recusa do GitHub. */
+  | { ok: false; reason: "gh"; message: string };
 
 /** Quem pergunta ao GitHub de quem é o token. Trocável para não sair da máquina no exame. */
 export type GithubProbe = (token: string) => Promise<GithubIdentity>;
@@ -161,8 +270,19 @@ export class GithubService {
 
     const ambiente = process.env[GITHUB_TOKEN_ENV];
 
+    const guardado = this.secrets.has(this.ref) ? this.secrets.get(this.ref) : undefined;
+    const ref = guardado === undefined ? undefined : lerRef(guardado);
+
+    // O último resultado guardado, e não o cache: status roda a cada leitura da
+    // tela, não abre processo e não pisca quando o prazo de nova tentativa vence.
+    const ultimoGh = ref?.ultimo ?? null;
+    const erro = ultimoGh !== null && !ultimoGh.ok ? (ultimoGh.erro ?? null) : null;
+
     return {
       ref: this.ref,
+      erro,
+      ultimoGh,
+      vinculo: ref === undefined ? null : { host: ref.host, login: ref.login, ...(ref.configDir === undefined ? {} : { configDir: ref.configDir }) },
       stored: this.secrets.has(this.ref),
       vault: this.secrets.available,
       env: ambiente !== undefined && ambiente.length > 0,
@@ -191,19 +311,56 @@ export class GithubService {
     const limpo = token.trim();
     if (limpo.length === 0) throw new Error("token vazio não se guarda, use clearToken");
 
+    limparCacheDoGh();
     this.secrets.set(this.ref, limpo);
+    await this.esquecerConferencia();
+  }
+
+  /** As contas que o gh tem nesta máquina, para a pessoa escolher. Nunca o token. */
+  async contasDoGh(configDir?: string): Promise<GhConta[]> {
+    return contasDoGh(configDir);
+  }
+
+  /**
+   * Vincula a conexão a uma conta do gh. Guarda só a referência, nunca o token,
+   * e joga fora a conferência da credencial anterior pelo mesmo motivo do `setToken`.
+   */
+  async usarGh(ref: GhRef): Promise<void> {
+    const host = ref.host.trim();
+    const login = ref.login.trim();
+    const bruto = ref.configDir?.trim();
+    const configDir = bruto === undefined || bruto.length === 0 ? undefined : normalizarConfigDir(bruto);
+    // Vão como argumento do gh: nada que ele leia como opção.
+    if (host.length === 0 || login.length === 0 || host.startsWith("-") || login.startsWith("-")) {
+      throw new Error("host e login do gh precisam ser preenchidos e não podem começar com hífen");
+    }
+    // O token vem do api.github.com e só dele: a conta de outro host mandaria o token para o lugar errado.
+    if (host.toLowerCase() !== "github.com") {
+      throw new Error(`o Locum só fala com github.com por enquanto; ${host} é outro servidor do GitHub`);
+    }
+    limparCacheDoGh();
+    this.secrets.set(this.ref, serializarRef({ origem: "gh", host, login, ...(configDir === undefined ? {} : { configDir }) }));
     await this.esquecerConferencia();
   }
 
   /** Devolve se havia algo para apagar. */
   async clearToken(): Promise<boolean> {
+    limparCacheDoGh();
     const havia = this.secrets.remove(this.ref);
     await this.esquecerConferencia();
     return havia;
   }
 
   async check(): Promise<GithubCheck> {
-    const token = githubToken(this.secrets, this.ref);
+    // Conferir é pedir de novo: a conta pode ter sido religada no gh desde a última vez.
+    limparCacheDoGh();
+    let token: string | undefined;
+    try {
+      token = githubToken(this.secrets, this.ref);
+    } catch (erro) {
+      if (erro instanceof GhIndisponivelError) return { ok: false, reason: "gh", message: erro.message };
+      throw erro;
+    }
     if (token === undefined) return { ok: false, reason: "missing" };
 
     try {
@@ -216,6 +373,7 @@ export class GithubService {
 
       return { ok: true, login, scopes, checkedAt };
     } catch (erro) {
+      if ((erro as { status?: number }).status === 401) invalidarTokenDoGh(this.secrets, this.ref);
       const bruta = erro instanceof Error ? erro.message : String(erro);
       // O cliente HTTP já esconde o cabeçalho de autorização, mas a mensagem
       // dele passa por log e por tela, e quem a monta é código de terceiro.
