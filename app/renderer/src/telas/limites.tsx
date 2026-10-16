@@ -44,7 +44,7 @@ export function LinhaDoLimite({ limite, comOrigem = true }: { limite: Limite; co
       </span>
       <Barra uso={limite.uso} />
       {limite.resetaEm === undefined ? null : (
-        <span className="text-muted-foreground">{t("limits.resets", { when: quandoReseta(limite.resetaEm, i18n.language) })}</span>
+        <span className="text-muted-foreground">{t("limits.resets", { when: quandoReseta(t, limite.resetaEm, i18n.language) })}</span>
       )}
       {comOrigem ? <span className="text-muted-foreground">· {t(`limits.origin.${limite.origem}`)}</span> : null}
     </div>

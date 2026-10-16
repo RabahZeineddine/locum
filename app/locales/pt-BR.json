@@ -2777,6 +2777,8 @@
     "minutesAgo": "há {{count}} min",
     "hoursAgo": "há {{count}} h",
     "daysAgo": "há {{count}} d",
+    "inMinutes": "em {{count}} min · {{time}}",
+    "inHours": "em {{hours}}h{{minutes}} · {{time}}",
     "resets": "reseta {{when}}",
     "key": {
       "5h": "5h",

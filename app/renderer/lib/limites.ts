@@ -1,13 +1,18 @@
 import type { TFunction } from "i18next";
 
-/** Hora do dia quando o reset é hoje; senão dia e mês. */
-export function quandoReseta(resetaEmS: number, idioma: string, agoraMs: number = Date.now()): string {
-  const data = new Date(resetaEmS * 1000);
-  const hoje = new Date(agoraMs);
-  const mesmoDia = data.getFullYear() === hoje.getFullYear() && data.getMonth() === hoje.getMonth() && data.getDate() === hoje.getDate();
-  return mesmoDia
-    ? data.toLocaleTimeString(idioma, { hour: "2-digit", minute: "2-digit" })
-    : data.toLocaleDateString(idioma, { day: "2-digit", month: "2-digit" });
+/**
+ * Quando o limite volta. Janela curta (a de 5h) diz quanto falta e a hora:
+ * "em 42 min · 23:10", "em 3h12 · 02:13". Mais longe, dia e hora: "sex 16/10 02:13".
+ */
+export function quandoReseta(t: TFunction, resetaEmS: number, idioma: string, agoraMs: number = Date.now()): string {
+  const ms = resetaEmS * 1000;
+  const min = Math.max(0, Math.ceil((ms - agoraMs) / 60_000));
+  if (min >= 24 * 60) return quandoSolta(ms, idioma, agoraMs);
+  const hora = horaDoDia(ms, idioma);
+  if (min < 60) return t("limits.inMinutes", { count: min, time: hora });
+  const h = Math.floor(min / 60);
+  const resto = min % 60;
+  return t("limits.inHours", { hours: h, minutes: String(resto).padStart(2, "0"), time: hora });
 }
 
 export function horaDoDia(ms: number, idioma: string): string {
