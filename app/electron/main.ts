@@ -1057,7 +1057,9 @@ async function checkRenderer(): Promise<string> {
   trustWindow(window);
   const erros: string[] = [];
   window.webContents.on("console-message", (event) => {
-    if (event.level === "error") erros.push(event.message);
+    // O aviso de laço do ResizeObserver é do navegador e benigno: o layout já
+    // assentou, só sobrou notificação para o próximo quadro.
+    if (event.level === "error" && !/^ResizeObserver loop/.test(event.message)) erros.push(event.message);
   });
 
   try {
