@@ -180,4 +180,9 @@ test("eventsForRun diz se a automação depende de evento e lista os recentes do
 
   const livre = await salvar(agents, LIVRE);
   assert.equal((await automations.eventsForRun(livre)).precisaDeEvento, null);
+
+  // Ação em modo auto: o diálogo avisa que o evento recente publica de verdade.
+  assert.deepEqual(ctx.acoesAuto, []);
+  const auto = await salvar(agents, [REVISAR[0]!, { ...REVISAR[1]!, mode: "auto" }]);
+  assert.deepEqual((await automations.eventsForRun(auto)).acoesAuto, ["teams.post"]);
 });

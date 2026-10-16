@@ -23,7 +23,7 @@ import { runLogic } from "./logic.js";
 import { discoverSkills, selectSkills, skillsAusentes, skillsIndisponiveis, skillsPreamble, type LoadedSkill, type SkillContext } from "../skills/loader.js";
 import { ApprovalGate, settleStep } from "../approval/gate.js";
 import { BudgetExceeded, assertWithinBudget, recordSpend, type Spend } from "./budget.js";
-import { ehLeitura } from "../config/leitura.js";
+import { ehLeituraDa, type FerramentaClassificavel } from "../config/leitura.js";
 import { ACOES_DE_CONVERSA, dependenciaDeEvento, recusaSemEvento } from "./dependencia-de-evento.js";
 import { SUBSCRIPTION_RUNTIMES } from "../runtimes/types.js";
 import { separarDaConta } from "../runtimes/claude-account.js";
@@ -45,7 +45,14 @@ type Deps = {
   skills?: Map<string, LoadedSkill>;
   /** Graph da reação do Teams. Ausente usa a conexão do Teams. Existe para o teste trocar. */
   teams?: TeamsReactionOptions;
+  /** As ferramentas que o servidor anotou, do cache da última leitura. Ausente usa o cache do banco. Existe para o teste trocar. */
+  ferramentasGuardadas?: (servidor: string) => Promise<readonly FerramentaClassificavel[] | null>;
 };
+
+async function ferramentasDoCache(servidor: string): Promise<readonly FerramentaClassificavel[] | null> {
+  const { mcpService } = await import("../services/mcp-service.js");
+  return (await mcpService.cachedTools(servidor))?.tools ?? null;
+}
 
 const nowSec = () => Math.floor(Date.now() / 1000);
 
@@ -688,7 +695,7 @@ export class Executor {
     // Evento montado de um link colado não deve publicar nada: a pessoa pediu
     // para ver o que a automação faria com aquele PR. A ação não falha nem
     // entra na Fila: o passo termina com o texto que sairia.
-    if (args.payload.semConversa === true && publicaParaFora(step, args.payload, outputs)) {
+    if (args.payload.semConversa === true && (await publicaParaFora(step, args.payload, outputs, this.deps.ferramentasGuardadas ?? ferramentasDoCache))) {
       const motivo = ACOES_DE_CONVERSA.has(step.action) ? ENSAIO_SEM_CONVERSA : ENSAIO_EVENTO_COLADO;
       const output = { state: "ensaio", motivo, text: textoDaResposta(saida) };
       await db
@@ -763,7 +770,11 @@ export class Executor {
   }
 }
 
-/** O texto que a resposta teria: o campo `text` da saída, escrita em JSON ou já como objeto, ou a saída inteira. */
+/**
+ * O texto que a resposta teria: o campo `text` da saída, escrita em JSON ou já
+ * como objeto, ou a saída inteira. Saída que é um Adaptive Card sem `text` mostra
+ * os textos do cartão, e o JSON dele quando não tem nenhum.
+ */
 function textoDaResposta(saida: unknown): string | null {
   let valor = saida;
   if (typeof valor === "string") {
@@ -773,8 +784,27 @@ function textoDaResposta(saida: unknown): string | null {
       return typeof saida === "string" ? saida : null;
     }
   }
-  const texto = (valor as { text?: unknown } | null)?.text;
-  return typeof texto === "string" ? texto : typeof saida === "string" ? saida : null;
+  const objeto = valor !== null && typeof valor === "object" ? (valor as { text?: unknown; card?: unknown }) : null;
+  if (typeof objeto?.text === "string") return objeto.text;
+  if (objeto === null) return typeof saida === "string" ? saida : null;
+  const card = objeto.card !== null && typeof objeto.card === "object" ? objeto.card : objeto;
+  return resumoDoCard(card) ?? (typeof saida === "string" ? saida : null);
+}
+
+/** Os textos do corpo de um Adaptive Card, um por linha; o JSON do cartão se não houver nenhum. */
+function resumoDoCard(card: object): string | null {
+  const textos: string[] = [];
+  const colher = (no: unknown): void => {
+    if (Array.isArray(no)) return no.forEach(colher);
+    if (no === null || typeof no !== "object") return;
+    const o = no as Record<string, unknown>;
+    if (typeof o.text === "string" && o.text.trim() !== "") textos.push(o.text);
+    for (const filho of [o.body, o.items, o.columns, o.facts]) colher(filho);
+  };
+  colher((card as { body?: unknown }).body);
+  if (textos.length > 0) return textos.join("\n");
+  const json = JSON.stringify(card, null, 2);
+  return json === undefined || json === "{}" ? null : json;
 }
 
 /**
@@ -890,17 +920,28 @@ export function renderPrompt(
 }
 
 /** O que o passo de resposta diz quando o run de teste não tem conversa de origem. */
-export const ENSAIO_SEM_CONVERSA = "ensaio, sem conversa para responder";
-export const ENSAIO_EVENTO_COLADO = "ensaio, evento de link colado: nada é publicado";
+/** Por que o passo virou ensaio, em código: o renderer traduz. */
+export const ENSAIO_SEM_CONVERSA = "sem-conversa";
+export const ENSAIO_EVENTO_COLADO = "evento-colado";
 
 /**
- * Se a ação sairia do Locum. Leitura segue o modo do passo: `mcp.call` com
- * ferramenta de leitura e `http.request` com GET não mudam nada do outro lado.
- * Na dúvida (ferramenta ou método que o fluxo não diz) conta como escrita.
+ * Se a ação sairia do Locum. Só passa como leitura o `http.request` GET e o
+ * `mcp.call` de ferramenta que o servidor anotou como leitura (`readOnlyHint`,
+ * no cache da última leitura): o nome sozinho engana (`query`, `report_issue`).
+ * Sem anotação conhecida, conta como escrita.
  */
-function publicaParaFora(step: ActionStep, payload: EventPayload, outputs: Map<string, unknown>): boolean {
+async function publicaParaFora(
+  step: ActionStep,
+  payload: EventPayload,
+  outputs: Map<string, unknown>,
+  guardadas: (servidor: string) => Promise<readonly FerramentaClassificavel[] | null>,
+): Promise<boolean> {
   const params = step.params === undefined ? {} : (renderParams(step.params, payload, outputs) as Record<string, unknown>);
-  if (step.action === "mcp.call") return typeof params.tool !== "string" || !ehLeitura(params.tool);
+  if (step.action === "mcp.call") {
+    if (typeof params.server !== "string" || typeof params.tool !== "string") return true;
+    const ferramenta = (await guardadas(params.server).catch(() => null))?.find((f) => f.name === params.tool);
+    return ferramenta?.readOnlyHint !== true || !ehLeituraDa(ferramenta);
+  }
   if (step.action === "http.request") return String(params.method ?? "POST").toUpperCase() !== "GET";
   return true;
 }

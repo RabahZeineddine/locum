@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { seguirRun, type Agenda } from "../renderer/lib/acompanhar-run.js";
 import { recusaSemEvento } from "../src/executor/dependencia-de-evento.js";
-import { rotuloDoErroDeRun } from "../renderer/lib/rotulos.js";
+import { rotuloDoErroDeRun, rotuloDoMotivoDoEnsaio } from "../renderer/lib/rotulos.js";
 
 /** Relógio de mentira: os timers ficam numa lista e o teste decide quando eles disparam. */
 function relogio() {
@@ -104,4 +104,11 @@ test("a recusa sem evento é traduzida pelo código, e outro erro passa como vei
   const acao = rotuloDoErroDeRun(t, recusaSemEvento({ codigo: "acao", acao: "teams.post" }));
   assert.match(acao, /automations\.runWith\.reason\.action/);
   assert.equal(rotuloDoErroDeRun(t, "a ação deu 500"), "a ação deu 500");
+});
+
+test("o motivo do ensaio em código é traduzido e o texto livre de run antigo passa como veio", () => {
+  const t = ((chave: string) => chave) as never;
+  assert.equal(rotuloDoMotivoDoEnsaio(t, "sem-conversa"), "runs.dryRun.reason.sem-conversa");
+  assert.equal(rotuloDoMotivoDoEnsaio(t, "evento-colado"), "runs.dryRun.reason.evento-colado");
+  assert.equal(rotuloDoMotivoDoEnsaio(t, "ensaio, sem conversa para responder"), "ensaio, sem conversa para responder");
 });

@@ -162,10 +162,12 @@ export class AutomationService {
    * O que o "Executar com" precisa para abrir: se a automação depende de
    * evento, e os últimos que os gatilhos dela já gravaram.
    */
-  async eventsForRun(agentId: string): Promise<{ precisaDeEvento: MotivoDeEvento | null; recentes: EventoRecente[] }> {
+  async eventsForRun(agentId: string): Promise<{ precisaDeEvento: MotivoDeEvento | null; recentes: EventoRecente[]; acoesAuto: string[] }> {
     const version = await this.agents.getLatestVersion(agentId);
     if (version === undefined) throw new Error(`agent "${agentId}" não existe`);
-    return { precisaDeEvento: dependenciaDeEvento(version.spec), recentes: await this.eventos.recentes(agentId) };
+    // O evento recente roda de verdade: a ação em modo auto publica sem passar pela Fila.
+    const acoesAuto = [...new Set(version.spec.steps.flatMap((p) => (p.type === "action" && p.mode === "auto" ? [p.action] : [])))];
+    return { precisaDeEvento: dependenciaDeEvento(version.spec), recentes: await this.eventos.recentes(agentId), acoesAuto };
   }
 
   /**

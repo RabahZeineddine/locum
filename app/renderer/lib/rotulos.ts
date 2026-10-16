@@ -75,6 +75,11 @@ export function rotuloDoErroDeRun(t: TFunction, mensagem: string): string {
   return motivo === null ? mensagem : t("automations.runWith.refused", { reason: rotuloDoMotivoDeEvento(t, motivo) });
 }
 
+/** Por que o passo virou ensaio. Run gravado antes dos códigos traz o texto livre, que passa como veio. */
+export function rotuloDoMotivoDoEnsaio(t: TFunction, motivo: string): string {
+  return motivo === "sem-conversa" || motivo === "evento-colado" ? t(`runs.dryRun.reason.${motivo}`) : motivo;
+}
+
 /** "usa {{event.repo}}" ou "tem a ação teams.post", na língua da janela. */
 export function rotuloDoMotivoDeEvento(t: TFunction, motivo: MotivoDeEvento): string {
   return motivo.codigo === "marcador"

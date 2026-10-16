@@ -18,7 +18,7 @@ import {
   listarProvisorias,
 } from "@/lib/rascunho-automacao";
 import { semPrefixoDoIpc } from "@/lib/erro-da-ponte";
-import { rotuloDeEstado } from "@/lib/rotulos";
+import { rotuloDeEstado, rotuloDoErroDeRun } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
 import { Loader2, Play, Plus, Upload } from "lucide-react";
 import { useEffect, useState, type DragEvent, type ReactNode } from "react";
@@ -385,10 +385,10 @@ export function LinhaDaAutomacao({
               e.stopPropagation();
               abrirRun(linha.lastRun!.id);
             }}
-            title={linha.lastRun.error}
+            title={rotuloDoErroDeRun(t, linha.lastRun.error)}
             type="button"
           >
-            {linha.lastRun.error}
+            {rotuloDoErroDeRun(t, linha.lastRun.error)}
           </button>
         ) : null}
       </span>

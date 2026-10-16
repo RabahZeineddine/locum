@@ -26,6 +26,7 @@ interface Pedido extends Opcoes {
   nome: string;
   precisaDeEvento: NonNullable<Contexto["precisaDeEvento"]>;
   recentes: Evento[];
+  acoesAuto: string[];
 }
 
 /**
@@ -68,7 +69,7 @@ export function useExecutarAgora(): {
           await iniciar(agentId, nome, {}, opcoes);
           return;
         }
-        setPedido({ agentId, nome, precisaDeEvento: contexto.precisaDeEvento, recentes: contexto.recentes, ...opcoes });
+        setPedido({ agentId, nome, precisaDeEvento: contexto.precisaDeEvento, recentes: contexto.recentes, acoesAuto: contexto.acoesAuto, ...opcoes });
       } catch (e) {
         toasts.recusar(rotuloDoErroDeRun(t, semPrefixoDoIpc(e instanceof Error ? e.message : String(e))));
       } finally {
@@ -173,6 +174,12 @@ function ExecutarCom({
             />
             <p className="text-muted-foreground text-xs">{t("automations.runWith.linkHelp")}</p>
           </section>
+
+          {link.trim() === "" && escolhido !== null && pedido.acoesAuto.length > 0 ? (
+            <p className="text-muted-foreground text-xs" data-locum-executar-publica="">
+              {t("automations.runWith.publishWarning", { actions: pedido.acoesAuto.join(", ") })}
+            </p>
+          ) : null}
 
           {erro === null ? null : (
             <p className="text-destructive text-xs" data-locum-executar-erro="">

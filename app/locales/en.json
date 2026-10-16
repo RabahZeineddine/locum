@@ -740,7 +740,11 @@
     "failedAt": "Failed at step \"{{step}}\"",
     "dryRun": {
       "badge": "dry run",
-      "text": "Text that would be posted"
+      "text": "Text that would be posted",
+      "reason": {
+        "sem-conversa": "no conversation to answer",
+        "evento-colado": "event from a pasted link, nothing is published"
+      }
     }
   },
   "settings": {
@@ -2593,7 +2597,8 @@
         "marker": "uses {{marcador}}",
         "action": "has the {{acao}} action"
       },
-      "refused": "This automation needs an event ({{reason}}). Choose a recent event or paste a link."
+      "refused": "This automation needs an event ({{reason}}). Choose a recent event or paste a link.",
+      "publishWarning": "This event already happened: the automation really runs with it. {{actions}} is in automatic mode and publishes again in your name, without going through the queue."
     }
   },
   "library": {

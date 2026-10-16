@@ -764,7 +764,11 @@
     "failedAt": "Falhou no passo \"{{step}}\"",
     "dryRun": {
       "badge": "ensaio",
-      "text": "Texto que seria postado"
+      "text": "Texto que seria postado",
+      "reason": {
+        "sem-conversa": "sem conversa para responder",
+        "evento-colado": "evento de link colado, nada é publicado"
+      }
     }
   },
   "settings": {
@@ -2643,7 +2647,8 @@
         "marker": "usa {{marcador}}",
         "action": "tem a ação {{acao}}"
       },
-      "refused": "Esta automação precisa de um evento ({{reason}}). Escolha um evento recente ou cole um link."
+      "refused": "Esta automação precisa de um evento ({{reason}}). Escolha um evento recente ou cole um link.",
+      "publishWarning": "Este é um evento que já aconteceu: a automação roda de verdade com ele. {{actions}} está em modo automático e publica de novo em seu nome, sem passar pela Fila."
     }
   },
   "library": {

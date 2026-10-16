@@ -158,18 +158,33 @@ for (const acao of ["teams.post", "slack.post"]) {
     assert.equal(await executor.execute(runId), "done");
     const resposta = (await passos(runId)).find((p) => p.stepKey === "responder")!;
     assert.equal(resposta.status, "done");
-    assert.deepEqual(resposta.output, { state: "ensaio", motivo: "ensaio, sem conversa para responder", text: "Oi, revisei." });
+    assert.deepEqual(resposta.output, { state: "ensaio", motivo: "sem-conversa", text: "Oi, revisei." });
     assert.equal((await db.select().from(schema.approvals).where(eq(schema.approvals.runId, runId))).length, 0);
     assert.deepEqual(publicados, []);
   });
 }
+
+test("ensaio de saída que é um Adaptive Card sem text mostra os textos do cartão, e não null", async () => {
+  const card = { type: "AdaptiveCard", body: [{ type: "TextBlock", text: "Revisão do PR" }, { type: "TextBlock", text: "Tudo certo" }] };
+  const executor = new Executor({ mcp: registroFalso, runtimes: new Map([["native", runtime([], JSON.stringify({ card }))]]), gate: new ApprovalGate(new Map()), machineId: "m" });
+  const { versao } = await agente(SPEC_RESPOSTA("teams.post"));
+  const eventoId = await evento({ repo: "o/r", changedFiles: [], prOwner: "o", prRepo: "r", prNumber: 7, semConversa: true });
+  const runId = await executor.createRun(versao.id, eventoId);
+  assert.equal(await executor.execute(runId), "done");
+  const resposta = (await passos(runId)).find((p) => p.stepKey === "responder")!;
+  assert.deepEqual((resposta.output as { text: string }).text, "Revisão do PR\nTudo certo");
+});
 
 /** Toda ação que publica para fora vira ensaio no evento de link colado; a que só lê segue o modo do passo. */
 const ACOES_EXTERNAS: { nome: string; acao: string; params?: Record<string, unknown>; target?: string; ensaio: boolean }[] = [
   { nome: "github.review_comment", acao: "github.review_comment", ensaio: true },
   { nome: "tracker.create_issue", acao: "tracker.create_issue", target: "jira", ensaio: true },
   { nome: "mcp.call de escrita", acao: "mcp.call", params: { server: "jira", tool: "create_issue", args: {} }, ensaio: true },
-  { nome: "mcp.call de leitura", acao: "mcp.call", params: { server: "jira", tool: "get_issue", args: {} }, ensaio: false },
+  { nome: "mcp.call find_and_replace, sem anotação", acao: "mcp.call", params: { server: "jira", tool: "find_and_replace", args: {} }, ensaio: true },
+  { nome: "mcp.call report_issue, sem anotação", acao: "mcp.call", params: { server: "jira", tool: "report_issue", args: {} }, ensaio: true },
+  { nome: "mcp.call get_issue, sem anotação", acao: "mcp.call", params: { server: "jira", tool: "get_issue", args: {} }, ensaio: true },
+  { nome: "mcp.call query anotada como leitura pelo servidor", acao: "mcp.call", params: { server: "jira", tool: "query", args: {} }, ensaio: false },
+  { nome: "mcp.call query anotada como escrita pelo servidor", acao: "mcp.call", params: { server: "jira", tool: "query_write", args: {} }, ensaio: true },
   { nome: "http.request POST", acao: "http.request", params: { method: "POST", url: "https://example.com/x" }, ensaio: true },
   { nome: "http.request sem método (o padrão é POST)", acao: "http.request", params: { url: "https://example.com/x" }, ensaio: true },
   { nome: "http.request GET", acao: "http.request", params: { method: "GET", url: "https://example.com/x" }, ensaio: false },
@@ -179,7 +194,7 @@ for (const caso of ACOES_EXTERNAS) {
   test(`evento colado: ${caso.nome} ${caso.ensaio ? "vira ensaio e nada sai" : "segue o modo do passo"}`, async () => {
     const publicados: unknown[] = [];
     const gate = new ApprovalGate(new Map([[caso.acao, { publish: async (p: unknown) => void publicados.push(p) }]]));
-    const executor = new Executor({ mcp: registroFalso, runtimes: new Map([["native", runtime([], '{"text":"Oi, revisei."}')]]), gate, machineId: "m" });
+    const executor = new Executor({ mcp: registroFalso, runtimes: new Map([["native", runtime([], '{"text":"Oi, revisei."}')]]), gate, machineId: "m", ferramentasGuardadas: async () => [{ name: "query", readOnlyHint: true }, { name: "query_write", readOnlyHint: false }] });
     const { versao } = await agente([
       modelo("revisar", "Revise {{event.repo}}"),
       { type: "action", key: "responder", name: "responder", action: caso.acao, mode: "approve", input: "revisar", needs: ["revisar"], ...(caso.params ? { params: caso.params } : {}), ...(caso.target ? { target: caso.target } : {}) },

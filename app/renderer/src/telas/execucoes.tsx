@@ -27,6 +27,7 @@ import {
   rotuloDoErroDeRun,
   rotuloDoModelo,
   rotuloDoMotivo,
+  rotuloDoMotivoDoEnsaio,
 } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
 import {
@@ -758,7 +759,7 @@ function PassoDaExecucao({
       {ensaio === null ? null : (
         <div className="border-border bg-muted/30 mt-2 flex flex-col gap-1 rounded-md border p-2.5 text-xs" data-locum-ensaio-texto="">
           <span className="text-muted-foreground">
-            {ensaio.motivo} · {t("runs.dryRun.text")}
+            {rotuloDoMotivoDoEnsaio(t, ensaio.motivo)} · {t("runs.dryRun.text")}
           </span>
           <span className="whitespace-pre-wrap break-words">{ensaio.text ?? ""}</span>
         </div>
