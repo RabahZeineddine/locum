@@ -64,6 +64,12 @@ Antes de abrir um PR, `npm test` e `npm run verify` precisam sair zero.
 
 ## Regras que não abrem exceção
 
+**Mecanismo, não política.** O app não faz nada que a pessoa não montou. Todo
+efeito fora da máquina é um passo de ação do fluxo; gatilho, executor e
+scheduler não escrevem fora, e uma ação não dispara outra escondida. Filtro,
+limite, emoji e texto que sai para outra pessoa são parâmetros do nó, com padrão
+visível na tela e no MCP. Veja o ADR 0006 e o [CLAUDE.md](CLAUDE.md).
+
 **Escrita externa passa pela aprovação.** Nenhum código novo publica, comenta,
 envia ou altera nada fora da máquina sem passar por `approval/`. Ferramenta MCP
 do próprio Locum não aprova nem publica; isso é decisão do ADR 0002.

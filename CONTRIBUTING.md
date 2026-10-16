@@ -65,6 +65,13 @@ Before opening a PR, `npm test` and `npm run verify` must exit with zero.
 
 ## Rules without exceptions
 
+**Mechanism, not policy.** The app does nothing the person did not build. Every
+effect outside the machine is an action step of the flow; triggers, the
+executor and the scheduler do not write outside, and one action does not fire
+another hidden one. Filters, limits, emoji and text sent to other people are
+node parameters, with the default visible in the UI and over MCP. See ADR 0006
+and [CLAUDE.md](CLAUDE.md).
+
 **External writes go through approval.** No new code publishes, comments, sends
 or changes anything outside the machine without going through `approval/`.
 Locum's own MCP tools neither approve nor publish; that is the decision in
