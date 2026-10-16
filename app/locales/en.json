@@ -2594,7 +2594,9 @@
       "implicitHint": "This connection still turns on every read the server gains. Open the agent and save to pin the list, after looking at the tools.",
       "reviewing_one": "Only the new tool.",
       "reviewing_other": "Only the {{count}} new tools.",
-      "showAll": "Show all"
+      "showAll": "Show all",
+      "newTools_zero": "{{count}} new tools, off",
+      "reviewing_zero": "Only the {{count}} new tools."
     },
     "skills": {
       "none": "No skill chosen.",
@@ -2854,6 +2856,7 @@
       "descriptionHint": "One line saying when to use the skill.",
       "body": "Body (markdown)",
       "create": "Create skill"
-    }
+    },
+    "removeConfirmAgents_zero": "Remove {{name}}? {{count}} agents use it: they show the warning and runs fail until the skill is back."
   }
 }

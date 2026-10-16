@@ -2650,7 +2650,9 @@
       "implicitHint": "Esta conexão ainda liga toda leitura que o servidor ganhar. Abra o agent e salve para fixar a lista, depois de ver as ferramentas.",
       "reviewing_one": "Só a ferramenta nova.",
       "reviewing_other": "Só as {{count}} ferramentas novas.",
-      "showAll": "Ver todas"
+      "showAll": "Ver todas",
+      "newTools_zero": "{{count}} ferramentas novas, desligadas",
+      "reviewing_zero": "Só as {{count}} ferramentas novas."
     },
     "skills": {
       "none": "Nenhuma skill escolhida.",
@@ -2913,6 +2915,7 @@
       "descriptionHint": "Uma linha dizendo quando usar a skill.",
       "body": "Corpo (markdown)",
       "create": "Criar skill"
-    }
+    },
+    "removeConfirmAgents_zero": "Remover {{name}}? {{count}} agents a usam: eles mostram o aviso e a execução falha até a skill voltar."
   }
 }
