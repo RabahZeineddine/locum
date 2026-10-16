@@ -461,6 +461,29 @@ test("o gatilho que o pacote deixou esperando chats só vale para todos com a co
   assert.equal(((await triggerService.get(g2.id))?.config as { chatsPendentes: number }).chatsPendentes, 0);
 });
 
+test("trocar o gatilho de pacote por um sem id não escapa da pendência de chats", async () => {
+  const client = await ligarCliente();
+  const agentId = id("auto");
+  const antigo = (await salvar(client, agentId, [{ config: { ...TEAMS_PR, chatsPendentes: 2 } }])).triggers[0]!;
+  const refaz = (triggers: unknown[]) => client.callTool({ name: "save_automation", arguments: { spec: spec(agentId), triggers, note: "troca" } });
+
+  // Sem id, pendência zerada e ligado: o novo herda a pendência e a ligação é recusada.
+  recusa(await refaz([{ config: { ...TEAMS_PR, chatsPendentes: 0 }, enabled: true }]), /escolha os chats/);
+  assert.ok(await triggerService.get(antigo.id), "o gatilho antigo continua, porque a gravação foi recusada");
+
+  // Sem ligar, o novo nasce herdando a pendência, e o antigo sai.
+  const salva = ok<Salva>(await refaz([{ config: { ...TEAMS_PR, mentions: true, chatsPendentes: 0 } }]));
+  assert.equal(salva.triggers.length, 1);
+  assert.notEqual(salva.triggers[0]!.id, antigo.id);
+  assert.equal(salva.triggers[0]!.enabled, false);
+  const herdado = (await triggerService.get(salva.triggers[0]!.id))?.config as { chatsPendentes: number };
+  assert.equal(herdado.chatsPendentes, 2);
+
+  // Com o aviso explícito, vale para todos os chats.
+  const todos = ok<Salva>(await refaz([{ config: { ...TEAMS_PR, mentions: true, chatsPendentes: 0 }, valerParaTodosOsChats: true }]));
+  assert.equal(((await triggerService.get(todos.triggers[0]!.id))?.config as { chatsPendentes: number }).chatsPendentes, 0);
+});
+
 test("run_automation_now recusa agent do sistema e inexistente, e a descrição avisa da ação em auto", async () => {
   const client = await ligarCliente();
   recusa(await client.callTool({ name: "run_automation_now", arguments: { agentId: "locum-chat" } }), /./);
