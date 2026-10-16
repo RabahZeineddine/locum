@@ -86,6 +86,11 @@ export interface McpPollShape {
    * velho para o mais novo, para o que for adiado ser sempre o mais novo.
    */
   admit?: (item: unknown) => Promise<Admissao>;
+  /**
+   * Chamada com os itens novos, já em ordem, antes de `admit`. Existe para a
+   * decisão que custa tempo poder correr em paralelo antes de ser consumida.
+   */
+  prepare?: (itens: unknown[]) => Promise<void>;
 }
 
 /**
@@ -179,16 +184,25 @@ export async function pollMcpServer(
   const resolvidos: string[] = [];
   let adiadoEm: string | undefined;
 
+  const conhecidos = new Set<string>();
+  if (shape.admit !== undefined) {
+    for (const item of items) {
+      const externalId = shape.externalId(item);
+      const [achado] = await db
+        .select({ id: schema.events.id })
+        .from(schema.events)
+        .where(and(eq(schema.events.source, source), eq(schema.events.externalId, externalId)));
+      if (achado !== undefined) conhecidos.add(externalId);
+    }
+    await shape.prepare?.(items.filter((item) => !conhecidos.has(shape.externalId(item))));
+  }
+
   for (const item of items) {
     const at = lerCarimbo(item);
     const id = randomUUID();
     const externalId = shape.externalId(item);
     if (shape.admit !== undefined) {
-      const conhecido = await db
-        .select({ id: schema.events.id })
-        .from(schema.events)
-        .where(and(eq(schema.events.source, source), eq(schema.events.externalId, externalId)));
-      if (conhecido.length === 0) {
+      if (!conhecidos.has(externalId)) {
         const admissao = await shape.admit(item);
         if (admissao.kind !== "passa") {
           if (admissao.kind === "adia") {

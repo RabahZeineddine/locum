@@ -258,13 +258,20 @@ function TelaDoTerminal({ cheia, terminal }: { cheia: boolean; terminal: Aberto 
         // Medir com a caixa escondida dá zero; a próxima medida corrige.
       }
     };
-    const observador = new ResizeObserver(medir);
+    // Medir dentro do callback do observador muda o tamanho que ele observa e
+    // dispara "ResizeObserver loop": a medida vai para o próximo quadro.
+    let quadro = 0;
+    const observador = new ResizeObserver(() => {
+      cancelAnimationFrame(quadro);
+      quadro = requestAnimationFrame(medir);
+    });
     observador.observe(elemento);
     medir();
     xterm.focus();
 
     return () => {
       vivoAqui = false;
+      cancelAnimationFrame(quadro);
       observador.disconnect();
       entrada.dispose();
       sair();

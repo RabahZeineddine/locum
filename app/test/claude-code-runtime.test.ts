@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ClaudeCodeRuntime, LeitorDoStream } from "../src/runtimes/claude-code.js";
@@ -80,4 +80,40 @@ test("sem a linha de resultado, o passo falha com o que saiu no stderr", async (
   chmodSync(falso, 0o755);
   const runtime = new ClaudeCodeRuntime(new Map(), async () => falso);
   await assert.rejects(runtime.run({ prompt: "olá", model: "sonnet", tools: {} } as never), /saiu com 3: quebrou feio/);
+});
+
+test("o sinal de cancelamento mata o processo do claude, que não termina sozinho", async () => {
+  const pasta = mkdtempSync(join(tmpdir(), "locum-claude-"));
+  const falso = join(pasta, "claude");
+  const marca = join(pasta, "pid");
+  writeFileSync(falso, `#!/bin/sh\necho $$ > ${marca}\nexec sleep 30\n`);
+  chmodSync(falso, 0o755);
+  const runtime = new ClaudeCodeRuntime(new Map(), async () => falso);
+  const controle = new AbortController();
+  setTimeout(() => controle.abort(), 300);
+  const inicio = Date.now();
+  await assert.rejects(
+    runtime.run({ prompt: "x", model: "haiku", tools: {}, maxSteps: 1, abortSignal: controle.signal } as never),
+    /cancelado/,
+  );
+  assert.ok(Date.now() - inicio < 5000, "esperou o processo terminar");
+  const pid = Number(readFileSync(marca, "utf8").trim());
+  await new Promise((r) => setTimeout(r, 200));
+  assert.throws(() => process.kill(pid, 0), /ESRCH/, "o processo seguiu vivo");
+});
+
+test("o prompt vai pela entrada padrão, e não pelo argumento, quando pedido", async () => {
+  const pasta = mkdtempSync(join(tmpdir(), "locum-claude-"));
+  const falso = join(pasta, "claude");
+  const args = join(pasta, "args");
+  const entrada = join(pasta, "entrada");
+  writeFileSync(
+    falso,
+    `#!/bin/sh\necho "$@" > ${args}\ncat > ${entrada}\necho '{"type":"result","result":"oi"}'\n`,
+  );
+  chmodSync(falso, 0o755);
+  const runtime = new ClaudeCodeRuntime(new Map(), async () => falso);
+  await runtime.run({ prompt: "texto secreto da mensagem", model: "haiku", tools: {}, maxSteps: 1, promptPorStdin: true } as never);
+  assert.equal(readFileSync(entrada, "utf8"), "texto secreto da mensagem");
+  assert.ok(!readFileSync(args, "utf8").includes("texto secreto"));
 });

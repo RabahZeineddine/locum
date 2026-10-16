@@ -1,8 +1,11 @@
+import { PROVEDORES_FORA_DO_FILTRO } from "../config/filtro-ia.js";
 import { ClaudeCodeRuntime } from "../runtimes/claude-code.js";
 import { CodexRuntime } from "../runtimes/codex.js";
 import { NativeRuntime } from "../runtimes/native.js";
 import type { Runtime } from "../runtimes/types.js";
-import { splitModelId } from "../providers/registry.js";
+import { resolveModel, splitModelId } from "../providers/registry.js";
+import { machineId } from "./machine-service.js";
+import { priceService } from "./price-service.js";
 import { providerService } from "./provider-service.js";
 import type { Spend } from "../executor/budget.js";
 
@@ -37,7 +40,8 @@ export interface PedidoDoFiltro {
 export interface Veredito {
   passa: boolean;
   motivo: string;
-  gasto: Spend;
+  /** `billable` falso é cota de assinatura: o orçamento em dólar não conta. */
+  gasto: Spend & { billable: boolean };
 }
 
 /** Quem decide. Entra como dependência para o teste trocar o modelo. */
@@ -45,11 +49,11 @@ export type Julgador = (pedido: PedidoDoFiltro) => Promise<Veredito>;
 
 /** O alias do Claude Code, que o próprio binário resolve para o Haiku atual. */
 export const MODELO_PADRAO_ASSINATURA = "claude-code/haiku";
-/** O alias sem data da API da Anthropic, para quem só tem chave. */
-export const MODELO_PADRAO_API = "anthropic/claude-haiku-4-5";
 
-/** Quanto a pergunta leva antes de contar como falha. */
-const PRAZO_MS = 60_000;
+export { PROVEDORES_FORA_DO_FILTRO };
+
+/** Quanto uma pergunta leva antes de contar como falha. */
+const PRAZO_MS = 30_000;
 /** Teto de cada texto enviado ao modelo: mensagem de chat não precisa de mais. */
 const TETO_DO_TEXTO = 2000;
 
@@ -67,8 +71,10 @@ const SISTEMA = [
   "Na dúvida, responda false.",
 ].join("\n");
 
-const corta = (texto: string) => (texto.length > TETO_DO_TEXTO ? `${texto.slice(0, TETO_DO_TEXTO)}…` : texto);
-const quem = (m: MensagemDoFiltro) => m.autor ?? "desconhecido";
+/** Corta e tira do texto as marcas que delimitam o prompt, para a mensagem não fechar a própria moldura. */
+const corta = (texto: string) =>
+  (texto.length > TETO_DO_TEXTO ? `${texto.slice(0, TETO_DO_TEXTO)}…` : texto).replace(/<(\/?)(mensagem|thread)/gi, "‹$1$2");
+const quem = (m: MensagemDoFiltro) => corta(m.autor ?? "desconhecido");
 
 /** O texto que o modelo lê: a pergunta, a mensagem e, em resposta, a que abriu a thread. */
 export function montarPrompt(pedido: PedidoDoFiltro): string {
@@ -102,31 +108,58 @@ function tentarJson(texto: string): unknown {
 export interface DependenciasDoJulgador {
   /** O provedor está pronto nesta máquina? */
   disponivel: (provedor: string) => boolean;
+  /**
+   * O modelo que vale nesta máquina para o pedido, pela tabela de substituição.
+   * Ausente, o pedido vale como está, se o provedor existir.
+   */
+  resolver?: (modelo: string) => Promise<string>;
+  /** O Haiku da API da Anthropic que tem preço ou consta no catálogo, ou nulo. */
+  haikuDaApi?: () => Promise<string | null>;
   /** O runtime que fala com o provedor. */
   runtime: (provedor: string) => Runtime;
   prazoMs?: number;
 }
 
 /** O modelo que roda a pergunta, ou erro dizendo por que não há. */
-export function modeloDoFiltro(filtro: FiltroIa, disponivel: (p: string) => boolean): string {
-  if (filtro.modelo !== undefined && filtro.modelo.trim() !== "") {
-    const modelo = filtro.modelo.trim();
-    if (!modelo.includes("/")) throw new Error(`modelo "${modelo}" sem provedor (use provedor/modelo)`);
+export async function modeloDoFiltro(filtro: FiltroIa, deps: Pick<DependenciasDoJulgador, "disponivel" | "resolver" | "haikuDaApi">): Promise<string> {
+  const resolver =
+    deps.resolver ??
+    (async (modelo: string) => {
+      const { provider } = splitModelId(modelo);
+      if (!deps.disponivel(provider)) throw new Error(`provedor "${provider}" indisponível nesta máquina`);
+      return modelo;
+    });
+  const conferir = (modelo: string) => {
     const { provider } = splitModelId(modelo);
-    if (!disponivel(provider)) throw new Error(`provedor "${provider}" indisponível nesta máquina`);
-    return modelo;
+    if (PROVEDORES_FORA_DO_FILTRO.includes(provider)) {
+      throw new Error(`o provedor "${provider}" não roda sem ferramentas e não serve de modelo do filtro`);
+    }
+  };
+
+  const pedido = filtro.modelo?.trim();
+  if (pedido !== undefined && pedido !== "") {
+    if (!pedido.includes("/")) throw new Error(`modelo "${pedido}" sem provedor (use provedor/modelo)`);
+    conferir(pedido);
+    const usado = await resolver(pedido);
+    conferir(usado);
+    return usado;
   }
-  if (disponivel("claude-code")) return MODELO_PADRAO_ASSINATURA;
-  if (disponivel("anthropic")) return MODELO_PADRAO_API;
+  if (deps.disponivel("claude-code")) return resolver(MODELO_PADRAO_ASSINATURA);
+  if (deps.disponivel("anthropic")) {
+    const haiku = await deps.haikuDaApi?.();
+    if (haiku === undefined || haiku === null) throw new Error("a conta da Anthropic desta máquina não lista um modelo Haiku");
+    return resolver(`anthropic/${haiku}`);
+  }
   throw new Error("sem provedor com modelo barato (Claude Code ou chave da Anthropic)");
 }
 
 export function criarJulgador(deps: DependenciasDoJulgador): Julgador {
   return async (pedido) => {
-    const id = modeloDoFiltro(pedido.filtro, deps.disponivel);
+    const id = await modeloDoFiltro(pedido.filtro, deps);
     const { provider, model } = splitModelId(id);
     const runtime = deps.runtime(provider);
     const prazo = deps.prazoMs ?? PRAZO_MS;
+    const controle = new AbortController();
     let timer: NodeJS.Timeout | undefined;
     try {
       const resultado = await Promise.race([
@@ -135,18 +168,24 @@ export function criarJulgador(deps: DependenciasDoJulgador): Julgador {
           model,
           system: SISTEMA,
           prompt: montarPrompt(pedido),
+          promptPorStdin: true,
+          abortSignal: controle.signal,
           tools: {},
           maxSteps: 1,
           temperature: 0,
           outputSchema: SCHEMA as unknown as Record<string, unknown>,
         }),
         new Promise<never>((_, rejeitar) => {
-          timer = setTimeout(() => rejeitar(new Error(`o modelo não respondeu em ${Math.round(prazo / 1000)}s`)), prazo);
+          timer = setTimeout(() => {
+            const erro = new Error(`o modelo não respondeu em ${Math.round(prazo / 1000)}s`);
+            controle.abort(erro);
+            rejeitar(erro);
+          }, prazo);
         }),
       ]);
       return {
         ...lerVeredito(resultado.structured, resultado.text),
-        gasto: { usd: resultado.costUsd, tokens: resultado.promptTokens + resultado.completionTokens },
+        gasto: { usd: resultado.costUsd, tokens: resultado.promptTokens + resultado.completionTokens, billable: resultado.billable },
       };
     } finally {
       clearTimeout(timer);
@@ -157,6 +196,14 @@ export function criarJulgador(deps: DependenciasDoJulgador): Julgador {
 /** O julgador desta máquina: assinatura do Claude Code ou do Codex, ou chave de API. */
 export const julgadorPadrao: Julgador = criarJulgador({
   disponivel: (p) => providerService.isAvailable(p),
+  resolver: async (modelo) =>
+    resolveModel(modelo, await providerService.getFallbacks(machineId), providerService.entries()).used,
+  haikuDaApi: async () => {
+    const comPreco = (await priceService.list()).find((p) => p.provider === "anthropic" && /haiku/i.test(p.model));
+    if (comPreco !== undefined) return comPreco.model;
+    const { modelos } = await providerService.listModels("anthropic").catch(() => ({ modelos: [] as string[] }));
+    return modelos.find((m) => /haiku/i.test(m)) ?? null;
+  },
   runtime: (provedor): Runtime => {
     if (provedor === "claude-code") return new ClaudeCodeRuntime(new Map());
     if (provedor === "codex") return new CodexRuntime(new Map());

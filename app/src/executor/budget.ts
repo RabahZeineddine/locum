@@ -43,6 +43,8 @@ export async function assertWithinBudget(
   limits: AgentBudget,
   /** Nome do agent da biblioteca dono do teto, para a mensagem dizer onde mudar. */
   agent?: string,
+  /** O banco a consultar. Ausente é o do app. */
+  banco: typeof db = db,
 ): Promise<void> {
   if (limits.perRunUsd !== undefined && run.usd >= limits.perRunUsd) {
     throw new BudgetExceeded("run", "usd", limits.perRunUsd, run.usd, agent);
@@ -52,7 +54,7 @@ export async function assertWithinBudget(
   }
   if (limits.perDayUsd === undefined && limits.perDayTokens === undefined) return;
 
-  const [row] = await db
+  const [row] = await banco
     .select()
     .from(schema.usageDaily)
     .where(and(eq(schema.usageDaily.day, today()), eq(schema.usageDaily.agentId, agentId)));
@@ -74,11 +76,11 @@ export async function assertWithinBudget(
  * saída do trecho para contar a execução: um run que pausa na fila e é
  * retomado depois tem dois trechos, e só o primeiro conta como execução.
  */
-export async function recordSpend(agentId: string, spend: Spend, newRun: boolean): Promise<void> {
+export async function recordSpend(agentId: string, spend: Spend, newRun: boolean, banco: typeof db = db): Promise<void> {
   if (!newRun && spend.usd === 0 && spend.tokens === 0) return;
   const day = today();
   const runs = newRun ? 1 : 0;
-  await db
+  await banco
     .insert(schema.usageDaily)
     .values({ day, agentId, costUsd: spend.usd, tokens: spend.tokens, runs })
     .onConflictDoUpdate({

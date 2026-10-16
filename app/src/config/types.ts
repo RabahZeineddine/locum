@@ -1,3 +1,4 @@
+import { PROVEDORES_FORA_DO_FILTRO } from "./filtro-ia.js";
 import { z } from "zod";
 import { cronValida } from "../triggers/cron.js";
 
@@ -553,7 +554,12 @@ export const FiltroIaConfig = z.object({
   /** O que a mensagem precisa ser para acordar o agent. Ex.: "É um pedido de review de pull request?". */
   pergunta: z.string().trim().min(1).max(1000),
   /** `provedor/modelo`. Ausente é o Haiku do provedor que houver na máquina. */
-  modelo: z.string().trim().min(1).optional(),
+  modelo: z
+    .string()
+    .trim()
+    .min(1)
+    .refine((m) => !PROVEDORES_FORA_DO_FILTRO.some((p) => m.startsWith(`${p}/`)), "este provedor não roda sem ferramentas e não serve de modelo do filtro")
+    .optional(),
 });
 
 /**

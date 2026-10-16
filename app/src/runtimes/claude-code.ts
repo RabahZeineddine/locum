@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -33,7 +33,8 @@ export function claudeArgs(req: RuntimeRequest, mcpConfigPath?: string): string[
 
   // stream-json traz cada chamada de ferramenta enquanto acontece, para a tela
   // acompanhar; o resultado final vem na última linha, igual ao modo json.
-  const args = ["-p", req.prompt, "--model", req.model, "--output-format", "stream-json", "--verbose"];
+  // Sem o prompt no argumento, o `claude -p` lê a entrada padrão.
+  const args = [...(req.promptPorStdin === true ? ["-p"] : ["-p", req.prompt]), "--model", req.model, "--output-format", "stream-json", "--verbose"];
 
   if (req.system) args.push("--append-system-prompt", req.system);
   if (req.outputSchema) args.push("--json-schema", JSON.stringify(req.outputSchema));
@@ -100,13 +101,21 @@ export class ClaudeCodeRuntime implements Runtime {
         caminho = join(pasta, "mcp.json");
         await writeFile(caminho, mcpConfigJson(servers, this.mcpConfigs), { mode: 0o600 });
       }
-      return await this.chamar(claudeArgs(req, caminho), req.onActivity);
+      return await this.chamar(claudeArgs(req, caminho), req.onActivity, {
+        sinal: req.abortSignal,
+        ...(req.promptPorStdin === true ? { stdin: req.prompt } : {}),
+      });
     } finally {
       if (pasta !== undefined) await rm(pasta, { recursive: true, force: true });
     }
   }
 
-  private async chamar(args: string[], onActivity?: (a: Atividade) => void): Promise<RuntimeResult> {
+  private async chamar(
+    args: string[],
+    onActivity?: (a: Atividade) => void,
+    opcoes: { sinal?: AbortSignal; stdin?: string } = {},
+  ): Promise<RuntimeResult> {
+    opcoes.sinal?.throwIfAborted();
     // O mesmo caminho absoluto que a sessão interativa usa. Instalado em
     // `~/.claude/local`, o `claude` existe só como alias do `.zshrc`, fora do
     // PATH que o processo herda, e chamar pelo nome falhava com ENOENT.
@@ -131,11 +140,25 @@ export class ClaudeCodeRuntime implements Runtime {
           MAX_MCP_OUTPUT_TOKENS: process.env.MAX_MCP_OUTPUT_TOKENS ?? "60000",
           MCP_TIMEOUT: process.env.MCP_TIMEOUT ?? "180000",
         },
-        stdio: ["ignore", "pipe", "pipe"],
-      });
+        stdio: [opcoes.stdin === undefined ? "ignore" : "pipe", "pipe", "pipe"],
+      }) as ChildProcessWithoutNullStreams; // o stdin só é usado quando pedido
+      if (opcoes.stdin !== undefined) {
+        // O filho pode sair sem ler tudo; o erro de escrita não pode derrubar o processo do app.
+        filho.stdin!.on("error", () => undefined);
+        filho.stdin!.end(opcoes.stdin);
+      }
       let resto = "";
       let erros = "";
       let estourou = false;
+      let cancelado = false;
+      const cancelar = () => {
+        cancelado = true;
+        clearTimeout(prazo);
+        filho.kill("SIGKILL");
+        // Não espera o `close`: processo neto segura o pipe aberto e adiaria o fim.
+        falhou(new Error("claude -p cancelado"));
+      };
+      opcoes.sinal?.addEventListener("abort", cancelar, { once: true });
       const prazo = setTimeout(() => {
         estourou = true;
         filho.kill("SIGTERM");
@@ -152,10 +175,13 @@ export class ClaudeCodeRuntime implements Runtime {
       });
       filho.on("error", (err) => {
         clearTimeout(prazo);
+        opcoes.sinal?.removeEventListener("abort", cancelar);
         falhou(err);
       });
       filho.on("close", (codigo, sinal) => {
         clearTimeout(prazo);
+        opcoes.sinal?.removeEventListener("abort", cancelar);
+        if (cancelado) return;
         if (resto.length > 0) leitor.linha(resto);
         if (leitor.final !== null) return pronto();
         // O claude trata o SIGTERM e sai com 143, então o sinal não serve para saber se foi o prazo.

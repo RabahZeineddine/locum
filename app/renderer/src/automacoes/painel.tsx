@@ -25,6 +25,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { LogicCompare, type LogicStep, type TriggerConfig } from "../../../src/config/types";
 import { parseCron, proximaOcorrencia } from "../../../src/triggers/cron";
+import { PROVEDORES_FORA_DO_FILTRO } from "../../../src/config/filtro-ia";
 import { descreverCron } from "@/lib/descricao-do-cron";
 import { SeletorDeFerramentas, SeletorDeModelo, useCatalogo } from "../editor-agent";
 import type { RotaId } from "../rotas";
@@ -476,12 +477,14 @@ function FiltroComIa({ filtro, trocar }: { filtro: FiltroIaConfig | undefined; t
   const { t } = useTranslation();
   const catalogo = useCatalogo();
   const pergunta = filtro?.pergunta ?? "";
-  const modelo = filtro?.modelo;
+  // O modelo escolhido sobrevive a apagar a pergunta: sem pergunta o filtro sai do cadastro, e a pessoa volta a escrevê-la.
+  const [modelo, setModelo] = useState(filtro?.modelo);
   return (
     <Campo rotulo={t("automations.triggers.teams-inbox.filtroIa")}>
       <textarea
         className={cn(CAMPO, "min-h-16 resize-y")}
         data-locum-filtro-ia=""
+        maxLength={1000}
         onChange={(e) => trocar({ pergunta: e.target.value, ...(modelo === undefined ? {} : { modelo }) })}
         placeholder={t("automations.triggers.teams-inbox.filtroIaPlaceholder")}
         value={pergunta}
@@ -490,7 +493,11 @@ function FiltroComIa({ filtro, trocar }: { filtro: FiltroIaConfig | undefined; t
         <SeletorDeModelo
           automatico={t("automations.triggers.teams-inbox.filtroIaModeloAuto")}
           catalogo={catalogo}
-          trocar={(m) => trocar({ pergunta, ...(m === "" ? {} : { modelo: m }) })}
+          excluir={PROVEDORES_FORA_DO_FILTRO}
+          trocar={(m) => {
+            setModelo(m === "" ? undefined : m);
+            trocar({ pergunta, ...(m === "" ? {} : { modelo: m }) });
+          }}
           valor={modelo ?? ""}
         />
       )}

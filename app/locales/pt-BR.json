@@ -2160,7 +2160,7 @@
         "filtroIa": "Filtro com IA (opcional)",
         "filtroIaPlaceholder": "É um pedido de review de pull request?",
         "filtroIaModeloAuto": "Haiku da máquina (padrão)",
-        "filtroIaHint": "Cada mensagem que passa nos filtros do gatilho é lida por um modelo barato antes de acordar o agent. Se a resposta for não, a mensagem fica de fora e o motivo aparece nos descartes. Se o modelo falhar, ela espera a próxima batida. No máximo 20 por batida.",
+        "filtroIaHint": "Cada mensagem que passa nos filtros do gatilho é lida por um modelo barato antes de acordar o agent. Se a resposta for não, a mensagem fica de fora e o motivo aparece nos descartes. Se o modelo falhar, ela espera a próxima batida e, na terceira falha, é descartada. Mensagem editada depois de descartada não volta. No máximo 20 por batida.",
         "discards": "Últimas mensagens descartadas",
         "channels": "Canais de equipe (menção ou link de PR acorda)",
         "search": "Buscar equipe ou canal",
