@@ -214,3 +214,19 @@ export function referenciasDoArgs(valor: unknown): string[] {
   if (valor !== null && typeof valor === "object") return Object.values(valor).flatMap(referenciasDoArgs);
   return [];
 }
+
+/** Os argumentos como o editor cru mostra. */
+export function textoDosArgs(args: Record<string, unknown>): string {
+  return JSON.stringify(args, null, 2);
+}
+
+/** O que o editor cru digitou: objeto válido, ou `null` quando o texto ainda não é JSON de objeto. */
+export function argsDoTexto(texto: string): Record<string, unknown> | null {
+  if (texto.trim() === "") return {};
+  try {
+    const v: unknown = JSON.parse(texto);
+    return v !== null && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}

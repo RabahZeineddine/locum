@@ -149,3 +149,26 @@ test("validarArgs: obrigatório vazio, tipo errado em valor fixo, e referência 
 test("referenciasDoArgs acha os marcadores em qualquer profundidade", () => {
   assert.deepEqual(referenciasDoArgs({ a: "{{event.x}}", b: { c: ["oi {{steps.ler.y}}", 3] } }), ["event.x", "steps.ler.y"]);
 });
+
+test("alternar para o JSON e voltar não perde valor", async () => {
+  const { textoDosArgs, argsDoTexto } = await import("../renderer/lib/formulario-de-schema.js");
+  const args = { channel_id: "{{event.channel}}", reaction: "eyes", n: 2, body: { a: ["x"] } };
+  assert.deepEqual(argsDoTexto(textoDosArgs(args)), args);
+  assert.equal(argsDoTexto("{ incompleto"), null, "texto que ainda não é JSON não apaga os args");
+  assert.equal(argsDoTexto("[1]"), null);
+  assert.deepEqual(argsDoTexto("  "), {});
+});
+
+test("referências disponíveis: campos do evento do gatilho, passos anteriores e as propriedades do formato de saída", async () => {
+  const { referenciasDisponiveis } = await import("../renderer/lib/automacao.js");
+  const modelo = { type: "model", key: "revisar", name: "Revisar", needs: [], prompt: "x", outputSchema: { type: "object", properties: { verdict: { type: "string" } } } };
+  const acao = { type: "action", key: "reagir", name: "R", needs: ["revisar"], optional: false, action: "mcp.call", mode: "approve", params: {} };
+  const r = {
+    spec: { id: "a", name: "A", model: "m", steps: [modelo, acao] },
+    gatilhos: [{ chave: "gatilho-1", enabled: true, config: { kind: "slack-channel", channels: [], everyMinutes: 5 } }],
+  } as never;
+  const caminhos = referenciasDisponiveis(r, "reagir").map((x) => x.caminho);
+  assert.ok(caminhos.includes("event.channel") && caminhos.includes("event.threadTs"));
+  assert.ok(caminhos.includes("steps.revisar") && caminhos.includes("steps.revisar.verdict"));
+  assert.ok(!caminhos.includes("steps.reagir"), "o próprio passo e os que vêm depois não entram");
+});

@@ -9,6 +9,7 @@ import {
   formatoDe,
   passoComAgent,
   passoSemAgent,
+  referenciasDisponiveis,
   trocarPasso,
   variaveis,
   type AgentDaBiblioteca,
@@ -19,6 +20,9 @@ import {
   type Rascunho,
 } from "@/lib/automacao";
 import { call, useRead, type ReadResult } from "@/lib/bridge";
+import { camposDoSchema } from "@/lib/formulario-de-schema";
+import { humanizar } from "@/lib/paleta-conexoes";
+import { ehLeituraNaAcao } from "../../../src/config/leitura";
 import { chaveDaListaDoSlack, chaveDaListaDoTeams } from "@/lib/cache-de-lista";
 import { organizarCanais } from "@/lib/canais-do-teams";
 import { canalDoSlackDigitado, opcoesDeCanaisDoSlack, rotuloDoChipDoSlack } from "@/lib/canais-do-slack";
@@ -36,6 +40,8 @@ import { resumoDoAgent } from "@/lib/resumo-do-agent";
 import { SeletorDeFerramentas, SeletorDeModelo, useCatalogo } from "../editor-agent";
 import type { RotaId } from "../rotas";
 import { Ajuda, Alternador, Campo, CAMPO, Minutos } from "./campos";
+import { type FerramentasDasConexoes } from "./ferramentas-das-conexoes";
+import { FormularioDaChamada } from "./formulario-da-chamada";
 import { ComboboxComChips, useListaEmCache, type OpcaoDoCombobox } from "./combobox";
 import { GatilhoDoGithub, ListaDeDescartes } from "./gatilho-github";
 import { escopoDoGatilho } from "@/lib/titulo-do-gatilho";
@@ -66,8 +72,10 @@ export function PainelDoNo({
   navegar,
   abrirAgent,
   relerBiblioteca,
+  conexoes,
 }: {
   chave: string;
+  conexoes: FerramentasDasConexoes;
   agents: readonly AgentDaBiblioteca[];
   navegar: (id: RotaId, detalhe?: string) => void;
   /** Abre o agent da biblioteca num modal, sem sair do editor. */
@@ -139,7 +147,7 @@ export function PainelDoNo({
           {problemas.map((p, i) => (
             <li className="text-muted-foreground flex items-start gap-1.5" key={i}>
               <StatusDot className="mt-1.5" estado={p.bloqueia ? "erro" : "aviso"} />
-              <span>{t(p.chave)}</span>
+              <span>{t(p.chave, p.valores)}</span>
               {p.atalho === undefined ? null : (
                 <button className="ml-2 cursor-pointer underline" onClick={() => navegar(p.atalho!.rota, p.atalho!.detalhe)} type="button">
                   {t("automations.problems.openConnection")}
@@ -175,7 +183,7 @@ export function PainelDoNo({
       ) : passo!.type === "logic" ? (
         <ConfigDaLogica passo={passo as LogicStep} rascunho={rascunho} setRascunho={setRascunho} />
       ) : (
-        <ConfigDaAcao passo={passo as PassoDeAcao} rascunho={rascunho} setRascunho={setRascunho} trackers={trackers} />
+        <ConfigDaAcao passo={passo as PassoDeAcao} conexoes={conexoes} rascunho={rascunho} setRascunho={setRascunho} trackers={trackers} />
       )}
 
       <Button className="mt-auto cursor-pointer self-start" data-locum-painel-remover="" onClick={remover} size="sm" variant="ghost">
@@ -974,11 +982,13 @@ function ConfigDaAcao({
   rascunho,
   setRascunho,
   trackers,
+  conexoes,
 }: {
   passo: PassoDeAcao;
   rascunho: Rascunho;
   setRascunho: (f: (r: Rascunho) => Rascunho) => void;
   trackers: readonly Tracker[];
+  conexoes: FerramentasDasConexoes;
 }) {
   const { t } = useTranslation();
   const trocar = (novo: PassoDeAcao): void => setRascunho((r) => ({ ...r, spec: trocarPasso(r.spec, passo.key, novo) }));
@@ -1009,7 +1019,7 @@ function ConfigDaAcao({
           </select>
         </Campo>
       )}
-      {passo.action === "mcp.call" ? <ConfigDaChamada passo={passo} rascunho={rascunho} trocar={trocar} /> : null}
+      {passo.action === "mcp.call" ? <ConfigDaChamada conexoes={conexoes} passo={passo} rascunho={rascunho} trocar={trocar} /> : null}
       {passo.action === "http.request" ? <ConfigDoHttp passo={passo} rascunho={rascunho} trocar={trocar} /> : null}
       {passo.action === "teams.react" || passo.action === "slack.react" ? (
         <ConfigDaReacao passo={passo} rascunho={rascunho} trocar={trocar} />
@@ -1264,67 +1274,42 @@ function Variaveis({ lista, inserir }: { lista: readonly string[]; inserir: (v: 
   );
 }
 
-type Esquema = { properties?: Record<string, { type?: string | string[]; description?: string }>; required?: string[] };
-type FerramentaDoApp = { name: string; description: string; inputSchema?: Record<string, unknown> };
-
-/** Texto do campo de volta ao tipo que o esquema pede, quando é literal. */
-function valorDoCampo(texto: string, tipo: string | undefined): unknown {
-  if (texto.includes("{{")) return texto;
-  if ((tipo === "number" || tipo === "integer") && texto.trim() !== "" && Number.isFinite(Number(texto))) return Number(texto);
-  if (tipo === "boolean" && (texto === "true" || texto === "false")) return texto === "true";
-  if ((tipo === "object" || tipo === "array") && texto.trim() !== "") {
-    try {
-      return JSON.parse(texto);
-    } catch {
-      return texto;
-    }
-  }
-  return texto;
-}
-
 function textoDoValor(v: unknown): string {
   if (v === undefined || v === null) return "";
   return typeof v === "string" ? v : JSON.stringify(v);
 }
 
-/** Qualquer ferramenta de um app conectado, com o formulário do esquema dela. */
+/** Qualquer ferramenta de um app conectado, com o formulário gerado do schema dela. */
 function ConfigDaChamada({
   passo,
   rascunho,
   trocar,
+  conexoes,
 }: {
   passo: PassoDeAcao;
   rascunho: Rascunho;
   trocar: (novo: PassoDeAcao) => void;
+  conexoes: FerramentasDasConexoes;
 }) {
   const { t } = useTranslation();
-  const servidores = useRead("mcp.list");
   const params = (passo.params ?? {}) as { server?: string; tool?: string; args?: Record<string, unknown> };
   const servidor = params.server ?? "";
-  const [ferramentas, setFerramentas] = useState<{ de: string; lista: FerramentaDoApp[] } | null>(null);
-  const [erro, setErro] = useState<string | null>(null);
+  const estado = conexoes.porServidor[servidor];
+  const lista = estado?.tools ?? null;
   const { focar, inserir } = useInsercao();
+  const { carregar } = conexoes;
 
+  // O cache guarda a lista da última leitura. Servidor que nunca foi lido sobe uma vez, ao ser escolhido.
   useEffect(() => {
-    if (servidor === "" || ferramentas?.de === servidor) return;
-    let vivo = true;
-    setErro(null);
-    // Listar sobe o servidor do app, então só acontece com um escolhido.
-    call("mcp.tools", servidor).then(
-      (lista) => vivo && setFerramentas({ de: servidor, lista }),
-      (e: unknown) => vivo && setErro(e instanceof Error ? e.message : String(e)),
-    );
-    return () => {
-      vivo = false;
-    };
-  }, [servidor, ferramentas?.de]);
+    if (servidor !== "" && estado !== undefined && estado.tools === null && !estado.carregando && estado.erro === null) void carregar(servidor);
+  }, [servidor, estado, carregar]);
 
-  const mudar = (novo: Partial<typeof params>): void => trocar({ ...passo, params: { ...params, ...novo } });
-  const escolhida = ferramentas?.de === servidor ? ferramentas.lista.find((f) => f.name === params.tool) : undefined;
-  const esquema = (escolhida?.inputSchema ?? {}) as Esquema;
-  const campos = Object.entries(esquema.properties ?? {});
-  const obrigatorios = new Set(esquema.required ?? []);
+  const mudar = (novo: Partial<typeof params>, nome?: string): void =>
+    trocar({ ...passo, ...(nome === undefined ? {} : { name: nome }), params: { ...params, ...novo } });
+  const escolhida = lista?.find((f) => f.name === params.tool);
+  const campos = camposDoSchema(escolhida?.inputSchema);
   const args = params.args ?? {};
+  const leitura = escolhida === undefined ? null : ehLeituraNaAcao(escolhida);
 
   return (
     <>
@@ -1336,82 +1321,70 @@ function ConfigDaChamada({
           value={servidor}
         >
           <option value="">{t("automations.steps.mcp.call.chooseServer")}</option>
-          {(servidores.data ?? [])
-            .filter((s) => s.enabled)
-            .map(({ config }) => (
-              <option key={config.name} value={config.name}>
-                {config.name}
-              </option>
-            ))}
+          {(servidor !== "" && !conexoes.servidores.includes(servidor) ? [servidor, ...conexoes.servidores] : conexoes.servidores).map((nome) => (
+            <option key={nome} value={nome}>
+              {nome}
+            </option>
+          ))}
         </select>
       </Campo>
       {servidor === "" ? null : (
         <Campo rotulo={t("automations.steps.mcp.call.tool")}>
-          {erro !== null ? (
-            <p className="text-destructive text-xs">{erro}</p>
-          ) : ferramentas?.de !== servidor ? (
+          {estado?.erro != null ? (
+            <p className="text-destructive text-xs">{estado.erro}</p>
+          ) : lista === null ? (
             <p className="text-muted-foreground text-xs">{t("automations.steps.mcp.call.loading")}</p>
           ) : (
-            <select
-              className={CAMPO}
-              data-locum-acao-ferramenta=""
-              onChange={(e) => mudar({ tool: e.target.value, args: {} })}
-              value={params.tool ?? ""}
-            >
-              <option value="">{t("automations.steps.mcp.call.chooseTool")}</option>
-              {ferramentas.lista.map((f) => (
-                <option key={f.name} title={f.description} value={f.name}>
-                  {f.name}
-                </option>
-              ))}
-            </select>
+            <div className="flex items-center gap-1.5">
+              <select
+                className={CAMPO}
+                data-locum-acao-ferramenta=""
+                onChange={(e) => {
+                  const nova = lista.find((f) => f.name === e.target.value);
+                  const nomePadrao = passo.name === "" || passo.name === "Ação em app";
+                  mudar({ tool: e.target.value, args: {} }, nova !== undefined && nomePadrao ? humanizar(nova.name) : undefined);
+                }}
+                value={params.tool ?? ""}
+              >
+                <option value="">{t("automations.steps.mcp.call.chooseTool")}</option>
+                {lista.map((f) => (
+                  <option key={f.name} title={f.description} value={f.name}>
+                    {f.name}
+                  </option>
+                ))}
+              </select>
+              <Button
+                data-locum-acao-atualizar=""
+                disabled={estado?.carregando === true}
+                onClick={() => void carregar(servidor)}
+                size="sm"
+                title={t("automations.steps.mcp.call.refreshHint")}
+                variant="ghost"
+              >
+                {t(estado?.carregando === true ? "automations.steps.mcp.call.refreshing" : "automations.steps.mcp.call.refresh")}
+              </Button>
+            </div>
           )}
-          {escolhida?.description ? <p className="text-muted-foreground line-clamp-3 text-[11px]">{escolhida.description}</p> : null}
+          {escolhida === undefined ? null : (
+            <p className="text-muted-foreground line-clamp-3 text-[11px]">
+              <span className={cn("mr-1 rounded px-1 py-0.5 text-[10px]", leitura ? "bg-muted" : "bg-amber-500/15")}>
+                {t(leitura ? "automations.palette.read" : "automations.palette.write")}
+              </span>
+              {escolhida.description}
+            </p>
+          )}
         </Campo>
       )}
       {escolhida === undefined ? null : (
         <>
           <Variaveis inserir={inserir} lista={variaveis(rascunho, passo.key)} />
-          {campos.length === 0 ? (
-            <Campo rotulo={t("automations.steps.mcp.call.argsJson")}>
-              <textarea
-                className={cn(CAMPO, "min-h-24 font-mono text-xs")}
-                onChange={(e) => mudar({ args: (valorDoCampo(e.target.value, "object") as Record<string, unknown>) ?? {} })}
-                value={textoDoValor(args)}
-              />
-            </Campo>
-          ) : (
-            campos.map(([nome, prop]) => {
-              const tipo = Array.isArray(prop.type) ? prop.type[0] : prop.type;
-              const aplicar = (texto: string): void => {
-                const { [nome]: _antigo, ...resto } = args;
-                mudar({ args: texto === "" ? resto : { ...resto, [nome]: valorDoCampo(texto, tipo) } });
-              };
-              const longo = tipo === "object" || tipo === "array" || /text|body|message|content|description/i.test(nome);
-              return (
-                <Campo key={nome} rotulo={`${nome}${obrigatorios.has(nome) ? " *" : ""}`}>
-                  {longo ? (
-                    <textarea
-                      className={cn(CAMPO, "min-h-20 font-mono text-xs")}
-                      data-locum-arg={nome}
-                      onChange={(e) => aplicar(e.target.value)}
-                      onFocus={focar(aplicar)}
-                      value={textoDoValor(args[nome])}
-                    />
-                  ) : (
-                    <input
-                      className={cn(CAMPO, "font-mono text-xs")}
-                      data-locum-arg={nome}
-                      onChange={(e) => aplicar(e.target.value)}
-                      onFocus={focar(aplicar)}
-                      value={textoDoValor(args[nome])}
-                    />
-                  )}
-                  {prop.description ? <p className="text-muted-foreground line-clamp-2 text-[11px]">{prop.description}</p> : null}
-                </Campo>
-              );
-            })
-          )}
+          <FormularioDaChamada
+            args={args}
+            campos={campos}
+            focar={focar}
+            mudar={(novo) => mudar({ args: novo })}
+            referencias={referenciasDisponiveis(rascunho, passo.key)}
+          />
         </>
       )}
     </>

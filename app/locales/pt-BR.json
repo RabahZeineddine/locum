@@ -2202,7 +2202,14 @@
       "agents": "Agents",
       "newAgent": "Criar agent",
       "agentsEmpty": "Nenhum agent ainda.",
-      "logic": "Lógica"
+      "logic": "Lógica",
+      "search": "Buscar nó ou ferramenta",
+      "read": "leitura",
+      "write": "escrita",
+      "loadTools": "carregar ferramentas",
+      "loadingTools": "carregando...",
+      "showAll": "mostrar todas ({{count}})",
+      "noMatch": "Nada encontrado."
     },
     "canvas": {
       "approval": "só com clique",
@@ -2500,7 +2507,23 @@
         "tool": "Ferramenta",
         "chooseTool": "Escolha a ferramenta",
         "loading": "Lendo as ferramentas do app...",
-        "argsJson": "Argumentos (JSON)"
+        "argsJson": "Argumentos (JSON)",
+        "modeFixed": "valor",
+        "modeRef": "referência",
+        "refChoose": "Escolha de onde vem",
+        "refEvent": "Evento do gatilho",
+        "refSteps": "Passos anteriores",
+        "refType": "ou digite: steps.passo.campo",
+        "enumChoose": "Escolha",
+        "yes": "sim",
+        "no": "não",
+        "arrayHint": "um valor por linha",
+        "jsonInvalid": "Isto não é JSON válido.",
+        "viewJson": "ver como JSON",
+        "viewForm": "ver como formulário",
+        "refresh": "atualizar",
+        "refreshing": "lendo...",
+        "refreshHint": "Lê de novo as ferramentas do servidor"
       },
       "http.request": {
         "title": "Chamar API",
@@ -2599,7 +2622,10 @@
       "noTool": "Escolha o app e a ferramenta desta ação.",
       "noUrl": "Informe o endereço da API, começando com http:// ou https://.",
       "noValue": "Diga o que este passo olha, com uma variável.",
-      "noCases": "Acrescente pelo menos um caso ao switch."
+      "noCases": "Acrescente pelo menos um caso ao switch.",
+      "argRequired": "Falta preencher \"{{campo}}\" na ação em app.",
+      "argType": "O valor de \"{{campo}}\" não é do tipo que a ferramenta pede.",
+      "refNotBefore": "A ação cita {{ref}}, que não vem antes dela no fluxo."
     },
     "github": {
       "repos": {

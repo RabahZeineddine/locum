@@ -574,6 +574,34 @@ export function variaveis(r: Rascunho, chave: string): string[] {
   return [...doEvento, ...antes];
 }
 
+export interface ReferenciaDisponivel {
+  /** `event.text` ou `steps.analisar.verdict`, sem as chaves. */
+  caminho: string;
+  grupo: "event" | "step";
+}
+
+/**
+ * O que um campo pode citar no ponto do fluxo: os campos do evento dos
+ * gatilhos e a saída dos passos anteriores. Passo de IA com formato de saída
+ * (`outputSchema`) traz também cada propriedade; ação e passo sem formato só
+ * o passo inteiro, e a pessoa digita o caminho do resto.
+ */
+export function referenciasDisponiveis(r: Rascunho, chave: string): ReferenciaDisponivel[] {
+  const porChave = new Map(r.spec.steps.map((p) => [p.key, p]));
+  const lista: ReferenciaDisponivel[] = [];
+  for (const caminho of variaveis(r, chave)) {
+    if (caminho.startsWith("event.")) {
+      lista.push({ caminho, grupo: "event" });
+      continue;
+    }
+    lista.push({ caminho, grupo: "step" });
+    const passo = porChave.get(caminho.slice("steps.".length));
+    const props = passo?.type === "model" ? (passo.outputSchema as { properties?: Record<string, unknown> } | undefined)?.properties : undefined;
+    for (const prop of Object.keys(props ?? {})) lista.push({ caminho: `${caminho}.${prop}`, grupo: "step" });
+  }
+  return lista;
+}
+
 /** Todo passo de que `chave` depende, direta ou indiretamente. */
 export function anteriores(spec: AgentSpec, chave: string): string[] {
   const porChave = new Map(spec.steps.map((p) => [p.key, p]));
