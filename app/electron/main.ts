@@ -2406,7 +2406,7 @@ async function checkExecutarComEvento(window: BrowserWindow): Promise<void> {
   await foto("execucoes-falha");
 
   // Link colado: o evento não tem conversa, e a resposta vira ensaio sem nada sair.
-  const colado = await evento("manual", { repo: "akad/pagamentos", changedFiles: [], prOwner: "akad", prRepo: "pagamentos", prNumber: 9, ["title"]: "Ajusta o timeout", author: "bia", chatId: null, messageId: null, text: "", teamsAuthor: null, semConversa: true });
+  const colado = await evento("manual", { repo: "akad/pagamentos", changedFiles: [], prOwner: "akad", prRepo: "pagamentos", prNumber: 9, ["title"]: "Ajusta o timeout", author: "bia", chatId: null, messageId: null, text: "", teamsAuthor: null, semConversa: true, automacao: agentId });
   const { runId } = await automationService.runNow(agentId, { eventId: colado });
   const limite = Date.now() + 20_000;
   let ensaio = await runService.get(runId);

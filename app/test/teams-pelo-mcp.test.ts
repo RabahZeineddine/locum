@@ -1,7 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { schema } from "../src/db/index.js";
+import { db as globalDb, schema } from "../src/db/index.js";
+import { migrateDb } from "../src/db/migrate.js";
+import { Executor } from "../src/executor/executor.js";
+import { AgentSpec } from "../src/config/types.js";
+import { AgentService } from "../src/services/agent-service.js";
 import { pollTeamsInbox } from "../src/sources/teams-inbox.js";
 import { ApprovalGate } from "../src/approval/gate.js";
 import { destinoDe, teamsPostHandler } from "../src/teams/action.js";
@@ -626,21 +631,57 @@ async function responderAoEventoDePr(
   watch: Parameters<typeof pollTeamsInbox>[0],
   quais: (e: Record<string, unknown>) => boolean,
 ) {
-  const db = bancoDeTeste();
+  migrateDb();
+  process.env.OLLAMA_BASE_URL = "http://127.0.0.1:9";
   const leitura = servidorFalso(dados);
-  await pollTeamsInbox(watch, { db, token: semLogin, mcp: cadastro("x"), call: leitura.call, ...semGithub });
-  const evento = (await eventos(db)).find((e) => e.kind === "pr" && quais(e))!;
+  const lido = bancoDeTeste();
+  await pollTeamsInbox(watch, { db: lido, token: semLogin, mcp: cadastro("x"), call: leitura.call, ...semGithub });
+  const linhas = await lido.select().from(schema.events).where(eq(schema.events.source, "teams"));
+  const evento = linhas.map((e) => e.payload as Record<string, unknown>).find((e) => e.kind === "pr" && quais(e))!;
   assert.ok(evento, "o gatilho gravou o evento de PR");
 
-  const handler = teamsPostHandler({ db, token: semLogin, mcp: cadastro("ms365"), call: servidorFalso({}).call });
-  const { payload } = await new ApprovalGate(new Map([["teams.post", handler]])).prepare(
-    "teams.post",
-    { ...evento, text: "revisado, ok" },
-    "approve",
-  );
+  // O mesmo evento, agora no banco do executor, com o que o Locum leu da conversa.
+  const sufixo = randomUUID();
+  const gravar = async (source: string, payload: Record<string, unknown>) => {
+    const id = randomUUID();
+    await globalDb.insert(schema.events).values({ id, source, externalId: `${sufixo}:${id}`, payload });
+    return id;
+  };
+  for (const e of linhas) await gravar("teams", e.payload as Record<string, unknown>);
+  const eventoId = await gravar("manual", evento);
+
   const saida = servidorFalso({});
-  await teamsPostHandler({ db, token: semLogin, mcp: cadastro("ms365"), call: saida.call }).publish(payload, "id");
-  return { evento, payload: payload as Record<string, unknown>, chamadas: saida.chamadas };
+  const handler = teamsPostHandler({ db: globalDb, token: semLogin, mcp: cadastro("ms365"), call: saida.call });
+  const executor = new Executor({
+    mcp: { missing: () => [], toolsFor: async () => ({ tools: {}, release: () => undefined }) } as never,
+    runtimes: new Map([
+      ["native", { id: "native", run: async () => ({ text: "", structured: { text: "revisado, ok" }, promptTokens: 1, completionTokens: 0, costUsd: 0, billable: true, toolsUsed: [] }) } as never],
+    ]),
+    gate: new ApprovalGate(new Map([["teams.post", handler]])),
+    machineId: "m",
+  });
+  // O fluxo de "Revisar PR do Teams": o modelo escreve, a resposta vai para a Fila.
+  const id = `teams-pr-${sufixo.slice(0, 8)}`;
+  const versao = await new AgentService().upsert(
+    AgentSpec.parse({
+      id,
+      name: "Revisar PR do Teams",
+      steps: [
+        { type: "model", key: "revisar", name: "revisar", model: "ollama/x", prompt: "Revise {{event.repo}}#{{event.pull}}", outputSchema: { type: "object", additionalProperties: false, required: ["text"], properties: { text: { type: "string" } } } },
+        { type: "action", key: "responder", name: "responder", action: "teams.post", mode: "approve", input: "revisar", needs: ["revisar"] },
+      ],
+    }),
+    undefined,
+    "human",
+  );
+  const runId = await executor.createRun(versao.id, eventoId);
+  const andamento = await executor.execute(runId);
+  const [falhou] = await globalDb.select({ error: schema.runs.error }).from(schema.runs).where(eq(schema.runs.id, runId));
+  assert.equal(andamento, "paused", falhou?.error ?? "");
+  const [pendencia] = await globalDb.select().from(schema.approvals).where(eq(schema.approvals.runId, runId));
+  assert.ok(pendencia, "a resposta foi para a Fila");
+  assert.deepEqual(await executor.decide(pendencia.id, "approved"), { status: "approved", run: "done" });
+  return { evento, payload: pendencia.payload as Record<string, unknown>, chamadas: saida.chamadas };
 }
 
 test("PR na raiz do canal: a resposta aprovada entra na thread dessa mensagem", async () => {

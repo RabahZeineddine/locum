@@ -37,7 +37,7 @@ export class EventoManual {
     private readonly executions: ExecutionService = executionService,
   ) {}
 
-  async doLink(link: string): Promise<{ eventId: string }> {
+  async doLink(link: string, agentId: string): Promise<{ eventId: string }> {
     const alvo = ((): ReturnType<typeof parseTarget> | null => {
       try {
         return parseTarget(link);
@@ -60,10 +60,12 @@ export class EventoManual {
       ...contexto,
       teamsAuthor: null,
       semConversa: true,
+      // Para qual automação o link foi colado: só ela pode rodar com este evento.
+      automacao: agentId,
     };
     const { id } = await this.executions.recordEvent(
       FONTE_MANUAL,
-      `link:${alvo.owner}/${alvo.repo}#${alvo.pull}:sha:${contexto.headSha}`.toLowerCase(),
+      `link:${agentId}:${alvo.owner}/${alvo.repo}#${alvo.pull}:sha:${contexto.headSha}`.toLowerCase(),
       payload,
     );
     return { eventId: id };
@@ -71,6 +73,26 @@ export class EventoManual {
 
   async existe(eventId: string): Promise<boolean> {
     return (await this.db.select({ id: schema.events.id }).from(schema.events).where(eq(schema.events.id, eventId))).length > 0;
+  }
+
+  /**
+   * Se o evento é desta automação: virou run dela (a mesma consulta de
+   * `recentes`, que mostra o que o diálogo oferece) ou é um link colado para
+   * ela. Qualquer outro evento tem dado de quem a automação nunca recebeu.
+   */
+  async daAutomacao(eventId: string, agentId: string): Promise<boolean> {
+    const [colado] = await this.db
+      .select({ source: schema.events.source, payload: schema.events.payload })
+      .from(schema.events)
+      .where(eq(schema.events.id, eventId));
+    if (colado?.source === FONTE_MANUAL && (colado.payload as { automacao?: unknown } | null)?.automacao === agentId) return true;
+    const runs = await this.db
+      .select({ id: schema.runs.id })
+      .from(schema.runs)
+      .innerJoin(schema.agentVersions, eq(schema.runs.agentVersionId, schema.agentVersions.id))
+      .where(and(eq(schema.agentVersions.agentId, agentId), eq(schema.runs.eventId, eventId)))
+      .limit(1);
+    return runs.length > 0;
   }
 
   /** Os últimos eventos que os gatilhos da automação gravaram e que chegaram a virar run, do mais novo ao mais antigo. */

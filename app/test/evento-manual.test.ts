@@ -68,7 +68,7 @@ async function salvar(agents: AgentService, steps: unknown[]) {
 
 test("o link colado vira o evento enriquecido como o gatilho do Teams monta, sem campos de conversa", async () => {
   const { db, eventos, buscados } = montar();
-  const { eventId } = await eventos.doLink("https://github.com/akad/pagamentos/pull/482");
+  const { eventId } = await eventos.doLink("https://github.com/akad/pagamentos/pull/482", "auto-x");
   assert.deepEqual(buscados, ["akad/pagamentos#482"]);
 
   const [linha] = await db.select().from(schema.events).where(eq(schema.events.id, eventId));
@@ -89,7 +89,7 @@ test("o link colado vira o evento enriquecido como o gatilho do Teams monta, sem
 
 test("link que não é de pull request do GitHub é recusado sem buscar nada", async () => {
   const { eventos, buscados } = montar();
-  await assert.rejects(eventos.doLink("https://example.com/x"), /link de um pull request do GitHub/);
+  await assert.rejects(eventos.doLink("https://example.com/x", "auto-x"), /link de um pull request do GitHub/);
   assert.deepEqual(buscados, []);
 });
 
@@ -125,6 +125,34 @@ test("prUrl monta o evento e dispara o run apontando para ele; eventId existente
   await assert.rejects(automations.runNow(id, { eventId, prUrl: "https://github.com/a/b/pull/1" }), /eventId ou prUrl/);
 });
 
+test("eventId só vale para evento que já virou run desta automação ou evento colado para ela", async () => {
+  const { db, agents, automations, eventos, iniciados } = montar();
+  const id = await salvar(agents, REVISAR);
+  const outra = await salvar(agents, REVISAR);
+  const versao = (await agents.getLatestVersion(id))!;
+
+  // Evento de um gatilho que abriu run nesta automação: vale.
+  const dela = randomUUID();
+  await db.insert(schema.events).values({ id: dela, source: "teams", externalId: dela, payload: { repo: "o/r" } });
+  await db.insert(schema.runs).values({ id: randomUUID(), agentVersionId: versao.id, eventId: dela, status: "done" });
+  await automations.runNow(id, { eventId: dela });
+  assert.equal(iniciados[0]!.eventId, dela);
+
+  // Evento que nunca virou run dela, de outra fonte: recusa.
+  const alheio = randomUUID();
+  await db.insert(schema.events).values({ id: alheio, source: "teams", externalId: alheio, payload: { repo: "o/r" } });
+  await assert.rejects(automations.runNow(id, { eventId: alheio }), /não é um evento desta automação/);
+
+  // Evento colado para outra automação: recusa; para esta: vale.
+  const colado = (await eventos.doLink("https://github.com/o/r/pull/5", outra)).eventId;
+  await assert.rejects(automations.runNow(id, { eventId: colado }), /não é um evento desta automação/);
+  const meu = (await eventos.doLink("https://github.com/o/r/pull/5", id)).eventId;
+  assert.notEqual(meu, colado);
+  await automations.runNow(id, { eventId: meu });
+  assert.equal(iniciados.at(-1)!.eventId, meu);
+  assert.equal(iniciados.length, 2);
+});
+
 test("eventsForRun diz se a automação depende de evento e lista os recentes do gatilho, sem os colados", async () => {
   const { db, agents, automations, eventos } = montar();
   const id = await salvar(agents, REVISAR);
@@ -137,7 +165,7 @@ test("eventsForRun diz se a automação depende de evento e lista os recentes do
   };
   const antigo = await grava("teams", { repo: "o/r", prNumber: 1, teamsAuthor: "Ana", text: "olha esse PR https://github.com/o/r/pull/1" }, 1);
   const recente = await grava("github", { repo: "o/api", pull: 2, title: "Ajusta timeout", author: "bia" }, 2);
-  await eventos.doLink("https://github.com/o/r/pull/3");
+  await eventos.doLink("https://github.com/o/r/pull/3", id);
   await grava("manual", { repo: "o/r", pull: 3, author: "x" }, 3);
 
   const ctx = await automations.eventsForRun(id);

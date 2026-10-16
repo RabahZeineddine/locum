@@ -181,9 +181,12 @@ export class AutomationService {
     let eventId: string | null = null;
     if (evento.eventId !== undefined) {
       if (!(await this.eventos.existe(evento.eventId))) throw new Error(`evento ${evento.eventId} nao encontrado`);
+      if (!(await this.eventos.daAutomacao(evento.eventId, agentId))) {
+        throw new Error(`o evento ${evento.eventId} não é um evento desta automação: escolha um dos recentes dela ou cole o link de um pull request`);
+      }
       eventId = evento.eventId;
     } else if (evento.prUrl !== undefined) {
-      eventId = (await this.eventos.doLink(evento.prUrl)).eventId;
+      eventId = (await this.eventos.doLink(evento.prUrl, agentId)).eventId;
     } else {
       const version = await this.agents.getLatestVersion(agentId);
       const motivo = version === undefined ? null : dependenciaDeEvento(version.spec);

@@ -795,8 +795,10 @@ export function alvoDoEvento(payload: EventPayload): Record<string, unknown> {
     "channel",
     "threadTs",
     "ts",
-    // A mensagem do Teams onde o review reage ao sair.
+    // A mensagem do Teams onde o review reage ao sair, e o `prOwner` que
+    // distingue o evento de PR do de conversa na hora de achar a resposta.
     ...TEAMS_REACAO,
+    "prOwner",
   ] as const;
   const alvo: Record<string, unknown> = {};
   for (const campo of campos) {
@@ -834,7 +836,7 @@ const TETO_DE_ATIVIDADES = 300;
 
 const TEAMS_REACAO = ["teamsChatId", "teamsTeamId", "teamsChannelId", "teamsMessageId", "teamsReplyToId", "teamsAccount"] as const;
 
-const DESTINO = ["owner", "repo", "pull", "headSha", ...TEAMS_REACAO] as const;
+const DESTINO = ["owner", "repo", "pull", "headSha", "prOwner", ...TEAMS_REACAO] as const;
 
 export function destinoDoEvento(alvo: Record<string, unknown>): Record<string, unknown> {
   const destino: Record<string, unknown> = {};
@@ -845,7 +847,9 @@ export function destinoDoEvento(alvo: Record<string, unknown>): Record<string, u
   // espalhados por cima da saída do modelo, apagam o que ele inventou. Sem
   // isso, evento de outra origem deixaria o modelo apontar a reação do review
   // para uma conversa qualquer do Teams.
-  for (const campo of TEAMS_REACAO) destino[campo] = alvo[campo];
+  // O `prOwner` também: com ele a saída do modelo trocaria o caminho de
+  // conversa pelo de PR, e o `teams*` que ela inventasse valeria.
+  for (const campo of [...TEAMS_REACAO, "prOwner"]) destino[campo] = alvo[campo];
   return destino;
 }
 
