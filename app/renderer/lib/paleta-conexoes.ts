@@ -103,3 +103,17 @@ export function passoDeFerramenta(spec: AgentSpec, servidor: string, ferramenta:
     params: { server: servidor, tool: ferramenta.name, args: {} },
   };
 }
+
+/**
+ * O modo do passo depois de trocar a ferramenta. Escrita só fica em automático
+ * quando o nó traz `autoEscrita`, escolhido à mão; senão volta para aprovação.
+ * Sem saber o que a ferramenta é, também não fica em automático.
+ */
+export function modoParaFerramenta(
+  modoAtual: "approve" | "draft" | "auto",
+  autoEscrita: boolean,
+  ferramenta: FerramentaClassificavel | undefined,
+): "approve" | "draft" | "auto" {
+  if (modoAtual !== "auto" || autoEscrita) return modoAtual;
+  return ferramenta !== undefined && ehLeituraNaAcao(ferramenta) ? "auto" : "approve";
+}

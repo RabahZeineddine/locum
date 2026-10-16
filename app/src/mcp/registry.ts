@@ -356,21 +356,19 @@ function fingerprint(cfg: McpServerConfig): string {
 }
 
 /**
- * Quatro caracteres por token e a regra de bolso dos tokenizadores BPE. Chamar
- * um contador de verdade exigiria saber o modelo antes de listar, e a diferenca
- * nao muda a decisao de marcar ou nao marcar a ferramenta.
- */
-/**
  * O `outputSchema` de cada ferramenta. O embrulho do AI SDK o descarta, então
  * vem da lista crua do servidor. É melhoria: servidor que não lista de novo, ou
  * recusa, deixa o catálogo sem ele.
  */
+/** Tempo de cada página da lista crua: melhoria que não pode segurar o catálogo. */
+const TEMPO_DA_LISTA_CRUA_MS = 10_000;
+
 async function esquemasDeSaida(client: Entry["client"]): Promise<Map<string, Record<string, unknown>>> {
   const saidas = new Map<string, Record<string, unknown>>();
   try {
     let cursor: string | undefined;
     for (let pagina = 0; pagina < 20; pagina++) {
-      const r = await client.listTools(cursor === undefined ? undefined : { params: { cursor } });
+      const r = await client.listTools({ ...(cursor === undefined ? {} : { params: { cursor } }), options: { timeout: TEMPO_DA_LISTA_CRUA_MS } });
       for (const t of r.tools) {
         const o = (t as { outputSchema?: unknown }).outputSchema;
         if (o !== null && typeof o === "object") saidas.set(t.name, o as Record<string, unknown>);
@@ -390,6 +388,11 @@ function esquemaCru(inputSchema: unknown): Record<string, unknown> | undefined {
   return raw !== null && typeof raw === "object" ? (raw as Record<string, unknown>) : undefined;
 }
 
+/**
+ * Quatro caracteres por token e a regra de bolso dos tokenizadores BPE. Chamar
+ * um contador de verdade exigiria saber o modelo antes de listar, e a diferenca
+ * nao muda a decisao de marcar ou nao marcar a ferramenta.
+ */
 function estimateTokens(name: string, description: string | undefined, inputSchema: unknown): number {
   // O cliente MCP embrulha o schema em `jsonSchema()`, que guarda o original
   // em `.jsonSchema`. Ferramenta declarada de outro jeito cai no proprio valor.

@@ -210,6 +210,12 @@ export const approvals = sqliteTable(
      * comenta duas vezes.
      */
     externalId: text("external_id"),
+    /**
+     * O que o passo guarda depois de publicar: a resposta da ferramenta, no
+     * `mcp.call`. Fica na pendencia para a retomada depois de uma queda entre
+     * fechar a pendencia e atualizar o passo nao perder a resposta.
+     */
+    output: text("output", { mode: "json" }),
     decidedAt: integer("decided_at"),
     createdAt: integer("created_at").notNull().default(now),
   },

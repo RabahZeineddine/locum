@@ -1,4 +1,4 @@
-import { argsDoTexto, definirNoCaminho, ehReferencia, textoDosArgs, valorDoTexto, type Campo as CampoGerado } from "@/lib/formulario-de-schema";
+import { argsDoTexto, definirNoCaminho, ehReferencia, textoDosArgs, valorAoTrocarDeModo, valorDoTexto, type Campo as CampoGerado } from "@/lib/formulario-de-schema";
 import type { ReferenciaDisponivel } from "@/lib/automacao";
 import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
@@ -83,8 +83,10 @@ function CampoDoArgumento({
 
   const modo = (ref: boolean): void => {
     setEmReferencia(ref);
-    if (!ref && ehReferencia(valor)) {
-      gravar(undefined);
+    // O valor do outro modo não fica: um valor fixo não vira referência, nem o contrário.
+    const mantido = valorAoTrocarDeModo(valor, ref ? "ref" : "fixo");
+    if (mantido !== valor) {
+      gravar(mantido);
       setTexto("");
     }
   };

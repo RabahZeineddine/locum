@@ -250,8 +250,10 @@ export class ApprovalGate {
         .run();
       if (fechada.changes !== 1) throw new Error(`aprovacao ${approvalId} ja esta sendo resolvida`);
     }
-    await this.close(approvalId, status);
-    await settleStep(row.stepId, status, resposta);
+    // A resposta vai para a pendência antes de o passo ser atualizado: uma
+    // queda entre os dois não a perde.
+    await this.close(approvalId, status, status === "approved" ? { output: resposta?.output ?? { state: "published" } } : undefined);
+    await settleStep(row.stepId, status, status === "approved" ? { output: resposta?.output } : undefined);
     if (status !== "approved") {
       await this.handlers.get(row.kind)?.discard?.(row.payload).catch(() => undefined);
     }
@@ -295,14 +297,15 @@ export class ApprovalGate {
       throw new Error(`aprovacao ${approvalId} nao esta parada na publicacao`);
     }
     if (outcome === "retry") return { runId: row.runId, status: "pending" };
-    await settleStep(row.stepId, "approved");
+    // Dada por publicada à mão, a pendência não tem a resposta da ferramenta.
+    await settleStep(row.stepId, "approved", { semResposta: row.kind === "mcp.call" });
     return { runId: row.runId, status: "approved" };
   }
 
-  private async close(id: string, status: string): Promise<void> {
+  private async close(id: string, status: string, gravar?: { output: unknown }): Promise<void> {
     await db
       .update(schema.approvals)
-      .set({ status, decidedAt: Math.floor(Date.now() / 1000) })
+      .set({ status, decidedAt: Math.floor(Date.now() / 1000), ...(gravar === undefined ? {} : { output: gravar.output as object }) })
       .where(eq(schema.approvals.id, id));
   }
 }
@@ -316,7 +319,12 @@ export class ApprovalGate {
  * para sempre. Rejeitar pula o passo em vez de falhar, porque rejeitar é uma
  * resposta válida e o que vem depois ainda pode rodar.
  */
-export async function settleStep(stepId: string, status: string, resposta?: { output: unknown }): Promise<{ output: unknown }> {
+export async function settleStep(
+  stepId: string,
+  status: string,
+  /** `output`: o que a pendência guardou da publicação. `semResposta`: não há como saber a resposta (dada por publicada à mão). */
+  extra: { output?: unknown; semResposta?: boolean } = {},
+): Promise<{ output: unknown }> {
   const endedAt = Math.floor(Date.now() / 1000);
   // Só o passo que ainda espera a decisão. O que foi zerado por uma
   // reexecução já é outra tentativa, e a decisão da pendência antiga não
@@ -327,7 +335,10 @@ export async function settleStep(stepId: string, status: string, resposta?: { ou
     await db.update(schema.steps).set({ status: "skipped", error, output: null, endedAt }).where(esperando);
     return { output: null };
   }
-  const output = resposta !== undefined && status === "approved" ? resposta.output : { state: status === "drafted" ? "drafted" : "published" };
+  const output =
+    extra.output !== undefined && status === "approved"
+      ? extra.output
+      : { state: status === "drafted" ? "drafted" : "published", ...(extra.semResposta === true ? { semResposta: true } : {}) };
   await db.update(schema.steps).set({ status: "done", output, endedAt }).where(esperando);
   return { output };
 }

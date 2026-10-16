@@ -17,6 +17,8 @@ export const McpCallProposal = z.object({
   server: z.string({ error: "escolha o app (servidor MCP)" }).trim().min(1, "escolha o app (servidor MCP)"),
   tool: z.string({ error: "escolha a ferramenta" }).trim().min(1, "escolha a ferramenta"),
   args: z.record(z.string(), z.unknown()).default({}),
+  /** Por que a chamada parou na Fila mesmo em automático: o executor grava, a tela explica. */
+  aviso: z.enum(["nao-e-leitura"]).optional(),
 });
 export type McpCallProposal = z.infer<typeof McpCallProposal>;
 
@@ -61,10 +63,10 @@ export function saidaDaResposta(resultado: RespostaMcp | undefined): unknown {
 export function mcpCallHandler(options: McpCallOptions): ActionHandler {
   return {
     async propose(payload) {
-      // Só os três campos: o resto do evento que o executor junta não é
+      // Só os campos da chamada: o resto do evento que o executor junta não é
       // argumento da ferramenta, e não entra na pendência.
       const p = (payload ?? {}) as Record<string, unknown>;
-      return McpCallProposal.parse({ server: p.server, tool: p.tool, args: p.args ?? {} });
+      return McpCallProposal.parse({ server: p.server, tool: p.tool, args: p.args ?? {}, ...(p.aviso === undefined ? {} : { aviso: p.aviso }) });
     },
     async publish(payload) {
       const proposta = McpCallProposal.parse(payload);

@@ -158,7 +158,8 @@ test("o executor separa o trecho estável do template e grava os tokens de cache
   const partes = usuario!.content as Array<{ text: string; providerOptions?: unknown }>;
   assert.equal(partes[0]!.text, "Regras fixas.\n\nRepositório: ");
   assert.deepEqual(partes[0]!.providerOptions, marca);
-  assert.equal(partes[1]!.text, "dono/repo\nDiff:\n+ x");
+  // O diff vem de fora: entra entre as marcas de dado externo.
+  assert.equal(partes[1]!.text, 'dono/repo\nDiff:\n<dado-externo origem="event.diff">\n+ x\n</dado-externo>');
 
   const [passo] = await db
     .select()

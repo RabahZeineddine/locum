@@ -103,7 +103,7 @@ test("valor fixo e referência: a referência grava a expressão, o fixo grava o
   assert.equal(valorDoTexto("", n!), undefined, "vazio tira o campo");
   assert.equal(valorDoTexto("true", b!), true);
   assert.equal(valorDoTexto("false", b!), false);
-  assert.deepEqual(valorDoTexto("1\n2, 3", tags!), [1, 2, 3]);
+  assert.deepEqual(valorDoTexto("1\n2\n3", tags!), [1, 2, 3]);
   assert.equal(valorDoTexto("{{steps.ler.ids}}", tags!), "{{steps.ler.ids}}");
 });
 
@@ -213,4 +213,36 @@ test("as saídas do último run: a mais recente de cada passo, sem o estado de e
   ];
   assert.deepEqual(saidasDosRuns(runs), { ler: { total: 1 }, outro: { ok: true } });
   assert.deepEqual(saidasDosRuns([]), {});
+});
+
+test("trocar de fixo para referência (e o contrário) limpa o valor que sobrou", async () => {
+  const { valorAoTrocarDeModo } = await import("../renderer/lib/formulario-de-schema.js");
+  assert.equal(valorAoTrocarDeModo("eyes", "ref"), undefined, "o valor fixo não vira referência");
+  assert.equal(valorAoTrocarDeModo("{{event.text}}", "fixo"), undefined, "a referência não vira valor fixo");
+  assert.equal(valorAoTrocarDeModo("{{event.text}}", "ref"), "{{event.text}}");
+  assert.equal(valorAoTrocarDeModo("eyes", "fixo"), "eyes");
+});
+
+test("array de strings: um item por linha, a vírgula não separa", () => {
+  const [tags] = camposDoSchema({ type: "object", properties: { tags: { type: "array", items: { type: "string" } } } });
+  assert.deepEqual(valorDoTexto("a, b\nc d", tags!), ["a, b", "c d"]);
+});
+
+test("campo json com texto que não é JSON bloqueia; marcador e JSON válido passam", () => {
+  const campos = camposDoSchema({ type: "object", properties: { livre: { type: "object", additionalProperties: true }, ou: { oneOf: [{ type: "string" }, { type: "object" }] } } });
+  assert.deepEqual(validarArgs(campos, { livre: "{ quebrado" }), [{ caminho: "livre", motivo: "tipo" }]);
+  assert.deepEqual(validarArgs(campos, { livre: { a: 1 } }), []);
+  assert.deepEqual(validarArgs(campos, { livre: "{{steps.ler.obj}}" }), []);
+  assert.deepEqual(validarArgs(campos, { ou: "texto simples" }), [], "o schema aceita texto");
+});
+
+test("trocar a ferramenta recalcula o modo: escrita sem autoEscrita volta para approve", async () => {
+  const { modoParaFerramenta } = await import("../renderer/lib/paleta-conexoes.js");
+  const leitura = { name: "get_total", readOnlyHint: true };
+  const escrita = { name: "send_message" };
+  assert.equal(modoParaFerramenta("auto", false, escrita), "approve", "de get para send rebaixa");
+  assert.equal(modoParaFerramenta("auto", true, escrita), "auto", "com autoEscrita a pessoa já escolheu");
+  assert.equal(modoParaFerramenta("auto", false, leitura), "auto");
+  assert.equal(modoParaFerramenta("approve", false, leitura), "approve");
+  assert.equal(modoParaFerramenta("auto", false, undefined), "approve", "sem saber o que é, não fica em auto");
 });

@@ -185,3 +185,30 @@ test("o detalhe do run traz o teto por run dos agents da biblioteca que os passo
   await db.insert(schema.runs).values({ id: runId, agentVersionId: versao.id, status: "done" });
   assert.deepEqual((await new RunService(db).get(runId))?.tetosDosAgents, { "com-teto": 0.3 });
 });
+
+test("só passo de modelo conta achado: a resposta de ferramenta com `findings` fica fora", async () => {
+  const db = bancoDeTeste();
+  const versao = await new AgentService(db).upsert(
+    AgentSpec.parse({
+      id: "misto",
+      name: "Misto",
+      steps: [
+        { type: "model", key: "ler", name: "Ler", model: "anthropic/modelo", prompt: "revise" },
+        { type: "action", key: "chamar", name: "Chamar", action: "mcp.call", needs: ["ler"], mode: "auto", params: { server: "s", tool: "t", args: {} } },
+      ],
+    }),
+    undefined,
+    "human",
+  );
+  const runId = randomUUID();
+  await db.insert(schema.runs).values({ id: runId, agentVersionId: versao.id, status: "done" });
+  const achados = { findings: [{ severity: "high", problem: "de verdade" }] };
+  await db.insert(schema.steps).values([
+    { id: randomUUID(), runId, idx: 0, stepKey: "ler", name: "Ler", status: "done", output: achados },
+    { id: randomUUID(), runId, idx: 1, stepKey: "chamar", name: "Chamar", status: "done", output: { findings: [{ severity: "low", problem: "veio da ferramenta" }] } },
+  ]);
+  const [run] = await new RunService(db).list();
+  assert.equal(run?.findingCount, 1);
+  const porRun = await new RunService(db).findingsByRun([runId]);
+  assert.deepEqual(porRun[runId]?.map((f) => f.problem), ["de verdade"]);
+});

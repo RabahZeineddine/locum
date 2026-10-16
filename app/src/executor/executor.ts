@@ -23,6 +23,7 @@ import { discoverSkills, selectSkills, skillsAusentes, skillsIndisponiveis, skil
 import { ApprovalGate, settleStep } from "../approval/gate.js";
 import { BudgetExceeded, assertWithinBudget, recordSpend, type Spend } from "./budget.js";
 import { ehLeituraNaAcao, type FerramentaClassificavel } from "../config/leitura.js";
+import { AVISO_DE_DADO_EXTERNO, delimitarDado, ehDadoExterno } from "./dado-externo.js";
 import { ACOES_DE_REACAO, descreverReacao, reacaoDoPasso } from "../reacao/passo.js";
 import { ACOES_DE_CONVERSA, dependenciaDeEvento, recusaSemEvento } from "./dependencia-de-evento.js";
 import { SUBSCRIPTION_RUNTIMES } from "../runtimes/types.js";
@@ -281,7 +282,7 @@ export class Executor {
           // da nova. Ler qualquer uma delas podia pegar a vencida e dar o passo
           // por publicado sem ninguém ter aprovado.
           const [approval] = await db
-            .select({ status: schema.approvals.status })
+            .select({ status: schema.approvals.status, kind: schema.approvals.kind, output: schema.approvals.output })
             .from(schema.approvals)
             .where(and(eq(schema.approvals.stepId, existing.id), ne(schema.approvals.status, "expired")))
             .orderBy(desc(schema.approvals.createdAt));
@@ -290,7 +291,7 @@ export class Executor {
           if (!approval || approval.status === "pending" || approval.status === "publishing") {
             return this.pause(runId);
           }
-          outputs.set(step.key, (await settleStep(existing.id, approval.status)).output);
+          outputs.set(step.key, (await settleStep(existing.id, approval.status, { output: approval.output ?? undefined, semResposta: approval.kind === "mcp.call" })).output);
           // Recusado na Fila: o que depende só dele não roda.
           if (approval.status === "rejected") {
             foraDoCaminho.add(step.key);
@@ -350,7 +351,7 @@ export class Executor {
                 gastoDosAgents,
                 initiativeServers,
               })
-            : await this.runActionStepOpcional({ runId, stepId, step, outputs, payload });
+            : await this.runActionStepOpcional({ runId, stepId, step, outputs, payload, deFerramenta: new Set(spec.steps.filter((p) => p.type === "action" && p.action === "mcp.call").map((p) => p.key)) });
 
         if (outcome.kind === "paused") return this.pause(runId);
         if (outcome.kind === "skipped") {
@@ -639,7 +640,9 @@ export class Executor {
       // enxerga plugin nem consegue abrir a skill pelo nome.
       // O contexto da iniciativa entra no system: sem ele, o agent saía
       // procurando "o contexto da iniciativa" pelo disco.
-      const system = [perfil?.system ?? "", args.contextoDaIniciativa ?? "", skillsPreamble(skills, true, runtime.id)]
+      const passosDeFerramenta = new Set(spec.steps.filter((p) => p.type === "action" && p.action === "mcp.call").map((p) => p.key));
+      const { prompt: promptDoPasso, comDado } = renderPromptDeModelo(step.prompt, payload, outputs, passosDeFerramenta);
+      const system = [perfil?.system ?? "", args.contextoDaIniciativa ?? "", skillsPreamble(skills, true, runtime.id), comDado ? AVISO_DE_DADO_EXTERNO : ""]
         .filter((s) => s.length > 0)
         .join("\n\n");
 
@@ -647,7 +650,7 @@ export class Executor {
         provider: resolution.provider,
         model: resolution.model,
         system: system.length > 0 ? system : undefined,
-        prompt: renderPrompt(step.prompt, payload, outputs),
+        prompt: promptDoPasso,
         stablePrefix: stablePrefix(step.prompt),
         tools,
         mcpServers: [...new Set(doLocum.map((t) => t.server))],
@@ -709,6 +712,8 @@ export class Executor {
     step: ActionStep;
     outputs: Map<string, unknown>;
     payload: EventPayload;
+    /** Chaves dos passos `mcp.call`: a resposta deles não define destino de ação. */
+    deFerramenta: ReadonlySet<string>;
   }): Promise<StepOutcome | { kind: "paused" } | { kind: "skipped" }> {
     if (!args.step.optional) return this.runActionStep(args);
     try {
@@ -730,6 +735,7 @@ export class Executor {
     step: ActionStep;
     outputs: Map<string, unknown>;
     payload: EventPayload;
+    deFerramenta: ReadonlySet<string>;
   }): Promise<StepOutcome | { kind: "paused" }> {
     const { runId, stepId, step, outputs } = args;
     const source = step.input ?? step.needs[0];
@@ -761,7 +767,11 @@ export class Executor {
     // Reação não escreve texto: ela não lê a saída de passo nenhum, e o emoji vem
     // dos `params`. O evento é o que diz em que mensagem ela cai, mesmo quando o
     // passo não depende de nenhum outro (o 👀 do início).
-    const doPasso = ACOES_DE_REACAO.has(step.action)
+    //
+    // A resposta de uma ferramenta de conexão é dado de fora: não entra
+    // espalhada no payload, nem define destino ou corpo. O que dela serve vem
+    // citado em `params` (`{{steps.x.campo}}`), à vista no nó.
+    const doPasso = ACOES_DE_REACAO.has(step.action) || (source !== undefined && args.deFerramenta.has(source))
       ? { ...alvo, ...destinoDoEvento(alvo) }
       : saida !== null && typeof saida === "object"
         ? { ...alvo, ...(saida as object), ...destinoDoEvento(alvo) }
@@ -797,9 +807,19 @@ export class Executor {
       return { kind: "paused" };
     }
 
+    // Escrita em automático só quando a pessoa escolheu (`autoEscrita` no nó). A
+    // classificação é a do cache no momento do run: sem anotação de leitura, ou
+    // sem cache, a chamada espera na Fila com o motivo.
+    const seguraNaFila = await escritaSemEscolha(step, args.payload, outputs, this.deps.ferramentasGuardadas ?? ferramentasDoCache);
     const { state, output: resposta } = await this.deps.gate.submitComSaida(
-      { runId, stepId, kind: step.action, payload, target: step.target ?? null },
-      step.mode,
+      {
+        runId,
+        stepId,
+        kind: step.action,
+        payload: seguraNaFila ? { ...(payload as object), aviso: "nao-e-leitura" } : payload,
+        target: step.target ?? null,
+      },
+      seguraNaFila ? "approve" : step.mode,
     );
 
     if (state === "pending") {
@@ -966,23 +986,73 @@ export function renderPrompt(
   template: string,
   payload: EventPayload,
   outputs: Map<string, unknown>,
+  /** Decide se o conteúdo do marcador vai entre as marcas de dado externo (só o prompt de modelo pede). */
+  externo?: (caminho: string) => boolean,
 ): string {
-  const descer = (inicio: unknown, caminho: string[]) =>
-    caminho.reduce<unknown>(
-      (acc, key) => (acc && typeof acc === "object" ? (acc as Record<string, unknown>)[key] : undefined),
-      inicio,
-    );
   const texto = (value: unknown) => (typeof value === "string" ? value : JSON.stringify(value ?? null, null, 2));
 
   return template.replace(/\{\{\s*([\w.-]+)\s*\}\}/g, (_match, path: string) => {
     const [root, ...rest] = path.split(".");
+    let valor: string | null = null;
     if (root === "steps") {
       const [chave, ...campo] = rest;
-      return texto(descer(outputs.get(chave!), campo));
+      valor = texto(descerNaSaida(outputs, chave!, campo));
+    } else if (root === "event") {
+      valor = texto(descerEm(payload, rest));
     }
-    if (root === "event") return texto(descer(payload, rest));
-    return "";
+    if (valor === null) return "";
+    return externo?.(path) === true ? delimitarDado(valor, path) : valor;
   });
+}
+
+/** O prompt de um passo de modelo: o que veio de fora entra como dado, e `comDado` diz se o system precisa do aviso. */
+export function renderPromptDeModelo(
+  template: string,
+  payload: EventPayload,
+  outputs: Map<string, unknown>,
+  passosDeFerramenta: ReadonlySet<string>,
+): { prompt: string; comDado: boolean } {
+  let comDado = false;
+  const prompt = renderPrompt(template, payload, outputs, (caminho) => {
+    const externo = ehDadoExterno(caminho, passosDeFerramenta);
+    if (externo) comDado = true;
+    return externo;
+  });
+  return { prompt, comDado };
+}
+
+const descerEm = (inicio: unknown, caminho: string[]) =>
+  caminho.reduce<unknown>((acc, key) => (acc && typeof acc === "object" ? (acc as Record<string, unknown>)[key] : undefined), inicio);
+
+/**
+ * O campo da saída de um passo. Passo dado por publicado à mão não tem a
+ * resposta da ferramenta: citar campo dele falha com o motivo, em vez de
+ * entregar `null` calado ao passo seguinte.
+ */
+function descerNaSaida(outputs: Map<string, unknown>, chave: string, campo: string[]): unknown {
+  const saida = outputs.get(chave);
+  if (saida !== null && typeof saida === "object" && (saida as { semResposta?: unknown }).semResposta === true && campo.length > 0 && campo[0] !== "state" && campo[0] !== "semResposta") {
+    throw new Error(`o passo "${chave}" foi dado por publicado à mão, sem a resposta da ferramenta: não há "${campo.join(".")}" para usar`);
+  }
+  return descerEm(saida, campo);
+}
+
+/**
+ * `mcp.call` em automático cuja ferramenta não é leitura no cache de agora, e
+ * cujo nó não traz `autoEscrita`. Só pede mais confirmação.
+ */
+async function escritaSemEscolha(
+  step: ActionStep,
+  payload: EventPayload,
+  outputs: Map<string, unknown>,
+  guardadas: (servidor: string) => Promise<readonly FerramentaClassificavel[] | null>,
+): Promise<boolean> {
+  if (step.action !== "mcp.call" || step.mode !== "auto") return false;
+  const params = step.params === undefined ? {} : (renderParams(step.params, payload, outputs) as Record<string, unknown>);
+  if (params.autoEscrita === true) return false;
+  if (typeof params.server !== "string" || typeof params.tool !== "string") return true;
+  const ferramenta = (await guardadas(params.server).catch(() => null))?.find((f) => f.name === params.tool);
+  return ferramenta === undefined || !ehLeituraNaAcao(ferramenta);
 }
 
 /** O que o passo de resposta diz quando o run de teste não tem conversa de origem. */
@@ -1051,16 +1121,11 @@ export function renderParams(valor: unknown, payload: EventPayload, outputs: Map
     const sozinho = /^\{\{\s*([\w.-]+)\s*\}\}$/.exec(valor);
     if (sozinho !== null) {
       const [root, ...rest] = sozinho[1]!.split(".");
-      const descer = (inicio: unknown, caminho: string[]) =>
-        caminho.reduce<unknown>(
-          (acc, key) => (acc && typeof acc === "object" ? (acc as Record<string, unknown>)[key] : undefined),
-          inicio,
-        );
       if (root === "steps") {
         const [chave, ...campo] = rest;
-        return descer(outputs.get(chave!), campo) ?? null;
+        return descerNaSaida(outputs, chave!, campo) ?? null;
       }
-      if (root === "event") return descer(payload, rest) ?? null;
+      if (root === "event") return descerEm(payload, rest) ?? null;
     }
     return renderPrompt(valor, payload, outputs);
   }

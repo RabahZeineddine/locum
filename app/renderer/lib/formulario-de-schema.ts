@@ -23,6 +23,8 @@ export interface Campo {
   itens?: TipoPrimitivo;
   /** Campos de um objeto com propriedades declaradas. */
   campos?: Campo[];
+  /** Campo `json` cujo schema aceita texto: um texto simples é valor válido nele. */
+  aceitaTexto?: boolean;
 }
 
 type Esquema = {
@@ -84,7 +86,13 @@ function campoDe(nome: string, valor: unknown, obrigatorio: boolean, profundidad
     const filhos = camposDoSchema(base, profundidade + 1);
     if (filhos.length > 0) return { ...comum, tipo: "object", campos: filhos };
   }
-  return { ...comum, tipo: "json" };
+  return { ...comum, tipo: "json", ...(aceitaTexto(base) ? { aceitaTexto: true } : {}) };
+}
+
+function aceitaTexto(s: Esquema): boolean {
+  if (s.type === "string" || (Array.isArray(s.type) && s.type.includes("string"))) return true;
+  const alternativas = Array.isArray(s.anyOf) ? s.anyOf : Array.isArray(s.oneOf) ? s.oneOf : [];
+  return alternativas.some((a) => esquema(a)?.type === "string");
 }
 
 /** Os campos do formulário, na ordem das propriedades. Schema ausente ou sem propriedades: nenhum. */
@@ -126,12 +134,17 @@ export function valorDoTexto(texto: string, campo: Pick<Campo, "tipo" | "itens">
     case "boolean":
       return primitivoDoTexto(texto, campo.tipo);
     case "array": {
-      const partes = texto.split(/[\n,]/).map((p) => p.trim()).filter((p) => p !== "");
+      const partes = texto.split("\n").map((p) => p.trim()).filter((p) => p !== "");
       return partes.map((p) => primitivoDoTexto(p, campo.itens ?? "string"));
     }
     default:
       return texto;
   }
+}
+
+/** Trocar o modo do campo descarta o que era do outro modo: valor fixo não vira referência, nem o contrário. */
+export function valorAoTrocarDeModo(valor: unknown, para: "fixo" | "ref"): unknown {
+  return ehReferencia(valor) === (para === "ref") ? valor : undefined;
 }
 
 /** Grava (ou, com `undefined`, tira) um valor no caminho, sem mutar, podando o objeto que esvaziou. */
@@ -179,7 +192,8 @@ function tipoCombina(v: unknown, c: Campo): boolean {
     case "object":
       return v !== null && typeof v === "object" && !Array.isArray(v);
     default:
-      return true;
+      // `json`: texto que sobrou é JSON que não fechou, a menos que o schema aceite texto ou o texto traga marcador.
+      return typeof v !== "string" || c.aceitaTexto === true || v.includes("{{");
   }
 }
 

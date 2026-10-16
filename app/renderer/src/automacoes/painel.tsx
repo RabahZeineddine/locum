@@ -21,7 +21,7 @@ import {
 } from "@/lib/automacao";
 import { call, useRead, type ReadResult } from "@/lib/bridge";
 import { camposDoSchema } from "@/lib/formulario-de-schema";
-import { humanizar } from "@/lib/paleta-conexoes";
+import { humanizar, modoParaFerramenta } from "@/lib/paleta-conexoes";
 import { ehLeituraNaAcao } from "../../../src/config/leitura";
 import { chaveDaListaDoSlack, chaveDaListaDoTeams } from "@/lib/cache-de-lista";
 import { organizarCanais } from "@/lib/canais-do-teams";
@@ -1299,7 +1299,7 @@ function ConfigDaChamada({
   saidas: Readonly<Record<string, unknown>>;
 }) {
   const { t } = useTranslation();
-  const params = (passo.params ?? {}) as { server?: string; tool?: string; args?: Record<string, unknown> };
+  const params = (passo.params ?? {}) as { server?: string; tool?: string; args?: Record<string, unknown>; autoEscrita?: boolean };
   const servidor = params.server ?? "";
   const estado = conexoes.porServidor[servidor];
   const lista = estado?.tools ?? null;
@@ -1311,8 +1311,8 @@ function ConfigDaChamada({
     if (servidor !== "" && estado !== undefined && estado.tools === null && !estado.carregando && estado.erro === null) void carregar(servidor);
   }, [servidor, estado, carregar]);
 
-  const mudar = (novo: Partial<typeof params>, nome?: string): void =>
-    trocar({ ...passo, ...(nome === undefined ? {} : { name: nome }), params: { ...params, ...novo } });
+  const mudar = (novo: Partial<typeof params>, nome?: string, modo?: PassoDeAcao["mode"]): void =>
+    trocar({ ...passo, ...(nome === undefined ? {} : { name: nome }), ...(modo === undefined ? {} : { mode: modo }), params: { ...params, ...novo } });
   const escolhida = lista?.find((f) => f.name === params.tool);
   const campos = camposDoSchema(escolhida?.inputSchema);
   const args = params.args ?? {};
@@ -1349,7 +1349,12 @@ function ConfigDaChamada({
                 onChange={(e) => {
                   const nova = lista.find((f) => f.name === e.target.value);
                   const nomePadrao = passo.name === "" || passo.name === "Ação em app";
-                  mudar({ tool: e.target.value, args: {} }, nova !== undefined && nomePadrao ? humanizar(nova.name) : undefined);
+                  // Trocar a ferramenta recalcula o modo: escrita sem `autoEscrita` volta para aprovação.
+                  mudar(
+                    { tool: e.target.value, args: {} },
+                    nova !== undefined && nomePadrao ? humanizar(nova.name) : undefined,
+                    modoParaFerramenta(passo.mode, params.autoEscrita === true, nova),
+                  );
                 }}
                 value={params.tool ?? ""}
               >
@@ -1382,10 +1387,26 @@ function ConfigDaChamada({
           )}
         </Campo>
       )}
+      {escolhida === undefined || leitura === true ? null : (
+        <div className="flex flex-col gap-1" data-locum-auto-escrita="">
+          <Alternador
+            ligado={params.autoEscrita === true}
+            rotulo={t("automations.steps.mcp.call.autoWrite")}
+            trocar={(v) => {
+              const { autoEscrita: _antigo, ...resto } = params;
+              trocar({ ...passo, ...(v ? {} : { mode: modoParaFerramenta(passo.mode, false, escolhida) }), params: v ? { ...resto, autoEscrita: true } : resto });
+            }}
+          />
+          <p className="text-muted-foreground text-[11px]">
+            {t(params.autoEscrita === true ? "automations.steps.mcp.call.autoWriteWarning" : "automations.steps.mcp.call.autoWriteHint")}
+          </p>
+        </div>
+      )}
       {escolhida === undefined ? null : (
         <>
           <Variaveis inserir={inserir} lista={variaveis(rascunho, passo.key)} />
           <FormularioDaChamada
+            key={`${servidor}/${params.tool ?? ""}`}
             args={args}
             campos={campos}
             focar={focar}

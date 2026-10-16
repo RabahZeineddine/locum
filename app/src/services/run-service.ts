@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 import { db as defaultDb, schema } from "../db/index.js";
 import { AgentSpec } from "../config/types.js";
 import { buildExecutor } from "../executor/build.js";
@@ -97,6 +98,19 @@ export interface RunFinding {
  * deixa o run com saida velha alimentando passo novo, e essa regra nao pode
  * viver em tres lugares.
  */
+/**
+ * O passo é de modelo no spec que o run executou. A saída de um passo de ação
+ * (a resposta de uma ferramenta, por exemplo) pode ter qualquer campo, inclusive
+ * `findings`, e não conta como achado.
+ */
+function ehPassoDeModelo(runId: AnySQLiteColumn, stepKey: AnySQLiteColumn) {
+  return sql`exists (
+    select 1 from ${schema.runs} as r
+    join ${schema.agentVersions} as v on v.id = r.agent_version_id, json_each(v.spec, '$.steps') as j
+    where r.id = ${runId} and json_extract(j.value, '$.key') = ${stepKey} and json_extract(j.value, '$.type') = 'model'
+  )`;
+}
+
 export class RunService {
   constructor(
     private readonly db: Db = defaultDb,
@@ -182,7 +196,7 @@ export class RunService {
         // O `case` protege o `json_each`: saída que não é objeto JSON, ou
         // objeto sem lista em `findings`, estouraria a consulta inteira.
         stepDryRun: sql<number>`sum(case when json_valid(${s.output}) and json_extract(${s.output}, '$.state') = 'ensaio' then 1 else 0 end)`,
-        findingCount: sql<number>`sum(case when json_valid(${s.output}) and json_type(${s.output}, '$.findings') = 'array' then (
+        findingCount: sql<number>`sum(case when ${ehPassoDeModelo(s.runId, s.stepKey)} and json_valid(${s.output}) and json_type(${s.output}, '$.findings') = 'array' then (
           select count(*) from json_each(${s.output}, '$.findings') as f
           where f.type = 'object'
             and json_type(f.value, '$.problem') = 'text'
@@ -323,7 +337,7 @@ export class RunService {
     const passos = await this.db
       .select({ runId: schema.steps.runId, output: schema.steps.output })
       .from(schema.steps)
-      .where(inArray(schema.steps.runId, semTabela))
+      .where(and(inArray(schema.steps.runId, semTabela), ehPassoDeModelo(schema.steps.runId, schema.steps.stepKey)))
       .orderBy(asc(schema.steps.runId), asc(schema.steps.idx));
     for (const p of passos) out[p.runId]!.push(...fromStepOutput(p.output));
 

@@ -796,7 +796,14 @@ export function cargaDoDocumento(
   const c = (p.payload ?? {}) as Record<string, unknown>;
   if (p.kind === "mcp.call") {
     const args = JSON.stringify(c.args ?? {}, null, 2);
-    return { tipo: "call", titulo: `${String(c.server ?? "")} · ${String(c.tool ?? "")}`, resumo: args.replace(/\s+/g, " ").slice(0, 160), corpo: args };
+    return {
+      tipo: "call",
+      titulo: `${String(c.server ?? "")} · ${String(c.tool ?? "")}`,
+      // O executor segurou na Fila uma escrita que o nó pedia em automático sem a pessoa ter escolhido.
+      ...(c.aviso === "nao-e-leitura" ? { detalhe: t("inbox.document.notRead") } : {}),
+      resumo: args.replace(/\s+/g, " ").slice(0, 160),
+      corpo: args,
+    };
   }
   if (p.kind === "http.request") {
     const corpo = typeof c.body === "string" ? c.body : c.body === undefined ? "" : JSON.stringify(c.body, null, 2);

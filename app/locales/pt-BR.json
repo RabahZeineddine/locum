@@ -439,7 +439,8 @@
       "issue": "Tarefa",
       "digest": "Resumo",
       "counts": "{{reply}} pedem resposta · {{info}} informação",
-      "call": "Chamada"
+      "call": "Chamada",
+      "notRead": "a ferramenta não está marcada como leitura; confirme"
     },
     "stuckTitle": "Parou no meio da publicação",
     "stuckHint": "O Locum caiu ou perdeu a rede enquanto publicava. Confira no destino se saiu antes de escolher.",
@@ -2523,7 +2524,10 @@
         "viewForm": "ver como formulário",
         "refresh": "atualizar",
         "refreshing": "lendo...",
-        "refreshHint": "Lê de novo as ferramentas do servidor"
+        "refreshHint": "Lê de novo as ferramentas do servidor",
+        "autoWrite": "Escrita automática",
+        "autoWriteHint": "Em automático, a escrita espera na Fila. Marque para ela sair sozinha.",
+        "autoWriteWarning": "Publica no seu nome sem perguntar."
       },
       "http.request": {
         "title": "Chamar API",
