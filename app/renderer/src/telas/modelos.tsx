@@ -641,7 +641,6 @@ function ProvedoresCadastrados({
 }) {
   const { t } = useTranslation();
   const inicial = useRead("providers.registered");
-  const [relido, setRelido] = useState<Cadastrado[] | null>(null);
   const [id, setId] = useState("");
   const [nome, setNome] = useState("");
   const [url, setUrl] = useState("");
@@ -651,14 +650,16 @@ function ProvedoresCadastrados({
   // tempo mostrariam a lista de uso de uma na linha da outra.
   const [avisos, setAvisos] = useState<Record<string, Remocao>>({});
 
-  const lista = relido ?? inicial.data ?? [];
+  const lista = inicial.data ?? [];
   const recusa = erro ?? inicial.error?.message ?? null;
 
-  const reler = (): Promise<void> =>
-    Promise.all([read("providers.registered").then(setRelido), recarregar()]).then(
+  const reler = (): Promise<void> => {
+    invalidateReads("providers.registered");
+    return recarregar().then(
       () => undefined,
       (falha: unknown) => setErro(falha instanceof Error ? falha.message : String(falha)),
     );
+  };
 
   const agir = (acao: Promise<unknown>): Promise<unknown> => {
     setOcupado(true);

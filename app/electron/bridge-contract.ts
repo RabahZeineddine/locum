@@ -902,6 +902,12 @@ export const TERMINAL_EVENT_CHANNEL = "terminal:event";
 export const UPDATES_EVENT_CHANNEL = "updates:event";
 
 /**
+ * O banco mudou (nesta janela, no scheduler, no executor ou no `Locum --mcp`).
+ * Leva a lista de áreas afetadas, `["*"]` quando não se sabe. A janela só relê.
+ */
+export const DADOS_EVENT_CHANNEL = "dados:mudou";
+
+/**
  * O menu pede à janela que navegue. A janela passa pelo mesmo `navegar` dos
  * cliques, e com isso pela guarda de saída do editor: escrever o hash por fora
  * dela perderia a edição que a confirmação existe para proteger.

@@ -1060,6 +1060,8 @@ async function checkRenderer(): Promise<string> {
   await ensureExampleInitiative();
 
   setupBridge({ inboxTarget: pendingInboxTarget });
+  const { ligarAvisoDeDados } = await import("./dados-ao-vivo.js");
+  const desligarAvisoDeDados = ligarAvisoDeDados();
 
   const window = createWindow({ show: false });
   trustWindow(window);
@@ -1156,6 +1158,8 @@ async function checkRenderer(): Promise<string> {
 
     // Depois das comparações acima: cria automação, run e evento que elas não esperam.
     await checkExecutarComEvento(window);
+    // Por ultimo: decide uma pendencia por fora e o contador tem de acompanhar.
+    await checkContadorAoVivo(window);
 
     if (erros.length > 0) throw new Error(`o renderer registrou erro: ${erros.join(", ")}`);
 
@@ -1179,6 +1183,7 @@ async function checkRenderer(): Promise<string> {
     // antes deixaria a página sem quem responder e ela nem monta.
     if (capturasDeSkills) await capturarSkills(window);
     else if (capturas) await capturarTelas(window);
+    desligarAvisoDeDados();
     window.destroy();
     teardownBridge();
   }
@@ -7211,6 +7216,44 @@ async function esperarDestaque(window: BrowserWindow): Promise<number> {
   throw new Error("o bloco de codigo nao ficou destacado dentro de 20s");
 }
 
+/**
+ * Uma pendencia decidida por OUTRA conexao (o que o `Locum --mcp` faz, de outro
+ * processo) tem de aparecer no contador da barra sem a pessoa trocar de aba.
+ */
+async function checkContadorAoVivo(window: BrowserWindow): Promise<void> {
+  const { default: Database } = await import("better-sqlite3");
+  const { dbPath } = await import("../src/db/path.js");
+  const antes = await countPending();
+  if (antes === 0) throw new Error("sem pendencia para provar o contador ao vivo");
+  const lerContador = `Number(document.querySelector("[data-locum-probe=ponte]")?.dataset.pendencias ?? -1)`;
+  const vistoAntes = (await window.webContents.executeJavaScript(lerContador)) as number;
+  if (vistoAntes !== antes) throw new Error(`o contador mostrava ${vistoAntes} e a fila tem ${antes}`);
+
+  const outra = new Database(dbPath(), process.env.LOCUM_SQLITE_BINDING ? { nativeBinding: process.env.LOCUM_SQLITE_BINDING } : {});
+  try {
+    outra.prepare("update approvals set status = 'rejected' where id = (select id from approvals where status = 'pending' limit 1)").run();
+  } finally {
+    outra.close();
+  }
+  await esperarProbe<number>(window, "contador-ao-vivo", `${lerContador} === ${antes - 1} ? 1 : null`, 5_000);
+
+  // A lista de Automacoes aberta mostra a automacao que outra conexao criou,
+  // sem trocar de aba nem recarregar.
+  await irPara(window, "automations");
+  const lerTotal = `(() => { const el = document.querySelector("[data-locum-probe=automacoes]"); return el === null ? null : Number(el.dataset.total); })()`;
+  // O total da tela e zero enquanto a primeira leitura anda: espera ele bater com o servico.
+  const { agentService } = await import("../src/services/agent-service.js");
+  const totalAntes = (await agentService.list()).length;
+  await esperarProbe<number>(window, "lista-de-automacoes", `(${lerTotal}) === ${totalAntes} ? 1 : null`);
+  const criadora = new Database(dbPath(), process.env.LOCUM_SQLITE_BINDING ? { nativeBinding: process.env.LOCUM_SQLITE_BINDING } : {});
+  try {
+    criadora.prepare("insert into agents (id, name) values (?, ?)").run(`ao-vivo-${Date.now()}`, "Automacao criada por outra conexao");
+  } finally {
+    criadora.close();
+  }
+  await esperarProbe<number>(window, "automacao-ao-vivo", `(${lerTotal}) === ${totalAntes + 1} ? 1 : null`, 5_000);
+}
+
 /** Quantas pendencias a fila tem, lida direto do servico. */
 async function countPending(): Promise<number> {
   const { approvalService } = await import("../src/services/approval-service.js");
@@ -8721,6 +8764,11 @@ async function main(): Promise<void> {
   // canal ainda nao registrado volta como erro de IPC para o renderer.
   const { setupBridge } = await import("./bridge.js");
   setupBridge({ inboxTarget: pendingInboxTarget });
+
+  // Contador e telas abertas acompanham o banco sem trocar de aba.
+  const { ligarAvisoDeDados } = await import("./dados-ao-vivo.js");
+  const desligarAvisoDeDados = ligarAvisoDeDados();
+  app.on("will-quit", desligarAvisoDeDados);
 
   await ensureWindow();
 

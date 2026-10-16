@@ -5,7 +5,7 @@ import { Streamdown } from "streamdown";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ListGroup } from "@/components/ui/list-row";
-import { call, read, useRead, type ReadResult } from "@/lib/bridge";
+import { call, invalidateReads, read, useRead, type ReadResult } from "@/lib/bridge";
 import { Conversa } from "../assistente";
 import type { TelaProps } from "../rotas";
 import { LinhaDaAutomacao, NovaAutomacao } from "./automacoes";
@@ -466,10 +466,9 @@ function AbaAutomacoes({ iniciativa, navegar }: { iniciativa: IniciativaDetalhad
   const { t } = useTranslation();
   const ligadas = new Set(iniciativa.agents.map((a) => a.id));
   const inicial = useRead("agents.overview");
-  const [relida, setRelida] = useState<ReadResult<"agents.overview"> | null>(null);
-  const todas = relida ?? inicial.data ?? [];
+  const todas = inicial.data ?? [];
   const reler = (): void => {
-    read("agents.overview").then(setRelida, () => undefined);
+    invalidateReads("agents.overview");
   };
   const daIniciativa = todas.filter((a) => ligadas.has(a.id));
   const disponiveis = todas.filter((a) => !ligadas.has(a.id));

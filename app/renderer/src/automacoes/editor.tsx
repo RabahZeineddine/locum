@@ -31,7 +31,7 @@ import {
   type Problema,
   type Rascunho,
 } from "@/lib/automacao";
-import { call, read, useRead, type ReadResult } from "@/lib/bridge";
+import { call, invalidateReads, read, useRead, type ReadResult } from "@/lib/bridge";
 import { semPrefixoDoIpc } from "@/lib/erro-da-ponte";
 import { rotuloDoMotivoDeEvento } from "@/lib/rotulos";
 import { gatilhosParaGravar, mesclar, type Conflito, type Escolhas } from "@/lib/mesclar-automacao";
@@ -254,8 +254,7 @@ function EditorCarregado({
   const biblioteca = useRead("library.profiles");
   // Relida depois de o painel transformar um passo em agent da biblioteca:
   // sem isso o agent recém-criado contaria como inexistente e travaria o Salvar.
-  const [bibliotecaRelida, setBibliotecaRelida] = useState<ReadResult<"library.profiles"> | null>(null);
-  const agentsDaBiblioteca = bibliotecaRelida ?? biblioteca.data ?? [];
+  const agentsDaBiblioteca = biblioteca.data ?? [];
   const conectado = (id: string): boolean => (conexoes.data ?? []).some((c) => c.id === id && c.state === "connected");
   const listaDeTrackers = (trackers.data ?? []).filter((tr) => tr.enabled);
   const ctx = {
@@ -263,7 +262,7 @@ function EditorCarregado({
     teamsConectado: conectado("teams"),
     trackers: listaDeTrackers.map((tr) => tr.id),
     ...(conexoes.data === undefined ? {} : { githubComToken: (conexoes.data.find((c) => c.id === "github")?.partes?.token ?? "missing") === "ok" }),
-    ...(bibliotecaRelida === null && biblioteca.data === undefined ? {} : { agents: agentsDaBiblioteca.map((a) => a.id) }),
+    ...(biblioteca.data === undefined ? {} : { agents: agentsDaBiblioteca.map((a) => a.id) }),
   };
   const appsLigados: Record<AppDoComponente, boolean> = {
     locum: true,
@@ -503,7 +502,7 @@ function EditorCarregado({
     const aoFechar = modalDeAgent?.aoFechar;
     setModalDeAgent(null);
     read("library.profiles").then((lista) => {
-      setBibliotecaRelida(lista);
+      invalidateReads("library.profiles");
       if (id !== null) aoFechar?.(id, lista);
     }, () => undefined);
   };
@@ -888,7 +887,7 @@ function EditorCarregado({
             abrirAgent={abrirAgent}
             chave={selecionado}
             navegar={navegar}
-            relerBiblioteca={() => read("library.profiles").then(setBibliotecaRelida, () => undefined)}
+            relerBiblioteca={() => Promise.resolve(invalidateReads("library.profiles"))}
             fechar={() => setSelecionado(null)}
             problemas={problemasPorNo.get(selecionado) ?? []}
             rascunho={rascunho}
