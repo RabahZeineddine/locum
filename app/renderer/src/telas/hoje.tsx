@@ -727,12 +727,14 @@ function ComeceAqui({ agenda, navegar }: { agenda: Agenda[] | undefined; navegar
     connection: () => navegar("connections"),
     agent: () => navegar("agents"),
     trigger: () => navegar("automations"),
+    enable: () => navegar("automations"),
   };
   const passos: Passo[] = passosDoComeco({
     modelo: provedores.data.some((p) => p.available),
     conexoes: conexoes.data,
     agents: perfis.data.length,
     gatilho: agenda.some((g) => g.enabled),
+    temGatilho: agenda.length > 0,
   }).map((p) => ({ ...p, ir: destino[p.id] }));
   if (passos.every((p) => p.feito)) return null;
   const proximo = passos.find((p) => !p.feito)!;

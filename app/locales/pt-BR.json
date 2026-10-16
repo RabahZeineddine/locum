@@ -1627,6 +1627,11 @@
           "hint": "Crie uma automação ou use um modelo pronto, e ligue o gatilho que diz quando ela acorda.",
           "go": "Automações"
         },
+        "enable": {
+          "title": "Ligar a automação",
+          "hint": "Ela está criada e desligada. Teste com um evento antes de ligar.",
+          "go": "Automações"
+        },
         "hide": "Ocultar"
       },
       "sessions": {

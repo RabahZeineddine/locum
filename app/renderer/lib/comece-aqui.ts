@@ -8,7 +8,7 @@ export interface ConexaoParaOPasso {
 }
 
 export interface PassoDoComeco {
-  id: "model" | "connection" | "agent" | "trigger";
+  id: "model" | "connection" | "agent" | "trigger" | "enable";
   feito: boolean;
 }
 
@@ -28,11 +28,13 @@ export function passosDoComeco(entrada: {
   conexoes: readonly ConexaoParaOPasso[];
   agents: number;
   gatilho: boolean;
+  /** Já há gatilho cadastrado, mesmo desligado: o último passo é ligar, não criar. */
+  temGatilho?: boolean;
 }): PassoDoComeco[] {
   return [
     { id: "model", feito: entrada.modelo },
     { id: "connection", feito: entrada.conexoes.some(ehConexaoReal) },
     { id: "agent", feito: entrada.agents > 0 },
-    { id: "trigger", feito: entrada.gatilho },
+    { id: entrada.temGatilho === true && !entrada.gatilho ? "enable" : "trigger", feito: entrada.gatilho },
   ];
 }
