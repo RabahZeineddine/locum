@@ -640,7 +640,7 @@ test("run_automation_now ganha eventId e prUrl, e list_automation_events é leit
     },
   });
   const lista = ok<{ precisaDeEvento: string | null; recentes: unknown[] }>(await client.callTool({ name: "list_automation_events", arguments: { agentId } }));
-  assert.equal(lista.precisaDeEvento, "usa {{event.repo}}");
+  assert.deepEqual(lista.precisaDeEvento, { codigo: "marcador", marcador: "{{event.repo}}" });
   assert.deepEqual(lista.recentes, []);
   recusa(await client.callTool({ name: "run_automation_now", arguments: { agentId } }), /precisa de um evento \(usa \{\{event\.repo\}\}\); escolha um evento recente ou cole um link/);
   recusa(await client.callTool({ name: "run_automation_now", arguments: { agentId, prUrl: "https://example.com/x" } }), /link de um pull request do GitHub/);

@@ -7,10 +7,11 @@ import { AgentSpec } from "../src/config/types.js";
 import { db, schema } from "../src/db/index.js";
 import { migrateDb } from "../src/db/migrate.js";
 import { Executor } from "../src/executor/executor.js";
-import { dependenciaDeEvento } from "../src/executor/dependencia-de-evento.js";
+import { dependenciaDeEvento, motivoDaMensagem } from "../src/executor/dependencia-de-evento.js";
 import type { McpRegistry } from "../src/mcp/registry.js";
 import type { Runtime, RuntimeRequest } from "../src/runtimes/types.js";
 import { AgentService } from "../src/services/agent-service.js";
+import { TriggerService } from "../src/services/trigger-service.js";
 import { RunService } from "../src/services/run-service.js";
 
 /** "Executar agora" em automação que depende de evento: recusa, ensaio e o passo que falhou. */
@@ -55,20 +56,33 @@ const SPEC_REVISAR = [
   { type: "action", key: "responder", name: "responder", action: "teams.post", mode: "approve", input: "revisar", needs: ["revisar"] },
 ];
 
-test("dependenciaDeEvento aponta o marcador ou a ação que exige conversa", async () => {
+test("dependenciaDeEvento aponta o marcador ou a ação que exige conversa, em código e parâmetros", async () => {
   const { spec } = await agente(SPEC_REVISAR);
-  assert.match(dependenciaDeEvento(spec) ?? "", /usa \{\{event\.repo\}\}/);
+  assert.deepEqual(dependenciaDeEvento(spec), { codigo: "marcador", marcador: "{{event.repo}}" });
 
   const soAcao = AgentSpec.parse({ id: "so-acao", name: "x", steps: [modelo("a", "oi"), { type: "action", key: "r", name: "r", action: "slack.post", input: "a", needs: ["a"] }] });
-  assert.match(dependenciaDeEvento(soAcao) ?? "", /slack\.post/);
+  assert.deepEqual(dependenciaDeEvento(soAcao), { codigo: "acao", acao: "slack.post" });
 
   const revisao = (params?: Record<string, unknown>) =>
     AgentSpec.parse({ id: "rev", name: "x", steps: [modelo("a", "oi"), { type: "action", key: "r", name: "r", action: "github.review_comment", input: "a", needs: ["a"], ...(params ? { params } : {}) }] });
-  assert.match(dependenciaDeEvento(revisao()) ?? "", /github\.review_comment/);
+  assert.deepEqual(dependenciaDeEvento(revisao()), { codigo: "acao", acao: "github.review_comment" });
   assert.equal(dependenciaDeEvento(revisao({ owner: "o", repo: "r", pull: 3 })), null);
 
   const livre = AgentSpec.parse({ id: "livre", name: "x", steps: [modelo("a", "Resuma o dia {{steps.b}}")] });
   assert.equal(dependenciaDeEvento(livre), null);
+});
+
+test("dependenciaDeEvento olha só os campos renderizados: nome e chave do passo com {{event.x}} não contam", () => {
+  const nome = AgentSpec.parse({ id: "nome", name: "x", steps: [{ ...modelo("a", "Resuma"), name: "Revisa {{event.repo}}", key: "{{event.k}}" }] });
+  assert.equal(dependenciaDeEvento(nome), null);
+  const params = AgentSpec.parse({
+    id: "params",
+    name: "x",
+    steps: [modelo("a", "oi"), { type: "action", key: "r", name: "r", action: "http.request", needs: ["a"], params: { url: "https://x.test/{{event.pull}}", method: "GET" } }],
+  });
+  assert.deepEqual(dependenciaDeEvento(params), { codigo: "marcador", marcador: "{{event.pull}}" });
+  const logica = AgentSpec.parse({ id: "logica", name: "x", steps: [{ type: "logic", key: "l", name: "l", op: "if", value: "{{event.draft}}", against: "true" }] });
+  assert.deepEqual(dependenciaDeEvento(logica), { codigo: "marcador", marcador: "{{event.draft}}" });
 });
 
 test("{{event.*}} sem evento recusa antes de gastar o modelo", async () => {
@@ -79,8 +93,27 @@ test("{{event.*}} sem evento recusa antes de gastar o modelo", async () => {
 
   assert.equal(await executor.execute(runId), "failed");
   assert.equal(pedidos.length, 0);
-  assert.equal((await run(runId)).error, "esta automação precisa de um evento (usa {{event.repo}}); escolha um evento recente ou cole um link");
+  const erro = (await run(runId)).error ?? "";
+  assert.match(erro, /^esta automação precisa de um evento \(usa \{\{event\.repo\}\}\); escolha um evento recente ou cole um link/);
+  assert.deepEqual(motivoDaMensagem(erro), { codigo: "marcador", marcador: "{{event.repo}}" });
   assert.deepEqual((await passos(runId)).map((p) => [p.stepKey, p.status]), [["revisar", "skipped"], ["responder", "skipped"]]);
+});
+
+test("run de gatilho de relógio sem evento não é recusado; o de Executar agora (gatilho manual) é", async () => {
+  const pedidos: RuntimeRequest[] = [];
+  const executor = new Executor({ mcp: registroFalso, runtimes: new Map([["native", runtime(pedidos)]]), gate: new ApprovalGate(new Map()), machineId: "m" });
+  const { id, versao } = await agente([modelo("revisar", "Revise {{event.repo}}")]);
+  const gatilhos = new TriggerService();
+  const relogio = await gatilhos.set(id, { kind: "schedule", everyMinutes: 60 });
+  const manual = await gatilhos.set(id, { kind: "manual" });
+
+  const doRelogio = await executor.createRun(versao.id, null, relogio.id);
+  assert.equal(await executor.execute(doRelogio), "done");
+  assert.equal(pedidos.length, 1);
+
+  const doBotao = await executor.createRun(versao.id, null, manual.id);
+  assert.equal(await executor.execute(doBotao), "failed");
+  assert.equal(pedidos.length, 1);
 });
 
 test("o passo que falhou fica failed com o erro, e os seguintes ficam skipped como não rodou", async () => {

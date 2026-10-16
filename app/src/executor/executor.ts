@@ -193,8 +193,10 @@ export class Executor {
     const payload = (event?.payload ?? { repo: "", changedFiles: [] }) as EventPayload;
 
     // Antes do primeiro passo de modelo: sem o evento o prompt sai com `null`,
-    // e a chamada paga só para o modelo dizer que não há dado.
-    const faltaEvento = event === undefined ? dependenciaDeEvento(spec) : null;
+    // e a chamada paga só para o modelo dizer que não há dado. Vale só para o
+    // run que alguém pediu (Executar agora, MCP): o gatilho de relógio nunca
+    // traz evento, e seguir com `null` é o que ele sempre fez.
+    const faltaEvento = event === undefined && !(await this.vemDeGatilho(run.triggerId)) ? dependenciaDeEvento(spec) : null;
     if (faltaEvento !== null) return this.recusarSemEvento(runId, spec, recusaSemEvento(faltaEvento));
 
     await db
@@ -405,6 +407,13 @@ export class Executor {
         await db.update(schema.steps).set({ status: "skipped", error: NAO_RODOU, endedAt: nowSec() }).where(eq(schema.steps.id, existente.id));
       }
     }
+  }
+
+  /** Se o run nasceu de um gatilho que se dispara sozinho. O gatilho manual é o botão. */
+  private async vemDeGatilho(triggerId: string | null): Promise<boolean> {
+    if (triggerId === null) return false;
+    const [gatilho] = await db.select({ kind: schema.triggers.kind }).from(schema.triggers).where(eq(schema.triggers.id, triggerId));
+    return gatilho !== undefined && gatilho.kind !== "manual";
   }
 
   /** O run que não pode começar: falha inteiro, sem gastar passo, com todos os passos como "não rodou". */

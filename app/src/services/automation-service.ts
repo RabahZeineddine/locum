@@ -1,6 +1,6 @@
 import { TriggerConfig, type AgentSpec, type TriggerConfigInput } from "../config/types.js";
 import { agentService, ID_DE_AGENT, mensagemDeVersao, isReserved, type AgentService, type AgentVersion } from "./agent-service.js";
-import { dependenciaDeEvento, recusaSemEvento } from "../executor/dependencia-de-evento.js";
+import { dependenciaDeEvento, recusaSemEvento, type MotivoDeEvento } from "../executor/dependencia-de-evento.js";
 import { eventoManual, type EventoManual, type EventoRecente } from "./evento-manual.js";
 import { executionService, type ExecutionService } from "./execution-service.js";
 import { esperaChats, MOTIVO_CHATS, recusaDaGravacao, triggerService, type TriggerEntry, type TriggerService } from "./trigger-service.js";
@@ -39,6 +39,12 @@ export interface AutomationSaveInput {
   knownTriggerIds?: string[];
 }
 
+/** O que a gravação conseguiu, mas a pessoa precisa saber. */
+export type AvisoDaAutomacao = { codigo: "evento-sem-gatilho"; motivo: MotivoDeEvento; gatilhos: string[] };
+
+/** Gatilhos que acordam a automação sem evento: o relógio busca o próprio contexto. */
+const GATILHOS_SEM_EVENTO = new Set(["schedule", "cron"]);
+
 export interface Automation {
   version: AgentVersion;
   /** Quando o agent nasceu: um id reaproveitado depois de apagado tem outra data. */
@@ -74,7 +80,7 @@ export class AutomationService {
     return { version, createdAt: agent.createdAt, triggers: await this.triggers.list(agentId) };
   }
 
-  async save(input: AutomationSaveInput): Promise<Automation> {
+  async save(input: AutomationSaveInput): Promise<Automation & { avisos: AvisoDaAutomacao[] }> {
     const agentId = input.spec.id;
     // Primeiro, para a recusa por versão valer sobre as dos gatilhos (um gatilho que sumiu junto com a versão
     // nova é efeito dela). A conferência que vale é a de dentro da transação que grava, em `saveEdited`.
@@ -132,7 +138,8 @@ export class AutomationService {
       await this.triggers.remove(antigo.id);
     }
 
-    return { version, createdAt: (await this.agents.get(agentId))!.createdAt, triggers: await this.triggers.list(agentId) };
+    const gravados = await this.triggers.list(agentId);
+    return { version, createdAt: (await this.agents.get(agentId))!.createdAt, triggers: gravados, avisos: avisosDaGravacao(version.spec, gravados) };
   }
 
   /**
@@ -155,7 +162,7 @@ export class AutomationService {
    * O que o "Executar com" precisa para abrir: se a automação depende de
    * evento, e os últimos que os gatilhos dela já gravaram.
    */
-  async eventsForRun(agentId: string): Promise<{ precisaDeEvento: string | null; recentes: EventoRecente[] }> {
+  async eventsForRun(agentId: string): Promise<{ precisaDeEvento: MotivoDeEvento | null; recentes: EventoRecente[] }> {
     const version = await this.agents.getLatestVersion(agentId);
     if (version === undefined) throw new Error(`agent "${agentId}" não existe`);
     return { precisaDeEvento: dependenciaDeEvento(version.spec), recentes: await this.eventos.recentes(agentId) };
@@ -229,6 +236,16 @@ export class AutomationService {
 }
 
 export const automationService = new AutomationService();
+
+/**
+ * O fluxo que usa o evento e tem gatilho de relógio: o run do relógio chega sem
+ * evento, e o `{{event.*}}` sai vazio. Grava mesmo assim, e a pessoa decide.
+ */
+function avisosDaGravacao(spec: AgentSpec, gatilhos: TriggerEntry[]): AvisoDaAutomacao[] {
+  const motivo = dependenciaDeEvento(spec);
+  const semEvento = gatilhos.map((g) => g.config.kind).filter((k) => GATILHOS_SEM_EVENTO.has(k));
+  return motivo === null || semEvento.length === 0 ? [] : [{ codigo: "evento-sem-gatilho", motivo, gatilhos: semEvento }];
+}
 
 /**
  * A pendência de chats vale pela automação, e não pelo id do gatilho. Um

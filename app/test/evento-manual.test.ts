@@ -169,7 +169,7 @@ test("eventsForRun diz se a automação depende de evento e lista os recentes do
   await grava("manual", { repo: "o/r", pull: 3, author: "x" }, 3);
 
   const ctx = await automations.eventsForRun(id);
-  assert.equal(ctx.precisaDeEvento, "usa {{event.repo}}");
+  assert.deepEqual(ctx.precisaDeEvento, { codigo: "marcador", marcador: "{{event.repo}}" });
   assert.deepEqual(ctx.recentes.map((e) => e.id), [recente, antigo]);
   assert.deepEqual(
     { source: ctx.recentes[0]!.source, author: ctx.recentes[0]!.author, trecho: ctx.recentes[0]!.trecho, at: ctx.recentes[0]!.at },
