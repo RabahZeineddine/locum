@@ -1240,8 +1240,8 @@
       "dms": "Só mensagens diretas"
     },
     "teams": {
-      "title": "Teams pelo Microsoft Graph",
-      "description": "O Locum fala com o Teams pelo Microsoft Graph, com a sua conta e um app registrado no Microsoft Entra da sua organização. O app é cliente público com PKCE: não há segredo, e tenant e client id ficam só nesta máquina.",
+      "title": "Teams",
+      "description": "Leia e responda no Teams por um servidor MCP do Microsoft 365 ou por um app no Entra.",
       "stepRegister": "Registre o app no Entra (App registrations, New registration): só esta organização, plataforma \"Mobile and desktop applications\" com o retorno {{redirect}}. O comando abaixo faz o mesmo pela CLI do Azure.",
       "stepPermissions": "Não precisa adicionar permissão: o Locum pede ao conectar as permissões delegadas do Graph {{scopes}}, e nenhuma exige administrador.",
       "stepIds": "Cole o Directory (tenant) ID e o Application (client) ID da página do app e conecte. O navegador abre para você autorizar.",
@@ -1262,6 +1262,7 @@
       "stepPermissionsChannels": "Não precisa adicionar permissão: o Locum pede ao conectar as permissões delegadas do Graph {{scopes}}. Com canais ligados, ChannelMessage.Read.All só vale depois do consentimento do administrador.",
       "via": {
         "title": "Como conectar",
+        "byEntra": "Conectado pelo app no Entra",
         "byServer": "Pelo servidor {{name}}",
         "on": "ligado",
         "off": "desligado",
@@ -1269,13 +1270,18 @@
         "testedAt": "último teste {{when}}",
         "test": "Testar",
         "turnOn": "Ligar e testar",
-        "useClaude": "Usar o {{name}} do Claude Code (recomendado)",
-        "use": "Usar este",
+        "use": "Usar o {{name}} do {{from}}",
+        "recommended": "(recomendado)",
+        "useButton": "Usar este",
         "using": "Importando e testando",
-        "none": "Não achei o ms365 por aqui. Instale o servidor ms365 no Claude Code (o plugin akad traz) e volte, ou traga de outra ferramenta.",
+        "failed": "o teste do servidor falhou",
+        "noTeamsTools": "O {{name}} responde, mas não traz as ferramentas do Teams. No ms365 da Softeria isso pede --org-mode.",
+        "missing": "falta {{names}}: defina e volte para poder usar",
+        "none": "Não achei um servidor MCP do Microsoft 365. Instale um (por exemplo o ms-365-mcp-server da Softeria) no Claude Code e volte.",
         "importLink": "Importar de outras ferramentas"
       },
-      "advanced": "Avançado: registrar app no Entra"
+      "advanced": "Avançado: registrar app no Entra",
+      "entraDescription": "O Locum fala com o Teams pelo Microsoft Graph, com a sua conta e um app registrado no Microsoft Entra da sua organização. O app é cliente público com PKCE: não há segredo, e tenant e client id ficam só nesta máquina."
     },
     "teamsInbox": {
       "description": "Acorda um agent quando alguém menciona você ou manda mensagem num chat do Teams. O Locum lê pelo Graph, com a sua conta, as conversas que se mexeram a cada 5 minutos; a resposta que o agent propuser para na fila. Canais de equipe ainda não entram."

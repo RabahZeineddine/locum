@@ -1153,9 +1153,10 @@ export function SlackOficial() {
 /* -------------------------------------------------------------------- teams */
 
 /**
- * "Como conectar" do Teams, pelo servidor MCP: o ms365 que a pessoa já tem no
- * Claude Code é o caminho recomendado. O clique em "usar" é a escolha explícita
- * desse servidor (nada vem marcado), e importa só ele, vinculado e ligado.
+ * "Como conectar" do Teams, pelo servidor MCP do Microsoft 365: o que já está
+ * cadastrado ou o que as ferramentas da máquina (Claude Code, Cursor...) têm
+ * para importar. O clique em "usar" é a escolha explícita desse servidor
+ * (nada vem marcado) e importa só ele, da origem mostrada, vinculado e ligado.
  */
 function TeamsPeloServidor({ importar }: { importar: (onPronto: () => void) => ReactNode }) {
   const { t, i18n } = useTranslation();
@@ -1170,14 +1171,14 @@ function TeamsPeloServidor({ importar }: { importar: (onPronto: () => void) => R
     invalidateReads("mcp.list");
     invalidateReads("mcp.vinculos");
   };
-  const agir = (acao: () => Promise<{ ok: boolean; error?: string } | unknown>): void => {
+  const agir = (acao: () => Promise<unknown>): void => {
     setOcupado(true);
     setErro(null);
     acao()
       .then(
         (r) => {
-          const falha = (r as { ok?: boolean; error?: string } | undefined)?.ok === false ? (r as { error?: string }).error : undefined;
-          if (falha !== undefined) setErro(falha);
+          const resposta = r as { ok?: boolean; error?: string } | undefined;
+          if (resposta?.ok === false) setErro(resposta.error ?? t("settings.teams.via.failed"));
         },
         (e: unknown) => setErro(e instanceof Error ? e.message : String(e)),
       )
@@ -1187,76 +1188,121 @@ function TeamsPeloServidor({ importar }: { importar: (onPronto: () => void) => R
       });
   };
 
-  const { cadastrado, recomendado } = achado.data ?? { cadastrado: null, recomendado: null };
-  const falhou = cadastrado !== null && cadastrado.lastFailureAt !== null && (cadastrado.lastOkAt === null || cadastrado.lastFailureAt > cadastrado.lastOkAt);
-  const ultimo = cadastrado === null ? null : Math.max(cadastrado.lastOkAt ?? 0, cadastrado.lastFailureAt ?? 0);
-  const quandoTestou = ultimo === null || ultimo === 0 ? t("settings.teams.via.neverTested") : t("settings.teams.via.testedAt", { when: quando(i18n.language, ultimo / 1000) });
+  const { conectadoPeloEntra, cadastrado, candidatos } = achado.data ?? { conectadoPeloEntra: false, cadastrado: null, candidatos: [] };
+  const falhou =
+    cadastrado !== null && cadastrado.lastFailureAt !== null && (cadastrado.lastOkAt === null || cadastrado.lastFailureAt > cadastrado.lastOkAt);
+  const ultimo = cadastrado === null ? 0 : Math.max(cadastrado.lastOkAt ?? 0, cadastrado.lastFailureAt ?? 0);
+  const quandoTestou = ultimo === 0 ? t("settings.teams.via.neverTested") : t("settings.teams.via.testedAt", { when: quando(i18n.language, ultimo / 1000) });
 
   return (
     <section className="flex flex-col gap-2" data-locum-teams-como-conectar="">
       <h3 className="text-[13px] font-medium">{t("settings.teams.via.title")}</h3>
-      {cadastrado !== null ? (
+      {conectadoPeloEntra || cadastrado !== null || candidatos.length > 0 ? (
         <ListGroup>
-          <ListRow data-locum-teams-via={cadastrado.server}>
-            <StatusDot estado={falhou ? "erro" : cadastrado.ligado ? "ok" : "ocioso"} />
-            <div className="flex min-w-0 flex-1 flex-col">
-              <span className="truncate font-medium">{t("settings.teams.via.byServer", { name: cadastrado.server })}</span>
-              <span className="text-muted-foreground truncate text-xs">
-                {t(cadastrado.ligado ? "settings.teams.via.on" : "settings.teams.via.off")} · {quandoTestou}
-              </span>
-            </div>
-            {cadastrado.ligado ? (
-              <Button disabled={ocupado} onClick={() => agir(() => call("mcp.test", cadastrado.server))} size="sm" variant="outline">
-                {t("settings.teams.via.test")}
-              </Button>
-            ) : (
-              <Button
-                data-locum-teams-ligar-via=""
-                disabled={ocupado}
-                onClick={() => agir(async () => { await call("mcp.setEnabled", cadastrado.server, true); return call("mcp.test", cadastrado.server); })}
-                size="sm"
-              >
-                {t("settings.teams.via.turnOn")}
-              </Button>
-            )}
-          </ListRow>
-        </ListGroup>
-      ) : recomendado !== null ? (
-        <ListGroup>
-          <ListRow data-locum-teams-recomendado={recomendado.name}>
-            <StatusDot estado="ocioso" />
-            <div className="flex min-w-0 flex-1 flex-col">
-              <span className="truncate font-medium">{t("settings.teams.via.useClaude", { name: recomendado.name })}</span>
-              <span className="text-muted-foreground truncate text-xs">
-                {t(`connections.import.origin.${origemLegivel(recomendado.origem).tipo}`, { name: origemLegivel(recomendado.origem).nome })}
-                {" · "}
-                <span className="font-mono">{recomendado.destino}</span>
-              </span>
-              {pareceProducao(recomendado) ? (
-                <span className="text-xs" data-locum-teams-producao="">
-                  {t("connections.import.production")}
+          {conectadoPeloEntra ? (
+            <ListRow data-locum-teams-via-entra="">
+              <StatusDot estado="ok" />
+              <span className="min-w-0 flex-1 truncate font-medium">{t("settings.teams.via.byEntra")}</span>
+            </ListRow>
+          ) : null}
+          {cadastrado !== null ? (
+            <ListRow data-locum-teams-via={cadastrado.server}>
+              <StatusDot estado={falhou || !cadastrado.traz ? "erro" : cadastrado.ligado ? "ok" : "ocioso"} />
+              <div className="flex min-w-0 flex-1 flex-col">
+                <span className="truncate font-medium">{t("settings.teams.via.byServer", { name: cadastrado.server })}</span>
+                <span className="text-muted-foreground truncate text-xs">
+                  {t(cadastrado.ligado ? "settings.teams.via.on" : "settings.teams.via.off")} · {quandoTestou}
                 </span>
-              ) : null}
-            </div>
-            <Button
-              data-locum-teams-usar-claude=""
-              disabled={ocupado}
-              onClick={() => agir(() => call("connections.usarTeamsDoClaude", recomendado.name))}
-              size="sm"
-            >
-              {t(ocupado ? "settings.teams.via.using" : "settings.teams.via.use")}
-            </Button>
-          </ListRow>
+                {cadastrado.traz ? null : (
+                  <span className="text-muted-foreground text-xs" data-locum-teams-sem-ferramentas="">
+                    {t("settings.teams.via.noTeamsTools", { name: cadastrado.server })}
+                  </span>
+                )}
+              </div>
+              {cadastrado.ligado ? (
+                <Button disabled={ocupado} onClick={() => agir(() => call("mcp.test", cadastrado.server))} size="sm" variant="outline">
+                  {t("settings.teams.via.test")}
+                </Button>
+              ) : (
+                <Button
+                  data-locum-teams-ligar-via=""
+                  disabled={ocupado}
+                  onClick={() =>
+                    agir(async () => {
+                      await call("mcp.setEnabled", cadastrado.server, true);
+                      return call("mcp.test", cadastrado.server);
+                    })
+                  }
+                  size="sm"
+                >
+                  {t("settings.teams.via.turnOn")}
+                </Button>
+              )}
+            </ListRow>
+          ) : null}
+          {candidatos.map((c, i) => {
+            const origem = origemLegivel(c.origem);
+            const de = origem.tipo === "ferramenta" ? origem.nome : "Claude Code";
+            const recomendado = i === 0 && !conectadoPeloEntra;
+            const faltando = c.faltando.length > 0;
+            return (
+              <ListRow data-locum-teams-candidato={`${c.name}:${c.origem}`} key={`${c.name}:${c.origem}`}>
+                <StatusDot estado="ocioso" />
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <span className="truncate font-medium">
+                    {t("settings.teams.via.use", { name: c.name, from: de })}
+                    {recomendado ? ` ${t("settings.teams.via.recommended")}` : ""}
+                  </span>
+                  <span className="text-muted-foreground truncate text-xs">
+                    {t(`connections.import.origin.${origem.tipo}`, { name: origem.nome })}
+                    {" · "}
+                    <span className="font-mono">{c.destino}</span>
+                  </span>
+                  {faltando ? (
+                    <span className="text-muted-foreground text-xs" data-locum-teams-faltando="">
+                      {t("settings.teams.via.missing", { names: c.faltando.map((n) => "${" + n + "}").join(", ") })}
+                    </span>
+                  ) : null}
+                  {pareceProducao(c) ? (
+                    <span className="text-xs" data-locum-teams-producao="">
+                      {t("connections.import.production")}
+                    </span>
+                  ) : null}
+                </div>
+                <Button
+                  data-locum-teams-usar-claude=""
+                  disabled={ocupado || faltando}
+                  onClick={() => agir(() => call("connections.usarTeamsDoClaude", c.name, c.origem))}
+                  size="sm"
+                  variant={recomendado ? "default" : "outline"}
+                >
+                  {t(ocupado ? "settings.teams.via.using" : "settings.teams.via.useButton")}
+                </Button>
+              </ListRow>
+            );
+          })}
         </ListGroup>
       ) : (
         <p className="text-muted-foreground text-xs" data-locum-teams-sem-ms365="">
-          {t("settings.teams.via.none")}{" "}
-          <button className="text-foreground cursor-pointer underline" data-locum-teams-importar="" onClick={() => setVerImportar(!verImportar)} type="button">
-            {t("settings.teams.via.importLink")}
-          </button>
+          {t("settings.teams.via.none")}
         </p>
       )}
-      {verImportar ? importar(() => { setVerImportar(false); atualizar(); }) : null}
+      <div>
+        <button
+          className="text-muted-foreground hover:text-foreground cursor-pointer text-xs underline"
+          data-locum-teams-importar=""
+          onClick={() => setVerImportar(!verImportar)}
+          type="button"
+        >
+          {t("settings.teams.via.importLink")}
+        </button>
+      </div>
+      {verImportar
+        ? importar(() => {
+            setVerImportar(false);
+            atualizar();
+          })
+        : null}
       {erro !== null ? (
         <p className="text-destructive text-xs" data-locum-teams-via-erro="">
           {erro}
@@ -1334,6 +1380,7 @@ export function TeamsPeloGraph({ importar = () => null }: { importar?: (onPronto
       <details className="flex flex-col gap-3" data-locum-teams-avancado="" open={app?.connected === true}>
         <summary className="text-muted-foreground cursor-pointer text-xs font-medium">{t("settings.teams.advanced")}</summary>
       <div className="mt-3 flex flex-col gap-3">
+      <p className="text-muted-foreground text-xs">{t("settings.teams.entraDescription")}</p>
       <ol className="text-muted-foreground flex list-decimal flex-col gap-1 pl-5 text-xs">
         <li>{t("settings.teams.stepRegister", { redirect: app?.redirectUri ?? "" })}</li>
         <li>

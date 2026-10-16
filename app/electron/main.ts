@@ -6813,11 +6813,21 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
         join(casa, ".claude.json"),
         JSON.stringify({ mcpServers: { ms365: { command: "npx", args: ["-y", "@softeria/ms-365-mcp-server", "--org-mode"] } } }),
       );
+      // O mesmo servidor também vem do plugin akad: aparecem os dois, cada um com a sua origem.
+      const raizDoPlugin = join(casa, ".claude", "plugins", "cache", "akad", "akad", "1.0.0");
+      mkdirSync(raizDoPlugin, { recursive: true });
+      writeFileSync(
+        join(raizDoPlugin, ".mcp.json"),
+        JSON.stringify({ mcpServers: { ms365: { command: "npx", args: ["-y", "@softeria/ms-365-mcp-server", "--org-mode"] } } }),
+      );
+      writeFileSync(join(casa, ".claude", "plugins", "installed_plugins.json"), JSON.stringify({ version: 2, plugins: { "akad@akad": [{ installPath: raizDoPlugin }] } }));
+      writeFileSync(join(casa, ".claude", "settings.json"), JSON.stringify({ enabledPlugins: { "akad@akad": true } }));
       await irPara(janela, "today");
       await irPara(janela, "connections", "teams");
       await pausa(1800);
       writeFileSync(join(destino, "teams-com-ms365.png"), (await janela.webContents.capturePage()).toPNG());
       rmSync(join(casa, ".claude.json"), { force: true });
+      rmSync(join(casa, ".claude"), { recursive: true, force: true });
     }
     for (const t of tirados) {
       await mcpService.register(t.config);

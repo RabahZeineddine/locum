@@ -413,7 +413,7 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "connections.openSlackManifest": () => connectionService.openSlackManifest(),
     "connections.teamsApp": () => connectionService.teamsApp(),
     "connections.teamsPeloMcp": () => connectionService.teamsPeloMcp(),
-    "connections.usarTeamsDoClaude": (nome) => connectionService.usarTeamsDoClaude(nome),
+    "connections.usarTeamsDoClaude": (nome, origem) => connectionService.usarTeamsDoClaude(nome, origem),
     "connections.connectTeams": (tenantId, clientId) => connectionService.connectTeams(tenantId, clientId),
     "connections.disconnectTeams": () => connectionService.disconnectTeams(),
     "connections.teamsAdminConsent": (tenantId, clientId) => connectionService.teamsAdminConsent(tenantId, clientId),
