@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { baixarConferindo } from "../src/update/release.js";
-import { progressoDoDownload, rodapeDaAtualizacao, versaoParaOModal } from "../src/update/rodape.js";
+import { cliqueNaVersao, progressoDoDownload, rodapeDaAtualizacao, versaoParaOModal } from "../src/update/rodape.js";
 import type { UpdaterState } from "../src/update/state.js";
 import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
@@ -30,13 +30,42 @@ function estado(parcial: Partial<UpdaterState>): UpdaterState {
 const nova = { version: "0.2.0", notes: "- corrige" };
 
 test("o rodapé mostra só a versão quando não há o que dizer", () => {
-  assert.deepEqual(rodapeDaAtualizacao(estado({ phase: "idle" })), { tipo: "versao" });
-  assert.deepEqual(rodapeDaAtualizacao(estado({ phase: "uptodate" })), { tipo: "versao" });
-  assert.deepEqual(rodapeDaAtualizacao(estado({ phase: "failed", error: "x", errorKind: "offline" })), {
+  assert.deepEqual(rodapeDaAtualizacao(estado({ phase: "idle", armed: false })), { tipo: "versao" });
+  // Armado e já perguntado uma vez, de volta ao repouso.
+  assert.deepEqual(rodapeDaAtualizacao(estado({ phase: "idle", lastCheckAt: 1 })), { tipo: "versao" });
+  // Verificador que não subiu não tem o que mostrar, nem no intervalo antes da primeira pergunta.
+  for (const reason of ["disabled", "dev", "not-replaceable"] as const) {
+    assert.deepEqual(rodapeDaAtualizacao(estado({ reason, armed: false, phase: "checking" })), { tipo: "versao" });
+    assert.deepEqual(rodapeDaAtualizacao(estado({ reason, armed: false, phase: "uptodate" })), { tipo: "versao" });
+    assert.deepEqual(rodapeDaAtualizacao(estado({ reason, armed: false, phase: "failed", error: "x" })), {
+      tipo: "versao",
+    });
+  }
+});
+
+test("armado e ainda sem a primeira pergunta, o rodapé já procura", () => {
+  assert.deepEqual(rodapeDaAtualizacao(estado({ phase: "idle", armed: true, lastCheckAt: null })), {
+    tipo: "procurando",
+  });
+  // Sem armar (o verificador ainda não subiu) não há o que procurar.
+  assert.deepEqual(rodapeDaAtualizacao(estado({ phase: "idle", armed: false, lastCheckAt: null })), {
     tipo: "versao",
   });
+});
+
+test("depois da conferência o rodapé diz atualizado ou que não deu", () => {
+  assert.deepEqual(rodapeDaAtualizacao(estado({ phase: "uptodate", lastCheckAt: 1 })), { tipo: "atualizado" });
+  assert.deepEqual(
+    rodapeDaAtualizacao(estado({ phase: "failed", error: "x", errorKind: "offline", lastCheckAt: 1 })),
+    { tipo: "falhou" },
+  );
+});
+
+test("o clique na versão confere quando o verificador sobe e leva à Configuração quando não", () => {
+  assert.deepEqual(cliqueNaVersao(estado({ phase: "idle" })), { acao: "conferir" });
+  assert.deepEqual(cliqueNaVersao(estado({ phase: "failed", error: "x" })), { acao: "conferir" });
   for (const reason of ["disabled", "dev", "not-replaceable"] as const) {
-    assert.deepEqual(rodapeDaAtualizacao(estado({ reason, phase: "checking" })), { tipo: "versao" });
+    assert.deepEqual(cliqueNaVersao(estado({ reason })), { acao: "configuracao", motivo: reason });
   }
 });
 

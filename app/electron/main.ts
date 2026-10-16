@@ -6075,7 +6075,7 @@ async function checkLimitesNaTela(window: BrowserWindow): Promise<string> {
  * baixando e pronta como passaria numa atualização de verdade.
  */
 async function checkAtualizacaoNaTela(window: BrowserWindow): Promise<string> {
-  const { usarEstadoDeExemplo, dispensarVersao } = await import("./updater.js");
+  const { usarEstadoDeExemplo, dispensarVersao, totalDeConferencias } = await import("./updater.js");
   const { espiarRede } = await import("./updater.js");
   const espia = espiarRede();
   const destino = capturas ? (flagValue("--capturas-em") ?? join(process.cwd(), "capturas")) : null;
@@ -6096,11 +6096,13 @@ async function checkAtualizacaoNaTela(window: BrowserWindow): Promise<string> {
         percent: barra?.dataset.locumPercent ?? null,
         texto: r?.querySelector("[data-locum-rodape-texto]")?.textContent ?? "",
         link: r?.querySelector("[data-locum-rodape-pronta]")?.textContent ?? "",
+        sufixo: r?.querySelector("[data-locum-rodape-estado]")?.textContent ?? "",
+        titulo: r?.querySelector("[data-locum-probe=versao]")?.getAttribute("title") ?? "",
         modal: document.querySelector("[data-locum-probe=atualizacao-modal]")?.dataset.locumModalVersao ?? null,
         notas: document.querySelector("[data-locum-modal-notas]")?.textContent ?? "",
       };
     })()`;
-  type Visto = { tipo: string | null; barra: string | null; percent: string | null; texto: string; link: string; modal: string | null; notas: string };
+  type Visto = { tipo: string | null; barra: string | null; percent: string | null; texto: string; link: string; sufixo: string; titulo: string; modal: string | null; notas: string };
   const esperar = (nome: string, ok: string): Promise<Visto> =>
     esperarProbe<Visto>(window, nome, `(() => { const v = ${rodape()}; return (${ok}) ? v : null; })()`);
   const clicar = (seletor: string): Promise<unknown> =>
@@ -6115,6 +6117,10 @@ async function checkAtualizacaoNaTela(window: BrowserWindow): Promise<string> {
     const procurando = await esperar("rodape-procurando", `v.tipo === "procurando" && v.barra === "indeterminada"`);
     if (procurando.texto !== t("update.footer.checking")) throw new Error(`o rodapé procurando disse "${procurando.texto}"`);
 
+    // Armado e antes da primeira pergunta: a barra já vale.
+    usarEstadoDeExemplo({ reason: null, armed: true, phase: "idle", lastCheckAt: null, progress: null, available: null });
+    await esperar("rodape-antes-da-primeira", `v.tipo === "procurando" && v.barra === "indeterminada"`);
+
     usarEstadoDeExemplo({ reason: null, phase: "downloading", progress: 42, available: nova });
     const baixando = await esperar("rodape-baixando", `v.tipo === "baixando" && v.percent === "42"`);
     if (baixando.barra !== "determinada") throw new Error("a barra do download não ficou determinada");
@@ -6124,6 +6130,41 @@ async function checkAtualizacaoNaTela(window: BrowserWindow): Promise<string> {
     if (baixando.modal !== null) throw new Error("o modal abriu antes de a versão ficar pronta");
     await foto("rodape-baixando");
 
+    // Conferida e em dia: o texto discreto ao lado da versão, que depois some.
+    usarEstadoDeExemplo({ reason: null, phase: "uptodate", progress: null, available: null, lastCheckAt: Date.now() });
+    const atualizado = await esperar("rodape-atualizado", `v.tipo === "atualizado" && v.sufixo !== ""`);
+    if (!atualizado.sufixo.includes(t("update.footer.upToDate"))) throw new Error(`o rodapé atualizado disse "${atualizado.sufixo}"`);
+    if (atualizado.barra !== null) throw new Error("o rodapé atualizado ainda mostrou barra");
+    await foto("rodape-atualizado");
+    await esperar("rodape-atualizado-some", `v.sufixo === ""`);
+
+    // Falha: o aviso fica e o clique na versão confere de novo, sem sair para a rede.
+    usarEstadoDeExemplo({ reason: null, phase: "failed", progress: null, available: null, error: "sem rede", errorKind: "offline" });
+    const falhou = await esperar("rodape-falhou", `v.tipo === "falhou" && v.sufixo !== ""`);
+    if (!falhou.sufixo.includes(t("update.footer.failed"))) throw new Error(`o rodapé falhou disse "${falhou.sufixo}"`);
+    await foto("rodape-falhou");
+    const antes = totalDeConferencias();
+    await clicar("[data-locum-probe=versao]");
+    const reconferindo = await esperar("rodape-reconferindo", `v.tipo === "procurando" && v.barra === "indeterminada"`);
+    if (reconferindo.texto !== t("update.footer.checking")) throw new Error(`o rodapé reconferindo disse "${reconferindo.texto}"`);
+    await foto("rodape-reconferindo");
+    if (totalDeConferencias() !== antes + 1) throw new Error("o clique na versão não pediu a conferência");
+    await esperar("rodape-reconferido", `v.tipo === "falhou"`);
+
+    // Verificador fora do ar: o clique não confere, e o title diz por quê.
+    usarEstadoDeExemplo({ reason: "dev", phase: "idle", progress: null, available: null });
+    const fora = await esperar("rodape-fora", `v.tipo === "versao" && v.titulo !== ""`);
+    if (fora.titulo !== t("update.footer.hintDev")) throw new Error(`o title da versão disse "${fora.titulo}"`);
+    const conferidas = totalDeConferencias();
+    await clicar("[data-locum-probe=versao]");
+    await esperarProbe<true>(
+      window,
+      "settings-pela-versao",
+      `document.querySelector("[data-locum-probe=rota]")?.dataset.ativo === "settings" ? true : null`,
+    );
+    if (totalDeConferencias() !== conferidas) throw new Error("o clique na versão conferiu com o verificador fora do ar");
+
+    await irPara(window, "today");
     usarEstadoDeExemplo({ reason: null, phase: "ready", progress: null, available: nova });
     const aberto = await esperar("modal", `v.modal === "9.9.9"`);
     if (!aberto.notas.includes("o modal traz as notas")) throw new Error(`o modal não trouxe as notas: "${aberto.notas}"`);

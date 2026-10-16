@@ -201,17 +201,8 @@ export function Layout() {
             naFila={naFila}
           />
           {versao.data === undefined ? null : (
-            <div className="flex flex-col gap-1 pb-1">
-              <button
-                className="num px-3 text-left text-[11px] text-muted-foreground hover:text-muted-foreground"
-                data-locum-probe="versao"
-                onClick={() => navegar("settings")}
-                title={t("nav.versionHint")}
-                type="button"
-              >
-                {t("nav.version", { version: versao.data })}
-              </button>
-              <AtualizacaoNoRodape />
+            <div className="pb-1">
+              <AtualizacaoNoRodape aoConfigurar={() => navegar("settings")} versao={versao.data} />
             </div>
           )}
         </div>

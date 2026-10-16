@@ -582,6 +582,13 @@
   },
   "update": {
     "footer": {
+      "upToDate": "atualizado",
+      "failed": "tentar de novo",
+      "failedHint": "Não deu para conferir ({{error}}). Clique para tentar de novo",
+      "checkNow": "Procurar atualização agora",
+      "hintDisabled": "Atualização desligada, ligue em Configuração",
+      "hintDev": "Rodando do código: atualiza por git pull. Detalhes em Configuração",
+      "hintNotReplaceable": "Esta cópia não se atualiza sozinha. Detalhes em Configuração",
       "checking": "procurando atualização",
       "downloading": "baixando {{version}} · {{percent}}%",
       "downloadingUnknown": "baixando {{version}}",
@@ -1363,7 +1370,7 @@
     "slackPost": "resposta escrita virou pendência no canal {{channel}}, thread {{thread}}, com o texto do modelo palavra por palavra, canal e thread vindos do evento, carimbo inventado recusado, e a gate recusando rascunho",
     "slackWindow": "Slack: {{server}} guardado pela tela e o canal {{channel}} do cadastro antigo visível, sem canal de ponte que publique",
     "claudeSessions": "{{count}} sessões do Claude classificadas, Terminei e Reabrir de ida e volta",
-    "updateScreen": "rodapé da atualização passou por procurando, baixando 42% e pronta, com o modal e as notas, sem rede",
+    "updateScreen": "rodapé da atualização passou por procurando, atualizado, tentar de novo, baixando 42% e pronta, com o clique na versão conferindo, o modal e as notas, sem rede",
     "vinculo": "importado vinculado, origem mudou e pediu aceite, aceito, versão nova do plugin sem aviso"
   },
   "status": {
