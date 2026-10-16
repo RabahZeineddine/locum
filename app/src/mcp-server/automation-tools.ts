@@ -111,8 +111,8 @@ export function registerAutomationTools(server: McpServer): void {
     { config: z.record(z.string(), z.unknown()).describe('a {"kind":"poll","source":"github",...} config, as in set_trigger') },
     async ({ config }) => (await import("../services/trigger-preview.js")).previaDoGatilho(config as unknown as TriggerConfigInput));
 
-  def(server, "save_automation", "danger",
-    "Records an automation as the app screen does when it saves: the flow spec (AgentSpec, as in upsert_agent) as a new immutable version, and its triggers in one call. Triggers with an id update that trigger, the ones without id are new, and existing triggers left out of the list are removed. Saved as a person: an action step can be set to auto here, and then it publishes without approval once the automation runs (upsert_agent, in contrast, lowers actions to approval). A new trigger starts disabled unless enabled is true, which turns it on. A Teams trigger from a package that waits for its chats refuses to be saved empty unless valerParaTodosOsChats is true. Without create the automation must already exist; with create the id must be free.",
+  def(server, "save_automation", "publish",
+    "Records an automation as the app screen does when it saves: the flow spec (AgentSpec, as in upsert_agent) as a new immutable version, and its triggers in one call. Triggers with an id update that trigger, the ones without id are new, and existing triggers left out of the list are removed. Saved as a person: an action step can be set to auto here, and then it publishes without approval once the automation runs (upsert_agent, in contrast, lowers actions to approval). A new trigger starts disabled unless enabled is true, which turns it on (so this tool acts like set_automation_enabled: " + EFEITO_DE_LIGAR + "). A Teams trigger from a package that waits for its chats refuses to be saved empty unless valerParaTodosOsChats is true. Without create the automation must already exist; with create the id must be free.",
     {
       spec: z.record(z.string(), z.unknown()).describe("full AgentSpec: id, name, steps and the rest of the get_agent format"),
       triggers: z

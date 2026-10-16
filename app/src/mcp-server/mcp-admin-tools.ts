@@ -28,8 +28,8 @@ export function registerMcpAdminTools(server: McpServer): void {
       return cadastro(name);
     });
 
-  def(server, "set_mcp_server_credential", "write",
-    "Stores a pasted token for a server that does not use OAuth (API key, personal token). The value goes to the keychain and is never returned; the registration gets the placeholder in the given header (http) or variable (stdio). In Authorization, a value without scheme gets \"Bearer \".",
+  def(server, "set_mcp_server_credential", "danger",
+    "Stores a pasted token for a server that does not use OAuth (API key, personal token), OVERWRITING the credential stored for it. The value goes to the keychain and is never returned; the registration gets the placeholder in the given header (http) or variable (stdio). In Authorization, a value without scheme gets \"Bearer \".",
     { name: z.string().min(1), field: z.string().min(1).describe("header or variable name, like Authorization or API_KEY"), value: z.string().min(1) },
     async ({ name, field, value }) => {
       await mcpService.setCredential(name, { campo: field, valor: value });

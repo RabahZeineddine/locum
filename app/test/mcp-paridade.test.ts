@@ -78,6 +78,9 @@ const PUBLICAM = [
   "agent_chat_decide",
 ];
 
+/** Gravam por cima de uma credencial que já estava guardada. */
+const SOBRESCREVEM_CREDENCIAL = ["save_github_token", "use_gh_account", "save_provider_secret", "save_tracker_secret", "save_grafana_instance", "set_mcp_server_credential"];
+
 /** Leem pelo nome, mas sobem o servidor cadastrado. */
 const LEITURA_SO_NO_NOME = new Set(["list_server_tools"]);
 
@@ -103,6 +106,16 @@ test("toda ferramenta vem anotada, e a anotação bate com o que ela faz", async
   }
   for (const nome of ["save_github_token", "save_provider_secret", "set_mcp_server_enabled", "remove_provider", "accept_mcp_origin", "agent_chat_reset"]) {
     assert.equal(porNome.get(nome)?.readOnlyHint, false, nome);
+  }
+  // Sobrescrevem credencial: o cliente tem de perguntar.
+  for (const nome of SOBRESCREVEM_CREDENCIAL) {
+    assert.equal(porNome.get(nome)?.destructiveHint, true, `${nome} sobrescreve credencial e não se diz destrutiva`);
+  }
+  // Trocar o endereço de um cadastro manda a chave guardada para o host novo, ou busca de fora e sobrescreve.
+  for (const nome of ["register_provider", "register_tracker", "install_agent_template", "save_automation"]) {
+    const a = porNome.get(nome);
+    assert.equal(a?.destructiveHint, true, `${nome} deveria ser destrutiva`);
+    assert.equal(a?.openWorldHint, true, `${nome} deveria ser de mundo aberto`);
   }
 });
 

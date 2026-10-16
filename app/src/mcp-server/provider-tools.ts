@@ -17,8 +17,8 @@ export function registerProviderTools(server: McpServer): void {
     "The OpenAI-compatible gateways registered on this machine (id, label, base URL, enabled). Never the key.",
     {}, () => providerService.listRegistered());
 
-  def(server, "register_provider", "write",
-    "Registers or updates an OpenAI-compatible gateway (id, label, baseUrl). Steps that name the id send their prompts to that URL once a key is saved.",
+  def(server, "register_provider", "publish",
+    "Registers or updates an OpenAI-compatible gateway (id, label, baseUrl). Changing the baseUrl of an existing gateway sends the stored key, and the prompts of every step that names the id, to the new host: a dangerous, outward-facing write.",
     { id: z.string().min(1), label: z.string().min(1), baseUrl: z.string().min(1) },
     async (cadastro) => {
       await providerService.register(cadastro);
@@ -42,8 +42,8 @@ export function registerProviderTools(server: McpServer): void {
     "Where the key of each provider lives, whether a value is stored and what the last check found. Never the value.",
     {}, () => providerService.credentials());
 
-  def(server, "save_provider_secret", "write",
-    "Stores the API key of a provider in the keychain. The value is accepted and never returned; the previous check is discarded.",
+  def(server, "save_provider_secret", "danger",
+    "Stores the API key of a provider in the keychain, OVERWRITING the one stored. The value is accepted and never returned; the previous check is discarded.",
     { name: z.string().min(1), secret: z.string().min(1) },
     async ({ name, secret }) => {
       await providerService.setSecret(name, secret);

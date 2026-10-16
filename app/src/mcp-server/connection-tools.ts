@@ -68,8 +68,8 @@ export function registerConnectionTools(server: McpServer, amb: Ambiente): void 
     "The GitHub credential as the screen shows it: stored token or link to a gh account (host and login), token from the environment, last check and identity. Never the token.",
     {}, () => githubService.status());
 
-  def(server, "save_github_token", "write",
-    "Stores a GitHub token in the keychain. The value is accepted and never returned. Replaces the link to a gh account.",
+  def(server, "save_github_token", "danger",
+    "Stores a GitHub token in the keychain, OVERWRITING the token or the gh account link that was there. The value is accepted and never returned.",
     { token: z.string().min(1).describe("the personal access token") },
     async ({ token }) => {
       await githubService.setToken(token);
@@ -89,8 +89,8 @@ export function registerConnectionTools(server: McpServer, amb: Ambiente): void 
     { configDir: z.string().optional().describe("a separate GH_CONFIG_DIR") },
     ({ configDir }) => githubService.contasDoGh(configDir));
 
-  def(server, "use_gh_account", "write",
-    "Links the GitHub connection to an account of the gh command line: from then on the app asks gh for the token when it needs one, and nothing is stored. Replaces a stored token.",
+  def(server, "use_gh_account", "danger",
+    "Links the GitHub connection to an account of the gh command line: from then on the app asks gh for the token when it needs one, and nothing is stored. OVERWRITES the stored token (or the previous link).",
     { host: z.string().min(1), login: z.string().min(1), configDir: z.string().optional() },
     async ({ host, login, configDir }) => {
       await githubService.usarGh({ origem: "gh", host, login, ...(configDir === undefined ? {} : { configDir }) });
@@ -131,8 +131,8 @@ export function registerConnectionTools(server: McpServer, amb: Ambiente): void 
   def(server, "list_grafana_instances", "read",
     "The Grafana instances registered (name and URL). Never the token.", {}, () => grafanaService.list());
 
-  def(server, "save_grafana_instance", "write",
-    "Registers or updates a Grafana instance. The token is stored in the keychain and never returned.",
+  def(server, "save_grafana_instance", "danger",
+    "Registers or updates a Grafana instance. The token is stored in the keychain, OVERWRITING the one of an instance with the same name, and is never returned.",
     { name: z.string().min(1), url: z.string().min(1), token: z.string().min(1) },
     ({ name, url, token }) => grafanaService.save({ nome: name, url, token }));
 
@@ -216,8 +216,8 @@ export function registerConnectionTools(server: McpServer, amb: Ambiente): void 
   def(server, "list_trackers", "read",
     "The task trackers registered (Jira, Shortcut, GitHub Issues): address, whether a credential is stored, and the last check. Never the credential.", {}, () => trackerService.list());
 
-  def(server, "register_tracker", "write",
-    "Registers or updates a tracker (id, kind, label, baseUrl, project, account). The credential is saved with save_tracker_secret.",
+  def(server, "register_tracker", "publish",
+    "Registers or updates a tracker (id, kind, label, baseUrl, project, account). Changing the baseUrl of an existing tracker sends the credential already stored for it to the new host on the next call, so it is a dangerous, outward-facing write. The credential is saved with save_tracker_secret.",
     { id: z.string().min(1), kind: z.string().min(1), label: z.string().min(1), baseUrl: z.string().optional(), project: z.string().nullable().optional(), account: z.string().nullable().optional() },
     async (entrada) => {
       await trackerService.register(entrada as TrackerRegistration);
@@ -239,8 +239,8 @@ export function registerConnectionTools(server: McpServer, amb: Ambiente): void 
       return (await trackerService.list()).find((t) => t.id === id) ?? null;
     });
 
-  def(server, "save_tracker_secret", "write",
-    "Stores the credential of a tracker in the keychain. The value is accepted and never returned.",
+  def(server, "save_tracker_secret", "danger",
+    "Stores the credential of a tracker in the keychain, OVERWRITING the one stored. The value is accepted and never returned.",
     { id: z.string().min(1), secret: z.string().min(1) },
     async ({ id, secret }) => {
       await trackerService.setSecret(id, secret);

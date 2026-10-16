@@ -87,8 +87,8 @@ export function registerAgentExtraTools(server: McpServer, amb: Ambiente): void 
     "The marketplace of ready agents: the examples of the Locum repository on GitHub, or the bundled copy when it does not answer (origem says which). Each template shows its model steps by index and name.",
     {}, () => amb.templates().listar());
 
-  def(server, "install_agent_template", "write",
-    "Installs a marketplace template by id (as listed by list_agent_templates) as a new agent or a new version of the one with the same id. substitutions maps the index of a model step to provider/model, checked against the models of this machine.",
+  def(server, "install_agent_template", "publish",
+    "Fetches a marketplace template by id (as listed by list_agent_templates) from GitHub and installs it as a new agent, or OVERWRITES the agent with the same id with a new version. The template is installed as a person: an action step set to auto in it publishes without approval once the agent runs. substitutions maps the index of a model step to provider/model, checked against the models of this machine.",
     {
       id: z.string().min(1),
       substitutions: z.record(z.string(), z.string()).optional().describe("model step index to provider/model"),
