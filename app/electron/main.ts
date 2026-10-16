@@ -2385,6 +2385,17 @@ async function checkPaletaPorConexao(window: BrowserWindow): Promise<void> {
     await clicar(`[data-locum-troca-lista] ${operacao("pid")}`);
     await esperar("a ferramenta pid no painel", async () => (await js(`document.querySelector("[data-locum-acao-ferramenta]")?.value ?? null`)) === "pid");
 
+    // "reagir" acha a ação do Teams e a do Slack, de apps diferentes, e o clique cria o nó já com a operação.
+    await buscar("reagir");
+    await esperar("as reacoes do Teams e do Slack na busca", async () => (await existe('[data-locum-paleta-operacao="teams.react"]')) && (await existe('[data-locum-paleta-operacao="slack.react"]')));
+    await clicar('[data-locum-paleta-operacao="slack.react"]');
+    await esperar("o no de reacao do Slack", () => existe("[data-locum-troca-operacao]"));
+    if (!(await js(`document.querySelector("[data-locum-troca-operacao]")?.textContent?.includes("Slack") ?? false`))) throw new Error("o topo do painel nao diz o app da operacao");
+    for (const id of ["teams", "slack", "github", "tracker", "http"]) {
+      await buscar("");
+      await esperar(`a entrada do app ${id}`, () => existe(`[data-locum-paleta-app="${id}"]`));
+    }
+
     // A busca da paleta acha a operação, e o clique cria o nó já com ela.
     await buscar("pid");
     await esperar("a operacao pid na busca", () => existe(naBusca("pid")));
@@ -7588,6 +7599,82 @@ async function capturarSkills(janela: BrowserWindow): Promise<void> {
 }
 
 /**
+ * O editor com a paleta por app, nas cenas que mostram a mudança: a paleta, a
+ * busca por "reagir", o painel "O que fazer?", o nó configurado com o topo
+ * "App · Operação" e o canvas com apps diferentes. `prefixo` separa antes e depois.
+ */
+async function capturarNoPorApp(janela: BrowserWindow, destino: string, prefixo: string): Promise<void> {
+  const { FIXTURE_SERVER } = await import("../src/fixtures/mcp-fixture.js");
+  const pausa = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+  const foto = async (nome: string): Promise<void> => {
+    await pausa(600);
+    writeFileSync(join(destino, `${prefixo}${nome}.png`), (await janela.webContents.capturePage()).toPNG());
+  };
+  const js = (codigo: string): Promise<unknown> => janela.webContents.executeJavaScript(codigo);
+  const existe = (seletor: string): Promise<boolean> => js(`document.querySelector(${JSON.stringify(seletor)}) !== null`) as Promise<boolean>;
+  const clicar = (seletor: string): Promise<boolean> =>
+    js(`(() => { const e = document.querySelector(${JSON.stringify(seletor)}); e?.click(); return e !== null; })()`) as Promise<boolean>;
+  const buscar = (texto: string): Promise<unknown> =>
+    js(`(() => {
+      const campo = document.querySelector("[data-locum-paleta-busca]");
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(campo, ${JSON.stringify(texto)});
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+      return null;
+    })()`);
+  await js(`(localStorage.clear(), sessionStorage.clear(), null)`);
+  try {
+    await irPara(janela, "automations");
+    await pausa(1200);
+    await clicar("[data-locum-automacao-nova]");
+    await pausa(600);
+    await clicar("[data-locum-modelo=blank]");
+    await pausa(300);
+    await clicar("[data-locum-automacao-criar]");
+    await pausa(1800);
+
+    await foto("no-1-paleta");
+    await buscar("reagir");
+    await foto("no-2-busca-reagir");
+    await buscar("");
+
+    // Um app com ações do Locum: o painel pergunta o que fazer.
+    await clicar('[data-locum-paleta-app="slack"]');
+    await pausa(600);
+    await foto("no-3-o-que-fazer");
+    await clicar('[data-locum-operacao="slack.react"]');
+    await pausa(600);
+    await foto("no-4-no-configurado");
+
+    // Um app de servidor MCP: as ferramentas por recurso, e o formulário do schema.
+    await clicar(`[data-locum-paleta-app="${FIXTURE_SERVER}"]`);
+    await pausa(600);
+    if (await existe(`[data-locum-operacao-carregar="${FIXTURE_SERVER}"]`)) {
+      await clicar(`[data-locum-operacao-carregar="${FIXTURE_SERVER}"]`);
+      await pausa(2500);
+    }
+    await foto("no-3b-o-que-fazer-servidor");
+    await clicar(`[data-locum-operacao="${FIXTURE_SERVER}/echo"]`);
+    await pausa(600);
+    await foto("no-4b-formulario");
+
+    // O canvas com apps diferentes.
+    await clicar('[data-locum-paleta-app="teams"]');
+    await pausa(400);
+    await clicar('[data-locum-operacao="teams.react"]');
+    await pausa(400);
+    await clicar('[data-locum-paleta-app="github"]');
+    await pausa(400);
+    await clicar('[data-locum-operacao="github.review_comment"]');
+    await pausa(400);
+    await clicar(".react-flow__pane");
+    await clicar(".react-flow__controls-fitview");
+    await foto("no-5-canvas");
+  } finally {
+    await js(`(Object.keys(localStorage).filter((k) => k.startsWith("locum.rascunho-automacao") || k.startsWith("locum.automacao-provisoria")).forEach((k) => localStorage.removeItem(k)), null)`);
+  }
+}
+
+/**
  * O editor de automação do modelo "Revisar PR do Teams", nos momentos em que
  * as queixas apareceram: o gatilho com o modo de link de PR, o painel do passo
  * de IA com agent da biblioteca, sair com mudança não salva e reabrir depois.
@@ -7742,6 +7829,12 @@ async function capturarTelas(janela: BrowserWindow): Promise<void> {
   const destino = flagValue("--capturas-em") ?? join(process.cwd(), "capturas");
   mkdirSync(destino, { recursive: true });
   janela.setSize(1280, 860);
+
+  // `--capturas-so no-por-app` fotografa a paleta por app e o nó com operação.
+  if (flagValue("--capturas-so") === "no-por-app") {
+    await capturarNoPorApp(janela, destino, flagValue("--capturas-prefixo") ?? "");
+    return;
+  }
 
   // `--capturas-so editor` fotografa só o editor de automação, para comparar antes e depois de uma mudança.
   if (flagValue("--capturas-so") === "editor") {

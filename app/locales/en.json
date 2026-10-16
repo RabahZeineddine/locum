@@ -2168,7 +2168,8 @@
       "searchOperation": "Search operation",
       "noOperations": "No operations.",
       "operations": "Operations",
-      "appHint": "Pick the app; what it does comes next."
+      "appHint": "Pick the app; what it does comes next.",
+      "agentsAndAi": "Agents and AI"
     },
     "canvas": {
       "approval": "click to send",

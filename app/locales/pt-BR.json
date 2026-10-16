@@ -2217,7 +2217,8 @@
       "searchOperation": "Buscar operação",
       "noOperations": "Nenhuma operação.",
       "operations": "Operações",
-      "appHint": "Escolha o app; o que ele faz vem depois."
+      "appHint": "Escolha o app; o que ele faz vem depois.",
+      "agentsAndAi": "Agents e IA"
     },
     "canvas": {
       "approval": "só com clique",

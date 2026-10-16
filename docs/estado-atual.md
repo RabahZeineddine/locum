@@ -2210,3 +2210,18 @@ a review e o `soltarOPr` do run falho, do descarte e da proposta rejeitada. Pass
 de ação `optional` que falha fica `failed` e não derruba o run. O editor avisa,
 uma vez, a automação gravada com `prLinks` sem nó de reação, e o botão insere os
 nós no rascunho sem migrar o banco.
+
+**Editor: nó por app, operação escolhida dentro do nó.** A paleta lista Gatilhos,
+Agents, Lógica e uma entrada por app (Teams, Slack, GitHub, tracker, HTTP,
+Microsoft 365 e cada servidor MCP ligado, que é o próprio app quando não é
+conhecido). Clicar no app cria o nó sem operação e o painel pergunta "O que
+fazer?": as ações do Locum primeiro, depois as ferramentas do servidor por
+recurso (lido do nome da ferramenta), com busca e teclado. A busca da paleta
+também acha operações ("reagir" mostra Teams e Slack) e cria o nó já com a
+escolhida. O topo do painel vira "App · Operação", trocável, e a troca guarda
+os argumentos de mesmo nome e recalcula o modo (escrita volta para aprovação,
+`autoEscrita` não passa). As ferramentas de chat do ms365 aparecem no Teams, e
+o resto fica em Microsoft 365. Nada muda no que é gravado: o passo continua
+`mcp.call` com `server`/`tool` ou a ação nativa, e as automações antigas abrem
+sem migração. A lógica está em `renderer/lib/operacao-da-ferramenta.ts` e
+`renderer/lib/apps-da-paleta.ts`. Gatilhos seguem a lista de antes.

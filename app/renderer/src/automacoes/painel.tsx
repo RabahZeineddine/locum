@@ -125,12 +125,15 @@ export function PainelDoNo({
     >
       <div className="flex items-center gap-2">
         {passo !== undefined && passo.type === "action" && temTrocaDeOperacao(passo) ? (
-          <TrocaDeOperacao
+          <>
+            <TrocaDeOperacao
             conexoes={conexoes}
             passo={passo}
             spec={rascunho.spec}
             trocar={(novo) => setRascunho((r) => ({ ...r, spec: trocarPasso(r.spec, passo.key, novo) }))}
           />
+          {ajudaDoNo === null ? null : <Ajuda texto={ajudaDoNo} />}
+        </>
         ) : (
           <>
         <Selo app={cabecalho.app} id={cabecalho.id} tamanho="sm" />

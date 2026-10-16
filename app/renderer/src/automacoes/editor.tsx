@@ -71,7 +71,7 @@ import {
   useNodesInitialized,
   useReactFlow,
 } from "@xyflow/react";
-import { ArrowLeft, Download, List, Loader2, Play } from "lucide-react";
+import { ArrowLeft, ChevronDown, ChevronRight, Download, List, Loader2, Play } from "lucide-react";
 import { MarcaLogo } from "@/components/marca-logo";
 import { appsDaPaleta, buscarNaPaleta, foiRenomeado, fonteDaMarca, fonteDaMarcaDoPasso, reconhecerPasso, temTrocaDeOperacao, tituloDaOperacaoDoPasso, nomeDoApp, passoDaOperacao, passoSemOperacao, servidorDoNoVazio, type AppDaPaleta, type OperacaoDoApp } from "@/lib/apps-da-paleta";
 import { tradutorDe } from "@/lib/operacao-da-ferramenta";
@@ -1171,6 +1171,25 @@ function Paleta({
   const { apps, operacoes } = buscarNaPaleta(paleta, busca, traduzir);
   const todosOsApps = appsDaPaleta(paleta);
   const Titulo = ({ chave }: { chave: string }) => <h3 className="text-muted-foreground px-1.5 pb-0.5 text-[11px] font-medium">{t(chave)}</h3>;
+  // A paleta é curta: gatilhos, agents e lógica abrem com um clique; os apps ficam abertos. Na busca, tudo que casou aparece.
+  const [abertos, setAbertos] = useState<ReadonlySet<string>>(new Set(["apps"]));
+  const Grupo = ({ id, chave, children }: { id: string; chave: string; children: ReactNode }) => {
+    const aberto = buscando || abertos.has(id);
+    return (
+      <section data-locum-paleta-grupo={id}>
+        <button
+          aria-expanded={aberto}
+          className="text-muted-foreground hover:text-foreground flex w-full cursor-pointer items-center gap-1 px-1.5 pb-0.5 text-left text-[11px] font-medium"
+          onClick={() => setAbertos((a) => new Set(a.has(id) ? [...a].filter((x) => x !== id) : [...a, id]))}
+          type="button"
+        >
+          {aberto ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+          {t(chave)}
+        </button>
+        <div hidden={!aberto}>{children}</div>
+      </section>
+    );
+  };
 
   return (
     <aside className="border-border bg-card flex w-60 shrink-0 flex-col gap-2 overflow-y-auto rounded-lg border p-1.5" data-locum-probe="automacao-paleta">
@@ -1184,19 +1203,20 @@ function Paleta({
         value={busca}
       />
       {gatilhos.length === 0 ? null : (
-        <section>
-          <Titulo chave="automations.palette.triggers" />
+        <Grupo chave="automations.palette.triggers" id="triggers">
           <ul>
             {gatilhos.map((g) => (
               <Item app={g.app} id={g.id} key={g.id} onClick={() => aoGatilho(g.id)} titulo={t(`automations.triggers.${g.id}.title`)} />
             ))}
           </ul>
-        </section>
+        </Grupo>
       )}
-      {buscando && listaDeAgents.length === 0 ? null : (
-        <section>
-          <Titulo chave="automations.palette.agents" />
+      {buscando && listaDeAgents.length === 0 && passos.length === 0 ? null : (
+        <Grupo chave="automations.palette.agentsAndAi" id="agents">
           <ul>
+            {passos.map((p) => (
+              <Item app={p.app} id={p.id} key={p.id} onClick={() => aoPasso(p.id)} titulo={tituloDoPasso(t, p.id)} />
+            ))}
             {listaDeAgents.map((a) => (
               <Item app="locum" id="agent" key={a.id} onClick={() => aoAgent(a)} titulo={a.name} />
             ))}
@@ -1207,21 +1227,10 @@ function Paleta({
               {t("automations.palette.newAgent")}
             </button>
           )}
-        </section>
-      )}
-      {passos.length === 0 ? null : (
-        <section>
-          <Titulo chave="automations.palette.steps" />
-          <ul>
-            {passos.map((p) => (
-              <Item app={p.app} id={p.id} key={p.id} onClick={() => aoPasso(p.id)} titulo={tituloDoPasso(t, p.id)} />
-            ))}
-          </ul>
-        </section>
+        </Grupo>
       )}
       {logica.length === 0 ? null : (
-        <section>
-          <Titulo chave="automations.palette.logic" />
+        <Grupo chave="automations.palette.logic" id="logic">
           <ul>
             {logica.map((l) => (
               <Item
@@ -1233,11 +1242,10 @@ function Paleta({
               />
             ))}
           </ul>
-        </section>
+        </Grupo>
       )}
       {apps.length === 0 ? null : (
-        <section data-locum-paleta-apps="">
-          <Titulo chave="automations.palette.apps" />
+        <Grupo chave="automations.palette.apps" id="apps">
           <ul>
             {apps.map((app) => (
               <li key={app.id}>
@@ -1253,7 +1261,7 @@ function Paleta({
               </li>
             ))}
           </ul>
-        </section>
+        </Grupo>
       )}
       {operacoes.length === 0 ? null : (
         <section data-locum-paleta-operacoes="">
