@@ -58,7 +58,7 @@ export async function motivoDoEventoGuardado(
   if (valem.length === 0) return motivo;
   if (valem.length < lista.length && Array.isArray(p.prs)) {
     const prs = valem as (Record<string, unknown> & { prOwner: string; prRepo: string; prNumber: number })[];
-    const { prsCortados, prsLimite } = p as { prsCortados?: number; prsLimite?: number };
+    const { prsCortados, prsLimite, prsFalharam } = p as { prsCortados?: number; prsLimite?: number; prsFalharam?: string };
     await db
       .update(schema.events)
       .set({
@@ -67,7 +67,7 @@ export async function motivoDoEventoGuardado(
           ...prs[0],
           prLinks: prs.map((q) => ({ owner: q.prOwner, repo: q.prRepo, pull: q.prNumber })),
           prs,
-          prsTexto: textoDosPrs(prs, { cortados: prsCortados ?? 0, limite: prsLimite ?? prs.length }),
+          prsTexto: textoDosPrs(prs, { cortados: prsCortados ?? 0, limite: prsLimite ?? prs.length, falharam: prsFalharam === undefined || prsFalharam === "" ? [] : prsFalharam.split(", ") }),
         },
       })
       .where(eq(schema.events.id, eventId));

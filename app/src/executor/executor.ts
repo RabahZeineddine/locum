@@ -270,7 +270,7 @@ export class Executor {
         if (existing?.status === "done" || (existing?.status === "skipped" && existing.error !== NAO_RODOU)) {
           outputs.set(step.key, existing.output);
           if (existing.status === "skipped" && existing.error === PULADO_PELO_CAMINHO) foraDoCaminho.add(step.key);
-          if (existing.status === "skipped" && (existing.error === "rejected" || existing.error === "publish_conflict" || ehPuladoPorRecusa(existing.error))) {
+          if (existing.status === "skipped" && (existing.error === "rejected" || ehPuladoPorRecusa(existing.error))) {
             foraDoCaminho.add(step.key);
             recusados.add(step.key);
           }
@@ -292,7 +292,7 @@ export class Executor {
           }
           outputs.set(step.key, (await settleStep(existing.id, approval.status)).output);
           // Recusado na Fila: o que depende só dele não roda.
-          if (approval.status === "rejected" || approval.status === "conflict") {
+          if (approval.status === "rejected") {
             foraDoCaminho.add(step.key);
             recusados.add(step.key);
           }
@@ -311,9 +311,9 @@ export class Executor {
           });
         }
 
-        if (foraDoCaminhoEscolhido(step, outputs, foraDoCaminho)) {
-          // Pulado porque o que ele esperava foi recusado na Fila, e não por um caminho que não foi escolhido.
-          const recusado = step.needs.find((n) => recusados.has(n));
+        // Recusa é um "não" explícito: qualquer need recusado pula o passo, mesmo numa junção.
+        const recusado = step.needs.find((n) => recusados.has(n));
+        if (recusado !== undefined || foraDoCaminhoEscolhido(step, outputs, foraDoCaminho)) {
           const motivoDoPulo = recusado === undefined ? PULADO_PELO_CAMINHO : `${PULADO_POR_RECUSA}${recusado}`;
           if (recusado !== undefined) recusados.add(step.key);
           await db

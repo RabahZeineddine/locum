@@ -302,6 +302,36 @@ test("PR que falha a cada batida não segura os outros para sempre: depois de tr
   const [evento] = await eventos(db);
   assert.deepEqual((evento!.prs as { prNumber: number }[]).map((p) => p.prNumber), [7]);
   assert.equal(evento!.prsFalharam, "acme/web#9");
+  // O prompt também fica sabendo que esse PR não foi revisado.
+  assert.match(String(evento!.prsTexto), /acme\/web#9 não foi revisado: não deu para buscar/);
+});
+
+test("evento em que todos os PRs falham: depois de três tentativas vira descarte com motivo e sai da espera", async () => {
+  const db = bancoDeTeste();
+  const fetchPr = (async () => {
+    throw new Error("404");
+  }) as never;
+  const chats = chatCom(`${PR} ${WEB}`);
+  const descartes: { pr: string; motivo: string }[] = [];
+  for (let i = 0; i < 3; i++) {
+    const r = await pollTeamsInbox(WATCH_PR, { db, token, ...semGithub, fetchPr, ...graphFalso({ chats }) });
+    assert.deepEqual(r.inWindow, []);
+    descartes.push(...r.descartes);
+  }
+  assert.deepEqual(descartes.map((d) => d.motivo), ["não deu para buscar o PR"]);
+  assert.match(descartes[0]!.pr, /acme\/api#7.*acme\/web#9/);
+  const [evento] = await eventos(db);
+  assert.equal(evento!.prDescartado, "não deu para buscar o PR");
+  assert.equal(evento!.prsPendentes, undefined);
+  // Fora da espera: a quarta batida não tenta de novo nem descarta outra vez.
+  let buscas = 0;
+  const contando = (async () => {
+    buscas++;
+    throw new Error("404");
+  }) as never;
+  const quarta = await pollTeamsInbox(WATCH_PR, { db, token, ...semGithub, fetchPr: contando, ...graphFalso({ chats }) });
+  assert.equal(buscas, 0);
+  assert.deepEqual(quarta.descartes, []);
 });
 
 test("maxPrs do gatilho manda no teto, e prsTexto avisa quantos PRs não entraram", async () => {

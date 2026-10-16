@@ -661,7 +661,16 @@ async function enriquecerPrs(
       // `TENTATIVAS_DO_PR` rodadas o evento segue com os PRs que deram, para um
       // PR que não existe mais não segurar os outros para sempre.
       const pendentes = links.filter((l) => falhas.some((f) => f.startsWith(`PR ${nomeDoPr(l)}:`)));
-      if (pendentes.length > 0 && (aceitos.length === 0 || tentativas + 1 < TENTATIVAS_DO_PR)) {
+      const { prError: _resolvido, prsPendentes: _pendentes, prTentativas: _tentativas, ...resto } = payload;
+      const esgotou = tentativas + 1 >= TENTATIVAS_DO_PR;
+      if (pendentes.length > 0 && aceitos.length === 0 && esgotou) {
+        // Nenhum PR deu para buscar em todas as rodadas: o evento sai da espera, e o motivo aparece nos descartes.
+        descartes.push({ pr: pendentes.map(nomeDoPr).join(", "), motivo: MOTIVO_PR_NAO_BUSCADO });
+        await gravar(id, { ...resto, prDescartado: MOTIVO_PR_NAO_BUSCADO });
+        fora.add(id);
+        continue;
+      }
+      if (pendentes.length > 0 && (aceitos.length === 0 || !esgotou)) {
         await gravar(id, {
           ...payload,
           prError: falhas.join("; "),
@@ -674,7 +683,6 @@ async function enriquecerPrs(
       }
       for (const a of aceitos) (await revisados()).add(chaveDoCommit(a.contexto));
 
-      const { prError: _resolvido, prsPendentes: _pendentes, prTentativas: _tentativas, ...resto } = payload;
       if (aceitos.length === 0) {
         await gravar(id, { ...resto, prDescartado: motivos[0] ?? "repetido" });
         fora.add(id);
@@ -691,7 +699,7 @@ async function enriquecerPrs(
         prNumber: primeiro!.link.pull,
         prLinks: aceitos.map((a) => a.link),
         prs,
-        prsTexto: textoDosPrs(prs, { cortados: Number(payload.prsCortados ?? 0), limite: Number(payload.prsLimite ?? links.length) }),
+        prsTexto: textoDosPrs(prs, { cortados: Number(payload.prsCortados ?? 0), limite: Number(payload.prsLimite ?? links.length), falharam: pendentes.map(nomeDoPr) }),
         ...(pendentes.length > 0 ? { prsFalharam: pendentes.map(nomeDoPr).join(", ") } : {}),
         teamsAuthor: payload.author,
       });
@@ -723,6 +731,9 @@ async function pendentesDoGatilho(db: Db, triggerId: string | undefined): Promis
 /** Rodadas em que um PR que falha ao buscar segura o evento antes de ele seguir sem esse PR. */
 const TENTATIVAS_DO_PR = 3;
 
+/** O motivo do descarte do evento cujos PRs não deram para buscar em nenhuma das rodadas. */
+const MOTIVO_PR_NAO_BUSCADO = "não deu para buscar o PR";
+
 /** Os PRs que o evento cita: a lista gravada, ou o PR único de um evento de antes dela. */
 function linksDoPayload(payload: Record<string, unknown>): ParsedGithubPr[] {
   const lista = payload.prLinks;
@@ -731,7 +742,7 @@ function linksDoPayload(payload: Record<string, unknown>): ParsedGithubPr[] {
 }
 
 /** Um bloco legível por PR, para o prompt citar `{{event.prsTexto}}` sem montar laço. */
-export function textoDosPrs(prs: { prOwner: string; prRepo: string; prNumber: number; title?: unknown; description?: unknown; author?: unknown; diff?: unknown; url?: unknown; omittedSummary?: unknown }[], corte: { cortados: number; limite: number } = { cortados: 0, limite: 0 }): string {
+export function textoDosPrs(prs: { prOwner: string; prRepo: string; prNumber: number; title?: unknown; description?: unknown; author?: unknown; diff?: unknown; url?: unknown; omittedSummary?: unknown }[], corte: { cortados: number; limite: number; falharam?: string[] } = { cortados: 0, limite: 0 }): string {
   const blocos = prs
     .map((p, i) =>
       [
@@ -749,6 +760,7 @@ export function textoDosPrs(prs: { prOwner: string; prRepo: string; prNumber: nu
       ].join("\n"),
     );
   if (corte.cortados > 0) blocos.push(`(mais ${corte.cortados} ${corte.cortados === 1 ? "PR não entrou" : "PRs não entraram"} (limite de ${corte.limite} por mensagem))`);
+  for (const nome of corte.falharam ?? []) blocos.push(`(o PR ${nome} não foi revisado: não deu para buscar)`);
   return blocos.join("\n\n");
 }
 

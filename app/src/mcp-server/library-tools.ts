@@ -163,7 +163,7 @@ function catalogo() {
       name: "label shown in the app",
       needs: "keys of the steps this one waits for",
       optional: "true lets the run go on when this step fails (an action step stays failed with its error and its output is null)",
-      when: "{ step, branch }: runs only when the decision step `step` (which must be in needs) chose `branch`. Steps off the chosen path are skipped, and so is whatever depends only on skipped steps. A step that joins two paths runs.",
+      when: "{ step, branch }: runs only when the decision step `step` (which must be in needs) chose `branch`. Steps off the chosen path are skipped, and so is whatever depends only on skipped steps. A step that joins two paths runs. A step rejected in the Queue skips every step that depends on it, even a join (`dependency_rejected:<step>`); a publish conflict does not.",
     },
     steps: {
       model: {

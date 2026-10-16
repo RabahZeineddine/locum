@@ -483,6 +483,11 @@ function EventoDoRun({ detalhe }: { detalhe: Detalhe }) {
           {t("runs.event.prsCut", { count: evento.prsCortados })}
         </span>
       ) : null}
+      {evento?.prsFalharam != null ? (
+        <span className="text-muted-foreground text-xs" data-locum-run-prs-falharam="">
+          {t("runs.event.prsFailed", { prs: evento.prsFalharam })}
+        </span>
+      ) : null}
       {evento?.semConversa === true ? (
         <span className="text-muted-foreground text-xs" data-locum-run-ensaio="">
           {t("runs.event.dryRun")}

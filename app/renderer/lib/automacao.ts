@@ -796,9 +796,11 @@ export function comNosDeReacao(r: Rascunho, nomes: { pegou: string; veredito: st
   const pegou = reacaoDePegou("teams.react", novaChave(r.spec, "pegou"), nomes.pegou);
   const raizes = new Set(r.spec.steps.filter((p) => p.needs.length === 0).map((p) => p.key));
   const dependidos = new Set(r.spec.steps.flatMap((p) => p.needs));
-  const finais = r.spec.steps.filter((p) => !dependidos.has(p.key)).map((p) => p.key);
   // O veredito vem do passo de IA que alimenta a publicação do review, ou do último passo de IA.
   const review = r.spec.steps.find((p) => p.type === "action" && p.action === "github.review_comment");
+  // Reage só depois do que publica (recusar a publicação pula a reação); sem publicação, depois dos finais.
+  const publicam = r.spec.steps.filter((p) => p.type === "action" && (p.action === "teams.post" || p.action === "github.review_comment")).map((p) => p.key);
+  const finais = publicam.length > 0 ? publicam : r.spec.steps.filter((p) => !dependidos.has(p.key)).map((p) => p.key);
   const modelos = r.spec.steps.filter((p) => p.type === "model");
   const revisao =
     (review?.type === "action" ? (review.input ?? review.needs[0]) : undefined) ?? modelos[modelos.length - 1]?.key ?? "revisar";

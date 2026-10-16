@@ -12,6 +12,8 @@ import type { Runtime } from "../src/runtimes/types.js";
 import { AgentService } from "../src/services/agent-service.js";
 import { slackReactHandler } from "../src/slack/react-action.js";
 import { teamsReactHandler } from "../src/teams/react-action.js";
+import { comNosDeReacao, type Rascunho } from "../renderer/lib/automacao.js";
+import prReview from "../../examples/agents/pr-review.json" with { type: "json" };
 
 /** Reação como nó do fluxo: `teams.react` e `slack.react` pelo `Executor.execute`, com cliente falso. */
 
@@ -282,4 +284,52 @@ test("passo optional que falhou não roda de novo quando o run é retomado", asy
   await executor.decide(pendencia!.id, "approved");
   assert.equal(chamadas, 1);
   assert.equal((await passo(runId, "ping")).status, "failed");
+});
+
+/** O pr-review.json de verdade, migrado pelo botão do editor, com os modelos trocados por um de teste. */
+function prReviewMigrado() {
+  const spec = AgentSpec.parse({ ...prReview, id: `pr-${randomUUID().slice(0, 8)}`, steps: prReview.steps.map((p) => (p.type === "model" ? { ...p, model: "ollama/m", requiresServers: [] } : p)) });
+  const rascunho: Rascunho = { spec, gatilhos: [{ chave: "gatilho-1", config: { kind: "teams-inbox", mentions: false, dms: false, prLinks: true, agruparPrs: false, maxPrs: 5, channels: [], chats: [], chatsPendentes: 0, everyMinutes: 5 }, enabled: false }] };
+  return comNosDeReacao(rascunho).spec;
+}
+
+test("a migração liga o veredito só ao passo que publica, e não a todos os finais", () => {
+  const veredito = prReviewMigrado().steps.find((p) => p.key === "veredito")!;
+  assert.deepEqual(veredito.needs, ["post"]);
+});
+
+test("pr-review migrado: recusar o post na Fila pula o veredito, mesmo com deploy_context terminado na junção", async () => {
+  const g = graphFalso();
+  const gate = new ApprovalGate(new Map([["teams.react", teamsReactHandler(g.opcoes)], ["github.review_comment", { publish: async () => undefined }]]));
+  const executor = new Executor({ mcp: registroFalso, runtimes: new Map([["native", runtimeDoVeredito("APPROVE")]]), gate, machineId: "m" });
+  const spec = prReviewMigrado();
+  // A junção do caso real: o veredito espera o deploy_context e o post.
+  const comJuncao = AgentSpec.parse({ ...spec, steps: spec.steps.map((p) => (p.key === "veredito" ? { ...p, needs: ["deploy_context", "post"] } : p)) });
+  const versao = await new AgentService().upsert(comJuncao, undefined, "human");
+  const runId = await executor.createRun(versao.id, await evento({ ...PR, owner: "acme", repoName: "api", pull: 7, headSha: "abc", ...CONVERSAS[0]! .campos }));
+  assert.equal(await executor.execute(runId), "paused");
+  const pendencia = (await db.select().from(schema.approvals).where(eq(schema.approvals.runId, runId))).find((a) => a.status === "pending")!;
+  await executor.decide(pendencia.id, "rejected");
+  assert.equal((await passo(runId, "veredito")).status, "skipped");
+  assert.equal((await passo(runId, "veredito")).error, "dependency_rejected:post");
+  assert.deepEqual(g.pedidos.map((p) => p.emoji), ["👀"]);
+});
+
+test("conflito de publicação não pula os dependentes: a publicação já existe", async () => {
+  const g = graphFalso();
+  const gate = new ApprovalGate(new Map([["teams.react", teamsReactHandler(g.opcoes)], ["teams.post", { publish: async () => undefined }]]));
+  const executor = new Executor({ mcp: registroFalso, runtimes: new Map([["native", runtimeDoVeredito("APPROVE")]]), gate, machineId: "m" });
+  const versao = await agente([
+    REVISAR,
+    { type: "action", key: "responder", name: "responder", action: "teams.post", mode: "approve", input: "revisar", needs: ["revisar"] },
+    reagir("veredito", { emoji: "✅" }, { needs: ["responder"] }),
+  ]);
+  const runId = await executor.createRun(versao.id, await evento({ ...PR, ...CONVERSAS[0]!.campos }));
+  assert.equal(await executor.execute(runId), "paused");
+  const pendencia = (await db.select().from(schema.approvals).where(eq(schema.approvals.runId, runId))).find((a) => a.status === "pending")!;
+  await db.update(schema.approvals).set({ status: "conflict" }).where(eq(schema.approvals.id, pendencia.id));
+  await executor.execute(runId);
+  assert.equal((await passo(runId, "responder")).error, "publish_conflict");
+  assert.equal((await passo(runId, "veredito")).status, "done");
+  assert.deepEqual(g.pedidos.map((p) => p.emoji), ["✅"]);
 });

@@ -39,7 +39,7 @@ do 👀. Para montar:
 3. Cole um link como `https://github.com/<dono>/<repo>/pull/<n>` (vale
    `/files` e query). Chat de reunião só acorda com menção.
 
-Uma mensagem com vários links gera um evento só, com a lista `prs` (até cinco; `prsCortados` diz quantos ficaram de fora) e `prsTexto` pronto para o prompt. Os campos do primeiro PR seguem no evento (`repo`, `prNumber`, `diff`). Editar a
+Por padrão cada link gera um evento, um por PR. Com `agruparPrs` ligado no gatilho, a mensagem inteira vira um evento só, com a lista `prs` (até `maxPrs`, cinco por padrão; `prsCortados` diz quantos ficaram de fora, `prsFalharam` quais não deu para buscar) e `prsTexto` pronto para o prompt. Os campos do primeiro PR seguem no evento (`repo`, `prNumber`, `diff`). Editar a
 mensagem não gera evento repetido. Link dentro de código (`<code>`, `<pre>`) é
 ignorado, e `www.github.com` vale. O evento leva o contexto do PR nos mesmos
 campos que o agent lê (`repo`, `title`, `description`, `diff`, `omittedSummary`,

@@ -764,6 +764,7 @@
       "none": "sem evento",
       "prsCut_one": "mais {{count}} PR não entrou (limite por mensagem)",
       "prsCut_other": "mais {{count}} PRs não entraram (limite por mensagem)",
+      "prsFailed": "sem revisão, não deu para buscar o PR: {{prs}}",
       "prsCut_zero": "mais {{count}} PRs não entraram (limite por mensagem)",
       "dryRun": "Ensaio: nada foi publicado. Os passos de ação mostram o texto que seria enviado."
     },

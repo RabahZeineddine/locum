@@ -740,6 +740,7 @@
       "none": "no event",
       "prsCut_one": "{{count}} more PR did not make it in (limit per message)",
       "prsCut_other": "{{count}} more PRs did not make it in (limit per message)",
+      "prsFailed": "not reviewed, the PR could not be fetched: {{prs}}",
       "prsCut_zero": "{{count}} more PRs did not make it in (limit per message)",
       "dryRun": "Dry run: nothing was published. The action steps show the text that would be sent."
     },
