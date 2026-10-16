@@ -206,6 +206,11 @@ export function registerAutomationTools(server: McpServer): void {
       return { triggerId, removed: await triggerService.remove(triggerId) };
     });
 
+  def(server, "remove_automation", "danger",
+    "Deletes an automation with its triggers, versions and run history (steps, findings, approvals already decided, metrics, budget, trigger cursors and manual test events). Irreversible. Refused while a run is queued or running, or an approval is pending or publishing: the message says what to do. Daily usage is kept. PRs it reviewed in the last 24h may be reviewed again by another automation.",
+    { agentId: z.string().describe("automation id, as shown by list_automations") },
+    ({ agentId }) => automationService.remove(agentId));
+
   def(server, "allow_all_chats_for_trigger", "danger",
     "The 'valid for all chats' button of a Teams trigger that came from a package and waits for its chats to be chosen: it clears the pending choice and leaves the chats list empty, so the trigger watches ALL group and direct chats of the account. To watch only some chats, use set_trigger with the chats list instead (ids from list_teams_chats).",
     { triggerId: z.string().min(1) },

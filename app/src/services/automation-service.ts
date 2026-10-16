@@ -1,12 +1,31 @@
+import { and, count, eq, inArray, notExists, or, sql } from "drizzle-orm";
 import { TriggerConfig, type AgentSpec, type TriggerConfigInput } from "../config/types.js";
 import { limparPendenciasPreenchidas, recusaDeLigar, recusaDeRodar } from "../config/pendencia.js";
 import { recursoExiste } from "./pendencia-recursos.js";
 import { manterRebaixados } from "../config/rebaixado.js";
+import { db as defaultDb, schema } from "../db/index.js";
 import { agentService, ID_DE_AGENT, mensagemDeVersao, isReserved, type AgentService, type AgentVersion } from "./agent-service.js";
 import { dependenciaDeEvento, recusaSemEvento, type MotivoDeEvento } from "../executor/dependencia-de-evento.js";
 import { eventoManual, type EventoManual, type EventoRecente } from "./evento-manual.js";
 import { executionService, type ExecutionService } from "./execution-service.js";
+import { soltarOPr } from "../teams/reaction.js";
 import { esperaChats, MOTIVO_CHATS, recusaDaGravacao, triggerService, type TriggerEntry, type TriggerService } from "./trigger-service.js";
+
+type Db = typeof defaultDb;
+
+/** Fontes de cursor presas a um gatilho, com o id dele na chave. As demais (mcp-poll, teams-inbox, github, digest) são da conexão. */
+const FONTES_DO_GATILHO = ["gatilho-descartes", "gatilho-erro", "scheduler", "scheduler-retry"];
+/** Onde o agendador guarda os eventos que esperam nova tentativa (ver `RETRY_SOURCE` em scheduler.ts). */
+const FONTE_DA_RETENTATIVA = "scheduler-retry";
+
+/** O que a exclusão leva, e o que a impede. Mesma resposta para a prévia e para o remove. */
+export interface PreviaDeRemocao {
+  agentId: string;
+  triggers: number;
+  runs: number;
+  /** Cada motivo diz o que impede e o que fazer. Vazio quando pode apagar. */
+  blockers: string[];
+}
 
 /** Um gatilho como o canvas manda: com `id` quando já existia. */
 export interface AutomationTriggerInput {
@@ -84,6 +103,8 @@ export class AutomationService {
     private readonly triggers: TriggerService = triggerService,
     private readonly executions: ExecutionService = executionService,
     private readonly eventos: EventoManual = eventoManual,
+    private readonly db: Db = defaultDb,
+    private readonly soltar: (payload: unknown) => Promise<void> = soltarOPr,
   ) {}
 
   async get(agentId: string): Promise<Automation | null> {
@@ -275,6 +296,134 @@ export class AutomationService {
     // Manual sempre roda. Com o provedor no limite, só avisa: pode falhar ou gastar o que resta.
     const bloqueio = await (await import("./limites-padrao.js")).pausaPadrao(agentId).catch(() => null);
     return bloqueio === null ? { runId, eventId } : { runId, eventId, aviso: { provedor: bloqueio.provedor, ate: bloqueio.ate } };
+  }
+
+  /**
+   * O que `remove` levaria e o que o impede, sem apagar nada. A tela mostra o
+   * mesmo número que a ferramenta MCP devolve.
+   */
+  async removePreview(agentId: string): Promise<PreviaDeRemocao> {
+    await this.recusarSeNaoExiste(agentId);
+    return this.inspecionar(this.db, agentId);
+  }
+
+  /**
+   * Apaga a automação com gatilhos, versões, runs e tudo que pende deles.
+   * Irreversível.
+   *
+   * Fica de propósito: `usage_daily` (gasto histórico). Reaproveitar o mesmo id
+   * no mesmo dia herda o gasto do dia para o teto diário. A dedupe de review de
+   * 24h (`carregarRevisados`, em sources/teams-inbox.ts) deixa de contar os PRs
+   * que esta automação revisou, e outra automação pode revisá-los de novo.
+   */
+  async remove(agentId: string): Promise<{ agentId: string; removed: true; triggers: number; runs: number }> {
+    await this.recusarSeNaoExiste(agentId);
+    // Antes da transação: depois dela os gatilhos e o cursor de retentativa não existem mais.
+    const esperando = await this.eventosEsperandoRetentativa(agentId);
+
+    const { triggers, runs } = this.db.transaction(
+      (tx) => {
+        const previa = this.inspecionar(tx, agentId);
+        if (previa.blockers.length > 0) throw new Error(previa.blockers.join("; "));
+
+        const versoes = tx.select({ id: schema.agentVersions.id }).from(schema.agentVersions).where(eq(schema.agentVersions.agentId, agentId));
+        const runsIds = tx.select({ id: schema.runs.id }).from(schema.runs).where(inArray(schema.runs.agentVersionId, versoes));
+        const stepsIds = tx.select({ id: schema.steps.id }).from(schema.steps).where(inArray(schema.steps.runId, runsIds));
+        const findingsIds = tx.select({ id: schema.findings.id }).from(schema.findings).where(inArray(schema.findings.runId, runsIds));
+        const gatilhosIds = tx.select({ id: schema.triggers.id }).from(schema.triggers).where(eq(schema.triggers.agentId, agentId));
+
+        tx.delete(schema.findingOutcomes).where(inArray(schema.findingOutcomes.findingId, findingsIds)).run();
+        tx.delete(schema.findings).where(inArray(schema.findings.runId, runsIds)).run();
+        tx.delete(schema.approvals).where(or(inArray(schema.approvals.runId, runsIds), inArray(schema.approvals.stepId, stepsIds))).run();
+        tx.delete(schema.steps).where(inArray(schema.steps.runId, runsIds)).run();
+        tx.delete(schema.runs).where(inArray(schema.runs.agentVersionId, versoes)).run();
+        tx.delete(schema.agentMetrics).where(inArray(schema.agentMetrics.agentVersionId, versoes)).run();
+        tx.delete(schema.cursors).where(and(inArray(schema.cursors.source, FONTES_DO_GATILHO), inArray(schema.cursors.key, gatilhosIds))).run();
+        tx.delete(schema.triggers).where(eq(schema.triggers.agentId, agentId)).run();
+        // O teto global tem agent nulo e não é desta automação.
+        tx.delete(schema.budgets).where(eq(schema.budgets.agentId, agentId)).run();
+        // Eventos de ensaio (link colado) desta automação que não viraram run de ninguém.
+        tx.delete(schema.events)
+          .where(
+            and(
+              eq(schema.events.source, "manual"),
+              sql`json_extract(${schema.events.payload}, '$.automacao') = ${agentId}`,
+              notExists(tx.select({ one: sql`1` }).from(schema.runs).where(eq(schema.runs.eventId, schema.events.id))),
+            ),
+          )
+          .run();
+        tx.delete(schema.agentVersions).where(eq(schema.agentVersions.agentId, agentId)).run();
+        tx.delete(schema.agents).where(eq(schema.agents.id, agentId)).run();
+        return previa;
+      },
+      { behavior: "immediate" },
+    );
+
+    // Melhor esforço: a automação já saiu, e o 👀 que sobra no Teams não pode fazer o remove falhar.
+    for (const eventId of esperando) {
+      try {
+        const [evento] = await this.db.select().from(schema.events).where(eq(schema.events.id, eventId)).limit(1);
+        await this.soltar(evento?.payload);
+      } catch (err) {
+        console.error(`soltar o evento ${eventId} depois de excluir ${agentId} falhou: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    return { agentId, removed: true, triggers, runs };
+  }
+
+  private async recusarSeNaoExiste(agentId: string): Promise<void> {
+    if ((await this.agents.get(agentId)) === undefined) throw new Error(`automacao "${agentId}" nao cadastrada`);
+    if (isReserved(agentId)) throw new Error(`"${agentId}" e um agent do sistema e nao aceita escrita`);
+  }
+
+  /** Eventos que ficaram com 👀 esperando nova tentativa nos gatilhos da automação. */
+  private async eventosEsperandoRetentativa(agentId: string): Promise<string[]> {
+    const ids = (await this.triggers.list(agentId)).map((g) => g.id);
+    if (ids.length === 0) return [];
+    const linhas = await this.db
+      .select({ value: schema.cursors.value })
+      .from(schema.cursors)
+      .where(and(eq(schema.cursors.source, FONTE_DA_RETENTATIVA), inArray(schema.cursors.key, ids)));
+    const eventos = new Set<string>();
+    for (const { value } of linhas) {
+      try {
+        const lista = JSON.parse(value) as unknown;
+        if (Array.isArray(lista)) for (const p of lista) if (typeof p?.eventId === "string") eventos.add(p.eventId);
+      } catch {}
+    }
+    return [...eventos];
+  }
+
+  /** Contagens e recusas. Síncrona, para rodar dentro da transação do `remove` com o mesmo resultado da prévia. */
+  private inspecionar(leitor: Pick<Db, "select">, agentId: string): PreviaDeRemocao {
+    const versoes = leitor.select({ id: schema.agentVersions.id }).from(schema.agentVersions).where(eq(schema.agentVersions.agentId, agentId));
+    const runsIds = leitor.select({ id: schema.runs.id }).from(schema.runs).where(inArray(schema.runs.agentVersionId, versoes));
+    const stepsIds = leitor.select({ id: schema.steps.id }).from(schema.steps).where(inArray(schema.steps.runId, runsIds));
+    const contar = (n: { n: number } | undefined): number => n?.n ?? 0;
+
+    const emCurso = contar(
+      leitor.select({ n: count() }).from(schema.runs).where(and(inArray(schema.runs.agentVersionId, versoes), inArray(schema.runs.status, ["queued", "running"]))).get(),
+    );
+    const daAprovacao = or(inArray(schema.approvals.runId, runsIds), inArray(schema.approvals.stepId, stepsIds));
+    const aprovacoes = (status: string): number =>
+      contar(leitor.select({ n: count() }).from(schema.approvals).where(and(eq(schema.approvals.status, status), daAprovacao)).get());
+    const pendentes = aprovacoes("pending");
+    const publicando = aprovacoes("publishing");
+
+    const blockers: string[] = [];
+    if (emCurso > 0) {
+      blockers.push(`${emCurso} execução(ões) na fila ou rodando: abra o app para a execução terminar ou ser retomada ou cancelada, e exclua depois`);
+    }
+    if (pendentes > 0) blockers.push(`${pendentes} aprovação(ões) pendente(s): decida a pendência na fila de aprovações e exclua depois`);
+    if (publicando > 0) {
+      blockers.push(`${publicando} aprovação(ões) em publicação: resolva a publicação parada na fila de aprovações (confira no destino se saiu) e exclua depois`);
+    }
+    return {
+      agentId,
+      triggers: contar(leitor.select({ n: count() }).from(schema.triggers).where(eq(schema.triggers.agentId, agentId)).get()),
+      runs: contar(leitor.select({ n: count() }).from(schema.runs).where(inArray(schema.runs.agentVersionId, versoes)).get()),
+      blockers,
+    };
   }
 
   /**

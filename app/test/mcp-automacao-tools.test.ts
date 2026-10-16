@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { eq } from "drizzle-orm";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { db, schema } from "../src/db/index.js";
@@ -686,4 +687,23 @@ test("save_automation mantém a pendência de uma versão a outra e só dismissP
   recusa(await client.callTool({ name: "save_automation", arguments: { spec: base, triggers: [], note: "x", dismissPending: [{ onde: "publicar", campo: "nao-existe" }] } }), /não há pendência/);
   const dispensada = ok<{ pending: unknown[] }>(await client.callTool({ name: "save_automation", arguments: { spec: base, triggers: [], note: "dispensei", dismissPending: [{ onde: "publicar", campo: "params.destino" }] } }));
   assert.deepEqual(dispensada.pending, []);
+});
+
+test("remove_automation apaga com o histórico, aparece como destrutiva e recusa o que não existe", async () => {
+  const client = await ligarCliente();
+  const ferramenta = (await client.listTools()).tools.find((t) => t.name === "remove_automation");
+  assert.equal(ferramenta?.annotations?.destructiveHint, true);
+
+  const agentId = id("auto");
+  const { gatilhos } = await comoPessoa(agentId, [ler], [{ kind: "manual" }, { kind: "schedule", everyMinutes: 30 }]);
+  const versao = (await agentService.getLatestVersion(agentId))!;
+  const runId = `run-${agentId}`;
+  db.insert(schema.runs).values({ id: runId, agentVersionId: versao.id, status: "running" }).run();
+  recusa(await client.callTool({ name: "remove_automation", arguments: { agentId } }), /abra o app/);
+  assert.ok(await agentService.get(agentId));
+
+  db.update(schema.runs).set({ status: "done" }).where(eq(schema.runs.id, runId)).run();
+  assert.deepEqual(ok(await client.callTool({ name: "remove_automation", arguments: { agentId } })), { agentId, removed: true, triggers: gatilhos.length, runs: 1 });
+  assert.equal(await agentService.get(agentId), undefined);
+  recusa(await client.callTool({ name: "remove_automation", arguments: { agentId } }), /nao cadastrada/);
 });

@@ -64,6 +64,11 @@ imutável, nenhuma versão entra em execução agendada sem o gatilho ser habili
 e o histórico permite desfazer. Editar é reversível e auditável; publicar no nome
 de outra pessoa não é.
 
+Excluir é a exceção ao "desfazer": `remove_automation` é `danger`, irreversível,
+e leva junto as versões, os runs e as aprovações já decididas. Recusa enquanto
+houver run na fila ou rodando, ou aprovação pendente ou em publicação. A
+confirmação fica com o cliente, que pergunta a cada chamada de ferramenta `danger`.
+
 ### 5. O servidor MCP antecede a interface na ordem de construção
 
 A ordem passa a ser: camada de serviço, servidor MCP, casca Electron, interface,
