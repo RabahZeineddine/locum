@@ -2376,6 +2376,12 @@ async function checkPaletaPorConexao(window: BrowserWindow): Promise<void> {
     await clicar(operacao("echo"));
     await confereNo("echo");
 
+    // O topo do painel troca a operação do mesmo app, e o formulário acompanha.
+    await clicar("[data-locum-troca-operacao]");
+    await esperar("a lista de operacoes no topo do painel", () => existe(`[data-locum-troca-lista] ${operacao("pid")}`));
+    await clicar(`[data-locum-troca-lista] ${operacao("pid")}`);
+    await esperar("a ferramenta pid no painel", async () => (await js(`document.querySelector("[data-locum-acao-ferramenta]")?.value ?? null`)) === "pid");
+
     // A busca da paleta acha a operação, e o clique cria o nó já com ela.
     await buscar("pid");
     await esperar("a operacao pid na busca", () => existe(naBusca("pid")));

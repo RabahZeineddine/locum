@@ -2,9 +2,12 @@ import { appDoServidor, operacoesDoApp, type OperacaoDoApp } from "@/lib/apps-da
 import { tituloDoGrupo, tradutorDe } from "@/lib/operacao-da-ferramenta";
 import { casaBusca } from "@/lib/paleta-conexoes";
 import { cn } from "@/lib/utils";
-import { useMemo, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import type { FerramentasDasConexoes } from "./ferramentas-das-conexoes";
+
+/** Servidores que já subiram sozinhos para o Teams nesta sessão: uma vez só. */
+const CARREGADOS_PARA_O_TEAMS = new Set<string>();
 
 /**
  * "O que fazer?": as operações de um app, as do Locum primeiro e as
@@ -15,10 +18,13 @@ export function OQueFazer({
   app,
   conexoes,
   aoEscolher,
+  semTitulo = false,
 }: {
   app: string;
   conexoes: FerramentasDasConexoes;
   aoEscolher: (operacao: OperacaoDoApp) => void;
+  /** Dentro do combobox do topo, que já diz o que é. */
+  semTitulo?: boolean;
 }) {
   const { t, i18n } = useTranslation();
   const [busca, setBusca] = useState("");
@@ -29,6 +35,17 @@ export function OQueFazer({
   const sem = paleta.filter(
     (c) => c.ferramentas === null && (appDoServidor(c.servidor) === app || (app === "teams" && appDoServidor(c.servidor) === "microsoft365")),
   );
+  // As ferramentas de chat do ms365 aparecem no Teams: sem lista lida, ela sobe sozinha, uma vez por sessão.
+  const { carregar } = conexoes;
+  const doMs365 = sem.filter((c) => app === "teams" && appDoServidor(c.servidor) === "microsoft365").map((c) => c.servidor);
+  const chaveDoMs365 = doMs365.join("\n");
+  useEffect(() => {
+    for (const servidor of chaveDoMs365 === "" ? [] : chaveDoMs365.split("\n")) {
+      if (CARREGADOS_PARA_O_TEAMS.has(servidor)) continue;
+      CARREGADOS_PARA_O_TEAMS.add(servidor);
+      void carregar(servidor);
+    }
+  }, [chaveDoMs365, carregar]);
   const casa = (o: OperacaoDoApp): boolean => casaBusca(busca, o.titulo, o.ferramenta, o.acao, o.descricao);
   const nativasVisiveis = nativas.filter(casa);
   const gruposVisiveis = grupos.map((g) => ({ ...g, itens: g.itens.filter(casa) })).filter((g) => g.itens.length > 0);
@@ -68,10 +85,11 @@ export function OQueFazer({
 
   return (
     <div className="flex flex-col gap-2" data-locum-o-que-fazer={app} onKeyDown={andar}>
-      <h3 className="text-sm font-medium">{t("automations.palette.whatToDo")}</h3>
+      {semTitulo ? null : <h3 className="text-sm font-medium">{t("automations.palette.whatToDo")}</h3>}
       <input
         aria-label={t("automations.palette.searchOperation")}
         className="border-input focus-visible:border-ring focus-visible:ring-ring/40 rounded-md border bg-transparent px-2 py-1 text-[13px] outline-none focus-visible:ring-2"
+        autoFocus={semTitulo}
         data-locum-operacao-busca=""
         onChange={(e) => setBusca(e.target.value)}
         placeholder={t("automations.palette.searchOperation")}

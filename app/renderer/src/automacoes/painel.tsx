@@ -43,7 +43,8 @@ import { Ajuda, Alternador, Campo, CAMPO, Minutos } from "./campos";
 import { esquemasDeSaidaDasConexoes, type FerramentasDasConexoes } from "./ferramentas-das-conexoes";
 import { FormularioDaChamada } from "./formulario-da-chamada";
 import { OQueFazer } from "./o-que-fazer";
-import { passoDaOperacao, reconhecerPasso } from "@/lib/apps-da-paleta";
+import { TrocaDeOperacao } from "./troca-de-operacao";
+import { passoDaOperacao, reconhecerPasso, temTrocaDeOperacao } from "@/lib/apps-da-paleta";
 import { ComboboxComChips, useListaEmCache, type OpcaoDoCombobox } from "./combobox";
 import { GatilhoDoGithub, ListaDeDescartes } from "./gatilho-github";
 import { escopoDoGatilho } from "@/lib/titulo-do-gatilho";
@@ -123,6 +124,15 @@ export function PainelDoNo({
       data-locum-painel={chave}
     >
       <div className="flex items-center gap-2">
+        {passo !== undefined && passo.type === "action" && temTrocaDeOperacao(passo) ? (
+          <TrocaDeOperacao
+            conexoes={conexoes}
+            passo={passo}
+            spec={rascunho.spec}
+            trocar={(novo) => setRascunho((r) => ({ ...r, spec: trocarPasso(r.spec, passo.key, novo) }))}
+          />
+        ) : (
+          <>
         <Selo app={cabecalho.app} id={cabecalho.id} tamanho="sm" />
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="flex items-center gap-1.5 text-[13px] font-medium">
@@ -137,6 +147,8 @@ export function PainelDoNo({
             </span>
           )}
         </span>
+          </>
+        )}
         <button
           aria-label={t("automations.panel.close")}
           className="text-muted-foreground hover:text-foreground cursor-pointer rounded p-1"

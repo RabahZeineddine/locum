@@ -2180,7 +2180,8 @@
       "label": "Automation canvas",
       "branchTrue": "yes",
       "branchFalse": "no",
-      "branchDefault": "other"
+      "branchDefault": "other",
+      "chooseWhat": "choose what to do"
     },
     "panel": {
       "close": "Close panel",
@@ -2207,7 +2208,8 @@
       "autoHint": "Goes out on its own, skipping the queue. Use it once you trust what this flow sends.",
       "approvalOnly": "This action always waits in the queue for your approval.",
       "variablesFocused": "Click to insert into the selected field:",
-      "help": "Learn more"
+      "help": "Learn more",
+      "changeOperation": "Change the operation"
     },
     "triggers": {
       "manual": {
@@ -2780,7 +2782,8 @@
       },
       "combo": {
         "write_reaction": "React",
-        "update_reaction": "React"
+        "update_reaction": "React",
+        "read_message_channel_history": "Read channel messages"
       },
       "resource": {
         "message_one": "message",

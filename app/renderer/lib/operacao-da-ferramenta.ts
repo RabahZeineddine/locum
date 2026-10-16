@@ -17,6 +17,8 @@ export interface OperacaoClassificada {
   verbo: string | null;
   /** Chave do recurso (`message`, `pull_request`...), ou nula quando nenhum casou. */
   recurso: string | null;
+  /** O que distingue a operação dentro do recurso: `channel_history`, `history`. Nulo na maioria. */
+  detalhe: string | null;
 }
 
 /** Devolve o texto da chave sob `automations.operations`, ou nada quando ela não existe. */
@@ -48,7 +50,7 @@ const PALAVRAS_SOLTAS = new Set(["to", "in", "from", "the", "of", "by", "for", "
 /** Recursos conhecidos, e o nome pelo qual cada um aparece nas ferramentas. */
 const RECURSOS: Record<string, string> = Object.fromEntries(
   (
-    "message chat channel conversation=channel reaction thread file folder drive=file issue comment review " +
+    "message history=message chat channel conversation=channel reaction thread file folder drive=file issue comment review " +
     "repository repo=repository branch commit user team mail email=mail event calendar page project label workflow " +
     "release document ticket=issue task member=user"
   )
@@ -103,15 +105,16 @@ export function classificarOperacao(nome: string, servidor?: string): OperacaoCl
     const frase = i > 0 ? FRASES[`${subs[i - 1]} ${subs[i]}`] : undefined;
     recurso = frase ?? RECURSOS[subs[i]!] ?? null;
   }
+  const detalhe = recurso !== "message" ? null : subs.includes("history") ? (subs.includes("channel") ? "channel_history" : "history") : null;
   const acao = verbo !== null ? VERBOS[verbo]! : ehLeitura(nome) ? "read" : "write";
-  return { acao, verbo, recurso };
+  return { acao, verbo, recurso, detalhe };
 }
 
 /** "Enviar mensagem", "Listar canais", "Reagir"; sem tabela para o nome, o nome humanizado. */
 export function tituloDaOperacao(nome: string, traduzir: Traduzir, servidor?: string): string {
-  const { acao, verbo, recurso } = classificarOperacao(nome, servidor);
+  const { acao, verbo, recurso, detalhe } = classificarOperacao(nome, servidor);
   if (recurso === null) return humanizar(nome);
-  const combinado = traduzir(`combo.${acao}_${recurso}`);
+  const combinado = (detalhe === null ? undefined : traduzir(`combo.${acao}_${recurso}_${detalhe}`)) ?? traduzir(`combo.${acao}_${recurso}`);
   if (combinado !== undefined) return combinado;
   const nomeDoVerbo = (verbo !== null ? traduzir(`verb.${verbo}`) : undefined) ?? traduzir(`action.${acao}`);
   const nomeDoRecurso = traduzir(`resource.${recurso}`, verbo !== null && VERBOS_DE_LISTA.has(verbo) ? 2 : 1);

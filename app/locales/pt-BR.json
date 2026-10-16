@@ -2229,7 +2229,8 @@
       "label": "Canvas da automação",
       "branchTrue": "sim",
       "branchFalse": "não",
-      "branchDefault": "outro"
+      "branchDefault": "outro",
+      "chooseWhat": "escolha o que fazer"
     },
     "panel": {
       "close": "Fechar painel",
@@ -2256,7 +2257,8 @@
       "autoHint": "Sai sozinho, sem passar pela fila. Use quando já confiar no que esse fluxo manda.",
       "approvalOnly": "Esta ação sempre para na fila até você aprovar.",
       "variablesFocused": "Clique para inserir no campo selecionado:",
-      "help": "Saiba mais"
+      "help": "Saiba mais",
+      "changeOperation": "Trocar a operação"
     },
     "triggers": {
       "manual": {
@@ -2830,7 +2832,8 @@
       },
       "combo": {
         "write_reaction": "Reagir",
-        "update_reaction": "Reagir"
+        "update_reaction": "Reagir",
+        "read_message_channel_history": "Ler mensagens do canal"
       },
       "resource": {
         "branch_one": "branch",

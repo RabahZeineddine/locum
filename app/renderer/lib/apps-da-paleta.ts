@@ -230,6 +230,29 @@ function nomePadrao(passo: PassoDeAcao, spec: AgentSpec): string | null {
   return null;
 }
 
+/** Se o passo é de um app com lista de operações (e não do Locum por dentro, como digest e contexto). */
+export function temTrocaDeOperacao(passo: Step): boolean {
+  if (passo.type !== "action") return false;
+  const { app, operacao } = reconhecerPasso(passo);
+  return operacao.tipo === "nativa" ? app in NATIVAS_POR_APP : app !== "mcp";
+}
+
+/** Se a pessoa deu um nome ao passo, em vez de ficar com o que a operação põe sozinha. */
+export function foiRenomeado(passo: Step, spec: AgentSpec): boolean {
+  if (passo.type !== "action") return false;
+  const padrao = nomePadrao(passo, spec);
+  return passo.name !== "" && padrao !== null && passo.name !== padrao;
+}
+
+/** O título legível da operação do passo, ou nulo para passo sem operação, de modelo e de lógica. */
+export function tituloDaOperacaoDoPasso(passo: Step, traduzir: Traduzir): string | null {
+  if (passo.type !== "action") return null;
+  const { operacao } = reconhecerPasso(passo);
+  if (operacao.tipo === "nativa") return nativa("", operacao.acao, traduzir).titulo;
+  if (operacao.tipo === "ferramenta") return tituloDaOperacao(operacao.ferramenta, traduzir, operacao.servidor);
+  return null;
+}
+
 /**
  * O passo depois de escolher ou trocar a operação. A chave, as dependências, a
  * condição e o nome renomeado ficam. Os argumentos que a nova ferramenta
@@ -252,7 +275,7 @@ export function passoDaOperacao(spec: AgentSpec, op: OperacaoDoApp, anterior?: S
         };
   if (antes === undefined) return novo;
 
-  const renomeado = antes.name !== "" && nomePadrao(antes, spec) !== null && antes.name !== nomePadrao(antes, spec);
+  const renomeado = foiRenomeado(antes, spec);
   const resultado: PassoDeAcao = {
     ...novo,
     key: antes.key,

@@ -5,6 +5,9 @@ import { tradutorDe } from "../renderer/lib/operacao-da-ferramenta.js";
 import {
   appDoServidor,
   fonteDaMarca,
+  foiRenomeado,
+  temTrocaDeOperacao,
+  tituloDaOperacaoDoPasso,
   servidorDoNoVazio,
   appsDaPaleta,
   buscarNaPaleta,
@@ -17,6 +20,7 @@ import {
 } from "../renderer/lib/apps-da-paleta.js";
 import type { ConexaoParaPaleta } from "../renderer/lib/paleta-conexoes.js";
 import type { AgentSpec, Step } from "../src/config/types.js";
+import { problemas } from "../renderer/lib/automacao.js";
 
 const pt = tradutorDe(criarI18n({ idioma: "pt-BR", estrito: false }));
 const en = tradutorDe(criarI18n({ idioma: "en", estrito: false }));
@@ -79,11 +83,10 @@ test("as ações do Locum vêm primeiro, marcadas, e as ferramentas agrupadas po
     ["slack.react", "Reagir", false],
   ]);
   assert.deepEqual(grupos.map((g) => [g.recurso, g.itens.map((i) => i.titulo)]), [
-    ["message", ["Enviar mensagem"]],
+    ["message", ["Enviar mensagem", "Ler mensagens do canal"]],
     ["reaction", ["Reagir"]],
-    ["channel", ["Ler canal"]],
   ]);
-  assert.equal(grupos[2]!.itens[0]!.leitura, true);
+  assert.equal(grupos[0]!.itens[1]!.leitura, true);
 });
 
 test("as ferramentas de chat do ms365 vão para o Teams, e o resto fica no Microsoft 365, sem repetir", () => {
@@ -213,4 +216,37 @@ test("ícone e servidor do nó vazio vêm do app", () => {
   const por = (id: string) => apps.find((a) => a.id === id)!;
   assert.deepEqual([fonteDaMarca(por("slack")), fonteDaMarca(por("microsoft365")), fonteDaMarca(por("tracker")), fonteDaMarca(por("locum-fixture"))], ["slack", "ms365", "atlassian", "locum-fixture"]);
   assert.deepEqual([servidorDoNoVazio(por("slack")), servidorDoNoVazio(por("http")), servidorDoNoVazio(por("microsoft365"))], ["slack", "http", "ms365"]);
+});
+
+test("o card mostra a operação como título, e o nome do passo só se foi renomeado", () => {
+  const vazio = passoSemOperacao(SPEC, "slack", "Slack", "slack");
+  assert.equal(tituloDaOperacaoDoPasso(vazio, pt), null);
+  const post = passoDaOperacao(SPEC, op("slack", "slack_post_message"), vazio);
+  assert.equal(tituloDaOperacaoDoPasso(post, pt), "Enviar mensagem");
+  assert.equal(foiRenomeado(post, SPEC), false);
+  assert.equal(foiRenomeado({ ...post, name: "Avisar o time" }, SPEC), true);
+  const nativa = operacoesDoApp("teams", CONEXOES, pt).nativas.find((o) => o.acao === "teams.react")!;
+  const react = passoDaOperacao(SPEC, nativa, passoSemOperacao(SPEC, "teams", "Teams"));
+  assert.equal(tituloDaOperacaoDoPasso(react, pt), "Reagir à mensagem");
+  assert.equal(foiRenomeado(react, SPEC), false);
+  assert.equal(tituloDaOperacaoDoPasso({ ...base, type: "logic", op: "if" } as never, pt), null);
+});
+
+test("nó de app sem operação é problema que bloqueia, e escolher a operação o resolve", () => {
+  const rascunho = (passo: Step) => ({ spec: { ...SPEC, name: "A", steps: [passo] }, gatilhos: [] }) as never;
+  const ctx = { slackConectado: true, teamsConectado: true, trackers: [] };
+  const vazio = passoSemOperacao(SPEC, "slack", "Slack", "slack");
+  const doVazio = problemas(rascunho(vazio), ctx).find((p) => p.chave === "automations.problems.noTool");
+  assert.deepEqual([doVazio?.bloqueia, doVazio?.no], [true, vazio.key]);
+  const escolhido = passoDaOperacao(SPEC, op("slack", "slack_post_message"), vazio);
+  assert.equal(problemas(rascunho(escolhido), ctx).some((p) => p.chave === "automations.problems.noTool"), false);
+});
+
+test("o topo de operação aparece nos passos de app e não nos do Locum por dentro", () => {
+  const acao = (action: string, params?: object) => ({ ...base, type: "action", action, mode: "approve", ...(params ? { params } : {}) }) as Step;
+  assert.deepEqual(
+    [acao("teams.post"), acao("http.request"), acao("mcp.call", { server: "ms365", tool: "send-mail" }), acao("mcp.call", { server: "x", tool: "" }), acao("digest.deliver"), acao("context.update"), acao("mcp.call")].map(temTrocaDeOperacao),
+    [true, true, true, true, false, false, false],
+  );
+  assert.equal(temTrocaDeOperacao({ ...base, type: "logic", op: "if" } as never), false);
 });

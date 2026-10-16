@@ -17,7 +17,7 @@ const SLACK: [string, string | undefined, string, string | null][] = [
   ["slack_post_message", "slack", "write", "message"],
   ["slack_reply_to_thread", "slack", "write", "thread"],
   ["slack_add_reaction", "slack", "write", "reaction"],
-  ["slack_get_channel_history", "slack", "read", "channel"],
+  ["slack_get_channel_history", "slack", "read", "message"],
   ["slack_list_channels", "slack", "read", "channel"],
   ["slack_get_thread_replies", "slack", "read", "thread"],
   ["slack_get_users", "slack", "read", "user"],
@@ -61,7 +61,7 @@ for (const [nome, servidor, acao, recurso] of [...SLACK, ...MS365, ...GITHUB]) {
 }
 
 test("nome sem verbo nem substantivo conhecido cai na regra de leitura do executor", () => {
-  assert.deepEqual(classificarOperacao("graphql"), { acao: "write", verbo: null, recurso: null });
+  assert.deepEqual(classificarOperacao("graphql"), { acao: "write", verbo: null, recurso: null, detalhe: null });
   assert.equal(classificarOperacao("whoami").acao, "read");
 });
 
@@ -74,6 +74,7 @@ test("títulos em português", () => {
   assert.equal(tituloDaOperacao("slack_post_message", pt, "slack"), "Enviar mensagem");
   assert.equal(tituloDaOperacao("slack_list_channels", pt, "slack"), "Listar canais");
   assert.equal(tituloDaOperacao("slack_add_reaction", pt, "slack"), "Reagir");
+  assert.equal(tituloDaOperacao("slack_get_channel_history", pt, "slack"), "Ler mensagens do canal");
   assert.equal(tituloDaOperacao("set-chat-message-reaction", pt, "ms365"), "Reagir");
   assert.equal(tituloDaOperacao("create_pull_request", pt, "github"), "Criar pull request");
   assert.equal(tituloDaOperacao("list-mail-messages", pt, "ms365"), "Listar e-mails");
@@ -84,6 +85,7 @@ test("títulos em inglês", () => {
   assert.equal(tituloDaOperacao("slack_post_message", en, "slack"), "Send message");
   assert.equal(tituloDaOperacao("list_issues", en, "github"), "List issues");
   assert.equal(tituloDaOperacao("slack_add_reaction", en, "slack"), "React");
+  assert.equal(tituloDaOperacao("slack_get_channel_history", en, "slack"), "Read channel messages");
 });
 
 test("sem tradução conhecida, cai no nome humanizado", () => {
