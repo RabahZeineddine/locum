@@ -4,6 +4,8 @@ import { count, eq } from "drizzle-orm";
 import type { SQLiteTable } from "drizzle-orm/sqlite-core";
 import { slackReplySpec } from "../src/examples/agents.js";
 import { schema } from "../src/db/index.js";
+import { InitiativeService } from "../src/services/initiative-service.js";
+import { quemUsa } from "../src/services/conexao-uso.js";
 import { AgentService } from "../src/services/agent-service.js";
 import { ArquivarRecusado, AutomationService } from "../src/services/automation-service.js";
 import type { ExecutionService } from "../src/services/execution-service.js";
@@ -167,4 +169,70 @@ test("arquivar espera a batida do gatilho que segura a trava", async () => {
   await batida;
   await arquivando;
   assert.equal(arquivou, true);
+});
+
+test("a iniciativa marca o agent arquivado, não o conta como ligado e recusa ligar arquivada", async () => {
+  const m = montar();
+  await semear(m, "acme-a");
+  await semear(m, "acme-b");
+  m.db.insert(schema.initiatives).values({ id: "ini-1", slug: "plano", title: "Plano", objective: "o", doneCriteria: "c", contextPath: "/tmp/ctx" }).run();
+  m.db.update(schema.agents).set({ initiativeId: "ini-1" }).run();
+  const iniciativas = new InitiativeService(m.db, { list: async () => [{ config: { name: "srv" } }] } as never);
+  await m.automations.archive("acme-a");
+
+  const detalhe = (await iniciativas.detail("plano"))!;
+  assert.deepEqual(detalhe.agents.map((a) => [a.id, a.archived]).sort(), [["acme-a", true], ["acme-b", false]]);
+
+  await m.automations.archive("acme-b");
+  const semAtivos = (await iniciativas.detail("plano"))!;
+  assert.equal(semAtivos.agents.every((a) => a.archived), true);
+  // sem agent em uso, a pessoa-ou-agente monta a lista de servidores sem a recusa de "tem agent ligado"
+  await assert.doesNotReject(iniciativas.setServers("plano", ["srv"], "agent"));
+
+  await assert.rejects(iniciativas.linkAgent("acme-a", "plano"), /está arquivada/);
+  await iniciativas.linkAgent("acme-a", null);
+  assert.equal((await m.agents.get("acme-a"))?.initiativeId, null);
+});
+
+test("a conexão usada só por automação arquivada continua aparecendo como usada, marcada arquivada", () => {
+  const spec = { ...slackReplySpec, id: "acme-a", name: "acme-a", defaultTools: [{ server: "srv", tool: "t" }] } as never;
+  const uso = quemUsa("srv", { automacoes: [spec], arquivadas: new Set(["acme-a"]), agents: [], toolsets: [] });
+  assert.deepEqual(uso.map((u) => [u.id, u.arquivada]), [["acme-a", true]]);
+});
+
+test("arquivar tira do spec as pendências dos gatilhos que saíram, e mantém as dos passos", async () => {
+  const m = montar();
+  const { gatilho } = await semear(m, "acme-a");
+  const base = (await m.agents.getLatestVersion("acme-a"))!.spec;
+  const pendentes = [
+    { onde: `gatilho:${gatilho.id}`, campo: "owner", motivo: "dono-do-github" },
+    { onde: base.steps[0]!.key, campo: "params.destino", motivo: "destino-a-escolher" },
+  ];
+  await m.agents.saveEdited("acme-a", { ...base, pendentes }, "com pendências");
+  await m.automations.archive("acme-a");
+  const depois = (await m.agents.getLatestVersion("acme-a"))!.spec.pendentes;
+  assert.deepEqual(depois, [pendentes[1]]);
+});
+
+test("arquivar sem pendência de gatilho não grava versão nova", async () => {
+  const m = montar();
+  await semear(m, "acme-a");
+  await m.automations.archive("acme-a");
+  assert.equal(tabela(m.db, schema.agentVersions), 1);
+});
+
+test("gatilho que nasce enquanto o arquivar espera a trava também sai", async () => {
+  const m = montar();
+  const { gatilho } = await semear(m, "acme-a");
+  let solta!: () => void;
+  const batida = comTrava(`gatilho:${gatilho.id}`, () => new Promise<void>((r) => (solta = r)));
+  const arquivando = m.automations.archive("acme-a");
+  await new Promise((r) => setTimeout(r, 20));
+  const novo = await m.triggers.set("acme-a", { kind: "schedule", everyMinutes: 60 });
+  m.db.insert(schema.cursors).values({ source: "scheduler", key: novo.id, value: "1" }).run();
+  solta();
+  await batida;
+  assert.equal((await arquivando).triggers, 3);
+  assert.equal(tabela(m.db, schema.triggers), 0);
+  assert.equal(tabela(m.db, schema.cursors), 0);
 });

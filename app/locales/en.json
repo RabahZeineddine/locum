@@ -2183,7 +2183,8 @@
         "cancel": "Cancel",
         "confirm": "Archive",
         "done": "\"{{name}}\" archived. The history stays."
-      }
+      },
+      "archivedBanner": "This automation is archived: it does not run, turn on or accept edits. Unarchive it to use it again, without triggers and off."
     },
     "palette": {
       "title": "Components",

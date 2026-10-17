@@ -230,6 +230,8 @@ function EditorCarregado({
 }) {
   const { t, i18n } = useTranslation();
   const agentId = automacao.version.agentId;
+  // Arquivada: não roda, não liga e não se salva; só desarquiva.
+  const arquivadaNoBanco = typeof automacao.archivedAt === "number";
   const [salvo, setSalvo] = useState<Rascunho>(() => provisoria?.rascunho ?? paraRascunho(automacao));
   // Ainda sem versão gravada: o primeiro Salvar cria a automação.
   const [nova, setNova] = useState(provisoria !== undefined);
@@ -701,7 +703,7 @@ function EditorCarregado({
           <Download />
           {t("pacote.export.button")}
         </Button>
-        <Button className="cursor-pointer" disabled={ocupado !== null || nova || executarAgora.pedindo} onClick={executar} size="sm" variant="outline">
+        <Button className="cursor-pointer" disabled={ocupado !== null || nova || arquivadaNoBanco || executarAgora.pedindo} onClick={executar} size="sm" variant="outline">
           {executarAgora.pedindo ? <Loader2 className="animate-spin" /> : <Play />}
           {t("automations.editor.runNow")}
         </Button>
@@ -709,7 +711,7 @@ function EditorCarregado({
         <Button
           className="cursor-pointer"
           data-locum-automacao-ligar=""
-          disabled={ocupado !== null || nova || salvo.gatilhos.length === 0 || (!ligada && gatilhoIncompleto(salvo.spec, salvo.gatilhos.flatMap((g) => (g.id === undefined ? [] : [g.id]))))}
+          disabled={ocupado !== null || nova || arquivadaNoBanco || salvo.gatilhos.length === 0 || (!ligada && gatilhoIncompleto(salvo.spec, salvo.gatilhos.flatMap((g) => (g.id === undefined ? [] : [g.id]))))}
           onClick={alternar}
           size="sm"
           title={!ligada && gatilhoIncompleto(salvo.spec, salvo.gatilhos.flatMap((g) => (g.id === undefined ? [] : [g.id]))) ? t("automations.problems.pending.enableBlocked") : t("automations.editor.enabledHint")}
@@ -720,7 +722,31 @@ function EditorCarregado({
         </Button>
       </header>
 
-      {mudou || nova ? (
+      {arquivadaNoBanco ? (
+        <div className="bg-card border-border flex flex-wrap items-center gap-2 rounded-md border px-3 py-1.5 text-xs" data-locum-automacao-arquivada-aviso="">
+          <StatusDot estado="aviso" />
+          <span className="mr-auto">{t("automations.editor.archivedBanner")}</span>
+          <Button
+            className="cursor-pointer"
+            data-locum-automacao-desarquivar=""
+            disabled={ocupado !== null}
+            onClick={() => {
+              call("automations.unarchive", agentId).then(
+                () => {
+                  for (const canal of LEITURAS_DA_AUTOMACAO) invalidateReads(canal);
+                },
+                (e: unknown) => toasts.recusar(e instanceof Error ? e.message : String(e)),
+              );
+            }}
+            size="sm"
+            variant="outline"
+          >
+            {t("automations.list.unarchive")}
+          </Button>
+        </div>
+      ) : null}
+
+      {(mudou || nova) && !arquivadaNoBanco ? (
         <div className="flex flex-wrap items-center gap-1.5">
           <Input
             className="min-w-64 flex-1"
@@ -954,7 +980,7 @@ function EditorCarregado({
         )}
       </div>
 
-      {nova || agentId === AGENT_DO_CONTEXTO ? null : (
+      {nova || arquivadaNoBanco || agentId === AGENT_DO_CONTEXTO ? null : (
         <ArquivarAutomacao
           agentId={agentId}
           aoArquivar={() => {

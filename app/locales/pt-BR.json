@@ -2240,7 +2240,8 @@
         "cancel": "Cancelar",
         "confirm": "Arquivar",
         "done": "\"{{name}}\" arquivada. O histórico ficou."
-      }
+      },
+      "archivedBanner": "Esta automação está arquivada: não roda, não liga e não se edita. Desarquive para voltar a usá-la, sem gatilhos e desligada."
     },
     "palette": {
       "title": "Componentes",

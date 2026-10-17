@@ -35,6 +35,11 @@ export interface PreviaDeArquivamento {
   blockers: BloqueioDeArquivar[];
 }
 
+class GatilhosMudaram extends Error {}
+
+const mensagemDeIniciativa = (agentId: string, slug: string): string =>
+  `automação "${agentId}" está ligada à iniciativa "${slug}"; arquivar é decisão de uma pessoa, na tela do Locum`;
+
 /** Arquivar recusado pelos bloqueios que existiam na hora de gravar. */
 export class ArquivarRecusado extends Error {
   constructor(readonly blockers: BloqueioDeArquivar[]) {
@@ -343,41 +348,55 @@ export class AutomationService {
    */
   async archive(agentId: string, actor: EscopoActor = "human"): Promise<{ agentId: string; archived: true; triggers: number }> {
     await this.recusarSeNaoExiste(agentId);
-    const gatilhos = await this.triggers.list(agentId);
-    // O agendador segura a trava do gatilho enquanto bate; arquivar espera a batida acabar.
-    const travar = (ids: string[], trabalho: () => Promise<number>): Promise<number> =>
-      ids.reduceRight<() => Promise<number>>((dentro, id) => () => comTrava(`gatilho:${id}`, dentro), trabalho)();
+    // Antes de qualquer escrita: com bloqueio ou iniciativa, nada é gravado, nem a limpeza das pendências.
+    const previa = this.inspecionar(this.db, agentId);
+    if (actor !== "human" && previa.initiative !== null) throw new Error(mensagemDeIniciativa(agentId, previa.initiative.slug));
+    if (previa.blockers.length > 0) throw new ArquivarRecusado(previa.blockers);
+    await this.tirarPendenciasDeGatilho(agentId);
 
-    const triggers = await travar(
-      gatilhos.map((g) => g.id),
-      async () =>
-        this.db.transaction(
-          (tx) => {
-            const agent = tx.select().from(schema.agents).where(eq(schema.agents.id, agentId)).get();
-            if (agent === undefined) throw new Error(`automacao "${agentId}" nao cadastrada`);
-            if (agent.archivedAt !== null) throw new Error(`automacao "${agentId}" ja esta arquivada`);
-            if (actor !== "human" && agent.initiativeId !== null) {
-              const previa = this.inspecionar(tx, agentId);
-              throw new Error(
-                `automação "${agentId}" está ligada à iniciativa "${previa.initiative?.slug ?? agent.initiativeId}"; arquivar é decisão de uma pessoa, na tela do Locum`,
-              );
-            }
-            const previa = this.inspecionar(tx, agentId);
-            if (previa.blockers.length > 0) throw new ArquivarRecusado(previa.blockers);
+    // A lista de gatilhos é relida depois das travas: um que nasceu enquanto esperava pede nova rodada.
+    for (let tentativa = 0; ; tentativa++) {
+      const ids = (await this.triggers.list(agentId)).map((g) => g.id);
+      try {
+        const triggers = await ids.reduceRight<() => Promise<number>>(
+          (dentro, id) => () => comTrava(`gatilho:${id}`, dentro),
+          async () => this.gravarArquivamento(agentId, actor, ids),
+        )();
+        return { agentId, archived: true, triggers };
+      } catch (erro) {
+        if (!(erro instanceof GatilhosMudaram) || tentativa >= 3) throw erro;
+      }
+    }
+  }
 
-            const ids = tx.select({ id: schema.triggers.id }).from(schema.triggers).where(eq(schema.triggers.agentId, agentId)).all();
-            for (const { id } of ids) esquecerGatilho(tx, id);
-            tx.delete(schema.triggers).where(eq(schema.triggers.agentId, agentId)).run();
-            tx.update(schema.agents)
-              .set({ archivedAt: Math.floor(Date.now() / 1000), enabled: false })
-              .where(eq(schema.agents.id, agentId))
-              .run();
-            return previa.triggers;
-          },
-          { behavior: "immediate" },
-        ),
+  /** A transação do arquivar. Síncrona: confere, esquece o estado dos gatilhos, apaga os gatilhos e marca. */
+  private gravarArquivamento(agentId: string, actor: EscopoActor, travados: string[]): number {
+    return this.db.transaction(
+      (tx) => {
+        const agent = tx.select().from(schema.agents).where(eq(schema.agents.id, agentId)).get();
+        if (agent === undefined) throw new Error(`automacao "${agentId}" nao cadastrada`);
+        if (agent.archivedAt !== null) throw new Error(`automacao "${agentId}" ja esta arquivada`);
+        const previa = this.inspecionar(tx, agentId);
+        if (actor !== "human" && previa.initiative !== null) throw new Error(mensagemDeIniciativa(agentId, previa.initiative.slug));
+        if (previa.blockers.length > 0) throw new ArquivarRecusado(previa.blockers);
+
+        const ids = tx.select({ id: schema.triggers.id }).from(schema.triggers).where(eq(schema.triggers.agentId, agentId)).all().map((g) => g.id);
+        if (ids.length !== travados.length || ids.some((id) => !travados.includes(id))) throw new GatilhosMudaram();
+        for (const id of ids) esquecerGatilho(tx, id);
+        tx.delete(schema.triggers).where(eq(schema.triggers.agentId, agentId)).run();
+        tx.update(schema.agents).set({ archivedAt: Math.floor(Date.now() / 1000), enabled: false }).where(eq(schema.agents.id, agentId)).run();
+        return ids.length;
+      },
+      { behavior: "immediate" },
     );
-    return { agentId, archived: true, triggers };
+  }
+
+  /** A pendência de um gatilho que vai sair não tem mais a quem apontar. Sem pendência dessas, não grava versão. */
+  private async tirarPendenciasDeGatilho(agentId: string): Promise<void> {
+    const ultima = await this.agents.getLatestVersion(agentId);
+    if (ultima === undefined || !(ultima.spec.pendentes ?? []).some((p) => p.onde.startsWith("gatilho:"))) return;
+    const spec = limparPendenciasPreenchidas(ultima.spec, { gatilhos: [], descartarOrfas: true, existe: recursoExiste });
+    await this.agents.saveEdited(agentId, spec, "arquivada: saem as pendências dos gatilhos removidos", undefined, { limpeza: { gatilhos: [], descartarOrfas: true } });
   }
 
   /** Tira do arquivo: volta para a lista, sem gatilhos e desligada. A pessoa recria os gatilhos e liga. */

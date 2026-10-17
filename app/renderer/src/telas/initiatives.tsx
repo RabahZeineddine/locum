@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Streamdown } from "streamdown";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ListGroup } from "@/components/ui/list-row";
+import { ListGroup, ListRow } from "@/components/ui/list-row";
 import { call, invalidateReads, read, useRead, type ReadResult } from "@/lib/bridge";
 import { Conversa } from "../assistente";
 import type { TelaProps } from "../rotas";
@@ -502,6 +502,22 @@ function AbaAutomacoes({ iniciativa, navegar }: { iniciativa: IniciativaDetalhad
           aoCriar={(id) => navegar("automations", id)}
           iniciativa={iniciativa.slug}
         />
+      ) : null}
+
+      {iniciativa.agents.some((a) => a.archived) ? (
+        <ListGroup data-locum-iniciativa-arquivadas="">
+          {iniciativa.agents
+            .filter((a) => a.archived)
+            .map((a) => (
+              <ListRow className="min-h-11" key={a.id} rotulo={a.name}>
+                <span className="flex-1 truncate font-medium">{a.name}</span>
+                <Badge variant="outline">{t("automations.list.archivedBadge")}</Badge>
+                <Button className="cursor-pointer" data-locum-agent={a.id} disabled={ocupado} onClick={() => ligar(null, a.id)} size="sm" variant="ghost">
+                  {t("initiatives.detail.agents.unlink")}
+                </Button>
+              </ListRow>
+            ))}
+        </ListGroup>
       ) : null}
 
       {daIniciativa.length === 0 ? (

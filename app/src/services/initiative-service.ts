@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { ApprovalGate } from "../approval/gate.js";
 import { db as defaultDb, schema } from "../db/index.js";
 import { AgentSpec, SERVIDOR_CONTA, SERVIDOR_NATIVO, serversInScope } from "../config/types.js";
@@ -29,7 +29,8 @@ export interface InitiativeDetail extends InitiativeRow {
   servers: string[];
   workspaces: InitiativeWorkspaceRow[];
   links: InitiativeLinkRow[];
-  agents: { id: string; name: string }[];
+  /** Os agents ligados, com a marca dos arquivados: o vínculo fica, mas eles não rodam. */
+  agents: { id: string; name: string; archived: boolean }[];
 }
 
 export interface InitiativeContextFile {
@@ -222,7 +223,10 @@ export class InitiativeService {
       }
     });
 
-    const ligados = await this.db.select().from(schema.agents).where(eq(schema.agents.initiativeId, linha.id));
+    const ligados = await this.db
+      .select()
+      .from(schema.agents)
+      .where(and(eq(schema.agents.initiativeId, linha.id), isNull(schema.agents.archivedAt)));
     const afetados: { agentId: string; name: string }[] = [];
     for (const agent of ligados) {
       const [versao] = await this.db
@@ -264,7 +268,7 @@ export class InitiativeService {
     const [agent] = await this.db
       .select({ id: schema.agents.id })
       .from(schema.agents)
-      .where(eq(schema.agents.initiativeId, initiativeId))
+      .where(and(eq(schema.agents.initiativeId, initiativeId), isNull(schema.agents.archivedAt)))
       .limit(1);
     return agent !== undefined;
   }
@@ -280,6 +284,7 @@ export class InitiativeService {
   async linkAgent(agentId: string, slug: string | null, actor: EscopoActor = "human"): Promise<void> {
     const [agent] = await this.db.select().from(schema.agents).where(eq(schema.agents.id, agentId));
     if (!agent) throw new Error(`agent "${agentId}" nao cadastrado`);
+    if (slug !== null && agent.archivedAt !== null) throw new Error(`automação "${agentId}" está arquivada; desarquive antes de ligar a uma iniciativa`);
 
     // Agent fora de iniciativa enxerga todos os servidores. Desligar, ou mudar
     // para outra iniciativa, alarga o que ele alcança, e isso é da pessoa.
@@ -529,7 +534,7 @@ export class InitiativeService {
       this.db.select().from(schema.initiativeWorkspaces).where(eq(schema.initiativeWorkspaces.initiativeId, linha.id)),
       this.db.select().from(schema.initiativeLinks).where(eq(schema.initiativeLinks.initiativeId, linha.id)),
       this.db
-        .select({ id: schema.agents.id, name: schema.agents.name })
+        .select({ id: schema.agents.id, name: schema.agents.name, archivedAt: schema.agents.archivedAt })
         .from(schema.agents)
         .where(eq(schema.agents.initiativeId, linha.id)),
     ]);
@@ -539,7 +544,7 @@ export class InitiativeService {
       servers: servers.map((s) => s.serverName),
       workspaces,
       links,
-      agents,
+      agents: agents.map((a) => ({ id: a.id, name: a.name, archived: a.archivedAt !== null })),
     };
   }
 

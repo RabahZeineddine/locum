@@ -910,6 +910,7 @@ function DetalheDaConexao({ id, navegar }: { id: string; navegar: TelaProps["nav
               <ListRow key={`${u.tipo}:${u.id}`} rotulo={u.nome} onClick={() => navegar(u.tipo === "automation" ? "automations" : "agents", u.id)}>
                 <Badge variant="secondary">{t(`connections.detail.kind.${u.tipo}`)}</Badge>
                 <span className="flex-1 truncate">{u.nome}</span>
+                {u.arquivada === true ? <Badge variant="outline">{t("automations.list.archivedBadge")}</Badge> : null}
                 <span className="text-muted-foreground text-xs">{u.como.map((c) => t(`connections.detail.how.${c}`)).join(", ")}</span>
               </ListRow>
             ))}
