@@ -269,3 +269,20 @@ test("preencher o campo do gatilho grava o gatilho e a versão juntos: se a vers
   assert.equal((depois.triggers[0]!.config as { owner?: string }).owner, undefined, "o gatilho mudou sem a pendência sair");
   assert.deepEqual(depois.version.spec.pendentes?.map((p) => p.campo), ["owner"]);
 });
+
+test("reexportar leva a pendência do gatilho que nunca chegou a ser criado, para quem recebe saber que falta um", async () => {
+  const a = maquina();
+  const spec = AgentSpec.parse({ id: "gatilho-orfao", name: "X", steps: [{ ...base, type: "model", key: "ler", name: "Ler", model: "claude-code/claude-sonnet-5", prompt: "oi" }] });
+  await a.automations.save({ spec, triggers: [{ config: { kind: "slack-channel", channels: ["C0123ABCD45"], everyMinutes: 5 } }], note: "", create: true });
+  const b = maquina();
+  await b.pacotes.importar((await a.pacotes.exportar("gatilho-orfao")).texto);
+  const gravada = (await b.automations.get("gatilho-orfao"))!;
+  assert.equal(gravada.triggers.length, 0, "o gatilho sem canal não devia existir");
+  assert.equal(gravada.version.spec.pendentes?.length, 1);
+
+  const { pacote } = await b.pacotes.exportar("gatilho-orfao");
+  assert.deepEqual(pacote.omitidos.filter((o) => o.codigo === "gatilho-sem-canal"), [{ codigo: "gatilho-sem-canal", onde: "automacao", params: ["channels"] }]);
+  const c = maquina();
+  const previa = await c.pacotes.previa(JSON.stringify(pacote));
+  assert.ok(previa.omitidos.some((o) => o.codigo === "gatilho-sem-canal"));
+});

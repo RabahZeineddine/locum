@@ -408,7 +408,12 @@ export class PacoteService {
     for (const p of spec.pendentes ?? []) {
       const idDoGatilho = idDoGatilhoNoOnde(p.onde);
       const posicao = idDoGatilho === undefined ? undefined : posicaoDoGatilho.get(idDoGatilho);
-      if (idDoGatilho !== undefined ? posicao === undefined : !spec.steps.some((s) => s.key === p.onde)) continue;
+      if (idDoGatilho !== undefined && posicao === undefined) {
+        // O gatilho nunca chegou a ser criado, então não há config para o pacote levar: o omitido diz que falta um, e o quê.
+        if (!omitidos.some((x) => x.codigo === "gatilho-sem-canal" && x.params?.includes(p.campo))) omitir("gatilho-sem-canal", "automacao", undefined, [p.campo]);
+        continue;
+      }
+      if (idDoGatilho === undefined && !spec.steps.some((s) => s.key === p.onde)) continue;
       const o = omitidoDaPendencia(p.motivo, p.campo, idDoGatilho === undefined ? "passo" : "gatilho");
       if (o === null) continue;
       const onde = posicao === undefined ? p.onde : ondeDoGatilhoNoPacote(posicao);
