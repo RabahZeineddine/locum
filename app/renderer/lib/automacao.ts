@@ -580,26 +580,6 @@ export function catalogoDoPasso(r: Rascunho, chave: string, fontes: FontesDoCata
   });
 }
 
-/**
- * O primeiro nível do que o prompt pode citar: os campos do evento e o passo
- * inteiro de cada anterior. É ajuda de digitação: o executor aceita qualquer
- * `{{event.x}}`, e o que não existe no evento vira `null` no texto.
- */
-export function variaveis(r: Rascunho, chave: string): string[] {
-  return catalogoDoPasso(r, chave).flatMap((g) => g.itens.filter((i) => i.caminho.split(".").length === 2).map((i) => i.caminho));
-}
-
-export interface ReferenciaDisponivel {
-  /** `event.text` ou `steps.analisar.verdict`, sem as chaves. */
-  caminho: string;
-  grupo: "event" | "step";
-}
-
-/** O catálogo achatado, para quem só precisa da lista de caminhos. */
-export function referenciasDisponiveis(r: Rascunho, chave: string, fontes: FontesDoCatalogo = {}): ReferenciaDisponivel[] {
-  return catalogoDoPasso(r, chave, fontes).flatMap((g) => g.itens.slice(g.tipo === "event" ? 1 : 0).map((i) => ({ caminho: i.caminho, grupo: g.tipo })));
-}
-
 /** Todo passo de que `chave` depende, direta ou indiretamente. */
 export function anteriores(spec: AgentSpec, chave: string): string[] {
   const porChave = new Map(spec.steps.map((p) => [p.key, p]));

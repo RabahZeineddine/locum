@@ -2217,7 +2217,6 @@
       },
       "autoHint": "Goes out on its own, skipping the queue. Use it once you trust what this flow sends.",
       "approvalOnly": "This action always waits in the queue for your approval.",
-      "variablesFocused": "Click to insert into the selected field:",
       "help": "Learn more",
       "changeOperation": "Change the operation"
     },
@@ -2382,7 +2381,6 @@
         "description": "Reads, analyzes and writes. The result goes to the next step.",
         "model": "Model",
         "prompt": "Instruction",
-        "variables": "Click to insert into the text:",
         "tools": "Tools",
         "format": "Output format",
         "formats": {

@@ -160,7 +160,8 @@ test("alternar para o JSON e voltar não perde valor", async () => {
 });
 
 test("referências disponíveis: campos do evento do gatilho, passos anteriores e as propriedades do formato de saída", async () => {
-  const { referenciasDisponiveis } = await import("../renderer/lib/automacao.js");
+  const { catalogoDoPasso } = await import("../renderer/lib/automacao.js");
+  const referenciasDisponiveis = (...a: Parameters<typeof catalogoDoPasso>) => catalogoDoPasso(...a).flatMap((g) => g.itens.slice(g.tipo === "event" ? 1 : 0));
   const modelo = { type: "model", key: "revisar", name: "Revisar", needs: [], prompt: "x", outputSchema: { type: "object", properties: { verdict: { type: "string" } } } };
   const acao = { type: "action", key: "reagir", name: "R", needs: ["revisar"], optional: false, action: "mcp.call", mode: "approve", params: {} };
   const r = {
@@ -190,7 +191,8 @@ test("caminhos de uma saída: campos, o primeiro item de cada lista e objetos an
 });
 
 test("o seletor oferece os caminhos da saída do último run e o outputSchema da ferramenta", async () => {
-  const { referenciasDisponiveis } = await import("../renderer/lib/automacao.js");
+  const { catalogoDoPasso } = await import("../renderer/lib/automacao.js");
+  const referenciasDisponiveis = (...a: Parameters<typeof catalogoDoPasso>) => catalogoDoPasso(...a).flatMap((g) => g.itens.slice(g.tipo === "event" ? 1 : 0));
   const ler = { type: "action", key: "ler", name: "Ler", needs: [], optional: false, action: "mcp.call", mode: "auto", params: { server: "fx", tool: "totais", args: {} } };
   const outro = { type: "action", key: "outro", name: "Outro", needs: [], optional: false, action: "mcp.call", mode: "auto", params: { server: "fx", tool: "sem_schema", args: {} } };
   const usar = { type: "action", key: "usar", name: "Usar", needs: ["ler", "outro"], optional: false, action: "mcp.call", mode: "approve", params: {} };

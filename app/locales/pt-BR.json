@@ -2266,7 +2266,6 @@
       },
       "autoHint": "Sai sozinho, sem passar pela fila. Use quando já confiar no que esse fluxo manda.",
       "approvalOnly": "Esta ação sempre para na fila até você aprovar.",
-      "variablesFocused": "Clique para inserir no campo selecionado:",
       "help": "Saiba mais",
       "changeOperation": "Trocar a operação"
     },
@@ -2432,7 +2431,6 @@
         "description": "Lê, analisa e escreve. O resultado vai para o próximo passo.",
         "model": "Modelo",
         "prompt": "Instrução",
-        "variables": "Clique para inserir no texto:",
         "tools": "Ferramentas",
         "format": "Formato da saída",
         "formats": {
