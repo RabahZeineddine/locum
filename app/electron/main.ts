@@ -7504,12 +7504,14 @@ async function serveMcp(): Promise<void> {
   // O que só o processo do app tem: a versão, o idioma do sistema, a cópia
   // empacotada do marketplace e o chat de agent, que sobe modelo e cartão aqui.
   const { agentChat } = await import("./agent-chat.js");
+  const { runChat } = await import("./run-chat.js");
   const { TemplateSource } = await import("../src/services/template-source.js");
   const templates = new TemplateSource({
     pastaLocal: app.isPackaged ? join(__dirname, "agents") : join(app.getAppPath(), "examples", "agents"),
   });
   const server = buildMcpServer({
     agentChat,
+    runChat,
     templates: () => templates,
     systemLocale: () => app.getLocale(),
     appVersion: () => VERSAO,

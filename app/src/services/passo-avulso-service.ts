@@ -34,6 +34,13 @@ export class PassoAvulsoService {
     private readonly gate: ApprovalGate = buildGate(),
   ) {}
 
+  /** As ações que se propõem à mão, com o esquema do conteúdo de cada uma: só as que declaram `inputSchema` e aceitam `approve`. */
+  acoesAvulsas(): { kind: string; inputSchema: object }[] {
+    return this.gate
+      .describe()
+      .flatMap((a) => (a.inputSchema !== undefined && this.gate.aceitaModo(a.kind, "approve") ? [{ kind: a.kind, inputSchema: a.inputSchema }] : []));
+  }
+
   async proporAcao(runId: string, proposta: PropostaAvulsa): Promise<{ approvalId: string; stepKey: string }> {
     const { kind } = proposta;
     const esquema = this.gate.inputSchema(kind);

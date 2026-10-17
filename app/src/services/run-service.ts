@@ -410,6 +410,8 @@ export class RunService {
     // pendência nova para o que já saiu, e aprovar essa publicaria de novo.
     this.db.transaction(
       (tx) => {
+        // O arquivamento pode ter vindo depois da leitura acima: vale de novo dentro da transação.
+        recusarSeArquivada(tx, detail.agentId);
         const saindo = aprovacaoPublicando(tx, [...targets.map((s) => s.id), ...derivados]);
         if (saindo !== undefined) throw new Error(`run ${runId} esta publicando a aprovacao ${saindo}; espere terminar para reexecutar`);
         this.reset(tx, detail, targets);

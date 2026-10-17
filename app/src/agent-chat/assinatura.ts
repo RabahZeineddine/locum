@@ -9,8 +9,9 @@ import { prefixoDoServidor } from "../runtimes/claude-account.js";
 import { claudeBinary } from "../runtimes/claude-binary.js";
 import { mcpConfigJson } from "../runtimes/claude-code.js";
 import { mcpService } from "../services/mcp-service.js";
-import type { Gasto, PedidoDaAssinatura } from "./conversas.js";
+import type { Gasto, PedidoDaAssinatura } from "./nucleo.js";
 import { abrirServidorDeAprovacao, APROVACAO_NO_CLAUDE, SERVIDOR_DE_APROVACAO } from "./servidor-de-aprovacao.js";
+import { abrirServidorLocal, SERVIDOR_LOCAL } from "./servidor-local.js";
 
 export interface DepsDaAssinatura {
   binario?: () => Promise<string | undefined>;
@@ -35,7 +36,7 @@ export async function rodarPelaAssinatura(
   const binario = await (deps.binario ?? (() => claudeBinary()))();
   if (binario === undefined) throw new Error(deps.mensagemSemClaude);
 
-  const refs = [...p.perfil.tools, ...p.perfil.confirmar];
+  const refs = [...p.leitura, ...p.confirmar];
   const nomes = new Set(refs.filter((r) => r.server !== SERVIDOR_CONTA).map((r) => r.server));
   const cadastrados = await (deps.configs ?? (() => mcpService.enabledConfigs()))();
   const servidores = cadastrados.filter((c) => nomes.has(c.name));
@@ -43,17 +44,23 @@ export async function rodarPelaAssinatura(
   // Os conectores da conta Claude não entram: para tê-los o CLI precisa carregar as
   // configurações da pessoa, e as regras `allow` delas liberariam escrita antes da
   // ferramenta de permissão. O chat roda isolado, só com os servidores do agent.
-  const permitidas = p.perfil.tools.filter((t) => t.server !== SERVIDOR_CONTA).map((t) => `${prefixoDoServidor(t.server)}${t.tool}`);
+  const permitidas = [
+    ...p.leitura.filter((t) => t.server !== SERVIDOR_CONTA).map((t) => `${prefixoDoServidor(t.server)}${t.tool}`),
+    // As do Locum para a conversa não escrevem fora: a escrita delas vai à Fila (ADR 0009).
+    ...p.locais.map((l) => `${prefixoDoServidor(SERVIDOR_LOCAL)}${l.nome}`),
+  ];
 
   const cwd = join(appHome(), "chat-agents");
   mkdirSync(cwd, { recursive: true });
   const aprovacao = await abrirServidorDeAprovacao(p.aprovar);
+  const locais = p.locais.length === 0 ? undefined : await abrirServidorLocal(p.locais, p.sinal);
   const pasta = await mkdtemp(join(tmpdir(), "locum-chat-agent-"));
   try {
     const config = JSON.parse(mcpConfigJson(servidores.map((c) => c.name), new Map(servidores.map((c) => [c.name, c])))) as {
       mcpServers: Record<string, unknown>;
     };
     config.mcpServers[SERVIDOR_DE_APROVACAO] = { type: "http", url: aprovacao.url, headers: { Authorization: `Bearer ${aprovacao.token}` } };
+    if (locais !== undefined) config.mcpServers[SERVIDOR_LOCAL] = { type: "http", url: locais.url, headers: { Authorization: `Bearer ${locais.token}` } };
     // O token da volta e as credenciais dos servidores vão por arquivo, e não pela linha de comando: o `ps` mostra argumento.
     const mcpConfigPath = join(pasta, "mcp.json");
     await writeFile(mcpConfigPath, JSON.stringify(config), { mode: 0o600 });
@@ -71,7 +78,7 @@ export async function rodarPelaAssinatura(
         permitidas,
         conta: false,
         internas: [],
-        maxTurns: p.perfil.version.spec.maxSteps,
+        maxTurns: p.maxSteps,
         aprovacaoPor: APROVACAO_NO_CLAUDE,
       },
       p.emitir,
@@ -80,6 +87,7 @@ export async function rodarPelaAssinatura(
     );
   } finally {
     await aprovacao.fechar();
+    await locais?.fechar();
     await rm(pasta, { recursive: true, force: true });
   }
 }

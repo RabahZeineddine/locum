@@ -6,6 +6,7 @@ import { recursoExiste } from "./pendencia-recursos.js";
 import { manterRebaixados } from "../config/rebaixado.js";
 import { db as defaultDb, schema } from "../db/index.js";
 import { AutomacaoArquivada } from "../db/arquivada.js";
+import { travaEmAndamento } from "../agent-chat/trava.js";
 import { esquecerRuns } from "../db/estado-do-run.js";
 import { esquecerGatilho } from "../triggers/estado-do-gatilho.js";
 import { comTrava } from "../triggers/trava.js";
@@ -19,7 +20,7 @@ import { esperaChats, MOTIVO_CHATS, recusaDaGravacao, triggerService, type Trigg
 type Db = typeof defaultDb;
 
 /** O que impede arquivar: runs em curso ou aprovações paradas, com a contagem. A frase vem de quem mostra. */
-export type BloqueioDeArquivar = { kind: "running" | "pending" | "publishing"; count: number };
+export type BloqueioDeArquivar = { kind: "running" | "pending" | "publishing" | "conversing"; count: number };
 
 /** O que arquivar leva e o que deixa. Mesma resposta para a prévia e para o arquivar. */
 export interface PreviaDeArquivamento {
@@ -483,6 +484,7 @@ export class AutomationService {
         tx.delete(schema.findingOutcomes).where(inArray(schema.findingOutcomes.findingId, achados)).run();
         tx.delete(schema.approvals).where(or(inArray(schema.approvals.runId, runs), inArray(schema.approvals.stepId, passos))).run();
         tx.delete(schema.findings).where(inArray(schema.findings.runId, runs)).run();
+        tx.delete(schema.runConversations).where(inArray(schema.runConversations.runId, runs)).run();
         tx.delete(schema.steps).where(inArray(schema.steps.runId, runs)).run();
         tx.delete(schema.agentMetrics).where(inArray(schema.agentMetrics.agentVersionId, versoes)).run();
         tx.delete(schema.runs).where(inArray(schema.runs.agentVersionId, versoes)).run();
@@ -550,6 +552,11 @@ export class AutomationService {
       { kind: "running" as const, count: emCurso },
       { kind: "pending" as const, count: aprovacoes("pending") },
       { kind: "publishing" as const, count: aprovacoes("publishing") },
+      // Uma volta da conversa do run no meio: ela propõe ação e reexecuta passo, e não pode ter a automação tirada debaixo dela.
+      {
+        kind: "conversing" as const,
+        count: leitor.select({ trava: schema.runConversations.trava }).from(schema.runConversations).where(inArray(schema.runConversations.runId, runsIds)).all().filter((c) => travaEmAndamento(c.trava)).length,
+      },
     ].filter((b) => b.count > 0);
 
     const agent = leitor.select({ initiativeId: schema.agents.initiativeId }).from(schema.agents).where(eq(schema.agents.id, agentId)).get();

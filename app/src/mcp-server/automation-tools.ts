@@ -83,6 +83,7 @@ const ACAO_DO_BLOQUEIO: Record<BloqueioDeArquivar["kind"], (n: number) => string
   running: (n) => `${n} run(s) queued or running: open the app so each one finishes, is resumed or cancelled, then archive`,
   pending: (n) => `${n} approval(s) pending: decide them in the approval queue, then archive`,
   publishing: (n) => `${n} approval(s) publishing: resolve the stuck publication in the approval queue (check at the destination whether it went out), then archive`,
+  conversing: (n) => `${n} run conversation(s) in progress: wait for the answer to end or cancel it (run_chat_cancel), then archive`,
 };
 
 function frasesDeBloqueio(blockers: BloqueioDeArquivar[]): string {

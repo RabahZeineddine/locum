@@ -275,6 +275,11 @@ guardar segredo, e não é recomendado.
 | `agent_chat_decide` | publish | `agentChat.decide` |
 | `agent_chat_cancel` | write | `agentChat.cancel` |
 | `agent_chat_reset` | danger | `agentChat.reset` |
+| `run_chat_state` | read | `runChat.state` |
+| `run_chat_send` | external | `runChat.send` |
+| `run_chat_cancel` | write | `runChat.cancel` |
+| `run_chat_reset` | danger | `runChat.reset` |
+| `run_chat_set_model` | write | `runChat.setModel` |
 | `list_registered_providers` | read | `providers.registered` |
 | `register_provider` | publish | `providers.register` |
 | `set_provider_enabled` | write | `providers.setEnabled` |
@@ -359,6 +364,15 @@ ferramenta de escrita), e `register_mcp_server` (pode baixar um servidor de
 O chat de agent (`agent_chat_*`) só existe com o servidor subido pelo binário do
 Locum (`--mcp`), que entrega o processo do chat; pelo `npm run mcp` as
 ferramentas respondem dizendo isso.
+
+A conversa de um run que já rodou (`run_chat_*`, [ADR 0009](adr/0009-conversa-do-run.md))
+vale o mesmo para o processo do app. Ela é separada do chat de agent: não tem
+cartão nem `decide`, porque o que o modelo propõe vai para a Fila e se decide com
+`decide_approval`. O modelo da conversa age só por `ler_run`, `propor_acao` e
+`reexecutar_passo`. `run_chat_set_model` escolhe o agent ou o modelo; sem
+nenhum dos dois, vale o padrão (o agent do primeiro passo de modelo do run, ou
+o modelo dele). `run_chat_state` mostra o teto do contexto e o que ele cortou.
+Uma volta em andamento bloqueia arquivar e deletar a automação.
 
 ## Execução
 

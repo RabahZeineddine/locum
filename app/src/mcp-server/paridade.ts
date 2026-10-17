@@ -221,6 +221,12 @@ export const FERRAMENTA_DO_CANAL: Record<string, string> = {
   "agentChat.cancel": "agent_chat_cancel",
   "agentChat.reset": "agent_chat_reset",
   "agentChat.take": "agent_chat_take",
+
+  "runChat.state": "run_chat_state",
+  "runChat.send": "run_chat_send",
+  "runChat.cancel": "run_chat_cancel",
+  "runChat.reset": "run_chat_reset",
+  "runChat.setModel": "run_chat_set_model",
 };
 
 /**

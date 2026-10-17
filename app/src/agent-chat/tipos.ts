@@ -63,10 +63,29 @@ export interface EstadoDaConversa {
   contaIgnorada: number;
   /** O `seq` do último evento já refletido nas falas. */
   seq: number;
+  /** Só na conversa de um run: o que a tela e o MCP mostram além das falas. */
+  run?: DoRunNaConversa;
+}
+
+/** O que a conversa de um run diz de si, para a pessoa saber com quem fala e o que o modelo viu. */
+export interface DoRunNaConversa {
+  /** Quem conversa agora: um agent da biblioteca ou um modelo solto. */
+  alvo: { tipo: "agent"; id: string } | { tipo: "modelo"; id: string };
+  /** O alvo é o padrão (o do primeiro passo de modelo do run) ou foi escolhido. */
+  padrao: boolean;
+  /** O run é de uma automação arquivada: a conversa só lê. */
+  arquivada: boolean;
+  /** O contexto inicial passou do teto e perdeu algo: o que ficou de fora. */
+  contexto: { teto: number; cortado: string[] };
+  /** O que a conversa já gastou. */
+  gasto: { usd: number; tokens: number };
 }
 
 /** A chave da conversa de um agent, a mesma dos eventos e do histórico guardado. */
 export const chaveDoAgent = (id: string): string => `agent:${id}`;
+
+/** A chave da conversa de um run. */
+export const chaveDoRun = (id: string): string => `run:${id}`;
 
 /** Aplica um evento na fala do assistente a que ele pertence. */
 export function aplicarEvento(fala: FalaDoAgent, evento: EventoDoAgent): FalaDoAgent {

@@ -158,6 +158,12 @@ export const runs = sqliteTable(
     tokens: integer("tokens").notNull().default(0),
     error: text("error"),
     /**
+     * O que a conversa do run gastou, separado dos passos: o `reset` de uma
+     * reexecução desconta o custo dos passos, e o da conversa não é deles.
+     */
+    conversaUsd: real("conversa_usd").notNull().default(0),
+    conversaTokens: integer("conversa_tokens").notNull().default(0),
+    /**
      * Quem está executando o run: máquina e processo, e o último batimento
      * gravado enquanto executa. Só o `running` sem dono vivo pode ser
      * reassumido por outro processo (ver `executarRun`).
@@ -169,6 +175,22 @@ export const runs = sqliteTable(
   },
   (t) => [index("runs_status_idx").on(t.status)],
 );
+
+/**
+ * A conversa de um run que já rodou (ADR 0009): as falas, a sessão do Claude Code,
+ * a trava entre processos e o agent ou modelo escolhido. Uma por run, e some com ele.
+ */
+export const runConversations = sqliteTable("run_conversations", {
+  runId: text("run_id").primaryKey().references(() => runs.id),
+  /** JSON das falas, no formato de `FalaDoAgent`. */
+  falas: text("falas").notNull().default("[]"),
+  sessao: text("sessao"),
+  /** Quem está no meio de uma fala: `{pid, em}`. Vazio é livre. */
+  trava: text("trava"),
+  /** `{agent: id}` ou `{modelo: id}`. Nulo é o padrão: o agent do primeiro passo de modelo do run, ou o modelo dele. */
+  alvo: text("alvo", { mode: "json" }),
+  createdAt: integer("created_at").notNull().default(now),
+});
 
 /** pending | running | done | failed | skipped | awaiting_approval */
 export const steps = sqliteTable(

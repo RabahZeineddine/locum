@@ -4,7 +4,7 @@ import type { AddressInfo } from "node:net";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
-import type { DecisaoDaAssinatura } from "./conversas.js";
+import type { DecisaoDaAssinatura } from "./nucleo.js";
 
 export const SERVIDOR_DE_APROVACAO = "locum-aprovacao";
 export const FERRAMENTA_DE_APROVACAO = "aprovar";
@@ -37,11 +37,7 @@ const BATIDA_MS = 30_000;
 export async function abrirServidorDeAprovacao(
   decidir: (nome: string, entrada: unknown, usoId?: string) => Promise<DecisaoDaAssinatura>,
 ): Promise<ServidorDeAprovacao> {
-  const token = randomBytes(24).toString("hex");
-  const esperado = Buffer.from(`Bearer ${token}`);
-
-  const servidorMcp = (): McpServer => {
-    const mcp = new McpServer({ name: SERVIDOR_DE_APROVACAO, version: "0.1.0" });
+  return abrirServidorMcpLocal(SERVIDOR_DE_APROVACAO, (mcp) => {
     mcp.registerTool(
       FERRAMENTA_DE_APROVACAO,
       {
@@ -60,6 +56,21 @@ export async function abrirServidorDeAprovacao(
         return { content: [{ type: "text", text: JSON.stringify(resposta) }] };
       },
     );
+  });
+}
+
+/**
+ * Um servidor MCP por HTTP em 127.0.0.1, de uma volta só, que só atende com o token
+ * sorteado para ela. Serve ao Claude Code as ferramentas que moram neste processo: a
+ * de permissão e, na conversa do run, as do Locum.
+ */
+export async function abrirServidorMcpLocal(nome: string, registrar: (mcp: McpServer) => void): Promise<ServidorDeAprovacao> {
+  const token = randomBytes(24).toString("hex");
+  const esperado = Buffer.from(`Bearer ${token}`);
+
+  const servidorMcp = (): McpServer => {
+    const mcp = new McpServer({ name: nome, version: "0.1.0" });
+    registrar(mcp);
     return mcp;
   };
 

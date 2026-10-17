@@ -2248,6 +2248,8 @@
         "blocker_pending_other": "{{count}} approvals pending: decide them in the Queue.",
         "blocker_publishing_one": "{{count}} approval publishing: resolve the stuck one in the Queue and check at the destination whether it went out.",
         "blocker_publishing_other": "{{count}} approvals publishing: resolve the stuck ones in the Queue and check at the destination whether they went out.",
+        "blocker_conversing_one": "{{count}} run conversation in progress: wait for the answer to end or cancel it.",
+        "blocker_conversing_other": "{{count}} run conversations in progress: wait for the answer to end or cancel it.",
         "previewFailed": "Could not check what would be archived: {{erro}}",
         "cancel": "Cancel",
         "confirm": "Archive",

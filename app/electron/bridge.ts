@@ -8,6 +8,7 @@ import { readFile, stat, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { agentBuilder, criadorDisponivel } from "./agent-builder.js";
 import { agentChat } from "./agent-chat.js";
+import { runChat } from "./run-chat.js";
 import { chatSession } from "./chat.js";
 import { terminalService } from "./terminal.js";
 import {
@@ -361,6 +362,28 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "agentChat.cancel": async (id) => agentChat.cancelar(id),
     "agentChat.reset": (id) => agentChat.limpar(id),
     "agentChat.take": (id) => agentChat.tomar(id),
+
+    "runChat.state": (runId) => runChat.estado(runId),
+    // Volta assim que a volta começa, como a do agent: a resposta chega pelo canal de evento, com a chave `run:<id>`.
+    "runChat.send": (runId, texto) =>
+      new Promise<void>((resolve, reject) => {
+        let comecou = false;
+        runChat
+          .enviar(runId, texto, () => {
+            comecou = true;
+            resolve();
+          })
+          .then(
+            () => resolve(),
+            (erro: unknown) => {
+              if (comecou) console.error("conversa do run:", erro);
+              else reject(erro);
+            },
+          );
+      }),
+    "runChat.cancel": async (runId) => runChat.cancelar(runId),
+    "runChat.reset": (runId) => runChat.limpar(runId),
+    "runChat.setModel": (runId, alvo) => runChat.definirAlvo(runId, alvo),
 
     "mcp.list": () => mcpService.list(),
     "mcp.test": (name) => mcpService.testConnection(name),

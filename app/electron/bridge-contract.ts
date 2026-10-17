@@ -5,6 +5,7 @@ import type { AgentService } from "../src/services/agent-service.js";
 import type { RascunhoDeAgent } from "../src/services/agent-builder.js";
 import type { ApprovalService } from "../src/services/approval-service.js";
 import type { AutomationService } from "../src/services/automation-service.js";
+import type { ConversasDoRun } from "../src/agent-chat/conversa-do-run.js";
 import type { ConversasDeAgent } from "../src/agent-chat/conversas.js";
 import type { LibraryService } from "../src/services/library-service.js";
 import type { PacoteService } from "../src/services/pacote-service.js";
@@ -625,6 +626,16 @@ interface ServiceApi {
   "agentChat.cancel": ConversasDeAgent["cancelar"];
   "agentChat.reset": ConversasDeAgent["limpar"];
   "agentChat.take": ConversasDeAgent["tomar"];
+  /**
+   * A conversa de um run que já rodou (ADR 0009). `send` volta logo e o fluxo chega
+   * pelo canal de evento, com a chave `run:<id>`. Não há cartão: o que a conversa
+   * propõe vai para a Fila.
+   */
+  "runChat.state": ConversasDoRun["estado"];
+  "runChat.send": ConversasDoRun["enviar"];
+  "runChat.cancel": ConversasDoRun["cancelar"];
+  "runChat.reset": ConversasDoRun["limpar"];
+  "runChat.setModel": ConversasDoRun["definirAlvo"];
 }
 
 export type LocumApi = { [K in keyof ServiceApi]: Asyncify<ServiceApi[K]> };
@@ -857,6 +868,11 @@ export const BRIDGE_CHANNELS = [
   "agentChat.cancel",
   "agentChat.reset",
   "agentChat.take",
+  "runChat.state",
+  "runChat.send",
+  "runChat.cancel",
+  "runChat.reset",
+  "runChat.setModel",
 ] as const satisfies readonly (keyof LocumApi)[];
 
 export type BridgeChannel = (typeof BRIDGE_CHANNELS)[number];
