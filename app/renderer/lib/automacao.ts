@@ -608,7 +608,37 @@ export interface Problema {
   valores?: Record<string, string>;
   /** Para onde levar a pessoa a resolver. */
   atalho?: { rota: "connections" | "agents"; detalhe: string };
+  /** Campo a preencher que veio do pacote: o painel oferece dispensar, e ligar fica barrado enquanto durar. */
+  pendencia?: { onde: string; campo: string };
 }
+
+/** Os motivos de pendência que o dicionário diz por extenso; outro cai no texto genérico. */
+const MOTIVOS_DICIONADOS = new Set(["destino-a-escolher", "url-a-preencher", "argumentos", "tracker", "canais", "filtros-de-pessoa", "dono-do-github", "gatilho-sem-canal"]);
+
+/** O campo que o pacote deixou a preencher, como problema do nó: aviso, que não impede salvar. */
+export function problemasDePendencia(r: Rascunho): Problema[] {
+  return (r.spec.pendentes ?? []).map((p) => {
+    const kind = p.onde.startsWith("gatilho:") ? p.onde.slice("gatilho:".length) : undefined;
+    const no = kind === undefined ? p.onde : r.gatilhos.find((g) => g.config.kind === kind)?.chave;
+    return {
+      chave: MOTIVOS_DICIONADOS.has(p.motivo) ? `automations.problems.pending.${p.motivo}` : "automations.problems.pending.generic",
+      ...(no === undefined ? {} : { no }),
+      bloqueia: false,
+      valores: { campo: p.campo },
+      pendencia: { onde: p.onde, campo: p.campo },
+    };
+  });
+}
+
+/** Tira uma pendência do rascunho: o campo foi preenchido, ou a pessoa disse que não precisa dele. */
+export function dispensarPendencia(spec: AgentSpec, onde: string, campo: string): AgentSpec {
+  const restantes = (spec.pendentes ?? []).filter((p) => !(p.onde === onde && p.campo === campo));
+  const { pendentes: _antes, ...resto } = spec;
+  return restantes.length === 0 ? resto : { ...resto, pendentes: restantes };
+}
+
+/** O gatilho tem campo a preencher: não liga até a pessoa preencher ou dispensar. */
+export const gatilhoIncompleto = (spec: AgentSpec): boolean => (spec.pendentes ?? []).some((p) => p.onde.startsWith("gatilho:"));
 
 export interface Contexto {
   slackConectado: boolean;
@@ -639,7 +669,7 @@ const destinoFixoSemConversa = (p: { params?: Record<string, unknown> }): boolea
  * pode montar a automação antes de ligar o Slack.
  */
 export function problemas(r: Rascunho, ctx: Contexto): Problema[] {
-  const lista: Problema[] = [];
+  const lista: Problema[] = [...problemasDePendencia(r)];
   const kinds = new Set(r.gatilhos.map((g) => g.config.kind));
   const agrupa = r.gatilhos.some((g) => g.config.kind === "teams-inbox" && g.config.prLinks && g.config.agruparPrs);
 

@@ -86,6 +86,13 @@ segredo, canal, chat ou conta. Importar mostra uma prévia e a pessoa liga cada
 dependência ao que tem; gatilho entra desligado. É também o formato do template
 do marketplace.
 
+**Campo a preencher**: o que um pacote importado deixou de fora por ser desta
+máquina (destino, endereço, canal, dono, filtro de pessoa). Fica gravado na
+automação (`pendentes`: o nó, o caminho do campo e o motivo), marcado no nó do
+editor. Passo com campo a preencher não roda, gatilho com campo a preencher não
+liga, e nada cai em padrão. Some quando o campo ganha valor e a pessoa salva, ou
+quando ela dispensa.
+
 **Legado**: automação ou agent do modelo anterior ao ADR 0005, só leitura.
 
 **Cartão**: a chamada de escrita que o agent quer fazer no chat dele, mostrada

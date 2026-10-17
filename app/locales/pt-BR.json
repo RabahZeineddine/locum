@@ -2686,7 +2686,21 @@
       "refNotBefore": "A ação cita {{ref}}, que não vem antes dela no fluxo.",
       "destinationMissing": "Escolha o chat ou canal do destino fixo.",
       "replyNeedsApp": "Responder no {{app}} precisa de um gatilho do {{app}}: é dele que vem a mensagem a que se responde.",
-      "reactNeedsApp": "Reagir no {{app}} precisa de um gatilho do {{app}}: é dele que vem a mensagem."
+      "reactNeedsApp": "Reagir no {{app}} precisa de um gatilho do {{app}}: é dele que vem a mensagem.",
+      "pending": {
+        "destino-a-escolher": "Escolha o destino deste nó ({{campo}}): o do pacote era desta máquina.",
+        "url-a-preencher": "Preencha o endereço deste nó ({{campo}}).",
+        "argumentos": "Preencha o que o pacote deixou de fora ({{campo}}).",
+        "tracker": "Escolha o tracker deste nó ({{campo}}).",
+        "canais": "Escolha os canais deste gatilho ({{campo}}).",
+        "filtros-de-pessoa": "Escolha os filtros de pessoa deste gatilho ({{campo}}): sem eles vale para todos.",
+        "dono-do-github": "Escolha o dono no GitHub ({{campo}}): sem ele vale para todos.",
+        "gatilho-sem-canal": "Escolha o canal deste gatilho ({{campo}}).",
+        "generic": "Preencha o campo {{campo}}, que o pacote deixou de fora.",
+        "dismiss": "Dispensar",
+        "dismissHint": "Deixar o campo como está e tirar o aviso",
+        "enableBlocked": "Gatilho incompleto: preencha ou dispense o que falta antes de ligar."
+      }
     },
     "github": {
       "repos": {
@@ -3257,7 +3271,7 @@
       "confirm": "Importar",
       "answerFirst": "Responda sobre o agent de mesmo nome.",
       "done": "Importada. Os gatilhos estão desligados.",
-      "donePending": "Ainda faltam escolhas na automação, como os canais.",
+      "donePending": "Ainda faltam escolhas na automação, como canais e destinos. Elas ficam marcadas nos nós: o passo incompleto não roda e o gatilho incompleto não liga.",
       "open": "Abrir a automação",
       "notJson": "Só arquivos .locum.json.",
       "unreadable": "Não consegui ler o arquivo.",

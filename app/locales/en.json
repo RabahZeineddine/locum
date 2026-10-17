@@ -2635,7 +2635,21 @@
       "refNotBefore": "The action cites {{ref}}, which does not come before it in the flow.",
       "destinationMissing": "Choose the chat or channel of the fixed destination.",
       "replyNeedsApp": "Replying in {{app}} needs a {{app}} trigger: that is where the message to reply to comes from.",
-      "reactNeedsApp": "Reacting in {{app}} needs a {{app}} trigger: that is where the message comes from."
+      "reactNeedsApp": "Reacting in {{app}} needs a {{app}} trigger: that is where the message comes from.",
+      "pending": {
+        "destino-a-escolher": "Choose the destination of this node ({{campo}}): the package's was from another machine.",
+        "url-a-preencher": "Fill in the address of this node ({{campo}}).",
+        "argumentos": "Fill in what the package left out ({{campo}}).",
+        "tracker": "Choose the tracker of this node ({{campo}}).",
+        "canais": "Choose the channels of this trigger ({{campo}}).",
+        "filtros-de-pessoa": "Choose the people filters of this trigger ({{campo}}): without them it covers everyone.",
+        "dono-do-github": "Choose the GitHub owner ({{campo}}): without it it covers every owner.",
+        "gatilho-sem-canal": "Choose the channel of this trigger ({{campo}}).",
+        "generic": "Fill in the field {{campo}}, which the package left out.",
+        "dismiss": "Dismiss",
+        "dismissHint": "Keep the field as it is and remove the warning",
+        "enableBlocked": "Incomplete trigger: fill in or dismiss what is missing before turning it on."
+      }
     },
     "github": {
       "repos": {
@@ -3172,7 +3186,7 @@
       "confirm": "Import",
       "answerFirst": "Answer about the agent with the same name.",
       "done": "Imported. Triggers are off.",
-      "donePending": "The automation still needs choices, like channels.",
+      "donePending": "The automation still needs choices, like channels and destinations. They are marked on the nodes: an incomplete step does not run and an incomplete trigger does not turn on.",
       "open": "Open the automation",
       "notJson": "Only .locum.json files.",
       "unreadable": "Could not read the file.",

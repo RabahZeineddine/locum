@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { rascunhoDoModelo, type Rascunho } from "../renderer/lib/automacao.js";
+import { dispensarPendencia, gatilhoIncompleto, problemasDePendencia, rascunhoDoModelo, type Rascunho } from "../renderer/lib/automacao.js";
 import {
   chaveDoRascunho,
   descartarReserva,
@@ -420,4 +420,28 @@ test("o id sugerido pula o que já é provisória de outra automação nova", ()
   guardarProvisoria(a, "nova-2", { rascunho: base(), nota: "" });
   assert.equal(idSemProvisoria(a, "nova"), "nova-3");
   assert.equal(idSemProvisoria(a, "livre"), "livre");
+});
+
+test("pendência do pacote vira aviso no nó, dispensar a tira, e o gatilho incompleto barra o ligar", () => {
+  const b = base();
+  const gatilho = b.gatilhos[0]!;
+  const r: Rascunho = {
+    ...b,
+    spec: {
+      ...b.spec,
+      pendentes: [
+        { onde: b.spec.steps[0]!.key, campo: "params.destino", motivo: "destino-a-escolher" },
+        { onde: `gatilho:${gatilho.config.kind}`, campo: "owner", motivo: "dono-do-github" },
+      ],
+    },
+  };
+  const lista = problemasDePendencia(r);
+  assert.deepEqual(lista.map((p) => [p.no, p.chave, p.bloqueia]), [
+    [b.spec.steps[0]!.key, "automations.problems.pending.destino-a-escolher", false],
+    [gatilho.chave, "automations.problems.pending.dono-do-github", false],
+  ]);
+  assert.equal(gatilhoIncompleto(r.spec), true);
+  const sem = dispensarPendencia(dispensarPendencia(r.spec, `gatilho:${gatilho.config.kind}`, "owner"), b.spec.steps[0]!.key, "params.destino");
+  assert.equal(sem.pendentes, undefined);
+  assert.equal(gatilhoIncompleto(sem), false);
 });

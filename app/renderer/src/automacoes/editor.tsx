@@ -31,6 +31,7 @@ import {
   type GatilhoNoCanvas,
   type Problema,
   type Rascunho,
+  gatilhoIncompleto,
 } from "@/lib/automacao";
 import { call, invalidateReads, read, useRead, type ReadResult } from "@/lib/bridge";
 import { semPrefixoDoIpc } from "@/lib/erro-da-ponte";
@@ -689,10 +690,10 @@ function EditorCarregado({
         <Button
           className="cursor-pointer"
           data-locum-automacao-ligar=""
-          disabled={ocupado !== null || nova || salvo.gatilhos.length === 0}
+          disabled={ocupado !== null || nova || salvo.gatilhos.length === 0 || (!ligada && gatilhoIncompleto(salvo.spec))}
           onClick={alternar}
           size="sm"
-          title={t("automations.editor.enabledHint")}
+          title={!ligada && gatilhoIncompleto(salvo.spec) ? t("automations.problems.pending.enableBlocked") : t("automations.editor.enabledHint")}
           variant="outline"
         >
           <StatusDot estado={ligada ? "ok" : "ocioso"} />

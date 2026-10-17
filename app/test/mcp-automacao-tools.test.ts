@@ -648,3 +648,24 @@ test("run_automation_now ganha eventId e prUrl, e list_automation_events é leit
   recusa(await client.callTool({ name: "run_automation_now", arguments: { agentId } }), /precisa de um evento \(usa \{\{event\.repo\}\}\); escolha um evento recente ou cole um link/);
   recusa(await client.callTool({ name: "run_automation_now", arguments: { agentId, prUrl: "https://example.com/x" } }), /link de um pull request do GitHub/);
 });
+
+test("automação com campo a preencher: get e list mostram, ligar recusa com o motivo, e salvar com o campo preenchido limpa", async () => {
+  const client = await ligarCliente();
+  const agentId = `pendente-${randomUUID().slice(0, 8)}`;
+  const comPendencia = { ...spec(agentId), pendentes: [{ onde: "gatilho:poll", campo: "owner", motivo: "dono-do-github" }] };
+  const poll = { kind: "poll", source: "github", repoMatch: "x-.*", authorship: "others" };
+  const salva = ok<Salva>(await client.callTool({ name: "save_automation", arguments: { spec: comPendencia, triggers: [{ config: poll }], note: "importada", create: true } }));
+  const esperado = [{ onde: "gatilho:poll", campo: "owner", motivo: "dono-do-github" }];
+
+  assert.deepEqual(ok<{ pending: unknown }>(await client.callTool({ name: "get_automation", arguments: { agentId } })).pending, esperado);
+  const lista = ok<{ id: string; pending: unknown }[]>(await client.callTool({ name: "list_automations", arguments: {} }));
+  assert.deepEqual(lista.find((a) => a.id === agentId)?.pending, esperado);
+  recusa(await client.callTool({ name: "set_trigger_enabled", arguments: { triggerId: salva.triggers[0]!.id, enabled: true } }), /gatilho incompleto.*owner/);
+  recusa(await client.callTool({ name: "set_automation_enabled", arguments: { agentId, enabled: true } }), /gatilho incompleto/);
+
+  const limpa = ok<{ pending: unknown[] }>(
+    await client.callTool({ name: "save_automation", arguments: { spec: comPendencia, triggers: [{ id: salva.triggers[0]!.id, config: { ...poll, owner: "empresa" } }], note: "dono escolhido" } }),
+  );
+  assert.deepEqual(limpa.pending, []);
+  ok(await client.callTool({ name: "set_trigger_enabled", arguments: { triggerId: salva.triggers[0]!.id, enabled: true } }));
+});
