@@ -301,3 +301,38 @@ test("duas reexecuções ao mesmo tempo: só uma passa, a outra é recusada como
   const [a, b] = await Promise.allSettled([service.rerunStep(runId, "revisar", { wait: false }), service.rerunStep(runId, "revisar", { wait: false })]);
   assert.equal([a, b].filter((r) => r.status === "fulfilled").length, 1);
 });
+
+test("enquanto qualquer passo do run tem instrução, toda ação roda em approve, mesmo sem ser descendente dele", async () => {
+  const ctx = montar();
+  const versao = await new AgentService().upsert(
+    AgentSpec.parse({
+      id: `citado-${randomUUID()}`,
+      name: "Citado",
+      steps: [
+        { type: "model", key: "revisar", name: "Revisar", model: "ollama/modelo", prompt: "revisar" },
+        { type: "model", key: "outro", name: "Outro", model: "ollama/modelo", prompt: "outro" },
+        { type: "action", key: "publicar", name: "Publicar", action: "teste.publicar", mode: "auto", needs: ["outro"], params: { body: "{{steps.revisar.text}}" } },
+      ],
+    }),
+    undefined,
+    "human",
+  );
+  const runId = await ctx.executor.createRun(versao.id, null);
+  assert.equal(await ctx.executor.execute(runId), "done");
+  ctx.publicados.length = 0;
+  await ctx.service.rerunStep(runId, "revisar", { wait: true, instrucao: "olhe o erro" });
+  assert.equal(await ctx.service.rerunStep(runId, "outro", { wait: true }), "paused");
+  assert.deepEqual(ctx.publicados, []);
+  assert.equal((await passo(runId, "publicar")).status, "awaiting_approval");
+  const prev = await ctx.service.rerunPreview(runId, "outro", { comInstrucao: false });
+  assert.deepEqual(prev.rebaixados.map((p) => p.stepKey), ["publicar"]);
+});
+
+test("a prévia não lista como rebaixada a ação pulada que não vai rodar", async () => {
+  const { service, runId } = await preparar();
+  const publicar = await passo(runId, "publicar");
+  await db.update(schema.steps).set({ status: "skipped", error: "rejected" }).where(eq(schema.steps.id, publicar.id));
+  assert.deepEqual((await service.rerunPreview(runId, "solto", { comInstrucao: true })).rebaixados, []);
+  await db.update(schema.steps).set({ error: "not_run" }).where(eq(schema.steps.id, publicar.id));
+  assert.deepEqual((await service.rerunPreview(runId, "solto", { comInstrucao: true })).rebaixados.map((p) => p.stepKey), ["publicar"]);
+});

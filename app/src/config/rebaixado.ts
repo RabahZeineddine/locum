@@ -17,35 +17,13 @@ export const REBAIXADO_NA_IMPORTACAO = "rebaixado-na-importacao";
 export const REBAIXADO_NA_REEXECUCAO = "rebaixado-na-reexecucao";
 
 /**
- * Os passos dos quais `chave` depende, direta ou indiretamente (`needs`).
- * Chave que não está no fluxo não tem ancestrais.
+ * Enquanto algum passo do run tiver instrução de reexecução, toda ação do run que estaria
+ * em `auto` ou `draft` roda em `approve`. Não se segue `needs`: o prompt e os params de uma
+ * ação podem citar `{{steps.X}}` sem X estar nos `needs`, e o texto moldado pela instrução
+ * chegaria a ela do mesmo jeito. Só pede mais confirmação, nunca tira.
  */
-export function ancestraisDe(passos: readonly { key: string; needs: readonly string[] }[], chave: string): Set<string> {
-  const porChave = new Map(passos.map((p) => [p.key, p]));
-  const out = new Set<string>();
-  const pilha = [...(porChave.get(chave)?.needs ?? [])];
-  while (pilha.length > 0) {
-    const atual = pilha.pop()!;
-    if (out.has(atual)) continue;
-    out.add(atual);
-    pilha.push(...(porChave.get(atual)?.needs ?? []));
-  }
-  return out;
-}
-
-/**
- * A ação sai do `auto` ou do `draft` para `approve` quando algum ancestral dela foi
- * reexecutado com instrução: o resultado que ela publicaria já não é o que o fluxo
- * desenhou. Só pede mais confirmação, nunca tira.
- */
-export function rebaixadaPorInstrucao(
-  passos: readonly { key: string; needs: readonly string[] }[],
-  chave: string,
-  comInstrucao: ReadonlySet<string>,
-): boolean {
-  if (comInstrucao.size === 0) return false;
-  for (const a of ancestraisDe(passos, chave)) if (comInstrucao.has(a)) return true;
-  return false;
+export function rebaixadaPorInstrucao(comInstrucao: ReadonlySet<string>): boolean {
+  return comInstrucao.size > 0;
 }
 
 type ComPassos = { steps: readonly object[]; rebaixados?: Rebaixado[] | undefined };

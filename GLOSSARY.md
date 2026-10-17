@@ -93,8 +93,8 @@ nomeada do ADR 0007 à regra 1 do ADR 0006.
 de modelo. Entra no fim do prompt daquele passo e não é dado de fora. Vem
 entre uma marca aleatória que o system declara como pedido da pessoa. Fica em
 `steps.instrucao`, no passo reexecutado, até ele ser reexecutado de novo. Passo
-que não é de modelo recusa a instrução. Com instrução num ancestral, a ação a
-jusante em `auto` ou `draft` vai para a Fila (`steps.rebaixado`, ADR 0008); a
+que não é de modelo recusa a instrução. Enquanto qualquer passo do run tiver instrução, toda ação em
+`auto` ou `draft` vai para a Fila (`steps.rebaixado`, ADR 0008); a
 prévia mostra isso antes de confirmar.
 
 **Descarte**: o que um gatilho viu e deixou de fora, com o motivo.

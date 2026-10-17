@@ -62,7 +62,7 @@ export function registerRunTools(server: McpServer): void {
           .max(LIMITE_DA_INSTRUCAO)
           .optional()
           .describe(
-            `extra instruction (up to ${LIMITE_DA_INSTRUCAO} characters) for a model step, appended after its prompt (it comes from the person, not from outside data). Refused for steps that are not model steps. It stays on the step until it is re-run again (without an instruction it is cleared). While any ancestor of an action keeps an instruction, that action (auto or draft) waits in the queue as approve; see preview_rerun`,
+            `extra instruction (up to ${LIMITE_DA_INSTRUCAO} characters) for a model step, appended after its prompt (it comes from the person, not from outside data). Refused for steps that are not model steps. It stays on the step until it is re-run again (without an instruction it is cleared). While any step of the run keeps an instruction, every action (auto or draft) waits in the queue as approve; see preview_rerun`,
           ),
       },
     },
@@ -78,7 +78,7 @@ export function registerRunTools(server: McpServer): void {
   );
 
   def(server, "preview_rerun", "read",
-    "What rerun_step would do, before confirming: the steps that run again, what would block it now (blocks), the standalone steps that expire, the model steps billed again, and the actions in auto or draft that go to the queue as approve because an ancestor has an instruction (includes steps that have no row yet). Writes nothing.",
+    "What rerun_step would do, before confirming: the steps that run again, what would block it now (blocks), the standalone steps that expire, the model steps billed again, and the actions in auto or draft that go to the queue as approve because a step of the run has an instruction (includes steps that have no row yet; a skipped action that will not run is left out). Writes nothing.",
     {
       runId: z.string().min(1),
       stepKey: z.string().min(1).describe("step key in the spec, as shown by get_run"),

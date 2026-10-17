@@ -6,6 +6,7 @@ import { AutomacaoArquivada, recusarSeArquivada } from "../db/arquivada.js";
 import { AgentSpec, topoSort } from "../config/types.js";
 import { rebaixadaPorInstrucao } from "../config/rebaixado.js";
 import { buildExecutor } from "../executor/build.js";
+import { NAO_RODOU } from "../executor/executor.js";
 import { isReserved } from "./agent-service.js";
 import { LibraryService } from "./library-service.js";
 
@@ -504,14 +505,20 @@ export class RunService {
     const efetivas = new Set(detail.steps.filter((s) => s.instrucao !== null && !afetados.has(s.stepKey)).map((s) => s.stepKey));
     if (comInstrucao) efetivas.add(stepKey);
     const linha = (chave: string) => detail.steps.find((s) => s.stepKey === chave);
+    // Vai rodar: volta com a reexecução, ainda não rodou, ou foi dado por "não rodou". O que já
+    // saiu ou foi pulado de vez não roda, e listá-lo como rebaixado mentiria.
+    const roda = (chave: string): boolean => {
+      const l = linha(chave);
+      return afetados.has(chave) || l === undefined || l.status === "pending" || l.status === "awaiting_approval" || l.status === "failed" || (l.status === "skipped" && l.error === NAO_RODOU);
+    };
     const dosAfetados = detail.spec.steps.filter((p) => afetados.has(p.key));
     return {
       passos: dosAfetados.map((p) => ({ stepKey: p.key, name: p.name, type: p.type })),
       rebaixados: detail.spec.steps.flatMap((p) =>
         p.type === "action" &&
         (p.mode === "auto" || p.mode === "draft") &&
-        (afetados.has(p.key) || linha(p.key)?.status !== "done") &&
-        rebaixadaPorInstrucao(detail.spec.steps, p.key, efetivas)
+        roda(p.key) &&
+        rebaixadaPorInstrucao(efetivas)
           ? [{ stepKey: p.key, name: p.name, action: p.action, mode: p.mode }]
           : [],
       ),

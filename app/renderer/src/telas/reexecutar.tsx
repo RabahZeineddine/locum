@@ -118,7 +118,7 @@ function Dialogo({ aoFechar, runId, stepKey }: { aoFechar: () => void; runId: st
                   <span className="font-medium">{t("runs.rerun.dialog.expire")}</span>
                   <ul className="flex flex-col gap-0.5">
                     {previa.data.avulsosQueExpiram.map((p) => (
-                      <li key={p.stepKey}>{rotuloDaAcao(t, p.name)}</li>
+                      <li key={p.stepKey}>{p.name}</li>
                     ))}
                   </ul>
                 </div>

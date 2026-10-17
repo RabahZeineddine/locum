@@ -981,13 +981,13 @@ export class Executor {
     // Escrita em automático só quando a pessoa escolheu (`autoEscrita` no nó). A
     // classificação é a do cache no momento do run: sem anotação de leitura, ou
     // sem cache, a chamada espera na Fila com o motivo.
-    // Algum ancestral foi reexecutado com instrução neste run: o que ia sair sozinho (auto) ou
+    // Algum passo deste run foi reexecutado com instrução: o que ia sair sozinho (auto) ou
     // virar rascunho fora da máquina (draft) espera o clique. Decidido aqui, na hora de submeter,
     // porque o passo pode nem ter linha quando a instrução foi dada. `rebaixado` só registra.
     const comInstrucao = new Set(
       (await db.select({ chave: schema.steps.stepKey }).from(schema.steps).where(and(eq(schema.steps.runId, runId), isNotNull(schema.steps.instrucao)))).map((l) => l.chave),
     );
-    const rebaixadoNoRun = (step.mode === "auto" || step.mode === "draft") && rebaixadaPorInstrucao(args.spec.steps, step.key, comInstrucao);
+    const rebaixadoNoRun = (step.mode === "auto" || step.mode === "draft") && rebaixadaPorInstrucao(comInstrucao);
     if (rebaixadoNoRun) {
       await db.update(schema.steps).set({ rebaixado: REBAIXADO_NA_REEXECUCAO }).where(eq(schema.steps.id, stepId));
     }

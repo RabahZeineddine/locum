@@ -21,16 +21,17 @@ a jusante dizem, e uma ação em `auto` publicaria isso sem ninguém olhar.
 2. A instrução fica no passo reexecutado até ele ser reexecutado de novo: sem
    instrução ela sai, com outra é trocada. Reexecutar um dependente não a tira.
    Passo sem linha (run parado antes dele) ganha a linha `pending` com a instrução.
-3. O executor decide na hora de submeter: ação em `auto` ou `draft` com algum
-   ancestral (`needs`, transitivo) que tem instrução naquele run roda em
-   `approve`. `draft` entra porque o rascunho do GitHub cria review pendente fora
-   da máquina. `steps.rebaixado` só registra que isso aconteceu, para a tela e o
-   MCP. O spec da automação não muda.
-4. Sem instrução em nenhum ancestral, a reexecução segue o spec, como antes.
+3. O executor decide na hora de submeter: enquanto qualquer passo do run tiver
+   instrução, toda ação do run em `auto` ou `draft` roda em `approve`. Não se
+   segue `needs`, porque o prompt e os params de uma ação podem citar
+   `{{steps.X}}` sem X estar nos `needs`. `draft` entra porque o rascunho do
+   GitHub cria review pendente fora da máquina. `steps.rebaixado` só registra que
+   isso aconteceu, para a tela e o MCP. O spec da automação não muda.
+4. Sem instrução em nenhum passo do run, a reexecução segue o spec, como antes.
 5. A prévia (`rerunPreview`, `preview_rerun` no MCP) lista os passos que voltam a
    rodar, as recusas do `rerunStep` como bloqueios, os avulsos que expiram, os
-   passos de modelo cobrados de novo e as ações que vão para a Fila (inclusive as
-   que ainda não têm linha).
+   passos de modelo cobrados de novo e as ações que ainda vão rodar e iriam para a Fila
+   (inclusive as sem linha; a pulada que não roda fica de fora).
 6. Zerar, gravar a instrução e expirar os avulsos derivados rodam numa transação, e
    a troca do status do run é condicionada: reexecuções simultâneas (tela e MCP)
    deixam só uma passar.
