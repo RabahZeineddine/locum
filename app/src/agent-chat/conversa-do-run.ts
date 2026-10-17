@@ -306,7 +306,8 @@ function provedorDoRun(deps: DepsDaConversaDoRun): ProvedorDeConversa {
           // O teto é o da versão atual da automação: quem o aperta ou afrouxa depois do run vale para a conversa.
           const atual = db.select({ spec: schema.agentVersions.spec }).from(schema.agentVersions).where(eq(schema.agentVersions.agentId, d.agentId)).orderBy(desc(schema.agentVersions.version)).limit(1).get();
           await deps.orcamento.checar(d.agentId, gasto, (atual?.spec as AgentSpec | undefined)?.budget ?? d.spec.budget);
-          if (spec !== undefined && chaveDoAgent !== undefined) await deps.orcamento.checar(chaveDoAgent, gasto, spec.budget, spec.name);
+          // O teto do agent da biblioteca é dele: mede o que a conversa gastou, e não os passos do run, que podem ser de outro agent.
+          if (spec !== undefined && chaveDoAgent !== undefined) await deps.orcamento.checar(chaveDoAgent, { usd: run?.conversaUsd ?? 0, tokens: run?.conversaTokens ?? 0 }, spec.budget, spec.name);
         },
         gastar: async (gasto, novaMensagem) => {
           // Num campo do run separado dos passos: o `reset` de uma reexecução não o desconta.

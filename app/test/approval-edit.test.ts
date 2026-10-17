@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { buildGate } from "../src/executor/build.js";
 import { ApprovalService } from "../src/services/approval-service.js";
 import { AgentService } from "../src/services/agent-service.js";
+import { lerErroComCodigo } from "../src/services/erro-com-codigo.js";
 import { bancoDeTeste } from "./helpers/db.js";
 
 const ALVO = { owner: "dono", repo: "repositorio", pull: 42 };
@@ -85,6 +86,7 @@ test("achado fora do formato é recusado e a pendência fica como estava", async
   const invalidos: unknown[] = [
     [{ ...achado, severity: "gravissimo" }],
     [{ ...achado, problem: "" }],
+    [{ ...achado, problem: "   \n\t " }],
     [{ ...achado, line: -3 }],
     [{ ...achado, owner: "outro" }],
     "não é lista",
@@ -191,4 +193,12 @@ test("editar pela conversa recusa automação arquivada e pendência já resolvi
   await db.update(schema.approvals).set({ status: "approved" }).where(eq(schema.approvals.id, "pendencia"));
   await assert.rejects(service.editarCampos("pendencia", { text: "x" }, { conversa: "run" }), /já resolvida/);
   assert.deepEqual((await service.get("pendencia"))!.payload, RESPOSTA);
+});
+
+test("os erros de edição têm código, para a tela traduzir: campo que a ação não aceita e valor fora do formato", async () => {
+  const service = await pendencia("teams.post", RESPOSTA);
+  const fora = await service.editarCampos("pendencia", { chatId: "19:outra" }, { conversa: "run" }).catch((e: Error) => e);
+  assert.deepEqual(lerErroComCodigo((fora as Error).message), { codigo: "campo_nao_editavel", argumento: "chatId" });
+  const formato = await service.editarCampos("pendencia", { text: 42 }, "pessoa").catch((e: Error) => e);
+  assert.deepEqual(lerErroComCodigo((formato as Error).message), { codigo: "campo_fora_do_formato", argumento: "text" });
 });

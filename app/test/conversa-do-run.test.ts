@@ -538,3 +538,26 @@ test("run_chat_send espera a volta sem remontar o contexto a cada consulta", asy
   // Uma leitura para a checagem inicial, uma para a volta e uma para o estado final: o polling de 300 ms não monta nada.
   assert.ok(leituras <= 4, `${leituras} leituras do run`);
 });
+
+test("o teto por execução do agent da biblioteca compara só com o gasto da conversa; o da automação segue com o run inteiro", async () => {
+  const { runId } = await montarRun();
+  await db.update(schema.runs).set({ tokens: 100, conversaTokens: 60 }).where(eq(schema.runs.id, runId));
+  const comPerfil = (perRunTokens: number) => ({
+    resolveProfile: async (id: string) => ({
+      version: { id: "v", profileId: id, version: 1, spec: AgentProfile.parse({ id, name: id, model: "falso/roteiro", budget: { perRunTokens } }), note: null, createdAt: 0 },
+      tools: [], confirmar: [], semServidor: [], fixas: [], grupos: [], system: `Você é ${id}.`,
+    }),
+  });
+  const orcamento = { checar: (id: string, gasto: { usd: number; tokens: number }, limites: Parameters<typeof assertWithinBudget>[2], agent?: string) => assertWithinBudget(id, gasto, limites, agent), gastar: async () => undefined };
+  const c = montar({ deps: { library: comPerfil(100) as never, orcamento } });
+  await c.conversas.definirAlvo(runId, { agent: "revisor-pr" });
+
+  // Os passos gastaram 100 e a conversa 60: o teto de 100 do agent não é da conversa inteira do run.
+  await c.conversas.enviar(runId, "oi");
+  assert.equal(c.modelo.recebidos.length, 1, "o gasto dos passos não entrou na conta do agent");
+
+  await db.update(schema.runs).set({ conversaTokens: 100 }).where(eq(schema.runs.id, runId));
+  await c.conversas.enviar(runId, "oi de novo");
+  assert.equal(c.modelo.recebidos.length, 1, "a conversa já gastou o teto do agent");
+  assert.ok(c.eventos.some((e) => e.tipo === "erro"));
+});

@@ -3725,6 +3725,8 @@
     }
   },
   "erroDoServico": {
+    "campo_nao_editavel": "O campo {{argumento}} não aceita edição nesta ação.",
+    "campo_fora_do_formato": "O valor do campo {{argumento}} está fora do formato que a ação aceita.",
     "proposta_recusada": "A ação {{argumento}} recusou a proposta, por exemplo review em pull request da própria pessoa.",
     "pendencia_mudou": "A pendência mudou desde que você a viu. Leia de novo e decida sobre o que está lá.",
     "pendencia_nao_encontrada": "Pendência {{argumento}} não encontrada.",

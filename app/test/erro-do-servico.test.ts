@@ -25,3 +25,12 @@ test("todo código tem tradução em pt-BR e en", () => {
     for (const codigo of CODIGOS_DE_ERRO) assert.ok(chaves[codigo], `${idioma}: falta erroDoServico.${codigo}`);
   }
 });
+
+test("o argumento com espaço, dois-pontos e símbolos vai e volta inteiro", () => {
+  const cheio = "passo: a/b c (ç) 100% & x=1; \"y\"";
+  const erro = erroComCodigo("derivacao_invalida", cheio, `derivaDe "${cheio}" nao e um passo`);
+  assert.deepEqual(lerErroComCodigo(erro.message), { codigo: "derivacao_invalida", argumento: cheio });
+  assert.equal(traduzirErroDoServico(t, erro.message), `erroDoServico.derivacao_invalida|${cheio}`);
+  // Sem símbolo nenhum, a mensagem segue legível como antes.
+  assert.match(erroComCodigo("run_nao_encontrado", "abc-1", "x").message, /^run_nao_encontrado:abc-1: /);
+});

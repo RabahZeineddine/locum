@@ -733,7 +733,8 @@ export const CAMPOS_EDITAVEIS_DA_REVIEW: EsquemaJson = {
           severity: { type: "string", enum: ["critical", "high", "medium", "low"] },
           confidence: { type: "string", enum: ["high", "medium", "low"] },
           category: { type: "string" },
-          problem: { type: "string", minLength: 1 },
+          // Achado só de espaços não diz nada: `minLength` deixaria passar.
+          problem: { type: "string", minLength: 1, pattern: "\\S" },
           fix: { type: "string" },
         },
         required: ["severity", "problem"],

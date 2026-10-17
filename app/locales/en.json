@@ -3625,6 +3625,8 @@
     }
   },
   "erroDoServico": {
+    "campo_nao_editavel": "The field {{argumento}} cannot be edited on this action.",
+    "campo_fora_do_formato": "The value of the field {{argumento}} is outside the format the action accepts.",
     "proposta_recusada": "The {{argumento}} action refused the proposal, for example a review on the person's own pull request.",
     "pendencia_mudou": "The pending item changed since you saw it. Read it again and decide on what is there.",
     "pendencia_nao_encontrada": "Pending item {{argumento}} not found.",

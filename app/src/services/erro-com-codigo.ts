@@ -17,18 +17,28 @@ export const CODIGOS_DE_ERRO = [
   "conteudo_invalido",
   "derivacao_invalida",
   "alvo_no_conteudo",
+  "campo_nao_editavel",
+  "campo_fora_do_formato",
 ] as const;
 
 export type CodigoDeErro = (typeof CODIGOS_DE_ERRO)[number];
 
-/** O argumento não leva `:` nem espaço: é um id, uma chave de passo ou o tipo da ação. */
+/** O argumento vai codificado (`encodeURIComponent`): aceita espaço, `:` e qualquer símbolo sem quebrar a leitura. A barra fica como está (`provedor/modelo`), e um id comum também. */
 export function erroComCodigo(codigo: CodigoDeErro, argumento: string, texto: string): Error {
-  return new Error(`${codigo}:${argumento}: ${texto}`);
+  return new Error(`${codigo}:${encodeURIComponent(argumento).replace(/%2F/g, "/")}: ${texto}`);
 }
 
 /** O código e o argumento de uma mensagem de erro de serviço, ou nulo quando ela não leva código. */
 export function lerErroComCodigo(mensagem: string): { codigo: CodigoDeErro; argumento: string } | null {
   const achado = /(?:^|\s)([a-z]+(?:_[a-z]+)*):([^:\s]*): /.exec(mensagem);
   const codigo = achado?.[1];
-  return codigo !== undefined && (CODIGOS_DE_ERRO as readonly string[]).includes(codigo) ? { codigo: codigo as CodigoDeErro, argumento: achado![2]! } : null;
+  return codigo !== undefined && (CODIGOS_DE_ERRO as readonly string[]).includes(codigo) ? { codigo: codigo as CodigoDeErro, argumento: decodificar(achado![2]!) } : null;
+}
+
+function decodificar(argumento: string): string {
+  try {
+    return decodeURIComponent(argumento);
+  } catch {
+    return argumento;
+  }
 }

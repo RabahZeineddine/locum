@@ -112,9 +112,9 @@ export class ApprovalService {
       const novos: Record<string, unknown> = {};
       for (const [campo, valor] of Object.entries(campos)) {
         const esquema = editaveis[campo];
-        if (esquema === undefined) throw new Error(`a ação ${approval.kind} não aceita edição de ${campo}`);
+        if (esquema === undefined) throw erroComCodigo("campo_nao_editavel", campo, `a ação ${approval.kind} não aceita edição de ${campo}`);
         const lido = z.fromJSONSchema(esquema as never).safeParse(valor);
-        if (!lido.success) throw new Error(`${campo} fora do formato: ${z.prettifyError(lido.error)}`);
+        if (!lido.success) throw erroComCodigo("campo_fora_do_formato", campo, `${campo} fora do formato: ${z.prettifyError(lido.error)}`);
         novos[campo] = lido.data;
       }
 
