@@ -2,9 +2,28 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 
+/**
+ * Processo de teste: o runner do Node (`--test` ou o filho que ele sobe) ou um
+ * arquivo `*.test.ts` rodado direto. Sem `LOCUM_HOME` ele não pode cair na
+ * pasta de verdade: um teste rodado sozinho, sem `test/setup.ts`, já encheu o
+ * banco do dono da máquina de automações de mentira, algumas ligadas.
+ */
+export function ehProcessoDeTeste(
+  env: NodeJS.ProcessEnv = process.env,
+  argv: readonly string[] = process.argv,
+  execArgv: readonly string[] = process.execArgv,
+): boolean {
+  if (env.NODE_TEST_CONTEXT !== undefined) return true;
+  if (execArgv.some((a) => a === "--test" || a.startsWith("--test-"))) return true;
+  return argv.slice(1).some((a) => /\.test\.[cm]?[jt]sx?$/.test(a));
+}
+
 /** Pasta de dados do app. Fora do repo, porque banco nao e codigo. */
 export function appHome(): string {
   const custom = process.env.LOCUM_HOME;
+  if ((custom === undefined || custom.length === 0) && ehProcessoDeTeste()) {
+    throw new Error("teste sem LOCUM_HOME: rode pelo `npm test`, que carrega test/setup.ts, ou defina LOCUM_HOME numa pasta temporária");
+  }
   const dir =
     custom && custom.length > 0
       ? custom
