@@ -33,6 +33,8 @@ import {
 import { configuracaoDoGatilho, omitidoDaPendencia, pendenciasDoPacote, type PendenciaDoPacote } from "../pacote/pendencias.js";
 import { idDoGatilhoNoOnde, ondeDoGatilho, type Pendencia } from "../config/pendencia.js";
 import { REBAIXADO_NA_IMPORTACAO, type Rebaixado } from "../config/rebaixado.js";
+import { db } from "../db/index.js";
+import { transacaoDoBanco, type EmTransacao } from "../db/transacao.js";
 import { identidadesNoTexto, limparSkill, limparValor } from "../pacote/limpeza.js";
 import { MARCAS_DO_AGENT, MARCAS_DO_SPEC, MARCAS_DOS_GATILHOS } from "../pacote/marcacao.js";
 import { aplicarMarcas, ehMarcador, literaisQueViajam, origemDaUrl, paramsDoPacoteParaPasso, paramsParaPacote, type ParamsDoPacote } from "../pacote/params.js";
@@ -372,6 +374,8 @@ export class PacoteService {
     private readonly ambiente: AmbienteDoPacote = ambientePadrao,
     /** O home a esconder do texto livre. Padrão: o da máquina. */
     private readonly home?: string,
+    /** Onde a importação grava tudo junto: ou entra inteira, ou nada. Padrão: o banco do aplicativo. */
+    private readonly emTransacao: EmTransacao = transacaoDoBanco(db),
   ) {}
 
   /* --------------------------------------------------------------- exportar */
@@ -1046,31 +1050,32 @@ export class PacoteService {
       gatilhos.push({ config, enabled: false, idNovo: idsDosGatilhos[i]! });
     }
 
-    // Gravação: skills e agents primeiro, a automação por último, que é o que referencia.
-    // Tudo já foi validado acima; se mesmo assim uma gravação falhar, o que esta importação criou sai.
-    const criadas = { skills: [] as string[], agents: [] as string[] };
+    // Gravação: tudo ou nada. A skill é arquivo, então vem primeiro e sai se o resto falhar; agents, automação,
+    // versão e gatilhos entram numa transação só, e a falha em qualquer etapa desfaz o que as outras gravaram.
+    // Tudo já foi validado acima, e esta etapa só espera o próprio banco.
+    const criadas: string[] = [];
     const resultado: ResultadoDaImportacao["agents"] = [];
     try {
       for (const nova of pacote.skills.filter((k) => previa.skills.some((p) => p.nome === k.nome && p.situacao === "nova"))) {
         await this.ambiente.criarSkill?.({ nome: nova.nome, descricao: nova.descricao, corpo: nova.corpo });
-        criadas.skills.push(nova.nome);
+        criadas.push(nova.nome);
       }
-      for (const agent of pacote.agents) {
-        const alvo = destino.get(agent.id)!;
-        const antes = await this.library.getProfile(alvo.id);
-        const novoSpec = specsDosAgents.get(alvo.id);
-        if (novoSpec === undefined) {
-          resultado.push({ id: alvo.id, acao: alvo.acao === "igual" ? "igual" : "existente", versao: antes?.version ?? 0 });
-          continue;
+      await this.emTransacao(async () => {
+        for (const agent of pacote.agents) {
+          const alvo = destino.get(agent.id)!;
+          const antes = await this.library.getProfile(alvo.id);
+          const novoSpec = specsDosAgents.get(alvo.id);
+          if (novoSpec === undefined) {
+            resultado.push({ id: alvo.id, acao: alvo.acao === "igual" ? "igual" : "existente", versao: antes?.version ?? 0 });
+            continue;
+          }
+          const salvo = await this.library.saveProfile({ spec: novoSpec, note: "importado de pacote", ...(antes === null ? { create: true } : {}) });
+          resultado.push({ id: alvo.id, acao: antes === null ? "criado" : salvo.version === antes.version ? "igual" : "atualizado", versao: salvo.version });
         }
-        const salvo = await this.library.saveProfile({ spec: novoSpec, note: "importado de pacote", ...(antes === null ? { create: true } : {}) });
-        if (antes === null) criadas.agents.push(alvo.id);
-        resultado.push({ id: alvo.id, acao: antes === null ? "criado" : salvo.version === antes.version ? "igual" : "atualizado", versao: salvo.version });
-      }
-      await this.automations.save({ spec: pendentes.length === 0 ? spec : { ...spec, pendentes }, triggers: gatilhos, note: "importada de pacote", create: true });
+        await this.automations.save({ spec: pendentes.length === 0 ? spec : { ...spec, pendentes }, triggers: gatilhos, note: "importada de pacote", create: true });
+      });
     } catch (erro) {
-      for (const id of criadas.agents) await this.library.removeProfile(id).catch(() => undefined);
-      for (const nome of criadas.skills) await this.ambiente.removerSkill?.(nome).catch(() => undefined);
+      for (const nome of criadas) await this.ambiente.removerSkill?.(nome).catch(() => undefined);
       throw erro;
     }
 
