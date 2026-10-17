@@ -226,6 +226,7 @@ export const FERRAMENTA_DO_CANAL: Record<string, string> = {
   "runChat.send": "run_chat_send",
   "runChat.cancel": "run_chat_cancel",
   "runChat.reset": "run_chat_reset",
+  "runChat.take": "run_chat_take",
   "runChat.setModel": "run_chat_set_model",
 };
 

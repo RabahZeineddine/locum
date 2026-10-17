@@ -62,6 +62,14 @@ export function registerRunChatTools(server: McpServer, amb: Ambiente): void {
       return { runId, cancelled: true };
     });
 
+  def(server, "run_chat_take", "write",
+    "Takes the run conversation from the other Locum process (the app or another --mcp) that holds it. For when that process stopped answering. Does nothing when no other process holds the conversation, or when a turn is running in this one.",
+    { runId: z.string().min(1) },
+    async ({ runId }) => {
+      await conversas(amb).tomar(runId);
+      return { runId, taken: true };
+    });
+
   def(server, "run_chat_reset", "danger",
     "Starts the run conversation over: forgets the messages and the Claude Code session. The agent or model chosen stays.",
     { runId: z.string().min(1) },

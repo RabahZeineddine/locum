@@ -278,6 +278,7 @@ guardar segredo, e não é recomendado.
 | `run_chat_state` | read | `runChat.state` |
 | `run_chat_send` | external | `runChat.send` |
 | `run_chat_cancel` | write | `runChat.cancel` |
+| `run_chat_take` | write | `runChat.take` |
 | `run_chat_reset` | danger | `runChat.reset` |
 | `run_chat_set_model` | write | `runChat.setModel` |
 | `list_registered_providers` | read | `providers.registered` |
@@ -372,6 +373,7 @@ cartão nem `decide`, porque o que o modelo propõe vai para a Fila e se decide 
 `reexecutar_passo`. `run_chat_set_model` escolhe o agent ou o modelo; sem
 nenhum dos dois, vale o padrão (o agent do primeiro passo de modelo do run, ou
 o modelo dele). `run_chat_state` mostra o teto do contexto e o que ele cortou.
+`run_chat_take` assume a conversa quando o outro processo que a segura parou de responder, como `agent_chat_take`.
 Uma volta em andamento bloqueia arquivar e deletar a automação.
 
 ## Execução

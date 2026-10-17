@@ -420,3 +420,45 @@ test("o teto por execução conta o gasto gravado da conversa mais o dos passos,
   await depois.conversas.enviar(runId, "oi");
   assert.equal(depois.modelo.recebidos.length, 1);
 });
+
+test("uma volta real segura a trava durante a resposta; run_chat_take não a solta e outro processo a vê", async () => {
+  const { runId } = await montarRun();
+  let liberar!: () => void;
+  const espera = new Promise<void>((r) => (liberar = r));
+  const base = modeloFalso(roteiro);
+  const lento = { ...base, doStream: async (o: Parameters<typeof base.doStream>[0]) => (await espera, base.doStream(o)) } as typeof base;
+  const c = montar({ deps: { modelo: async () => ({ via: "api", provedor: "falso", modelo: "roteiro", model: lento }) } });
+  const trava = async () => (await db.select().from(schema.runConversations).where(eq(schema.runConversations.runId, runId)))[0]?.trava;
+
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await buildMcpServer({ runChat: c.conversas }).connect(serverTransport);
+  const client = new Client({ name: "teste", version: "0.0.0" });
+  await client.connect(clientTransport);
+
+  const volta = c.conversas.enviar(runId, "oi");
+  while (!(await c.conversas.estado(runId)).respondendo) await new Promise((r) => setTimeout(r, 5));
+  assert.ok(await trava(), "a trava está gravada durante a resposta");
+
+  const tomado = await client.callTool({ name: "run_chat_take", arguments: { runId } });
+  assert.equal(JSON.parse((tomado.content as { text: string }[])[0]!.text).taken, true);
+  assert.ok(await trava(), "tomar não solta a trava de uma volta que está rodando");
+  assert.equal((await c.conversas.estado(runId)).respondendo, true);
+
+  const outro = montar({ deps: { processo: { pid: process.pid + 1, vivo: () => true } } }).conversas;
+  const visto = await outro.estado(runId);
+  assert.deepEqual([visto.respondendo, visto.outroProcesso], [true, true]);
+
+  liberar();
+  await volta;
+  assert.equal((await c.conversas.estado(runId)).respondendo, false);
+  assert.ok(!(await trava()), "a trava sai quando a volta termina");
+});
+
+test("o id do alvo padrão chega a deps.modelo", async () => {
+  const { runId } = await montarRun();
+  const ids: string[] = [];
+  const base = modeloFalso(roteiro);
+  const c = montar({ deps: { modelo: async (id) => (ids.push(id), { via: "api", provedor: "falso", modelo: "roteiro", model: base }) } });
+  await c.conversas.enviar(runId, "oi");
+  assert.deepEqual(ids, ["anthropic/modelo"]);
+});

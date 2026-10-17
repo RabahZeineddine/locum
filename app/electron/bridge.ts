@@ -383,6 +383,7 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
       }),
     "runChat.cancel": async (runId) => runChat.cancelar(runId),
     "runChat.reset": (runId) => runChat.limpar(runId),
+    "runChat.take": (runId) => runChat.tomar(runId),
     "runChat.setModel": (runId, alvo) => runChat.definirAlvo(runId, alvo),
 
     "mcp.list": () => mcpService.list(),

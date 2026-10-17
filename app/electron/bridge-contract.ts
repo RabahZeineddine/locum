@@ -637,6 +637,7 @@ interface ServiceApi {
   "runChat.send": ConversasDoRun["enviar"];
   "runChat.cancel": ConversasDoRun["cancelar"];
   "runChat.reset": ConversasDoRun["limpar"];
+  "runChat.take": ConversasDoRun["tomar"];
   "runChat.setModel": ConversasDoRun["definirAlvo"];
 }
 
@@ -874,6 +875,7 @@ export const BRIDGE_CHANNELS = [
   "runChat.send",
   "runChat.cancel",
   "runChat.reset",
+  "runChat.take",
   "runChat.setModel",
 ] as const satisfies readonly (keyof LocumApi)[];
 
