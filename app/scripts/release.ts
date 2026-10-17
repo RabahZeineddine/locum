@@ -111,7 +111,15 @@ saida("npm", ["version", versao, "--no-git-tag-version"]);
 passo("verificação", "npm", ["run", "verify"]);
 passo("testes", "npm", ["test"]);
 rmSync(join(APP, "release"), { recursive: true, force: true });
-passo("empacotar", "npx", ["electron-builder", "--mac", "dmg", "zip", `--${ARCH}`, "--publish", "never"]);
+// Assinatura ad-hoc muda a cada build, e o keychain trata cada versão como app
+// novo: pede a senha na fumaça e em todo Locum que se atualiza. Com uma
+// identidade fixa na máquina de quem publica, o "Sempre permitir" vale entre
+// versões. Sem ela, fica o ad-hoc do electron-builder.yml.
+const identidade = process.env.LOCUM_SIGN_IDENTITY ?? "Locum Dev";
+const identidades = spawnSync("security", ["find-identity", "-v", "-p", "codesigning"], { encoding: "utf8" }).stdout;
+const assinatura = identidades.includes(`"${identidade}"`) ? [`-c.mac.identity=${identidade}`] : [];
+console.log(`release: assinatura ${assinatura.length > 0 ? `com "${identidade}"` : "ad-hoc, sem identidade na máquina"}`);
+passo("empacotar", "npx", ["electron-builder", "--mac", "dmg", "zip", `--${ARCH}`, "--publish", "never", ...assinatura]);
 passo("fumaça do pacote", "npm", ["run", "smoke:dist"]);
 
 const zip = join(APP, "release", `Locum-${versao}-${ARCH}-mac.zip`);
