@@ -5,7 +5,14 @@ import { schema } from "../src/db/index.js";
 import { TriggerConfig } from "../src/config/types.js";
 import { extractGithubPrLinks, extrairLinksDePr } from "../src/sources/github-pr-link.js";
 import { pollTeamsInbox } from "../src/sources/teams-inbox.js";
-import { bancoDeTeste as bancoVazio } from "./helpers/db.js";
+import { bancoDeTeste as bancoVazio, plantarGatilho } from "./helpers/db.js";
+
+/** Banco com o gatilho `T` que os testes passam como `triggerId`: a gravação de estado confere que ele existe. */
+function bancoComT() {
+  const db = bancoVazio();
+  plantarGatilho(db, { id: "T", agentId: "dono", config: { kind: "schedule", everyMinutes: 30 }, enabled: true });
+  return db;
+}
 
 const token = async () => "token-graph";
 const agoraMenos = (minutos: number) => new Date(Date.now() - minutos * 60_000).toISOString();
@@ -118,7 +125,7 @@ const CANAIS = [{ teamId: EQUIPE, channelId: CANAL, label: "Time / Geral" }];
 
 /** Banco de quem já varreu ontem: o cursor compartilhado antigo existe, e a primeira batida não é de hoje. */
 function bancoDeTeste() {
-  const db = bancoVazio();
+  const db = bancoComT();
   const ontem = new Date(Date.now() - 23 * 3600_000).toISOString();
   for (const key of ["inbox", `channel:${EQUIPE}:${CANAL}`]) {
     db.insert(schema.cursors).values({ source: "teams", key, value: ontem }).run();
@@ -488,7 +495,7 @@ test("dois gatilhos sobre a mesma mensagem, nas duas ordens, cada um vê o seu e
 });
 
 test("o gatilho sem cursor próprio parte do compartilhado de antes, sem reprocessar", async () => {
-  const db = bancoVazio();
+  const db = bancoComT();
   db.insert(schema.cursors)
     .values({ source: "teams", key: "inbox", value: agoraMenos(60) })
     .run();
@@ -505,7 +512,7 @@ test("o gatilho sem cursor próprio parte do compartilhado de antes, sem reproce
 });
 
 test("primeira batida sem cursor nenhum não puxa link de PR anterior à ativação", async () => {
-  const db = bancoVazio();
+  const db = bancoComT();
   const chats = [
     {
       id: "g",
@@ -518,7 +525,7 @@ test("primeira batida sem cursor nenhum não puxa link de PR anterior à ativaç
   assert.deepEqual(await eventos(db), []);
 
   // Com dms ligado a mensagem antiga ainda acorda como conversa, mas sem virar evento de PR.
-  const comDms = bancoVazio();
+  const comDms = bancoComT();
   await pollTeamsInbox({ ...watch, dms: true }, { db: comDms, triggerId: "T", ...OPCOES, ...graphFalso({ chats }) });
   assert.deepEqual(
     (await eventos(comDms)).map((e) => [e.messageId, e.kind, e.prOwner]).sort(),
@@ -531,7 +538,7 @@ test("primeira batida sem cursor nenhum não puxa link de PR anterior à ativaç
 });
 
 test("canal novo, sem cursor, também só vê link a partir de agora", async () => {
-  const db = bancoVazio();
+  const db = bancoComT();
   const threads = [mensagem("antigo", 120, PR)];
   await pollTeamsInbox(
     { mentions: false, dms: false, prLinks: true, channels: CANAIS },
@@ -550,19 +557,19 @@ test("cursor antigo de 2h é herdado; de 30 dias não é, e nenhum link anterior
   ];
   const watch = { mentions: false, dms: false, prLinks: true };
 
-  const recente = bancoVazio();
+  const recente = bancoComT();
   recente.insert(schema.cursors).values({ source: "teams", key: "inbox", value: agoraMenos(120) }).run();
   await pollTeamsInbox(watch, { db: recente, triggerId: "T", ...OPCOES, ...graphFalso({ chats }) });
   // Herdou as 2h: só o que é posterior a elas conta, e a de 3h fica de fora.
   assert.deepEqual((await eventos(recente)).map((e) => e.messageId), ["ha1h"]);
 
-  const velho = bancoVazio();
+  const velho = bancoComT();
   velho.insert(schema.cursors).values({ source: "teams", key: "inbox", value: agoraMenos(30 * 24 * 60) }).run();
   await pollTeamsInbox(watch, { db: velho, triggerId: "T", ...OPCOES, ...graphFalso({ chats }) });
   assert.deepEqual(await eventos(velho), []);
 
   // O gatilho com dms ainda lê a janela de um dia, e só ela, não o mês.
-  const comDms = bancoVazio();
+  const comDms = bancoComT();
   comDms.insert(schema.cursors).values({ source: "teams", key: "inbox", value: agoraMenos(30 * 24 * 60) }).run();
   const antigas = [{ id: "g", chatType: "group", mensagens: [mensagem("mes", 30 * 24 * 60, "velha"), mensagem("hoje", 60, "oi")] }];
   await pollTeamsInbox({ ...watch, dms: true }, { db: comDms, triggerId: "T", ...OPCOES, ...graphFalso({ chats: antigas }) });

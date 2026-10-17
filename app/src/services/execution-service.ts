@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
+import { recusarSeArquivada } from "../db/arquivada.js";
 import { buildExecutor } from "../executor/build.js";
 import { demoCleanPr, demoPr } from "../examples/demo-event.js";
 import { fetchPr, type PrContext } from "../sources/github.js";
@@ -148,6 +149,8 @@ export class ExecutionService {
     }
     const version = await this.agents.getLatestVersion(id);
     if (!version) throw new Error(`agent "${id}" não existe; importe antes de rodar`);
+    // Antes de gravar o evento; quem garante é o createRun, na transação que cria o run.
+    recusarSeArquivada(this.db, id);
     return version;
   }
 

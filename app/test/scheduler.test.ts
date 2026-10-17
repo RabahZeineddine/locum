@@ -7,7 +7,9 @@ import type { McpService } from "../src/services/mcp-service.js";
 import type { SlackService } from "../src/services/slack-service.js";
 import type { TriggerEntry, TriggerService } from "../src/services/trigger-service.js";
 import { Scheduler, type PollFn, type SweepFn, type ViewerFn } from "../src/triggers/scheduler.js";
-import { bancoDeTeste } from "./helpers/db.js";
+import { AutomacaoArquivada } from "../src/db/arquivada.js";
+import { comTrava } from "../src/triggers/trava.js";
+import { bancoDeTeste, plantarGatilho } from "./helpers/db.js";
 
 const MINUTO = 60_000;
 const T0 = Date.UTC(2026, 9, 2, 3, 0, 0);
@@ -29,6 +31,7 @@ function montar({ gatilhos, poll, sweep, viewer, db = bancoDeTeste(), pendencias
   const triggers = {
     enabled: async () => gatilhos.filter((g) => g.enabled),
     list: async () => gatilhos,
+    get: async (id: string) => plantarGatilho(db, gatilhos.find((g) => g.id === id)),
     pendencias: async (agentId: string) => pendencias[agentId] ?? [],
   } as unknown as TriggerService;
   const executions = {
@@ -109,6 +112,34 @@ test("o gatilho entrega a autoria e a conta do token à varredura, que é quem f
   assert.deepEqual(recebido, [{ includeDrafts: false, authorship: "mine", triggerId: "meus", viewer: "eu" }]);
 });
 
+test("gatilho removido enquanto a batida esperava a trava não grava cursor nem dispara", async () => {
+  const gatilhos = [gatilho("g1", { kind: "schedule", everyMinutes: 30 } as TriggerConfig)];
+  const { db, scheduler, iniciados } = montar({ gatilhos });
+  let solta!: () => void;
+  const arquivando = comTrava("gatilho:g1", () => new Promise<void>((r) => (solta = r)));
+  const batida = scheduler.tick({ at: T0 });
+  await new Promise((r) => setTimeout(r, 20));
+  gatilhos.pop();
+  solta();
+  await arquivando;
+
+  const { outcomes } = await batida;
+  assert.deepEqual([outcomes[0]?.status, outcomes[0]?.detail], ["skipped", "gatilho removido"]);
+  assert.equal(iniciados.length, 0);
+  assert.equal(db.select().from(schema.cursors).all().length, 0);
+});
+
+test("arquivada no meio da batida: o disparo é recusado, o gatilho segue sem erro registrado", async () => {
+  const gatilhos = [gatilho("g1", { kind: "schedule", everyMinutes: 30 } as TriggerConfig)];
+  const m = montar({ gatilhos });
+  (m.scheduler as unknown as { executions: { startForEvent: () => Promise<never> } }).executions.startForEvent = async () => {
+    throw new AutomacaoArquivada("agent-g1");
+  };
+  const { outcomes } = await m.scheduler.tick({ at: T0 });
+  assert.equal(outcomes[0]?.status, "skipped");
+  assert.equal(m.db.select().from(schema.cursors).all().some((c) => c.source === "gatilho-erro"), false);
+});
+
 test("duas batidas juntas no mesmo banco disparam o gatilho uma vez só", async () => {
   // O app e o `locum tick` do terminal, cada um com o seu agendador.
   const gatilhos = [gatilho("g1", { kind: "schedule", everyMinutes: 30 } as TriggerConfig)];
@@ -163,7 +194,7 @@ test("evento que não abre run não impede os outros da mesma janela", async () 
   ];
   const scheduler = new Scheduler(
     db,
-    { enabled: async () => gatilhos, list: async () => gatilhos, pendencias: async () => [] } as unknown as TriggerService,
+    { enabled: async () => gatilhos, list: async () => gatilhos, get: async (id: string) => plantarGatilho(db, gatilhos.find((g) => g.id === id)), pendencias: async () => [] } as unknown as TriggerService,
     executions,
     {} as McpService,
     {} as SlackService,
@@ -184,6 +215,34 @@ test("evento que não abre run não impede os outros da mesma janela", async () 
   assert.match(batida.outcomes[0]?.detail ?? "", /1 evento\(s\) sem run, 1 run\(s\) aberto\(s\): teto do dia/);
 });
 
+test("gatilho com evento cuja automação foi arquivada: a batida é pulada, sem erro nem retentativa guardados", async () => {
+  const db = bancoDeTeste();
+  const executions = {
+    startForEvent: async () => {
+      throw new AutomacaoArquivada("agent-g1");
+    },
+  } as unknown as ExecutionService;
+  const gatilhos = [
+    gatilho("g1", { kind: "poll", source: "github", owner: "org", repoMatch: ".", authorship: "any", includeDrafts: false, everyMinutes: 15 } as TriggerConfig),
+  ];
+  const scheduler = new Scheduler(
+    db,
+    { enabled: async () => gatilhos, list: async () => gatilhos, get: async (id: string) => plantarGatilho(db, gatilhos.find((g) => g.id === id)), pendencias: async () => [] } as unknown as TriggerService,
+    executions,
+    {} as McpService,
+    {} as SlackService,
+    async () => {
+      await db.insert(schema.events).values({ id: "e1", source: "github", externalId: "pr-1", payload: {} });
+      return { eventIds: ["e1"], created: ["e1"] };
+    },
+    async () => ({ checked: 0, settled: [], stillOpen: 0, unreadable: 0, failed: [] }) as never,
+    async () => "eu",
+  );
+  const batida = await scheduler.tick({ at: T0 });
+  assert.equal(batida.outcomes[0]?.status, "skipped");
+  assert.equal(db.select().from(schema.cursors).all().some((c) => c.source === "gatilho-erro" || c.source === "scheduler-retry"), false);
+});
+
 test("evento que não abriu run volta na batida seguinte, mesmo sem vir na varredura", async () => {
   const db = bancoDeTeste();
   const iniciados: string[] = [];
@@ -201,7 +260,7 @@ test("evento que não abriu run volta na batida seguinte, mesmo sem vir na varre
   let batidas = 0;
   const scheduler = new Scheduler(
     db,
-    { enabled: async () => gatilhos, list: async () => gatilhos, pendencias: async () => [] } as unknown as TriggerService,
+    { enabled: async () => gatilhos, list: async () => gatilhos, get: async (id: string) => plantarGatilho(db, gatilhos.find((g) => g.id === id)), pendencias: async () => [] } as unknown as TriggerService,
     executions,
     {} as McpService,
     {} as SlackService,
@@ -240,7 +299,7 @@ test("evento que segue sem run depois de um dia sai da lista de retry", async ()
   let batidas = 0;
   const scheduler = new Scheduler(
     db,
-    { enabled: async () => gatilhos, list: async () => gatilhos, pendencias: async () => [] } as unknown as TriggerService,
+    { enabled: async () => gatilhos, list: async () => gatilhos, get: async (id: string) => plantarGatilho(db, gatilhos.find((g) => g.id === id)), pendencias: async () => [] } as unknown as TriggerService,
     executions,
     {} as McpService,
     {} as SlackService,
@@ -332,13 +391,15 @@ test("gatilho manual não entra na batida nem promete horário na agenda", async
 
 test("canal do Slack sem conexão falha com o caminho para ligar", async () => {
   const gatilhos = [gatilho("s1", { kind: "slack-channel", channels: ["C1"], everyMinutes: 5 } as TriggerConfig)];
+  const db = bancoDeTeste();
   const triggers = {
     enabled: async () => gatilhos,
     list: async () => gatilhos,
+    get: async (id: string) => plantarGatilho(db, gatilhos.find((g) => g.id === id)),
     pendencias: async () => [],
   } as unknown as TriggerService;
   const scheduler = new Scheduler(
-    bancoDeTeste(),
+    db,
     triggers,
     {} as ExecutionService,
     {} as McpService,

@@ -21,7 +21,7 @@ import { pausaDoAgent } from "../src/services/pausa-por-limite.js";
 import { SettingsService } from "../src/services/settings-service.js";
 import type { TriggerEntry, TriggerService } from "../src/services/trigger-service.js";
 import { Scheduler } from "../src/triggers/scheduler.js";
-import { bancoDeTeste } from "./helpers/db.js";
+import { bancoDeTeste, plantarGatilho } from "./helpers/db.js";
 
 const MINUTO = 60_000;
 const AGORA = new Date(2026, 9, 15, 12, 0, 0).getTime();
@@ -323,7 +323,7 @@ test("gateway fora do ar não levanta erro", async () => {
 function agendador(pausa: ConstructorParameters<typeof Scheduler>[11]) {
   const db = bancoDeTeste();
   const iniciados: (string | null)[] = [];
-  const triggers = { enabled: async () => gatilhos, list: async () => gatilhos, pendencias: async () => [] } as unknown as TriggerService;
+  const triggers = { enabled: async () => gatilhos, list: async () => gatilhos, get: async (id: string) => plantarGatilho(db, gatilhos.find((g) => g.id === id)), pendencias: async () => [] } as unknown as TriggerService;
   const executions = {
     startForEvent: async (input: { eventId: string | null }) => {
       iniciados.push(input.eventId);
@@ -370,7 +370,7 @@ test("gatilho de relógio no limite não toma a batida e dispara na primeira dep
   const iniciados: unknown[] = [];
   const gatilhos: TriggerEntry[] = [{ id: "g", agentId: "a", enabled: true, config: { kind: "schedule", everyMinutes: 30 } as TriggerConfig }];
   const scheduler = new Scheduler(
-    db, { enabled: async () => gatilhos, list: async () => gatilhos, pendencias: async () => [] } as unknown as TriggerService,
+    db, { enabled: async () => gatilhos, list: async () => gatilhos, get: async (id: string) => plantarGatilho(db, gatilhos.find((g) => g.id === id)), pendencias: async () => [] } as unknown as TriggerService,
     { startForEvent: async () => (iniciados.push(1), { runId: "r" }) } as unknown as ExecutionService,
     {} as McpService, {} as SlackService, undefined, (async () => ({ checked: 0, settled: [], stillOpen: 0, unreadable: 0, failed: [] })) as never,
     undefined, undefined, undefined, undefined,
@@ -472,7 +472,7 @@ function agendadorComEventos(quantos: number, pausa: ConstructorParameters<typeo
   };
   const scheduler = new Scheduler(
     db,
-    { enabled: async () => gatilhos, list: async () => gatilhos, pendencias: async () => [] } as unknown as TriggerService,
+    { enabled: async () => gatilhos, list: async () => gatilhos, get: async (id: string) => plantarGatilho(db, gatilhos.find((g) => g.id === id)), pendencias: async () => [] } as unknown as TriggerService,
     { startForEvent: async (i: { eventId: string | null }) => (iniciados.push(i.eventId), { runId: `r${iniciados.length}` }) } as unknown as ExecutionService,
     {} as McpService, {} as SlackService, poll as never,
     (async () => ({ checked: 0, settled: [], stillOpen: 0, unreadable: 0, failed: [] })) as never,

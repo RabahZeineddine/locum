@@ -178,6 +178,10 @@ export const FERRAMENTA_DO_CANAL: Record<string, string> = {
   "automations.runNow": "run_automation_now",
   "automations.eventsForRun": "list_automation_events",
   "automations.suggestId": "suggest_automation_id",
+  // A prévia é a recusa do archive_automation, que diz o que impede e o que fazer.
+  "automations.archive": "archive_automation",
+  "automations.archivePreview": "archive_automation",
+  "automations.unarchive": "unarchive_automation",
   "pacote.exportFile": "export_package",
   "pacote.preview": "preview_package",
   "pacote.import": "import_package",

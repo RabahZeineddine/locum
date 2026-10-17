@@ -1,12 +1,13 @@
 import { and, eq } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
+import { FONTE_DESCARTES, gravarCursorDoGatilho } from "./estado-do-gatilho.js";
 import { comTrava } from "./trava.js";
 import type { Descarte } from "../sources/github-filtros.js";
 
 type Db = typeof defaultDb;
 
 /** Fonte do registro de descartes. Uma linha por gatilho, com a lista em JSON. */
-const FONTE = "gatilho-descartes";
+const FONTE = FONTE_DESCARTES;
 
 /** Quantos descartes cada gatilho guarda. */
 export const TETO_GUARDADO = 50;
@@ -55,18 +56,5 @@ async function gravar(db: Db, triggerId: string, novos: Descarte[], at: number):
   const antigos = (await lerDescartes(db, triggerId)).filter((d) => !nossos.has(chave(d)));
   const lista = [...novos.map((d) => ({ ...d, em: at })), ...antigos].slice(0, TETO_GUARDADO);
   const value = JSON.stringify(lista);
-  await db
-    .insert(schema.cursors)
-    .values({ source: FONTE, key: triggerId, value })
-    .onConflictDoUpdate({
-      target: [schema.cursors.source, schema.cursors.key],
-      set: { value, updatedAt: Math.floor(at / 1000) },
-    });
-}
-
-/** Apaga o registro de um gatilho removido. */
-export async function esquecerDescartes(db: Db, triggerId: string): Promise<void> {
-  await comTrava(`descartes:${triggerId}`, async () => {
-    await db.delete(schema.cursors).where(and(eq(schema.cursors.source, FONTE), eq(schema.cursors.key, triggerId)));
-  });
+  gravarCursorDoGatilho(db, triggerId, { source: FONTE, key: triggerId }, value, at);
 }

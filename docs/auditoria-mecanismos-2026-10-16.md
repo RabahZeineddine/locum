@@ -86,7 +86,7 @@ validações; mostrar quando cortam).
 | D10 | `renderer/src/telas/revisao.tsx`, `approval-service.ts`, MCP `propose_tracker_issue` | botão "Criar história no Shortcut" na Fila, fixo num tracker | tirar; abrir tarefa é o nó `tracker.create_issue` | feito (este PR) |
 | D11 | `services/execution-service.ts` | alvo demo grava evento no banco real | marcar como ensaio | pendente |
 | D12 | `scheduler.ts` `pausadas` | aviso de pausa some ao reiniciar | persistir | pendente |
-| D13 | `services/trigger-service.ts` `remove` | deixa os cursores do gatilho | limpar | pendente |
+| D13 | `services/trigger-service.ts` `remove` | deixa os cursores do gatilho | limpar | feito: `esquecerGatilho` apaga pelo estado que cada fonte declara em `triggers/estado-do-gatilho.ts` |
 
 Legítimos: D2, D3 (estado do evento e gasto, mostrar no detalhe), D9 (segurança),
 D14 (chat do agent: escrita por cartão de confirmação,

@@ -92,6 +92,13 @@
       "when": 1792171699560,
       "tag": "0012_resposta-da-aprovacao",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1792253986816,
+      "tag": "0013_arquivar-automacao",
+      "breakpoints": true
     }
   ]
 }

@@ -98,7 +98,7 @@ async function catalogo(): Promise<CatalogoDoCriador> {
 export const agentBuilder = new AgentBuilder({
   gerador,
   catalogo,
-  existentes: async () => (await agentService.list()).map((a) => a.id),
+  existentes: async () => (await agentService.list({ arquivadas: "todas" })).map((a) => a.id),
   idioma: () => t("agents.ai.language"),
 });
 

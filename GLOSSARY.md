@@ -28,6 +28,12 @@ desligada.
 **Automação**: fluxo de nós ligados que começa num gatilho. Decide quando os
 agents trabalham e o que acontece com a saída deles.
 
+**Automação arquivada**: automação tirada de uso. Some das listas e do agendador,
+e os gatilhos saem com o estado preso a eles. Execuções, aprovações, achados e
+versões ficam, porque são o registro do que foi publicado em nome da pessoa, e
+o id continua ocupado. Dá para desarquivar: volta sem gatilhos e desligada. Não
+existe excluir.
+
 **Nó**: cada peça da automação. Categorias: gatilho, agent, ação de app,
 ferramenta, lógica e aprovação.
 

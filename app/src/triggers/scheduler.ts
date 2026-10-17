@@ -1,12 +1,15 @@
 import { and, eq } from "drizzle-orm";
 import { recusaDeLigar } from "../config/pendencia.js";
 import { db as defaultDb, schema } from "../db/index.js";
+import { gatilhoExiste } from "../db/arquivada.js";
+import { FONTE_RELOGIO, FONTE_RETENTATIVA, gravarCursorDoGatilho } from "./estado-do-gatilho.js";
 import { type Authorship, type PollFilters, type TriggerConfig, type WorkingHoursConfig } from "../config/types.js";
 import { executionService, type ExecutionService } from "../services/execution-service.js";
 import { AgentService } from "../services/agent-service.js";
 import { mcpService, type McpService } from "../services/mcp-service.js";
 import { pollMcpServer } from "../sources/mcp-poll.js";
 import { proximaOcorrencia } from "./cron.js";
+import { AutomacaoArquivada, GatilhoRemovido } from "../db/arquivada.js";
 import { comTrava } from "./trava.js";
 import { lerErro, limparErro, registrarErro, type ErroDoGatilho } from "./erros.js";
 import { lerDescartes, registrarDescartes, type DescarteGuardado } from "./descartes.js";
@@ -60,14 +63,14 @@ export function textoDaPausa(b: Bloqueio, agora: number = Date.now()): string {
 }
 
 /** Fonte do cursor de tempo. Uma linha por gatilho, guardando o ultimo disparo. */
-const CURSOR_SOURCE = "scheduler";
+const CURSOR_SOURCE = FONTE_RELOGIO;
 
 /**
  * Eventos que não abriram run, um registro por gatilho, para a próxima batida
  * tentar de novo. O cursor da fonte já andou por eles, e sem esta lista o
  * evento que bateu no teto do dia nunca mais voltaria.
  */
-const RETRY_SOURCE = "scheduler-retry";
+const RETRY_SOURCE = FONTE_RETENTATIVA;
 
 /** Depois disto o evento sai da lista: falha que dura um dia não é passageira. */
 const RETRY_TTL_MS = 24 * 60 * 60 * 1000;
@@ -392,6 +395,13 @@ export class Scheduler {
       runs: [] as string[],
     };
 
+    // Quem tem a trava confere que o gatilho ainda existe: arquivar a automação ou remover o gatilho
+    // pode ter acontecido enquanto esta batida esperava, e gravar cursor, descarte ou erro de gatilho
+    // sumido deixaria estado órfão.
+    if ((await this.triggers.get(trigger.id)) === undefined) {
+      return { ...base, status: "skipped", detail: "gatilho removido", nextDueAt: null };
+    }
+
     if (!temRelogio(trigger.config)) {
       return {
         ...base,
@@ -456,6 +466,8 @@ export class Scheduler {
       else await registrarErro(this.db, trigger.id, { em: at, tipo: "configuracao", texto: configuracao });
       return { ...base, ...fired, status: "fired", nextDueAt };
     } catch (err) {
+      // Arquivada ou removida no meio da batida: nada a registrar, o gatilho não é mais dela.
+      if (err instanceof GatilhoRemovido || err instanceof AutomacaoArquivada) return { ...base, status: "skipped", detail: message(err), nextDueAt: null };
       await registrarErro(this.db, trigger.id, { em: at, tipo: "batida", texto: message(err) }).catch(() => undefined);
       return { ...base, status: "failed", detail: message(err), nextDueAt };
     }
@@ -703,6 +715,8 @@ export class Scheduler {
         });
         runs.push(runId);
       } catch (err) {
+        // Arquivada ou removida: não é falha do evento, e não há retentativa a guardar.
+        if (err instanceof GatilhoRemovido || err instanceof AutomacaoArquivada) throw err;
         falhas.push(message(err));
         // Quem esperou em pausa começa o prazo de um dia agora, e não com o carimbo de dias atrás.
         const since = c.emPausa ? agora : c.since;
@@ -767,14 +781,7 @@ export class Scheduler {
         .where(and(eq(schema.cursors.source, RETRY_SOURCE), eq(schema.cursors.key, triggerId)));
       return;
     }
-    const value = JSON.stringify(pendentes);
-    await this.db
-      .insert(schema.cursors)
-      .values({ source: RETRY_SOURCE, key: triggerId, value })
-      .onConflictDoUpdate({
-        target: [schema.cursors.source, schema.cursors.key],
-        set: { value, updatedAt: Math.floor(Date.now() / 1000) },
-      });
+    gravarCursorDoGatilho(this.db, triggerId, { source: RETRY_SOURCE, key: triggerId }, JSON.stringify(pendentes));
   }
 
   /** O valor gravado, para a escrita condicional, e o instante que ele diz. */
@@ -792,26 +799,31 @@ export class Scheduler {
   /** Grava o disparo só se o cursor ainda é o que esta batida leu. */
   private async claim(triggerId: string, raw: string | null, at: number): Promise<boolean> {
     const value = new Date(at).toISOString();
-    if (raw === null) {
-      const inserted = await this.db
-        .insert(schema.cursors)
-        .values({ source: CURSOR_SOURCE, key: triggerId, value })
-        .onConflictDoNothing()
-        .returning({ key: schema.cursors.key });
-      return inserted.length > 0;
-    }
-    const updated = await this.db
-      .update(schema.cursors)
-      .set({ value, updatedAt: Math.floor(at / 1000) })
-      .where(
-        and(
-          eq(schema.cursors.source, CURSOR_SOURCE),
-          eq(schema.cursors.key, triggerId),
-          eq(schema.cursors.value, raw),
-        ),
-      )
-      .returning({ key: schema.cursors.key });
-    return updated.length > 0;
+    // Na mesma transação da conferência de que o gatilho existe: arquivado por outro processo, não toma a batida.
+    return this.db.transaction(
+      (tx) => {
+        if (!gatilhoExiste(tx, triggerId)) return false;
+        if (raw === null) {
+          return (
+            tx
+              .insert(schema.cursors)
+              .values({ source: CURSOR_SOURCE, key: triggerId, value })
+              .onConflictDoNothing()
+              .returning({ key: schema.cursors.key })
+              .all().length > 0
+          );
+        }
+        return (
+          tx
+            .update(schema.cursors)
+            .set({ value, updatedAt: Math.floor(at / 1000) })
+            .where(and(eq(schema.cursors.source, CURSOR_SOURCE), eq(schema.cursors.key, triggerId), eq(schema.cursors.value, raw)))
+            .returning({ key: schema.cursors.key })
+            .all().length > 0
+        );
+      },
+      { behavior: "immediate" },
+    );
   }
 }
 

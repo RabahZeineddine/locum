@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 import { db as defaultDb, schema } from "../db/index.js";
+import { recusarSeArquivada } from "../db/arquivada.js";
 import { AgentSpec } from "../config/types.js";
 import { buildExecutor } from "../executor/build.js";
 import { isReserved } from "./agent-service.js";
@@ -367,6 +368,8 @@ export class RunService {
     if (isReserved(detail.agentId)) {
       throw new Error(`"${detail.agentId}" e um agent do sistema e nao aceita escrita`);
     }
+    // Antes de zerar passo: o executor recusa de novo na hora de retomar, mas aí o estrago já estaria feito.
+    recusarSeArquivada(this.db, detail.agentId);
     // Run que ainda esta na fila ou rodando ja tem um executor cuidando dele.
     // Zerar passos debaixo desse executor e subir um segundo pagaria o modelo
     // duas vezes, e uma acao em `auto` sairia duas vezes.

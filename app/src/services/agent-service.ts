@@ -3,6 +3,7 @@ import { recusarEscritaDaConta } from "../runtimes/claude-account.js";
 import { randomUUID } from "node:crypto";
 import { desc, eq } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
+import { recusarSeArquivada } from "../db/arquivada.js";
 import { AgentBudgetPatch, AgentSpec, resolveTools, serversInScope, type ActionMode, type ActionStep, type AgentBudget, type ToolRef } from "../config/types.js";
 import { today } from "../executor/budget.js";
 import { limparPendenciasPreenchidas, type OpcoesDaLimpeza } from "../config/pendencia.js";
@@ -131,9 +132,13 @@ export interface AgentBudgetView {
 export class AgentService {
   constructor(private readonly db: Db = defaultDb) {}
 
-  async list(): Promise<AgentRow[]> {
+  /** As automações em uso. `arquivadas` troca pelas arquivadas, ou junta as duas com `todas`. */
+  async list(opcoes: { arquivadas?: "nao" | "so" | "todas" } = {}): Promise<AgentRow[]> {
+    const filtro = opcoes.arquivadas ?? "nao";
     const rows = await this.db.select().from(schema.agents);
-    return rows.filter((row) => !isReserved(row.id));
+    return rows.filter(
+      (row) => !isReserved(row.id) && (filtro === "todas" || (filtro === "so") === (row.archivedAt !== null)),
+    );
   }
 
   async get(agentId: string): Promise<AgentRow | undefined> {
@@ -171,7 +176,7 @@ export class AgentService {
    * quer a lista, nunca uma linha so.
    */
   async budgets(): Promise<AgentBudgetView[]> {
-    const rows = (await this.db.select().from(schema.agents)).filter((row) => !isReserved(row.id));
+    const rows = (await this.db.select().from(schema.agents)).filter((row) => !isReserved(row.id) && row.archivedAt === null);
     const versions = await this.db
       .select()
       .from(schema.agentVersions)
@@ -270,6 +275,8 @@ export class AgentService {
         destinoDoPasso(passo.action, passo.params);
       }
     }
+    // Cedo, para a recusa vir antes de qualquer outra; a que vale é a de dentro da transação que grava.
+    recusarSeArquivada(this.db, parsed.id);
     if (expectedVersion !== undefined) assertVersion(latest?.version, expectedVersion);
     if (latest && sameSpec(latest.spec, parsed)) {
       return { ...parseVersion(latest), downgrades: guarded.downgrades };
@@ -281,6 +288,7 @@ export class AgentService {
     // servidor MCP grava a mesma versão em paralelo, não pode deixar para trás
     // um agent sem spec, que `get` daria por existente.
     const inserted = this.db.transaction((tx) => {
+      recusarSeArquivada(tx, parsed.id);
       if (expectedVersion !== undefined) {
         // A conferência junto da gravação: uma versão que entrou entre a leitura e aqui não passa.
         const gravada = tx
@@ -490,8 +498,8 @@ export class AgentService {
    * última execução deu certo. Montado aqui e não na janela porque seriam
    * quatro leituras por agent, e a regra de qual versão conta é desta camada.
    */
-  async overview(): Promise<AgentOverview[]> {
-    const linhas = await this.list();
+  async overview(opcoes: { arquivadas?: "nao" | "so" | "todas" } = {}): Promise<AgentOverview[]> {
+    const linhas = await this.list(opcoes);
     const gatilhos = await this.db.select().from(schema.triggers);
 
     return Promise.all(

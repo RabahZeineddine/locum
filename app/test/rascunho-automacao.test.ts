@@ -17,6 +17,7 @@ import {
   lerRascunho,
   lerReservas,
   apagarProvisoria,
+  apagarRastroLocal,
   guardarProvisoria,
   lerProvisoria,
   ofertaDeRascunho,
@@ -460,4 +461,22 @@ test("passo rebaixado na importação aparece como aviso do nó, e voltar para a
   const volta = voltarParaAuto(spec, "chamar");
   assert.equal(volta.rebaixados, undefined);
   assert.equal(volta.steps[0]!.type === "action" && volta.steps[0]!.mode, "auto");
+});
+
+test("apagarRastroLocal tira rascunho, provisória e reservas da automação arquivada, e só dela", () => {
+  const a = armazem();
+  const salvo = base();
+  for (const id of ["um", "um-a"]) {
+    guardarRascunho(a, id, comNome(salvo, "Velho"), salvo, 5, 10, 100);
+    reservarRascunho(a, id, 20);
+    guardarRascunho(a, id, comNome(salvo, "Novo"), salvo, 5, 30, 100);
+    guardarProvisoria(a, id, { rascunho: salvo, nota: "" });
+  }
+  apagarRastroLocal(a, "um");
+  assert.equal(lerRascunho(a, "um"), null);
+  assert.equal(lerReservas(a, "um").length, 0);
+  assert.equal(lerProvisoria(a, "um"), null);
+  assert.notEqual(lerRascunho(a, "um-a"), null);
+  assert.equal(lerReservas(a, "um-a").length, 1);
+  assert.notEqual(lerProvisoria(a, "um-a"), null);
 });

@@ -125,10 +125,10 @@ function fonteDeTemplates(): TemplateSource {
 
 function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
   return {
-    "agents.list": () => agentService.list(),
+    "agents.list": (opcoes) => agentService.list(opcoes),
     "agents.get": (agentId) => agentService.get(agentId),
     "agents.versions": (agentId) => agentService.listVersions(agentId),
-    "agents.overview": () => agentService.overview(),
+    "agents.overview": (opcoes) => agentService.overview(opcoes),
     "agents.saveEdited": (agentId, spec, note) => agentService.saveEdited(agentId, spec, note),
     "actions.describe": async () => buildGate().describe(),
     "agents.duplicate": (fromId, newId, newName) => agentService.duplicate(fromId, newId, newName),
@@ -214,6 +214,9 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "automations.runNow": (agentId, evento) => automationService.runNow(agentId, evento),
     "automations.eventsForRun": (agentId) => automationService.eventsForRun(agentId),
     "automations.suggestId": (nome) => automationService.suggestId(nome),
+    "automations.archive": (agentId) => automationService.archive(agentId),
+    "automations.unarchive": (agentId) => automationService.unarchive(agentId),
+    "automations.archivePreview": (agentId) => automationService.archivePreview(agentId),
     "pacote.exportFile": async (agentId) => {
       const { texto, nomeDoArquivo, avisos } = await pacoteService.exportar(agentId);
       const janela = BrowserWindow.getFocusedWindow();

@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
+import { gravarCursorDoGatilho } from "../triggers/estado-do-gatilho.js";
 import { db as defaultDb, schema } from "../db/index.js";
 import { McpRegistry } from "../mcp/registry.js";
 import { mcpService, type McpService } from "../services/mcp-service.js";
@@ -106,6 +107,8 @@ export interface McpPollOptions {
   call?: McpCaller;
   /** Como ler o feed. Ausente é o formato opaco, que serve a servidor desconhecido. */
   shape?: McpPollShape;
+  /** O gatilho dono do cursor, quando ele é por gatilho: a gravação confere que o gatilho ainda existe. */
+  gatilho?: string;
   /** Relógio da varredura. Existe para teste e para reproduzir uma batida antiga. */
   now?: () => number;
 }
@@ -258,13 +261,17 @@ export async function pollMcpServer(
   // A marca d'água só entra quando nenhum item veio carimbado. Usá-la também
   // quando vieram pularia a janela entre o carimbo mais novo e agora.
   const next = carimbado ? newest : antesDaChamada;
-  await db
-    .insert(schema.cursors)
-    .values({ source, key, value: next })
-    .onConflictDoUpdate({
-      target: [schema.cursors.source, schema.cursors.key],
-      set: { value: next, updatedAt: Math.floor(Date.now() / 1000) },
-    });
+  if (options.gatilho !== undefined) {
+    gravarCursorDoGatilho(db, options.gatilho, { source, key }, next);
+  } else {
+    await db
+      .insert(schema.cursors)
+      .values({ source, key, value: next })
+      .onConflictDoUpdate({
+        target: [schema.cursors.source, schema.cursors.key],
+        set: { value: next, updatedAt: Math.floor(Date.now() / 1000) },
+      });
+  }
 
   return { eventIds, inWindow, seen: items.length, cursor: next };
 }

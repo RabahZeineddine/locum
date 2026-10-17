@@ -11,10 +11,14 @@ export interface UsoDaConexao {
   id: string;
   nome: string;
   como: ComoUsa[];
+  /** A automação está arquivada: o uso é só do que está gravado nela. */
+  arquivada?: true;
 }
 
 export interface FontesDeUso {
   automacoes: readonly AgentSpec[];
+  /** Ids das automações arquivadas, entre as de `automacoes`. */
+  arquivadas?: ReadonlySet<string>;
   agents: readonly AgentProfile[];
   toolsets: readonly Toolset[];
 }
@@ -41,7 +45,7 @@ export function quemUsa(servidor: string, fontes: FontesDeUso): UsoDaConexao[] {
         como.add("acao");
       }
     }
-    if (como.size > 0) uso.push({ tipo: "automation", id: spec.id, nome: spec.name, como: [...como] });
+    if (como.size > 0) uso.push({ tipo: "automation", id: spec.id, nome: spec.name, como: [...como], ...(fontes.arquivadas?.has(spec.id) ? { arquivada: true as const } : {}) });
   }
 
   const doToolset = new Map(fontes.toolsets.map((t) => [t.id, t.tools]));
@@ -58,14 +62,17 @@ export function quemUsa(servidor: string, fontes: FontesDeUso): UsoDaConexao[] {
 /** O que está gravado hoje: a última versão de cada automação e de cada agent. */
 export async function carregarFontesDeUso(): Promise<FontesDeUso> {
   const automacoes: AgentSpec[] = [];
-  for (const linha of await agentService.list()) {
+  const arquivadas = new Set<string>();
+  for (const linha of await agentService.list({ arquivadas: "todas" })) {
     const versao = await agentService.getLatestVersion(linha.id);
-    if (versao !== undefined) automacoes.push(versao.spec);
+    if (versao === undefined) continue;
+    automacoes.push(versao.spec);
+    if (linha.archivedAt !== null) arquivadas.add(linha.id);
   }
   const agents: AgentProfile[] = [];
   for (const resumo of await libraryService.listProfiles()) {
     const versao = await libraryService.getProfile(resumo.id);
     if (versao !== null) agents.push(versao.spec);
   }
-  return { automacoes, agents, toolsets: await libraryService.listToolsets() };
+  return { automacoes, arquivadas, agents, toolsets: await libraryService.listToolsets() };
 }

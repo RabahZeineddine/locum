@@ -1,12 +1,53 @@
-import { TriggerConfig, type AgentSpec, type TriggerConfigInput } from "../config/types.js";
+import { and, count, desc, eq, inArray, isNotNull, or } from "drizzle-orm";
+import { AgentSpec, TriggerConfig, type TriggerConfigInput } from "../config/types.js";
+import { randomUUID } from "node:crypto";
 import { limparPendenciasPreenchidas, recusaDeLigar, recusaDeRodar } from "../config/pendencia.js";
 import { recursoExiste } from "./pendencia-recursos.js";
 import { manterRebaixados } from "../config/rebaixado.js";
+import { db as defaultDb, schema } from "../db/index.js";
+import { AutomacaoArquivada } from "../db/arquivada.js";
+import { esquecerGatilho } from "../triggers/estado-do-gatilho.js";
+import { comTrava } from "../triggers/trava.js";
+import type { EscopoActor } from "./initiative-service.js";
 import { agentService, ID_DE_AGENT, mensagemDeVersao, isReserved, type AgentService, type AgentVersion } from "./agent-service.js";
 import { dependenciaDeEvento, recusaSemEvento, type MotivoDeEvento } from "../executor/dependencia-de-evento.js";
 import { eventoManual, type EventoManual, type EventoRecente } from "./evento-manual.js";
 import { executionService, type ExecutionService } from "./execution-service.js";
 import { esperaChats, MOTIVO_CHATS, recusaDaGravacao, triggerService, type TriggerEntry, type TriggerService } from "./trigger-service.js";
+
+type Db = typeof defaultDb;
+
+/** O que impede arquivar: runs em curso ou aprovações paradas, com a contagem. A frase vem de quem mostra. */
+export type BloqueioDeArquivar = { kind: "running" | "pending" | "publishing"; count: number };
+
+/** O que arquivar leva e o que deixa. Mesma resposta para a prévia e para o arquivar. */
+export interface PreviaDeArquivamento {
+  agentId: string;
+  /** Saem: os gatilhos e o estado preso a eles. */
+  triggers: number;
+  /** Ficam: o histórico do que a automação publicou. */
+  runs: number;
+  approvals: number;
+  findings: number;
+  versions: number;
+  /** A iniciativa a que a automação está ligada; o vínculo fica. */
+  initiative: { slug: string; title: string } | null;
+  /** Vazio quando pode arquivar. */
+  blockers: BloqueioDeArquivar[];
+}
+
+class GatilhosMudaram extends Error {}
+
+const mensagemDeIniciativa = (agentId: string, slug: string): string =>
+  `automação "${agentId}" está ligada à iniciativa "${slug}"; arquivar é decisão de uma pessoa, na tela do Locum`;
+
+/** Arquivar recusado pelos bloqueios que existiam na hora de gravar. */
+export class ArquivarRecusado extends Error {
+  constructor(readonly blockers: BloqueioDeArquivar[]) {
+    super(`arquivar recusado: ${blockers.map((b) => `${b.kind}=${b.count}`).join(", ")}`);
+    this.name = "ArquivarRecusado";
+  }
+}
 
 /** Um gatilho como o canvas manda: com `id` quando já existia. */
 export interface AutomationTriggerInput {
@@ -63,6 +104,8 @@ export interface Automation {
   version: AgentVersion;
   /** Quando o agent nasceu: um id reaproveitado depois de apagado tem outra data. */
   createdAt: number;
+  /** Quando foi arquivada (segundos), ou nulo. */
+  archivedAt: number | null;
   triggers: TriggerEntry[];
 }
 
@@ -84,6 +127,7 @@ export class AutomationService {
     private readonly triggers: TriggerService = triggerService,
     private readonly executions: ExecutionService = executionService,
     private readonly eventos: EventoManual = eventoManual,
+    private readonly db: Db = defaultDb,
   ) {}
 
   async get(agentId: string): Promise<Automation | null> {
@@ -91,11 +135,12 @@ export class AutomationService {
     const version = await this.agents.getLatestVersion(agentId);
     const agent = await this.agents.get(agentId);
     if (version === undefined || agent === undefined) return null;
-    return { version, createdAt: agent.createdAt, triggers: await this.triggers.list(agentId) };
+    return { version, createdAt: agent.createdAt, archivedAt: agent.archivedAt, triggers: await this.triggers.list(agentId) };
   }
 
   async save(input: AutomationSaveInput): Promise<Automation & { avisos: AvisoDaAutomacao[] }> {
     const agentId = input.spec.id;
+    if (input.create !== true) await this.recusarSeArquivada(agentId);
     // Primeiro, para a recusa por versão valer sobre as dos gatilhos (um gatilho que sumiu junto com a versão
     // nova é efeito dela). A conferência que vale é a de dentro da transação que grava, em `saveEdited`.
     if (input.expectedVersion !== undefined && input.create !== true) {
@@ -144,7 +189,12 @@ export class AutomationService {
       if (!ID_DE_AGENT.test(agentId)) {
         throw new Error("identificador em minúsculas, números e hífen, de 2 a 63 caracteres");
       }
-      if ((await this.agents.get(agentId)) !== undefined) throw new Error(`já existe uma automação "${agentId}"`);
+      const existente = await this.agents.get(agentId);
+      if (existente !== undefined) {
+        throw new Error(
+          existente.archivedAt === null ? `já existe uma automação "${agentId}"` : `o id "${agentId}" é de uma automação arquivada; desarquive a automação ou escolha outro id`,
+        );
+      }
       const nota = input.note.trim() || "criada no canvas";
       version = await this.agents.upsert(spec, nota, "human");
     } else {
@@ -169,7 +219,7 @@ export class AutomationService {
     }
 
     const gravados = await this.triggers.list(agentId);
-    return { version, createdAt: (await this.agents.get(agentId))!.createdAt, triggers: gravados, avisos: avisosDaGravacao(version.spec, gravados) };
+    return { version, createdAt: (await this.agents.get(agentId))!.createdAt, archivedAt: null, triggers: gravados, avisos: avisosDaGravacao(version.spec, gravados) };
   }
 
   /**
@@ -203,6 +253,7 @@ export class AutomationService {
    * se ela acorda sozinha, que é a pergunta que a pessoa faz ao olhar a lista.
    */
   async setEnabled(agentId: string, enabled: boolean): Promise<TriggerEntry[]> {
+    await this.recusarSeArquivada(agentId);
     const gatilhos = await this.triggers.list(agentId);
     // Confere antes de ligar o primeiro: um gatilho barrado no meio deixaria a automação meio ligada.
     if (enabled && gatilhos.some((g) => !g.enabled && esperaChats(g.config))) throw new Error(MOTIVO_CHATS);
@@ -242,6 +293,7 @@ export class AutomationService {
     agentId: string,
     evento: { eventId?: string; prUrl?: string } = {},
   ): Promise<{ runId: string; eventId: string | null; aviso?: { provedor: string; ate: number } }> {
+    await this.recusarSeArquivada(agentId);
     if (isReserved(agentId)) throw new Error(`"${agentId}" e um agent do sistema e nao aceita escrita`);
     if (evento.eventId !== undefined && evento.prUrl !== undefined) throw new Error("diga eventId ou prUrl, não os dois");
 
@@ -275,6 +327,143 @@ export class AutomationService {
     // Manual sempre roda. Com o provedor no limite, só avisa: pode falhar ou gastar o que resta.
     const bloqueio = await (await import("./limites-padrao.js")).pausaPadrao(agentId).catch(() => null);
     return bloqueio === null ? { runId, eventId } : { runId, eventId, aviso: { provedor: bloqueio.provedor, ate: bloqueio.ate } };
+  }
+
+  /**
+   * O que `archive` levaria e o que deixa, sem gravar nada. A tela mostra o
+   * mesmo dado que a ferramenta MCP devolve.
+   */
+  async archivePreview(agentId: string): Promise<PreviaDeArquivamento> {
+    await this.recusarSeNaoExiste(agentId);
+    return this.inspecionar(this.db, agentId);
+  }
+
+  /**
+   * Arquiva a automação: ela some das listas e do agendador, e os gatilhos
+   * saem com o estado preso a eles. Runs, aprovações, achados e versões ficam,
+   * porque são o que foi publicado em nome da pessoa e a dedupe de review
+   * (`carregarRevisados`) lê as aprovações. O id continua ocupado.
+   *
+   * Pelo MCP (`actor` diferente de `human`), automação ligada a iniciativa é
+   * recusada: sair do escopo dela é decisão de uma pessoa.
+   */
+  async archive(agentId: string, actor: EscopoActor = "human"): Promise<{ agentId: string; archived: true; triggers: number }> {
+    await this.recusarSeNaoExiste(agentId);
+    // Antes de qualquer escrita: com bloqueio ou iniciativa, nada é gravado, nem a limpeza das pendências.
+    const previa = this.inspecionar(this.db, agentId);
+    if (actor !== "human" && previa.initiative !== null) throw new Error(mensagemDeIniciativa(agentId, previa.initiative.slug));
+    if (previa.blockers.length > 0) throw new ArquivarRecusado(previa.blockers);
+
+    // A lista de gatilhos é relida depois das travas: um que nasceu enquanto esperava pede nova rodada.
+    for (let tentativa = 0; ; tentativa++) {
+      const ids = (await this.triggers.list(agentId)).map((g) => g.id);
+      try {
+        const triggers = await ids.reduceRight<() => Promise<number>>(
+          (dentro, id) => () => comTrava(`gatilho:${id}`, dentro),
+          async () => this.gravarArquivamento(agentId, actor, ids),
+        )();
+        return { agentId, archived: true, triggers };
+      } catch (erro) {
+        if (!(erro instanceof GatilhosMudaram) || tentativa >= 3) throw erro;
+      }
+    }
+  }
+
+  /** A transação do arquivar. Síncrona: confere, esquece o estado dos gatilhos, apaga os gatilhos e marca. */
+  private gravarArquivamento(agentId: string, actor: EscopoActor, travados: string[]): number {
+    return this.db.transaction(
+      (tx) => {
+        const agent = tx.select().from(schema.agents).where(eq(schema.agents.id, agentId)).get();
+        if (agent === undefined) throw new Error(`automacao "${agentId}" nao cadastrada`);
+        if (agent.archivedAt !== null) throw new Error(`automacao "${agentId}" ja esta arquivada`);
+        const previa = this.inspecionar(tx, agentId);
+        if (actor !== "human" && previa.initiative !== null) throw new Error(mensagemDeIniciativa(agentId, previa.initiative.slug));
+        if (previa.blockers.length > 0) throw new ArquivarRecusado(previa.blockers);
+
+        const ids = tx.select({ id: schema.triggers.id }).from(schema.triggers).where(eq(schema.triggers.agentId, agentId)).all().map((g) => g.id);
+        if (ids.length !== travados.length || ids.some((id) => !travados.includes(id))) throw new GatilhosMudaram();
+        for (const id of ids) esquecerGatilho(tx, id);
+        this.tirarPendenciasDeGatilho(tx, agentId);
+        tx.delete(schema.triggers).where(eq(schema.triggers.agentId, agentId)).run();
+        tx.update(schema.agents).set({ archivedAt: Math.floor(Date.now() / 1000), enabled: false }).where(eq(schema.agents.id, agentId)).run();
+        return ids.length;
+      },
+      { behavior: "immediate" },
+    );
+  }
+
+  /**
+   * A pendência de um gatilho que vai sair não tem mais a quem apontar. Entra na transação do arquivar, como
+   * versão nova (a versão é imutável), e só quando há uma pendência dessas; recusado o arquivar, nada fica.
+   */
+  private tirarPendenciasDeGatilho(tx: Pick<Db, "select" | "insert">, agentId: string): void {
+    const ultima = tx.select().from(schema.agentVersions).where(eq(schema.agentVersions.agentId, agentId)).orderBy(desc(schema.agentVersions.version)).limit(1).get();
+    if (ultima === undefined) return;
+    const spec = AgentSpec.parse(ultima.spec);
+    if (!(spec.pendentes ?? []).some((p) => p.onde.startsWith("gatilho:"))) return;
+    const limpo = limparPendenciasPreenchidas(spec, { gatilhos: [], descartarOrfas: true, existe: recursoExiste });
+    tx.insert(schema.agentVersions)
+      .values({ id: randomUUID(), agentId, version: ultima.version + 1, spec: limpo as unknown as object, note: "arquivada: saem as pendências dos gatilhos removidos" })
+      .run();
+  }
+
+  /** Tira do arquivo: volta para a lista, sem gatilhos e desligada. A pessoa recria os gatilhos e liga. */
+  async unarchive(agentId: string): Promise<{ agentId: string; archived: false }> {
+    await this.recusarSeNaoExiste(agentId);
+    const feito = await this.db
+      .update(schema.agents)
+      .set({ archivedAt: null, enabled: false })
+      .where(and(eq(schema.agents.id, agentId), isNotNull(schema.agents.archivedAt)))
+      .returning({ id: schema.agents.id });
+    if (feito.length === 0) throw new Error(`automacao "${agentId}" nao esta arquivada`);
+    return { agentId, archived: false };
+  }
+
+  private async recusarSeArquivada(agentId: string): Promise<void> {
+    // Conferência de entrada, com a mensagem pronta; quem garante é a transação que grava (AgentService.write).
+    if ((await this.agents.get(agentId))?.archivedAt != null) throw new AutomacaoArquivada(agentId);
+  }
+
+  private async recusarSeNaoExiste(agentId: string): Promise<void> {
+    if ((await this.agents.get(agentId)) === undefined) throw new Error(`automacao "${agentId}" nao cadastrada`);
+    if (isReserved(agentId)) throw new Error(`"${agentId}" e um agent do sistema e nao aceita escrita`);
+  }
+
+  /** Contagens e bloqueios. Síncrona, para rodar dentro da transação do `archive` com o mesmo resultado da prévia. */
+  private inspecionar(leitor: Pick<Db, "select">, agentId: string): PreviaDeArquivamento {
+    const versoes = leitor.select({ id: schema.agentVersions.id }).from(schema.agentVersions).where(eq(schema.agentVersions.agentId, agentId));
+    const runsIds = leitor.select({ id: schema.runs.id }).from(schema.runs).where(inArray(schema.runs.agentVersionId, versoes));
+    const stepsIds = leitor.select({ id: schema.steps.id }).from(schema.steps).where(inArray(schema.steps.runId, runsIds));
+    const contar = (n: { n: number } | undefined): number => n?.n ?? 0;
+
+    const daAprovacao = or(inArray(schema.approvals.runId, runsIds), inArray(schema.approvals.stepId, stepsIds));
+    const aprovacoes = (status?: string): number =>
+      contar(leitor.select({ n: count() }).from(schema.approvals).where(and(status === undefined ? undefined : eq(schema.approvals.status, status), daAprovacao)).get());
+    const emCurso = contar(
+      leitor.select({ n: count() }).from(schema.runs).where(and(inArray(schema.runs.agentVersionId, versoes), inArray(schema.runs.status, ["queued", "running"]))).get(),
+    );
+
+    const blockers: BloqueioDeArquivar[] = [
+      { kind: "running" as const, count: emCurso },
+      { kind: "pending" as const, count: aprovacoes("pending") },
+      { kind: "publishing" as const, count: aprovacoes("publishing") },
+    ].filter((b) => b.count > 0);
+
+    const agent = leitor.select({ initiativeId: schema.agents.initiativeId }).from(schema.agents).where(eq(schema.agents.id, agentId)).get();
+    const iniciativa =
+      agent?.initiativeId == null
+        ? undefined
+        : leitor.select({ slug: schema.initiatives.slug, title: schema.initiatives.title }).from(schema.initiatives).where(eq(schema.initiatives.id, agent.initiativeId)).get();
+    return {
+      agentId,
+      triggers: contar(leitor.select({ n: count() }).from(schema.triggers).where(eq(schema.triggers.agentId, agentId)).get()),
+      runs: contar(leitor.select({ n: count() }).from(schema.runs).where(inArray(schema.runs.agentVersionId, versoes)).get()),
+      approvals: aprovacoes(),
+      findings: contar(leitor.select({ n: count() }).from(schema.findings).where(inArray(schema.findings.runId, runsIds)).get()),
+      versions: contar(leitor.select({ n: count() }).from(schema.agentVersions).where(eq(schema.agentVersions.agentId, agentId)).get()),
+      initiative: iniciativa ?? null,
+      blockers,
+    };
   }
 
   /**

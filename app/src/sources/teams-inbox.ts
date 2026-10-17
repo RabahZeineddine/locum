@@ -1,5 +1,6 @@
 import { and, eq, gte, isNull, ne, notInArray, or } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
+import { CHAVE_CONTA_DO_TEAMS, FONTE_FALHAS_DO_FILTRO, FONTE_TEAMS, gravarCursorDoGatilho, gravarSettingDoGatilho } from "../triggers/estado-do-gatilho.js";
 import { TEAMS_SERVER } from "../services/teams-app.js";
 import { pollMcpServer, CURSOR_TOKEN, type Admissao, type McpCaller, type McpPollShape } from "./mcp-poll.js";
 import { assertWithinBudget, BudgetExceeded, recordSpend, type Spend } from "../executor/budget.js";
@@ -14,7 +15,7 @@ import type { ParsedGithubPr } from "./slack.js";
 type Db = typeof defaultDb;
 
 /** Fonte gravada no evento e no cursor. */
-export const TEAMS_SOURCE = "teams";
+export const TEAMS_SOURCE = FONTE_TEAMS;
 
 /** Chave do cursor da caixa. Uma varredura só responde pelas duas perguntas. */
 export const TEAMS_INBOX_CURSOR = "inbox";
@@ -136,7 +137,7 @@ const PARALELO_DO_FILTRO_IA = 3;
 export const FALHAS_ATE_PASSAR = 3;
 
 /** Fonte das tentativas que falharam, no cursor: sobrevive a reiniciar o app. */
-const FONTE_DAS_FALHAS = "teams-filtro-ia-falhas";
+const FONTE_DAS_FALHAS = FONTE_FALHAS_DO_FILTRO;
 
 export interface TeamsInboxOutcome {
   eventIds: string[];
@@ -173,7 +174,7 @@ export async function pollTeamsInbox(
   const db = options.db ?? defaultDb;
   // Num servidor com várias contas, a conta lida na primeira batida do gatilho
   // vale para as seguintes: trocar a padrão em outro lugar não muda de quem se lê.
-  const chaveConta = `teams.account.${TEAMS_INBOX_CURSOR}${options.triggerId === undefined ? "" : `:${options.triggerId}`}`;
+  const chaveConta = `${CHAVE_CONTA_DO_TEAMS}${options.triggerId === undefined ? "" : `:${options.triggerId}`}`;
   const guardada =
     (await db.select({ value: schema.settings.value }).from(schema.settings).where(eq(schema.settings.key, chaveConta)))[0]
       ?.value ?? null;
@@ -182,10 +183,8 @@ export async function pollTeamsInbox(
     return await varrer(watch, options, db, teams);
   } finally {
     if (guardada === null && teams.conta() !== null) {
-      await db
-        .insert(schema.settings)
-        .values({ key: chaveConta, value: teams.conta()! })
-        .onConflictDoNothing();
+      if (options.triggerId !== undefined) gravarSettingDoGatilho(db, options.triggerId, CHAVE_CONTA_DO_TEAMS, teams.conta()!);
+      else await db.insert(schema.settings).values({ key: chaveConta, value: teams.conta()! }).onConflictDoNothing();
     }
     await teams.close();
   }
@@ -245,12 +244,12 @@ async function varrer(
 
   try {
     const chave = `${TEAMS_INBOX_CURSOR}${sufixo}`;
-    const primeira = await prepararCursor(db, chave, TEAMS_INBOX_CURSOR);
+    const primeira = await prepararCursor(db, chave, TEAMS_INBOX_CURSOR, options.triggerId);
     const vigia = primeira ? { ...watch, prDesde: new Date().toISOString() } : watch;
     await acolher(
       await pollMcpServer(
         { server: TEAMS_SERVER, tool: "inbox", args: { since: CURSOR_TOKEN } },
-        { db, call: caixa(graph, watch.chats), shape: inboxShape(vigia, eu, chave, teams.conta, filtro?.origem(chave)) },
+        { db, ...(options.triggerId === undefined ? {} : { gatilho: options.triggerId }), call: caixa(graph, watch.chats), shape: inboxShape(vigia, eu, chave, teams.conta, filtro?.origem(chave)) },
       ),
       "inbox",
       chave,
@@ -264,12 +263,12 @@ async function varrer(
   for (const canal of canais) {
     try {
       const antiga = `channel:${canal.teamId}:${canal.channelId}`;
-      const primeira = await prepararCursor(db, `${antiga}${sufixo}`, antiga);
+      const primeira = await prepararCursor(db, `${antiga}${sufixo}`, antiga, options.triggerId);
       const vigia = primeira ? { ...watch, prDesde: new Date().toISOString() } : watch;
       await acolher(
         await pollMcpServer(
           { server: TEAMS_SERVER, tool: "channel", args: { since: CURSOR_TOKEN } },
-          { db, call: doCanal(graph, canal, watch.filtroIa !== undefined), shape: canalShape(canal, eu, vigia, `${antiga}${sufixo}`, teams.conta, filtro?.origem(`${antiga}${sufixo}`)) },
+          { db, ...(options.triggerId === undefined ? {} : { gatilho: options.triggerId }), call: doCanal(graph, canal, watch.filtroIa !== undefined), shape: canalShape(canal, eu, vigia, `${antiga}${sufixo}`, teams.conta, filtro?.origem(`${antiga}${sufixo}`)) },
         ),
         "channel",
         `${antiga}${sufixo}`,
@@ -459,13 +458,17 @@ function filtroDaBatida(
           return { admissao: { kind: "passa" } };
         }
         const valor = JSON.stringify({ n: vezes, at: carimbo(bruto.createdDateTime), cursor: chaveDoCursor });
-        await db
-          .insert(schema.cursors)
-          .values({ source: falhas, key: id, value: valor })
-          .onConflictDoUpdate({
-            target: [schema.cursors.source, schema.cursors.key],
-            set: { value: valor, updatedAt: Math.floor(Date.now() / 1000) },
-          });
+        if (options.triggerId !== undefined) {
+          gravarCursorDoGatilho(db, options.triggerId, { source: falhas, key: id }, valor);
+        } else {
+          await db
+            .insert(schema.cursors)
+            .values({ source: falhas, key: id, value: valor })
+            .onConflictDoUpdate({
+              target: [schema.cursors.source, schema.cursors.key],
+              set: { value: valor, updatedAt: Math.floor(Date.now() / 1000) },
+            });
+        }
         return adia;
       }
     };
@@ -567,7 +570,7 @@ const JANELA_DO_CURSOR_HERDADO_MS = 24 * 60 * 60 * 1000;
  * compartilhado de antes, se existir, para não reprocessar nem perder nada.
  * Devolve verdadeiro quando não havia cursor nenhum: a primeira batida.
  */
-async function prepararCursor(db: Db, chave: string, antiga: string): Promise<boolean> {
+async function prepararCursor(db: Db, chave: string, antiga: string, triggerId?: string): Promise<boolean> {
   const ler = async (key: string) =>
     (
       await db
@@ -582,7 +585,8 @@ async function prepararCursor(db: Db, chave: string, antiga: string): Promise<bo
   // vale o recente; o resto é primeira batida, com a janela de um dia.
   const recente = herdado !== undefined && Date.now() - Date.parse(herdado) < JANELA_DO_CURSOR_HERDADO_MS;
   if (herdado === undefined || !recente) return true;
-  await db.insert(schema.cursors).values({ source: TEAMS_SOURCE, key: chave, value: herdado }).onConflictDoNothing();
+  if (triggerId !== undefined) gravarCursorDoGatilho(db, triggerId, { source: TEAMS_SOURCE, key: chave }, herdado);
+  else await db.insert(schema.cursors).values({ source: TEAMS_SOURCE, key: chave, value: herdado }).onConflictDoNothing();
   return false;
 }
 

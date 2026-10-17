@@ -25,10 +25,12 @@ export interface Toasts {
   acompanhar(run: { runId: string; nome: string; aviso?: string; aoTerminar?: () => void }): void;
   /** Um aviso que não é de run, como a recusa de começar. */
   recusar(texto: string): void;
+  /** Um aviso de que algo deu certo, como a automação arquivada. */
+  informar(texto: string): void;
   abrirRun(runId: string): void;
 }
 
-const SEM_TOASTS: Toasts = { acompanhar: () => undefined, recusar: () => undefined, abrirRun: () => undefined };
+const SEM_TOASTS: Toasts = { acompanhar: () => undefined, recusar: () => undefined, informar: () => undefined, abrirRun: () => undefined };
 const Contexto = createContext<Toasts>(SEM_TOASTS);
 
 /** O que a tela usa para dizer o resultado de "Executar agora" e levar ao run. */
@@ -95,6 +97,12 @@ export function ProvedorDeToasts({ children, navegar }: { children: ReactNode; n
       sumirDepois(id, FICA_MS.erro);
     };
 
+    const informar = (texto: string): void => {
+      const id = `info-${Date.now()}`;
+      mostrar({ id, tom: "ok", texto });
+      sumirDepois(id, FICA_MS.ok);
+    };
+
     const acompanhar: Toasts["acompanhar"] = ({ runId, nome, aviso, aoTerminar }) => {
       if (seguindo.current.has(runId)) return;
       mostrar({ id: runId, tom: "andando", texto: `${t("toast.running", { name: nome })}${aviso === undefined ? "" : `. ${aviso}`}`, runId });
@@ -126,7 +134,7 @@ export function ProvedorDeToasts({ children, navegar }: { children: ReactNode; n
       );
     };
 
-    return { acompanhar, recusar, abrirRun };
+    return { acompanhar, recusar, informar, abrirRun };
   }, [atualizar, mostrar, navegar, sumirDepois, t, tirar]);
 
   return (

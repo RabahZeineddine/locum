@@ -2303,6 +2303,7 @@ async function checkAutomacaoNova(window: BrowserWindow): Promise<void> {
     id = await abrirNova();
     if ((await agentService.get(id)) !== undefined) throw new Error("abrir uma automacao nova ja gravou o agent");
     if (!(await existe("[data-locum-automacao-nova-aviso]"))) throw new Error("o editor nao disse que a automacao ainda nao foi gravada");
+    if (await existe("[data-locum-automacao-arquivar]")) throw new Error("o editor da automacao ainda nao gravada mostra o botao de arquivar");
     await clicar("[data-locum-rota=agents]");
     await esperar("sair sem pergunta", async () => (await rota()).startsWith("agents|"));
     if (await existe("[data-locum-saida]")) throw new Error("abandonar a automacao nova sem editar pediu confirmacao");
@@ -2317,6 +2318,14 @@ async function checkAutomacaoNova(window: BrowserWindow): Promise<void> {
     await esperar("o editor ja gravado", async () => !(await existe("[data-locum-automacao-nova-aviso]")));
     if ((await provisorias()) !== 0) throw new Error("salvar nao apagou a provisoria");
 
+    // Arquivar: o botao so existe na automacao ja gravada, o dialogo abre com a previa, e cancelar nao arquiva nada.
+    await esperar("o botao de arquivar no editor gravado", () => existe("[data-locum-automacao-arquivar]"));
+    await clicar("[data-locum-automacao-arquivar]");
+    await esperar("o dialogo de arquivar", () => existe("[data-locum-automacao-arquivar-confirmar]"));
+    await clicar("[data-locum-automacao-arquivar-cancelar]");
+    await esperar("o dialogo de arquivar fechar", async () => !(await existe("[data-locum-automacao-arquivar-confirmar]")));
+    if ((await agentService.get(id))?.archivedAt !== null) throw new Error("cancelar o dialogo de arquivar arquivou a automacao");
+
     // O MCP grava no meio: salvar com a versao antiga e recusado, e recarregar guarda as edicoes.
     const gravada = await automationService.get(id);
     if (gravada === null) throw new Error("a automacao do exame sumiu");
@@ -2329,6 +2338,15 @@ async function checkAutomacaoNova(window: BrowserWindow): Promise<void> {
     await esperar("o rascunho reservado depois de recarregar", () => existe("[data-locum-rascunho=reservado]"));
     const nomeAgora = (await js(`document.querySelector("[data-locum-probe=automacao-editor] header input").value`)) as string;
     if (nomeAgora !== "Pelo MCP") throw new Error(`recarregar trouxe "${nomeAgora}" e a versao gravada e "Pelo MCP"`);
+
+    // A aba Arquivadas lista a arquivada (e so ela), pela ponte com o argumento da tela.
+    await automationService.archive(id);
+    await clicar("[data-locum-rota=agents]");
+    await irPara(window, "automations");
+    await esperar("a lista de automacoes", () => existe("[data-locum-automacao-nova]"));
+    if (await existe(`[data-locum-automacao="${id}"]`)) throw new Error("a lista em uso mostra a automacao arquivada");
+    await clicar("[data-locum-automacao-filtro-arquivadas=sim]");
+    await esperar("a arquivada na aba Arquivadas", () => existe(`[data-locum-automacao-arquivada="${id}"]`));
   } finally {
     await js(`(Object.keys(localStorage).filter((k) => k.startsWith("locum.rascunho-automacao") || k.startsWith("locum.automacao-provisoria")).forEach((k) => localStorage.removeItem(k)), null)`);
     if (id !== "") {

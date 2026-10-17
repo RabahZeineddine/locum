@@ -5,8 +5,8 @@ import { TriggerConfig, type TriggerConfigInput } from "../config/types.js";
 import { Pendencia, limparPendenciasPreenchidas, ondeDoGatilho, recusaDeLigar } from "../config/pendencia.js";
 import { transacaoDoBanco } from "../db/transacao.js";
 import { recursoExiste } from "./pendencia-recursos.js";
-import { esquecerDescartes } from "../triggers/descartes.js";
-import { limparErro } from "../triggers/erros.js";
+import { comTrava } from "../triggers/trava.js";
+import { esquecerGatilho } from "../triggers/estado-do-gatilho.js";
 import { AgentService, isReserved } from "./agent-service.js";
 
 type Db = typeof defaultDb;
@@ -130,10 +130,11 @@ export class TriggerService {
     if (isReserved(agentId)) throw new Error(`"${agentId}" e um agent do sistema e nao aceita escrita`);
     const parsed = TriggerConfig.parse(config);
     const agent = await this.db
-      .select({ id: schema.agents.id })
+      .select({ id: schema.agents.id, archivedAt: schema.agents.archivedAt })
       .from(schema.agents)
       .where(eq(schema.agents.id, agentId));
     if (agent.length === 0) throw new Error(`agent "${agentId}" nao cadastrado`);
+    if (agent[0]!.archivedAt !== null) throw new Error(`automacao "${agentId}" esta arquivada; desarquive antes de criar gatilho`);
 
     const existing = options.id
       ? await this.requireRow(options.id, agentId)
@@ -204,13 +205,18 @@ export class TriggerService {
   }
 
   async remove(id: string): Promise<boolean> {
-    const deleted = await this.db
-      .delete(schema.triggers)
-      .where(eq(schema.triggers.id, id))
-      .returning();
-    await esquecerDescartes(this.db, id);
-    await limparErro(this.db, id);
-    return deleted.length > 0;
+    // Espera a batida em curso do gatilho (a trava é a do agendador). Entre processos quem garante é o banco:
+    // o gatilho e o estado saem juntos, e a gravação de estado confere na transação que o gatilho existe.
+    return comTrava(`gatilho:${id}`, async () =>
+      this.db.transaction(
+        (tx) => {
+          const deleted = tx.delete(schema.triggers).where(eq(schema.triggers.id, id)).returning().all();
+          esquecerGatilho(tx, id);
+          return deleted.length > 0;
+        },
+        { behavior: "immediate" },
+      ),
+    );
   }
 
   private async requireRow(id: string, agentId: string): Promise<TriggerRow> {

@@ -382,6 +382,17 @@ export function apagarProvisoria(armazem: ArmazemLocal, agentId: string): void {
   }
 }
 
+/**
+ * Tira tudo que o navegador guardou de uma automação arquivada: rascunho ativo,
+ * reservas e provisória. Sem isso o autosave ou a oferta de rascunho trariam de
+ * volta uma automação que não existe mais.
+ */
+export function apagarRastroLocal(armazem: ArmazemListavel, agentId: string): void {
+  descartarRascunho(armazem, agentId);
+  apagarProvisoria(armazem, agentId);
+  for (const r of lerReservas(armazem, agentId)) descartarReserva(armazem, r.chave);
+}
+
 const PREFIXO_DA_PROVISORIA = chaveDaProvisoria("");
 
 /** As automações novas ainda não gravadas, para a lista mostrar o que ⌘Q ou uma queda deixou. */

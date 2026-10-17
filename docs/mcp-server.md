@@ -191,6 +191,8 @@ guardar segredo, e não é recomendado.
 | `set_automation_enabled` | publish | `automations.setEnabled` |
 | `set_trigger_enabled` | publish | `triggers.setEnabled` |
 | `remove_trigger` | danger | `triggers.remove` |
+| `archive_automation` | danger | `automations.archive`, `automations.archivePreview` |
+| `unarchive_automation` | write | `automations.unarchive` |
 | `allow_all_chats_for_trigger` | danger | só MCP |
 | `run_automation_now` | publish | `automations.runNow` |
 | `tick_triggers` | publish | `triggers.tick` |

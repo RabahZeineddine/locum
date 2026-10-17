@@ -2008,7 +2008,12 @@
       "noTrigger": "no trigger",
       "draft": "Draft, not saved",
       "draftOpen": "Open",
-      "draftDiscard": "Discard"
+      "draftDiscard": "Discard",
+      "filterInUse": "In use",
+      "filterArchived": "Archived",
+      "archivedEmpty": "No archived automations.",
+      "archivedBadge": "Archived",
+      "unarchive": "Unarchive"
     },
     "new": {
       "title": "New automation",
@@ -2145,7 +2150,41 @@
         "done": "Linked to the initiative.",
         "pending": "The automation was created, but it is not linked to the initiative yet."
       },
-      "eventWarning": "Version {{version}} saved. This flow uses the event ({{reason}}), but {{triggers}} does not bring an event: when that trigger fires, the run goes out without it. Use a trigger that records events or drop the dependency."
+      "eventWarning": "Version {{version}} saved. This flow uses the event ({{reason}}), but {{triggers}} does not bring an event: when that trigger fires, the run goes out without it. Use a trigger that records events or drop the dependency.",
+      "archive": {
+        "zone": "Danger zone",
+        "hint": "Archives the automation: it leaves the lists and the scheduler, and its triggers are removed. The history stays.",
+        "button": "Archive",
+        "title": "Archive \"{{name}}\"?",
+        "triggers_one": "{{count}} trigger",
+        "triggers_other": "{{count}} triggers",
+        "runs_one": "{{count}} run",
+        "runs_other": "{{count}} runs",
+        "approvals_one": "{{count}} approval",
+        "approvals_other": "{{count}} approvals",
+        "findings_one": "{{count}} finding",
+        "findings_other": "{{count}} findings",
+        "versions_one": "{{count}} version",
+        "versions_other": "{{count}} versions",
+        "leaves": "Removed with it: {{triggers}} and the state tied to them (cursors and last error).",
+        "stays": "Kept: {{itens}}, the record of what was published in your name.",
+        "restore": "You can unarchive it later: the automation comes back without triggers and off.",
+        "initiative": "Linked to the initiative \"{{title}}\". The link stays.",
+        "dedupe": "The PRs it already reviewed still count, so they are not reviewed again.",
+        "unsaved": "This editor has unsaved changes. They are lost when you archive.",
+        "blocked": "It cannot be archived right now:",
+        "blocker_running_one": "{{count}} run queued or running: wait for it to finish, resume or cancel it.",
+        "blocker_running_other": "{{count}} runs queued or running: wait for them to finish, resume or cancel them.",
+        "blocker_pending_one": "{{count}} approval pending: decide it in the Queue.",
+        "blocker_pending_other": "{{count}} approvals pending: decide them in the Queue.",
+        "blocker_publishing_one": "{{count}} approval publishing: resolve the stuck one in the Queue and check at the destination whether it went out.",
+        "blocker_publishing_other": "{{count}} approvals publishing: resolve the stuck ones in the Queue and check at the destination whether they went out.",
+        "previewFailed": "Could not check what would be archived: {{erro}}",
+        "cancel": "Cancel",
+        "confirm": "Archive",
+        "done": "\"{{name}}\" archived. The history stays."
+      },
+      "archivedBanner": "This automation is archived: it does not run, turn on or accept edits. Unarchive it to use it again, without triggers and off."
     },
     "palette": {
       "title": "Components",

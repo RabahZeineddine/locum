@@ -40,6 +40,7 @@ import { rotuloDoMotivoDeEvento } from "@/lib/rotulos";
 import { gatilhosParaGravar, mesclar, type Conflito, type Escolhas } from "@/lib/mesclar-automacao";
 import {
   apagarProvisoria,
+  apagarRastroLocal,
   descartarReserva,
   descartarRascunho,
   diferencas,
@@ -84,12 +85,20 @@ import type { AgentSpec, Step } from "../../../src/config/types";
 import { esquemasDasConexoes, useFerramentasDasConexoes, useSaidasDoUltimoRun, type FerramentasDasConexoes } from "./ferramentas-das-conexoes";
 import { useTranslation } from "react-i18next";
 import type { RotaId } from "../rotas";
+import { useToasts } from "../toasts";
+import { ArquivarAutomacao } from "./arquivar-automacao";
 import { ModalDeAgent } from "./modal-de-agent";
 import { useExecutarAgora } from "./executar-com";
 import { PainelDoNo } from "./painel";
 import { appDoGatilho, appDoPasso, NumeroDoPasso, resumoDoGatilho, Selo, tituloDoGatilho, tituloDoPasso } from "./visual";
 
 type Automacao = NonNullable<ReadResult<"automations.get">>;
+
+/** O agent do sistema que guarda o contexto: não é uma automação e não se exclui pela tela. */
+const AGENT_DO_CONTEXTO = "locum-context";
+
+/** As leituras que mudam quando a automação sai da lista: ela, suas execuções e a fila. */
+const LEITURAS_DA_AUTOMACAO = ["automations.get", "agents.list", "agents.overview", "triggers.list", "runs.list", "approvals.listPending", "approvals.listStuck"] as const;
 
 /**
  * O canvas de uma automação.
@@ -221,19 +230,29 @@ function EditorCarregado({
 }) {
   const { t, i18n } = useTranslation();
   const agentId = automacao.version.agentId;
+  // Arquivada: não roda, não liga e não se salva; só desarquiva.
+  const arquivadaNoBanco = typeof automacao.archivedAt === "number";
   const [salvo, setSalvo] = useState<Rascunho>(() => provisoria?.rascunho ?? paraRascunho(automacao));
   // Ainda sem versão gravada: o primeiro Salvar cria a automação.
   const [nova, setNova] = useState(provisoria !== undefined);
   const [criadaEm, setCriadaEm] = useState(automacao.createdAt);
-  const [rascunho, setRascunho] = useState<Rascunho>(salvo);
+  const [rascunho, setRascunhoBruto] = useState<Rascunho>(salvo);
+  // Arquivada abre só para leitura: nenhuma edição entra no rascunho, e nada vai para o armazém local.
+  const setRascunho: typeof setRascunhoBruto = (valor) => {
+    if (!arquivadaNoBanco) setRascunhoBruto(valor);
+  };
   const [versao, setVersao] = useState(automacao.version.version);
   const [selecionado, setSelecionado] = useState<string | null>(null);
   const [nota, setNota] = useState("");
   const [ocupado, setOcupado] = useState<"salvar" | "rodar" | "ligar" | null>(null);
   const executarAgora = useExecutarAgora();
+  const toasts = useToasts();
+  // A automação acabou de ser arquivada: o autosave e a guarda de saída não podem trazer o rascunho de volta.
+  const arquivada = useRef(false);
   const [aviso, setAviso] = useState<{ tipo: "ok" | "erro" | "aviso"; texto: string } | null>(null);
   // O rascunho de uma edição que não chegou ao Salvar (ou um reservado antes): espera a decisão da pessoa. `reservada` diz que ele já saiu da chave ativa.
   const [oferta, setOferta] = useState<(OfertaDeRascunho & { reservada: boolean }) | null>(() => {
+    if (arquivadaNoBanco) return null;
     const atual = { versao: automacao.version.version, criadaEm: automacao.createdAt, rascunho: provisoria?.rascunho ?? paraRascunho(automacao) };
     limparReservas(globalThis.localStorage, agentId, atual);
     const o = ofertaDeRascunho(globalThis.localStorage, agentId, atual);
@@ -491,6 +510,7 @@ function EditorCarregado({
   // Cada mudança vai para o rascunho local. Enquanto a oferta de um rascunho antigo está na tela, ele não é sobrescrito: a primeira edição
   // vale como "começar do gravado", e o antigo vai para a reserva (com a data) antes de o novo passar a ser guardado.
   useEffect(() => {
+    if (arquivada.current || arquivadaNoBanco) return;
     if (oferta !== null && !oferta.reservada) {
       if (!mudou) return;
       const chave = reservarRascunho(globalThis.localStorage, agentId);
@@ -507,6 +527,7 @@ function EditorCarregado({
   useEffect(
     () =>
       registrarGuarda((prosseguir) => {
+        if (arquivada.current || arquivadaNoBanco) return false;
         if (!mudouAgora.current) {
           // Automação nova abandonada sem edição: nada foi gravado, e a provisória também some.
           if (novaAgora.current) apagarProvisoria(globalThis.localStorage, agentId);
@@ -664,6 +685,7 @@ function EditorCarregado({
         <Input
           aria-label={t("automations.panel.name")}
           className="min-w-48 max-w-md flex-1 font-medium"
+          disabled={arquivadaNoBanco}
           onChange={(e) => setRascunho((r) => ({ ...r, spec: { ...r.spec, name: e.target.value } }))}
           value={rascunho.spec.name}
         />
@@ -687,7 +709,7 @@ function EditorCarregado({
           <Download />
           {t("pacote.export.button")}
         </Button>
-        <Button className="cursor-pointer" disabled={ocupado !== null || nova || executarAgora.pedindo} onClick={executar} size="sm" variant="outline">
+        <Button className="cursor-pointer" disabled={ocupado !== null || nova || arquivadaNoBanco || executarAgora.pedindo} onClick={executar} size="sm" variant="outline">
           {executarAgora.pedindo ? <Loader2 className="animate-spin" /> : <Play />}
           {t("automations.editor.runNow")}
         </Button>
@@ -695,7 +717,7 @@ function EditorCarregado({
         <Button
           className="cursor-pointer"
           data-locum-automacao-ligar=""
-          disabled={ocupado !== null || nova || salvo.gatilhos.length === 0 || (!ligada && gatilhoIncompleto(salvo.spec, salvo.gatilhos.flatMap((g) => (g.id === undefined ? [] : [g.id]))))}
+          disabled={ocupado !== null || nova || arquivadaNoBanco || salvo.gatilhos.length === 0 || (!ligada && gatilhoIncompleto(salvo.spec, salvo.gatilhos.flatMap((g) => (g.id === undefined ? [] : [g.id]))))}
           onClick={alternar}
           size="sm"
           title={!ligada && gatilhoIncompleto(salvo.spec, salvo.gatilhos.flatMap((g) => (g.id === undefined ? [] : [g.id]))) ? t("automations.problems.pending.enableBlocked") : t("automations.editor.enabledHint")}
@@ -706,7 +728,31 @@ function EditorCarregado({
         </Button>
       </header>
 
-      {mudou || nova ? (
+      {arquivadaNoBanco ? (
+        <div className="bg-card border-border flex flex-wrap items-center gap-2 rounded-md border px-3 py-1.5 text-xs" data-locum-automacao-arquivada-aviso="">
+          <StatusDot estado="aviso" />
+          <span className="mr-auto">{t("automations.editor.archivedBanner")}</span>
+          <Button
+            className="cursor-pointer"
+            data-locum-automacao-desarquivar=""
+            disabled={ocupado !== null}
+            onClick={() => {
+              call("automations.unarchive", agentId).then(
+                () => {
+                  for (const canal of LEITURAS_DA_AUTOMACAO) invalidateReads(canal);
+                },
+                (e: unknown) => toasts.recusar(e instanceof Error ? e.message : String(e)),
+              );
+            }}
+            size="sm"
+            variant="outline"
+          >
+            {t("automations.list.unarchive")}
+          </Button>
+        </div>
+      ) : null}
+
+      {(mudou || nova) && !arquivadaNoBanco ? (
         <div className="flex flex-wrap items-center gap-1.5">
           <Input
             className="min-w-64 flex-1"
@@ -939,6 +985,23 @@ function EditorCarregado({
           />
         )}
       </div>
+
+      {nova || arquivadaNoBanco || agentId === AGENT_DO_CONTEXTO ? null : (
+        <ArquivarAutomacao
+          agentId={agentId}
+          aoArquivar={() => {
+            // Antes de navegar: com o rascunho ainda no navegador, a próxima abertura do id o ofereceria de volta.
+            arquivada.current = true;
+            apagarRastroLocal(globalThis.localStorage, agentId);
+            for (const canal of LEITURAS_DA_AUTOMACAO) invalidateReads(canal);
+            toasts.informar(t("automations.editor.archive.done", { name: salvo.spec.name }));
+            voltar();
+          }}
+          desabilitado={ocupado !== null}
+          edicaoNaoSalva={mudou}
+          nome={salvo.spec.name}
+        />
+      )}
 
       {modalDeAgent === null ? null : <ModalDeAgent detalhe={modalDeAgent.detalhe} fechar={fecharAgent} navegar={navegar} />}
 

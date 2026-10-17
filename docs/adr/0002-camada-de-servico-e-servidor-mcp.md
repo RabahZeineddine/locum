@@ -64,6 +64,14 @@ imutável, nenhuma versão entra em execução agendada sem o gatilho ser habili
 e o histórico permite desfazer. Editar é reversível e auditável; publicar no nome
 de outra pessoa não é.
 
+Não há excluir automação: arquivar (`archive_automation`, `danger`) tira os
+gatilhos e o estado deles e deixa runs, aprovações, achados e versões, que são o
+registro do que foi publicado em nome da pessoa e o que a dedupe de review lê.
+Recusa enquanto houver run na fila ou rodando, ou aprovação pendente ou em
+publicação, e, pelo MCP, quando a automação está ligada a uma iniciativa (decisão
+de uma pessoa, na tela). `unarchive_automation` desfaz, sem os gatilhos. A
+confirmação fica com o cliente, que pergunta a cada chamada de ferramenta `danger`.
+
 ### 5. O servidor MCP antecede a interface na ordem de construção
 
 A ordem passa a ser: camada de serviço, servidor MCP, casca Electron, interface,

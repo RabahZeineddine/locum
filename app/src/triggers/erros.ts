@@ -1,10 +1,11 @@
 import { and, eq } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
+import { FONTE_ERRO, gravarCursorDoGatilho } from "./estado-do-gatilho.js";
 
 type Db = typeof defaultDb;
 
 /** Fonte do último erro de cada gatilho. Uma linha por gatilho, em JSON. */
-const FONTE = "gatilho-erro";
+const FONTE = FONTE_ERRO;
 
 /**
  * O último erro de um gatilho: de configuração (a varredura seguiu, mas um
@@ -31,13 +32,7 @@ export async function lerErro(db: Db, triggerId: string): Promise<ErroDoGatilho 
 
 export async function registrarErro(db: Db, triggerId: string, erro: ErroDoGatilho): Promise<void> {
   const value = JSON.stringify(erro);
-  await db
-    .insert(schema.cursors)
-    .values({ source: FONTE, key: triggerId, value })
-    .onConflictDoUpdate({
-      target: [schema.cursors.source, schema.cursors.key],
-      set: { value, updatedAt: Math.floor(erro.em / 1000) },
-    });
+  gravarCursorDoGatilho(db, triggerId, { source: FONTE, key: triggerId }, value, erro.em);
 }
 
 export async function limparErro(db: Db, triggerId: string): Promise<void> {
