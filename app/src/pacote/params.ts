@@ -222,7 +222,11 @@ export function aplicarMarcas(marcas: MapaDeMarcas, valor: Record<string, unknow
     if (marca === undefined) omitir("argumentos", nome, 1);
     else if (marca === "dobrado" || marca === "seguro") continue;
     else if (marca === "portavel") saida.valor[campo] = v;
-    else if (marca === "texto") {
+    else if (marca === "identificador") {
+      // Chave, não prosa: o marcador no lugar a quebraria, então o que a limpeza alteraria fica de fora e é a preencher.
+      if (typeof v === "string" && !ehMarcador(v) && limparTexto(v, opcoes.home).removidos > 0) omitir("argumentos", nome, 1);
+      else saida.valor[campo] = v;
+    } else if (marca === "texto") {
       // Texto escrito por gente: a limpeza troca o que for credencial ou dado pessoal por marca. Nunca volta cru.
       const limpos = { n: 0 };
       saida.valor[campo] = limparLivre(v, opcoes.home, limpos);

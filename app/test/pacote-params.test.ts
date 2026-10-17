@@ -5,7 +5,7 @@ import { buildGate } from "../src/executor/build.js";
 import { AgentService } from "../src/services/agent-service.js";
 import { AutomationService } from "../src/services/automation-service.js";
 import { LibraryService } from "../src/services/library-service.js";
-import { MARCAS_DOS_GATILHOS } from "../src/pacote/marcacao.js";
+import { MARCAS_DO_AGENT, MARCAS_DOS_GATILHOS } from "../src/pacote/marcacao.js";
 import { aplicarMarcas } from "../src/pacote/params.js";
 import { PacoteService, type AmbienteDoPacote } from "../src/services/pacote-service.js";
 import { TriggerService } from "../src/services/trigger-service.js";
@@ -198,8 +198,15 @@ test("mcp.call: autoEscrita é licença dada à mão, não viaja e não vira pen
   assert.ok(!(gravada.version.spec.pendentes ?? []).some((p) => p.campo === "params.autoEscrita"));
 });
 
-test("campo de texto marcado que carrega credencial sai limpo no lugar e a limpeza é contada, nunca cru", () => {
-  const r = aplicarMarcas(MARCAS_DOS_GATILHOS.webhook, { kind: "webhook", path: `/hook/${TOKEN}` }, { home: HOME });
-  assert.deepEqual(r.valor, { kind: "webhook", path: "/hook/[segredo removido]" });
+test("campo de texto livre que carrega credencial sai limpo no lugar e a limpeza é contada, nunca cru", () => {
+  const r = aplicarMarcas(MARCAS_DO_AGENT, { description: `use ${TOKEN} aqui` }, { home: HOME });
+  assert.deepEqual(r.valor, { description: "use [segredo removido] aqui" });
   assert.equal(r.limpos, 1);
+});
+
+test("campo de identificador com credencial não viaja nem leva marcador: fica omitido, a preencher", () => {
+  const r = aplicarMarcas(MARCAS_DOS_GATILHOS.webhook, { kind: "webhook", path: `/hook/${TOKEN}` }, { home: HOME });
+  assert.deepEqual(r.valor, { kind: "webhook" });
+  assert.deepEqual(r.omitidos.get("argumentos"), { quantos: 1, nomes: ["path"] });
+  assert.equal(aplicarMarcas(MARCAS_DOS_GATILHOS.webhook, { kind: "webhook", path: "/hook/deploy" }).valor.path, "/hook/deploy");
 });

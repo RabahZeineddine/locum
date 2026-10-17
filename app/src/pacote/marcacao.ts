@@ -25,14 +25,15 @@ import type { CodigoOmitido } from "./formato.js";
  * daqui; nenhum deles decide campo a campo.
  *
  * - `portavel`: vai como está.
- * - `texto`: texto escrito por gente; passa pela limpeza de texto.
+ * - `texto`: texto livre escrito por gente; passa pela limpeza de texto, e o que for credencial vira marcador no lugar.
+ * - `identificador`: texto que é chave, não prosa (caminho, expressão de nome). Marcador no lugar o quebraria: com credencial ou dado pessoal no valor, ele não viaja e vira pendência.
  * - `argumentos`: argumentos de uma ferramenta (marcador viaja; literal limpo ou omitido).
  * - `seguro`: não viaja e não vira pendência: o padrão dele é o seguro, e quem recebe só ganha o campo dizendo à mão (licença, como `autoEscrita`).
  * - `{ local }`: é desta máquina e da pessoa; não viaja, e a prévia pede para escolher (o código diz o quê).
  * - `{ filhos }`: objeto cujos campos têm marcação própria.
  * - `dobrado`: viaja por outro campo (o toolset do agent vira ferramentas avulsas; os chats do Teams viram `chatsRestritos`).
  */
-export type Marca = "portavel" | "texto" | "argumentos" | "dobrado" | "seguro" | { local: CodigoOmitido } | { filhos: MapaDeMarcas };
+export type Marca = "portavel" | "texto" | "identificador" | "argumentos" | "dobrado" | "seguro" | { local: CodigoOmitido } | { filhos: MapaDeMarcas };
 export type MapaDeMarcas = Readonly<Record<string, Marca>>;
 type Campos<S extends { shape: object }> = Record<keyof S["shape"], Marca>;
 
@@ -52,7 +53,7 @@ const MARCAS_DOS_FILTROS: Campos<typeof PollFilters> = {
 /** Marcação de cada tipo de gatilho, pelo `kind`. */
 export const MARCAS_DOS_GATILHOS = {
   schedule: { kind: "portavel", everyMinutes: "portavel", workingHours: "portavel" } satisfies Campos<typeof ScheduleTrigger>,
-  webhook: { kind: "portavel", path: "texto" } satisfies Campos<typeof WebhookTrigger>,
+  webhook: { kind: "portavel", path: "identificador" } satisfies Campos<typeof WebhookTrigger>,
   cron: { kind: "portavel", expression: "portavel" } satisfies Campos<typeof CronTrigger>,
   manual: { kind: "portavel" } satisfies Campos<typeof ManualTrigger>,
   "slack-inbox": { kind: "portavel", mentions: "portavel", dms: "portavel", everyMinutes: "portavel", workingHours: "portavel" } satisfies Campos<typeof SlackInboxTrigger>,
@@ -75,7 +76,7 @@ export const MARCAS_DOS_GATILHOS = {
     kind: "portavel",
     source: "portavel",
     owner: { local: "dono-do-github" },
-    repoMatch: "texto",
+    repoMatch: "identificador",
     authorship: "portavel",
     includeDrafts: "portavel",
     filters: { filhos: MARCAS_DOS_FILTROS },

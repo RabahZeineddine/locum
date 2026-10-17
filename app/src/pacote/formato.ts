@@ -124,11 +124,17 @@ const SpecDoPacote = z
  * campo local ou dobrado sai, e um objeto com `filhos` é derivado do mesmo jeito.
  */
 type Fora<M> = { [K in keyof M]: M[K] extends "dobrado" | "seguro" | { readonly local: unknown } ? K : never }[keyof M];
-function semLocais<S extends z.ZodObject<any>, M extends MapaDeMarcas>(schema: S, marcas: M): z.ZodType<Omit<z.infer<S>, Fora<M>>> {
+/** O identificador que a exportação deixa de fora (credencial no valor) chega ausente: no pacote ele é opcional. */
+type Identificador<M> = { [K in keyof M]: M[K] extends "identificador" ? K : never }[keyof M];
+function semLocais<S extends z.ZodObject<any>, M extends MapaDeMarcas>(
+  schema: S,
+  marcas: M,
+): z.ZodType<Omit<z.infer<S>, Fora<M> | Identificador<M>> & Partial<Pick<z.infer<S>, Extract<Identificador<M>, keyof z.infer<S>>>>> {
   const fora: Record<string, true> = {};
   const trocas: Record<string, z.ZodType> = {};
   for (const [campo, marca] of Object.entries(marcas)) {
     if (marca === "dobrado" || marca === "seguro" || ehLocal(marca)) fora[campo] = true;
+    else if (marca === "identificador") trocas[campo] = (schema.shape[campo] as z.ZodType).optional();
     else if (temFilhos(marca)) {
       const nested = (schema.shape[campo] as unknown as z.ZodOptional<z.ZodObject<any>>).unwrap();
       trocas[campo] = (semLocais(nested, marca.filhos) as unknown as z.ZodOptional<z.ZodObject<any>>).optional();

@@ -286,3 +286,27 @@ test("reexportar leva a pendência do gatilho que nunca chegou a ser criado, par
   const previa = await c.pacotes.previa(JSON.stringify(pacote));
   assert.ok(previa.omitidos.some((o) => o.codigo === "gatilho-sem-canal"));
 });
+
+test("campo de identificador (path do webhook) com credencial vira pendência, não um valor com marcador no lugar", async () => {
+  const TOKEN = "ghp_" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"; // formato de teste, montado por concatenação
+  const a = maquina();
+  const spec = AgentSpec.parse({ id: "hook-com-segredo", name: "X", steps: [{ ...base, type: "model", key: "ler", name: "Ler", model: "claude-code/claude-sonnet-5", prompt: "oi" }] });
+  await a.automations.save({
+    spec,
+    triggers: [{ config: { kind: "webhook", path: `/hook/${TOKEN}` } }, { config: { kind: "webhook", path: "/hook/deploy" } }],
+    note: "",
+    create: true,
+  });
+  const { texto, pacote } = await a.pacotes.exportar("hook-com-segredo");
+  assert.ok(!texto.includes("segredo removido"), "o marcador ficou no lugar do caminho");
+  assert.deepEqual(pacote.automacao.gatilhos, [{ kind: "webhook" }, { kind: "webhook", path: "/hook/deploy" }]);
+  assert.deepEqual(pacote.omitidos.filter((o) => o.codigo === "argumentos"), [{ codigo: "argumentos", onde: "gatilho:0", quantos: 1, params: ["path"] }]);
+
+  const b = maquina();
+  const previa = await b.pacotes.previa(texto);
+  assert.deepEqual(previa.aPreencher.map((p) => [p.no.tipo === "gatilho" ? p.no.posicao : p.no.chave, p.campo, p.motivo, p.criado]), [[0, "path", "argumentos", false]]);
+  await b.pacotes.importar(texto);
+  const gravada = (await b.automations.get("hook-com-segredo"))!;
+  assert.deepEqual(gravada.triggers.map((g) => (g.config as { path: string }).path), ["/hook/deploy"]);
+  assert.deepEqual(gravada.version.spec.pendentes?.map((p) => p.campo), ["path"]);
+});
