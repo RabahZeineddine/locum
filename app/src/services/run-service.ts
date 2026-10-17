@@ -1,14 +1,19 @@
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+import { and, asc, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
 import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 import { db as defaultDb, schema } from "../db/index.js";
-import { recusarSeArquivada } from "../db/arquivada.js";
-import { AgentSpec } from "../config/types.js";
-import { REBAIXADO_NA_REEXECUCAO } from "../config/rebaixado.js";
+import { AutomacaoArquivada, recusarSeArquivada } from "../db/arquivada.js";
+import { AgentSpec, topoSort } from "../config/types.js";
+import { rebaixadaPorInstrucao } from "../config/rebaixado.js";
 import { buildExecutor } from "../executor/build.js";
 import { isReserved } from "./agent-service.js";
 import { LibraryService } from "./library-service.js";
 
 type Db = typeof defaultDb;
+type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+
+/** Limite técnico da instrução de reexecução, em caracteres: é um pedido, não um documento. */
+export const LIMITE_DA_INSTRUCAO = 2000;
 
 export type RunRow = typeof schema.runs.$inferSelect;
 export type StepRow = typeof schema.steps.$inferSelect;
@@ -368,9 +373,12 @@ export class RunService {
   async rerunStep(
     runId: string,
     stepKey: string,
-    options: { wait?: boolean; instrucao?: string; rotuloDaInstrucao?: string } = {},
+    options: { wait?: boolean; instrucao?: string } = {},
   ): Promise<"queued" | "done" | "paused" | "failed"> {
     const instrucao = options.instrucao?.trim() ? options.instrucao.trim() : undefined;
+    if (instrucao !== undefined && instrucao.length > LIMITE_DA_INSTRUCAO) {
+      throw new Error(`a instrucao passa de ${LIMITE_DA_INSTRUCAO} caracteres`);
+    }
     const detail = await this.get(runId);
     if (!detail) throw new Error(`run ${runId} nao encontrado`);
     if (isReserved(detail.agentId)) {
@@ -393,41 +401,22 @@ export class RunService {
     const affected = dependents(detail.spec, stepKey);
     const targets = detail.steps.filter((s) => affected.has(s.stepKey));
     if (instrucao !== undefined) exigirPassoDeModelo(detail.spec, stepKey);
-
-    // A publicação que está saindo agora vai fechar o passo como publicado
-    // quando terminar. Zerar o passo debaixo dela abriria uma pendência nova
-    // para o que já saiu, e aprovar essa publicaria de novo.
-    if (targets.length > 0) {
-      const [saindo] = await this.db
-        .select({ id: schema.approvals.id })
-        .from(schema.approvals)
-        .where(
-          and(
-            inArray(
-              schema.approvals.stepId,
-              targets.map((s) => s.id),
-            ),
-            eq(schema.approvals.status, "publishing"),
-          ),
-        );
-      if (saindo !== undefined) {
-        throw new Error(`run ${runId} esta publicando a aprovacao ${saindo.id}; espere terminar para reexecutar`);
-      }
-    }
-    // O avulso derivado que está publicando sairia sobre um resultado que o run vai descartar.
     const derivados = this.avulsosDerivados(detail.steps, affected);
-    if (derivados.length > 0) {
-      const [saindo] = await this.db
-        .select({ id: schema.approvals.id })
-        .from(schema.approvals)
-        .where(and(inArray(schema.approvals.stepId, derivados), eq(schema.approvals.status, "publishing")));
-      if (saindo !== undefined) {
-        throw new Error(`run ${runId} esta publicando a aprovacao ${saindo.id}; espere terminar para reexecutar`);
-      }
-    }
-    await this.reset(detail, targets);
-    await this.gravarInstrucao(detail.spec, stepKey, affected, targets, instrucao, options.rotuloDaInstrucao);
-    await this.expirarAvulsosDerivados(derivados);
+
+    // Tudo numa transação, e a troca de status é condicionada: tela e MCP que chegam juntos
+    // passam as checagens acima os dois, e só um vence a troca. A publicação que está saindo
+    // fecharia o passo como publicado quando terminasse; zerar debaixo dela abriria uma
+    // pendência nova para o que já saiu, e aprovar essa publicaria de novo.
+    this.db.transaction(
+      (tx) => {
+        const saindo = aprovacaoPublicando(tx, [...targets.map((s) => s.id), ...derivados]);
+        if (saindo !== undefined) throw new Error(`run ${runId} esta publicando a aprovacao ${saindo}; espere terminar para reexecutar`);
+        this.reset(tx, detail, targets);
+        this.gravarInstrucao(tx, detail, stepKey, targets, instrucao);
+        this.expirarAvulsosDerivados(tx, derivados);
+      },
+      { behavior: "immediate" },
+    );
 
     const runner = await this.makeRunner();
     if (options.wait === false) {
@@ -438,39 +427,49 @@ export class RunService {
   }
 
   /**
-   * Depois do zero: a instrução fica só no passo reexecutado (os dependentes a perdem), e a
-   * ação a jusante que ia sair em `auto` fica marcada para esperar na Fila. Sem instrução
-   * nada é marcado: a reexecução segue o spec.
+   * Depois do zero: os passos reexecutados perdem a instrução e a marca de rebaixado; o
+   * passo pedido ganha a instrução nova, e ela fica nele até ser reexecutado de novo (sem
+   * instrução ela sai, com outra é trocada). Passo que ainda não tem linha, num run
+   * parado antes dele, ganha a linha `pending` com a instrução. O rebaixamento das ações
+   * não se grava aqui: o executor decide na hora de submeter, olhando as instruções.
    */
-  private async gravarInstrucao(
-    spec: AgentSpec,
+  private gravarInstrucao(
+    tx: Tx,
+    run: RunRow & { spec: AgentSpec },
     stepKey: string,
-    afetados: ReadonlySet<string>,
     targets: StepRow[],
     instrucao: string | undefined,
-    rotulo: string | undefined,
-  ): Promise<void> {
-    const ids = (chaves: string[]) => targets.filter((s) => chaves.includes(s.stepKey)).map((s) => s.id);
+  ): void {
     if (targets.length > 0) {
-      await this.db.update(schema.steps).set({ instrucao: null, instrucaoRotulo: null, rebaixado: null }).where(inArray(schema.steps.id, ids([...afetados])));
+      tx.update(schema.steps)
+        .set({ instrucao: null, rebaixado: null })
+        .where(inArray(schema.steps.id, targets.map((s) => s.id)))
+        .run();
     }
     if (instrucao === undefined) return;
     const origem = targets.find((s) => s.stepKey === stepKey);
     if (origem !== undefined) {
-      await this.db
-        .update(schema.steps)
-        .set({ instrucao, instrucaoRotulo: rotulo?.trim() ? rotulo.trim() : null })
-        .where(eq(schema.steps.id, origem.id));
+      tx.update(schema.steps).set({ instrucao }).where(eq(schema.steps.id, origem.id)).run();
+      return;
     }
-    const rebaixar = ids(acoesEmAuto(spec, afetados).map((p) => p.key));
-    if (rebaixar.length > 0) {
-      await this.db.update(schema.steps).set({ rebaixado: REBAIXADO_NA_REEXECUCAO }).where(inArray(schema.steps.id, rebaixar));
-    }
+    const passo = run.spec.steps.find((p) => p.key === stepKey)!;
+    tx.insert(schema.steps)
+      .values({
+        id: randomUUID(),
+        runId: run.id,
+        idx: topoSort(run.spec.steps).findIndex((p) => p.key === stepKey),
+        stepKey,
+        name: passo.name,
+        status: "pending",
+        instrucao,
+      })
+      .run();
   }
 
   /**
-   * O que a reexecução faria, antes de confirmar: os passos que voltam a rodar e, com
-   * instrução, as ações a jusante que iriam para a Fila por terem estado em `auto`.
+   * O que a reexecução faria, antes de confirmar: os passos que voltam a rodar, o que
+   * barra (as mesmas recusas do `rerunStep`), os avulsos que expiram, o que é cobrado de
+   * novo e, com instrução, as ações que vão para a Fila.
    */
   async rerunPreview(
     runId: string,
@@ -479,18 +478,46 @@ export class RunService {
   ): Promise<RerunPreview> {
     const detail = await this.get(runId);
     if (!detail) throw new Error(`run ${runId} nao encontrado`);
+    const comInstrucao = options.comInstrucao === true;
+    const vazia: RerunPreview = { passos: [], rebaixados: [], avulsosQueExpiram: [], cobradosDeNovo: [], bloqueios: [] };
     if (detail.steps.some((s) => s.stepKey === stepKey && s.origem === "avulso")) {
-      throw new Error(`"${stepKey}" e um passo avulso e nao e reexecutado; proponha uma acao nova`);
+      return { ...vazia, bloqueios: [{ codigo: "avulso" }] };
     }
     const afetados = dependents(detail.spec, stepKey);
-    const comInstrucao = options.comInstrucao === true;
     if (comInstrucao) exigirPassoDeModelo(detail.spec, stepKey);
+    const targets = detail.steps.filter((s) => afetados.has(s.stepKey));
+    const derivados = this.avulsosDerivados(detail.steps, afetados);
+
+    const bloqueios: RerunPreview["bloqueios"] = [];
+    if (isReserved(detail.agentId)) bloqueios.push({ codigo: "reservado" });
+    try {
+      recusarSeArquivada(this.db, detail.agentId);
+    } catch (err) {
+      if (!(err instanceof AutomacaoArquivada)) throw err;
+      bloqueios.push({ codigo: "arquivada" });
+    }
+    if (detail.status === "queued" || detail.status === "running") bloqueios.push({ codigo: "em-andamento" });
+    const saindo = aprovacaoPublicando(this.db, [...targets.map((s) => s.id), ...derivados]);
+    if (saindo !== undefined) bloqueios.push({ codigo: "publicando", detalhe: saindo });
+
+    // As instruções que valem depois: as dos passos que não voltam a rodar, e a nova.
+    const efetivas = new Set(detail.steps.filter((s) => s.instrucao !== null && !afetados.has(s.stepKey)).map((s) => s.stepKey));
+    if (comInstrucao) efetivas.add(stepKey);
+    const linha = (chave: string) => detail.steps.find((s) => s.stepKey === chave);
     const dosAfetados = detail.spec.steps.filter((p) => afetados.has(p.key));
     return {
       passos: dosAfetados.map((p) => ({ stepKey: p.key, name: p.name, type: p.type })),
-      rebaixados: comInstrucao
-        ? acoesEmAuto(detail.spec, afetados).map((p) => ({ stepKey: p.key, name: p.name, action: p.action }))
-        : [],
+      rebaixados: detail.spec.steps.flatMap((p) =>
+        p.type === "action" &&
+        (p.mode === "auto" || p.mode === "draft") &&
+        (afetados.has(p.key) || linha(p.key)?.status !== "done") &&
+        rebaixadaPorInstrucao(detail.spec.steps, p.key, efetivas)
+          ? [{ stepKey: p.key, name: p.name, action: p.action, mode: p.mode }]
+          : [],
+      ),
+      avulsosQueExpiram: detail.steps.filter((s) => derivados.includes(s.id)).map((s) => ({ stepKey: s.stepKey, name: s.name })),
+      cobradosDeNovo: dosAfetados.filter((p) => p.type === "model").map((p) => ({ stepKey: p.key, name: p.name, custoUsd: linha(p.key)?.costUsd ?? 0 })),
+      bloqueios,
     };
   }
 
@@ -508,29 +535,23 @@ export class RunService {
    * cuja pendência de fato expirou fecha, na mesma transação: uma decisão que
    * chegou no meio deixa o passo e a pendência como ela os deixou.
    */
-  private async expirarAvulsosDerivados(ids: string[]): Promise<void> {
-    if (ids.length === 0) return;
+  private expirarAvulsosDerivados(tx: Tx, ids: string[]): void {
     const agora = Math.floor(Date.now() / 1000);
-    this.db.transaction(
-      (tx) => {
-        for (const id of ids) {
-          const expirou = tx
-            .update(schema.approvals)
-            .set({ status: "expired", decidedAt: agora })
-            .where(and(eq(schema.approvals.stepId, id), eq(schema.approvals.status, "pending")))
-            .run().changes;
-          if (expirou === 0) continue;
-          tx.update(schema.steps)
-            .set({ status: "skipped", error: "expired", endedAt: agora })
-            .where(and(eq(schema.steps.id, id), eq(schema.steps.status, "awaiting_approval")))
-            .run();
-        }
-      },
-      { behavior: "immediate" },
-    );
+    for (const id of ids) {
+      const expirou = tx
+        .update(schema.approvals)
+        .set({ status: "expired", decidedAt: agora })
+        .where(and(eq(schema.approvals.stepId, id), eq(schema.approvals.status, "pending")))
+        .run().changes;
+      if (expirou === 0) continue;
+      tx.update(schema.steps)
+        .set({ status: "skipped", error: "expired", endedAt: agora })
+        .where(and(eq(schema.steps.id, id), eq(schema.steps.status, "awaiting_approval")))
+        .run();
+    }
   }
 
-  private async reset(run: RunRow & { spec: AgentSpec }, targets: StepRow[]): Promise<void> {
+  private reset(tx: Tx, run: RunRow & { spec: AgentSpec }, targets: StepRow[]): void {
     if (targets.length > 0) {
       const ids = targets.map((s) => s.id);
 
@@ -542,14 +563,13 @@ export class RunService {
       const acoes = new Set(run.spec.steps.filter((p) => p.type === "action").map((p) => p.key));
       const publicados = targets.filter((s) => s.status === "done" && acoes.has(s.stepKey)).map((s) => s.id);
       if (publicados.length > 0) {
-        await this.db
-          .update(schema.steps)
+        tx.update(schema.steps)
           .set({ attempt: sql`${schema.steps.attempt} + 1` })
-          .where(inArray(schema.steps.id, publicados));
+          .where(inArray(schema.steps.id, publicados))
+          .run();
       }
 
-      await this.db
-        .update(schema.steps)
+      tx.update(schema.steps)
         .set({
           status: "pending",
           // A tentativa e historico do passo, e continua contando.
@@ -566,14 +586,15 @@ export class RunService {
           endedAt: null,
           error: null,
         })
-        .where(inArray(schema.steps.id, ids));
+        .where(inArray(schema.steps.id, ids))
+        .run();
 
       // Aprovacao presa ao passo antigo nao pode ficar na inbox: aprovar
       // publicaria um texto que o run acabou de descartar.
-      await this.db
-        .update(schema.approvals)
+      tx.update(schema.approvals)
         .set({ status: "expired", decidedAt: Math.floor(Date.now() / 1000) })
-        .where(and(inArray(schema.approvals.stepId, ids), eq(schema.approvals.status, "pending")));
+        .where(and(inArray(schema.approvals.stepId, ids), eq(schema.approvals.status, "pending")))
+        .run();
     }
 
     const billable = targets.filter((s) => s.billable).reduce((acc, s) => acc + s.costUsd, 0);
@@ -585,7 +606,8 @@ export class RunService {
       .filter((s) => s.billable)
       .reduce((acc, s) => acc + s.promptTokens + s.completionTokens, 0);
 
-    await this.db
+    // Troca condicionada: se outra reexecução chegou antes, o run já está `queued` e esta perde.
+    const trocou = tx
       .update(schema.runs)
       .set({
         status: "queued",
@@ -595,7 +617,9 @@ export class RunService {
         endedAt: null,
         error: null,
       })
-      .where(eq(schema.runs.id, run.id));
+      .where(and(eq(schema.runs.id, run.id), notInArray(schema.runs.status, ["queued", "running"])))
+      .run().changes;
+    if (trocou === 0) throw new Error(`run ${run.id} ainda esta em andamento; espere terminar para reexecutar`);
   }
 }
 
@@ -616,8 +640,14 @@ const SEM_PASSOS: StepCounts = {
 export interface RerunPreview {
   /** Os passos do fluxo que voltam a rodar, na ordem do spec. */
   passos: { stepKey: string; name: string; type: string }[];
-  /** As ações a jusante que estavam em `auto` e esperam na Fila por causa da instrução. */
-  rebaixados: { stepKey: string; name: string; action: string }[];
+  /** As ações em `auto` ou `draft` que esperam na Fila por causa de uma instrução. */
+  rebaixados: { stepKey: string; name: string; action: string; mode: string }[];
+  /** Os avulsos esperando decisão que partem do resultado que a reexecução descarta. */
+  avulsosQueExpiram: { stepKey: string; name: string }[];
+  /** Os passos de modelo que são cobrados de novo, com o custo da execução anterior. */
+  cobradosDeNovo: { stepKey: string; name: string; custoUsd: number }[];
+  /** O que o `rerunStep` recusaria agora. */
+  bloqueios: { codigo: "em-andamento" | "publicando" | "arquivada" | "reservado" | "avulso"; detalhe?: string }[];
 }
 
 /** Instrução só tem onde entrar no prompt de um passo de modelo. */
@@ -627,9 +657,14 @@ function exigirPassoDeModelo(spec: AgentSpec, stepKey: string): void {
   }
 }
 
-/** Os passos de ação em `auto` entre os reexecutados, fora o próprio passo pedido. */
-function acoesEmAuto(spec: AgentSpec, afetados: ReadonlySet<string>) {
-  return spec.steps.flatMap((p) => (p.type === "action" && p.mode === "auto" && afetados.has(p.key) ? [p] : []));
+/** A aprovação que está saindo agora entre os passos dados, se houver. Síncrona, para a mesma transação que zera. */
+function aprovacaoPublicando(leitor: Pick<Db, "select">, stepIds: string[]): string | undefined {
+  if (stepIds.length === 0) return undefined;
+  return leitor
+    .select({ id: schema.approvals.id })
+    .from(schema.approvals)
+    .where(and(inArray(schema.approvals.stepId, stepIds), eq(schema.approvals.status, "publishing")))
+    .get()?.id;
 }
 
 /** O passo pedido mais o fecho transitivo de quem depende dele. */

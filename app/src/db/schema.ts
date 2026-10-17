@@ -183,9 +183,7 @@ export const steps = sqliteTable(
     origem: text("origem").notNull().default("fluxo"),
     /** Instrução de quem reexecutou o passo de modelo (só ele a tem); entra no fim do prompt. Nulo sem reexecução com instrução. */
     instrucao: text("instrucao"),
-    /** O rótulo do bloco da instrução no prompt. Nulo: vale o padrão do executor. */
-    instrucaoRotulo: text("instrucao_rotulo"),
-    /** Código de por que este passo de ação foi de `auto` para `approve` neste run (ver `config/rebaixado.ts`). Nulo: roda no modo do spec. */
+    /** Registro de que este passo de ação foi para `approve` neste run porque um ancestral foi reexecutado com instrução (ver `config/rebaixado.ts`). A decisão é do executor na hora de submeter. */
     rebaixado: text("rebaixado"),
     status: text("status").notNull().default("pending"),
     attempt: integer("attempt").notNull().default(0),

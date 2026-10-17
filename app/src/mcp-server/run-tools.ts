@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { executionService } from "../services/execution-service.js";
 import { passoAvulsoService } from "../services/passo-avulso-service.js";
-import { runService } from "../services/run-service.js";
+import { LIMITE_DA_INSTRUCAO, runService } from "../services/run-service.js";
 import { respond } from "./respond.js";
 import { def } from "./tool-def.js";
 
@@ -59,30 +59,26 @@ export function registerRunTools(server: McpServer): void {
         wait: z.boolean().optional().describe("true holds the response until the run stops"),
         instruction: z
           .string()
+          .max(LIMITE_DA_INSTRUCAO)
           .optional()
           .describe(
-            "extra instruction for a model step, appended after its prompt (it comes from the person, not from outside data). Refused for steps that are not model steps. With it, every downstream action in auto waits in the queue as approve in this re-run; see preview_rerun",
+            `extra instruction (up to ${LIMITE_DA_INSTRUCAO} characters) for a model step, appended after its prompt (it comes from the person, not from outside data). Refused for steps that are not model steps. It stays on the step until it is re-run again (without an instruction it is cleared). While any ancestor of an action keeps an instruction, that action (auto or draft) waits in the queue as approve; see preview_rerun`,
           ),
-        instructionLabel: z
-          .string()
-          .optional()
-          .describe("text that heads the instruction block in the prompt; the default says it came from whoever re-ran the step"),
       },
     },
-    async ({ runId, stepKey, wait, instruction, instructionLabel }) =>
+    async ({ runId, stepKey, wait, instruction }) =>
       respond(async () => ({
         runId,
         stepKey,
         status: await runService.rerunStep(runId, stepKey, {
           wait: wait ?? false,
           ...(instruction === undefined ? {} : { instrucao: instruction }),
-          ...(instructionLabel === undefined ? {} : { rotuloDaInstrucao: instructionLabel }),
         }),
       })),
   );
 
   def(server, "preview_rerun", "read",
-    "What rerun_step would do, before confirming: the steps that run again and, when withInstruction is true, the downstream actions in auto that go to the queue as approve because of the instruction. Writes nothing.",
+    "What rerun_step would do, before confirming: the steps that run again, what would block it now (blocks), the standalone steps that expire, the model steps billed again, and the actions in auto or draft that go to the queue as approve because an ancestor has an instruction (includes steps that have no row yet). Writes nothing.",
     {
       runId: z.string().min(1),
       stepKey: z.string().min(1).describe("step key in the spec, as shown by get_run"),

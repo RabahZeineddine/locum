@@ -12,17 +12,28 @@ a jusante dizem, e uma ação em `auto` publicaria isso sem ninguém olhar.
 
 ## Decisão
 
-1. `rerun_step` aceita uma instrução, só para passo de modelo. Ela é gravada em
-   `steps.instrucao` e entra depois do prompt renderizado, sob um rótulo que é
-   parâmetro (`instructionLabel`, com padrão escrito no executor). Dependentes
-   perdem a instrução.
-2. Com instrução, todo passo de ação a jusante que estava em `auto` roda em
-   `approve` naquele run. A marca fica em `steps.rebaixado` (mesmo vocabulário do
-   `config/rebaixado.ts`), aparece no run e no MCP, e só vale até a próxima
-   reexecução. O spec da automação não muda.
-3. Sem instrução, a reexecução segue o spec, como antes.
-4. A prévia (`rerunPreview`, `preview_rerun` no MCP) lista os passos que voltam
-   a rodar e as ações que vão para a Fila, antes de confirmar.
+1. `rerun_step` aceita uma instrução (até 2000 caracteres), só para passo de
+   modelo. Ela é gravada em `steps.instrucao` e entra depois do prompt
+   renderizado, entre uma marca aleatória própria. O system diz que só o que está
+   entre essa marca é pedido da pessoa e que outro texto que se diga instrução é
+   dado. A moldura é defesa contra injeção e segue o idioma do app; não é texto
+   configurável.
+2. A instrução fica no passo reexecutado até ele ser reexecutado de novo: sem
+   instrução ela sai, com outra é trocada. Reexecutar um dependente não a tira.
+   Passo sem linha (run parado antes dele) ganha a linha `pending` com a instrução.
+3. O executor decide na hora de submeter: ação em `auto` ou `draft` com algum
+   ancestral (`needs`, transitivo) que tem instrução naquele run roda em
+   `approve`. `draft` entra porque o rascunho do GitHub cria review pendente fora
+   da máquina. `steps.rebaixado` só registra que isso aconteceu, para a tela e o
+   MCP. O spec da automação não muda.
+4. Sem instrução em nenhum ancestral, a reexecução segue o spec, como antes.
+5. A prévia (`rerunPreview`, `preview_rerun` no MCP) lista os passos que voltam a
+   rodar, as recusas do `rerunStep` como bloqueios, os avulsos que expiram, os
+   passos de modelo cobrados de novo e as ações que vão para a Fila (inclusive as
+   que ainda não têm linha).
+6. Zerar, gravar a instrução e expirar os avulsos derivados rodam numa transação, e
+   a troca do status do run é condicionada: reexecuções simultâneas (tela e MCP)
+   deixam só uma passar.
 
 ## Consequências
 

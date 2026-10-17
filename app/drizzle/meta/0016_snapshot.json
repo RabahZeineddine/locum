@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "f1f42d00-c40a-4445-b29e-8e6f3aead33f",
+  "id": "628a0978-c7ac-4b53-a344-97f4d008c335",
   "prevId": "885d7511-bb8e-4c9e-bf9b-36d600f51e73",
   "tables": {
     "agent_metrics": {
@@ -1918,13 +1918,6 @@
         },
         "instrucao": {
           "name": "instrucao",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "instrucao_rotulo": {
-          "name": "instrucao_rotulo",
           "type": "text",
           "primaryKey": false,
           "notNull": false,

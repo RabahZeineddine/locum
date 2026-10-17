@@ -90,11 +90,12 @@ não retoma. Reexecutar o passo de que ele deriva expira a pendência. Exceção
 nomeada do ADR 0007 à regra 1 do ADR 0006.
 
 **Instrução de reexecução**: texto que a pessoa acrescenta ao reexecutar um passo
-de modelo. Entra no fim do prompt daquele passo, sob um rótulo que é parâmetro (o
-padrão diz que veio de quem reexecutou), e não é dado de fora. Fica em
-`steps.instrucao`, só no passo reexecutado: os dependentes a perdem. Passo que não
-é de modelo recusa a instrução. Com instrução, a ação a jusante em `auto` vai para
-a Fila (`steps.rebaixado`, ADR 0008); a prévia mostra isso antes de confirmar.
+de modelo. Entra no fim do prompt daquele passo e não é dado de fora. Vem
+entre uma marca aleatória que o system declara como pedido da pessoa. Fica em
+`steps.instrucao`, no passo reexecutado, até ele ser reexecutado de novo. Passo
+que não é de modelo recusa a instrução. Com instrução num ancestral, a ação a
+jusante em `auto` ou `draft` vai para a Fila (`steps.rebaixado`, ADR 0008); a
+prévia mostra isso antes de confirmar.
 
 **Descarte**: o que um gatilho viu e deixou de fora, com o motivo.
 

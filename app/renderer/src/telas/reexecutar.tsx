@@ -10,6 +10,9 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Campo } from "../automacoes/campos";
 
+/** O mesmo limite técnico do serviço (`LIMITE_DA_INSTRUCAO`); a tela não importa código do processo principal. */
+const LIMITE_DA_INSTRUCAO = 2000;
+
 /**
  * O botao de reexecutar.
  *
@@ -60,6 +63,7 @@ function Dialogo({ aoFechar, runId, stepKey }: { aoFechar: () => void; runId: st
   const [recusa, setRecusa] = useState<string | null>(null);
   const comInstrucao = instrucao.trim().length > 0;
   const previa = useRead("runs.rerunPreview", runId, stepKey, { comInstrucao });
+  const bloqueios = previa.data?.bloqueios ?? [];
 
   const reexecutar = (): void => {
     setEnviando(true);
@@ -86,10 +90,12 @@ function Dialogo({ aoFechar, runId, stepKey }: { aoFechar: () => void; runId: st
             <Textarea
               data-locum-rerun-instrucao=""
               onChange={(e) => setInstrucao(e.target.value)}
+              maxLength={LIMITE_DA_INSTRUCAO}
               placeholder={t("runs.rerun.dialog.placeholder")}
               rows={4}
               value={instrucao}
             />
+            <span className="text-muted-foreground text-xs">{t("runs.rerun.dialog.limit", { max: LIMITE_DA_INSTRUCAO })}</span>
           </Campo>
 
           {previa.data === undefined ? null : (
@@ -102,6 +108,21 @@ function Dialogo({ aoFechar, runId, stepKey }: { aoFechar: () => void; runId: st
                   </li>
                 ))}
               </ul>
+              {previa.data.cobradosDeNovo.length === 0 ? null : (
+                <span className="text-muted-foreground" data-locum-rerun-previa-custo="">
+                  {t("runs.rerun.dialog.billed", { cost: previa.data.cobradosDeNovo.reduce((soma, p) => soma + p.custoUsd, 0).toFixed(3) })}
+                </span>
+              )}
+              {previa.data.avulsosQueExpiram.length === 0 ? null : (
+                <div className="flex flex-col gap-0.5" data-locum-rerun-previa-expira="">
+                  <span className="font-medium">{t("runs.rerun.dialog.expire")}</span>
+                  <ul className="flex flex-col gap-0.5">
+                    {previa.data.avulsosQueExpiram.map((p) => (
+                      <li key={p.stepKey}>{rotuloDaAcao(t, p.name)}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               {previa.data.rebaixados.length === 0 ? null : (
                 <div className="flex flex-col gap-0.5" data-locum-rerun-previa-fila="">
                   <span className="font-medium">{t("runs.rerun.dialog.toQueue")}</span>
@@ -116,12 +137,17 @@ function Dialogo({ aoFechar, runId, stepKey }: { aoFechar: () => void; runId: st
               )}
             </div>
           )}
+          {bloqueios.map((b) => (
+            <p className="text-destructive text-xs" data-locum-rerun-bloqueio={b.codigo} key={b.codigo}>
+              {t(`runs.rerun.dialog.blocked.${b.codigo}`)}
+            </p>
+          ))}
           {recusa === null ? null : <p className="text-destructive text-xs" data-locum-rerun-recusa="">{recusa}</p>}
         </div>
 
         <DialogFooter>
           <Button disabled={enviando} onClick={aoFechar} variant="ghost">{t("runs.rerun.dialog.cancel")}</Button>
-          <Button data-locum-rerun-confirmar="" disabled={enviando} onClick={reexecutar}>
+          <Button data-locum-rerun-confirmar="" disabled={enviando || bloqueios.length > 0} onClick={reexecutar}>
             {t("runs.rerun.dialog.confirm")}
           </Button>
         </DialogFooter>
