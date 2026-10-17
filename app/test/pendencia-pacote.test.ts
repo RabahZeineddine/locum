@@ -183,3 +183,18 @@ test("restaurar uma versão antiga: a pendência do gatilho volta só se o gatil
   await b.automations.save({ spec: (await b.automations.get("origem-rest"))!.version.spec, triggers: [], note: "sem gatilho" });
   assert.equal((await b.agents.restoreVersion("origem-rest", antiga)).spec.pendentes, undefined);
 });
+
+test("url que viajou como marcador não vira pendência, e a literal continua sendo", async () => {
+  const a = maquina();
+  const passo = (key: string, url: string) => ({ ...base, type: "action", key, name: key, action: "http.request", mode: "approve", params: { method: "POST", url } });
+  const spec = AgentSpec.parse({ id: "urls", name: "Urls", steps: [passo("literal", "https://api.exemplo.com/x"), passo("marcador", "{{event.url}}")] });
+  await a.automations.save({ spec, triggers: [], note: "", create: true });
+  const { texto } = await a.pacotes.exportar("urls");
+  const b = maquina();
+  const previa = await b.pacotes.previa(texto);
+  assert.deepEqual(previa.aPreencher.filter((p) => p.motivo === "url-a-preencher").map((p) => p.no.tipo === "passo" && p.no.chave), ["literal"]);
+  assert.deepEqual(previa.urlsAPreencher.map((u) => u.passo), ["literal"]);
+  const r = await b.pacotes.importar(texto);
+  assert.deepEqual(r.pendencias.filter((p) => p.codigo === "url-a-preencher").map((p) => p.onde), ["literal"]);
+  assert.deepEqual((await b.automations.get("urls"))!.version.spec.pendentes?.map((p) => p.onde), ["literal"]);
+});

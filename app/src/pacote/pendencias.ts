@@ -2,7 +2,7 @@ import { TriggerConfig } from "../config/types.js";
 import { MARCAS_DOS_GATILHOS } from "./marcacao.js";
 import type { GatilhoDoPacote, Pacote } from "./formato.js";
 import { CodigoOmitido, indicesDoOndeDeGatilho } from "./formato.js";
-import { paramsDoPacoteParaPasso, type ParamsDoPacote } from "./params.js";
+import { ehMarcador, paramsDoPacoteParaPasso, type ParamsDoPacote } from "./params.js";
 
 /** Onde no pacote fica o que a pessoa vai preencher: um passo (pela chave) ou um gatilho (pela posição na lista). */
 export type NoDoPacote = { tipo: "passo"; chave: string; nome: string } | { tipo: "gatilho"; posicao: number; kind: string };
@@ -20,7 +20,7 @@ export interface PendenciaDoPacote {
 }
 
 /** O que o pacote avisa mas não deixa nada a preencher, ou que a importação já cobre por outro caminho. */
-const INFORMATIVOS = new Set<CodigoOmitido>(["texto-limpo", "escrita-removida", "url-a-preencher", "chats-a-escolher", "gatilho-sem-canal", "skill-ausente"]);
+const INFORMATIVOS = new Set<CodigoOmitido>(["texto-limpo", "escrita-removida", "url-a-preencher", "chats-a-escolher", "gatilho-sem-canal", "skill-ausente", "skill-nao-levada"]);
 /** Omitido que vale o passo inteiro, sem nome de param: o campo é o do próprio passo. */
 const CAMPO_SEM_PARAMS: Partial<Record<CodigoOmitido, string>> = { tracker: "target" };
 
@@ -102,7 +102,8 @@ export function pendenciasDoPacote(
     if (p.type !== "action") continue;
     const no: NoDoPacote = { tipo: "passo", chave: p.key, nome: p.name };
     const declaracao = declaracoes[p.action] ?? {};
-    for (const [nome, como] of Object.entries(declaracao)) if (como === "url") acrescentar({ no, campo: `params.${nome}`, motivo: "url-a-preencher", criado: true });
+    // A url que viajou como marcador (`{{steps.x.url}}`) é estrutura do fluxo: só a que não viajou fica a preencher.
+    for (const [nome, como] of Object.entries(declaracao)) if (como === "url" && !ehMarcador(p.params?.[nome])) acrescentar({ no, campo: `params.${nome}`, motivo: "url-a-preencher", criado: true });
     // O que o arquivo traz e a ação não deixa viajar (pacote mexido à mão) não entra, e fica dito.
     for (const nome of paramsDoPacoteParaPasso(declaracao, p.params ?? {}).descartados) acrescentar({ no, campo: `params.${nome}`, motivo: "argumentos", criado: true });
   }

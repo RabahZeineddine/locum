@@ -209,13 +209,14 @@ const SkillRequerida = z.object({ nome: z.string().min(1) }).strict();
 /** A skill que o pacote leva: o texto passa pela mesma limpeza do resto, e o nome é o de uma skill do Locum. */
 export const NOME_DE_SKILL = /^[a-z0-9][a-z0-9-]{0,63}$/;
 export const TETO_DO_CORPO_DA_SKILL = 64 * 1024;
-const SkillDoPacote = z.object({ nome: z.string().regex(NOME_DE_SKILL), descricao: z.string().max(2000), corpo: z.string().max(TETO_DO_CORPO_DA_SKILL) }).strict();
+export const TETO_DA_DESCRICAO_DA_SKILL = 2000;
+const SkillDoPacote = z.object({ nome: z.string().regex(NOME_DE_SKILL), descricao: z.string().max(TETO_DA_DESCRICAO_DA_SKILL).refine((d) => d.trim().length > 0, "a skill precisa de uma descrição"), corpo: z.string().max(TETO_DO_CORPO_DA_SKILL) }).strict();
 export type SkillDoPacote = z.infer<typeof SkillDoPacote>;
 
 const ProvedorRequerido = z.object({ provedor: z.string().min(1), modelos: z.array(z.string().min(1)) }).strict();
 
 /** O que a exportação deixou de fora de propósito, para a prévia pedir à pessoa. */
-export const CodigoOmitido = z.enum(["canais", "gatilho-sem-canal", "filtros-de-pessoa", "dono-do-github", "tracker", "argumentos", "texto-limpo", "url-a-preencher", "escrita-removida", "chats-a-escolher", "destino-a-escolher", "skill-ausente", "passo-a-revisar"]);
+export const CodigoOmitido = z.enum(["canais", "gatilho-sem-canal", "filtros-de-pessoa", "dono-do-github", "tracker", "argumentos", "texto-limpo", "url-a-preencher", "escrita-removida", "chats-a-escolher", "destino-a-escolher", "skill-ausente", "passo-a-revisar", "skill-nao-levada"]);
 export type CodigoOmitido = z.infer<typeof CodigoOmitido>;
 const Omitido = z
   .object({
@@ -224,6 +225,8 @@ const Omitido = z
     quantos: z.number().int().positive().optional(),
     /** Os params que ficaram de fora, por nome (`args.token` dentro de um param composto). */
     params: z.array(z.string().min(1)).optional(),
+    /** Por que, quando o código não basta: a skill que não foi no pacote diz se era grande demais, de nome inválido, sem descrição ou ilegível. */
+    motivo: z.string().min(1).optional(),
   })
   .strict();
 

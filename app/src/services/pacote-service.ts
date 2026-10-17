@@ -22,6 +22,7 @@ import {
   lerPacote,
   NOME_DE_SKILL,
   TETO_DO_CORPO_DA_SKILL,
+  TETO_DA_DESCRICAO_DA_SKILL,
   type SkillDoPacote,
   ondeDoGatilhoNoPacote,
   type AgentDoPacote,
@@ -31,9 +32,9 @@ import {
 } from "../pacote/formato.js";
 import { configuracaoDoGatilho, omitidoDaPendencia, pendenciasDoPacote, type PendenciaDoPacote } from "../pacote/pendencias.js";
 import { idDoGatilhoNoOnde, ondeDoGatilho, type Pendencia } from "../config/pendencia.js";
-import { limparValor } from "../pacote/limpeza.js";
+import { limparSkill, limparValor } from "../pacote/limpeza.js";
 import { MARCAS_DO_AGENT, MARCAS_DO_SPEC, MARCAS_DOS_GATILHOS } from "../pacote/marcacao.js";
-import { aplicarMarcas, literaisQueViajam, origemDaUrl, paramsDoPacoteParaPasso, paramsParaPacote, type ParamsDoPacote } from "../pacote/params.js";
+import { aplicarMarcas, ehMarcador, literaisQueViajam, origemDaUrl, paramsDoPacoteParaPasso, paramsParaPacote, type ParamsDoPacote } from "../pacote/params.js";
 import { ehLeitura, ehLeituraDa, type FerramentaClassificavel } from "../config/leitura.js";
 
 /**
@@ -68,6 +69,8 @@ export interface AmbienteDoPacote {
   conteudoDaSkill?(nome: string): Promise<{ descricao: string; corpo: string } | null>;
   /** Cria a skill no Locum, com o nome pedido. Sem isto a importação não cria skills. */
   criarSkill?(skill: { nome: string; descricao: string; corpo: string }): Promise<void>;
+  /** Tira uma skill que a importação acabou de criar, quando a gravação seguinte falha. */
+  removerSkill?(nome: string): Promise<void>;
 }
 
 const ambientePadrao: AmbienteDoPacote = {
@@ -96,6 +99,10 @@ const ambientePadrao: AmbienteDoPacote = {
   criarSkill: async ({ nome, descricao, corpo }) => {
     const { skillsService } = await import("./skills-service.js");
     await skillsService.criar({ name: nome, description: descricao, body: corpo });
+  },
+  removerSkill: async (nome) => {
+    const { skillsService } = await import("./skills-service.js");
+    await skillsService.remover(nome);
   },
   conexoes: async () => {
     const { connectionService } = await import("./connection-service.js");
@@ -373,8 +380,8 @@ export class PacoteService {
     if (automacao === null) throw new Error(`a automação "${agentId}" não existe`);
     const spec = automacao.version.spec;
     const omitidos: Pacote["omitidos"] = [];
-    const omitir = (codigo: CodigoOmitido, onde: string, quantos?: number, params?: string[]): void => {
-      omitidos.push({ codigo, onde, ...(quantos === undefined ? {} : { quantos }), ...(params === undefined ? {} : { params }) });
+    const omitir = (codigo: CodigoOmitido, onde: string, quantos?: number, params?: string[], motivo?: string): void => {
+      omitidos.push({ codigo, onde, ...(quantos === undefined ? {} : { quantos }), ...(params === undefined ? {} : { params }), ...(motivo === undefined ? {} : { motivo }) });
     };
     const declaracoes = await this.declaracoes();
 
@@ -416,12 +423,13 @@ export class PacoteService {
       automacao: { id: idDoSpec, spec: specNoPacote, gatilhos },
       agents,
       requisitos,
-      skills: await this.conteudoDasSkills(requisitos.skills.map((k) => k.nome)),
       omitidos,
     };
 
+    // O texto das skills tem a limpeza própria (só segredo e caminho do home), e o teto conta o texto depois dela.
+    const skills = await this.conteudoDasSkills(requisitos.skills.map((k) => k.nome), omitir);
     const limpo = limparValor(base, this.home);
-    const pacote = Pacote.parse(limpo.valor);
+    const pacote = Pacote.parse({ ...limpo.valor, skills });
     const limpos = limpo.removidos + dosTextos.limpos;
     if (limpos > 0) pacote.omitidos.push({ codigo: "texto-limpo", onde: "automacao", quantos: limpos });
     return {
@@ -432,13 +440,35 @@ export class PacoteService {
     };
   }
 
-  /** O conteúdo das skills citadas que esta máquina tem; o que não tem fica só como requisito. */
-  private async conteudoDasSkills(nomes: readonly string[]): Promise<SkillDoPacote[]> {
+  /**
+   * O conteúdo das skills citadas que esta máquina tem; o que não tem fica só como requisito.
+   * Skill que existe aqui e não vai (nome inválido, sem descrição, grande demais, ilegível)
+   * sai com omitido por nome, e a exportação nunca lança por causa dela.
+   */
+  private async conteudoDasSkills(nomes: readonly string[], omitir: (c: CodigoOmitido, onde: string, q?: number, params?: string[], motivo?: string) => void): Promise<SkillDoPacote[]> {
     if (this.ambiente.conteudoDaSkill === undefined) return [];
+    const locais = new Set(await this.ambiente.skills());
     const lista: SkillDoPacote[] = [];
     for (const nome of nomes) {
-      const skill = NOME_DE_SKILL.test(nome) ? await this.ambiente.conteudoDaSkill(nome) : null;
-      if (skill !== null && Buffer.byteLength(skill.corpo) <= TETO_DO_CORPO_DA_SKILL) lista.push({ nome, descricao: skill.descricao, corpo: skill.corpo });
+      const nao = (motivo: string): void => omitir("skill-nao-levada", `skill:${nome}`, undefined, undefined, motivo);
+      if (!NOME_DE_SKILL.test(nome)) {
+        if (locais.has(nome)) nao("nome-invalido");
+        continue;
+      }
+      const skill = await this.ambiente.conteudoDaSkill(nome).catch(() => null);
+      if (skill === null) {
+        if (locais.has(nome)) nao("nao-lida");
+        continue;
+      }
+      const descricao = limparSkill(skill.descricao, this.home);
+      const corpo = limparSkill(skill.corpo, this.home);
+      if (descricao.texto.trim() === "") nao("sem-descricao");
+      else if (descricao.texto.length > TETO_DA_DESCRICAO_DA_SKILL || Buffer.byteLength(corpo.texto) > TETO_DO_CORPO_DA_SKILL) nao("grande-demais");
+      else {
+        lista.push({ nome, descricao: descricao.texto, corpo: corpo.texto });
+        // Qual skill mudou fica dito, por nome.
+        if (descricao.removidos + corpo.removidos > 0) omitir("texto-limpo", `skill:${nome}`, descricao.removidos + corpo.removidos);
+      }
     }
     return lista;
   }
@@ -708,7 +738,7 @@ export class PacoteService {
       dependencias: this.dependencias(pacote, { conexoes, servidores, provedores, disponiveis, skills: [...skills, ...pacote.skills.map((k) => k.nome)] }),
       ferramentas: await this.ferramentasDoPacote(pacote),
       urlsAPreencher: pacote.automacao.spec.steps.flatMap((p) =>
-        p.type === "action" && Object.values(declaracoes[p.action] ?? {}).includes("url")
+        p.type === "action" && Object.entries(declaracoes[p.action] ?? {}).some(([nome, como]) => como === "url" && !ehMarcador(p.params?.[nome]))
           ? [{ passo: p.key, ...(typeof p.params?.origem === "string" ? { origem: p.params.origem } : {}) }]
           : [],
       ),
@@ -972,7 +1002,7 @@ export class PacoteService {
       } else if (p.type === "action") {
         const declaracao = declaracoes[p.action] ?? {};
         const { params: viajantes, origem, descartados } = paramsDoPacoteParaPasso(declaracao, p.params ?? {});
-        const urls = Object.entries(declaracao).filter(([, como]) => como === "url");
+        const urls = Object.entries(declaracao).filter(([nome, como]) => como === "url" && !ehMarcador(viajantes[nome]));
         if (urls.length > 0) pendencias.push({ codigo: "url-a-preencher", onde: p.key, ...(origem === undefined ? {} : { dica: origem }) });
         // O que o arquivo traz e a ação não deixa viajar (pacote mexido à mão) não entra, e fica dito.
         if (descartados.length > 0) pendencias.push({ codigo: "argumentos", onde: p.key, params: descartados });
@@ -1005,22 +1035,32 @@ export class PacoteService {
     }
 
     // Gravação: skills e agents primeiro, a automação por último, que é o que referencia.
-    for (const nova of pacote.skills.filter((k) => previa.skills.some((p) => p.nome === k.nome && p.situacao === "nova"))) {
-      await this.ambiente.criarSkill?.({ nome: nova.nome, descricao: nova.descricao, corpo: nova.corpo });
-    }
+    // Tudo já foi validado acima; se mesmo assim uma gravação falhar, o que esta importação criou sai.
+    const criadas = { skills: [] as string[], agents: [] as string[] };
     const resultado: ResultadoDaImportacao["agents"] = [];
-    for (const agent of pacote.agents) {
-      const alvo = destino.get(agent.id)!;
-      const antes = await this.library.getProfile(alvo.id);
-      const novoSpec = specsDosAgents.get(alvo.id);
-      if (novoSpec === undefined) {
-        resultado.push({ id: alvo.id, acao: alvo.acao === "igual" ? "igual" : "existente", versao: antes?.version ?? 0 });
-        continue;
+    try {
+      for (const nova of pacote.skills.filter((k) => previa.skills.some((p) => p.nome === k.nome && p.situacao === "nova"))) {
+        await this.ambiente.criarSkill?.({ nome: nova.nome, descricao: nova.descricao, corpo: nova.corpo });
+        criadas.skills.push(nova.nome);
       }
-      const salvo = await this.library.saveProfile({ spec: novoSpec, note: "importado de pacote", ...(antes === null ? { create: true } : {}) });
-      resultado.push({ id: alvo.id, acao: antes === null ? "criado" : salvo.version === antes.version ? "igual" : "atualizado", versao: salvo.version });
+      for (const agent of pacote.agents) {
+        const alvo = destino.get(agent.id)!;
+        const antes = await this.library.getProfile(alvo.id);
+        const novoSpec = specsDosAgents.get(alvo.id);
+        if (novoSpec === undefined) {
+          resultado.push({ id: alvo.id, acao: alvo.acao === "igual" ? "igual" : "existente", versao: antes?.version ?? 0 });
+          continue;
+        }
+        const salvo = await this.library.saveProfile({ spec: novoSpec, note: "importado de pacote", ...(antes === null ? { create: true } : {}) });
+        if (antes === null) criadas.agents.push(alvo.id);
+        resultado.push({ id: alvo.id, acao: antes === null ? "criado" : salvo.version === antes.version ? "igual" : "atualizado", versao: salvo.version });
+      }
+      await this.automations.save({ spec: pendentes.length === 0 ? spec : { ...spec, pendentes }, triggers: gatilhos, note: "importada de pacote", create: true });
+    } catch (erro) {
+      for (const id of criadas.agents) await this.library.removeProfile(id).catch(() => undefined);
+      for (const nome of criadas.skills) await this.ambiente.removerSkill?.(nome).catch(() => undefined);
+      throw erro;
     }
-    await this.automations.save({ spec: pendentes.length === 0 ? spec : { ...spec, pendentes }, triggers: gatilhos, note: "importada de pacote", create: true });
 
     return { automacaoId, agents: resultado, gatilhos: gatilhos.length, pendencias };
   }

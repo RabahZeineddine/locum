@@ -35,9 +35,10 @@ function maquina(skills: Skills) {
     skills: async () => [...skills.keys()],
     conteudoDaSkill: async (nome) => skills.get(nome) ?? null,
     criarSkill: async ({ nome, descricao, corpo }) => void skills.set(nome, { descricao, corpo }),
+    removerSkill: async (nome) => void skills.delete(nome),
     provedores: async () => [{ provedor: "claude-code", disponivel: true, modelos: ["claude-sonnet-5"] }],
   };
-  return { agents, triggers, automations, pacotes: new PacoteService(agents, library, automations, ambiente, HOME) };
+  return { agents, triggers, automations, library, pacotes: new PacoteService(agents, library, automations, ambiente, HOME) };
 }
 
 async function origem(skills: Skills) {
@@ -52,10 +53,47 @@ async function origem(skills: Skills) {
   return dono.pacotes.exportar("com-skill");
 }
 
-test("o pacote leva o conteúdo da skill citada, limpo de credencial, e-mail e caminho de home", async () => {
-  const { texto, pacote } = await origem(new Map([["estilo-de-codigo", { descricao: "Estilo", corpo: `Use ${TOKEN}\nfale com ana@empresa.com em ${HOME}/projetos` }]]));
+test("o pacote leva o conteúdo da skill limpo só de credencial e caminho de home, e diz qual skill mudou", async () => {
+  const UUID = "123e4567-e89b-12d3-a456-426614174000";
+  const { texto, pacote } = await origem(new Map([["estilo-de-codigo", { descricao: "Estilo", corpo: `Use ${TOKEN}\nexemplo: dev@exemplo.com, ${UUID}, v2024q3 em ${HOME}/projetos` }]]));
   assert.equal(pacote.skills.length, 1);
-  assert.ok(!texto.includes(TOKEN) && !texto.includes("ana@empresa.com") && !texto.includes(HOME));
+  assert.ok(!texto.includes(TOKEN) && !texto.includes(HOME));
+  // O que é conteúdo da skill fica: e-mail de exemplo, uuid e palavra com dígitos.
+  assert.match(pacote.skills[0]!.corpo, /dev@exemplo\.com, 123e4567-e89b-12d3-a456-426614174000, v2024q3 em ~\/projetos/);
+  assert.ok(pacote.omitidos.some((o) => o.codigo === "texto-limpo" && o.onde === "skill:estilo-de-codigo" && o.quantos === 2));
+});
+
+test("skill grande demais, de nome inválido ou sem descrição vira omitido por nome, e o teto conta o texto depois da limpeza", async () => {
+  const dono = maquina(new Map([
+    ["grande", { descricao: "Grande", corpo: "x".repeat(64 * 1024 + 1) }],
+    ["Nome Ruim", { descricao: "Ruim", corpo: "y" }],
+    ["sem-descricao", { descricao: "  ", corpo: "z" }],
+    // Passa do teto cru e fica abaixo dele depois que cada caminho do home vira "~".
+    ["encolhe", { descricao: "Encolhe", corpo: `${HOME}/a `.repeat(5000) }],
+  ]));
+  const spec = AgentSpec.parse({
+    id: "varias",
+    name: "Varias",
+    skills: ["grande", "Nome Ruim", "sem-descricao", "encolhe"].map((skill) => ({ skill, when: { always: true } })),
+    steps: [{ ...base, type: "model", key: "ler", name: "Ler", prompt: "olhe", model: "claude-code/claude-sonnet-5" }],
+  });
+  await dono.automations.save({ spec, triggers: [], note: "", create: true });
+  const { pacote } = await dono.pacotes.exportar("varias");
+  assert.deepEqual(pacote.skills.map((k) => k.nome), ["encolhe"]);
+  const naoLevadas = pacote.omitidos.filter((o) => o.codigo === "skill-nao-levada").map((o) => `${o.onde}|${o.motivo}`).sort();
+  assert.deepEqual(naoLevadas, ["skill:Nome Ruim|nome-invalido", "skill:grande|grande-demais", "skill:sem-descricao|sem-descricao"]);
+});
+
+test("se a gravação da automação falha, a skill nova que a importação criou sai e nada fica pela metade", async () => {
+  const { texto } = await origem(new Map([["estilo-de-codigo", { descricao: "Estilo", corpo: "Prefira funções pequenas." }]]));
+  const skills: Skills = new Map();
+  const destino = maquina(skills);
+  destino.automations.save = async () => {
+    throw new Error("disco cheio");
+  };
+  await assert.rejects(() => destino.pacotes.importar(texto), /disco cheio/);
+  assert.equal(skills.size, 0, "a skill nova ficou");
+  assert.equal(await destino.agents.get("com-skill"), undefined);
 });
 
 test("importar cria a skill que não existe, e a que já é igual ou diferente fica como está", async () => {

@@ -74,7 +74,13 @@ test("o texto do pacote inteiro não traz segredo, e-mail, caminho de home nem i
   ] as never;
   await automations.save({ spec, triggers: gatilhos.map((config) => ({ config })), note: "", create: true });
 
-  const { texto } = await pacotes.exportar("tudo-sujo");
+  const { texto: inteiro, pacote } = await pacotes.exportar("tudo-sujo");
+  // O texto das skills tem a limpeza própria: credencial e home saem, e o e-mail de exemplo é conteúdo dela e fica.
+  const dasSkills = JSON.stringify(pacote.skills);
+  for (const segredo of SEGREDOS.filter((x) => x !== EMAIL)) assert.ok(!dasSkills.includes(segredo), `vazou ${segredo.slice(0, 8)}... na skill`);
+  assert.ok(pacote.skills.length > 0 && dasSkills.includes(EMAIL), "o e-mail de exemplo da skill foi trocado");
+  const texto = JSON.stringify({ ...pacote, skills: [] });
+  assert.ok(inteiro.length > 0);
   for (const segredo of SEGREDOS) assert.ok(!texto.includes(segredo), `vazou ${segredo.slice(0, 8)}... em: ${texto.slice(Math.max(0, texto.indexOf(segredo) - 80), texto.indexOf(segredo) + 40).replace(/\s+/g, " ")}`);
-  assert.ok(!/ghp_|xoxb-|AKIA/.test(texto), "sobrou prefixo de credencial");
+  assert.ok(!/ghp_|xoxb-|AKIA/.test(inteiro), "sobrou prefixo de credencial");
 });
