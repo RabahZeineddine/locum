@@ -42,6 +42,16 @@ test("describe_steps traz lógica, comparações e os modos de cada ação", asy
   assert.deepEqual(slack?.modes, ["approve", "auto"]);
 });
 
+test("describe_steps declara o destino de cada ação de conversa, lido do registro", async () => {
+  const client = await ligarCliente();
+  const catalogo = resultado(await client.callTool({ name: "describe_steps", arguments: {} })) as {
+    steps: { action: { destino: { porAcao: Record<string, { app: string; destinos: string[] }> } } };
+  };
+  const porAcao = catalogo.steps.action.destino.porAcao;
+  assert.deepEqual(porAcao["teams.post"], { app: "teams", efeito: "responder", destinos: ["evento", "fixo", "novo"] });
+  assert.deepEqual(porAcao["slack.react"]?.destinos, ["evento"]);
+});
+
 test("describe_steps diz quem sobe o modo e quem liga o gatilho, como as ferramentas fazem hoje", async () => {
   const client = await ligarCliente();
   const catalogo = JSON.stringify(resultado(await client.callTool({ name: "describe_steps", arguments: {} })));

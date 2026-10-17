@@ -416,7 +416,9 @@
       "slack": "Slack",
       "teams": "Teams",
       "chat": "chat",
-      "reply": "Reply: {{text}}"
+      "reply": "Reply: {{text}}",
+      "newIn": "New message in {{where}}",
+      "sends": "Message: {{text}}"
     },
     "document": {
       "issue": "Issue",
@@ -2557,6 +2559,39 @@
           "title": "Teams card",
           "description": "Builds an Adaptive Card with a title and text. Use it in App action with the variable steps.<key>.card."
         }
+      },
+      "destination": {
+        "label": {
+          "responder": "Reply to",
+          "reagir": "Reacts on"
+        },
+        "option": {
+          "responder": {
+            "evento": "The event's message, in its thread (default)",
+            "fixo": "A fixed chat or channel",
+            "novo": "A new message in the event's conversation, outside the thread"
+          },
+          "reagir": {
+            "evento": "The message that started the run (default)"
+          }
+        },
+        "hint": {
+          "responder": {
+            "evento": "Replies to the message that started the run, inside its thread.",
+            "fixo": "Sends to the conversation chosen below, always the same one.",
+            "novo": "Opens a new message in the event's chat or channel, without joining the thread."
+          },
+          "reagir": {
+            "evento": "Reacts on the message that started the run. There is no other target."
+          }
+        },
+        "conversation": "Conversation",
+        "choose": "Choose the chat or channel",
+        "loading": "Loading the list…",
+        "noMessage": {
+          "responder": "No trigger in this flow brings a {{app}} message: in a manual run and in a dry run there is no message to reply to, and the step only shows what it would send.",
+          "reagir": "No trigger in this flow brings a {{app}} message: in a manual run and in a dry run there is no message to react to, and the step only shows what it would do."
+        }
       }
     },
     "reactionNodes": {
@@ -2589,7 +2624,8 @@
       "noCases": "Add at least one case to the switch.",
       "argRequired": "\"{{campo}}\" is missing in the app action.",
       "argType": "The value of \"{{campo}}\" is not the type the tool asks for.",
-      "refNotBefore": "The action cites {{ref}}, which does not come before it in the flow."
+      "refNotBefore": "The action cites {{ref}}, which does not come before it in the flow.",
+      "destinationMissing": "Choose the chat or channel of the fixed destination."
     },
     "github": {
       "repos": {

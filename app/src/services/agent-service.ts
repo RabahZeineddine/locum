@@ -1,3 +1,4 @@
+import { ACOES_DE_CONVERSA_REGISTRO, destinoDoPasso } from "../acao/destino.js";
 import { recusarEscritaDaConta } from "../runtimes/claude-account.js";
 import { randomUUID } from "node:crypto";
 import { desc, eq } from "drizzle-orm";
@@ -255,6 +256,12 @@ export class AgentService {
   ): Promise<AgentVersion> {
     const parsed = guarded.spec;
     refuseReserved(parsed.id);
+    // O destino de resposta e de reação é conferido ao gravar: marcador de passo, tipo que a ação não aceita ou conversa de outro app.
+    for (const passo of parsed.steps) {
+      if (passo.type === "action" && ACOES_DE_CONVERSA_REGISTRO[passo.action] !== undefined) {
+        destinoDoPasso(passo.action, passo.params);
+      }
+    }
     if (expectedVersion !== undefined) assertVersion(latest?.version, expectedVersion);
     if (latest && sameSpec(latest.spec, parsed)) {
       return { ...parseVersion(latest), downgrades: guarded.downgrades };

@@ -598,7 +598,9 @@ function RevisaoDeMensagem({
         <Voltar navegar={navegar} />
         <span className="text-[13px] font-medium">{t(`inbox.message.${carga.servico}`)}</span>
         <span className="text-muted-foreground truncate font-mono text-xs">
-          {carga.destino ?? t("inbox.message.chat")}
+          {carga.destinoTipo === "novo"
+            ? t("inbox.message.newIn", { where: carga.destino ?? t("inbox.message.chat") })
+            : carga.destino ?? t("inbox.message.chat")}
         </span>
         {carga.link && (
           <a

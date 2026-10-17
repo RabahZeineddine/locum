@@ -433,7 +433,9 @@
       "slack": "Slack",
       "teams": "Teams",
       "chat": "chat",
-      "reply": "Resposta: {{text}}"
+      "reply": "Resposta: {{text}}",
+      "newIn": "Nova mensagem em {{where}}",
+      "sends": "Mensagem: {{text}}"
     },
     "document": {
       "issue": "Tarefa",
@@ -2607,6 +2609,39 @@
           "title": "Cartão do Teams",
           "description": "Monta um Adaptive Card com título e texto. Use em Ação em app com a variável steps.<chave>.card."
         }
+      },
+      "destination": {
+        "label": {
+          "responder": "Responder a",
+          "reagir": "Reage em"
+        },
+        "option": {
+          "responder": {
+            "evento": "A mensagem do evento, no fio (padrão)",
+            "fixo": "Um chat ou canal fixo",
+            "novo": "Nova mensagem na conversa do evento, fora do fio"
+          },
+          "reagir": {
+            "evento": "A mensagem que disparou o run (padrão)"
+          }
+        },
+        "hint": {
+          "responder": {
+            "evento": "Responde na mensagem que disparou o run, dentro do fio dela.",
+            "fixo": "Manda para a conversa escolhida abaixo, sempre a mesma.",
+            "novo": "Abre uma mensagem nova no chat ou canal do evento, sem entrar no fio."
+          },
+          "reagir": {
+            "evento": "Reage na mensagem que disparou o run. Não há outro alvo."
+          }
+        },
+        "conversation": "Conversa",
+        "choose": "Escolha o chat ou canal",
+        "loading": "Carregando a lista…",
+        "noMessage": {
+          "responder": "Nenhum gatilho deste fluxo traz uma mensagem de {{app}}: no disparo manual e no ensaio não há mensagem para responder, e o passo só mostra o que enviaria.",
+          "reagir": "Nenhum gatilho deste fluxo traz uma mensagem de {{app}}: no disparo manual e no ensaio não há mensagem para reagir, e o passo só mostra o que faria."
+        }
       }
     },
     "reactionNodes": {
@@ -2639,7 +2674,8 @@
       "noCases": "Acrescente pelo menos um caso ao switch.",
       "argRequired": "Falta preencher \"{{campo}}\" na ação em app.",
       "argType": "O valor de \"{{campo}}\" não é do tipo que a ferramenta pede.",
-      "refNotBefore": "A ação cita {{ref}}, que não vem antes dela no fluxo."
+      "refNotBefore": "A ação cita {{ref}}, que não vem antes dela no fluxo.",
+      "destinationMissing": "Escolha o chat ou canal do destino fixo."
     },
     "github": {
       "repos": {

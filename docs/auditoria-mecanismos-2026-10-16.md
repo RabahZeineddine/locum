@@ -37,7 +37,7 @@ PR), **legítimo** (fica, com o motivo).
 | B11 | `executor.ts` substituição por limite | troca o modelo (desligada de fábrica) | configurável por agent | pendente |
 | B12 | `executor.ts` cadeia de fallback | vale para todo passo, sem aparecer | mostrar no nó | pendente |
 | B13 | `executor.ts` skills por regra | `when` padrão `always` | mostrar no nó antes do run | pendente |
-| B17 | `executor.ts` destino do evento | sobrepõe saída do modelo | dizer no nó "destino vem do evento" | pendente |
+| B17 | `executor.ts` destino do evento | sobrepõe saída do modelo | dizer no nó "destino vem do evento" | feito (campo `destino` nos nós de resposta e reação) |
 | B18 | `executor.ts` perfil sobrepõe passo | modelo e ferramentas vêm do agent | dizer no nó | pendente |
 | B19 | `src/runtimes/claude-code.ts` | carrega config do usuário | listar ferramentas liberadas no nó | pendente |
 | B21 | `config/types.ts`, `triggers/working-hours.ts` | horário com padrão silencioso | padrão no formulário do gatilho | pendente |

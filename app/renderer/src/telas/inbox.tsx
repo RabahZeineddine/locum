@@ -678,10 +678,13 @@ export function alvoDaPendencia(p: Pendencia, t: TFunction): Alvo {
     const m = cargaDaMensagem(p);
     return {
       principal: t(`inbox.message.${m.servico}`),
-      detalhe: m.destino ?? t("inbox.message.chat"),
+      detalhe:
+        m.destinoTipo === "novo"
+          ? t("inbox.message.newIn", { where: m.destino ?? t("inbox.message.chat") })
+          : m.destino ?? t("inbox.message.chat"),
       titulo: m.assunto || undefined,
       autor: m.autor ? t("inbox.by", { author: m.autor }) : undefined,
-      resumo: m.texto ? t("inbox.message.reply", { text: m.texto }) : undefined,
+      resumo: m.texto ? t(m.destinoTipo === "evento" ? "inbox.message.reply" : "inbox.message.sends", { text: m.texto }) : undefined,
       servico: m.servico,
       link: m.link,
       semSeveridade: true,
@@ -750,27 +753,36 @@ export function cargaDaMensagem(p: Pendencia): {
   autor?: string;
   texto: string;
   link?: string;
+  /** Para onde o passo mandou: sem o campo (pendência antiga), responde ao evento. */
+  destinoTipo: "evento" | "novo" | "fixo";
 } {
   const c = (p.payload ?? {}) as Record<string, unknown>;
   const texto = typeof c.text === "string" ? c.text : "";
-  const assunto = typeof c.subject === "string" ? c.subject : "";
+  const d = c.destino as { tipo?: unknown; rotulo?: unknown } | undefined;
+  const destinoTipo = d?.tipo === "novo" || d?.tipo === "fixo" ? d.tipo : "evento";
+  const rotulo = typeof d?.rotulo === "string" && d.rotulo !== "" ? d.rotulo : undefined;
+  // Fora do fio não há mensagem a que se responde: nem assunto, nem autor, nem link dela.
+  const noFio = destinoTipo === "evento";
+  const assunto = noFio && typeof c.subject === "string" ? c.subject : "";
   if (p.kind === "slack.post") {
     return {
       servico: "slack",
-      destino: typeof c.channel === "string" ? c.channel : undefined,
+      destino: rotulo ?? (typeof c.channel === "string" ? c.channel : undefined),
       assunto,
       texto,
-      link: typeof c.permalink === "string" ? c.permalink : undefined,
+      link: noFio && typeof c.permalink === "string" ? c.permalink : undefined,
+      destinoTipo,
     };
   }
   const canal = c.channel as { label?: unknown; channelId?: unknown } | undefined;
   return {
     servico: "teams",
-    destino: canal ? String(canal.label ?? canal.channelId ?? "") || undefined : undefined,
+    destino: rotulo ?? (canal ? String(canal.label ?? canal.channelId ?? "") || undefined : undefined),
     assunto,
-    autor: typeof c.author === "string" ? c.author : undefined,
+    autor: noFio && typeof c.author === "string" ? c.author : undefined,
     texto,
-    link: typeof c.webUrl === "string" ? c.webUrl : undefined,
+    link: noFio && typeof c.webUrl === "string" ? c.webUrl : undefined,
+    destinoTipo,
   };
 }
 

@@ -150,11 +150,20 @@ async function rodar(params: Record<string, unknown> | undefined, saida: Record<
   return { estado, passo: linha! };
 }
 
-test("executor: marcador de passo no destino derruba o passo, sem virar pendência", async () => {
-  const { estado, passo } = await rodar({ text: "oi", destino: fixo("teams", "{{steps.revisar.chat}}", "x") });
-  assert.notEqual(estado, "done");
-  assert.equal(passo.status, "failed");
-  assert.match(String(passo.error), /não aceita marcador/);
+test("gravar: marcador de passo no destino é recusado, e reação com destino que não seja o evento também", async () => {
+  await assert.rejects(rodar({ text: "oi", destino: fixo("teams", "{{steps.revisar.chat}}", "x") }), /não aceita marcador/);
+  await assert.rejects(
+    new AgentService().upsert(
+      AgentSpec.parse({
+        id: `dest-${randomUUID().slice(0, 8)}`,
+        name: "Reação",
+        steps: [{ type: "action", key: "r", name: "r", action: "slack.react", mode: "approve", params: { emoji: "👀", destino: { tipo: "novo" } } }],
+      }),
+      undefined,
+      "human",
+    ),
+    /reação só cai na mensagem do evento/,
+  );
 });
 
 test("executor: destino fixo gravado no passo chega ao handler e a pendência mostra o rótulo", async () => {

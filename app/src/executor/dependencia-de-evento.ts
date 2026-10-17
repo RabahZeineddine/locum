@@ -18,7 +18,11 @@ const MARCADOR = /\{\{\s*(event(?:\.[\w.]+)?)\s*\}\}/;
 
 function acaoExigeEvento(passo: Step): string | null {
   if (passo.type !== "action") return null;
-  if (ACOES_DE_CONVERSA.has(passo.action)) return passo.action;
+  if (ACOES_DE_CONVERSA.has(passo.action)) {
+    // Resposta para uma conversa escolhida pela pessoa não precisa do evento.
+    const destino = (passo.params ?? {}).destino as { tipo?: unknown } | undefined;
+    return destino?.tipo === "fixo" && passo.action.endsWith(".post") ? null : passo.action;
+  }
   if (passo.action === "github.review_comment") {
     const params = passo.params ?? {};
     return CAMPOS_DO_ALVO.every((c) => params[c] !== undefined) ? null : passo.action;

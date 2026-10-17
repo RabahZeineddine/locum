@@ -693,6 +693,15 @@ export interface Contexto {
   esquemas?: Readonly<Record<string, unknown>>;
 }
 
+/** Resposta para uma conversa escolhida pela pessoa: não depende de gatilho de conversa. */
+const destinoFixo = (p: { params?: Record<string, unknown> }): boolean =>
+  (p.params?.destino as { tipo?: unknown } | undefined)?.tipo === "fixo";
+
+const destinoFixoSemConversa = (p: { params?: Record<string, unknown> }): boolean => {
+  const d = p.params?.destino as { tipo?: unknown; conversa?: { ref?: unknown } } | undefined;
+  return d?.tipo === "fixo" && (typeof d.conversa?.ref !== "string" || d.conversa.ref === "");
+};
+
 /**
  * O que está errado ou faltando, antes de gravar.
  *
@@ -772,10 +781,13 @@ export function problemas(r: Rascunho, ctx: Contexto): Problema[] {
     if (!ACOES_POR_PARAMETRO.has(p.action) && (fonte === undefined || fonte.type === "action")) {
       lista.push({ chave: "automations.problems.actionWithoutAi", no: p.key, bloqueia: false });
     }
-    if (p.action === "slack.post" && !conversaDoSlack) {
+    if (destinoFixoSemConversa(p)) {
+      lista.push({ chave: "automations.problems.destinationMissing", no: p.key, bloqueia: true });
+    }
+    if (p.action === "slack.post" && !conversaDoSlack && !destinoFixo(p)) {
       lista.push({ chave: "automations.problems.slackReplyNeedsSlack", no: p.key, bloqueia: false });
     }
-    if (p.action === "teams.post" && !conversaDoTeams) {
+    if (p.action === "teams.post" && !conversaDoTeams && !destinoFixo(p)) {
       lista.push({ chave: "automations.problems.teamsReplyNeedsTeams", no: p.key, bloqueia: false });
     }
     if (p.action === "teams.react" || p.action === "slack.react") {
