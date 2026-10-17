@@ -61,7 +61,7 @@ B35 (tentativas de GET, transporte).
 
 | # | onde | o que é | proposta | estado |
 |---|---|---|---|---|
-| C2, C3 | `sources/github.ts` | "LGTM!", "Sugestão:", rótulos de severidade | template no nó `github.review_comment` | parcial: "LGTM!" saiu (corpo vazio publica só a marca); "Sugestão:" e rótulos pendentes |
+| C2, C3 | `sources/github.ts` | "LGTM!", "Sugestão:", rótulos de severidade | template no nó `github.review_comment` | parcial: "LGTM!" saiu do handler e da tela de revisão (o campo abre com o resumo do payload ou vazio; corpo vazio publica só a marca); "Sugestão:" e rótulos pendentes |
 | C4 | `teams/reaction.ts`, `sources/github.ts` | emojis fixos | parâmetro do nó de reação | feito (este PR) |
 | C5 | `sources/github-pr-link.ts` | 5 PRs por mensagem, o resto some | parâmetro e aviso no detalhe | feito (este PR) |
 | C7 | `services/github-service.ts` | diff de 200 000 caracteres, setter sem chamador | parâmetro do nó | pendente |

@@ -401,6 +401,7 @@
     "findings_zero": "{{count}} achados",
     "conflictBadge": "Conflito",
     "conflict": "Isso mudou desde que entrou na fila. Abra para ver o que aconteceu.",
+    "semCommitAvaliado": "Sem commit avaliado: a review sai sem fixar o commit.",
     "context_update": {
       "target": "Atualização de contexto: {{slug}}",
       "kind": "Contexto",
@@ -738,6 +739,7 @@
       "outside_initiative": "o passo aponta para um servidor fora do escopo desta iniciativa",
       "rejected": "rejeitado",
       "publish_conflict": "o alvo mudou antes disso poder ser publicado",
+      "publish_conflict_head": "o pull request recebeu commits depois da avaliação (avaliado {{avaliado}}, atual {{atual}}): nada foi publicado",
       "dependency_rejected": "pulado porque o passo {{step}} foi recusado",
       "not_run": "um passo anterior falhou, então este não rodou"
     },
@@ -1511,6 +1513,7 @@
         "call": "Fazer a chamada"
       }
     },
+    "semCommitAvaliado": "O evento não trouxe o commit avaliado: a review sai sem fixar o commit e pode valer para código novo.",
     "customPlaceholder": "LGTM!",
     "comment_box_label": "Comentário que será publicado no GitHub",
     "comment_box_hint": "Edite livremente antes de clicar em Aprovar",

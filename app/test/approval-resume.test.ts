@@ -6,6 +6,7 @@ import { ApprovalGate, STUCK_AFTER_SECONDS, type ActionHandler } from "../src/ap
 import { AgentSpec } from "../src/config/types.js";
 import { db, schema } from "../src/db/index.js";
 import { migrateDb } from "../src/db/migrate.js";
+import { githubReviewHandler, type ReviewClient } from "../src/sources/github.js";
 import { Executor, NAO_RODOU } from "../src/executor/executor.js";
 import { McpRegistry } from "../src/mcp/registry.js";
 import type { Runtime } from "../src/runtimes/types.js";
@@ -219,7 +220,8 @@ test("queda entre gravar a pendência e marcar o passo não abre segunda pendên
   const { runId, executor, publicados } = await montar();
   const publicar = (await passo(runId, "publicar"))!;
   await db.update(schema.steps).set({ status: "running" }).where(eq(schema.steps.id, publicar.id));
-  await db.update(schema.runs).set({ status: "running" }).where(eq(schema.runs.id, runId));
+  // O app caiu: o run ficou `running` e o dono não bate mais.
+  await db.update(schema.runs).set({ status: "running", heartbeatAt: null }).where(eq(schema.runs.id, runId));
 
   assert.ok((await executor.interruptedRuns()).includes(runId));
   await executor.resume([runId]);
@@ -351,3 +353,126 @@ async function passoAguardando() {
   await db.insert(schema.steps).values({ id: stepId, runId, idx: 0, stepKey: "x", name: "X", status: "awaiting_approval" });
   return { runId, stepId };
 }
+
+test("a tentativa sobe uma vez por reexecução: o passo de modelo não soma duas", async () => {
+  const { runId, approvalId, executor } = await montar();
+  await executor.decide(approvalId, "approved");
+  const antes = await passo(runId, "ler");
+  const runs = new RunService(db, async () => executor);
+
+  await runs.rerunStep(runId, "ler");
+
+  assert.equal((await passo(runId, "ler"))!.attempt, antes!.attempt + 1);
+});
+
+test("passo de ação que falhou depois do POST mantém a tentativa e a marca: reexecutar não duplica", async () => {
+  const { runId, executor } = await montar();
+  const publicar = (await passo(runId, "publicar"))!;
+  await db.update(schema.steps).set({ status: "failed", error: "prazo esgotado" }).where(eq(schema.steps.id, publicar.id));
+  await db.update(schema.runs).set({ status: "failed" }).where(eq(schema.runs.id, runId));
+  const runs = new RunService(db, async () => executor);
+
+  await runs.rerunStep(runId, "publicar");
+
+  assert.equal((await passo(runId, "publicar"))!.attempt, publicar.attempt);
+  const abertas = await db
+    .select()
+    .from(schema.approvals)
+    .where(and(eq(schema.approvals.stepId, publicar.id), eq(schema.approvals.status, "pending")));
+  assert.equal(abertas[0]?.externalId, `${runId}:${publicar.id}:${publicar.attempt}`);
+});
+
+test("review com a cabeça do PR diferente: decide fecha como conflito, pula o passo e não publica", async () => {
+  const criadas: unknown[] = [];
+  const cliente = {
+    rest: {
+      pulls: {
+        createReview: async (p: unknown) => void criadas.push(p),
+        listReviews: async () => ({ data: [] }),
+        get: async () => ({ data: { head: { sha: "bbb222" } } }),
+      },
+    },
+  } as unknown as ReviewClient;
+  const gate = new ApprovalGate(new Map([["github.review_comment", githubReviewHandler(() => cliente)]]));
+  const executor = new Executor({ mcp: new McpRegistry(new Map()), runtimes: new Map([["native", runtimeFalso]]), gate, machineId: "maquina-de-teste" });
+  const versao = await new AgentService().upsert(
+    AgentSpec.parse({ id: `a-${randomUUID()}`, name: "A", steps: [{ type: "action", key: "x", name: "X", action: "github.review_comment" }] }),
+    undefined,
+    "human",
+  );
+  const runId = randomUUID();
+  const stepId = randomUUID();
+  const eventId = randomUUID();
+  await db.insert(schema.events).values({ id: eventId, source: "github", externalId: `pr:${eventId}`, payload: { repo: "acme/api", repoName: "api", owner: "acme", pull: 7, headSha: "aaa111", changedFiles: [] } });
+  await db.insert(schema.runs).values({ id: runId, agentVersionId: versao.id, eventId, status: "running" });
+  await db.insert(schema.steps).values({ id: stepId, runId, idx: 0, stepKey: "x", name: "X", status: "running" });
+  await gate.submit(
+    { runId, stepId, kind: "github.review_comment", payload: { owner: "acme", repo: "api", pull: 7, findings: [], verdict: "APPROVE", headSha: "aaa111" } },
+    "approve",
+  );
+  await db.update(schema.steps).set({ status: "awaiting_approval" }).where(eq(schema.steps.id, stepId));
+  await db.update(schema.runs).set({ status: "paused" }).where(eq(schema.runs.id, runId));
+  const [pendencia] = await db.select().from(schema.approvals).where(eq(schema.approvals.stepId, stepId));
+
+  const resultado = await executor.decide(pendencia!.id, "approved");
+
+  const codigo = "publish_conflict:head_mudou:aaa111:bbb222";
+  assert.equal(resultado.status, "conflict");
+  assert.equal(resultado.motivo, codigo);
+  const [fechada] = await db.select().from(schema.approvals).where(eq(schema.approvals.id, pendencia!.id));
+  assert.equal(fechada?.status, "conflict");
+  assert.deepEqual(fechada?.output, { conflito: codigo });
+  const [feito] = await db.select().from(schema.steps).where(eq(schema.steps.id, stepId));
+  assert.equal(feito?.status, "skipped");
+  assert.equal(feito?.error, codigo);
+  assert.deepEqual(criadas, []);
+  assert.equal(await estadoDoRun(runId), "done");
+});
+
+test("no automático, a cabeça nova também vira o código do motivo no erro do passo", async () => {
+  const cliente = {
+    rest: { pulls: { createReview: async () => ({}), listReviews: async () => ({ data: [] }), get: async () => ({ data: { head: { sha: "bbb222" } } }) } },
+  } as unknown as ReviewClient;
+  const gate = new ApprovalGate(new Map([["github.review_comment", githubReviewHandler(() => cliente)]]));
+  const { runId, stepId } = await passoAguardando();
+  await assert.rejects(
+    gate.submit({ runId, stepId, kind: "github.review_comment", payload: { owner: "acme", repo: "api", pull: 7, findings: [], headSha: "aaa111" } }, "auto"),
+    (err: Error) => err.message === "publish_conflict:head_mudou:aaa111:bbb222",
+  );
+});
+
+test("decisão que chega com o run ainda running não deixa o run parado sem pendência", async () => {
+  const publicados: string[] = [];
+  const handler: ActionHandler = { publish: async (_p, externalId) => void publicados.push(externalId) };
+  // Aprova no instante entre gravar a pendência e o executor pausar o run.
+  class GateComClique extends ApprovalGate {
+    override async submitComSaida(req: Parameters<ApprovalGate["submitComSaida"]>[0], mode: Parameters<ApprovalGate["submitComSaida"]>[1]) {
+      const resultado = await super.submitComSaida(req, mode);
+      const [aberta] = await db.select().from(schema.approvals).where(eq(schema.approvals.stepId, req.stepId));
+      await this.decide(aberta!.id, "approved");
+      return resultado;
+    }
+  }
+  const gate = new GateComClique(new Map([["teste.publicar", handler]]));
+  const executor = new Executor({ mcp: new McpRegistry(new Map()), runtimes: new Map([["native", runtimeFalso]]), gate, machineId: "maquina-de-teste" });
+  const versao = await new AgentService().upsert(
+    AgentSpec.parse({
+      id: `a-${randomUUID()}`,
+      name: "A",
+      steps: [
+        { type: "model", key: "ler", name: "Ler", model: "ollama/modelo", prompt: "revise" },
+        { type: "action", key: "publicar", name: "Publicar", action: "teste.publicar", needs: ["ler"] },
+        { type: "model", key: "depois", name: "Depois", model: "ollama/modelo", prompt: "resuma", needs: ["publicar"] },
+      ],
+    }),
+    undefined,
+    "human",
+  );
+  const runId = await executor.createRun(versao.id, null);
+
+  assert.equal(await executor.execute(runId), "done");
+
+  assert.equal(await estadoDoRun(runId), "done");
+  assert.equal(publicados.length, 1);
+  assert.equal((await passo(runId, "depois"))?.status, "done");
+});

@@ -92,3 +92,7 @@ test("pendência antiga, sem tentativa no id, continua achando a própria review
   await githubReviewHandler(() => fake).publish({ ...BASE }, "run:passo");
   assert.equal(criadas.length, 0);
 });
+
+test("o handler declara que o headSha é do evento, e não do modelo", () => {
+  assert.deepEqual(githubReviewHandler(() => cliente().fake).camposDoEvento, ["headSha"]);
+});

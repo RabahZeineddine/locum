@@ -725,6 +725,8 @@ export function githubReviewHandler(client: () => ReviewClient = octokit): Actio
   return {
     // O PR de destino é desta máquina (dono, repositório e número); o marcador do evento viaja.
     paramsDoPacote: { owner: "local", repo: "local", pull: "local" },
+    // O commit avaliado é o do evento, nunca o que o modelo escreveu.
+    camposDoEvento: ["headSha"],
     // Aprovar ou pedir mudança no pull request de outra pessoa é decisão
     // assinada por quem revisa, e por isso nunca sai sem clique, nem com o
     // passo em modo automático. Só o comentário pode pular a fila.
@@ -754,9 +756,9 @@ export function githubReviewHandler(client: () => ReviewClient = octokit): Actio
       if (p.headSha) {
         const { data } = await client().rest.pulls.get({ owner: p.owner, repo: p.repo, pull_number: p.pull });
         if (data.head.sha !== p.headSha) {
-          throw new PublishConflict(
-            `o pull request recebeu commits depois da avaliacao: avaliado ${p.headSha}, atual ${data.head.sha}`,
-          );
+          // O texto é o código do motivo: a tela e o erro do passo o traduzem.
+          const motivo = `publish_conflict:head_mudou:${p.headSha}:${data.head.sha}`;
+          throw new PublishConflict(motivo, motivo);
         }
       }
       await client().rest.pulls.createReview({

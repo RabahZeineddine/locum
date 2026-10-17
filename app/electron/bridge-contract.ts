@@ -64,6 +64,8 @@ export interface DecisionResult {
   decision: "approved" | "rejected";
   /** O desfecho de verdade: rejeitado pode virar `conflict` quando o alvo mudou por fora. */
   status: "approved" | "rejected" | "conflict";
+  /** Em `conflict`, o código do motivo (`publish_conflict:...`), que a janela traduz. */
+  motivo?: string;
 }
 
 /**

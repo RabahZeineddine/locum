@@ -253,6 +253,29 @@ test("a fila devolve o texto como está, e decidir passa pela gate que o servido
   recusa(await client.callTool({ name: "decide_approval", arguments: { approvalId: aprovacao, decision: "talvez", hash: nova.hash } }), /./);
 });
 
+test("a fila mostra à vista a review sem commit avaliado", async () => {
+  const client = await ligarCliente();
+  const versao = await agentService.upsert(
+    { id: id("semcommit"), name: "Sem commit", steps: [{ type: "model", key: "ler", name: "Ler", model: "anthropic/modelo", prompt: "x" }, { type: "action", key: "publicar", name: "Publicar", action: "github.review_comment", needs: ["ler"] }] } as never,
+    undefined,
+    "human",
+  );
+  const run = id("run");
+  const passo = id("passo");
+  await db.insert(schema.runs).values({ id: run, agentVersionId: versao.id, status: "paused" });
+  await db.insert(schema.steps).values({ id: passo, runId: run, idx: 1, stepKey: "publicar", name: "Publicar", status: "awaiting_approval" });
+  const [com, sem] = [id("apr"), id("apr")];
+  await db.insert(schema.approvals).values([
+    { id: com, runId: run, stepId: passo, kind: "github.review_comment", payload: { owner: "acme", repo: "api", pull: 1, findings: [], semCommitAvaliado: true } },
+    { id: sem, runId: run, stepId: passo, kind: "github.review_comment", payload: { owner: "acme", repo: "api", pull: 1, findings: [], headSha: "abc" } },
+  ]);
+
+  const pendentes = ok<{ id: string; semCommitAvaliado: boolean }[]>(await client.callTool({ name: "list_pending_approvals", arguments: {} }));
+  assert.equal(pendentes.find((p) => p.id === com)?.semCommitAvaliado, true);
+  assert.equal(pendentes.find((p) => p.id === sem)?.semCommitAvaliado, false);
+  assert.equal(ok<{ semCommitAvaliado: boolean }>(await client.callTool({ name: "get_approval", arguments: { approvalId: com } })).semCommitAvaliado, true);
+});
+
 test("exportar e importar: sem segredo no texto, copia ao lado e gatilho sempre desligado", async () => {
   const client = await ligarCliente();
   const origem = id("origem");

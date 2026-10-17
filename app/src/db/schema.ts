@@ -157,6 +157,14 @@ export const runs = sqliteTable(
      */
     tokens: integer("tokens").notNull().default(0),
     error: text("error"),
+    /**
+     * Quem está executando o run: máquina e processo, e o último batimento
+     * gravado enquanto executa. Só o `running` sem dono vivo pode ser
+     * reassumido por outro processo (ver `executarRun`).
+     */
+    ownerHost: text("owner_host"),
+    ownerPid: integer("owner_pid"),
+    heartbeatAt: integer("heartbeat_at"),
     createdAt: integer("created_at").notNull().default(now),
   },
   (t) => [index("runs_status_idx").on(t.status)],

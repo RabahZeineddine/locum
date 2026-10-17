@@ -60,6 +60,8 @@ export const MOTIVOS_DE_PASSO = ["outside_initiative", "rejected", "publish_conf
 export type MotivoDePasso = (typeof MOTIVOS_DE_PASSO)[number];
 
 export function rotuloDoMotivo(t: TFunction, motivo: string): string {
+  const cabeca = /^publish_conflict:head_mudou:([^:]+):([^:]+)$/.exec(motivo);
+  if (cabeca) return t("runs.stepReason.publish_conflict_head", { avaliado: cabeca[1]!.slice(0, 7), atual: cabeca[2]!.slice(0, 7) });
   if (motivo.startsWith("dependency_rejected:")) return t("runs.stepReason.dependency_rejected", { step: motivo.slice("dependency_rejected:".length) });
   return (MOTIVOS_DE_PASSO as readonly string[]).includes(motivo)
     ? t(`runs.stepReason.${motivo}`)
