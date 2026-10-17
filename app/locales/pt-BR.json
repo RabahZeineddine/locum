@@ -435,7 +435,8 @@
       "chat": "chat",
       "reply": "Resposta: {{text}}",
       "newIn": "Nova mensagem em {{where}}",
-      "sends": "Mensagem: {{text}}"
+      "sends": "Mensagem: {{text}}",
+      "chosenInNode": "{{name}} (nome escolhido no nó) · {{ref}}"
     },
     "document": {
       "issue": "Tarefa",
@@ -2657,12 +2658,8 @@
       "teamsOff": "O Teams não está conectado. Ligue em Conexões.",
       "noPrompt": "O passo de IA está sem instrução.",
       "actionWithoutAi": "Esta ação precisa de um passo de IA antes, que escreva o texto.",
-      "slackReplyNeedsSlack": "Responder no Slack precisa de um gatilho do Slack: é dele que vem a thread.",
-      "teamsReplyNeedsTeams": "Responder no Teams precisa de um gatilho do Teams.",
-      "slackReactNeedsSlack": "Reagir no Slack precisa de um gatilho do Slack: a reação cai nessa mensagem.",
       "reactionValueMissing": "Esta reação lê um campo que o passo anterior não produz: acrescente-o ao formato de saída do passo, ou ela cai no emoji padrão.",
       "groupedReview": "O gatilho agrupa os PRs da mensagem, mas a ação de review cobre só o primeiro PR. Desligue o agrupamento, ou responda no Teams.",
-      "teamsReactNeedsTeams": "Reagir no Teams precisa de um gatilho do Teams: a reação cai nessa mensagem.",
       "noTracker": "Escolha em qual tracker abrir a tarefa.",
       "createReviewer": "Sem um agent revisor, a revisão usa um passo de IA solto. Crie um agent para revisar PR e troque o passo por ele.",
       "githubTokenForDiff": "O GitHub está sem token: a revisão precisa dele para trazer o diff do PR.",
@@ -2675,7 +2672,9 @@
       "argRequired": "Falta preencher \"{{campo}}\" na ação em app.",
       "argType": "O valor de \"{{campo}}\" não é do tipo que a ferramenta pede.",
       "refNotBefore": "A ação cita {{ref}}, que não vem antes dela no fluxo.",
-      "destinationMissing": "Escolha o chat ou canal do destino fixo."
+      "destinationMissing": "Escolha o chat ou canal do destino fixo.",
+      "replyNeedsApp": "Responder no {{app}} precisa de um gatilho do {{app}}: é dele que vem a mensagem a que se responde.",
+      "reactNeedsApp": "Reagir no {{app}} precisa de um gatilho do {{app}}: é dele que vem a mensagem."
     },
     "github": {
       "repos": {

@@ -74,8 +74,16 @@ export interface ListaDeConversas {
 /** O que a tela e o MCP sabem de um app de conversa, sem conhecer o app. */
 export interface AppDeConversa {
   app: string;
+  /** O nome do app como a pessoa o conhece. */
+  nome: string;
   /** Os `kind` de gatilho que entregam uma mensagem do app para a ação responder. */
   gatilhos: readonly string[];
+  /**
+   * Os campos do evento que dizem onde está a conversa e a mensagem. O executor
+   * os entrega à ação como vieram do evento e apaga o que o modelo escreveu com
+   * esses nomes: o endereço nunca vem da saída do modelo.
+   */
+  camposDoEvento: readonly string[];
   listas: readonly ListaDeConversas[];
   /** Como é o `ref` do destino fixo, para o MCP. */
   refs: string;
@@ -103,7 +111,9 @@ export const REGISTRO_DE_CONVERSA: RegistroDeConversa = {
   apps: {
     teams: {
       app: "teams",
+      nome: "Teams",
       gatilhos: ["teams-inbox"],
+      camposDoEvento: ["teamsChatId", "teamsTeamId", "teamsChannelId", "teamsMessageId", "teamsReplyToId", "teamsAccount", "prOwner"],
       refs: "Teams: 'chat/<chatId>' or 'canal/<teamId>/<channelId>' (ids from list_teams_chats and list_teams_channels); `conta` is the account the list was read by, needed when the ms365 server has more than one",
       listas: [
         {
@@ -114,7 +124,7 @@ export const REGISTRO_DE_CONVERSA: RegistroDeConversa = {
             lista<{ chatId: string; label: string; conta?: string }>(dados).map((c) => ({
               ref: refDoTeams({ tipo: "chat", chatId: c.chatId }),
               rotulo: c.label,
-              ...(c.conta === undefined ? {} : { conta: c.conta }),
+              ...(c.conta === undefined ? {} : { conta: c.conta, grupo: c.conta }),
             })),
         },
         {
@@ -125,7 +135,7 @@ export const REGISTRO_DE_CONVERSA: RegistroDeConversa = {
             lista<{ teamId: string; teamName: string; channelId: string; channelName: string; conta?: string }>(dados).map((c) => ({
               ref: refDoTeams({ tipo: "canal", teamId: c.teamId, channelId: c.channelId }),
               rotulo: c.channelName,
-              grupo: c.teamName,
+              grupo: c.conta === undefined ? c.teamName : `${c.conta} · ${c.teamName}`,
               ...(c.conta === undefined ? {} : { conta: c.conta }),
             })),
         },
@@ -133,7 +143,9 @@ export const REGISTRO_DE_CONVERSA: RegistroDeConversa = {
     },
     slack: {
       app: "slack",
+      nome: "Slack",
       gatilhos: ["slack-channel", "slack-inbox"],
+      camposDoEvento: ["slackChannel", "slackTs", "channel", "ts", "threadTs"],
       refs: "Slack: the channel id (from list_slack_channels)",
       listas: [
         {
@@ -149,12 +161,33 @@ export const REGISTRO_DE_CONVERSA: RegistroDeConversa = {
   },
 };
 
+/** Os campos de endereço do evento de todos os apps de conversa. */
+export function camposDeEndereco(registro: RegistroDeConversa = REGISTRO_DE_CONVERSA): string[] {
+  return Object.values(registro.apps).flatMap((a) => [...a.camposDoEvento]);
+}
+
+/**
+ * O destino como a pendência o guarda, em dado: a Fila monta o texto pelo i18n.
+ * `nome` é o nome da conversa conferido no que o Locum leu (ou nulo); `escolhido`
+ * é o que a pessoa viu na tela ao escolher, e não vale como conferido.
+ */
+export const DestinoNaFila = z.object({
+  app: z.string(),
+  tipo: z.enum(["evento", "novo", "fixo"]),
+  ref: z.string().optional(),
+  conta: z.string().optional(),
+  nome: z.string().nullable().optional(),
+  escolhido: z.string().nullable().optional(),
+});
+export type DestinoNaFila = z.infer<typeof DestinoNaFila>;
+
 /** As ações de conversa, pelo nome. */
 export const ACOES_DE_CONVERSA_REGISTRO = REGISTRO_DE_CONVERSA.acoes;
 
 /** O que `describe_steps` conta do destino, lido do registro: opções por ação e como cada app lista suas conversas. */
 export function catalogoDeDestinos(registro: RegistroDeConversa = REGISTRO_DE_CONVERSA) {
   return {
+    where: textoDoDestino(registro),
     porAcao: Object.fromEntries(Object.entries(registro.acoes).map(([acao, r]) => [acao, { app: r.app, efeito: r.efeito, destinos: r.destinos }])),
     porApp: Object.fromEntries(
       Object.entries(registro.apps).map(([app, a]) => [app, { gatilhos: a.gatilhos, refs: a.refs, listas: a.listas.map((l) => l.fonteMcp) }]),
@@ -213,4 +246,15 @@ function decideComMarcador(cru: unknown): boolean {
   if (cru === null || typeof cru !== "object") return false;
   const d = cru as { tipo?: unknown; conversa?: { app?: unknown; ref?: unknown; conta?: unknown } | null };
   return [d.tipo, d.conversa?.app, d.conversa?.ref, d.conversa?.conta].some((v) => typeof v === "string" && v.includes("{{"));
+}
+
+/** O texto de `describe_steps` sobre o destino, montado com as ações e as opções do registro. */
+function textoDoDestino(registro: RegistroDeConversa): string {
+  const acoes = Object.keys(registro.acoes).join(", ");
+  return (
+    `params.destino on ${acoes}: where the message goes. { tipo: 'evento' } (default, also when absent) is the message that started the run, in its thread; ` +
+    "{ tipo: 'novo' } is a new message in the event's conversation, outside the thread; { tipo: 'fixo', conversa: { app, ref, rotulo, conta } } is a conversation the person chose, from the same list the trigger uses. " +
+    "Each action accepts only the options in porAcao (a reaction accepts only 'evento'). It comes only from the event or from this fixed value: a {{...}} marker in it, a model output or {{steps.*}} is refused when saving. " +
+    "A fixed destination needs no event, so it works on a manual run and in a dry run; 'evento' and 'novo' without a message of the app in the event only show what they would send."
+  );
 }

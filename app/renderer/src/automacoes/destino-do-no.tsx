@@ -13,6 +13,9 @@ import {
 import { Campo, CAMPO } from "./campos";
 import { useListaEmCache } from "./combobox";
 
+/** O valor do select para a conversa já gravada, que não é nenhum `ref`. */
+const GRAVADA = "__gravada";
+
 /**
  * O campo "Responder a" (ou "Reage em") dos nós de conversa. As opções vêm do
  * registro da ação (`ACOES_DE_CONVERSA_REGISTRO`), e a lista de conversas do
@@ -61,7 +64,7 @@ export function DestinoDoNo({
         >
           {opcoes.map((tipo) => (
             <option key={tipo} value={tipo}>
-              {t(`automations.steps.destination.option.${registro.efeito}.${tipo}`, { app: t(`inbox.message.${registro.app}`) })}
+              {t(`automations.steps.destination.option.${registro.efeito}.${tipo}`, { app: REGISTRO_DE_CONVERSA.apps[registro.app]?.nome ?? registro.app })}
             </option>
           ))}
         </select>
@@ -79,7 +82,7 @@ export function DestinoDoNo({
       ) : null}
       {destino.tipo === "evento" && !gatilhoTrazMensagem(acao, gatilhos) ? (
         <p className="text-xs text-amber-600 dark:text-amber-400" data-locum-destino-sem-mensagem="">
-          {t(`automations.steps.destination.noMessage.${registro.efeito}`, { app: t(`inbox.message.${registro.app}`) })}
+          {t(`automations.steps.destination.noMessage.${registro.efeito}`, { app: REGISTRO_DE_CONVERSA.apps[registro.app]?.nome ?? registro.app })}
         </p>
       ) : null}
     </>
@@ -111,7 +114,7 @@ function SeletorDeConversa({
   const [estado, setEstado] = useState<Record<string, { lendo: boolean; erro: string | null }>>({});
   const lendo = Object.values(estado).some((e) => e.lendo);
   const erro = Object.values(estado).find((e) => e.erro !== null)?.erro ?? null;
-  // A conversa já gravada continua à vista antes de a lista carregar.
+  // A conversa já gravada fica à vista antes de a lista carregar. Ela tem valor próprio, para a mesma conversa da lista poder ser escolhida de novo (e gravar a conta).
   const gravada = escolhida.ref !== "";
 
   return (
@@ -121,14 +124,15 @@ function SeletorDeConversa({
         data-locum-destino-conversa=""
         onChange={(e) => {
           const o = e.target.selectedOptions[0];
+          if (o?.value === GRAVADA) return;
           escolher(o === undefined || o.value === "" ? null : { ref: o.value, rotulo: o.dataset.rotulo ?? o.text, ...(o.dataset.conta ? { conta: o.dataset.conta } : {}) });
         }}
         onFocus={() => setAberturas((n) => n + 1)}
         onMouseDown={() => setAberturas((n) => n + 1)}
-        value={escolhida.ref}
+        value={gravada ? GRAVADA : ""}
       >
         <option value="">{t("automations.steps.destination.choose")}</option>
-        {gravada ? <option value={escolhida.ref}>{escolhida.rotulo || escolhida.ref}</option> : null}
+        {gravada ? <option value={GRAVADA}>{escolhida.rotulo || escolhida.ref}</option> : null}
         {listas.map((l) => (
           <OpcoesDaLista
             key={l.id}
@@ -138,7 +142,6 @@ function SeletorDeConversa({
             chave={chave}
             conexao={`${conexao?.via ?? ""}:${conexao?.account ?? ""}`}
             lista={l}
-            ocultar={escolhida.ref}
             relatar={(e) => setEstado((antes) => (antes[l.id]?.lendo === e.lendo && antes[l.id]?.erro === e.erro ? antes : { ...antes, [l.id]: e }))}
           />
         ))}
@@ -156,7 +159,6 @@ function OpcoesDaLista({
   conexao,
   lista,
   aberturas,
-  ocultar,
   relatar,
 }: {
   app: string;
@@ -165,11 +167,10 @@ function OpcoesDaLista({
   conexao: string;
   lista: ListaDeConversas;
   aberturas: number;
-  ocultar: string;
   relatar: (e: { lendo: boolean; erro: string | null }) => void;
 }) {
   const carregada = useListaEmCache<unknown>(`destino:${app}:${lista.id}:${conexao}:${agentId}:${chave}`, async () => {
-    const dados = (await (call as (c: string, a?: readonly unknown[]) => Promise<unknown>)(lista.canal, lista.args)) as unknown;
+    const dados = await (call as (c: string, ...a: unknown[]) => Promise<unknown>)(lista.canal, ...(lista.args ?? []));
     return Array.isArray(dados) ? dados : [dados];
   });
   useEffect(() => {
@@ -178,7 +179,7 @@ function OpcoesDaLista({
   useEffect(() => {
     relatar({ lendo: carregada.lendo, erro: carregada.erro });
   }, [carregada.lendo, carregada.erro]);
-  const opcoes = lista.opcoes(carregada.dados ?? []).filter((o) => o.ref !== ocultar);
+  const opcoes = lista.opcoes(carregada.dados ?? []);
   const grupos = [...new Set(opcoes.map((o) => o.grupo ?? ""))];
   const linha = (o: OpcaoDeConversa) => (
     <option key={o.ref} data-conta={o.conta} data-rotulo={o.rotulo} value={o.ref}>

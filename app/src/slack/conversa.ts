@@ -17,5 +17,4 @@ export const adaptadorDoSlack: AdaptadorDeConversa = {
   validarRef(ref) {
     if (!/^[A-Za-z0-9_-]+$/.test(ref)) throw new Error(`"${ref}" não é um canal do Slack`);
   },
-  descreverRef: (ref) => `Canal ${ref}`,
 };

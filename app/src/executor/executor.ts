@@ -24,7 +24,7 @@ import { ApprovalGate, settleStep } from "../approval/gate.js";
 import { BudgetExceeded, assertWithinBudget, recordSpend, type Spend } from "./budget.js";
 import { ehLeituraNaAcao, type FerramentaClassificavel } from "../config/leitura.js";
 import { avisoDeDadoExterno, delimitarDado, ehDadoExterno, novaMarca } from "./dado-externo.js";
-import { ACOES_DE_CONVERSA_REGISTRO, destinoDoPasso } from "../acao/destino.js";
+import { ACOES_DE_CONVERSA_REGISTRO, camposDeEndereco, destinoDoPasso, REGISTRO_DE_CONVERSA, type RegistroDeConversa } from "../acao/destino.js";
 import { ACOES_DE_REACAO, descreverReacao, reacaoDoPasso } from "../reacao/passo.js";
 import { ACOES_DE_CONVERSA, dependenciaDeEvento, recusaSemEvento } from "./dependencia-de-evento.js";
 import { SUBSCRIPTION_RUNTIMES } from "../runtimes/types.js";
@@ -930,8 +930,7 @@ export function alvoDoEvento(payload: EventPayload): Record<string, unknown> {
     "slackTs",
     // A mensagem do Teams onde o review reage ao sair, e o `prOwner` que
     // distingue o evento de PR do de conversa na hora de achar a resposta.
-    ...TEAMS_REACAO,
-    "prOwner",
+    ...camposDeEndereco(),
   ] as const;
   const alvo: Record<string, unknown> = {};
   for (const campo of campos) {
@@ -967,25 +966,22 @@ async function lerContextoDaIniciativa(initiativeId: string): Promise<string | n
 /** Quantos acontecimentos de um passo ficam guardados; os mais velhos saem. */
 const TETO_DE_ATIVIDADES = 300;
 
-const TEAMS_REACAO = ["teamsChatId", "teamsTeamId", "teamsChannelId", "teamsMessageId", "teamsReplyToId", "teamsAccount"] as const;
+const DESTINO = ["owner", "repo", "pull", "headSha"] as const;
 
-const DESTINO = ["owner", "repo", "pull", "headSha", "prOwner", ...TEAMS_REACAO] as const;
-
-/** A mensagem do Slack onde a reação cai: o evento diz, e a saída do modelo não troca. */
-const SLACK_REACAO = ["slackChannel", "slackTs", "channel", "ts", "threadTs"] as const;
-
-export function destinoDoEvento(alvo: Record<string, unknown>): Record<string, unknown> {
+export function destinoDoEvento(
+  alvo: Record<string, unknown>,
+  registro: RegistroDeConversa = REGISTRO_DE_CONVERSA,
+): Record<string, unknown> {
   const destino: Record<string, unknown> = {};
   for (const campo of DESTINO) {
     if (alvo[campo] !== undefined) destino[campo] = alvo[campo];
   }
-  // Os campos da reação entram mesmo ausentes, como `undefined`: ao serem
-  // espalhados por cima da saída do modelo, apagam o que ele inventou. Sem
-  // isso, evento de outra origem deixaria o modelo apontar a reação do review
-  // para uma conversa qualquer do Teams.
-  // O `prOwner` também: com ele a saída do modelo trocaria o caminho de
-  // conversa pelo de PR, e o `teams*` que ela inventasse valeria.
-  for (const campo of [...TEAMS_REACAO, ...SLACK_REACAO, "prOwner"]) destino[campo] = alvo[campo];
+  // Os campos de endereço de cada app de conversa (declarados no registro)
+  // entram mesmo ausentes, como `undefined`: ao serem espalhados por cima da
+  // saída do modelo, apagam o que ele inventou. Sem isso, evento de outra
+  // origem deixaria o modelo apontar a resposta ou a reação para uma conversa
+  // qualquer.
+  for (const campo of camposDeEndereco(registro)) destino[campo] = alvo[campo];
   return destino;
 }
 

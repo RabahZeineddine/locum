@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { catalogoDeDestinos, destinoDoPasso, type RegistroDeConversa, REGISTRO_DE_CONVERSA } from "../src/acao/destino.js";
+import { destinoDoEvento } from "../src/executor/executor.js";
 import { conversaEscolhida, destinoDoNo, gatilhoTrazMensagem, opcoesDoApp, paramsComDestino } from "../renderer/lib/destino-da-conversa.js";
 import { lerRefDoTeams } from "../src/teams/ref.js";
 
@@ -10,7 +11,7 @@ test("as opções saem das listas que o registro declara para o app, no ref de c
     canais: [[{ teamId: "T", teamName: "Equipe", channelId: "C", channelName: "Geral" }]],
   });
   assert.deepEqual(teams, [
-    { ref: "chat/19:a", rotulo: "Ana", conta: "a@x.test" },
+    { ref: "chat/19:a", rotulo: "Ana", conta: "a@x.test", grupo: "a@x.test" },
     { ref: "canal/T/C", rotulo: "Geral", grupo: "Equipe" },
   ]);
   assert.deepEqual(lerRefDoTeams(teams[1]!.ref), { tipo: "canal", teamId: "T", channelId: "C" });
@@ -50,7 +51,9 @@ const COM_ZAP: RegistroDeConversa = {
     ...REGISTRO_DE_CONVERSA.apps,
     zap: {
       app: "zap",
+      nome: "Zap",
       gatilhos: ["zap-inbox"],
+      camposDoEvento: ["zapSala", "zapMsg"],
       refs: "Zap: the room id (from list_zap_rooms)",
       listas: [
         {
@@ -75,4 +78,18 @@ test("app novo, declarado só no registro, aparece na tela (lógica) e no MCP", 
   assert.deepEqual(catalogo.porAcao["zap.post"], { app: "zap", efeito: "responder", destinos: ["evento", "fixo"] });
   assert.deepEqual(catalogo.porApp.zap, { gatilhos: ["zap-inbox"], refs: "Zap: the room id (from list_zap_rooms)", listas: ["list_zap_rooms"] });
   assert.deepEqual(catalogo.porApp.slack?.listas, ["list_slack_channels"]);
+});
+
+test("app novo: o modelo devolvendo o campo de endereço do app não muda o destino, só o evento vale", () => {
+  const alvoDoEvento = { zapSala: "sala-do-evento", zapMsg: "m1" };
+  const saidaDoModelo = { text: "oi", zapSala: "sala-do-atacante", zapMsg: "m9" };
+  const noHandler = { ...alvoDoEvento, ...saidaDoModelo, ...destinoDoEvento(alvoDoEvento, COM_ZAP) };
+  assert.equal(noHandler.zapSala, "sala-do-evento");
+  assert.equal(noHandler.zapMsg, "m1");
+  // Evento sem o campo: o do modelo é apagado, não herdado.
+  const semEvento = { ...saidaDoModelo, ...destinoDoEvento({}, COM_ZAP) };
+  assert.equal(semEvento.zapSala, undefined);
+  // E os apps que já existem seguem protegidos pelo mesmo caminho.
+  const slack = { ...{ threadTs: "999.9", teamsChatId: "x" }, ...destinoDoEvento({ threadTs: "1.1" }) };
+  assert.deepEqual([slack.threadTs, slack.teamsChatId], ["1.1", undefined]);
 });

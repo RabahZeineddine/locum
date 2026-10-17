@@ -418,7 +418,8 @@
       "chat": "chat",
       "reply": "Reply: {{text}}",
       "newIn": "New message in {{where}}",
-      "sends": "Message: {{text}}"
+      "sends": "Message: {{text}}",
+      "chosenInNode": "{{name}} (name chosen in the node) · {{ref}}"
     },
     "document": {
       "issue": "Issue",
@@ -2607,12 +2608,8 @@
       "teamsOff": "Teams is not connected. Turn it on in Connections.",
       "noPrompt": "The AI step has no instruction.",
       "actionWithoutAi": "This action needs an AI step before it to write the text.",
-      "slackReplyNeedsSlack": "Replying in Slack needs a Slack trigger: that is where the thread comes from.",
-      "teamsReplyNeedsTeams": "Replying in Teams needs a Teams trigger.",
-      "slackReactNeedsSlack": "Reacting in Slack needs a Slack trigger: the reaction lands on that message.",
       "reactionValueMissing": "This reaction reads a field that the earlier step does not produce: add it to the step's output format, or it falls on the fallback emoji.",
       "groupedReview": "The trigger groups the PRs of a message, but a review action covers only the first PR. Turn grouping off, or answer in Teams instead.",
-      "teamsReactNeedsTeams": "Reacting in Teams needs a Teams trigger: the reaction lands on that message.",
       "noTracker": "Choose which tracker opens the task.",
       "createReviewer": "Without a reviewer agent, the review uses a loose AI step. Create an agent for PR review and swap the step for it.",
       "githubTokenForDiff": "GitHub has no token: the review needs it to bring the PR diff.",
@@ -2625,7 +2622,9 @@
       "argRequired": "\"{{campo}}\" is missing in the app action.",
       "argType": "The value of \"{{campo}}\" is not the type the tool asks for.",
       "refNotBefore": "The action cites {{ref}}, which does not come before it in the flow.",
-      "destinationMissing": "Choose the chat or channel of the fixed destination."
+      "destinationMissing": "Choose the chat or channel of the fixed destination.",
+      "replyNeedsApp": "Replying in {{app}} needs a {{app}} trigger: that is where the message to reply to comes from.",
+      "reactNeedsApp": "Reacting in {{app}} needs a {{app}} trigger: that is where the message comes from."
     },
     "github": {
       "repos": {

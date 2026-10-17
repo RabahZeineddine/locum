@@ -1,5 +1,6 @@
 import { z } from "zod";
-import type { AlvoResolvido } from "../acao/conversa.js";
+import { destinoParaFila, type AlvoResolvido } from "../acao/conversa.js";
+import { DestinoNaFila } from "../acao/destino.js";
 
 /**
  * A resposta que um passo de modelo escreve, e o que vira proposta de envio.
@@ -52,8 +53,8 @@ export const SlackPostProposal = z.object({
   /** Sem a thread, a mensagem abre uma conversa nova no canal. */
   threadTs: z.string().min(1).optional(),
   text: z.string().min(1),
-  /** Para onde o passo mandou o texto: a Fila mostra o rótulo do destino fixo. */
-  destino: z.object({ tipo: z.enum(["evento", "novo", "fixo"]), rotulo: z.string().nullable() }).optional(),
+  /** Para onde o passo mandou o texto, em dado: a Fila monta o texto. */
+  destino: DestinoNaFila.optional(),
   /** A mensagem que abriu a thread, para a fila mostrar do que se trata. */
   subject: z.string(),
   permalink: z.string().nullable(),
@@ -90,7 +91,7 @@ export function channelOf(payload: unknown): string {
 export function buildPostProposal(
   payload: unknown,
   server: string,
-  alvo: Pick<AlvoResolvido, "tipo" | "conversa" | "mensagem" | "rotulo">,
+  alvo: AlvoResolvido,
 ): Omit<SlackPostProposal, "subject" | "permalink"> {
   if (payload === null || typeof payload !== "object") {
     throw new Error("o passo de acao do Slack recebeu uma saida que nao e objeto");
@@ -112,6 +113,6 @@ export function buildPostProposal(
     channel: alvo.conversa,
     ...(alvo.tipo === "evento" && alvo.mensagem !== null ? { threadTs: alvo.mensagem } : {}),
     text: resposta.data.text,
-    destino: { tipo: alvo.tipo, rotulo: alvo.rotulo },
+    destino: destinoParaFila("slack", alvo, null),
   };
 }

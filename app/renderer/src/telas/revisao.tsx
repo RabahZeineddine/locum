@@ -19,7 +19,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { LeituraDoDigest, lerDigest } from "../leitura-do-digest";
 import type { TelaProps } from "../rotas";
-import { cargaDaMensagem, cargaDoDocumento, ehDocumento, ehMensagem } from "./inbox";
+import { cargaDaMensagem, cargaDoDocumento, ehDocumento, ehMensagem, textoDoDestino } from "./inbox";
 
 type Pendencia = NonNullable<ReadResult<"approvals.get">>;
 
@@ -598,9 +598,7 @@ function RevisaoDeMensagem({
         <Voltar navegar={navegar} />
         <span className="text-[13px] font-medium">{t(`inbox.message.${carga.servico}`)}</span>
         <span className="text-muted-foreground truncate font-mono text-xs">
-          {carga.destinoTipo === "novo"
-            ? t("inbox.message.newIn", { where: carga.destino ?? t("inbox.message.chat") })
-            : carga.destino ?? t("inbox.message.chat")}
+          {textoDoDestino(t, carga)}
         </span>
         {carga.link && (
           <a

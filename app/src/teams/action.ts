@@ -3,8 +3,9 @@ import { z } from "zod";
 import type { ActionHandler } from "../approval/gate.js";
 import { db as defaultDb, schema } from "../db/index.js";
 import { TEAMS_CHANNEL_PREFIX, TEAMS_SOURCE } from "../sources/teams-inbox.js";
-import { abrirTeams, type TeamsGraphOptions } from "./graph.js";
-import { resolverDestino } from "../acao/conversa.js";
+import { abrirTeams, servidorDeVariasContas, type TeamsGraphOptions } from "./graph.js";
+import { DestinoNaFila } from "../acao/destino.js";
+import { destinoParaFila, resolverDestino } from "../acao/conversa.js";
 import { adaptadorDoTeams, destinoDe } from "./conversa.js";
 import { lerRefDoTeams } from "./ref.js";
 
@@ -56,8 +57,8 @@ export const TeamsPostProposal = z.object({
       label: z.string().nullable(),
     })
     .optional(),
-  /** Para onde o passo mandou o texto: a Fila mostra o rótulo do destino fixo. */
-  destino: z.object({ tipo: z.enum(["evento", "novo", "fixo"]), rotulo: z.string().nullable() }).optional(),
+  /** Para onde o passo mandou o texto, em dado: a Fila monta o texto. */
+  destino: DestinoNaFila.optional(),
 });
 export type TeamsPostProposal = z.infer<typeof TeamsPostProposal>;
 
@@ -104,7 +105,9 @@ export function teamsPostHandler(options: TeamsPostHandlerOptions = {}): ActionH
         // A conta é a que a pessoa escolheu junto com a conversa: a do evento pode ser outra.
         const comConta = alvo.conta === null ? {} : { account: alvo.conta };
         const conversa = lerRefDoTeams(alvo.conversa);
-        const destino = { tipo: "fixo" as const, rotulo: alvo.rotulo };
+        // O nome conferido sai do que o Locum leu do canal; sem leitura, a Fila mostra o escolhido no nó, sem fingir.
+        const nome = conversa.tipo === "canal" ? await nomeDoCanalLido(db, conversa.teamId, conversa.channelId) : null;
+        const destino = destinoParaFila("teams", alvo, nome);
         const base = { text, subject: "", author: null, webUrl: null, destino, ...comConta };
         return exigirConta(
           options,
@@ -114,14 +117,14 @@ export function teamsPostHandler(options: TeamsPostHandlerOptions = {}): ActionH
             : {
                 chatId: conversa.channelId,
                 ...base,
-                channel: { teamId: conversa.teamId, channelId: conversa.channelId, label: alvo.rotulo },
+                channel: { teamId: conversa.teamId, channelId: conversa.channelId, label: nome },
               },
           ),
         );
       }
 
       // `evento` responde no fio; `novo` usa a mesma conversa, sem o fio.
-      const destino = { tipo: alvo.tipo, rotulo: null };
+      const destino = destinoParaFila("teams", alvo, null);
       const lugar = destinoDe(payload);
       if (lugar.tipo === "canal") {
         const lida = await ultimaDoCanal(db, lugar);
@@ -183,17 +186,30 @@ export function teamsPostHandler(options: TeamsPostHandlerOptions = {}): ActionH
  */
 async function exigirConta(options: TeamsGraphOptions, proposta: TeamsPostProposal): Promise<TeamsPostProposal> {
   if (proposta.account !== undefined) return proposta;
-  const teams = await abrirTeams(options);
-  try {
-    if (teams.multiConta) {
-      throw new Error(
-        `O servidor "${teams.servidor}" tem várias contas e este destino não diz por qual sair. Escolha a conversa de novo no nó, para gravar a conta.`,
-      );
-    }
-  } finally {
-    await teams.close();
+  const servidor = await servidorDeVariasContas(options);
+  if (servidor !== null) {
+    throw new Error(
+      `O servidor "${servidor}" tem várias contas e este destino não diz por qual sair. Escolha a conversa de novo no nó, para gravar a conta.`,
+    );
   }
   return proposta;
+}
+
+/** O nome do canal, como veio nas mensagens que o Locum já leu dele, ou nulo. */
+async function nomeDoCanalLido(db: Db, teamId: string, channelId: string): Promise<string | null> {
+  const linhas = await db
+    .select({ payload: schema.events.payload })
+    .from(schema.events)
+    .where(eq(schema.events.source, TEAMS_SOURCE))
+    .orderBy(desc(schema.events.receivedAt))
+    .limit(TETO_DE_LEITURA);
+  for (const linha of linhas) {
+    const corpo = linha.payload as Record<string, unknown>;
+    if (corpo.teamId === teamId && corpo.channelId === channelId && typeof corpo.channel === "string" && corpo.channel !== "") {
+      return corpo.channel;
+    }
+  }
+  return null;
 }
 
 /** A mensagem mais recente lida da conversa, ou nulo se ela nunca foi lida. */

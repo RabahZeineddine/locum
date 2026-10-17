@@ -1,4 +1,4 @@
-import { abrirTeams, type TeamsGraphOptions } from "./graph.js";
+import { abrirTeams, contasDoServidor, type TeamsGraphOptions } from "./graph.js";
 
 /** Um canal que a pessoa pode observar, com o nome da equipe para a tela. */
 export interface TeamsChannelOption {
@@ -23,6 +23,15 @@ export type ListTeamsChannelsOptions = TeamsGraphOptions;
  * Graph responde 403, e a mensagem diz o que fazer.
  */
 export async function listTeamsChannels(options: ListTeamsChannelsOptions = {}): Promise<TeamsChannelOption[]> {
+  // Servidor com várias contas e nenhuma dada: a lista traz as de todas, cada uma marcada.
+  if (options.account === undefined) {
+    const contas = await contasDoServidor(options);
+    if (contas.length > 0) {
+      const porConta: TeamsChannelOption[][] = [];
+      for (const conta of contas) porConta.push(await listTeamsChannels({ ...options, account: conta }));
+      return porConta.flat();
+    }
+  }
   const teams = await abrirTeams(options);
   try {
     const get = async (caminho: string): Promise<Record<string, unknown>[]> => {

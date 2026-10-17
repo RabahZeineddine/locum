@@ -56,21 +56,20 @@ const adaptador: AdaptadorDeConversa = {
   validarRef: (ref) => {
     if (!ref.startsWith("f/")) throw new Error("ref inválido");
   },
-  descreverRef: (ref) => `Conversa ${ref}`,
 };
 
 test("resolverDestino é igual para qualquer app: evento no fio, novo fora do fio, fixo sem evento", () => {
   // `falso` não está no registro: usa-se uma ação registrada só para o tipo de destino.
   const ev = { conversa: "f/1", fio: "m9" };
   const comoApp = (cru: unknown) => resolverDestino({ ...adaptador, app: "teams" }, "teams.post", cru, ev);
-  assert.deepEqual(comoApp(undefined), { tipo: "evento", conversa: "f/1", mensagem: "m9", rotulo: null, conta: null });
-  assert.deepEqual(comoApp({ tipo: "novo" }), { tipo: "novo", conversa: "f/1", mensagem: null, rotulo: null, conta: null });
-  // O rótulo gravado é só o nome que a tela mostrou: a Fila recebe o que o ref descreve.
+  assert.deepEqual(comoApp(undefined), { tipo: "evento", conversa: "f/1", mensagem: "m9", escolhido: null, conta: null });
+  assert.deepEqual(comoApp({ tipo: "novo" }), { tipo: "novo", conversa: "f/1", mensagem: null, escolhido: null, conta: null });
+  // O rótulo gravado é só o nome que a tela mostrou: segue como "escolhido", sem valer como conferido.
   assert.deepEqual(comoApp(fixo("teams", "f/2", "Nome que diverge").destino), {
     tipo: "fixo",
     conversa: "f/2",
     mensagem: null,
-    rotulo: "Conversa f/2",
+    escolhido: "Nome que diverge",
     conta: null,
   });
   assert.equal(comoApp({ tipo: "fixo", conversa: { app: "teams", ref: "f/2", conta: "a@x.test" } }).conta, "a@x.test");

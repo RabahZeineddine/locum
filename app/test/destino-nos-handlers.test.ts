@@ -42,7 +42,7 @@ test("teams.post: destino fixo em chat não depende do gatilho ter lido a conver
     subject: "",
     author: null,
     webUrl: null,
-    destino: { tipo: "fixo", rotulo: "Chat 19:time" },
+    destino: { app: "teams", tipo: "fixo", ref: "chat/19:time", nome: null, escolhido: "Time de plataforma" },
   });
 });
 
@@ -50,9 +50,11 @@ test("teams.post: destino fixo em canal vira mensagem nova no canal, sem thread"
   const handler = teamsPostHandler({ db: bancoDeTeste(), token: async () => "t" });
   const p = (await handler.propose!({ text: "oi", destino: fixo("teams", "canal/T1/C1", "Equipe > Geral") }, null)) as {
     channel: object;
+    destino: unknown;
   };
-  // O nome que a tela gravou não vira verdade na Fila: vale o que o ref descreve.
-  assert.deepEqual(p.channel, { teamId: "T1", channelId: "C1", label: "Canal C1 (equipe T1)" });
+  // O nome que a tela gravou não vira o nome do canal: sem leitura, a Fila mostra como "escolhido".
+  assert.deepEqual(p.channel, { teamId: "T1", channelId: "C1", label: null });
+  assert.deepEqual(p.destino, { app: "teams", tipo: "fixo", ref: "canal/T1/C1", nome: null, escolhido: "Equipe > Geral" });
 });
 
 test("teams.post: novo no canal do evento usa o mesmo canal e tira a thread; evento mantém a thread", async () => {
@@ -68,13 +70,30 @@ test("teams.post: novo no canal do evento usa o mesmo canal e tira a thread; eve
 
   const noFio = (await handler.propose!(evento, null)) as { channel: { threadId?: string }; destino: unknown };
   assert.equal(noFio.channel.threadId, "9");
-  assert.deepEqual(noFio.destino, { tipo: "evento", rotulo: null });
+  assert.deepEqual(noFio.destino, { app: "teams", tipo: "evento" });
 
   const novo = (await handler.propose!({ ...evento, destino: { tipo: "novo" } }, null)) as {
     channel: { threadId?: string; channelId: string };
   };
   assert.equal(novo.channel.threadId, undefined);
   assert.equal(novo.channel.channelId, "C1");
+});
+
+test("teams.post: fixo em canal já lido mostra o nome conferido, e o escolhido fica à parte", async () => {
+  const banco = bancoDeTeste();
+  await banco.insert(schema.events).values({
+    id: "c2",
+    source: "teams",
+    externalId: "t:c2",
+    payload: { repo: "teams-channel/T1/C1/9", teamId: "T1", channelId: "C1", threadId: "9", channel: "Geral", text: "oi", author: "Ana" },
+  });
+  const handler = teamsPostHandler({ db: banco, token: async () => "t" });
+  const p = (await handler.propose!({ text: "oi", destino: fixo("teams", "canal/T1/C1", "Nome que diverge") }, null)) as {
+    destino: unknown;
+    channel: { label: string };
+  };
+  assert.equal(p.channel.label, "Geral");
+  assert.deepEqual(p.destino, { app: "teams", tipo: "fixo", ref: "canal/T1/C1", nome: "Geral", escolhido: "Nome que diverge" });
 });
 
 test("teams.post: sem o parâmetro responde como sempre, e destino de outro app é recusado", async () => {
@@ -96,7 +115,7 @@ test("slack.post: destino fixo manda para o canal escolhido, sem thread e sem co
     server: "slack",
     channel: "C9",
     text: "oi",
-    destino: { tipo: "fixo", rotulo: "Canal C9" },
+    destino: { app: "slack", tipo: "fixo", ref: "C9", nome: null, escolhido: "#geral" },
     subject: "",
     permalink: null,
   });
@@ -220,7 +239,7 @@ test("executor: destino fixo gravado no passo chega ao handler e a pendência mo
   const { passo } = await rodar({ text: "oi", destino: fixo("teams", "chat/19:time", "Time") });
   assert.equal(passo.status, "awaiting_approval");
   const [pendencia] = await db.select().from(schema.approvals).where(eq(schema.approvals.stepId, passo.id));
-  const payload = pendencia!.payload as { destino: { tipo: string; rotulo: string }; chatId: string };
+  const payload = pendencia!.payload as { destino: object; chatId: string };
   assert.equal(payload.chatId, "19:time");
-  assert.deepEqual(payload.destino, { tipo: "fixo", rotulo: "Chat 19:time" });
+  assert.deepEqual(payload.destino, { app: "teams", tipo: "fixo", ref: "chat/19:time", nome: null, escolhido: "Time" });
 });

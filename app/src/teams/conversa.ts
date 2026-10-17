@@ -79,8 +79,4 @@ export const adaptadorDoTeams: AdaptadorDeConversa = {
   validarRef(ref) {
     lerRefDoTeams(ref);
   },
-  descreverRef(ref) {
-    const c = lerRefDoTeams(ref);
-    return c.tipo === "chat" ? `Chat ${c.chatId}` : `Canal ${c.channelId} (equipe ${c.teamId})`;
-  },
 };

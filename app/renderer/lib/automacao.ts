@@ -12,6 +12,8 @@
  * apagada. A seta entre passos é o `needs`, e essa a pessoa liga e desliga.
  */
 import { topoSort, type AgentSpec, type LogicStep, type Step, type TriggerConfig } from "../../src/config/types";
+import { REGISTRO_DE_CONVERSA } from "../../src/acao/destino";
+import { gatilhoTrazMensagem } from "./destino-da-conversa";
 import { SLACK_REPLY_SCHEMA } from "../../src/slack/proposal";
 import { CONVERSATION_ISSUE_SCHEMA, ISSUE_CONTENT_SCHEMA } from "../../src/trackers/proposal";
 import prReview from "../../../examples/agents/pr-review.json";
@@ -712,8 +714,6 @@ const destinoFixoSemConversa = (p: { params?: Record<string, unknown> }): boolea
 export function problemas(r: Rascunho, ctx: Contexto): Problema[] {
   const lista: Problema[] = [];
   const kinds = new Set(r.gatilhos.map((g) => g.config.kind));
-  const conversaDoSlack = kinds.has("slack-channel") || kinds.has("slack-inbox");
-  const conversaDoTeams = kinds.has("teams-inbox");
   const agrupa = r.gatilhos.some((g) => g.config.kind === "teams-inbox" && g.config.prLinks && g.config.agruparPrs);
 
   if (r.spec.name.trim() === "") lista.push({ chave: "automations.problems.noName", bloqueia: true });
@@ -784,11 +784,14 @@ export function problemas(r: Rascunho, ctx: Contexto): Problema[] {
     if (destinoFixoSemConversa(p)) {
       lista.push({ chave: "automations.problems.destinationMissing", no: p.key, bloqueia: true });
     }
-    if (p.action === "slack.post" && !conversaDoSlack && !destinoFixo(p)) {
-      lista.push({ chave: "automations.problems.slackReplyNeedsSlack", no: p.key, bloqueia: false });
-    }
-    if (p.action === "teams.post" && !conversaDoTeams && !destinoFixo(p)) {
-      lista.push({ chave: "automations.problems.teamsReplyNeedsTeams", no: p.key, bloqueia: false });
+    const deConversa = REGISTRO_DE_CONVERSA.acoes[p.action];
+    if (deConversa !== undefined && !(deConversa.efeito === "responder" && destinoFixo(p)) && !gatilhoTrazMensagem(p.action, [...kinds])) {
+      lista.push({
+        chave: `automations.problems.${deConversa.efeito === "responder" ? "replyNeedsApp" : "reactNeedsApp"}`,
+        no: p.key,
+        bloqueia: false,
+        valores: { app: REGISTRO_DE_CONVERSA.apps[deConversa.app]?.nome ?? deConversa.app },
+      });
     }
     if (p.action === "teams.react" || p.action === "slack.react") {
       const de = ((p.params ?? {}).porValor as { de?: unknown } | undefined)?.de;
@@ -801,12 +804,6 @@ export function problemas(r: Rascunho, ctx: Contexto): Problema[] {
     }
     if (p.action === "github.review_comment" && agrupa) {
       lista.push({ chave: "automations.problems.groupedReview", no: p.key, bloqueia: false });
-    }
-    if (p.action === "slack.react" && !conversaDoSlack) {
-      lista.push({ chave: "automations.problems.slackReactNeedsSlack", no: p.key, bloqueia: false });
-    }
-    if (p.action === "teams.react" && !conversaDoTeams) {
-      lista.push({ chave: "automations.problems.teamsReactNeedsTeams", no: p.key, bloqueia: false });
     }
     if (p.action === "tracker.create_issue" && (p.target === undefined || !ctx.trackers.includes(p.target))) {
       lista.push({ chave: "automations.problems.noTracker", no: p.key, bloqueia: true });

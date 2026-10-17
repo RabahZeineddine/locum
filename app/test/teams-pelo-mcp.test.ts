@@ -109,6 +109,8 @@ function servidorFalso(dados: {
     }
     if (dados.falha !== undefined) return { isError: true, content: [{ type: "text", text: dados.falha }] };
     switch (tool) {
+      case "list-accounts":
+        return texto({ accounts: [{ email: "a@x.test" }, { email: "b@x.test" }] });
       case "get-current-user":
         return texto({ id: "EU", userPrincipalName: "eu@empresa.com" });
       case "list-chats": {
@@ -395,7 +397,7 @@ test("capacidades: o servidor que só manda mensagem nova em canal também sabe 
 
 test("destino fixo no ms365 com várias contas: vale a conta escolhida e não a do evento, e sem conta recusa antes da Fila", async () => {
   const mcp = cadastro("ms365", true, MULTICONTA);
-  const { call } = servidorFalso({});
+  const { call, chamadas } = servidorFalso({});
   const handler = teamsPostHandler({ db: bancoDeTeste(), token: semLogin, mcp, call });
   const conversa = (extra: object) => ({ tipo: "fixo", conversa: { app: "teams", ref: "chat/19:time", ...extra } });
 
@@ -404,6 +406,8 @@ test("destino fixo no ms365 com várias contas: vale a conta escolhida e não a 
 
   // Disparo manual: sem evento e sem conta gravada no destino, a resposta não sabe por qual conta sair.
   await assert.rejects(handler.propose!({ text: "oi", destino: conversa({}) }, null), /várias contas e este destino não diz por qual sair/);
+  // A recusa sai do esquema guardado das ferramentas, sem subir sessão nem chamar o servidor.
+  assert.equal(chamadas.length, 0);
 });
 
 test("a falha da ferramenta estoura no publish, para a pendência não fechar", async () => {
@@ -477,6 +481,19 @@ test("a lista de chats da tela sai pela conta gravada do gatilho", async () => {
 
   assert.ok(chamadas.length > 0);
   for (const c of chamadas) assert.equal(c.args.account, "eu@empresa.com", c.tool);
+});
+
+const COM_LISTA_DE_CONTAS = [...MULTICONTA, { name: "list-accounts", inputSchema: esquema(), description: "", estimatedTokens: 0 }];
+
+test("a lista de conversas do destino fixo traz as de todas as contas do servidor, cada uma marcada com a sua", async () => {
+  const { call, chamadas } = servidorFalso({ chats: [{ id: "g", chatType: "group", mensagens: [] }] });
+  const mcp = cadastro("ms365", true, COM_LISTA_DE_CONTAS);
+  const { listTeamsChats } = await import("../src/teams/chats.js");
+
+  const lista = await listTeamsChats({ token: semLogin, mcp, call, db: bancoDeTeste() });
+
+  assert.deepEqual(lista.map((c) => [c.chatId, c.conta]), [["g", "a@x.test"], ["g", "b@x.test"]]);
+  assert.ok(chamadas.some((c) => c.args.account === "b@x.test"));
 });
 
 test("servidor de uma conta só não recebe account, e o evento não leva conta", async () => {

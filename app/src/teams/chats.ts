@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
-import { abrirTeams, type TeamsGraphOptions } from "./graph.js";
+import { abrirTeams, contasDoServidor, type TeamsGraphOptions } from "./graph.js";
 
 /** Um chat que a pessoa pode observar, com o rótulo que a tela mostra. */
 export interface TeamsChatOption {
@@ -51,6 +51,15 @@ export async function listTeamsChats(options: ListTeamsChatsOptions = {}): Promi
             .from(schema.settings)
             .where(eq(schema.settings.key, `teams.account.inbox:${triggerId}`))
         )[0]?.value ?? null);
+  // Sem gatilho nem conta dada e com várias contas no servidor, a lista traz as de todas elas, cada uma marcada.
+  if (triggerId === undefined && graph.account === undefined) {
+    const contas = await contasDoServidor(graph);
+    if (contas.length > 0) {
+      const porConta: TeamsChatOption[][] = [];
+      for (const conta of contas) porConta.push(await listTeamsChats({ ...graph, db, account: conta }));
+      return porConta.flat();
+    }
+  }
   const teams = await abrirTeams(guardada === null ? graph : { ...graph, account: guardada });
   try {
     const eu = (await teams.get("/me?$select=id,userPrincipalName")).id;

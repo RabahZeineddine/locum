@@ -1,4 +1,4 @@
-import { exigirDestino, type DestinoDaAcao } from "./destino.js";
+import { exigirDestino, type DestinoDaAcao, type DestinoNaFila } from "./destino.js";
 
 // O adaptador e o resolvedor não tocam em rede: quem escreve é o handler da ação.
 
@@ -23,8 +23,6 @@ export interface AdaptadorDeConversa {
   enderecoDoEvento(payload: unknown): EnderecoDeConversa;
   /** Confere um `ref` escolhido pela pessoa; estoura se não for desse app. */
   validarRef(ref: string): void;
-  /** O `ref` em palavras, para a Fila: é o que o app entende, e não o nome que a tela gravou. */
-  descreverRef(ref: string): string;
 }
 
 /** O alvo já resolvido: o handler só traduz isto para a chamada do app. */
@@ -33,8 +31,8 @@ export interface AlvoResolvido {
   conversa: string;
   /** Presente só quando a resposta vai no fio da mensagem do evento. */
   mensagem: string | null;
-  /** A conversa fixa em palavras, como o adaptador a descreve a partir do `ref`; o rótulo gravado no passo não entra. */
-  rotulo: string | null;
+  /** O nome que a tela mostrou ao escolher a conversa fixa. Não vale como conferido. */
+  escolhido: string | null;
   /** A conta por onde sair: a escolhida no destino fixo, ou a do evento. */
   conta: string | null;
 }
@@ -53,7 +51,7 @@ export function resolverDestino(adaptador: AdaptadorDeConversa, acao: string, cr
       tipo: "fixo",
       conversa: destino.conversa.ref,
       mensagem: null,
-      rotulo: adaptador.descreverRef(destino.conversa.ref),
+      escolhido: destino.conversa.rotulo ?? null,
       conta: destino.conversa.conta ?? null,
     };
   }
@@ -62,7 +60,20 @@ export function resolverDestino(adaptador: AdaptadorDeConversa, acao: string, cr
     tipo: destino.tipo,
     conversa: endereco.conversa,
     mensagem: destino.tipo === "evento" ? endereco.mensagem : null,
-    rotulo: null,
+    escolhido: null,
     conta: endereco.conta ?? null,
+  };
+}
+
+/** O destino como a pendência o guarda: dado, e o texto fica por conta da Fila. */
+export function destinoParaFila(app: string, alvo: AlvoResolvido, nome: string | null): DestinoNaFila {
+  if (alvo.tipo !== "fixo") return { app, tipo: alvo.tipo };
+  return {
+    app,
+    tipo: "fixo",
+    ref: alvo.conversa,
+    ...(alvo.conta === null ? {} : { conta: alvo.conta }),
+    nome,
+    escolhido: alvo.escolhido,
   };
 }
