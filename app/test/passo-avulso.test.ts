@@ -101,7 +101,7 @@ test("propor grava um passo avulso e uma pendência em approve, com o alvo vindo
   assert.equal(avulso.origem, "avulso");
   assert.equal(avulso.idx, 3);
   assert.equal(avulso.status, "awaiting_approval");
-  assert.deepEqual(avulso.input, { kind: "github.review_comment", conteudo: APROVAR_SEM_COMENTARIO, derivaDe: "revisar", mode: "approve" });
+  assert.deepEqual(avulso.input, { kind: "github.review_comment", conteudo: APROVAR_SEM_COMENTARIO, derivaDe: "revisar", mode: "approve", propostoPor: "pessoa" });
   const [pendencia] = await pendencias(runId);
   assert.equal(pendencia!.id, approvalId);
   assert.equal(pendencia!.status, "pending");

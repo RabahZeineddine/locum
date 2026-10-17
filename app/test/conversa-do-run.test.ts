@@ -19,6 +19,8 @@ import { PassoAvulsoService } from "../src/services/passo-avulso-service.js";
 import { ApprovalService } from "../src/services/approval-service.js";
 import { i18nService } from "../src/services/i18n-service.js";
 import { RunService, type StepRunner } from "../src/services/run-service.js";
+import { approvalService } from "../src/services/approval-service.js";
+import { assertWithinBudget } from "../src/executor/budget.js";
 
 /**
  * A conversa do run (ADR 0009): o modelo falso conversa sobre um run que já rodou e age
@@ -348,4 +350,73 @@ test("run só de ação, sem passo de modelo: o estado abre sem alvo e diz por q
   assert.deepEqual((await c.conversas.estado(runId)).run?.alvo, { tipo: "agent", id: "revisor-pr" });
   await c.conversas.enviar(runId, "oi");
   assert.equal((await c.conversas.estado(runId)).falas.at(-1)?.de, "assistant");
+});
+
+test("a proposta da conversa leva a marca da origem; a feita à mão leva a da pessoa; Fila e MCP a mostram", async () => {
+  const { runId } = await montarRun();
+  const c = montar();
+  await c.conversas.enviar(runId, "libera aí sem comentários");
+  const conteudo = JSON.parse(APROVAR).conteudo;
+  const { gate } = gateDeTeste();
+  const aMao = await new PassoAvulsoService(db, gate).proporAcao(runId, { kind: "github.review_comment", conteudo, derivaDe: "revisar" });
+
+  const passos = await db.select().from(schema.steps).where(eq(schema.steps.runId, runId));
+  const origemDe = (chave: string) => (passos.find((p) => p.stepKey === chave)?.input as { propostoPor?: string }).propostoPor;
+  assert.equal(origemDe("avulso-1"), "conversa");
+  assert.equal(origemDe(aMao.stepKey), "pessoa");
+
+  const fila = await approvalService.listPending();
+  assert.equal(fila.find((a) => a.runId === runId && a.stepKey === "avulso-1")?.propostoPor, "conversa");
+  assert.equal(fila.find((a) => a.id === aMao.approvalId)?.propostoPor, "pessoa");
+
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await buildMcpServer({}).connect(serverTransport);
+  const client = new Client({ name: "teste", version: "0.0.0" });
+  await client.connect(clientTransport);
+  const lido = async (nome: string, args: Record<string, unknown>) => JSON.parse(((await client.callTool({ name: nome, arguments: args })).content as { text: string }[])[0]!.text);
+  const daConversa = fila.find((a) => a.runId === runId && a.stepKey === "avulso-1")!;
+  assert.equal((await lido("get_approval", { approvalId: daConversa.id })).propostoPor, "conversa");
+  assert.equal((await lido("list_pending_approvals", {})).find((a: { id: string }) => a.id === daConversa.id).propostoPor, "conversa");
+  const run = await lido("get_run", { runId });
+  assert.equal(run.steps.find((s: { stepKey: string }) => s.stepKey === "avulso-1").propostoPor, "conversa");
+});
+
+/** Uma versão nova da automação com o teto por execução, depois da que o run usou. */
+async function comTeto(agentId: string, budget: { perRunUsd?: number; perRunTokens?: number }) {
+  await new AgentService().upsert(
+    AgentSpec.parse({
+      id: agentId,
+      name: "Revisor",
+      budget,
+      steps: [
+        { type: "model", key: "ler", name: "Ler", model: "anthropic/modelo", prompt: "revise" },
+        { type: "action", key: "revisar", name: "Revisar", action: "github.review_comment", needs: ["ler"] },
+      ],
+    }),
+    undefined,
+    "human",
+  );
+}
+
+test("o teto por execução conta o gasto gravado da conversa mais o dos passos, vale o da versão atual e o reset não o zera", async () => {
+  const { runId, agentId } = await montarRun();
+  await db.update(schema.runs).set({ tokens: 100, conversaTokens: 60, conversaUsd: 0.1 }).where(eq(schema.runs.id, runId));
+  await comTeto(agentId, { perRunTokens: 150 });
+  const c = montar({ deps: { texto: (chave, v) => `${chave} ${JSON.stringify(v ?? {})}`, orcamento: { checar: (id, gasto, limites, agent) => assertWithinBudget(id, gasto, limites, agent), gastar: async () => undefined } } });
+
+  await c.conversas.enviar(runId, "oi");
+  const recusa = c.eventos.find((e) => e.tipo === "erro");
+  assert.match(recusa?.tipo === "erro" ? recusa.mensagem : "", /agentChat\.errors\.budget .*"limit":"150 tokens","spent":"160 tokens"/);
+  assert.equal(c.modelo.recebidos.length, 0, "nenhum modelo foi chamado");
+
+  await c.conversas.limpar(runId);
+  const depois = montar({ deps: { orcamento: { checar: (id, gasto, limites, agent) => assertWithinBudget(id, gasto, limites, agent), gastar: async () => undefined } } });
+  await depois.conversas.enviar(runId, "oi");
+  assert.ok(depois.eventos.some((e) => e.tipo === "erro"), "o reset não devolveu o gasto");
+  assert.equal(depois.modelo.recebidos.length, 0);
+
+  // Folga na versão atual: a conversa volta a falar.
+  await comTeto(agentId, { perRunTokens: 100_000 });
+  await depois.conversas.enviar(runId, "oi");
+  assert.equal(depois.modelo.recebidos.length, 1);
 });

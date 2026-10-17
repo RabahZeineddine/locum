@@ -30,7 +30,10 @@ ferramentas de escrita seria o efeito escondido que o ADR 0006 proíbe.
    de modelo do run, ou o modelo dele, escrito na tela e no MCP.
 6. O gasto vai para `runs.conversa_usd` e `runs.conversa_tokens`, separado dos
    passos: o `reset` de uma reexecução não o desconta. Vai também para o gasto
-   diário da automação e, havendo agent, para o dele.
+   diário da automação e, havendo agent, para o dele. O teto por execução
+   (`perRunUsd` e `perRunTokens`) mede o gravado: `runs.conversa_*` mais o custo dos
+   passos do run, contra o orçamento da versão atual da automação. Reiniciar o app
+   ou limpar a conversa não devolve o que ela gastou.
 7. Run de automação arquivada: a conversa só lê. `propor_acao` e
    `reexecutar_passo` conferem o arquivamento na própria transação.
 8. Uma volta em andamento bloqueia arquivar e deletar a automação. Deletar apaga a
@@ -38,6 +41,10 @@ ferramentas de escrita seria o efeito escondido que o ADR 0006 proíbe.
 
 ## Consequências
 
+- O passo avulso que a conversa propõe grava `propostoPor: "conversa"` em
+  `steps.input` (a proposta à mão grava `"pessoa"`). A Fila, a tela do run e o MCP
+  (`get_approval`, `list_pending_approvals`, `get_run`) mostram "proposta pela
+  conversa".
 - Edição de pendência pela conversa fica marcada como alterada por ela, e a
   decisão com o hash do payload visto antes da edição é recusada.
 - Prompt injection em saída de passo, PR ou mensagem não ganha ferramenta de

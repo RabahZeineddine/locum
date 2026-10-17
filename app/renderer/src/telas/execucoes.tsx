@@ -775,6 +775,11 @@ function PassoDaExecucao({
             {t("runs.step.standalone")}
           </span>
         ) : null}
+        {passo.propostoPor === "conversa" ? (
+          <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[11px] font-medium" data-locum-proposta-pela-conversa="">
+            {t("runs.step.proposedByConversation")}
+          </span>
+        ) : null}
         <Estado rotulo={naoRodou ? t("runs.step.notRun") : undefined} status={passo.status} />
         {ensaio === null ? null : (
           <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[11px] font-medium" data-locum-ensaio="">

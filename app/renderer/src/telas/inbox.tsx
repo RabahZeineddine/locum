@@ -553,6 +553,11 @@ function Linha({
           )}
 
           {alvo.origem && <p className="text-muted-foreground mt-0.5 text-xs">{alvo.origem}</p>}
+          {pendencia.propostoPor === "conversa" && (
+            <p className="text-muted-foreground mt-0.5 text-xs" data-locum-proposta-pela-conversa>
+              {t("inbox.propostaPelaConversa")}
+            </p>
+          )}
           {pendencia.trocaPorLimite !== null && (
             <p className="text-muted-foreground mt-0.5 text-xs" data-locum-troca-por-limite>
               {pendencia.trocaPorLimite}

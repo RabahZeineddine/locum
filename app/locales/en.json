@@ -388,6 +388,7 @@
     "conflictBadge": "Conflict",
     "conflict": "This item changed since it was queued. Open it to see what happened.",
     "semCommitAvaliado": "No evaluated commit: the review goes out without pinning the commit.",
+    "propostaPelaConversa": "Proposed by the run conversation",
     "context_update": {
       "target": "Context update: {{slug}}",
       "kind": "Context",
@@ -719,6 +720,7 @@
       },
       "notRun": "did not run",
       "standalone": "standalone",
+      "proposedByConversation": "proposed by the conversation",
       "instruction": "Instruction from whoever re-ran it",
       "downgraded": {
         "rebaixado-na-reexecucao": "Went to the Queue instead of going out on its own, because this re-run has an instruction.",

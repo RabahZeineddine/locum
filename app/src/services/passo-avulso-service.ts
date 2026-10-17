@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { ACOES_DE_CONVERSA_REGISTRO, destinoDoPasso } from "../acao/destino.js";
 import type { ApprovalGate } from "../approval/gate.js";
-import { PREFIXO_DO_PASSO_AVULSO } from "../config/types.js";
+import { PREFIXO_DO_PASSO_AVULSO, type PropostoPor } from "../config/types.js";
 import { recusarSeArquivada } from "../db/arquivada.js";
 import { db as defaultDb, schema } from "../db/index.js";
 import { buildGate } from "../executor/build.js";
@@ -20,6 +20,8 @@ export type PropostaAvulsa = {
   conteudo: unknown;
   /** O passo do fluxo de que esta ação deriva. Reexecutá-lo expira a pendência. */
   derivaDe?: string;
+  /** Quem propõe. Ausente, a pessoa: só a conversa do run diz o contrário. */
+  propostoPor?: PropostoPor;
 };
 
 /**
@@ -94,7 +96,7 @@ export class PassoAvulsoService {
             name: kind,
             origem: "avulso",
             status: "awaiting_approval",
-            input: { kind, conteudo, derivaDe: proposta.derivaDe ?? null, mode: "approve" },
+            input: { kind, conteudo, derivaDe: proposta.derivaDe ?? null, mode: "approve", propostoPor: proposta.propostoPor ?? "pessoa" },
             startedAt: Math.floor(Date.now() / 1000),
           })
           .run();

@@ -1,6 +1,6 @@
-import { eq, sql } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
-import type { AgentProfile } from "../config/types.js";
+import type { AgentProfile, AgentSpec } from "../config/types.js";
 import { db as defaultDb, schema } from "../db/index.js";
 import { delimitarDado, novaMarca } from "../executor/dado-externo.js";
 import type { assertWithinBudget, recordSpend } from "../executor/budget.js";
@@ -194,6 +194,7 @@ function provedorDoRun(deps: DepsDaConversaDoRun): ProvedorDeConversa {
       executar: async ({ acao, conteudo, derivaDe }) => {
         const { approvalId, stepKey } = await deps.avulso.proporAcao(d.id, {
           kind: acao as string,
+          propostoPor: "conversa",
           conteudo,
           ...(typeof derivaDe === "string" ? { derivaDe } : {}),
         });
@@ -280,8 +281,14 @@ function provedorDoRun(deps: DepsDaConversaDoRun): ProvedorDeConversa {
         leitura: [],
         confirmar: [],
         locais: ferramentas(d, marca),
-        checar: async (gasto) => {
-          await deps.orcamento.checar(d.agentId, gasto, d.spec.budget);
+        // O teto por execução parte do que está gravado, e não do gasto em memória da conversa:
+        // reiniciar o app ou limpar a conversa não devolve o que ela já gastou.
+        checar: async () => {
+          const run = db.select({ usd: schema.runs.costUsd, tokens: schema.runs.tokens, conversaUsd: schema.runs.conversaUsd, conversaTokens: schema.runs.conversaTokens }).from(schema.runs).where(eq(schema.runs.id, d.id)).get();
+          const gasto = { usd: (run?.usd ?? 0) + (run?.conversaUsd ?? 0), tokens: (run?.tokens ?? 0) + (run?.conversaTokens ?? 0) };
+          // O teto é o da versão atual da automação: quem o aperta ou afrouxa depois do run vale para a conversa.
+          const atual = db.select({ spec: schema.agentVersions.spec }).from(schema.agentVersions).where(eq(schema.agentVersions.agentId, d.agentId)).orderBy(desc(schema.agentVersions.version)).limit(1).get();
+          await deps.orcamento.checar(d.agentId, gasto, (atual?.spec as AgentSpec | undefined)?.budget ?? d.spec.budget);
           if (spec !== undefined && chaveDoAgent !== undefined) await deps.orcamento.checar(chaveDoAgent, gasto, spec.budget, spec.name);
         },
         gastar: async (gasto, novaMensagem) => {

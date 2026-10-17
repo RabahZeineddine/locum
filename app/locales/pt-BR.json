@@ -403,6 +403,7 @@
     "conflictBadge": "Conflito",
     "conflict": "Isso mudou desde que entrou na fila. Abra para ver o que aconteceu.",
     "semCommitAvaliado": "Sem commit avaliado: a review sai sem fixar o commit.",
+    "propostaPelaConversa": "Proposta pela conversa do run",
     "context_update": {
       "target": "Atualização de contexto: {{slug}}",
       "kind": "Contexto",
@@ -741,6 +742,7 @@
       },
       "notRun": "não rodou",
       "standalone": "avulso",
+      "proposedByConversation": "proposta pela conversa",
       "instruction": "Instrução de quem reexecutou",
       "downgraded": {
         "rebaixado-na-reexecucao": "Foi para a Fila em vez de sair sozinho, porque esta reexecução tem instrução.",

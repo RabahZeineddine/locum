@@ -3,6 +3,7 @@ import { z } from "zod";
 import { STUCK_AFTER_SECONDS } from "../approval/gate.js";
 import { impressaoDe } from "../approval/impressao.js";
 import type { EsquemaJson } from "../config/referencias.js";
+import { propostoPorDe, type PropostoPor } from "../config/types.js";
 import { recusarSeArquivada } from "../db/arquivada.js";
 import { db as defaultDb, schema } from "../db/index.js";
 import { buildGate } from "../executor/build.js";
@@ -24,6 +25,8 @@ export interface ApprovalSummary extends ApprovalRow {
   agentVersion: number;
   /** "feito com <modelo> por limite do <provedor>", quando um passo do run trocou de modelo por limite. */
   trocaPorLimite: string | null;
+  /** Quem propôs o passo avulso de onde vem a pendência. Nulo quando o passo é do fluxo. */
+  propostoPor: PropostoPor | null;
   /** A impressão do payload: quem decide manda de volta a do que viu, e a decisão só vale se o payload é o mesmo. */
   hash: string;
 }
@@ -149,6 +152,7 @@ export class ApprovalService {
         approval: schema.approvals,
         stepKey: schema.steps.stepKey,
         stepName: schema.steps.name,
+        stepInput: schema.steps.input,
         agentId: schema.agents.id,
         agentName: schema.agents.name,
         agentVersion: schema.agentVersions.version,
@@ -177,6 +181,7 @@ export class ApprovalService {
       trocaPorLimite: trocas.get(r.approval.runId) ?? null,
       stepKey: r.stepKey,
       stepName: r.stepName,
+      propostoPor: propostoPorDe(r.stepInput),
       agentId: r.agentId,
       agentName: r.agentName,
       agentVersion: r.agentVersion,
