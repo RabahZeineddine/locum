@@ -678,10 +678,10 @@ export function alvoDaPendencia(p: Pendencia, t: TFunction): Alvo {
     const m = cargaDaMensagem(p);
     return {
       principal: t(`inbox.message.${m.servico}`),
-      detalhe: m.destino ?? t("inbox.message.chat"),
+      detalhe: textoDoDestino(t, m),
       titulo: m.assunto || undefined,
       autor: m.autor ? t("inbox.by", { author: m.autor }) : undefined,
-      resumo: m.texto ? t("inbox.message.reply", { text: m.texto }) : undefined,
+      resumo: m.texto ? t(m.destinoTipo === "evento" ? "inbox.message.reply" : "inbox.message.sends", { text: m.texto }) : undefined,
       servico: m.servico,
       link: m.link,
       semSeveridade: true,
@@ -737,6 +737,21 @@ export function ehMensagem(p: Pendencia): boolean {
 }
 
 /**
+ * Para onde a mensagem vai, em palavras. Conversa fixa: o nome conferido no que
+ * o Locum leu, ou o nome escolhido no nó marcado como tal, com o ref ao lado.
+ */
+export function textoDoDestino(t: TFunction, m: ReturnType<typeof cargaDaMensagem>): string {
+  if (m.fixa !== undefined) {
+    if (m.fixa.nome !== null) return m.fixa.nome;
+    return m.fixa.escolhido === null
+      ? m.fixa.ref
+      : t("inbox.message.chosenInNode", { name: m.fixa.escolhido, ref: m.fixa.ref });
+  }
+  const onde = m.destino ?? t("inbox.message.chat");
+  return m.destinoTipo === "novo" ? t("inbox.message.newIn", { where: onde }) : onde;
+}
+
+/**
  * O que a fila e a revisão leem de uma resposta, nos dois formatos.
  *
  * Ver `SlackPostProposal` em `src/slack/proposal.ts` e `TeamsPostProposal` em
@@ -750,17 +765,29 @@ export function cargaDaMensagem(p: Pendencia): {
   autor?: string;
   texto: string;
   link?: string;
+  /** Para onde o passo mandou: sem o campo (pendência antiga), responde ao evento. */
+  destinoTipo: "evento" | "novo" | "fixo";
+  /** A conversa fixa em dado: o texto sai de `textoDoDestino`, pelo i18n. */
+  fixa?: { ref: string; nome: string | null; escolhido: string | null };
 } {
   const c = (p.payload ?? {}) as Record<string, unknown>;
   const texto = typeof c.text === "string" ? c.text : "";
-  const assunto = typeof c.subject === "string" ? c.subject : "";
+  const d = c.destino as { tipo?: unknown; ref?: unknown; nome?: unknown; escolhido?: unknown } | undefined;
+  const destinoTipo = d?.tipo === "novo" || d?.tipo === "fixo" ? d.tipo : "evento";
+  const texto1 = (v: unknown): string | null => (typeof v === "string" && v !== "" ? v : null);
+  const fixa = destinoTipo === "fixo" ? { ref: texto1(d?.ref) ?? "", nome: texto1(d?.nome), escolhido: texto1(d?.escolhido) } : undefined;
+  // Fora do fio não há mensagem a que se responde: nem assunto, nem autor, nem link dela.
+  const noFio = destinoTipo === "evento";
+  const assunto = noFio && typeof c.subject === "string" ? c.subject : "";
   if (p.kind === "slack.post") {
     return {
       servico: "slack",
       destino: typeof c.channel === "string" ? c.channel : undefined,
       assunto,
       texto,
-      link: typeof c.permalink === "string" ? c.permalink : undefined,
+      link: noFio && typeof c.permalink === "string" ? c.permalink : undefined,
+      destinoTipo,
+      fixa,
     };
   }
   const canal = c.channel as { label?: unknown; channelId?: unknown } | undefined;
@@ -768,9 +795,11 @@ export function cargaDaMensagem(p: Pendencia): {
     servico: "teams",
     destino: canal ? String(canal.label ?? canal.channelId ?? "") || undefined : undefined,
     assunto,
-    autor: typeof c.author === "string" ? c.author : undefined,
+    autor: noFio && typeof c.author === "string" ? c.author : undefined,
     texto,
-    link: typeof c.webUrl === "string" ? c.webUrl : undefined,
+    link: noFio && typeof c.webUrl === "string" ? c.webUrl : undefined,
+    destinoTipo,
+    fixa,
   };
 }
 

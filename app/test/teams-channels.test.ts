@@ -141,6 +141,7 @@ test("resposta em canal vai para a thread lida, e thread desconhecida é recusad
     author: "Outra Pessoa",
     webUrl: null,
     channel: { teamId: EQUIPE, channelId: CANAL, threadId: "200", label: "Time / Geral" },
+    destino: { app: "teams", tipo: "evento" },
   });
   await assert.rejects(
     handler.propose!({ repo: channelRepo(EQUIPE, CANAL, "999"), text: "oi" }, null),

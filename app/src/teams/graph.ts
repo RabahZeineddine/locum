@@ -30,6 +30,8 @@ export interface TeamsGraph {
   conta(): string | null;
   /** O servidor MCP atende mais de uma conta: a resposta precisa saber por qual sair. */
   multiConta: boolean;
+  /** As contas que o servidor MCP atende (vazio no login nativo, ou sem a ferramenta que as lista). */
+  contas?(): Promise<string[]>;
   /** Solta o que a sessão segurou (o servidor MCP aberto para a batida). */
   close(): Promise<void>;
 }
@@ -70,6 +72,9 @@ export function graphNativo(token: string, fetchFn: typeof fetch, graphUrl: stri
     servidor: null,
     conta: () => null,
     multiConta: false,
+    async contas() {
+      return [];
+    },
     async close() {},
     async get(caminho) {
       const url = caminho.startsWith("https://") ? caminho : `${graphUrl}${caminho}`;
@@ -114,7 +119,7 @@ export function capacidadesDoTeams(nomes: readonly string[]): Omit<TeamsNoMcp, "
   return {
     leitura: tem(LEITURA),
     canal: tem(CANAL),
-    responder: nomes.includes("send-chat-message") || nomes.includes("reply-to-channel-message"),
+    responder: ["send-chat-message", "reply-to-channel-message", "send-channel-message"].some((n) => nomes.includes(n)),
     reagir: nomes.includes("set-chat-message-reaction") || nomes.includes("set-channel-message-reaction"),
   };
 }
@@ -303,6 +308,15 @@ export function graphPeloMcp(
     conta: () => conta,
     multiConta,
     close: fechar,
+    async contas() {
+      if (!porNome.has("list-accounts")) return [];
+      try {
+        const r = (await acionar("list-accounts", {})) as { accounts?: { email?: unknown }[] } | null;
+        return (r?.accounts ?? []).flatMap((c) => (typeof c.email === "string" && c.email !== "" ? [c.email] : []));
+      } catch {
+        return [];
+      }
+    },
 
     async get(caminho) {
       const url = new URL(caminho, "https://graph.microsoft.com");
@@ -361,6 +375,15 @@ export function graphPeloMcp(
       const chat = rota.match(/^\/chats\/([^/]+)\/messages$/);
       if (chat) {
         await acionar("send-chat-message", { chatid: v(chat[1], "chatId"), body: v(comoHtml(corpo), "body") }, true);
+        return;
+      }
+      const novaNoCanal = rota.match(/^\/teams\/([^/]+)\/channels\/([^/]+)\/messages$/);
+      if (novaNoCanal) {
+        await acionar(
+          "send-channel-message",
+          { teamid: v(novaNoCanal[1], "teamId"), channelid: v(novaNoCanal[2], "channelId"), body: v(comoHtml(corpo), "body") },
+          true,
+        );
         return;
       }
       const resposta = rota.match(/^\/teams\/([^/]+)\/channels\/([^/]+)\/messages\/([^/]+)\/replies$/);
@@ -527,4 +550,30 @@ export async function abrirTeams(options: TeamsGraphOptions = {}): Promise<Teams
   }
   const sessao = await compartilhar(achado.server, config, options.abrir ?? abrirNoRegistro);
   return graphPeloMcp(achado.server, ferramentas, sessao.call, sessao.close, conta);
+}
+
+/**
+ * O servidor MCP do Teams que atende mais de uma conta, lido do esquema que o
+ * Locum guardou, sem subir sessão. Nulo no login nativo ou com conta única.
+ */
+export async function servidorDeVariasContas(options: TeamsGraphOptions = {}): Promise<string | null> {
+  if (options.graph !== undefined) return options.graph.multiConta ? (options.graph.servidor ?? "") : null;
+  const token = await (options.token ?? (() => mcpOAuthService.accessToken(TEAMS_SERVER)))();
+  if (token !== null) return null;
+  const mcp = options.mcp ?? mcpService;
+  const achado = await teamsNoMcp(mcp);
+  if (achado === null) return null;
+  const ferramentas = (await mcp.cachedTools(achado.server))?.tools ?? [];
+  return ferramentas.some((t) => achar(t, "account", "account")?.prop !== undefined) ? achado.server : null;
+}
+
+/** As contas do servidor MCP quando ele atende mais de uma; vazio no login nativo ou com conta única. */
+export async function contasDoServidor(options: TeamsGraphOptions = {}): Promise<string[]> {
+  if ((await servidorDeVariasContas(options)) === null) return [];
+  const teams = await abrirTeams(options);
+  try {
+    return (await teams.contas?.()) ?? [];
+  } finally {
+    await teams.close();
+  }
 }

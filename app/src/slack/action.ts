@@ -1,5 +1,7 @@
 import type { ActionHandler } from "../approval/gate.js";
 import { slackService, type SlackService } from "../services/slack-service.js";
+import { resolverDestino } from "../acao/conversa.js";
+import { adaptadorDoSlack } from "./conversa.js";
 import { postSlackReply, type SlackPostOptions } from "./post.js";
 import { buildPostProposal, SlackPostProposal } from "./proposal.js";
 import { findThread, type SlackThread } from "./thread.js";
@@ -42,7 +44,18 @@ export function slackPostHandler(options: SlackPostHandlerOptions = {}): ActionH
         throw new Error("nenhum servidor MCP cadastrado como Slack para responder");
       }
 
-      const parcial = buildPostProposal(payload, server);
+      const alvo = resolverDestino(
+        adaptadorDoSlack,
+        "slack.post",
+        (payload as { destino?: unknown } | null)?.destino,
+        payload,
+      );
+      const parcial = buildPostProposal(payload, server, alvo);
+      // Conferir a thread só cabe a quem responde no fio do evento: conversa
+      // nova, no canal do evento ou num canal escolhido, não tem thread lida.
+      if (parcial.threadTs === undefined) {
+        return SlackPostProposal.parse({ ...parcial, subject: "", permalink: null });
+      }
       const thread = await lookup(server, parcial.channel, parcial.threadTs);
       if (thread === null) {
         throw new Error(

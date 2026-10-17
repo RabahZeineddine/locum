@@ -17,19 +17,15 @@
       "model": "claude-code/claude-sonnet-5",
       "maxSteps": 4,
       "requiresServers": [],
-      "prompt": "Escreva a resposta para esta mensagem de Slack, na thread dela.\n\nEm `text`, a resposta como ela sairia no canal: direta, sem saudação\nde e-mail e sem repetir a pergunta. Se faltar informação para\nresponder, escreva o que falta em vez de supor.\n\nEm `threadTs`, devolva exatamente o carimbo que veio abaixo. Ele diz\nem qual thread a resposta entra, e carimbo trocado é resposta em\nconversa alheia.\n\nCanal: {{event.channel}}\nThread: {{event.threadTs}}\nDe: {{event.author}}\n\nMensagem:\n{{event.text}}",
+      "prompt": "Escreva a resposta para esta mensagem de Slack, na thread dela.\n\nEm `text`, a resposta como ela sairia no canal: direta, sem saudação\nde e-mail e sem repetir a pergunta. Se faltar informação para\nresponder, escreva o que falta em vez de supor.\n\nCanal: {{event.channel}}\nThread: {{event.threadTs}}\nDe: {{event.author}}\n\nMensagem:\n{{event.text}}",
       "outputSchema": {
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "text",
-          "threadTs"
+          "text"
         ],
         "properties": {
           "text": {
-            "type": "string"
-          },
-          "threadTs": {
             "type": "string"
           }
         }

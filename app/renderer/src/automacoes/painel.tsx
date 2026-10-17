@@ -41,6 +41,8 @@ import { SeletorDeFerramentas, SeletorDeModelo, useCatalogo } from "../editor-ag
 import type { RotaId } from "../rotas";
 import { Ajuda, Alternador, Campo, CAMPO, Minutos } from "./campos";
 import { esquemasDeSaidaDasConexoes, type FerramentasDasConexoes } from "./ferramentas-das-conexoes";
+import { DestinoDoNo } from "./destino-do-no";
+import { ACOES_DE_CONVERSA_REGISTRO } from "../../../src/acao/destino";
 import { FormularioDaChamada } from "./formulario-da-chamada";
 import { OQueFazer } from "./o-que-fazer";
 import { TrocaDeOperacao } from "./troca-de-operacao";
@@ -1065,6 +1067,16 @@ function ConfigDaAcao({
       ) : null}
       {passo.action === "mcp.call" && (reconhecerPasso(passo).operacao.tipo !== "vazia" || reconhecerPasso(passo).app === "mcp") ? <ConfigDaChamada conexoes={conexoes} passo={passo} rascunho={rascunho} saidas={saidas} trocar={trocar} /> : null}
       {passo.action === "http.request" ? <ConfigDoHttp passo={passo} rascunho={rascunho} trocar={trocar} /> : null}
+      {ACOES_DE_CONVERSA_REGISTRO[passo.action] !== undefined ? (
+        <DestinoDoNo
+          acao={passo.action}
+          agentId={rascunho.spec.id}
+          aoMudar={(params) => trocar({ ...passo, params })}
+          chave={passo.key}
+          gatilhos={rascunho.gatilhos.map((g) => g.config.kind)}
+          params={passo.params}
+        />
+      ) : null}
       {passo.action === "teams.react" || passo.action === "slack.react" ? (
         <ConfigDaReacao passo={passo} rascunho={rascunho} trocar={trocar} />
       ) : null}

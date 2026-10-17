@@ -37,6 +37,7 @@ test("resposta a conversa lida vira pendência com a mensagem a que responde", a
     subject: "pode olhar o PR?",
     author: "Outra Pessoa",
     webUrl: "https://teams.microsoft.com/l/message/1",
+    destino: { app: "teams", tipo: "evento" },
   });
 });
 

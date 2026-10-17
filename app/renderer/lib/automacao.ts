@@ -12,6 +12,8 @@
  * apagada. A seta entre passos é o `needs`, e essa a pessoa liga e desliga.
  */
 import { topoSort, type AgentSpec, type LogicStep, type Step, type TriggerConfig } from "../../src/config/types";
+import { REGISTRO_DE_CONVERSA } from "../../src/acao/destino";
+import { gatilhoTrazMensagem } from "./destino-da-conversa";
 import { SLACK_REPLY_SCHEMA } from "../../src/slack/proposal";
 import { CONVERSATION_ISSUE_SCHEMA, ISSUE_CONTENT_SCHEMA } from "../../src/trackers/proposal";
 import prReview from "../../../examples/agents/pr-review.json";
@@ -693,6 +695,15 @@ export interface Contexto {
   esquemas?: Readonly<Record<string, unknown>>;
 }
 
+/** Resposta para uma conversa escolhida pela pessoa: não depende de gatilho de conversa. */
+const destinoFixo = (p: { params?: Record<string, unknown> }): boolean =>
+  (p.params?.destino as { tipo?: unknown } | undefined)?.tipo === "fixo";
+
+const destinoFixoSemConversa = (p: { params?: Record<string, unknown> }): boolean => {
+  const d = p.params?.destino as { tipo?: unknown; conversa?: { ref?: unknown } } | undefined;
+  return d?.tipo === "fixo" && (typeof d.conversa?.ref !== "string" || d.conversa.ref === "");
+};
+
 /**
  * O que está errado ou faltando, antes de gravar.
  *
@@ -703,8 +714,6 @@ export interface Contexto {
 export function problemas(r: Rascunho, ctx: Contexto): Problema[] {
   const lista: Problema[] = [];
   const kinds = new Set(r.gatilhos.map((g) => g.config.kind));
-  const conversaDoSlack = kinds.has("slack-channel") || kinds.has("slack-inbox");
-  const conversaDoTeams = kinds.has("teams-inbox");
   const agrupa = r.gatilhos.some((g) => g.config.kind === "teams-inbox" && g.config.prLinks && g.config.agruparPrs);
 
   if (r.spec.name.trim() === "") lista.push({ chave: "automations.problems.noName", bloqueia: true });
@@ -772,11 +781,17 @@ export function problemas(r: Rascunho, ctx: Contexto): Problema[] {
     if (!ACOES_POR_PARAMETRO.has(p.action) && (fonte === undefined || fonte.type === "action")) {
       lista.push({ chave: "automations.problems.actionWithoutAi", no: p.key, bloqueia: false });
     }
-    if (p.action === "slack.post" && !conversaDoSlack) {
-      lista.push({ chave: "automations.problems.slackReplyNeedsSlack", no: p.key, bloqueia: false });
+    if (destinoFixoSemConversa(p)) {
+      lista.push({ chave: "automations.problems.destinationMissing", no: p.key, bloqueia: true });
     }
-    if (p.action === "teams.post" && !conversaDoTeams) {
-      lista.push({ chave: "automations.problems.teamsReplyNeedsTeams", no: p.key, bloqueia: false });
+    const deConversa = REGISTRO_DE_CONVERSA.acoes[p.action];
+    if (deConversa !== undefined && !(deConversa.efeito === "responder" && destinoFixo(p)) && !gatilhoTrazMensagem(p.action, [...kinds])) {
+      lista.push({
+        chave: `automations.problems.${deConversa.efeito === "responder" ? "replyNeedsApp" : "reactNeedsApp"}`,
+        no: p.key,
+        bloqueia: false,
+        valores: { app: REGISTRO_DE_CONVERSA.apps[deConversa.app]?.nome ?? deConversa.app },
+      });
     }
     if (p.action === "teams.react" || p.action === "slack.react") {
       const de = ((p.params ?? {}).porValor as { de?: unknown } | undefined)?.de;
@@ -789,12 +804,6 @@ export function problemas(r: Rascunho, ctx: Contexto): Problema[] {
     }
     if (p.action === "github.review_comment" && agrupa) {
       lista.push({ chave: "automations.problems.groupedReview", no: p.key, bloqueia: false });
-    }
-    if (p.action === "slack.react" && !conversaDoSlack) {
-      lista.push({ chave: "automations.problems.slackReactNeedsSlack", no: p.key, bloqueia: false });
-    }
-    if (p.action === "teams.react" && !conversaDoTeams) {
-      lista.push({ chave: "automations.problems.teamsReactNeedsTeams", no: p.key, bloqueia: false });
     }
     if (p.action === "tracker.create_issue" && (p.target === undefined || !ctx.trackers.includes(p.target))) {
       lista.push({ chave: "automations.problems.noTracker", no: p.key, bloqueia: true });
@@ -985,8 +994,6 @@ export function rascunhoDoModelo(
     "Em `text`, a resposta como ela sairia no canal: direta, sem saudação",
     "de e-mail e sem repetir a pergunta. Se faltar informação, diga o que falta.",
     "",
-    "Em `threadTs`, devolva exatamente o carimbo que veio abaixo.",
-    "",
     "Canal: {{event.channel}}",
     "Thread: {{event.threadTs}}",
     "De: {{event.author}}",
@@ -1052,8 +1059,6 @@ export function rascunhoDoModelo(
                 "",
                 "Tarefa: {{steps.analisar.title}}",
                 "Objetivo: {{steps.analisar.objective}}",
-                "",
-                "Em `threadTs`, devolva exatamente: {{event.threadTs}}",
               ].join("\n"),
               ["abrir-tarefa"],
               FORMATOS.respostaSlack,

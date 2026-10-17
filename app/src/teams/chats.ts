@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
-import { abrirTeams, type TeamsGraphOptions } from "./graph.js";
+import { abrirTeams, contasDoServidor, type TeamsGraphOptions } from "./graph.js";
 
 /** Um chat que a pessoa pode observar, com o rótulo que a tela mostra. */
 export interface TeamsChatOption {
@@ -8,6 +8,8 @@ export interface TeamsChatOption {
   /** Tópico do chat ou nomes dos outros membros. */
   label: string;
   chatType: "oneOnOne" | "group";
+  /** A conta do servidor MCP por onde a lista saiu; o destino fixo grava junto com a conversa. */
+  conta?: string;
 }
 
 /** Páginas de `/me/chats` lidas, de cinquenta em cinquenta. */
@@ -49,9 +51,19 @@ export async function listTeamsChats(options: ListTeamsChatsOptions = {}): Promi
             .from(schema.settings)
             .where(eq(schema.settings.key, `teams.account.inbox:${triggerId}`))
         )[0]?.value ?? null);
+  // Sem gatilho nem conta dada e com várias contas no servidor, a lista traz as de todas elas, cada uma marcada.
+  if (triggerId === undefined && graph.account === undefined) {
+    const contas = await contasDoServidor(graph);
+    if (contas.length > 0) {
+      const porConta: TeamsChatOption[][] = [];
+      for (const conta of contas) porConta.push(await listTeamsChats({ ...graph, db, account: conta }));
+      return porConta.flat();
+    }
+  }
   const teams = await abrirTeams(guardada === null ? graph : { ...graph, account: guardada });
   try {
     const eu = (await teams.get("/me?$select=id,userPrincipalName")).id;
+    const conta = teams.conta();
     const opcoes: TeamsChatOption[] = [];
     let proxima: string | null = "/me/chats?$expand=members&$top=50";
     for (let pagina = 0; pagina < PAGINAS && proxima !== null; pagina++) {
@@ -59,7 +71,7 @@ export async function listTeamsChats(options: ListTeamsChatsOptions = {}): Promi
       for (const item of Array.isArray(corpo.value) ? (corpo.value as Record<string, unknown>[]) : []) {
         if (typeof item.id !== "string") continue;
         if (item.chatType !== "oneOnOne" && item.chatType !== "group") continue;
-        opcoes.push({ chatId: item.id, label: rotuloDoChat(item, String(eu)), chatType: item.chatType });
+        opcoes.push({ chatId: item.id, label: rotuloDoChat(item, String(eu)), chatType: item.chatType, ...(conta === null ? {} : { conta }) });
       }
       proxima = typeof corpo["@odata.nextLink"] === "string" ? corpo["@odata.nextLink"] : null;
     }
