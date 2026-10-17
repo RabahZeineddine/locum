@@ -62,8 +62,10 @@ export async function gravarRevisao(
   findings: unknown[],
   verdict: string,
   summary?: string,
-): Promise<void> {
-  hashDaEdicao.set(approvalId, (await ponte().approvals.update(approvalId, findings, verdict, summary)).hash);
+): Promise<string> {
+  const { hash } = await ponte().approvals.update(approvalId, findings, verdict, summary);
+  hashDaEdicao.set(approvalId, hash);
+  return hash;
 }
 
 /** Grava o texto revisado de uma resposta de Slack ou Teams, sem publicar. */

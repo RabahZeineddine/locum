@@ -1529,6 +1529,7 @@
     "version": "Locum {{version}}"
   },
   "review": {
+    "mudouPorFora": "A conversa alterou esta pendência enquanto você editava. Suas mudanças não foram gravadas por cima: recarregue para ver a versão nova.",
     "title": "Revisar antes de publicar",
     "back": "Fila",
     "will_post_one": "{{count}} achado vai sair",

@@ -1493,6 +1493,7 @@
     "version": "Locum {{version}}"
   },
   "review": {
+    "mudouPorFora": "The conversation changed this pending item while you were editing. Your changes were not saved over it: reload to see the new version.",
     "title": "Review before publishing",
     "back": "Queue",
     "will_post_one": "{{count}} finding will be posted",

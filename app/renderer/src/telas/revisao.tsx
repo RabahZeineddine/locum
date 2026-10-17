@@ -4,6 +4,7 @@ import { gravarRevisao, gravarTexto, decidir, esquecerEdicao } from "@/lib/aprov
 import { BridgeError, invalidateReads, read, useRead, type ReadResult, type ReadState } from "@/lib/bridge";
 import { marcaDaAlteracao } from "@/lib/conversa-do-run";
 import { pedeRecarregar, traduzirErroDoServico } from "@/lib/erro-do-servico";
+import { acaoDaReleitura, devoGravar } from "@/lib/releitura-da-revisao";
 import { comContexto, diffLinhas, type LinhaDoDiff } from "@/lib/diff";
 import {
   CONFIANCAS,
@@ -104,12 +105,12 @@ export function Revisao(props: TelaProps) {
           )}
         </p>
       )}
-      <RevisaoDaPendencia {...props} aoRecusar={setRecusa} key={recargas} />
+      <RevisaoDaPendencia {...props} aoRecarregar={recarregar} aoRecusar={setRecusa} key={recargas} />
     </div>
   );
 }
 
-function RevisaoDaPendencia({ detalhe, navegar, aoRecusar }: TelaProps & { aoRecusar: (mensagem: string | null) => void }) {
+function RevisaoDaPendencia({ detalhe, navegar, aoRecarregar, aoRecusar }: TelaProps & { aoRecarregar: () => void; aoRecusar: (mensagem: string | null) => void }) {
   const { t } = useTranslation();
   const aprovacao = useRead("approvals.get", detalhe ?? "");
   const pendencia = aprovacao.status === "ready" ? aprovacao.data : undefined;
@@ -152,11 +153,17 @@ function RevisaoDaPendencia({ detalhe, navegar, aoRecusar }: TelaProps & { aoRec
   const [resolvendo, setResolvendo] = useState(false);
   const [conflito, setConflito] = useState(false);
   const [motivoDoConflito, setMotivoDoConflito] = useState<string | undefined>(undefined);
-  const primeiroRender = useRef(true);
+  // O que a pessoa mexeu aqui e o que já foi gravado: o autosave só grava depois de uma interação, e
+  // não por a releitura ter trazido outro payload (a conversa do run edita a pendência por fora).
+  const [mexidas, setMexidas] = useState(0);
+  const gravadas = useRef(0);
+  const hashBase = useRef<string | null>(null);
+  const [mudouPorFora, setMudouPorFora] = useState(false);
+  const edicaoPendente = mexidas !== gravadas.current;
+  const mexer = (): void => setMexidas((n) => n + 1);
 
-  useEffect(() => {
-    if (!pendencia || contexto || mensagem || documento || achados !== null) return;
-    const carga = pendencia.payload as { findings?: unknown[]; verdict?: unknown; summary?: unknown } | null;
+  function carregarDe(p: Pendencia): void {
+    const carga = p.payload as { findings?: unknown[]; verdict?: unknown; summary?: unknown } | null;
     if ((VEREDITOS as readonly unknown[]).includes(carga?.verdict)) {
       setVeredito(carga!.verdict as Veredito);
     }
@@ -182,27 +189,49 @@ function RevisaoDaPendencia({ detalhe, navegar, aoRecusar }: TelaProps & { aoRec
         };
       }),
     );
+    hashBase.current = p.hash;
+    gravadas.current = mexidas;
+    setMudouPorFora(false);
+  }
+
+  useEffect(() => {
+    if (!pendencia || contexto || mensagem || documento || achados !== null) return;
+    carregarDe(pendencia);
   }, [pendencia, achados]);
+
+  // A releitura trouxe outro payload: sem edição daqui a tela adota o novo; com edição, avisa.
+  useEffect(() => {
+    if (!pendencia || contexto || mensagem || documento || achados === null || gravando) return;
+    const acao = acaoDaReleitura({ hashBase: hashBase.current, hashAtual: pendencia.hash, edicaoPendente });
+    if (acao === "recarregar") {
+      esquecerEdicao(pendencia.id);
+      carregarDe(pendencia);
+    } else if (acao === "avisar") setMudouPorFora(true);
+  }, [pendencia?.hash, gravando]);
 
   // Grava sozinho depois que a digitação para. Botão de salvar num editor de
   // um item só é cerimônia: o risco real é fechar a tela e perder a edição.
   useEffect(() => {
     if (achados === null || !pendencia || contexto || mensagem || documento) return;
-    if (primeiroRender.current) {
-      primeiroRender.current = false;
-      return;
-    }
+    if (!devoGravar({ edicaoPendente, avisando: mudouPorFora })) return;
     const id = setTimeout(() => {
+      const versao = mexidas;
       setGravando(true);
       void gravarRevisao(
         pendencia.id,
         achados.filter((a) => a.incluido).map(({ incluido: _, ...resto }) => resto),
         veredito,
         comentarioCustom,
-      ).finally(() => setGravando(false));
+      )
+        .then((hash) => {
+          hashBase.current = hash;
+          gravadas.current = versao;
+        })
+        .catch((e: unknown) => aoRecusar(e instanceof Error ? e.message : String(e)))
+        .finally(() => setGravando(false));
     }, 700);
     return () => clearTimeout(id);
-  }, [achados, veredito, comentarioCustom, pendencia, contexto]);
+  }, [achados, veredito, comentarioCustom, mexidas, mudouPorFora, pendencia?.id, contexto]);
 
   if (aprovacao.status === "ready" && !pendencia) {
     return (
@@ -299,6 +328,15 @@ function RevisaoDaPendencia({ detalhe, navegar, aoRecusar }: TelaProps & { aoRec
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
+      {mudouPorFora && (
+        <p className="border-border bg-muted/40 flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-[13px]" data-locum-mudou-por-fora>
+          <StatusDot estado="aviso" />
+          <span className="min-w-0 flex-1">{t("review.mudouPorFora")}</span>
+          <Button className="cursor-pointer" data-locum-recarregar-pendencia onClick={aoRecarregar} size="sm" variant="outline">
+            {t("inbox.recarregarPendencia")}
+          </Button>
+        </p>
+      )}
       <div className="flex items-baseline gap-3">
         <Voltar navegar={navegar} />
         {carga?.pull && (
@@ -345,7 +383,10 @@ function RevisaoDaPendencia({ detalhe, navegar, aoRecusar }: TelaProps & { aoRec
         </label>
         <textarea
           className="focus:border-ring ia-borda w-full resize-y rounded-lg border p-3 font-mono text-xs leading-relaxed outline-none transition-colors"
-          onChange={(e) => setComentarioCustom(e.target.value)}
+          onChange={(e) => {
+            mexer();
+            setComentarioCustom(e.target.value);
+          }}
           placeholder={t("review.customPlaceholder")}
           rows={Math.min(6, Math.max(2, Math.ceil((comentarioCustom || "").length / 80)))}
           value={comentarioCustom}
@@ -357,7 +398,10 @@ function RevisaoDaPendencia({ detalhe, navegar, aoRecusar }: TelaProps & { aoRec
         <select
           className="border-border bg-background text-foreground cursor-pointer rounded border px-1.5 py-0.5 text-xs"
           data-locum-veredito=""
-          onChange={(e) => setVeredito(e.target.value as Veredito)}
+          onChange={(e) => {
+            mexer();
+            setVeredito(e.target.value as Veredito);
+          }}
           value={veredito}
         >
           {VEREDITOS.map((v) => (
@@ -395,13 +439,14 @@ function RevisaoDaPendencia({ detalhe, navegar, aoRecusar }: TelaProps & { aoRec
                   <select
                     aria-label={t("review.severity")}
                     className="border-border bg-background cursor-pointer rounded border px-1.5 py-0.5 text-xs"
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      mexer();
                       setAchados((atual) =>
                         (atual ?? []).map((a, j) =>
                           j === i ? { ...a, severity: e.target.value as Severidade } : a,
                         ),
-                      )
-                    }
+                      );
+                    }}
                     value={achado.severity}
                   >
                     {SEVERIDADES.map((s) => (
@@ -421,13 +466,14 @@ function RevisaoDaPendencia({ detalhe, navegar, aoRecusar }: TelaProps & { aoRec
                     <input
                       checked={achado.incluido}
                       className="accent-primary cursor-pointer"
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        mexer();
                         setAchados((atual) =>
                           (atual ?? []).map((a, j) =>
                             j === i ? { ...a, incluido: e.target.checked } : a,
                           ),
-                        )
-                      }
+                        );
+                      }}
                       type="checkbox"
                     />
                     {t(achado.incluido ? "review.include" : "review.excluded")}
@@ -437,11 +483,12 @@ function RevisaoDaPendencia({ detalhe, navegar, aoRecusar }: TelaProps & { aoRec
                 <textarea
                   aria-label={t("review.body_label")}
                   className="focus:border-ring border-input mt-2 w-full resize-y rounded-md border bg-transparent px-2.5 py-2 text-[13px] leading-relaxed outline-none transition-colors duration-200"
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    mexer();
                     setAchados((atual) =>
                       (atual ?? []).map((a, j) => (j === i ? { ...a, problem: e.target.value } : a)),
-                    )
-                  }
+                    );
+                  }}
                   rows={Math.min(8, Math.max(2, Math.ceil(achado.problem.length / 90)))}
                   value={achado.problem}
                 />
@@ -454,7 +501,7 @@ function RevisaoDaPendencia({ detalhe, navegar, aoRecusar }: TelaProps & { aoRec
       <div className="flex items-center gap-3">
         <Button
           className="cursor-pointer"
-          disabled={resolvendo || vazia || jaResolvida}
+          disabled={resolvendo || vazia || jaResolvida || mudouPorFora}
           onClick={() => void resolver("approved")}
         >
           {t("review.approve")}
