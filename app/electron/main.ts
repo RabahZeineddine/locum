@@ -2591,6 +2591,42 @@ async function checkExecutarComEvento(window: BrowserWindow): Promise<void> {
   await foto("run-ensaio");
   await window.webContents.executeJavaScript(`(document.querySelector("[data-locum-ensaio-texto]").scrollIntoView({ block: "center" }), null)`);
   await foto("run-ensaio-passo");
+
+  await checkConversaDoRun(window, runId, false);
+  await foto("run-conversa");
+}
+
+/**
+ * A aba Conversa do run, aberta pelo detalhe da rota (é o que o link da Fila faz): o estado do serviço
+ * aparece (o alvo, os limites e o teto do contexto, ou o motivo de não haver alvo) e nenhuma mensagem
+ * sai para um modelo. Com a janela no run, `comAlvo` diz se o run tem passo de modelo.
+ */
+async function checkConversaDoRun(window: BrowserWindow, runId: string, comAlvo: boolean): Promise<string> {
+  const { runChat } = await import("./run-chat.js");
+  const { detalheDaConversa } = await import("../renderer/lib/ensaio-do-run.js");
+  const retrato = (await runChat.estado(runId)).run;
+  if (retrato === undefined) throw new Error("o estado da conversa do run veio sem o retrato do run");
+  if ((retrato.alvo !== null) !== comAlvo) throw new Error(`o servico disse alvo ${JSON.stringify(retrato.alvo)} e o smoke esperava ${comAlvo ? "um alvo" : "nenhum"}`);
+  await irPara(window, "runs", detalheDaConversa(runId));
+  const aba = `[data-locum-run-conversa='${runId}']`;
+  await esperarProbe(window, "aba Conversa do run", `document.querySelector("${aba}") !== null ? true : null`);
+  if (retrato.alvo === null) {
+    if (retrato.motivoSemAlvo === null) throw new Error("o run sem alvo nao trouxe o motivo");
+    const motivo = await esperarProbe<string>(window, "motivo de nao haver alvo", `document.querySelector("${aba} [data-locum-run-conversa-motivo]")?.textContent ?? null`);
+    if (motivo !== retrato.motivoSemAlvo) throw new Error(`a tela mostrou o motivo "${motivo}" e o servico diz "${retrato.motivoSemAlvo}"`);
+    if ((await window.webContents.executeJavaScript(`document.querySelector("${aba} textarea").disabled`)) !== true) throw new Error("sem alvo, o campo de envio ficou ligado");
+  } else {
+    const alvoNaTela = await esperarProbe<string>(window, "alvo da conversa do run", `document.querySelector("${aba} [data-locum-run-conversa-alvo]")?.dataset.locumRunConversaAlvo ?? null`);
+    if (alvoNaTela !== `padrao:${retrato.alvo.tipo}:${retrato.alvo.id}`) throw new Error(`o alvo da conversa ficou ${alvoNaTela}, o servico diz ${JSON.stringify(retrato.alvo)}`);
+  }
+  const teto = await window.webContents.executeJavaScript(`document.querySelector("${aba} [data-locum-run-conversa-teto]")?.dataset.locumRunConversaTeto ?? null`);
+  if (teto !== String(retrato.contexto.teto)) throw new Error(`o teto do contexto na tela e ${teto}, o servico diz ${retrato.contexto.teto}`);
+  await esperarProbe(window, "limites da conversa do run", `document.querySelector("${aba} [data-locum-run-conversa-limites]")?.children.length >= 3 ? true : null`);
+  if ((await runChat.estado(runId)).falas.length !== 0) throw new Error("abrir a aba Conversa criou falas");
+  // Volta à aba Execução pelo clique, para o que vem depois encontrar o run como o deixou.
+  await window.webContents.executeJavaScript(`(document.querySelector("[data-locum-run-aba=execucao]")?.click(), null)`);
+  await esperarProbe(window, "aba Execução do run", `document.querySelector("[data-locum-probe=execucao] [data-locum-passo]") !== null && document.querySelector("${aba}") === null ? true : null`);
+  return retrato.alvo === null ? "sem alvo" : `${retrato.alvo.tipo}:${retrato.alvo.id}`;
 }
 
 /**
@@ -6413,6 +6449,7 @@ async function checkRuns(window: BrowserWindow, runId: string): Promise<string> 
   }
 
   const grafo = await checkGrafo(window, doBanco);
+  await checkConversaDoRun(window, runId, true);
 
   return t("smoke.runs", {
     runs: lista.total,
