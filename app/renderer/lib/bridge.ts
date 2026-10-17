@@ -83,6 +83,8 @@ export const READ_CHANNELS = [
   "runs.get",
   "runs.findings",
   "runs.findingsByRun",
+  // A prévia só calcula o que a reexecução rodaria, sem gravar nem disparar.
+  "runs.rerunPreview",
   "approvals.listPending",
   // Paradas na publicação, para a fila mostrar. Resolver vai por
   // `approvals.settleStuck`, que mora em `lib/aprovar.ts` como `decide`.
@@ -204,6 +206,7 @@ export const AO_VIVO: Record<ReadChannel, boolean> = {
   "runs.get": true,
   "runs.findings": true,
   "runs.findingsByRun": true,
+  "runs.rerunPreview": true,
   "approvals.listPending": true,
   "approvals.listStuck": true,
   "approvals.get": true,

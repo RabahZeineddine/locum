@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { executionService } from "../services/execution-service.js";
 import { passoAvulsoService } from "../services/passo-avulso-service.js";
-import { runService } from "../services/run-service.js";
+import { LIMITE_DA_INSTRUCAO, runService } from "../services/run-service.js";
 import { respond } from "./respond.js";
 import { def } from "./tool-def.js";
 
@@ -57,15 +57,34 @@ export function registerRunTools(server: McpServer): void {
         runId: z.string(),
         stepKey: z.string().describe("step key in the spec, as shown by get_run"),
         wait: z.boolean().optional().describe("true holds the response until the run stops"),
+        instruction: z
+          .string()
+          .max(LIMITE_DA_INSTRUCAO)
+          .optional()
+          .describe(
+            `extra instruction (up to ${LIMITE_DA_INSTRUCAO} characters) for a model step, appended after its prompt (it comes from the person, not from outside data). Refused for steps that are not model steps. It stays on the step until it is re-run again (without an instruction it is cleared). While any step of the run keeps an instruction, every action (auto or draft) waits in the queue as approve; see preview_rerun`,
+          ),
       },
     },
-    async ({ runId, stepKey, wait }) =>
+    async ({ runId, stepKey, wait, instruction }) =>
       respond(async () => ({
         runId,
         stepKey,
-        status: await runService.rerunStep(runId, stepKey, { wait: wait ?? false }),
+        status: await runService.rerunStep(runId, stepKey, {
+          wait: wait ?? false,
+          ...(instruction === undefined ? {} : { instrucao: instruction }),
+        }),
       })),
   );
+
+  def(server, "preview_rerun", "read",
+    "What rerun_step would do, before confirming: the steps that run again, what would block it now (blocks), the standalone steps that expire, the model steps billed again, and the actions in auto or draft that go to the queue as approve because a step of the run has an instruction (includes steps that have no row yet; a skipped action that will not run is left out). Writes nothing.",
+    {
+      runId: z.string().min(1),
+      stepKey: z.string().min(1).describe("step key in the spec, as shown by get_run"),
+      withInstruction: z.boolean().optional().describe("true previews a re-run with an instruction (refused for steps that are not model steps)"),
+    },
+    ({ runId, stepKey, withInstruction }) => runService.rerunPreview(runId, stepKey, { comInstrucao: withInstruction ?? false }));
 
   def(server, "propose_run_action", "write",
     "Proposes a new action on a run that already ran (a standalone step). It only creates a pending approval in the queue; a person approves it there, and nothing is published here. The content must follow the inputSchema that describe_steps gives for the action kind (only kinds with an inputSchema are accepted). The target (repository, pull request, conversation) always comes from the run's event and cannot be set in the content. Refused while the run is queued or running, for an archived automation and for a dry run. Approving it runs only this step and does not resume the run.",

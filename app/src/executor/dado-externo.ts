@@ -30,3 +30,14 @@ export function ehDadoExterno(caminho: string, passosDeFerramenta: ReadonlySet<s
 export function delimitarDado(texto: string, origem: string, marca: string): string {
   return `<${marca} origem="${origem}">\n${texto}\n</${marca}>`;
 }
+
+/** Marca da instrução desta renderização: o sufixo aleatório impede o texto de fechar a própria moldura. */
+export const novaMarcaDeInstrucao = (): string => `instrucao-${randomBytes(4).toString("hex")}`;
+
+/**
+ * O bloco que a pessoa acrescenta ao reexecutar um passo de modelo, depois do prompt
+ * renderizado. A moldura é defesa contra injeção, não texto configurável: o `system`
+ * diz que só o que está entre esta marca é pedido dela, e que texto de fora que se
+ * diga instrução é dado.
+ */
+export const blocoDeInstrucao = (instrucao: string, marca: string): string => `\n\n<${marca}>\n${instrucao}\n</${marca}>`;

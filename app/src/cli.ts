@@ -606,8 +606,11 @@ async function main(): Promise<void> {
       break;
     case "rerun": {
       const [runId, stepKey] = args;
-      if (!runId || !stepKey) throw new Error("uso: rerun <run-id> <chave-do-passo>");
-      console.log(await runService.rerunStep(runId, stepKey));
+      if (!runId || !stepKey) throw new Error("uso: rerun <run-id> <chave-do-passo> [--instrucao <texto>]");
+      const posicao = args.indexOf("--instrucao");
+      const instrucao = posicao === -1 ? undefined : args[posicao + 1];
+      if (posicao !== -1 && (instrucao === undefined || instrucao.startsWith("--"))) throw new Error("--instrucao pede o texto da instrução");
+      console.log(await runService.rerunStep(runId, stepKey, instrucao === undefined ? {} : { instrucao }));
       await printRun(runId);
       break;
     }
@@ -653,7 +656,7 @@ async function main(): Promise<void> {
           "  reject <id>              descarta",
           "  resume                   retoma runs interrompidos",
           "  run <run-id>             continua um run especifico",
-          "  rerun <run-id> <passo>   zera o passo e os que dependem dele, e roda de novo",
+          "  rerun <run-id> <passo> [--instrucao <texto>]   zera o passo e os que dependem dele, e roda de novo",
         ].join("\n"),
       );
   }

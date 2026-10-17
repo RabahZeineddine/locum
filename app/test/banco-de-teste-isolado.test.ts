@@ -22,7 +22,8 @@ test("arquivo de teste rodado sem test/setup.ts não abre o banco de verdade", (
     const env: NodeJS.ProcessEnv = { ...process.env, HOME: casa };
     delete env.LOCUM_HOME;
     delete env.NODE_TEST_CONTEXT;
-    const r = spawnSync(process.execPath, ["--import", "tsx", arquivo], { cwd: process.cwd(), env, encoding: "utf8" });
+    const r = spawnSync(process.execPath, ["--import", "tsx", arquivo], { cwd: process.cwd(), env, encoding: "utf8", timeout: 60_000 });
+    assert.equal((r.error as NodeJS.ErrnoException | undefined)?.code, undefined, "o processo filho passou de 60s: a trava de teste sem LOCUM_HOME devia recusar na hora");
     assert.notEqual(r.status, 0);
     assert.match(r.stderr, /teste sem LOCUM_HOME/);
   } finally {

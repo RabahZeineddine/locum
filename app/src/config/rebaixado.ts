@@ -13,6 +13,18 @@ export const Rebaixado = z.object({
 export type Rebaixado = z.infer<typeof Rebaixado>;
 
 export const REBAIXADO_NA_IMPORTACAO = "rebaixado-na-importacao";
+/** Reexecução com instrução: a ação a jusante que estava em `auto` espera na Fila (`steps.rebaixado`, só naquele run). */
+export const REBAIXADO_NA_REEXECUCAO = "rebaixado-na-reexecucao";
+
+/**
+ * Enquanto algum passo do run tiver instrução de reexecução, toda ação do run que estaria
+ * em `auto` ou `draft` roda em `approve`. Não se segue `needs`: o prompt e os params de uma
+ * ação podem citar `{{steps.X}}` sem X estar nos `needs`, e o texto moldado pela instrução
+ * chegaria a ela do mesmo jeito. Só pede mais confirmação, nunca tira.
+ */
+export function rebaixadaPorInstrucao(comInstrucao: ReadonlySet<string>): boolean {
+  return comInstrucao.size > 0;
+}
 
 type ComPassos = { steps: readonly object[]; rebaixados?: Rebaixado[] | undefined };
 

@@ -1,9 +1,12 @@
 import { PassoIncompletoError, descreverPendencia, pendenciasDoPasso, recusaDeRodar } from "../config/pendencia.js";
+import { REBAIXADO_NA_REEXECUCAO, rebaixadaPorInstrucao } from "../config/rebaixado.js";
+import { i18nService } from "../services/i18n-service.js";
+import { translate } from "../services/text-service.js";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { hostname } from "node:os";
-import { and, desc, eq, inArray, isNull, ne } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, ne } from "drizzle-orm";
 import { db, schema } from "../db/index.js";
 import { GatilhoRemovido, gatilhoExiste, recusarSeArquivada } from "../db/arquivada.js";
 import {
@@ -26,7 +29,7 @@ import { discoverSkills, selectSkills, skillsAusentes, skillsIndisponiveis, skil
 import { ApprovalGate, settleStep } from "../approval/gate.js";
 import { BudgetExceeded, assertWithinBudget, recordSpend, type Spend } from "./budget.js";
 import { ehLeituraNaAcao, type FerramentaClassificavel } from "../config/leitura.js";
-import { avisoDeDadoExterno, delimitarDado, ehDadoExterno, novaMarca } from "./dado-externo.js";
+import { avisoDeDadoExterno, blocoDeInstrucao, delimitarDado, ehDadoExterno, novaMarca, novaMarcaDeInstrucao } from "./dado-externo.js";
 import { ACOES_DE_CONVERSA_REGISTRO, camposDeEndereco, destinoDoPasso, REGISTRO_DE_CONVERSA, type RegistroDeConversa } from "../acao/destino.js";
 import { ACOES_DE_REACAO, descreverReacao, reacaoDoPasso } from "../reacao/passo.js";
 import { ACOES_DE_CONVERSA, dependenciaDeEvento, recusaSemEvento } from "./dependencia-de-evento.js";
@@ -481,7 +484,7 @@ export class Executor {
                 gastoDosAgents,
                 initiativeServers,
               })
-            : await this.runActionStepOpcional({ runId, stepId, step, outputs, payload, deFerramenta: new Set(spec.steps.filter((p) => p.type === "action" && p.action === "mcp.call").map((p) => p.key)) });
+            : await this.runActionStepOpcional({ runId, stepId, step, spec, outputs, payload, deFerramenta: new Set(spec.steps.filter((p) => p.type === "action" && p.action === "mcp.call").map((p) => p.key)) });
 
         if (outcome.kind === "paused") return this.pausarPorAprovacao(runId, opcoes.depoisDaJanela === true);
         if (outcome.kind === "skipped") {
@@ -793,7 +796,11 @@ export class Executor {
       // procurando "o contexto da iniciativa" pelo disco.
       const passosDeFerramenta = new Set(spec.steps.filter((p) => p.type === "action" && p.action === "mcp.call").map((p) => p.key));
       const { prompt: promptDoPasso, aviso: avisoDeDado } = renderPromptDeModelo(step.prompt, payload, outputs, passosDeFerramenta);
-      const system = [perfil?.system ?? "", args.contextoDaIniciativa ?? "", skillsPreamble(skills, true, runtime.id), avisoDeDado ?? ""]
+      const reexecutado = await this.loadStep(runId, step.key);
+      const marcaDaInstrucao = reexecutado?.instrucao != null ? novaMarcaDeInstrucao() : null;
+      const promptComInstrucao = marcaDaInstrucao === null ? promptDoPasso : promptDoPasso + blocoDeInstrucao(reexecutado!.instrucao!, marcaDaInstrucao);
+      const avisoDaInstrucao = marcaDaInstrucao === null ? null : translate(await i18nService.current(), "executor.instruction.notice", { marca: marcaDaInstrucao });
+      const system = [perfil?.system ?? "", args.contextoDaIniciativa ?? "", skillsPreamble(skills, true, runtime.id), avisoDeDado ?? "", avisoDaInstrucao ?? ""]
         .filter((s) => s.length > 0)
         .join("\n\n");
 
@@ -801,7 +808,7 @@ export class Executor {
         provider: resolution.provider,
         model: resolution.model,
         system: system.length > 0 ? system : undefined,
-        prompt: promptDoPasso,
+        prompt: promptComInstrucao,
         stablePrefix: stablePrefix(step.prompt),
         tools,
         mcpServers: [...new Set(doLocum.map((t) => t.server))],
@@ -861,6 +868,7 @@ export class Executor {
     runId: string;
     stepId: string;
     step: ActionStep;
+    spec: AgentSpec;
     outputs: Map<string, unknown>;
     payload: EventPayload;
     /** Chaves dos passos `mcp.call`: a resposta deles não define destino de ação. */
@@ -884,6 +892,7 @@ export class Executor {
     runId: string;
     stepId: string;
     step: ActionStep;
+    spec: AgentSpec;
     outputs: Map<string, unknown>;
     payload: EventPayload;
     deFerramenta: ReadonlySet<string>;
@@ -972,6 +981,16 @@ export class Executor {
     // Escrita em automático só quando a pessoa escolheu (`autoEscrita` no nó). A
     // classificação é a do cache no momento do run: sem anotação de leitura, ou
     // sem cache, a chamada espera na Fila com o motivo.
+    // Algum passo deste run foi reexecutado com instrução: o que ia sair sozinho (auto) ou
+    // virar rascunho fora da máquina (draft) espera o clique. Decidido aqui, na hora de submeter,
+    // porque o passo pode nem ter linha quando a instrução foi dada. `rebaixado` só registra.
+    const comInstrucao = new Set(
+      (await db.select({ chave: schema.steps.stepKey }).from(schema.steps).where(and(eq(schema.steps.runId, runId), isNotNull(schema.steps.instrucao)))).map((l) => l.chave),
+    );
+    const rebaixadoNoRun = (step.mode === "auto" || step.mode === "draft") && rebaixadaPorInstrucao(comInstrucao);
+    if (rebaixadoNoRun) {
+      await db.update(schema.steps).set({ rebaixado: REBAIXADO_NA_REEXECUCAO }).where(eq(schema.steps.id, stepId));
+    }
     const seguraNaFila = await escritaSemEscolha(step, args.payload, outputs, this.deps.ferramentasGuardadas ?? ferramentasDoCache);
     const { state, output: resposta } = await this.deps.gate.submitComSaida(
       {
@@ -982,7 +1001,7 @@ export class Executor {
         payload: seguraNaFila ? { ...(payload as object), aviso: "nao-e-leitura" } : payload,
         target: step.target ?? null,
       },
-      seguraNaFila ? "approve" : step.mode,
+      seguraNaFila || rebaixadoNoRun ? "approve" : step.mode,
     );
 
     if (state === "pending") {
