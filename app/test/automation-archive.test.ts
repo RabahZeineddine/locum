@@ -236,3 +236,26 @@ test("gatilho que nasce enquanto o arquivar espera a trava também sai", async (
   assert.equal(tabela(m.db, schema.triggers), 0);
   assert.equal(tabela(m.db, schema.cursors), 0);
 });
+
+test("arquivar recusado depois da espera pela trava não deixa versão nova nem tira a pendência", async () => {
+  const m = montar();
+  const { gatilho, versao } = await semear(m, "acme-a");
+  const pendentes = [{ onde: `gatilho:${gatilho.id}`, campo: "owner", motivo: "dono-do-github" }];
+  const base = (await m.agents.getLatestVersion("acme-a"))!.spec;
+  await m.agents.saveEdited("acme-a", { ...base, pendentes }, "com pendência");
+  const versoes = tabela(m.db, schema.agentVersions);
+
+  let solta!: () => void;
+  const batida = comTrava(`gatilho:${gatilho.id}`, () => new Promise<void>((r) => (solta = r)));
+  const arquivando = m.automations.archive("acme-a");
+  const recusa = assert.rejects(arquivando, ArquivarRecusado);
+  await new Promise((r) => setTimeout(r, 20));
+  // Um run entra na fila enquanto o arquivar espera.
+  m.db.insert(schema.runs).values({ id: "run-novo", agentVersionId: versao.id, status: "queued" }).run();
+  solta();
+  await batida;
+  await recusa;
+
+  assert.equal(tabela(m.db, schema.agentVersions), versoes);
+  assert.deepEqual((await m.agents.getLatestVersion("acme-a"))!.spec.pendentes, pendentes);
+});

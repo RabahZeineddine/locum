@@ -215,6 +215,34 @@ test("evento que não abre run não impede os outros da mesma janela", async () 
   assert.match(batida.outcomes[0]?.detail ?? "", /1 evento\(s\) sem run, 1 run\(s\) aberto\(s\): teto do dia/);
 });
 
+test("gatilho com evento cuja automação foi arquivada: a batida é pulada, sem erro nem retentativa guardados", async () => {
+  const db = bancoDeTeste();
+  const executions = {
+    startForEvent: async () => {
+      throw new AutomacaoArquivada("agent-g1");
+    },
+  } as unknown as ExecutionService;
+  const gatilhos = [
+    gatilho("g1", { kind: "poll", source: "github", owner: "org", repoMatch: ".", authorship: "any", includeDrafts: false, everyMinutes: 15 } as TriggerConfig),
+  ];
+  const scheduler = new Scheduler(
+    db,
+    { enabled: async () => gatilhos, list: async () => gatilhos, get: async (id: string) => plantarGatilho(db, gatilhos.find((g) => g.id === id)), pendencias: async () => [] } as unknown as TriggerService,
+    executions,
+    {} as McpService,
+    {} as SlackService,
+    async () => {
+      await db.insert(schema.events).values({ id: "e1", source: "github", externalId: "pr-1", payload: {} });
+      return { eventIds: ["e1"], created: ["e1"] };
+    },
+    async () => ({ checked: 0, settled: [], stillOpen: 0, unreadable: 0, failed: [] }) as never,
+    async () => "eu",
+  );
+  const batida = await scheduler.tick({ at: T0 });
+  assert.equal(batida.outcomes[0]?.status, "skipped");
+  assert.equal(db.select().from(schema.cursors).all().some((c) => c.source === "gatilho-erro" || c.source === "scheduler-retry"), false);
+});
+
 test("evento que não abriu run volta na batida seguinte, mesmo sem vir na varredura", async () => {
   const db = bancoDeTeste();
   const iniciados: string[] = [];

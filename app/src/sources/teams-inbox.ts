@@ -244,7 +244,7 @@ async function varrer(
 
   try {
     const chave = `${TEAMS_INBOX_CURSOR}${sufixo}`;
-    const primeira = await prepararCursor(db, chave, TEAMS_INBOX_CURSOR);
+    const primeira = await prepararCursor(db, chave, TEAMS_INBOX_CURSOR, options.triggerId);
     const vigia = primeira ? { ...watch, prDesde: new Date().toISOString() } : watch;
     await acolher(
       await pollMcpServer(
@@ -263,7 +263,7 @@ async function varrer(
   for (const canal of canais) {
     try {
       const antiga = `channel:${canal.teamId}:${canal.channelId}`;
-      const primeira = await prepararCursor(db, `${antiga}${sufixo}`, antiga);
+      const primeira = await prepararCursor(db, `${antiga}${sufixo}`, antiga, options.triggerId);
       const vigia = primeira ? { ...watch, prDesde: new Date().toISOString() } : watch;
       await acolher(
         await pollMcpServer(
@@ -570,7 +570,7 @@ const JANELA_DO_CURSOR_HERDADO_MS = 24 * 60 * 60 * 1000;
  * compartilhado de antes, se existir, para não reprocessar nem perder nada.
  * Devolve verdadeiro quando não havia cursor nenhum: a primeira batida.
  */
-async function prepararCursor(db: Db, chave: string, antiga: string): Promise<boolean> {
+async function prepararCursor(db: Db, chave: string, antiga: string, triggerId?: string): Promise<boolean> {
   const ler = async (key: string) =>
     (
       await db
@@ -585,7 +585,8 @@ async function prepararCursor(db: Db, chave: string, antiga: string): Promise<bo
   // vale o recente; o resto é primeira batida, com a janela de um dia.
   const recente = herdado !== undefined && Date.now() - Date.parse(herdado) < JANELA_DO_CURSOR_HERDADO_MS;
   if (herdado === undefined || !recente) return true;
-  await db.insert(schema.cursors).values({ source: TEAMS_SOURCE, key: chave, value: herdado }).onConflictDoNothing();
+  if (triggerId !== undefined) gravarCursorDoGatilho(db, triggerId, { source: TEAMS_SOURCE, key: chave }, herdado);
+  else await db.insert(schema.cursors).values({ source: TEAMS_SOURCE, key: chave, value: herdado }).onConflictDoNothing();
   return false;
 }
 

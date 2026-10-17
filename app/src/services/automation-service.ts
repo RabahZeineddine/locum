@@ -1,5 +1,6 @@
-import { and, count, eq, inArray, isNotNull, or } from "drizzle-orm";
-import { TriggerConfig, type AgentSpec, type TriggerConfigInput } from "../config/types.js";
+import { and, count, desc, eq, inArray, isNotNull, or } from "drizzle-orm";
+import { AgentSpec, TriggerConfig, type TriggerConfigInput } from "../config/types.js";
+import { randomUUID } from "node:crypto";
 import { limparPendenciasPreenchidas, recusaDeLigar, recusaDeRodar } from "../config/pendencia.js";
 import { recursoExiste } from "./pendencia-recursos.js";
 import { manterRebaixados } from "../config/rebaixado.js";
@@ -352,7 +353,6 @@ export class AutomationService {
     const previa = this.inspecionar(this.db, agentId);
     if (actor !== "human" && previa.initiative !== null) throw new Error(mensagemDeIniciativa(agentId, previa.initiative.slug));
     if (previa.blockers.length > 0) throw new ArquivarRecusado(previa.blockers);
-    await this.tirarPendenciasDeGatilho(agentId);
 
     // A lista de gatilhos é relida depois das travas: um que nasceu enquanto esperava pede nova rodada.
     for (let tentativa = 0; ; tentativa++) {
@@ -383,6 +383,7 @@ export class AutomationService {
         const ids = tx.select({ id: schema.triggers.id }).from(schema.triggers).where(eq(schema.triggers.agentId, agentId)).all().map((g) => g.id);
         if (ids.length !== travados.length || ids.some((id) => !travados.includes(id))) throw new GatilhosMudaram();
         for (const id of ids) esquecerGatilho(tx, id);
+        this.tirarPendenciasDeGatilho(tx, agentId);
         tx.delete(schema.triggers).where(eq(schema.triggers.agentId, agentId)).run();
         tx.update(schema.agents).set({ archivedAt: Math.floor(Date.now() / 1000), enabled: false }).where(eq(schema.agents.id, agentId)).run();
         return ids.length;
@@ -391,12 +392,19 @@ export class AutomationService {
     );
   }
 
-  /** A pendência de um gatilho que vai sair não tem mais a quem apontar. Sem pendência dessas, não grava versão. */
-  private async tirarPendenciasDeGatilho(agentId: string): Promise<void> {
-    const ultima = await this.agents.getLatestVersion(agentId);
-    if (ultima === undefined || !(ultima.spec.pendentes ?? []).some((p) => p.onde.startsWith("gatilho:"))) return;
-    const spec = limparPendenciasPreenchidas(ultima.spec, { gatilhos: [], descartarOrfas: true, existe: recursoExiste });
-    await this.agents.saveEdited(agentId, spec, "arquivada: saem as pendências dos gatilhos removidos", undefined, { limpeza: { gatilhos: [], descartarOrfas: true } });
+  /**
+   * A pendência de um gatilho que vai sair não tem mais a quem apontar. Entra na transação do arquivar, como
+   * versão nova (a versão é imutável), e só quando há uma pendência dessas; recusado o arquivar, nada fica.
+   */
+  private tirarPendenciasDeGatilho(tx: Pick<Db, "select" | "insert">, agentId: string): void {
+    const ultima = tx.select().from(schema.agentVersions).where(eq(schema.agentVersions.agentId, agentId)).orderBy(desc(schema.agentVersions.version)).limit(1).get();
+    if (ultima === undefined) return;
+    const spec = AgentSpec.parse(ultima.spec);
+    if (!(spec.pendentes ?? []).some((p) => p.onde.startsWith("gatilho:"))) return;
+    const limpo = limparPendenciasPreenchidas(spec, { gatilhos: [], descartarOrfas: true, existe: recursoExiste });
+    tx.insert(schema.agentVersions)
+      .values({ id: randomUUID(), agentId, version: ultima.version + 1, spec: limpo as unknown as object, note: "arquivada: saem as pendências dos gatilhos removidos" })
+      .run();
   }
 
   /** Tira do arquivo: volta para a lista, sem gatilhos e desligada. A pessoa recria os gatilhos e liga. */

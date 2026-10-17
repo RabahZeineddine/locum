@@ -16,13 +16,37 @@ function argumentosQueATelaPassa(raiz: string): Map<string, number> {
     for (const e of readdirSync(pasta, { withFileTypes: true })) {
       const caminho = join(pasta, e.name);
       if (e.isDirectory()) ler(caminho);
-      else if (/\.tsx?$/.test(e.name)) {
-        for (const m of readFileSync(caminho, "utf8").matchAll(/\b(?:read|useRead|call)\(\s*"([\w.]+)"\s*,/g)) passa.set(m[1]!, Math.max(passa.get(m[1]!) ?? 0, 1));
-      }
+      else if (/\.tsx?$/.test(e.name)) contar(ts.createSourceFile(caminho, readFileSync(caminho, "utf8"), ts.ScriptTarget.Latest, true), passa);
     }
   };
   ler(join(raiz, "renderer"));
   return passa;
+}
+
+/** Toda chamada read/useRead/call (com genérico ou não), com o canal literal ou numa constante do arquivo que o resolve. */
+function contar(fonte: ts.SourceFile, passa: Map<string, number>): void {
+  const constantes = new Map<string, string>();
+  const colher = (no: ts.Node): void => {
+    if (ts.isVariableDeclaration(no) && ts.isIdentifier(no.name) && no.initializer !== undefined) {
+      const valor = ts.isAsExpression(no.initializer) ? no.initializer.expression : no.initializer;
+      if (ts.isStringLiteralLike(valor)) constantes.set(no.name.text, valor.text);
+    }
+    ts.forEachChild(no, colher);
+  };
+  colher(fonte);
+  const visitar = (no: ts.Node): void => {
+    if (ts.isCallExpression(no)) {
+      const f = no.expression;
+      const nome = ts.isIdentifier(f) ? f.text : ts.isPropertyAccessExpression(f) ? f.name.text : "";
+      const [canal, ...resto] = no.arguments;
+      if (["read", "useRead", "call"].includes(nome) && canal !== undefined) {
+        const literal = ts.isStringLiteralLike(canal) ? canal.text : ts.isIdentifier(canal) ? constantes.get(canal.text) : undefined;
+        if (literal !== undefined) passa.set(literal, Math.max(passa.get(literal) ?? 0, resto.length));
+      }
+    }
+    ts.forEachChild(no, visitar);
+  };
+  visitar(fonte);
 }
 
 /** Parâmetros sem `?` nem valor padrão, abrindo a tupla do `...args: Parameters<...>` do contrato. */
@@ -48,13 +72,15 @@ test("nenhum handler da ponte descarta argumento que o contrato do canal declara
   const descartam: string[] = [];
   let conferidos = 0;
   const visitar = (no: ts.Node): void => {
-    if (ts.isPropertyAssignment(no) && (ts.isArrowFunction(no.initializer) || ts.isFunctionExpression(no.initializer)) && ts.isStringLiteral(no.name)) {
+    if (ts.isPropertyAssignment(no) && ts.isStringLiteral(no.name) && (ts.isArrowFunction(no.initializer) || ts.isFunctionExpression(no.initializer) || ts.isIdentifier(no.initializer) || ts.isPropertyAccessExpression(no.initializer))) {
       const assinatura = checker.getContextualType(no.initializer)?.getCallSignatures()[0];
       if (assinatura !== undefined) {
         conferidos++;
+        // Handler por referência: vale o que o método declara.
+        const declarados = ts.isArrowFunction(no.initializer) || ts.isFunctionExpression(no.initializer) ? no.initializer.parameters.length : (checker.getTypeAtLocation(no.initializer).getCallSignatures()[0]?.parameters.length ?? Number.MAX_SAFE_INTEGER);
         const obrigatorios = parametrosObrigatorios(checker, assinatura);
         const exigidos = Math.max(obrigatorios, passa.get(no.name.text) ?? 0);
-        if (no.initializer.parameters.length < exigidos) descartam.push(no.name.text);
+        if (declarados < exigidos) descartam.push(no.name.text);
       }
     }
     ts.forEachChild(no, visitar);

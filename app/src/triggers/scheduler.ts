@@ -715,6 +715,8 @@ export class Scheduler {
         });
         runs.push(runId);
       } catch (err) {
+        // Arquivada ou removida: não é falha do evento, e não há retentativa a guardar.
+        if (err instanceof GatilhoRemovido || err instanceof AutomacaoArquivada) throw err;
         falhas.push(message(err));
         // Quem esperou em pausa começa o prazo de um dia agora, e não com o carimbo de dias atrás.
         const since = c.emPausa ? agora : c.since;
