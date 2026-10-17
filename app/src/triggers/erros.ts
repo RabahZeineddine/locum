@@ -1,10 +1,11 @@
 import { and, eq } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
+import { FONTE_ERRO } from "./estado-do-gatilho.js";
 
 type Db = typeof defaultDb;
 
 /** Fonte do último erro de cada gatilho. Uma linha por gatilho, em JSON. */
-const FONTE = "gatilho-erro";
+const FONTE = FONTE_ERRO;
 
 /**
  * O último erro de um gatilho: de configuração (a varredura seguiu, mas um

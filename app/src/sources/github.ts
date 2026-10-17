@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { Octokit } from "octokit";
 import { and, eq } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
+import { FONTE_ULTIMA_CHAVE_GITHUB } from "../triggers/estado-do-gatilho.js";
 import type { ActionHandler } from "../approval/gate.js";
 import type { Authorship, PollFilters, ReviewFinding, ReviewVerdict } from "../config/types.js";
 import type { EventPayload } from "../executor/executor.js";
@@ -429,7 +430,7 @@ async function examinar(ctx: ContextoDoExame, item: ItemDaBusca & { repository_u
 }
 
 /** Fonte do registro da chave de cursor que cada gatilho usou por último. */
-const ULTIMA_CHAVE = "gatilho-cursor";
+const ULTIMA_CHAVE = FONTE_ULTIMA_CHAVE_GITHUB;
 
 async function valorDoCursor(db: typeof defaultDb, fonte: string, key: string): Promise<string | undefined> {
   const [row] = await db

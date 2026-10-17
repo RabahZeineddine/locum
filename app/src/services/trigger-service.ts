@@ -5,8 +5,7 @@ import { TriggerConfig, type TriggerConfigInput } from "../config/types.js";
 import { Pendencia, limparPendenciasPreenchidas, ondeDoGatilho, recusaDeLigar } from "../config/pendencia.js";
 import { transacaoDoBanco } from "../db/transacao.js";
 import { recursoExiste } from "./pendencia-recursos.js";
-import { esquecerDescartes } from "../triggers/descartes.js";
-import { limparErro } from "../triggers/erros.js";
+import { esquecerGatilho } from "../triggers/estado-do-gatilho.js";
 import { AgentService, isReserved } from "./agent-service.js";
 
 type Db = typeof defaultDb;
@@ -204,13 +203,12 @@ export class TriggerService {
   }
 
   async remove(id: string): Promise<boolean> {
-    const deleted = await this.db
-      .delete(schema.triggers)
-      .where(eq(schema.triggers.id, id))
-      .returning();
-    await esquecerDescartes(this.db, id);
-    await limparErro(this.db, id);
-    return deleted.length > 0;
+    // O gatilho e o que ficou preso a ele saem juntos.
+    return this.db.transaction((tx) => {
+      const deleted = tx.delete(schema.triggers).where(eq(schema.triggers.id, id)).returning().all();
+      esquecerGatilho(tx, id);
+      return deleted.length > 0;
+    });
   }
 
   private async requireRow(id: string, agentId: string): Promise<TriggerRow> {

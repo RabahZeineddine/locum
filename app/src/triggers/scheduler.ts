@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { recusaDeLigar } from "../config/pendencia.js";
 import { db as defaultDb, schema } from "../db/index.js";
+import { FONTE_RELOGIO, FONTE_RETENTATIVA } from "./estado-do-gatilho.js";
 import { type Authorship, type PollFilters, type TriggerConfig, type WorkingHoursConfig } from "../config/types.js";
 import { executionService, type ExecutionService } from "../services/execution-service.js";
 import { AgentService } from "../services/agent-service.js";
@@ -60,14 +61,14 @@ export function textoDaPausa(b: Bloqueio, agora: number = Date.now()): string {
 }
 
 /** Fonte do cursor de tempo. Uma linha por gatilho, guardando o ultimo disparo. */
-const CURSOR_SOURCE = "scheduler";
+const CURSOR_SOURCE = FONTE_RELOGIO;
 
 /**
  * Eventos que não abriram run, um registro por gatilho, para a próxima batida
  * tentar de novo. O cursor da fonte já andou por eles, e sem esta lista o
  * evento que bateu no teto do dia nunca mais voltaria.
  */
-const RETRY_SOURCE = "scheduler-retry";
+const RETRY_SOURCE = FONTE_RETENTATIVA;
 
 /** Depois disto o evento sai da lista: falha que dura um dia não é passageira. */
 const RETRY_TTL_MS = 24 * 60 * 60 * 1000;

@@ -1,5 +1,6 @@
 import { and, eq, gte, isNull, ne, notInArray, or } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
+import { CHAVE_CONTA_DO_TEAMS, FONTE_FALHAS_DO_FILTRO, FONTE_TEAMS } from "../triggers/estado-do-gatilho.js";
 import { TEAMS_SERVER } from "../services/teams-app.js";
 import { pollMcpServer, CURSOR_TOKEN, type Admissao, type McpCaller, type McpPollShape } from "./mcp-poll.js";
 import { assertWithinBudget, BudgetExceeded, recordSpend, type Spend } from "../executor/budget.js";
@@ -14,7 +15,7 @@ import type { ParsedGithubPr } from "./slack.js";
 type Db = typeof defaultDb;
 
 /** Fonte gravada no evento e no cursor. */
-export const TEAMS_SOURCE = "teams";
+export const TEAMS_SOURCE = FONTE_TEAMS;
 
 /** Chave do cursor da caixa. Uma varredura só responde pelas duas perguntas. */
 export const TEAMS_INBOX_CURSOR = "inbox";
@@ -136,7 +137,7 @@ const PARALELO_DO_FILTRO_IA = 3;
 export const FALHAS_ATE_PASSAR = 3;
 
 /** Fonte das tentativas que falharam, no cursor: sobrevive a reiniciar o app. */
-const FONTE_DAS_FALHAS = "teams-filtro-ia-falhas";
+const FONTE_DAS_FALHAS = FONTE_FALHAS_DO_FILTRO;
 
 export interface TeamsInboxOutcome {
   eventIds: string[];
@@ -173,7 +174,7 @@ export async function pollTeamsInbox(
   const db = options.db ?? defaultDb;
   // Num servidor com várias contas, a conta lida na primeira batida do gatilho
   // vale para as seguintes: trocar a padrão em outro lugar não muda de quem se lê.
-  const chaveConta = `teams.account.${TEAMS_INBOX_CURSOR}${options.triggerId === undefined ? "" : `:${options.triggerId}`}`;
+  const chaveConta = `${CHAVE_CONTA_DO_TEAMS}${options.triggerId === undefined ? "" : `:${options.triggerId}`}`;
   const guardada =
     (await db.select({ value: schema.settings.value }).from(schema.settings).where(eq(schema.settings.key, chaveConta)))[0]
       ?.value ?? null;
