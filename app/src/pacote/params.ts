@@ -1,4 +1,4 @@
-import { limparSegredos, limparTexto } from "./limpeza.js";
+import { limparSegredos, limparTexto, type Limpeza } from "./limpeza.js";
 import type { CodigoOmitido } from "./formato.js";
 import type { MapaDeMarcas } from "./marcacao.js";
 
@@ -37,6 +37,8 @@ export function origemDaUrl(url: string): string | undefined {
 
 export interface OpcoesDosParams {
   home?: string;
+  /** O texto já passou pela limpeza na exportação: só a credencial é conferida de novo, e o que ela altera fica dito por campo. */
+  conferir?: boolean;
   /** Se o argumento de nome `caminho` (a partir de `args`) é sensível pelo esquema da ferramenta. */
   sensivel?: (caminho: string[]) => boolean;
 }
@@ -93,16 +95,22 @@ function limparEmProfundidade(
 }
 
 /** Texto livre, em profundidade: cada trecho passa pela limpeza e o que é credencial vira marca no próprio lugar. */
-function limparLivre(valor: unknown, home: string | undefined, limpos: { n: number }): unknown {
+function limparLivre(valor: unknown, limpar: (texto: string) => Limpeza, limpos: { n: number }): unknown {
   if (ehMarcador(valor)) return valor;
   if (typeof valor === "string") {
-    const l = limparTexto(valor, home);
+    const l = limpar(valor);
     limpos.n += l.removidos;
     return l.texto;
   }
-  if (Array.isArray(valor)) return valor.map((v) => limparLivre(v, home, limpos));
-  if (ehObjeto(valor)) return Object.fromEntries(Object.entries(valor).map(([k, v]) => [k, limparLivre(v, home, limpos)]));
+  if (Array.isArray(valor)) return valor.map((v) => limparLivre(v, limpar, limpos));
+  if (ehObjeto(valor)) return Object.fromEntries(Object.entries(valor).map(([k, v]) => [k, limparLivre(v, limpar, limpos)]));
   return valor;
+}
+
+/** Só a credencial, com a conta de trechos trocados, para quem confere um texto que já foi limpo. */
+function soCredencial(texto: string): Limpeza {
+  const limpo = limparSegredos(texto);
+  return { texto: limpo, removidos: limpo === texto ? 0 : 1 };
 }
 
 /** Aplica a declaração aos `params` de um passo, na ida. */
@@ -199,6 +207,8 @@ export interface MarcasAplicadas {
   /** O que ficou de fora, agrupado pelo código que a prévia mostra. */
   omitidos: Map<CodigoOmitido, { quantos: number; nomes: string[] }>;
   limpos: number;
+  /** Os campos de texto em que a limpeza trocou algo, com o caminho. */
+  camposLimpos: string[];
 }
 
 /**
@@ -206,7 +216,7 @@ export interface MarcasAplicadas {
  * ou qualquer outro esquema marcado. Campo sem marca não viaja e fica dito.
  */
 export function aplicarMarcas(marcas: MapaDeMarcas, valor: Record<string, unknown>, opcoes: OpcoesDosParams = {}, prefixo = ""): MarcasAplicadas {
-  const saida: MarcasAplicadas = { valor: {}, omitidos: new Map(), limpos: 0 };
+  const saida: MarcasAplicadas = { valor: {}, omitidos: new Map(), limpos: 0, camposLimpos: [] };
   const omitir = (codigo: CodigoOmitido, nome: string, quantos: number): void => {
     const atual = saida.omitidos.get(codigo) ?? { quantos: 0, nomes: [] };
     saida.omitidos.set(codigo, { quantos: atual.quantos + quantos, nomes: [...atual.nomes, nome] });
@@ -214,6 +224,7 @@ export function aplicarMarcas(marcas: MapaDeMarcas, valor: Record<string, unknow
   const juntar = (filho: MarcasAplicadas): void => {
     for (const [codigo, d] of filho.omitidos) for (const nome of d.nomes) omitir(codigo, nome, d.quantos / d.nomes.length);
     saida.limpos += filho.limpos;
+    saida.camposLimpos.push(...filho.camposLimpos);
   };
   for (const [campo, v] of Object.entries(valor)) {
     if (v === undefined) continue;
@@ -229,8 +240,9 @@ export function aplicarMarcas(marcas: MapaDeMarcas, valor: Record<string, unknow
     } else if (marca === "texto") {
       // Texto escrito por gente: a limpeza troca o que for credencial ou dado pessoal por marca. Nunca volta cru.
       const limpos = { n: 0 };
-      saida.valor[campo] = limparLivre(v, opcoes.home, limpos);
+      saida.valor[campo] = limparLivre(v, opcoes.conferir === true ? soCredencial : (t) => limparTexto(t, opcoes.home), limpos);
       saida.limpos += limpos.n;
+      if (limpos.n > 0) saida.camposLimpos.push(nome);
     } else if (marca === "argumentos") {
       const r = paramsParaPacote({ [campo]: "argumentos" }, { [campo]: v }, opcoes);
       Object.assign(saida.valor, r.params);

@@ -986,10 +986,13 @@ export class PacoteService {
         for (const id of toolsets) for (const t of (await this.library.getToolset(id))?.tools ?? []) doToolset.add(chaveDaFerramenta(t));
         tools = leituras.filter((t) => !doToolset.has(chaveDaFerramenta(t)));
       }
+      // O texto já saiu limpo da exportação: aqui só a credencial é conferida, e o campo que ela alterou fica dito.
+      const conferido = aplicarMarcas(MARCAS_DO_AGENT, agent as unknown as Record<string, unknown>, { ...this.opcoesDeTexto(), conferir: true });
+      if (conferido.camposLimpos.length > 0) pendencias.push({ codigo: "texto-limpo", onde: `agent:${alvo.id}`, params: conferido.camposLimpos });
       specsDosAgents.set(
         alvo.id,
         AgentProfile.parse({
-          ...aplicarMarcas(MARCAS_DO_AGENT, agent as unknown as Record<string, unknown>, this.opcoesDeTexto()).valor,
+          ...conferido.valor,
           id: alvo.id,
           model: modelo(`agent:${agent.id}`, agent.model),
           toolsets,
@@ -1033,8 +1036,10 @@ export class PacoteService {
         passos.push(p);
       }
     }
+    const doSpec = aplicarMarcas(MARCAS_DO_SPEC, pacote.automacao.spec as unknown as Record<string, unknown>, { ...this.opcoesDeTexto(), conferir: true });
+    if (doSpec.camposLimpos.length > 0) pendencias.push({ codigo: "texto-limpo", onde: "automacao", params: doSpec.camposLimpos });
     const spec = AgentSpec.parse({
-      ...aplicarMarcas(MARCAS_DO_SPEC, pacote.automacao.spec as unknown as Record<string, unknown>, this.opcoesDeTexto()).valor,
+      ...doSpec.valor,
       id: automacaoId,
       defaultTools: await soLeitura(pacote.automacao.spec.defaultTools, "automacao"),
       steps: passos,
