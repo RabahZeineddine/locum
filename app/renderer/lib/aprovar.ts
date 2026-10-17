@@ -17,8 +17,8 @@ type Decisao = "approved" | "rejected";
 interface PonteDeDecisao {
   approvals: {
     decide: (id: string, decisao: Decisao, hashVisto?: string) => Promise<DecisionResult>;
-    update: (id: string, findings: unknown[], verdict: string, summary?: string) => Promise<{ hash: string }>;
-    updateText: (id: string, text: string) => Promise<{ hash: string }>;
+    update: (id: string, findings: unknown[], verdict: string, summary?: string) => Promise<{ payloadHash: string }>;
+    updateText: (id: string, text: string) => Promise<{ payloadHash: string }>;
     settleStuck: (id: string, outcome: "published" | "retry") => Promise<{ status: "approved" | "pending" }>;
   };
 }
@@ -35,7 +35,7 @@ function ponte(): PonteDeDecisao {
 const hashDaEdicao = new Map<string, string>();
 
 /**
- * `hashVisto` é o `hash` da pendência como a tela a mostrou. Se a conversa do run ou o MCP
+ * `hashVisto` é o `payloadHash` da pendência como a tela a mostrou. Se a conversa do run ou o MCP
  * a mudaram desde então, a decisão é recusada em vez de publicar o que a pessoa não viu.
  */
 export async function decidir(approvalId: string, decisao: Decisao, hashVisto?: string): Promise<DecisionResult> {
@@ -63,14 +63,14 @@ export async function gravarRevisao(
   verdict: string,
   summary?: string,
 ): Promise<string> {
-  const { hash } = await ponte().approvals.update(approvalId, findings, verdict, summary);
-  hashDaEdicao.set(approvalId, hash);
-  return hash;
+  const { payloadHash } = await ponte().approvals.update(approvalId, findings, verdict, summary);
+  hashDaEdicao.set(approvalId, payloadHash);
+  return payloadHash;
 }
 
 /** Grava o texto revisado de uma resposta de Slack ou Teams, sem publicar. */
 export async function gravarTexto(approvalId: string, texto: string): Promise<void> {
-  hashDaEdicao.set(approvalId, (await ponte().approvals.updateText(approvalId, texto)).hash);
+  hashDaEdicao.set(approvalId, (await ponte().approvals.updateText(approvalId, texto)).payloadHash);
 }
 
 /**

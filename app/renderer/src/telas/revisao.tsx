@@ -190,8 +190,8 @@ function RevisaoDaPendencia({ detalhe, navegar, aoRecarregar, aoRecusar }: TelaP
         };
       }),
     );
-    hashBase.current = p.hash;
-    conhecidos.current.push(p.hash);
+    hashBase.current = p.payloadHash;
+    conhecidos.current.push(p.payloadHash);
     gravadas.current = mexidas;
     setMudouPorFora(false);
   }
@@ -204,12 +204,12 @@ function RevisaoDaPendencia({ detalhe, navegar, aoRecarregar, aoRecusar }: TelaP
   // A releitura trouxe outro payload: sem edição daqui a tela adota o novo; com edição, avisa.
   useEffect(() => {
     if (!pendencia || contexto || mensagem || documento || achados === null || gravando) return;
-    const acao = acaoDaReleitura({ hashBase: hashBase.current, hashAtual: pendencia.hash, edicaoPendente, conhecidos: conhecidos.current });
+    const acao = acaoDaReleitura({ hashBase: hashBase.current, hashAtual: pendencia.payloadHash, edicaoPendente, conhecidos: conhecidos.current });
     if (acao === "recarregar") {
       esquecerEdicao(pendencia.id);
       carregarDe(pendencia);
     } else if (acao === "avisar") setMudouPorFora(true);
-  }, [pendencia?.hash, gravando]);
+  }, [pendencia?.payloadHash, gravando]);
 
   // Grava sozinho depois que a digitação para. Botão de salvar num editor de
   // um item só é cerimônia: o risco real é fechar a tela e perder a edição.
@@ -256,7 +256,7 @@ function RevisaoDaPendencia({ detalhe, navegar, aoRecarregar, aoRecusar }: TelaP
     setResolvendo(true);
     aoRecusar(null);
     try {
-      const resultado = await decidir(pendencia.id, decisao, pendencia.hash);
+      const resultado = await decidir(pendencia.id, decisao, pendencia.payloadHash);
       if (resultado.status === "conflict") {
         setConflito(true);
         setMotivoDoConflito(resultado.motivo);

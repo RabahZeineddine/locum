@@ -28,8 +28,8 @@ export interface ApprovalSummary extends ApprovalRow {
   trocaPorLimite: string | null;
   /** Quem propôs o passo avulso de onde vem a pendência. Nulo quando o passo é do fluxo. */
   propostoPor: PropostoPor | null;
-  /** A impressão do payload: quem decide manda de volta a do que viu, e a decisão só vale se o payload é o mesmo. */
-  hash: string;
+  /** A impressão do payload (não é o `hash` do MCP, que também cobre o tipo e o estado): quem decide manda de volta a do que viu, e a decisão só vale se o payload é o mesmo. */
+  payloadHash: string;
 }
 
 /**
@@ -179,7 +179,7 @@ export class ApprovalService {
 
     return rows.map((r) => ({
       ...r.approval,
-      hash: impressaoDe(r.approval.payload),
+      payloadHash: impressaoDe(r.approval.payload),
       trocaPorLimite: trocas.get(r.approval.runId) ?? null,
       stepKey: r.stepKey,
       stepName: r.stepName,

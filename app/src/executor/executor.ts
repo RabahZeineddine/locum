@@ -123,7 +123,7 @@ export class Executor {
    * depois da ação nunca roda e a tela continua mostrando aguardando numa
    * execução que já saiu.
    *
-   * `hashVisto` é a impressão do payload que a pessoa viu (`ApprovalSummary.hash`).
+   * `hashVisto` é a impressão do payload que a pessoa viu (`ApprovalSummary.payloadHash`).
    * Dado, a decisão só vale se a pendência continua igual: a conversa do run ou o
    * MCP podem tê-la editado depois de a tela carregar. A gate confere na própria tomada.
    */

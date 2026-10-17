@@ -233,7 +233,10 @@ test("a fila devolve o texto como está, e decidir passa pela gate que o servido
   const pendentes = ok<{ id: string; status: string; agentId: string; hash: string }[]>(lista);
   assert.equal(pendentes.find((p) => p.id === aprovacao)?.agentId, agentId);
 
-  const uma = ok<{ id: string; hash: string; payload: { text: string; channel: string } }>(await client.callTool({ name: "get_approval", arguments: { approvalId: aprovacao } }));
+  const uma = ok<{ id: string; hash: string; payloadHash: string; payload: { text: string; channel: string } }>(await client.callTool({ name: "get_approval", arguments: { approvalId: aprovacao } }));
+  // Dois nomes, duas coisas: `hash` é o que o decide_approval pede (tipo, payload e estado); `payloadHash` é só o do payload.
+  assert.equal(uma.payloadHash, impressaoDe(uma.payload));
+  assert.notEqual(uma.payloadHash, uma.hash);
   assert.equal(uma.payload.channel, "C1");
   assert.equal(uma.payload.text, "Missing null check on token: it can be undefined");
   assert.equal(pendentes.find((p) => p.id === aprovacao)?.hash, uma.hash, "a fila e a leitura dão o mesmo hash");

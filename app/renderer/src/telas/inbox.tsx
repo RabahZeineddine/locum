@@ -164,7 +164,7 @@ function Fila({ navegar, aoMudarFila }: TelaProps & { aoMudarFila: () => void })
         return novo;
       });
       try {
-        const resultado = await decidir(item.pendencia.id, decisao, item.pendencia.hash);
+        const resultado = await decidir(item.pendencia.id, decisao, item.pendencia.payloadHash);
         if (resultado.status === "conflict") {
           // O alvo mudou por fora antes do clique: a pendencia ja fechou como
           // `conflict`, e o item continua na tela so para explicar o que

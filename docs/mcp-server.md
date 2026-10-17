@@ -397,6 +397,14 @@ pessoa ter dito que sai.
 argumentos do cartão mudaram desde a leitura, nada é decidido: a confirmação do
 cliente fica amarrada ao que ele viu.
 
+Há dois nomes, e eles não são a mesma coisa. `hash` é o do MCP: cobre o tipo, o
+payload e o estado da pendência, e é o que `decide_approval` pede. `payloadHash`
+é a impressão só do payload, a mesma que a tela e a ponte (`approvals.decide`)
+mandam à gate. O `decide_approval` confere o `hash`, e depois repassa à gate o
+`payloadHash` do que acabou de conferir: a gate o confere de novo na própria
+tomada, na mesma transação que lê o payload que será publicado, então uma edição
+entre as duas conferências faz a decisão ser recusada e nada sai.
+
 ## Chat de agent com o app aberto
 
 O app aberto e o `--mcp` são dois processos sobre o mesmo banco, e a conversa

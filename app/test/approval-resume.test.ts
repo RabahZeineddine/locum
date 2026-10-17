@@ -493,8 +493,8 @@ test("decidir com o hash do que a pessoa viu: se a pendência mudou desde então
 test("decidir com o hash atual passa, e sem hash vale como antes", async () => {
   const um = await montar();
   const atual = (await new ApprovalService().get(um.approvalId))!;
-  assert.equal(atual.hash, impressaoDe(atual.payload));
-  assert.equal((await um.executor.decide(um.approvalId, "approved", atual.hash)).status, "approved");
+  assert.equal(atual.payloadHash, impressaoDe(atual.payload));
+  assert.equal((await um.executor.decide(um.approvalId, "approved", atual.payloadHash)).status, "approved");
 
   const outro = await montar();
   assert.equal((await outro.executor.decide(outro.approvalId, "approved")).status, "approved");
@@ -514,12 +514,12 @@ test("a gate confere o hash na própria tomada: pendência editada depois do que
 test("o que se publica e se grava é o payload lido na tomada, e a rejeição também confere o hash", async () => {
   const um = await montar();
   const atual = (await new ApprovalService().get(um.approvalId))!;
-  assert.equal((await um.executor.decide(um.approvalId, "approved", atual.hash)).status, "approved");
+  assert.equal((await um.executor.decide(um.approvalId, "approved", atual.payloadHash)).status, "approved");
   const [gravada] = await db.select().from(schema.approvals).where(eq(schema.approvals.id, um.approvalId));
-  assert.equal(impressaoDe(gravada!.payload), atual.hash);
+  assert.equal(impressaoDe(gravada!.payload), atual.payloadHash);
 
   const outro = await montar();
-  const visto = (await new ApprovalService().get(outro.approvalId))!.hash;
+  const visto = (await new ApprovalService().get(outro.approvalId))!.payloadHash;
   await db.update(schema.approvals).set({ payload: { texto: "mudou" } }).where(eq(schema.approvals.id, outro.approvalId));
   await assert.rejects(outro.gate.decide(outro.approvalId, "rejected", visto), /mudou/);
   assert.equal((await new ApprovalService().get(outro.approvalId))!.status, "pending");
