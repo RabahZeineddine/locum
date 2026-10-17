@@ -2185,7 +2185,13 @@
       "branchTrue": "yes",
       "branchFalse": "no",
       "branchDefault": "other",
-      "chooseWhat": "choose what to do"
+      "chooseWhat": "choose what to do",
+      "stepNumber": "Step {{numero}}"
+    },
+    "variables": {
+      "label": "Variables",
+      "event": "Event",
+      "step": "{{numero}} · {{nome}}"
     },
     "panel": {
       "close": "Close panel",

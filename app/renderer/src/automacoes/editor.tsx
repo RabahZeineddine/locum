@@ -15,6 +15,7 @@ import {
   gatilhosDoCadastro,
   ligar,
   mover,
+  numerarPassos,
   PASSOS,
   passoDoAgent,
   caminhosDe,
@@ -84,7 +85,7 @@ import type { RotaId } from "../rotas";
 import { ModalDeAgent } from "./modal-de-agent";
 import { useExecutarAgora } from "./executar-com";
 import { PainelDoNo } from "./painel";
-import { appDoGatilho, appDoPasso, resumoDoGatilho, Selo, tituloDoGatilho, tituloDoPasso } from "./visual";
+import { appDoGatilho, appDoPasso, NumeroDoPasso, resumoDoGatilho, Selo, tituloDoGatilho, tituloDoPasso } from "./visual";
 
 type Automacao = NonNullable<ReadResult<"automations.get">>;
 
@@ -1328,6 +1329,8 @@ type DadosDoNo = {
   marca?: string;
   /** App sem operação escolhida: o card pede para escolher. */
   vazio?: boolean;
+  /** Posição do passo no fluxo; o gatilho não tem. */
+  numero?: number;
   gatilho: boolean;
   aprovacao: boolean;
   /** Ação que sai sozinha, sem passar pela fila. */
@@ -1385,6 +1388,7 @@ function CanvasDaAutomacao({
         caminhos: [],
       },
     }));
+    const numeros = numerarPassos(rascunho.spec.steps);
     const passos: NoDoCanvas[] = rascunho.spec.steps.map((p) => {
       const componente = componenteDoPasso(p);
       return {
@@ -1394,6 +1398,7 @@ function CanvasDaAutomacao({
         selected: p.key === selecionado,
         data: {
           chave: p.key,
+          numero: numeros.get(p.key),
           app: appDoPasso(componente),
           componente,
           tipo: tituloDoPasso(t, componente),
@@ -1555,6 +1560,7 @@ function NoDoComponente({ data, selected }: NodeProps<NoDoCanvas>) {
     >
       {data.gatilho ? null : <Handle position={Position.Left} type="target" />}
       <div className="flex items-center gap-2">
+        {data.numero === undefined ? null : <NumeroDoPasso numero={data.numero} t={t} />}
         {data.marca === undefined ? <Selo app={data.app} id={data.componente} tamanho="sm" /> : <MarcaLogo fonte={{ name: data.marca }} tamanho="sm" />}
         <div className="flex min-w-0 flex-1 flex-col">
           <span className="text-muted-foreground truncate text-[11px]">{data.tipo}</span>

@@ -2154,7 +2154,8 @@ async function checkPassoDeAgent(window: BrowserWindow): Promise<void> {
   });
   await automationService.save({
     spec: AgentSpec.parse({ id, name: "Passo de agent", steps: [{ type: "model", key: "revisar", name: "Revisar", model: "claude-code/claude-sonnet-5", prompt: "" }] }),
-    triggers: [],
+    // O gatilho manual dá o que citar no prompt: o evento de um link de PR.
+    triggers: [{ config: { kind: "manual" } }],
     note: "smoke",
     create: true,
   });
@@ -2221,6 +2222,28 @@ async function checkPassoDeAgent(window: BrowserWindow): Promise<void> {
     // Instrução embutida: o select some e o passo deixa de apontar para o agent.
     await clicar("[data-locum-passo-modo=inline]");
     await esperar("a instrução embutida", async () => (await existe("[data-locum-prompt]")) && !(await existe("[data-locum-passo-agent]")));
+
+    // Autocomplete: digitar {{ abre a lista com o evento, as setas escolhem, Enter insere o caminho e fecha as chaves.
+    const tecla = (keyCode: string): void => {
+      window.webContents.sendInputEvent({ type: "keyDown", keyCode });
+      window.webContents.sendInputEvent({ type: "keyUp", keyCode });
+    };
+    await js(`(() => { document.querySelector("[data-locum-prompt]").focus(); return null; })()`);
+    await window.webContents.insertText("Revise {{prN");
+    await esperar("a lista de variáveis ao digitar {{", () => existe("[role=listbox][data-locum-variaveis] [role=option][data-locum-variavel='event.prNumber']"));
+    const ligado = (await js(`(() => {
+      const c = document.querySelector("[data-locum-prompt]");
+      const ativa = document.getElementById(c.getAttribute("aria-activedescendant") ?? "");
+      return c.getAttribute("role") === "combobox" && c.getAttribute("aria-expanded") === "true" && ativa?.getAttribute("role") === "option" && ativa.getAttribute("aria-selected") === "true";
+    })()`)) as boolean;
+    if (!ligado) throw new Error("o campo com variáveis não aponta a opção ativa por aria-activedescendant");
+    tecla("Enter");
+    await esperar("o caminho inserido com as chaves fechadas", async () => (await js(`document.querySelector("[data-locum-prompt]").value`)) === "Revise {{event.prNumber}}");
+    if (await existe("[data-locum-variaveis]")) throw new Error("a lista ficou aberta depois de inserir");
+    await window.webContents.insertText(" {{");
+    await esperar("a lista reabre", () => existe("[data-locum-variaveis]"));
+    tecla("Escape");
+    await esperar("Esc fecha a lista", async () => !(await existe("[data-locum-variaveis]")));
     await clicar("[data-locum-passo-modo=agent]");
     await esperar("o select de volta", () => existe("[data-locum-passo-agent]"));
     if (await existe("[data-locum-agent-resumo]")) throw new Error("o resumo do agent ficou depois de trocar para instrução embutida");

@@ -150,3 +150,16 @@ export function tituloDoPasso(t: TFunction, id: string): string {
     ? t(`automations.steps.${id}.title`)
     : t("automations.steps.other.title", { action: id });
 }
+
+/** O número do passo no fluxo, o mesmo no card, no topo do painel e nos grupos do autocomplete. */
+export function NumeroDoPasso({ numero, t }: { numero: number; t: TFunction }) {
+  return (
+    <span
+      aria-label={t("automations.canvas.stepNumber", { numero })}
+      className="bg-muted text-muted-foreground inline-flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-medium tabular-nums"
+      data-locum-passo-numero={numero}
+    >
+      {numero}
+    </span>
+  );
+}

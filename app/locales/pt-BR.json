@@ -2234,7 +2234,13 @@
       "branchTrue": "sim",
       "branchFalse": "não",
       "branchDefault": "outro",
-      "chooseWhat": "escolha o que fazer"
+      "chooseWhat": "escolha o que fazer",
+      "stepNumber": "Passo {{numero}}"
+    },
+    "variables": {
+      "label": "Variáveis",
+      "event": "Evento",
+      "step": "{{numero}} · {{nome}}"
     },
     "panel": {
       "close": "Fechar painel",

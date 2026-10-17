@@ -3,8 +3,10 @@ import { StatusDot } from "@/components/ui/status-dot";
 import {
   ACOES_POR_PARAMETRO,
   anteriores,
+  catalogoDoPasso,
   componenteDoPasso,
   ehGatilho,
+  numerarPassos,
   FORMATOS,
   formatoDe,
   passoComAgent,
@@ -29,7 +31,7 @@ import { canalDoSlackDigitado, opcoesDeCanaisDoSlack, rotuloDoChipDoSlack } from
 import { organizarChats } from "@/lib/chats-do-teams";
 import { cn } from "@/lib/utils";
 import { Trash2, X } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { LogicCompare, type LogicStep, type TriggerConfig } from "../../../src/config/types";
 import { codigoDoErroDeCanais } from "../../../src/slack/channels-erro";
@@ -40,6 +42,7 @@ import { resumoDoAgent } from "@/lib/resumo-do-agent";
 import { SeletorDeFerramentas, SeletorDeModelo, useCatalogo } from "../editor-agent";
 import type { RotaId } from "../rotas";
 import { Ajuda, Alternador, Campo, CAMPO, Minutos } from "./campos";
+import { CampoComVariaveis, VariaveisDoNo } from "./campo-com-variaveis";
 import { esquemasDeSaidaDasConexoes, type FerramentasDasConexoes } from "./ferramentas-das-conexoes";
 import { DestinoDoNo } from "./destino-do-no";
 import { ACOES_DE_CONVERSA_REGISTRO } from "../../../src/acao/destino";
@@ -50,7 +53,7 @@ import { passoDaOperacao, reconhecerPasso, temTrocaDeOperacao } from "@/lib/apps
 import { ComboboxComChips, useListaEmCache, type OpcaoDoCombobox } from "./combobox";
 import { GatilhoDoGithub, ListaDeDescartes } from "./gatilho-github";
 import { escopoDoGatilho } from "@/lib/titulo-do-gatilho";
-import { appDoGatilho, appDoPasso, Selo, tituloDoGatilho, tituloDoPasso } from "./visual";
+import { appDoGatilho, appDoPasso, NumeroDoPasso, Selo, tituloDoGatilho, tituloDoPasso } from "./visual";
 
 type Tracker = ReadResult<"trackers.list">[number];
 
@@ -102,6 +105,18 @@ export function PainelDoNo({
   const { t, i18n } = useTranslation();
   const gatilho = ehGatilho(chave) ? rascunho.gatilhos.find((g) => g.chave === chave) : undefined;
   const passo = ehGatilho(chave) ? undefined : rascunho.spec.steps.find((p) => p.key === chave);
+  const acoes = useRead("actions.describe").data;
+  const grupos = useMemo(
+    () =>
+      passo === undefined
+        ? []
+        : catalogoDoPasso(rascunho, chave, {
+            saidas,
+            esquemasDeSaida: esquemasDeSaidaDasConexoes(conexoes.porServidor),
+            esquemasDeAcao: Object.fromEntries((acoes ?? []).map((a) => [a.kind, a.outputSchema])),
+          }),
+    [rascunho, chave, passo, saidas, conexoes.porServidor, acoes],
+  );
   if (gatilho === undefined && passo === undefined) return null;
 
   // A descrição longa do componente vai no ⓘ do cabeçalho, e não num parágrafo acima dos campos.
@@ -120,6 +135,7 @@ export function PainelDoNo({
     setRascunho((r) => ({ ...r, gatilhos: r.gatilhos.map((g) => (g.chave === chave ? { ...g, config } : g)) }));
 
   return (
+    <VariaveisDoNo value={grupos}>
     <aside
       className={cn(
         "border-border bg-card flex shrink-0 flex-col gap-4 overflow-y-auto rounded-lg border p-3",
@@ -129,6 +145,7 @@ export function PainelDoNo({
       data-locum-painel={chave}
     >
       <div className="flex items-center gap-2">
+        {passo === undefined ? null : <NumeroDoPasso numero={numerarPassos(rascunho.spec.steps).get(chave) ?? 0} t={t} />}
         {passo !== undefined && passo.type === "action" && temTrocaDeOperacao(passo) ? (
           <>
             <TrocaDeOperacao
@@ -225,6 +242,7 @@ export function PainelDoNo({
         {t("automations.panel.remove")}
       </Button>
     </aside>
+    </VariaveisDoNo>
   );
 }
 
@@ -635,66 +653,31 @@ function ChatsDoTeams({
 
 /* ------------------------------------------------------------------- passo */
 
-/** Instrução com as variáveis clicáveis e o formato da saída: igual no agent e na IA avulsa. */
+/** Instrução com sugestão de variáveis ao digitar `{{` e o formato da saída: igual no agent e na IA avulsa. */
 function TarefaEFormato({
-  chave,
   passo,
-  rascunho,
   trocar,
   rotulo,
   dica,
 }: {
-  chave: string;
   passo: PassoDeIA;
-  rascunho: Rascunho;
   trocar: (novo: PassoDeIA) => void;
   rotulo: string;
   dica?: string;
 }) {
   const { t } = useTranslation();
-  const caixa = useRef<HTMLTextAreaElement>(null);
   const formato = formatoDe(passo);
-  const disponiveis = variaveis(rascunho, chave);
-
-  const inserir = (variavel: string): void => {
-    const el = caixa.current;
-    const trecho = `{{${variavel}}}`;
-    const inicio = el?.selectionStart ?? passo.prompt.length;
-    const fim = el?.selectionEnd ?? passo.prompt.length;
-    trocar({ ...passo, prompt: passo.prompt.slice(0, inicio) + trecho + passo.prompt.slice(fim) });
-    requestAnimationFrame(() => {
-      el?.focus();
-      el?.setSelectionRange(inicio + trecho.length, inicio + trecho.length);
-    });
-  };
 
   return (
     <>
       <Campo ajuda={dica} rotulo={rotulo}>
-        <textarea
+        <CampoComVariaveis
           className={cn(CAMPO, "min-h-40 resize-y font-mono text-xs leading-relaxed")}
           data-locum-prompt=""
-          onChange={(e) => trocar({ ...passo, prompt: e.target.value })}
-          ref={caixa}
-          value={passo.prompt}
+          mudar={(prompt) => trocar({ ...passo, prompt })}
+          tipo="textarea"
+          valor={passo.prompt}
         />
-        {disponiveis.length > 0 ? (
-          <div className="flex flex-col gap-1">
-            <span className="text-muted-foreground text-[11px]">{t("automations.steps.ai.variables")}</span>
-            <div className="flex flex-wrap gap-1">
-              {disponiveis.map((v) => (
-                <button
-                  className="bg-muted hover:bg-muted/70 cursor-pointer rounded px-1.5 py-0.5 font-mono text-[11px]"
-                  key={v}
-                  onClick={() => inserir(v)}
-                  type="button"
-                >
-                  {v}
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : null}
       </Campo>
       <Campo rotulo={t("automations.steps.ai.format")}>
         <select
@@ -871,10 +854,8 @@ function ConfigDoAgent({
         <input className={CAMPO} onChange={(e) => trocar({ ...passo, name: e.target.value })} value={passo.name} />
       </Campo>
       <TarefaEFormato
-        chave={chave}
         dica={t("automations.steps.agent.taskHint")}
         passo={passo}
-        rascunho={rascunho}
         rotulo={t("automations.steps.agent.task")}
         trocar={trocar}
       />
@@ -980,7 +961,7 @@ function ConfigDaIA({
       <Campo rotulo={t("automations.steps.ai.model")}>
         <SeletorDeModelo catalogo={catalogo} trocar={(model) => trocar({ ...passo, model })} valor={passo.model} />
       </Campo>
-      <TarefaEFormato chave={chave} passo={passo} rascunho={rascunho} rotulo={t("automations.steps.ai.prompt")} trocar={trocar} />
+      <TarefaEFormato passo={passo} rotulo={t("automations.steps.ai.prompt")} trocar={trocar} />
       <Campo rotulo={t("automations.steps.ai.tools")}>
         <SeletorDeFerramentas
           defaultTools={rascunho.spec.defaultTools}
@@ -1065,7 +1046,7 @@ function ConfigDaAcao({
           aoEscolher={(operacao) => trocar(passoDaOperacao(rascunho.spec, operacao, passo) as PassoDeAcao)}
         />
       ) : null}
-      {passo.action === "mcp.call" && (reconhecerPasso(passo).operacao.tipo !== "vazia" || reconhecerPasso(passo).app === "mcp") ? <ConfigDaChamada conexoes={conexoes} passo={passo} rascunho={rascunho} saidas={saidas} trocar={trocar} /> : null}
+      {passo.action === "mcp.call" && (reconhecerPasso(passo).operacao.tipo !== "vazia" || reconhecerPasso(passo).app === "mcp") ? <ConfigDaChamada conexoes={conexoes} passo={passo} trocar={trocar} /> : null}
       {passo.action === "http.request" ? <ConfigDoHttp passo={passo} rascunho={rascunho} trocar={trocar} /> : null}
       {ACOES_DE_CONVERSA_REGISTRO[passo.action] !== undefined ? (
         <DestinoDoNo
@@ -1338,23 +1319,18 @@ function textoDoValor(v: unknown): string {
 /** Qualquer ferramenta de um app conectado, com o formulário gerado do schema dela. */
 function ConfigDaChamada({
   passo,
-  rascunho,
   trocar,
   conexoes,
-  saidas,
 }: {
   passo: PassoDeAcao;
-  rascunho: Rascunho;
   trocar: (novo: PassoDeAcao) => void;
   conexoes: FerramentasDasConexoes;
-  saidas: Readonly<Record<string, unknown>>;
 }) {
   const { t } = useTranslation();
   const params = (passo.params ?? {}) as { server?: string; tool?: string; args?: Record<string, unknown>; autoEscrita?: boolean };
   const servidor = params.server ?? "";
   const estado = conexoes.porServidor[servidor];
   const lista = estado?.tools ?? null;
-  const { focar, inserir } = useInsercao();
   const { carregar } = conexoes;
 
   // O cache guarda a lista da última leitura. Servidor que nunca foi lido sobe uma vez, ao ser escolhido.
@@ -1457,15 +1433,7 @@ function ConfigDaChamada({
       )}
       {escolhida === undefined ? null : (
         <>
-          <Variaveis inserir={inserir} lista={variaveis(rascunho, passo.key)} />
-          <FormularioDaChamada
-            key={`${servidor}/${params.tool ?? ""}`}
-            args={args}
-            campos={campos}
-            focar={focar}
-            mudar={(novo) => mudar({ args: novo })}
-            referencias={referenciasDisponiveis(rascunho, passo.key, { saidas, esquemasDeSaida: esquemasDeSaidaDasConexoes(conexoes.porServidor) })}
-          />
+          <FormularioDaChamada key={`${servidor}/${params.tool ?? ""}`} args={args} campos={campos} mudar={(novo) => mudar({ args: novo })} />
         </>
       )}
     </>

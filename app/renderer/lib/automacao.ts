@@ -17,7 +17,7 @@ import { gatilhoTrazMensagem } from "./destino-da-conversa";
 import { SLACK_REPLY_SCHEMA } from "../../src/slack/proposal";
 import { CONVERSATION_ISSUE_SCHEMA, ISSUE_CONTENT_SCHEMA } from "../../src/trackers/proposal";
 import prReview from "../../../examples/agents/pr-review.json";
-import { catalogoDeReferencias, caminhosDaSaida, saidasDosRuns, type EsquemaJson, type GrupoDeReferencias } from "../../src/config/referencias";
+import { catalogoDeReferencias, caminhosDaSaida, numerarPassos, saidasDosRuns, type EsquemaJson, type GrupoDeReferencias } from "../../src/config/referencias";
 import { esquemaDaLogica } from "../../src/executor/esquemas-de-logica";
 import { esquemaDoEvento } from "../../src/sources/esquemas-de-evento";
 import { camposDoSchema, referenciasDoArgs, validarArgs } from "./formulario-de-schema";
@@ -1109,4 +1109,4 @@ export function rascunhoDoModelo(
   }
 }
 
-export { caminhosDaSaida, saidasDosRuns };
+export { caminhosDaSaida, numerarPassos, saidasDosRuns };
