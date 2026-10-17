@@ -2338,6 +2338,15 @@ async function checkAutomacaoNova(window: BrowserWindow): Promise<void> {
     await esperar("o rascunho reservado depois de recarregar", () => existe("[data-locum-rascunho=reservado]"));
     const nomeAgora = (await js(`document.querySelector("[data-locum-probe=automacao-editor] header input").value`)) as string;
     if (nomeAgora !== "Pelo MCP") throw new Error(`recarregar trouxe "${nomeAgora}" e a versao gravada e "Pelo MCP"`);
+
+    // A aba Arquivadas lista a arquivada (e so ela), pela ponte com o argumento da tela.
+    await automationService.archive(id);
+    await clicar("[data-locum-rota=agents]");
+    await irPara(window, "automations");
+    await esperar("a lista de automacoes", () => existe("[data-locum-automacao-nova]"));
+    if (await existe(`[data-locum-automacao="${id}"]`)) throw new Error("a lista em uso mostra a automacao arquivada");
+    await clicar("[data-locum-automacao-filtro-arquivadas=sim]");
+    await esperar("a arquivada na aba Arquivadas", () => existe(`[data-locum-automacao-arquivada="${id}"]`));
   } finally {
     await js(`(Object.keys(localStorage).filter((k) => k.startsWith("locum.rascunho-automacao") || k.startsWith("locum.automacao-provisoria")).forEach((k) => localStorage.removeItem(k)), null)`);
     if (id !== "") {

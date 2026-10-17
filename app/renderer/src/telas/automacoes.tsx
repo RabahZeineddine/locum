@@ -191,6 +191,8 @@ function ListaDeAutomacoes({ navegar }: Pick<TelaProps, "navegar">) {
   const { t } = useTranslation();
   const [arquivadas, setArquivadas] = useState(false);
   const inicial = useRead("agents.overview", { arquivadas: arquivadas ? "so" : "nao" });
+  // As reservas órfãs se medem contra todas as automações, e não contra a aba aberta.
+  const todas = useRead("agents.overview", { arquivadas: "todas" });
   const [criando, setCriando] = useState(false);
   useAcaoDaTela("nova-automacao", () => setCriando(true));
   const [pacote, setPacote] = useState<{ nome: string; texto: string } | null>(null);
@@ -200,8 +202,8 @@ function ListaDeAutomacoes({ navegar }: Pick<TelaProps, "navegar">) {
   const [provisorias, setProvisorias] = useState(() => listarProvisorias(globalThis.localStorage));
   // Reserva de automação apagada não tem mais a que voltar.
   useEffect(() => {
-    if (inicial.data !== undefined) limparReservasOrfas(globalThis.localStorage, inicial.data.map((l) => l.id));
-  }, [inicial.data]);
+    if (todas.data !== undefined) limparReservasOrfas(globalThis.localStorage, todas.data.map((l) => l.id));
+  }, [todas.data]);
   const reler = (): void => {
     invalidateReads("agents.overview");
   };

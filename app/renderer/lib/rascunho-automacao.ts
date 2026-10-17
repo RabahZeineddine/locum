@@ -383,7 +383,7 @@ export function apagarProvisoria(armazem: ArmazemLocal, agentId: string): void {
 }
 
 /**
- * Tira tudo que o navegador guardou de uma automação excluída: rascunho ativo,
+ * Tira tudo que o navegador guardou de uma automação arquivada: rascunho ativo,
  * reservas e provisória. Sem isso o autosave ou a oferta de rascunho trariam de
  * volta uma automação que não existe mais.
  */

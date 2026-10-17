@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { and, desc, eq, inArray, ne } from "drizzle-orm";
 import { db, schema } from "../db/index.js";
+import { GatilhoRemovido, gatilhoExiste, recusarSeArquivada } from "../db/arquivada.js";
 import {
   AgentSpec,
   type ActionStep,
@@ -83,9 +84,22 @@ export class Executor {
     const id = randomUUID();
     const resolvedInitiativeId =
       initiativeId !== undefined ? initiativeId : await this.agentInitiativeId(agentVersionId);
-    await db
-      .insert(schema.runs)
-      .values({ id, agentVersionId, eventId, triggerId, initiativeId: resolvedInitiativeId, status: "queued" });
+    // A conferência e a gravação na mesma transação: arquivar (inclusive por outro processo) não passa no meio.
+    db.transaction(
+      (tx) => {
+        const dono = tx
+          .select({ agentId: schema.agentVersions.agentId })
+          .from(schema.agentVersions)
+          .where(eq(schema.agentVersions.id, agentVersionId))
+          .get();
+        if (dono !== undefined) recusarSeArquivada(tx, dono.agentId);
+        if (triggerId !== null && !gatilhoExiste(tx, triggerId)) throw new GatilhoRemovido(triggerId);
+        tx.insert(schema.runs)
+          .values({ id, agentVersionId, eventId, triggerId, initiativeId: resolvedInitiativeId, status: "queued" })
+          .run();
+      },
+      { behavior: "immediate" },
+    );
     return id;
   }
 
@@ -194,6 +208,7 @@ export class Executor {
       .where(eq(schema.agentVersions.id, run.agentVersionId));
     if (!version) throw new Error(`versao de agent ${run.agentVersionId} nao encontrada`);
 
+    recusarSeArquivada(db, version.agentId);
     const spec = AgentSpec.parse(version.spec);
     const event = run.eventId
       ? (await db.select().from(schema.events).where(eq(schema.events.id, run.eventId)))[0]
@@ -210,10 +225,17 @@ export class Executor {
     const recusaDeIncompleto = payload.semConversa === true ? null : recusaDeRodar(spec.pendentes);
     if (recusaDeIncompleto !== null) return this.recusarSemEvento(runId, spec, recusaDeIncompleto);
 
-    await db
-      .update(schema.runs)
-      .set({ status: "running", startedAt: run.startedAt ?? nowSec() })
-      .where(eq(schema.runs.id, runId));
+    // Retomar um run de automação arquivada é recusado na mesma transação que o põe a rodar.
+    db.transaction(
+      (tx) => {
+        recusarSeArquivada(tx, version.agentId);
+        tx.update(schema.runs)
+          .set({ status: "running", startedAt: run.startedAt ?? nowSec() })
+          .where(eq(schema.runs.id, runId))
+          .run();
+      },
+      { behavior: "immediate" },
+    );
 
     const fallbacks = await providerService.getFallbacks(this.deps.machineId);
 

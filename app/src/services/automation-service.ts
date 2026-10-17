@@ -4,6 +4,7 @@ import { limparPendenciasPreenchidas, recusaDeLigar, recusaDeRodar } from "../co
 import { recursoExiste } from "./pendencia-recursos.js";
 import { manterRebaixados } from "../config/rebaixado.js";
 import { db as defaultDb, schema } from "../db/index.js";
+import { AutomacaoArquivada } from "../db/arquivada.js";
 import { esquecerGatilho } from "../triggers/estado-do-gatilho.js";
 import { comTrava } from "../triggers/trava.js";
 import type { EscopoActor } from "./initiative-service.js";
@@ -392,7 +393,8 @@ export class AutomationService {
   }
 
   private async recusarSeArquivada(agentId: string): Promise<void> {
-    if ((await this.agents.get(agentId))?.archivedAt != null) throw new Error(`automacao "${agentId}" esta arquivada; desarquive para editar ou ligar`);
+    // Conferência de entrada, com a mensagem pronta; quem garante é a transação que grava (AgentService.write).
+    if ((await this.agents.get(agentId))?.archivedAt != null) throw new AutomacaoArquivada(agentId);
   }
 
   private async recusarSeNaoExiste(agentId: string): Promise<void> {

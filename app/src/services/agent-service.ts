@@ -494,7 +494,7 @@ export class AgentService {
    * última execução deu certo. Montado aqui e não na janela porque seriam
    * quatro leituras por agent, e a regra de qual versão conta é desta camada.
    */
-  async overview(opcoes: { arquivadas?: "nao" | "so" } = {}): Promise<AgentOverview[]> {
+  async overview(opcoes: { arquivadas?: "nao" | "so" | "todas" } = {}): Promise<AgentOverview[]> {
     const linhas = await this.list(opcoes);
     const gatilhos = await this.db.select().from(schema.triggers);
 

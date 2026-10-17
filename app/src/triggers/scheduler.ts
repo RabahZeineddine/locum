@@ -8,6 +8,7 @@ import { AgentService } from "../services/agent-service.js";
 import { mcpService, type McpService } from "../services/mcp-service.js";
 import { pollMcpServer } from "../sources/mcp-poll.js";
 import { proximaOcorrencia } from "./cron.js";
+import { AutomacaoArquivada, GatilhoRemovido } from "../db/arquivada.js";
 import { comTrava } from "./trava.js";
 import { lerErro, limparErro, registrarErro, type ErroDoGatilho } from "./erros.js";
 import { lerDescartes, registrarDescartes, type DescarteGuardado } from "./descartes.js";
@@ -464,6 +465,8 @@ export class Scheduler {
       else await registrarErro(this.db, trigger.id, { em: at, tipo: "configuracao", texto: configuracao });
       return { ...base, ...fired, status: "fired", nextDueAt };
     } catch (err) {
+      // Arquivada ou removida no meio da batida: nada a registrar, o gatilho não é mais dela.
+      if (err instanceof GatilhoRemovido || err instanceof AutomacaoArquivada) return { ...base, status: "skipped", detail: message(err), nextDueAt: null };
       await registrarErro(this.db, trigger.id, { em: at, tipo: "batida", texto: message(err) }).catch(() => undefined);
       return { ...base, status: "failed", detail: message(err), nextDueAt };
     }

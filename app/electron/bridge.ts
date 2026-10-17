@@ -125,10 +125,10 @@ function fonteDeTemplates(): TemplateSource {
 
 function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
   return {
-    "agents.list": () => agentService.list(),
+    "agents.list": (opcoes) => agentService.list(opcoes),
     "agents.get": (agentId) => agentService.get(agentId),
     "agents.versions": (agentId) => agentService.listVersions(agentId),
-    "agents.overview": () => agentService.overview(),
+    "agents.overview": (opcoes) => agentService.overview(opcoes),
     "agents.saveEdited": (agentId, spec, note) => agentService.saveEdited(agentId, spec, note),
     "actions.describe": async () => buildGate().describe(),
     "agents.duplicate": (fromId, newId, newName) => agentService.duplicate(fromId, newId, newName),

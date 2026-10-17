@@ -7,6 +7,7 @@ import type { McpService } from "../src/services/mcp-service.js";
 import type { SlackService } from "../src/services/slack-service.js";
 import type { TriggerEntry, TriggerService } from "../src/services/trigger-service.js";
 import { Scheduler, type PollFn, type SweepFn, type ViewerFn } from "../src/triggers/scheduler.js";
+import { AutomacaoArquivada } from "../src/db/arquivada.js";
 import { comTrava } from "../src/triggers/trava.js";
 import { bancoDeTeste } from "./helpers/db.js";
 
@@ -126,6 +127,17 @@ test("gatilho removido enquanto a batida esperava a trava não grava cursor nem 
   assert.deepEqual([outcomes[0]?.status, outcomes[0]?.detail], ["skipped", "gatilho removido"]);
   assert.equal(iniciados.length, 0);
   assert.equal(db.select().from(schema.cursors).all().length, 0);
+});
+
+test("arquivada no meio da batida: o disparo é recusado, o gatilho segue sem erro registrado", async () => {
+  const gatilhos = [gatilho("g1", { kind: "schedule", everyMinutes: 30 } as TriggerConfig)];
+  const m = montar({ gatilhos });
+  (m.scheduler as unknown as { executions: { startForEvent: () => Promise<never> } }).executions.startForEvent = async () => {
+    throw new AutomacaoArquivada("agent-g1");
+  };
+  const { outcomes } = await m.scheduler.tick({ at: T0 });
+  assert.equal(outcomes[0]?.status, "skipped");
+  assert.equal(m.db.select().from(schema.cursors).all().some((c) => c.source === "gatilho-erro"), false);
 });
 
 test("duas batidas juntas no mesmo banco disparam o gatilho uma vez só", async () => {

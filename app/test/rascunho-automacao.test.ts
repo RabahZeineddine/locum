@@ -463,7 +463,7 @@ test("passo rebaixado na importação aparece como aviso do nó, e voltar para a
   assert.equal(volta.steps[0]!.type === "action" && volta.steps[0]!.mode, "auto");
 });
 
-test("apagarRastroLocal tira rascunho, provisória e reservas da automação excluída, e só dela", () => {
+test("apagarRastroLocal tira rascunho, provisória e reservas da automação arquivada, e só dela", () => {
   const a = armazem();
   const salvo = base();
   for (const id of ["um", "um-a"]) {

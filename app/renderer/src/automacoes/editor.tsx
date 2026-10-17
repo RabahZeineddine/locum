@@ -241,7 +241,7 @@ function EditorCarregado({
   const [ocupado, setOcupado] = useState<"salvar" | "rodar" | "ligar" | null>(null);
   const executarAgora = useExecutarAgora();
   const toasts = useToasts();
-  // A automação acabou de ser excluída: o autosave e a guarda de saída não podem trazer o rascunho de volta.
+  // A automação acabou de ser arquivada: o autosave e a guarda de saída não podem trazer o rascunho de volta.
   const excluida = useRef(false);
   const [aviso, setAviso] = useState<{ tipo: "ok" | "erro" | "aviso"; texto: string } | null>(null);
   // O rascunho de uma edição que não chegou ao Salvar (ou um reservado antes): espera a decisão da pessoa. `reservada` diz que ele já saiu da chave ativa.
