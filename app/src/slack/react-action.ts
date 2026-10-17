@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { ActionHandler } from "../approval/gate.js";
+import { exigirDestino } from "../acao/destino.js";
 import { reacaoDoPasso } from "../reacao/passo.js";
 import { slackService, type SlackService } from "../services/slack-service.js";
 import { unwrap } from "../sources/mcp-poll.js";
@@ -70,6 +71,8 @@ export function slackReactHandler(options: SlackReactHandlerOptions = {}): Actio
     modes: ["approve", "auto"],
 
     async propose(payload, target) {
+      // Reação só cai na mensagem do evento; outro destino é recusado.
+      exigirDestino("slack.react", (payload as { destino?: unknown } | null)?.destino);
       const p = (payload ?? {}) as Record<string, unknown>;
       const channel = texto(p.slackChannel) ?? texto(p.channel);
       const ts = texto(p.slackTs) ?? texto(p.ts);

@@ -30,7 +30,7 @@ export async function postSlackReply(
 ): Promise<void> {
   const args = {
     [watch.postChannelArg]: proposal.channel,
-    [watch.threadArg]: proposal.threadTs,
+    ...(proposal.threadTs === undefined ? {} : { [watch.threadArg]: proposal.threadTs }),
     [watch.textArg]: proposal.text,
   };
 

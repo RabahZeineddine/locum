@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { AlvoResolvido } from "../acao/conversa.js";
 
 /**
  * A resposta que um passo de modelo escreve, e o que vira proposta de envio.
@@ -53,8 +54,11 @@ export const SlackPostProposal = z.object({
   /** O servidor MCP que responde pelo Slack, tal como cadastrado. */
   server: z.string().min(1),
   channel: z.string().min(1),
-  threadTs: z.string().min(1),
+  /** Sem a thread, a mensagem abre uma conversa nova no canal. */
+  threadTs: z.string().min(1).optional(),
   text: z.string().min(1),
+  /** Para onde o passo mandou o texto: a Fila mostra o rótulo do destino fixo. */
+  destino: z.object({ tipo: z.enum(["evento", "novo", "fixo"]), rotulo: z.string().nullable() }).optional(),
   /** A mensagem que abriu a thread, para a fila mostrar do que se trata. */
   subject: z.string(),
   permalink: z.string().nullable(),
@@ -81,23 +85,24 @@ export function channelOf(payload: unknown): string {
 }
 
 /**
- * Monta a resposta a partir da saída do passo de modelo e do evento.
+ * Monta a resposta a partir da saída do passo de modelo e do destino resolvido.
  *
  * `subject` e `permalink` ficam vazios aqui: quem os preenche é o handler,
  * depois de achar a thread no que já foi lido. Sem essa conferência a proposta
- * ficaria completa mesmo apontando para uma thread que nunca existiu.
+ * ficaria completa mesmo apontando para uma thread que nunca existiu. Só o
+ * destino `evento` precisa da thread; `novo` e `fixo` abrem conversa nova.
  */
 export function buildPostProposal(
   payload: unknown,
   server: string,
+  alvo: Pick<AlvoResolvido, "tipo" | "conversa" | "rotulo">,
 ): Omit<SlackPostProposal, "subject" | "permalink"> {
   if (payload === null || typeof payload !== "object") {
     throw new Error("o passo de acao do Slack recebeu uma saida que nao e objeto");
   }
 
-  const channel = channelOf(payload);
-
-  const resposta = SlackReply.safeParse(payload);
+  const destino = { tipo: alvo.tipo, rotulo: alvo.rotulo };
+  const resposta = (alvo.tipo === "evento" ? SlackReply : SlackReply.partial({ threadTs: true })).safeParse(payload);
   if (!resposta.success) {
     const onde = resposta.error.issues[0];
     throw new Error(
@@ -107,8 +112,9 @@ export function buildPostProposal(
 
   return {
     server,
-    channel,
-    threadTs: resposta.data.threadTs,
+    channel: alvo.conversa,
+    ...(alvo.tipo === "evento" && resposta.data.threadTs !== undefined ? { threadTs: resposta.data.threadTs } : {}),
     text: resposta.data.text,
+    destino,
   };
 }

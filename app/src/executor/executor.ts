@@ -24,6 +24,7 @@ import { ApprovalGate, settleStep } from "../approval/gate.js";
 import { BudgetExceeded, assertWithinBudget, recordSpend, type Spend } from "./budget.js";
 import { ehLeituraNaAcao, type FerramentaClassificavel } from "../config/leitura.js";
 import { avisoDeDadoExterno, delimitarDado, ehDadoExterno, novaMarca } from "./dado-externo.js";
+import { ACOES_DE_CONVERSA_REGISTRO, destinoDoPasso } from "../acao/destino.js";
 import { ACOES_DE_REACAO, descreverReacao, reacaoDoPasso } from "../reacao/passo.js";
 import { ACOES_DE_CONVERSA, dependenciaDeEvento, recusaSemEvento } from "./dependencia-de-evento.js";
 import { SUBSCRIPTION_RUNTIMES } from "../runtimes/types.js";
@@ -778,13 +779,20 @@ export class Executor {
         : saida;
     // `params` é de quem montou o fluxo, e não do modelo: por isso vale por
     // cima de tudo, inclusive do destino que o evento trouxe.
-    const payload =
+    const comParams =
       step.params === undefined
         ? doPasso
         : {
             ...(doPasso !== null && typeof doPasso === "object" ? (doPasso as object) : {}),
             ...(renderParams(step.params, args.payload, outputs) as object),
           };
+    // O `destino` das ações de conversa vale como o passo o escreveu: conferido
+    // antes da interpolação (um marcador de passo é recusado) e posto por cima
+    // do que a saída do modelo trouxesse com esse nome.
+    const payload =
+      ACOES_DE_CONVERSA_REGISTRO[step.action] !== undefined && comParams !== null && typeof comParams === "object"
+        ? { ...comParams, destino: destinoDoPasso(step.action, step.params) }
+        : comParams;
 
     // Queda entre gravar a pendência e marcar o passo deixa o passo sem
     // `awaiting_approval` com a pendência já na fila. Submeter de novo na

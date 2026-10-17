@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { ActionHandler } from "../approval/gate.js";
+import { exigirDestino } from "../acao/destino.js";
 import { reacaoDoPasso } from "../reacao/passo.js";
 import { alvoDaReacao, reagirNoTeams, type TeamsReactionOptions } from "./reaction.js";
 
@@ -40,6 +41,8 @@ export function teamsReactHandler(options: TeamsReactionOptions = {}): ActionHan
     modes: ["approve", "auto"],
 
     async propose(payload) {
+      // Reação só cai na mensagem do evento; outro destino é recusado.
+      exigirDestino("teams.react", (payload as { destino?: unknown } | null)?.destino);
       const alvo = alvoDaReacao(payload);
       if (alvo === null) throw new Error("o passo de reação no Teams não recebeu um evento de conversa");
       return TeamsReactProposal.parse({ ...reacaoDoPasso(payload), alvo });

@@ -363,6 +363,15 @@ export function graphPeloMcp(
         await acionar("send-chat-message", { chatid: v(chat[1], "chatId"), body: v(comoHtml(corpo), "body") }, true);
         return;
       }
+      const novaNoCanal = rota.match(/^\/teams\/([^/]+)\/channels\/([^/]+)\/messages$/);
+      if (novaNoCanal) {
+        await acionar(
+          "send-channel-message",
+          { teamid: v(novaNoCanal[1], "teamId"), channelid: v(novaNoCanal[2], "channelId"), body: v(comoHtml(corpo), "body") },
+          true,
+        );
+        return;
+      }
       const resposta = rota.match(/^\/teams\/([^/]+)\/channels\/([^/]+)\/messages\/([^/]+)\/replies$/);
       if (resposta) {
         await acionar(

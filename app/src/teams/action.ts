@@ -4,7 +4,9 @@ import type { ActionHandler } from "../approval/gate.js";
 import { db as defaultDb, schema } from "../db/index.js";
 import { TEAMS_CHANNEL_PREFIX, TEAMS_SOURCE } from "../sources/teams-inbox.js";
 import { abrirTeams, type TeamsGraphOptions } from "./graph.js";
-import { alvoDaReacao } from "./reaction.js";
+import { resolverDestino } from "../acao/conversa.js";
+import { adaptadorDoTeams, destinoDe } from "./conversa.js";
+import { lerRefDoTeams } from "./ref.js";
 
 type Db = typeof defaultDb;
 
@@ -49,68 +51,17 @@ export const TeamsPostProposal = z.object({
     .object({
       teamId: z.string().min(1),
       channelId: z.string().min(1),
-      threadId: z.string().min(1),
+      /** Sem a thread, a mensagem abre uma conversa nova no canal. */
+      threadId: z.string().min(1).optional(),
       label: z.string().nullable(),
     })
     .optional(),
+  /** Para onde o passo mandou o texto: a Fila mostra o rótulo do destino fixo. */
+  destino: z.object({ tipo: z.enum(["evento", "novo", "fixo"]), rotulo: z.string().nullable() }).optional(),
 });
 export type TeamsPostProposal = z.infer<typeof TeamsPostProposal>;
 
-/** Prefixo do `repo` que a caixa do Teams grava em cada evento. */
-const PREFIXO = "teams/";
-
-/** Para onde vai a resposta, pelo `repo` do evento. */
-export type DestinoDoTeams =
-  | { tipo: "chat"; chatId: string }
-  | { tipo: "canal"; teamId: string; channelId: string; threadId: string };
-
-/**
- * Evento de PR guarda `owner/repo` em `repo`, e um dono chamado `teams` ou
- * `teams-channel` faria esse nome passar por conversa. Quem distingue é o
- * `prOwner`, que só o evento de PR tem.
- */
-function eventoDePr(payload: unknown): boolean {
-  return typeof (payload as { prOwner?: unknown } | null | undefined)?.prOwner === "string";
-}
-
-/**
- * O destino de um evento de PR que veio do Teams. O `repo` dele é o do GitHub,
- * então a conversa de origem vem dos campos `teams*` que a varredura grava
- * (os mesmos do 👀). Numa mensagem dentro de thread a resposta vai na raiz
- * (`teamsReplyToId`); na raiz do canal, na própria mensagem. Nulo se o PR não
- * veio do Teams.
- */
-function destinoDoPr(payload: unknown): DestinoDoTeams | null {
-  const alvo = alvoDaReacao(payload);
-  if (alvo === null) return null;
-  if (alvo.tipo === "chat") return { tipo: "chat", chatId: alvo.chatId };
-  return { tipo: "canal", teamId: alvo.teamId, channelId: alvo.channelId, threadId: alvo.replyToId ?? alvo.messageId };
-}
-
-export function destinoDe(payload: unknown): DestinoDoTeams {
-  if (eventoDePr(payload)) {
-    const doPr = destinoDoPr(payload);
-    if (doPr === null) throw new Error("o passo de resposta no Teams nao recebeu um evento de conversa");
-    return doPr;
-  }
-  const repo = (payload as { repo?: unknown } | null | undefined)?.repo;
-  if (typeof repo === "string" && repo.startsWith(TEAMS_CHANNEL_PREFIX)) {
-    const partes = repo.slice(TEAMS_CHANNEL_PREFIX.length).split("/");
-    if (partes.length === 3 && partes.every((p) => p !== "")) {
-      return { tipo: "canal", teamId: partes[0]!, channelId: partes[1]!, threadId: partes[2]! };
-    }
-  }
-  return { tipo: "chat", chatId: chatOf(payload) };
-}
-
-/** De qual conversa o evento veio, pelo `repo`, como no Slack. */
-export function chatOf(payload: unknown): string {
-  const repo = (payload as { repo?: unknown } | null | undefined)?.repo;
-  if (eventoDePr(payload) || typeof repo !== "string" || !repo.startsWith(PREFIXO) || repo.length === PREFIXO.length) {
-    throw new Error("o passo de resposta no Teams nao recebeu um evento de conversa");
-  }
-  return repo.slice(PREFIXO.length);
-}
+export { chatOf, destinoDe, type DestinoDoTeams } from "./conversa.js";
 
 export interface TeamsPostHandlerOptions extends TeamsGraphOptions {
   db?: Db;
@@ -138,7 +89,6 @@ export function teamsPostHandler(options: TeamsPostHandlerOptions = {}): ActionH
       if (payload === null || typeof payload !== "object") {
         throw new Error("o passo de acao do Teams recebeu uma saida que nao e objeto");
       }
-      const destino = destinoDe(payload);
       const resposta = TeamsReply.safeParse(payload);
       if (!resposta.success) {
         const onde = resposta.error.issues[0];
@@ -146,26 +96,55 @@ export function teamsPostHandler(options: TeamsPostHandlerOptions = {}): ActionH
           `o passo de modelo nao escreveu a resposta: ${onde?.path.join(".") ?? ""} ${onde?.message ?? ""}`.trim(),
         );
       }
+      const alvo = resolverDestino(adaptadorDoTeams, "teams.post", (payload as { destino?: unknown }).destino, payload);
+      const text = resposta.data.text;
 
-      if (destino.tipo === "canal") {
-        const lida = await ultimaDoCanal(db, destino);
+      if (alvo.tipo === "fixo") {
+        // Conversa que a pessoa escolheu: não precisa ter sido lida pelo gatilho.
+        const conta = (payload as { teamsAccount?: unknown }).teamsAccount;
+        const comConta = typeof conta === "string" && conta !== "" ? { account: conta } : {};
+        const conversa = lerRefDoTeams(alvo.conversa);
+        const destino = { tipo: "fixo" as const, rotulo: alvo.rotulo };
+        const base = { text, subject: "", author: null, webUrl: null, destino, ...comConta };
+        return TeamsPostProposal.parse(
+          conversa.tipo === "chat"
+            ? { chatId: conversa.chatId, ...base }
+            : {
+                chatId: conversa.channelId,
+                ...base,
+                channel: { teamId: conversa.teamId, channelId: conversa.channelId, label: alvo.rotulo },
+              },
+        );
+      }
+
+      // `evento` responde no fio; `novo` usa a mesma conversa, sem o fio.
+      const destino = { tipo: alvo.tipo, rotulo: null };
+      const lugar = destinoDe(payload);
+      if (lugar.tipo === "canal") {
+        const lida = await ultimaDoCanal(db, lugar);
         if (lida === null) {
-          throw new Error(`a thread ${destino.threadId} nao aparece no que o Locum leu do canal`);
+          throw new Error(`a thread ${lugar.threadId} nao aparece no que o Locum leu do canal`);
         }
         const { label, ...resto } = lida;
         return TeamsPostProposal.parse({
-          chatId: destino.channelId,
-          text: resposta.data.text,
+          chatId: lugar.channelId,
+          text,
           ...resto,
-          channel: { teamId: destino.teamId, channelId: destino.channelId, threadId: destino.threadId, label },
+          destino,
+          channel: {
+            teamId: lugar.teamId,
+            channelId: lugar.channelId,
+            ...(alvo.mensagem === null ? {} : { threadId: alvo.mensagem }),
+            label,
+          },
         });
       }
 
-      const lida = await ultimaLida(db, destino.chatId);
+      const lida = await ultimaLida(db, lugar.chatId);
       if (lida === null) {
-        throw new Error(`a conversa ${destino.chatId} nao aparece no que o Locum leu do Teams`);
+        throw new Error(`a conversa ${lugar.chatId} nao aparece no que o Locum leu do Teams`);
       }
-      return TeamsPostProposal.parse({ chatId: destino.chatId, text: resposta.data.text, ...lida });
+      return TeamsPostProposal.parse({ chatId: lugar.chatId, text, ...lida, destino });
     },
 
     async publish(payload) {
@@ -185,8 +164,8 @@ export function teamsPostHandler(options: TeamsPostHandlerOptions = {}): ActionH
         const caminho =
           canal === undefined
             ? `/chats/${encodeURIComponent(proposta.chatId)}/messages`
-            : `/teams/${encodeURIComponent(canal.teamId)}/channels/${encodeURIComponent(canal.channelId)}` +
-              `/messages/${encodeURIComponent(canal.threadId)}/replies`;
+            : `/teams/${encodeURIComponent(canal.teamId)}/channels/${encodeURIComponent(canal.channelId)}/messages` +
+              (canal.threadId === undefined ? "" : `/${encodeURIComponent(canal.threadId)}/replies`);
         await teams.post(caminho, { body: { contentType: "text", content: proposta.text } }, "a mensagem");
       } finally {
         await teams.close();
