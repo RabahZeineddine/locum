@@ -1,12 +1,11 @@
 import { argsDoTexto, definirNoCaminho, ehReferencia, textoDosArgs, valorAoTrocarDeModo, valorDoTexto, type Campo as CampoGerado } from "@/lib/formulario-de-schema";
-import type { ReferenciaDisponivel } from "@/lib/automacao";
 import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { CampoComVariaveis, useVariaveisDoNo } from "./campo-com-variaveis";
 import { CAMPO } from "./campos";
 
 type Args = Record<string, unknown>;
-type Foco = (aplicar: (v: string) => void) => (e: { currentTarget: HTMLInputElement | HTMLTextAreaElement }) => void;
 
 function textoDoValor(v: unknown): string {
   if (v === undefined || v === null) return "";
@@ -35,17 +34,14 @@ function CampoDoArgumento({
   caminho,
   valor,
   aplicar,
-  referencias,
-  focar,
 }: {
   campo: CampoGerado;
   caminho: string[];
   valor: unknown;
   aplicar: (caminho: string[], valor: unknown) => void;
-  referencias: readonly ReferenciaDisponivel[];
-  focar: Foco;
 }) {
   const { t } = useTranslation();
+  const grupos = useVariaveisDoNo();
   const id = caminho.join(".");
   const [emReferencia, setEmReferencia] = useState(() => ehReferencia(valor));
   const gravar = (v: unknown): void => aplicar(caminho, v);
@@ -71,9 +67,7 @@ function CampoDoArgumento({
             aplicar={aplicar}
             campo={filho}
             caminho={[...caminho, filho.nome]}
-            focar={focar}
             key={filho.nome}
-            referencias={referencias}
             valor={(valor as Args | undefined)?.[filho.nome]}
           />
         ))}
@@ -118,21 +112,18 @@ function CampoDoArgumento({
             className={cn(CAMPO, "font-mono text-xs")}
             data-locum-arg-ref={id}
             onChange={(e) => gravar(e.target.value === "" ? undefined : `{{${e.target.value}}}`)}
-            value={referencias.some((r) => r.caminho === caminhoDaReferencia(valor)) ? caminhoDaReferencia(valor) : ""}
+            value={grupos.some((g) => g.itens.some((r) => r.caminho === caminhoDaReferencia(valor))) ? caminhoDaReferencia(valor) : ""}
           >
             <option value="">{t("automations.steps.mcp.call.refChoose")}</option>
-            {(["event", "step"] as const).map((grupo) => {
-              const doGrupo = referencias.filter((r) => r.grupo === grupo);
-              return doGrupo.length === 0 ? null : (
-                <optgroup key={grupo} label={t(grupo === "event" ? "automations.steps.mcp.call.refEvent" : "automations.steps.mcp.call.refSteps")}>
-                  {doGrupo.map((r) => (
-                    <option key={r.caminho} value={r.caminho}>
-                      {r.caminho}
-                    </option>
-                  ))}
-                </optgroup>
-              );
-            })}
+            {grupos.map((g) => (
+              <optgroup key={g.id} label={g.tipo === "event" ? t("automations.steps.mcp.call.refEvent") : t("automations.variables.step", { numero: g.numero, nome: g.nome })}>
+                {g.itens.map((r) => (
+                  <option key={r.caminho} value={r.caminho}>
+                    {r.caminho}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
           </select>
           <input
             className={cn(CAMPO, "font-mono text-xs")}
@@ -163,16 +154,16 @@ function CampoDoArgumento({
           <option value="false">{t("automations.steps.mcp.call.no")}</option>
         </select>
       ) : longo ? (
-        <textarea
+        <CampoComVariaveis
           className={cn(CAMPO, "min-h-20 font-mono text-xs")}
           data-locum-arg={id}
-          onChange={(e) => digitar(e.target.value)}
-          onFocus={focar(digitar)}
+          mudar={digitar}
           placeholder={campo.tipo === "array" ? t("automations.steps.mcp.call.arrayHint") : undefined}
-          value={texto}
+          tipo="textarea"
+          valor={texto}
         />
       ) : (
-        <input className={cn(CAMPO, "font-mono text-xs")} data-locum-arg={id} onChange={(e) => digitar(e.target.value)} onFocus={focar(digitar)} value={texto} />
+        <CampoComVariaveis className={cn(CAMPO, "font-mono text-xs")} data-locum-arg={id} mudar={digitar} valor={texto} />
       )}
       {jsonInvalido ? <p className="text-destructive text-[11px]">{t("automations.steps.mcp.call.jsonInvalid")}</p> : null}
       {campo.descricao === undefined ? null : <p className="text-muted-foreground line-clamp-2 text-[11px]">{campo.descricao}</p>}
@@ -197,15 +188,16 @@ function EditorJson({ args, mudar }: { args: Args; mudar: (a: Args) => void }) {
   const valido = argsDoTexto(texto) !== null;
   return (
     <div className="flex flex-col gap-1">
-      <textarea
+      <CampoComVariaveis
         className={cn(CAMPO, "min-h-24 font-mono text-xs")}
         data-locum-args-json=""
-        onChange={(e) => {
-          setTexto(e.target.value);
-          const novo = argsDoTexto(e.target.value);
+        mudar={(novoTexto) => {
+          setTexto(novoTexto);
+          const novo = argsDoTexto(novoTexto);
           if (novo !== null) mudar(novo);
         }}
-        value={texto}
+        tipo="textarea"
+        valor={texto}
       />
       {valido ? null : <p className="text-destructive text-[11px]">{t("automations.steps.mcp.call.jsonInvalid")}</p>}
     </div>
@@ -221,14 +213,10 @@ export function FormularioDaChamada({
   campos,
   args,
   mudar,
-  referencias,
-  focar,
 }: {
   campos: readonly CampoGerado[];
   args: Args;
   mudar: (args: Args) => void;
-  referencias: readonly ReferenciaDisponivel[];
-  focar: Foco;
 }) {
   const { t } = useTranslation();
   const [cru, setCru] = useState(false);
@@ -258,9 +246,7 @@ export function FormularioDaChamada({
             aplicar={(caminho, valor) => mudar(definirNoCaminho(args, caminho, valor))}
             campo={c}
             caminho={[c.nome]}
-            focar={focar}
             key={c.nome}
-            referencias={referencias}
             valor={args[c.nome]}
           />
         ))

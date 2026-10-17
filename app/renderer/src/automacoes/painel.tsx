@@ -3,15 +3,15 @@ import { StatusDot } from "@/components/ui/status-dot";
 import {
   ACOES_POR_PARAMETRO,
   anteriores,
+  catalogoDoPasso,
   componenteDoPasso,
   ehGatilho,
+  numerarPassos,
   FORMATOS,
   formatoDe,
   passoComAgent,
   passoSemAgent,
-  referenciasDisponiveis,
   trocarPasso,
-  variaveis,
   type AgentDaBiblioteca,
   type Formato,
   type PassoDeAcao,
@@ -29,7 +29,7 @@ import { canalDoSlackDigitado, opcoesDeCanaisDoSlack, rotuloDoChipDoSlack } from
 import { organizarChats } from "@/lib/chats-do-teams";
 import { cn } from "@/lib/utils";
 import { Trash2, X } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { LogicCompare, type LogicStep, type TriggerConfig } from "../../../src/config/types";
 import { codigoDoErroDeCanais } from "../../../src/slack/channels-erro";
@@ -40,6 +40,7 @@ import { resumoDoAgent } from "@/lib/resumo-do-agent";
 import { SeletorDeFerramentas, SeletorDeModelo, useCatalogo } from "../editor-agent";
 import type { RotaId } from "../rotas";
 import { Ajuda, Alternador, Campo, CAMPO, Minutos } from "./campos";
+import { CampoComVariaveis, VariaveisDoNo } from "./campo-com-variaveis";
 import { esquemasDeSaidaDasConexoes, type FerramentasDasConexoes } from "./ferramentas-das-conexoes";
 import { DestinoDoNo } from "./destino-do-no";
 import { ACOES_DE_CONVERSA_REGISTRO } from "../../../src/acao/destino";
@@ -50,7 +51,7 @@ import { passoDaOperacao, reconhecerPasso, temTrocaDeOperacao } from "@/lib/apps
 import { ComboboxComChips, useListaEmCache, type OpcaoDoCombobox } from "./combobox";
 import { GatilhoDoGithub, ListaDeDescartes } from "./gatilho-github";
 import { escopoDoGatilho } from "@/lib/titulo-do-gatilho";
-import { appDoGatilho, appDoPasso, Selo, tituloDoGatilho, tituloDoPasso } from "./visual";
+import { appDoGatilho, appDoPasso, NumeroDoPasso, Selo, tituloDoGatilho, tituloDoPasso } from "./visual";
 
 type Tracker = ReadResult<"trackers.list">[number];
 
@@ -102,6 +103,20 @@ export function PainelDoNo({
   const { t, i18n } = useTranslation();
   const gatilho = ehGatilho(chave) ? rascunho.gatilhos.find((g) => g.chave === chave) : undefined;
   const passo = ehGatilho(chave) ? undefined : rascunho.spec.steps.find((p) => p.key === chave);
+  const acoes = useRead("actions.describe").data;
+  const grupos = useMemo(
+    () =>
+      passo === undefined
+        ? []
+        : catalogoDoPasso(rascunho, chave, {
+            saidas,
+            esquemasDeSaida: esquemasDeSaidaDasConexoes(conexoes.porServidor),
+            esquemasDeAcao: Object.fromEntries((acoes ?? []).map((a) => [a.kind, a.outputSchema])),
+          }),
+    // O catálogo só depende dos passos e dos gatilhos: nome do fluxo ou posição no canvas não o refazem.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rascunho.spec.steps, rascunho.gatilhos, chave, passo, saidas, conexoes.porServidor, acoes],
+  );
   if (gatilho === undefined && passo === undefined) return null;
 
   // A descrição longa do componente vai no ⓘ do cabeçalho, e não num parágrafo acima dos campos.
@@ -120,6 +135,7 @@ export function PainelDoNo({
     setRascunho((r) => ({ ...r, gatilhos: r.gatilhos.map((g) => (g.chave === chave ? { ...g, config } : g)) }));
 
   return (
+    <VariaveisDoNo value={grupos}>
     <aside
       className={cn(
         "border-border bg-card flex shrink-0 flex-col gap-4 overflow-y-auto rounded-lg border p-3",
@@ -129,6 +145,7 @@ export function PainelDoNo({
       data-locum-painel={chave}
     >
       <div className="flex items-center gap-2">
+        {passo === undefined ? null : <NumeroDoPasso numero={numerarPassos(rascunho.spec.steps).get(chave) ?? 0} t={t} />}
         {passo !== undefined && passo.type === "action" && temTrocaDeOperacao(passo) ? (
           <>
             <TrocaDeOperacao
@@ -207,14 +224,13 @@ export function PainelDoNo({
           setRascunho={setRascunho}
         />
       ) : passo!.type === "logic" ? (
-        <ConfigDaLogica passo={passo as LogicStep} rascunho={rascunho} setRascunho={setRascunho} />
+        <ConfigDaLogica passo={passo as LogicStep} setRascunho={setRascunho} />
       ) : (
         <ConfigDaAcao
           avisoDoApp={avisoDoApp}
           conexoes={conexoes}
           passo={passo as PassoDeAcao}
           rascunho={rascunho}
-          saidas={saidas}
           setRascunho={setRascunho}
           trackers={trackers}
         />
@@ -225,6 +241,7 @@ export function PainelDoNo({
         {t("automations.panel.remove")}
       </Button>
     </aside>
+    </VariaveisDoNo>
   );
 }
 
@@ -635,66 +652,31 @@ function ChatsDoTeams({
 
 /* ------------------------------------------------------------------- passo */
 
-/** Instrução com as variáveis clicáveis e o formato da saída: igual no agent e na IA avulsa. */
+/** Instrução com sugestão de variáveis ao digitar `{{` e o formato da saída: igual no agent e na IA avulsa. */
 function TarefaEFormato({
-  chave,
   passo,
-  rascunho,
   trocar,
   rotulo,
   dica,
 }: {
-  chave: string;
   passo: PassoDeIA;
-  rascunho: Rascunho;
   trocar: (novo: PassoDeIA) => void;
   rotulo: string;
   dica?: string;
 }) {
   const { t } = useTranslation();
-  const caixa = useRef<HTMLTextAreaElement>(null);
   const formato = formatoDe(passo);
-  const disponiveis = variaveis(rascunho, chave);
-
-  const inserir = (variavel: string): void => {
-    const el = caixa.current;
-    const trecho = `{{${variavel}}}`;
-    const inicio = el?.selectionStart ?? passo.prompt.length;
-    const fim = el?.selectionEnd ?? passo.prompt.length;
-    trocar({ ...passo, prompt: passo.prompt.slice(0, inicio) + trecho + passo.prompt.slice(fim) });
-    requestAnimationFrame(() => {
-      el?.focus();
-      el?.setSelectionRange(inicio + trecho.length, inicio + trecho.length);
-    });
-  };
 
   return (
     <>
       <Campo ajuda={dica} rotulo={rotulo}>
-        <textarea
+        <CampoComVariaveis
           className={cn(CAMPO, "min-h-40 resize-y font-mono text-xs leading-relaxed")}
           data-locum-prompt=""
-          onChange={(e) => trocar({ ...passo, prompt: e.target.value })}
-          ref={caixa}
-          value={passo.prompt}
+          mudar={(prompt) => trocar({ ...passo, prompt })}
+          tipo="textarea"
+          valor={passo.prompt}
         />
-        {disponiveis.length > 0 ? (
-          <div className="flex flex-col gap-1">
-            <span className="text-muted-foreground text-[11px]">{t("automations.steps.ai.variables")}</span>
-            <div className="flex flex-wrap gap-1">
-              {disponiveis.map((v) => (
-                <button
-                  className="bg-muted hover:bg-muted/70 cursor-pointer rounded px-1.5 py-0.5 font-mono text-[11px]"
-                  key={v}
-                  onClick={() => inserir(v)}
-                  type="button"
-                >
-                  {v}
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : null}
       </Campo>
       <Campo rotulo={t("automations.steps.ai.format")}>
         <select
@@ -871,10 +853,8 @@ function ConfigDoAgent({
         <input className={CAMPO} onChange={(e) => trocar({ ...passo, name: e.target.value })} value={passo.name} />
       </Campo>
       <TarefaEFormato
-        chave={chave}
         dica={t("automations.steps.agent.taskHint")}
         passo={passo}
-        rascunho={rascunho}
         rotulo={t("automations.steps.agent.task")}
         trocar={trocar}
       />
@@ -980,7 +960,7 @@ function ConfigDaIA({
       <Campo rotulo={t("automations.steps.ai.model")}>
         <SeletorDeModelo catalogo={catalogo} trocar={(model) => trocar({ ...passo, model })} valor={passo.model} />
       </Campo>
-      <TarefaEFormato chave={chave} passo={passo} rascunho={rascunho} rotulo={t("automations.steps.ai.prompt")} trocar={trocar} />
+      <TarefaEFormato passo={passo} rotulo={t("automations.steps.ai.prompt")} trocar={trocar} />
       <Campo rotulo={t("automations.steps.ai.tools")}>
         <SeletorDeFerramentas
           defaultTools={rascunho.spec.defaultTools}
@@ -1017,12 +997,10 @@ function ConfigDaAcao({
   setRascunho,
   trackers,
   conexoes,
-  saidas,
   avisoDoApp,
 }: {
   passo: PassoDeAcao;
   avisoDoApp: (app: string) => string | null;
-  saidas: Readonly<Record<string, unknown>>;
   rascunho: Rascunho;
   setRascunho: (f: (r: Rascunho) => Rascunho) => void;
   trackers: readonly Tracker[];
@@ -1065,8 +1043,8 @@ function ConfigDaAcao({
           aoEscolher={(operacao) => trocar(passoDaOperacao(rascunho.spec, operacao, passo) as PassoDeAcao)}
         />
       ) : null}
-      {passo.action === "mcp.call" && (reconhecerPasso(passo).operacao.tipo !== "vazia" || reconhecerPasso(passo).app === "mcp") ? <ConfigDaChamada conexoes={conexoes} passo={passo} rascunho={rascunho} saidas={saidas} trocar={trocar} /> : null}
-      {passo.action === "http.request" ? <ConfigDoHttp passo={passo} rascunho={rascunho} trocar={trocar} /> : null}
+      {passo.action === "mcp.call" && (reconhecerPasso(passo).operacao.tipo !== "vazia" || reconhecerPasso(passo).app === "mcp") ? <ConfigDaChamada conexoes={conexoes} passo={passo} trocar={trocar} /> : null}
+      {passo.action === "http.request" ? <ConfigDoHttp passo={passo} trocar={trocar} /> : null}
       {ACOES_DE_CONVERSA_REGISTRO[passo.action] !== undefined ? (
         <DestinoDoNo
           acao={passo.action}
@@ -1160,16 +1138,13 @@ function ModoDaAcao({ passo, trocar }: { passo: PassoDeAcao; trocar: (novo: Pass
  */
 function ConfigDaLogica({
   passo,
-  rascunho,
   setRascunho,
 }: {
   passo: LogicStep;
-  rascunho: Rascunho;
   setRascunho: (f: (r: Rascunho) => Rascunho) => void;
 }) {
   const { t } = useTranslation();
   const trocar = (novo: LogicStep): void => setRascunho((r) => ({ ...r, spec: trocarPasso(r.spec, passo.key, novo) }));
-  const { focar, inserir } = useInsercao();
   const [novoCaso, setNovoCaso] = useState("");
   const comTitulo = passo.op === "slack.blocks" || passo.op === "teams.card";
   const semContra = passo.compare === "exists" || passo.compare === "empty";
@@ -1179,24 +1154,18 @@ function ConfigDaLogica({
       <Campo rotulo={t("automations.panel.name")}>
         <input className={CAMPO} onChange={(e) => trocar({ ...passo, name: e.target.value })} value={passo.name} />
       </Campo>
-      <Variaveis inserir={inserir} lista={variaveis(rascunho, passo.key)} />
       {comTitulo ? (
         <Campo rotulo={t("automations.steps.logic.title")}>
-          <input
-            className={CAMPO}
-            onChange={(e) => trocar({ ...passo, title: e.target.value })}
-            onFocus={focar((title) => trocar({ ...passo, title }))}
-            value={passo.title}
-          />
+          <CampoComVariaveis className={CAMPO} mudar={(title) => trocar({ ...passo, title })} valor={passo.title} />
         </Campo>
       ) : null}
       <Campo rotulo={t(`automations.steps.logic.${passo.op === "if" || passo.op === "switch" ? "look" : "input"}`)}>
-        <textarea
+        <CampoComVariaveis
           className={cn(CAMPO, "min-h-16 font-mono text-xs")}
           data-locum-logica-valor=""
-          onChange={(e) => trocar({ ...passo, value: e.target.value })}
-          onFocus={focar((value) => trocar({ ...passo, value }))}
-          value={passo.value}
+          mudar={(value) => trocar({ ...passo, value })}
+          tipo="textarea"
+          valor={passo.value}
         />
       </Campo>
       {passo.op === "if" ? (
@@ -1216,12 +1185,7 @@ function ConfigDaLogica({
           </Campo>
           {semContra ? null : (
             <Campo rotulo={t("automations.steps.logic.against")}>
-              <input
-                className={cn(CAMPO, "font-mono text-xs")}
-                onChange={(e) => trocar({ ...passo, against: e.target.value })}
-                onFocus={focar((against) => trocar({ ...passo, against }))}
-                value={passo.against}
-              />
+              <CampoComVariaveis className={cn(CAMPO, "font-mono text-xs")} mudar={(against) => trocar({ ...passo, against })} valor={passo.against} />
             </Campo>
           )}
         </>
@@ -1278,58 +1242,6 @@ function ConfigDaLogica({
 
 /* ------------------------------------------------------ ações por parâmetro */
 
-/**
- * Insere `{{variavel}}` no último campo de texto que teve foco. Um painel de
- * ação tem vários campos, e uma fileira de botões por campo esconderia o
- * formulário.
- */
-function useInsercao() {
-  const alvo = useRef<{ el: HTMLInputElement | HTMLTextAreaElement; aplicar: (v: string) => void } | null>(null);
-  const focar = (aplicar: (v: string) => void) => (e: { currentTarget: HTMLInputElement | HTMLTextAreaElement }) => {
-    alvo.current = { el: e.currentTarget, aplicar };
-  };
-  const inserir = (variavel: string): void => {
-    const atual = alvo.current;
-    if (atual === null) return;
-    const { el, aplicar } = atual;
-    const trecho = `{{${variavel}}}`;
-    const inicio = el.selectionStart ?? el.value.length;
-    const fim = el.selectionEnd ?? el.value.length;
-    aplicar(el.value.slice(0, inicio) + trecho + el.value.slice(fim));
-    requestAnimationFrame(() => {
-      el.focus();
-      el.setSelectionRange(inicio + trecho.length, inicio + trecho.length);
-    });
-  };
-  return { focar, inserir };
-}
-
-function Variaveis({ lista, inserir }: { lista: readonly string[]; inserir: (v: string) => void }) {
-  const { t } = useTranslation();
-  if (lista.length === 0) return null;
-  return (
-    <div className="flex flex-col gap-1">
-      <span className="text-muted-foreground text-[11px]">{t("automations.panel.variablesFocused")}</span>
-      <div className="flex flex-wrap gap-1">
-        {lista.map((v) => (
-          <button
-            className="bg-muted hover:bg-muted/70 cursor-pointer rounded px-1.5 py-0.5 font-mono text-[11px]"
-            key={v}
-            // mousedown, e não click: o click tiraria o foco do campo antes de inserir.
-            onMouseDown={(e) => {
-              e.preventDefault();
-              inserir(v);
-            }}
-            type="button"
-          >
-            {v}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function textoDoValor(v: unknown): string {
   if (v === undefined || v === null) return "";
   return typeof v === "string" ? v : JSON.stringify(v);
@@ -1338,23 +1250,18 @@ function textoDoValor(v: unknown): string {
 /** Qualquer ferramenta de um app conectado, com o formulário gerado do schema dela. */
 function ConfigDaChamada({
   passo,
-  rascunho,
   trocar,
   conexoes,
-  saidas,
 }: {
   passo: PassoDeAcao;
-  rascunho: Rascunho;
   trocar: (novo: PassoDeAcao) => void;
   conexoes: FerramentasDasConexoes;
-  saidas: Readonly<Record<string, unknown>>;
 }) {
   const { t } = useTranslation();
   const params = (passo.params ?? {}) as { server?: string; tool?: string; args?: Record<string, unknown>; autoEscrita?: boolean };
   const servidor = params.server ?? "";
   const estado = conexoes.porServidor[servidor];
   const lista = estado?.tools ?? null;
-  const { focar, inserir } = useInsercao();
   const { carregar } = conexoes;
 
   // O cache guarda a lista da última leitura. Servidor que nunca foi lido sobe uma vez, ao ser escolhido.
@@ -1457,15 +1364,7 @@ function ConfigDaChamada({
       )}
       {escolhida === undefined ? null : (
         <>
-          <Variaveis inserir={inserir} lista={variaveis(rascunho, passo.key)} />
-          <FormularioDaChamada
-            key={`${servidor}/${params.tool ?? ""}`}
-            args={args}
-            campos={campos}
-            focar={focar}
-            mudar={(novo) => mudar({ args: novo })}
-            referencias={referenciasDisponiveis(rascunho, passo.key, { saidas, esquemasDeSaida: esquemasDeSaidaDasConexoes(conexoes.porServidor) })}
-          />
+          <FormularioDaChamada key={`${servidor}/${params.tool ?? ""}`} args={args} campos={campos} mudar={(novo) => mudar({ args: novo })} />
         </>
       )}
     </>
@@ -1499,7 +1398,6 @@ function ConfigDaReacao({
     for (const k of Object.keys(juntos)) if (juntos[k] === undefined) delete juntos[k];
     trocar({ ...passo, params: juntos });
   };
-  const { focar, inserir } = useInsercao();
   const [novoValor, setNovoValor] = useState("");
   const porValor = params.porValor;
   const mapa = Object.entries(porValor?.mapa ?? {});
@@ -1507,7 +1405,6 @@ function ConfigDaReacao({
 
   return (
     <>
-      <Variaveis inserir={inserir} lista={variaveis(rascunho, passo.key)} />
       <Campo rotulo={t("automations.steps.react.operation")}>
         <select
           className={CAMPO}
@@ -1536,35 +1433,28 @@ function ConfigDaReacao({
       </Campo>
       {porValor === undefined ? (
         <Campo rotulo={t("automations.steps.react.emoji")}>
-          <input
-            className={CAMPO}
-            data-locum-reacao-emoji=""
-            onChange={(e) => mudar({ emoji: e.target.value })}
-            onFocus={focar((emoji) => mudar({ emoji }))}
-            value={params.emoji ?? ""}
-          />
+          <CampoComVariaveis className={CAMPO} data-locum-reacao-emoji="" mudar={(emoji) => mudar({ emoji })} valor={params.emoji ?? ""} />
         </Campo>
       ) : (
         <>
           <Campo ajuda={t("automations.steps.react.fromHint")} rotulo={t("automations.steps.react.from")}>
-            <input
+            <CampoComVariaveis
               className={cn(CAMPO, "font-mono text-xs")}
               data-locum-reacao-de=""
-              onChange={(e) => mudar({ porValor: { ...porValor, de: e.target.value } })}
-              onFocus={focar((de) => mudar({ porValor: { ...porValor, de } }))}
+              mudar={(de) => mudar({ porValor: { ...porValor, de } })}
               placeholder={"{{steps.revisar.verdict}}" as string}
-              value={porValor.de ?? ""}
+              valor={porValor.de ?? ""}
             />
           </Campo>
           <Campo rotulo={t("automations.steps.react.map")}>
             {mapa.map(([valor, emoji]) => (
               <div className="flex items-center gap-1.5" key={valor}>
                 <span className="w-32 shrink-0 truncate font-mono text-xs">{valor}</span>
-                <input
+                <CampoComVariaveis
                   aria-label={t("automations.steps.react.emojiFor", { value: valor })}
                   className={CAMPO}
-                  onChange={(e) => aplicarMapa({ ...porValor.mapa, [valor]: e.target.value })}
-                  value={emoji}
+                  mudar={(novo) => aplicarMapa({ ...porValor.mapa, [valor]: novo })}
+                  valor={emoji}
                 />
                 <button
                   aria-label={t("automations.steps.react.removeValue", { value: valor })}
@@ -1601,21 +1491,17 @@ function ConfigDaReacao({
             </div>
           </Campo>
           <Campo rotulo={t("automations.steps.react.fallback")}>
-            <input
-              className={CAMPO}
-              onChange={(e) => mudar({ porValor: { ...porValor, padrao: e.target.value } })}
-              value={porValor.padrao ?? ""}
-            />
+            <CampoComVariaveis className={CAMPO} mudar={(padrao) => mudar({ porValor: { ...porValor, padrao } })} valor={porValor.padrao ?? ""} />
           </Campo>
         </>
       )}
       {(params.operacao ?? "set") === "set" ? (
         <Campo ajuda={t("automations.steps.react.removeFirstHint")} rotulo={t("automations.steps.react.removeFirst")}>
-          <input
+          <CampoComVariaveis
             className={CAMPO}
             data-locum-reacao-tirar=""
-            onChange={(e) => mudar({ tirar: e.target.value === "" ? undefined : e.target.value })}
-            value={params.tirar ?? ""}
+            mudar={(tirar) => mudar({ tirar: tirar === "" ? undefined : tirar })}
+            valor={params.tirar ?? ""}
           />
         </Campo>
       ) : null}
@@ -1628,23 +1514,19 @@ const METODOS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
 /** Qualquer API: método, endereço, cabeçalhos e corpo, todos com marcadores. */
 function ConfigDoHttp({
   passo,
-  rascunho,
   trocar,
 }: {
   passo: PassoDeAcao;
-  rascunho: Rascunho;
   trocar: (novo: PassoDeAcao) => void;
 }) {
   const { t } = useTranslation();
   const params = (passo.params ?? {}) as { method?: string; url?: string; headers?: Record<string, string>; body?: unknown };
   const mudar = (novo: Partial<typeof params>): void => trocar({ ...passo, params: { ...params, ...novo } });
   const cabecalhos = Object.entries(params.headers ?? {});
-  const { focar, inserir } = useInsercao();
   const [novoCabecalho, setNovoCabecalho] = useState("");
 
   return (
     <>
-      <Variaveis inserir={inserir} lista={variaveis(rascunho, passo.key)} />
       <div className="flex gap-1.5">
         <select className={cn(CAMPO, "w-28")} onChange={(e) => mudar({ method: e.target.value })} value={params.method ?? "POST"}>
           {METODOS.map((m) => (
@@ -1653,14 +1535,13 @@ function ConfigDoHttp({
             </option>
           ))}
         </select>
-        <input
+        <CampoComVariaveis
           aria-label={t("automations.steps.http.request.url")}
           className={cn(CAMPO, "font-mono text-xs")}
           data-locum-http-url=""
-          onChange={(e) => mudar({ url: e.target.value })}
-          onFocus={focar((url) => mudar({ url }))}
+          mudar={(url) => mudar({ url })}
           placeholder={t("automations.steps.http.request.urlPlaceholder")}
-          value={params.url ?? ""}
+          valor={params.url ?? ""}
         />
       </div>
       <Campo ajuda={t("automations.steps.http.request.headersHint")} rotulo={t("automations.steps.http.request.headers")}>
@@ -1669,12 +1550,7 @@ function ConfigDoHttp({
           return (
             <div className="flex items-center gap-1.5" key={nome}>
               <span className="w-28 shrink-0 truncate font-mono text-xs">{nome}</span>
-              <input
-                className={cn(CAMPO, "font-mono text-xs")}
-                onChange={(e) => aplicar(e.target.value)}
-                onFocus={focar(aplicar)}
-                value={valor}
-              />
+              <CampoComVariaveis className={cn(CAMPO, "font-mono text-xs")} mudar={aplicar} valor={valor} />
               <button
                 aria-label={t("automations.steps.http.request.removeHeader", { name: nome })}
                 className="text-muted-foreground hover:text-foreground cursor-pointer rounded p-1"
@@ -1712,12 +1588,12 @@ function ConfigDoHttp({
       </Campo>
       {params.method === "GET" ? null : (
         <Campo ajuda={t("automations.steps.http.request.bodyHint")} rotulo={t("automations.steps.http.request.body")}>
-          <textarea
+          <CampoComVariaveis
             className={cn(CAMPO, "min-h-28 font-mono text-xs")}
             data-locum-http-corpo=""
-            onChange={(e) => mudar({ body: e.target.value })}
-            onFocus={focar((body) => mudar({ body }))}
-            value={textoDoValor(params.body)}
+            mudar={(body) => mudar({ body })}
+            tipo="textarea"
+            valor={textoDoValor(params.body)}
           />
         </Campo>
       )}

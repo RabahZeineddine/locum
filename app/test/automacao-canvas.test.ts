@@ -20,7 +20,7 @@ import {
   problemas,
   rascunhoDoModelo,
   removerPasso,
-  variaveis,
+  catalogoDoPasso,
   type Rascunho,
 } from "../renderer/lib/automacao.js";
 
@@ -114,11 +114,11 @@ test("problemas: canal vazio e tracker ausente bloqueiam, app desligado só avis
 
 test("variáveis do prompt vêm do gatilho e dos passos anteriores", () => {
   const r = slackJira();
-  const doEscrever = variaveis(r, "escrever");
+  const doEscrever = catalogoDoPasso(r, "escrever").flatMap((g) => g.itens.map((i) => i.caminho));
   assert.ok(doEscrever.includes("event.text"));
   assert.ok(doEscrever.includes("steps.analisar"));
   assert.ok(doEscrever.includes("steps.abrir-tarefa"));
-  assert.ok(!variaveis(r, "analisar").some((v) => v.startsWith("steps.")));
+  assert.ok(!catalogoDoPasso(r, "analisar").some((g) => g.tipo === "step"));
 });
 
 test("ação em app e chamada de API: sem destino bloqueia, e não pedem IA antes", () => {

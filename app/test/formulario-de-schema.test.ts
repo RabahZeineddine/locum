@@ -160,7 +160,8 @@ test("alternar para o JSON e voltar não perde valor", async () => {
 });
 
 test("referências disponíveis: campos do evento do gatilho, passos anteriores e as propriedades do formato de saída", async () => {
-  const { referenciasDisponiveis } = await import("../renderer/lib/automacao.js");
+  const { catalogoDoPasso } = await import("../renderer/lib/automacao.js");
+  const referenciasDisponiveis = (...a: Parameters<typeof catalogoDoPasso>) => catalogoDoPasso(...a).flatMap((g) => g.itens.slice(g.tipo === "event" ? 1 : 0));
   const modelo = { type: "model", key: "revisar", name: "Revisar", needs: [], prompt: "x", outputSchema: { type: "object", properties: { verdict: { type: "string" } } } };
   const acao = { type: "action", key: "reagir", name: "R", needs: ["revisar"], optional: false, action: "mcp.call", mode: "approve", params: {} };
   const r = {
@@ -190,18 +191,19 @@ test("caminhos de uma saída: campos, o primeiro item de cada lista e objetos an
 });
 
 test("o seletor oferece os caminhos da saída do último run e o outputSchema da ferramenta", async () => {
-  const { referenciasDisponiveis } = await import("../renderer/lib/automacao.js");
+  const { catalogoDoPasso } = await import("../renderer/lib/automacao.js");
+  const referenciasDisponiveis = (...a: Parameters<typeof catalogoDoPasso>) => catalogoDoPasso(...a).flatMap((g) => g.itens.slice(g.tipo === "event" ? 1 : 0));
   const ler = { type: "action", key: "ler", name: "Ler", needs: [], optional: false, action: "mcp.call", mode: "auto", params: { server: "fx", tool: "totais", args: {} } };
   const outro = { type: "action", key: "outro", name: "Outro", needs: [], optional: false, action: "mcp.call", mode: "auto", params: { server: "fx", tool: "sem_schema", args: {} } };
   const usar = { type: "action", key: "usar", name: "Usar", needs: ["ler", "outro"], optional: false, action: "mcp.call", mode: "approve", params: {} };
   const r = { spec: { id: "a", name: "A", model: "m", steps: [ler, outro, usar] }, gatilhos: [] } as never;
   const sem = referenciasDisponiveis(r, "usar").map((x) => x.caminho);
-  assert.deepEqual(sem, ["steps.ler", "steps.outro"], "sem run anterior nem schema, só o passo inteiro");
+  assert.deepEqual(sem, ["steps.ler", "steps.ler.state", "steps.ler.semResposta", "steps.outro", "steps.outro.state", "steps.outro.semResposta"], "sem run anterior nem schema, o passo inteiro e o formato de quando ele é dado por publicado à mão");
   const com = referenciasDisponiveis(r, "usar", {
     saidas: { ler: { total: 7, itens: ["a"] }, outro: { text: "oi" } },
     esquemasDeSaida: { "fx/totais": { type: "object", properties: { total: { type: "number" }, extra: { type: "string" } } } },
   }).map((x) => x.caminho);
-  assert.deepEqual(com, ["steps.ler", "steps.ler.total", "steps.ler.extra", "steps.ler.itens", "steps.ler.itens.0", "steps.outro", "steps.outro.text"]);
+  assert.deepEqual(com, ["steps.ler", "steps.ler.total", "steps.ler.extra", "steps.ler.itens", "steps.ler.itens.0", "steps.ler.state", "steps.ler.semResposta", "steps.outro", "steps.outro.text", "steps.outro.state", "steps.outro.semResposta"]);
 });
 
 test("as saídas do último run: a mais recente de cada passo, sem o estado de ensaio nem saída vazia", async () => {

@@ -233,6 +233,14 @@ export const CANAIS_SEM_FERRAMENTA: Record<string, string> = {
   "updates.dismiss": "lembra o \"Depois\" só até a janela fechar; não há janela do lado do MCP",
 };
 
+/**
+ * O que a tela calcula no próprio processo com código compartilhado, e por isso
+ * não tem canal na ponte: a função e a ferramenta MCP que devolve o mesmo.
+ */
+export const CALCULO_DA_TELA_COM_FERRAMENTA: Record<string, string> = {
+  "catalogoDeReferencias (src/config/referencias.ts): o autocomplete de {{...}} do editor": "list_step_references",
+};
+
 export function semFerramenta(canal: string): string | undefined {
   for (const [chave, motivo] of Object.entries(CANAIS_SEM_FERRAMENTA)) {
     if (chave.endsWith(".") ? canal.startsWith(chave) : canal === chave) return motivo;

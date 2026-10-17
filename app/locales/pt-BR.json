@@ -2234,7 +2234,21 @@
       "branchTrue": "sim",
       "branchFalse": "não",
       "branchDefault": "outro",
-      "chooseWhat": "escolha o que fazer"
+      "chooseWhat": "escolha o que fazer",
+      "stepNumber": "Passo {{numero}}"
+    },
+    "variables": {
+      "label": "Variáveis",
+      "event": "Evento",
+      "step": "{{numero}} · {{nome}}",
+      "condicao": {
+        "publicado-a-mao": "só se dado por publicado à mão"
+      },
+      "insert": "Inserir variável",
+      "hint": "Digite {{ ou Ctrl+Espaço para inserir uma variável.",
+      "count_zero": "Nenhuma variável",
+      "count_one": "{{count}} variável",
+      "count_other": "{{count}} variáveis"
     },
     "panel": {
       "close": "Fechar painel",
@@ -2260,7 +2274,6 @@
       },
       "autoHint": "Sai sozinho, sem passar pela fila. Use quando já confiar no que esse fluxo manda.",
       "approvalOnly": "Esta ação sempre para na fila até você aprovar.",
-      "variablesFocused": "Clique para inserir no campo selecionado:",
       "help": "Saiba mais",
       "changeOperation": "Trocar a operação"
     },
@@ -2426,7 +2439,6 @@
         "description": "Lê, analisa e escreve. O resultado vai para o próximo passo.",
         "model": "Modelo",
         "prompt": "Instrução",
-        "variables": "Clique para inserir no texto:",
         "tools": "Ferramentas",
         "format": "Formato da saída",
         "formats": {

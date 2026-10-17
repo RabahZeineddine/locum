@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, lte } from "drizzle-orm";
 import { db, schema } from "../db/index.js";
+import type { EsquemaJson } from "../config/referencias.js";
 import type { ActionMode } from "../config/types.js";
 
 /**
@@ -24,6 +25,13 @@ type Db = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
  */
 export class PublishConflict extends Error {}
 
+/** A saída de uma ação que não devolve resposta: só o estado em que a publicação ficou. */
+export const SAIDA_PADRAO_DA_ACAO: EsquemaJson = {
+  type: "object",
+  properties: { state: { type: "string", enum: ["pending", "drafted", "published"], description: "Where the publication stands." } },
+  required: ["state"],
+};
+
 export type ActionRequest = {
   runId: string;
   stepId: string;
@@ -43,6 +51,12 @@ export type ActionHandler = {
    * ninguem ver.
    */
   modes?: readonly ActionMode[];
+  /**
+   * O formato da saída do passo desta ação (JSON Schema), para a tela e o MCP
+   * oferecerem `{{steps.x.campo}}`. Ausente vale `SAIDA_PADRAO_DA_ACAO`: a ação
+   * que não devolve resposta guarda só `{ state }`.
+   */
+  outputSchema?: EsquemaJson;
   /**
    * Monta o que vai para a fila a partir da saida do passo.
    *
@@ -96,11 +110,12 @@ export class ApprovalGate {
    * divergem na primeira ação nova. A gate continua recusando o modo errado na
    * hora de publicar, com ou sem a tela ter avisado.
    */
-  describe(): { kind: string; modes: readonly ActionMode[]; holdsByContent: boolean }[] {
+  describe(): { kind: string; modes: readonly ActionMode[]; holdsByContent: boolean; outputSchema: EsquemaJson }[] {
     return [...this.handlers.entries()].map(([kind, handler]) => ({
       kind,
       modes: handler.modes ?? (["approve", "draft", "auto"] as const),
       holdsByContent: typeof handler.holdForApproval === "function",
+      outputSchema: handler.outputSchema ?? SAIDA_PADRAO_DA_ACAO,
     }));
   }
 
