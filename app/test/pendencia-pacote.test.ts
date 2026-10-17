@@ -220,3 +220,39 @@ test("nó que veio em auto e entrou em approve fica marcado, não some por omiss
   assert.equal(volta.version.spec.rebaixados, undefined);
   assert.equal(volta.version.spec.steps[0]!.type === "action" && volta.version.spec.steps[0]!.mode, "auto");
 });
+
+test("pacote v1 com omitidos de gatilho sem nome de param: cada campo local vira pendência e o ligar trava", async () => {
+  const v1 = {
+    formato: "locum-pacote",
+    versao: 1,
+    automacao: {
+      id: "gatilhos-antigos",
+      spec: { name: "Gatilhos antigos", steps: [{ ...base, type: "model", key: "ler", name: "Ler", model: "claude-code/claude-sonnet-5", prompt: "oi" }] },
+      gatilhos: [
+        { kind: "teams-inbox", mentions: true, dms: false, prLinks: false },
+        { kind: "poll", source: "github", repoMatch: "a-.*", authorship: "others" },
+      ],
+    },
+    agents: [],
+    requisitos: { conexoes: [], servidores: [], provedores: [] },
+    omitidos: [
+      { codigo: "canais", onde: "teams-inbox", quantos: 2 },
+      { codigo: "filtros-de-pessoa", onde: "poll", quantos: 1 },
+      { codigo: "dono-do-github", onde: "poll" },
+    ],
+  };
+  const m = maquina();
+  const previa = await m.pacotes.previa(JSON.stringify(v1));
+  const resumo = previa.aPreencher.map((p) => [p.no.tipo === "gatilho" ? p.no.posicao : p.no.chave, p.campo, p.motivo]);
+  assert.deepEqual(resumo, [
+    [0, "channels", "canais"],
+    [1, "filters.authors", "filtros-de-pessoa"],
+    [1, "filters.reviewRequested", "filtros-de-pessoa"],
+    [1, "filters.teamMembers", "filtros-de-pessoa"],
+    [1, "owner", "dono-do-github"],
+  ]);
+  await m.pacotes.importar(JSON.stringify(v1));
+  const gravada = (await m.automations.get("gatilhos-antigos"))!;
+  assert.ok(gravada.triggers.length > 0);
+  for (const g of gravada.triggers) await assert.rejects(m.triggers.setEnabled(g.id, true));
+});

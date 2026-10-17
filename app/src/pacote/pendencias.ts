@@ -1,5 +1,5 @@
 import { TriggerConfig } from "../config/types.js";
-import { MARCAS_DOS_GATILHOS } from "./marcacao.js";
+import { MARCAS_DOS_GATILHOS, ehLocal, temFilhos, type MapaDeMarcas } from "./marcacao.js";
 import type { GatilhoDoPacote, Pacote } from "./formato.js";
 import { CodigoOmitido, indicesDoOndeDeGatilho } from "./formato.js";
 import { ehMarcador, paramsDoPacoteParaPasso, type ParamsDoPacote } from "./params.js";
@@ -24,14 +24,19 @@ const INFORMATIVOS = new Set<CodigoOmitido>(["texto-limpo", "escrita-removida", 
 /** Omitido que vale o passo inteiro, sem nome de param: o campo é o do próprio passo. */
 const CAMPO_SEM_PARAMS: Partial<Record<CodigoOmitido, string>> = { tracker: "target" };
 
-/**
- * Os campos que um omitido sem nome de param aponta: o do próprio passo (`target`), ou, no gatilho,
- * os que a marcação diz serem argumentos de ferramenta.
- */
+/** Os campos de um gatilho que a marcação diz serem deste omitido: `{ local: codigo }` ou, para `argumentos`, os de ferramenta. Objeto com filhos entra pelo caminho (`filters.authors`). */
+function camposDaMarcacao(codigo: CodigoOmitido, marcas: MapaDeMarcas, prefixo = ""): string[] {
+  return Object.entries(marcas).flatMap(([campo, marca]) => {
+    if (temFilhos(marca)) return camposDaMarcacao(codigo, marca.filhos, `${prefixo}${campo}.`);
+    const e = marca === "argumentos" ? codigo === "argumentos" : ehLocal(marca) && marca.local === codigo;
+    return e ? [`${prefixo}${campo}`] : [];
+  });
+}
+
+/** Os campos que um omitido sem nome de param aponta: o do próprio passo (`target`), ou, no gatilho, os que a marcação liga ao código. */
 function camposSemNome(codigo: CodigoOmitido, no: NoDoPacote): string[] {
   if (no.tipo === "passo") return CAMPO_SEM_PARAMS[codigo] === undefined ? [] : [CAMPO_SEM_PARAMS[codigo]!];
-  if (codigo !== "argumentos") return [];
-  return Object.entries(MARCAS_DOS_GATILHOS[no.kind as keyof typeof MARCAS_DOS_GATILHOS] ?? {}).flatMap(([campo, marca]) => (marca === "argumentos" ? [campo] : []));
+  return camposDaMarcacao(codigo, MARCAS_DOS_GATILHOS[no.kind as keyof typeof MARCAS_DOS_GATILHOS] ?? {});
 }
 
 /** O que a importação recalcula do próprio pacote: a pendência com estes motivos não precisa ser levada adiante. */
