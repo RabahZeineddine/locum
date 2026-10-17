@@ -17,6 +17,9 @@ import { gatilhoTrazMensagem } from "./destino-da-conversa";
 import { SLACK_REPLY_SCHEMA } from "../../src/slack/proposal";
 import { CONVERSATION_ISSUE_SCHEMA, ISSUE_CONTENT_SCHEMA } from "../../src/trackers/proposal";
 import prReview from "../../../examples/agents/pr-review.json";
+import { catalogoDeReferencias, caminhosDaSaida, saidasDosRuns, type EsquemaJson, type GrupoDeReferencias } from "../../src/config/referencias";
+import { esquemaDaLogica } from "../../src/executor/esquemas-de-logica";
+import { esquemaDoEvento } from "../../src/sources/esquemas-de-evento";
 import { camposDoSchema, referenciasDoArgs, validarArgs } from "./formulario-de-schema";
 import { ALTURA_DO_NO, LARGURA_DO_NO, montarGrafo } from "./grafo";
 
@@ -548,32 +551,42 @@ export function passoDoAgent(spec: AgentSpec, agent: AgentDaBiblioteca): PassoDe
 
 /* -------------------------------------------------------------- variáveis */
 
+/** De onde o catálogo tira o esquema da saída de cada passo, além do que o próprio passo declara. */
+export interface FontesDoCatalogo {
+  /** A saída de cada passo no último run da automação, pela chave do passo. */
+  saidas?: Readonly<Record<string, unknown>>;
+  /** `outputSchema` das ferramentas de conexão, por `servidor/ferramenta`. */
+  esquemasDeSaida?: Readonly<Record<string, unknown>>;
+  /** Esquema da saída de cada ação, de `actions.describe`. */
+  esquemasDeAcao?: Readonly<Record<string, EsquemaJson>>;
+}
+
 /**
- * O que o prompt pode citar, a partir dos gatilhos e dos passos anteriores.
- * É ajuda de digitação: o executor aceita qualquer `{{event.x}}`, e o que não
- * existe no evento vira `null` no texto.
+ * O que o campo do passo `chave` pode citar, em grupos: o evento dos gatilhos
+ * e cada passo anterior, na ordem do fluxo. A tela só desenha o que vem daqui;
+ * o formato de cada fonte é o esquema que ela declara.
+ */
+export function catalogoDoPasso(r: Rascunho, chave: string, fontes: FontesDoCatalogo = {}): GrupoDeReferencias[] {
+  return catalogoDeReferencias({
+    passos: r.spec.steps,
+    chave,
+    eventos: r.gatilhos.map((g) => esquemaDoEvento(g.config)),
+    ...(fontes.saidas === undefined ? {} : { saidas: fontes.saidas }),
+    fontes: {
+      acao: (kind) => fontes.esquemasDeAcao?.[kind],
+      ferramenta: (server, tool) => fontes.esquemasDeSaida?.[`${server}/${tool}`] as EsquemaJson | undefined,
+      logica: esquemaDaLogica,
+    },
+  });
+}
+
+/**
+ * O primeiro nível do que o prompt pode citar: os campos do evento e o passo
+ * inteiro de cada anterior. É ajuda de digitação: o executor aceita qualquer
+ * `{{event.x}}`, e o que não existe no evento vira `null` no texto.
  */
 export function variaveis(r: Rascunho, chave: string): string[] {
-  const doEvento = new Set<string>();
-  for (const g of r.gatilhos) {
-    switch (g.config.kind) {
-      case "slack-channel":
-      case "slack-inbox":
-        for (const v of ["text", "author", "channel", "threadTs", "permalink"]) doEvento.add(`event.${v}`);
-        break;
-      case "teams-inbox":
-        for (const v of ["text", "author", "webUrl"]) doEvento.add(`event.${v}`);
-        if (g.config.prLinks) for (const v of ["title", "repo", "pull", "url", "diff"]) doEvento.add(`event.${v}`);
-        break;
-      case "poll":
-        for (const v of ["title", "repo", "pull", "author", "url"]) doEvento.add(`event.${v}`);
-        break;
-      default:
-        break;
-    }
-  }
-  const antes = anteriores(r.spec, chave).map((k) => `steps.${k}`);
-  return [...doEvento, ...antes];
+  return catalogoDoPasso(r, chave).flatMap((g) => g.itens.filter((i) => i.caminho.split(".").length === 2).map((i) => i.caminho));
 }
 
 export interface ReferenciaDisponivel {
@@ -582,75 +595,9 @@ export interface ReferenciaDisponivel {
   grupo: "event" | "step";
 }
 
-/**
- * O que um campo pode citar no ponto do fluxo: os campos do evento dos
- * gatilhos e a saída dos passos anteriores. Passo de IA com formato de saída
- * (`outputSchema`) traz também cada propriedade; ação e passo sem formato só
- * o passo inteiro, e a pessoa digita o caminho do resto.
- */
-export function referenciasDisponiveis(
-  r: Rascunho,
-  chave: string,
-  fontes: {
-    /** A saída de cada passo no último run da automação, pela chave do passo. */
-    saidas?: Readonly<Record<string, unknown>>;
-    /** `outputSchema` das ferramentas de conexão, por `servidor/ferramenta`. */
-    esquemasDeSaida?: Readonly<Record<string, unknown>>;
-  } = {},
-): ReferenciaDisponivel[] {
-  const porChave = new Map(r.spec.steps.map((p) => [p.key, p]));
-  const lista: ReferenciaDisponivel[] = [];
-  for (const caminho of variaveis(r, chave)) {
-    if (caminho.startsWith("event.")) {
-      lista.push({ caminho, grupo: "event" });
-      continue;
-    }
-    lista.push({ caminho, grupo: "step" });
-    const k = caminho.slice("steps.".length);
-    const passo = porChave.get(k);
-    const params = passo?.type === "action" ? ((passo.params ?? {}) as { server?: unknown; tool?: unknown }) : {};
-    const doSchema =
-      passo?.type === "model"
-        ? passo.outputSchema
-        : passo?.type === "action" && typeof params.server === "string" && typeof params.tool === "string"
-          ? fontes.esquemasDeSaida?.[`${params.server}/${params.tool}`]
-          : undefined;
-    const props = Object.keys((doSchema as { properties?: Record<string, unknown> } | undefined)?.properties ?? {});
-    const vistos = new Set<string>();
-    for (const sub of [...props, ...caminhosDaSaida(fontes.saidas?.[k])]) {
-      if (vistos.has(sub)) continue;
-      vistos.add(sub);
-      lista.push({ caminho: `${caminho}.${sub}`, grupo: "step" });
-    }
-  }
-  return lista;
-}
-
-/** A saída mais recente de cada passo, dos runs do mais novo para o mais velho. Ensaio e saída vazia não contam. */
-export function saidasDosRuns(runs: readonly { steps: readonly { stepKey: string; output: unknown }[] }[]): Record<string, unknown> {
-  const saidas: Record<string, unknown> = {};
-  for (const run of runs) {
-    for (const p of run.steps) {
-      const o = p.output;
-      if (o === null || o === undefined || p.stepKey in saidas) continue;
-      if (typeof o === "object" && (o as { state?: unknown }).state === "ensaio") continue;
-      saidas[p.stepKey] = o;
-    }
-  }
-  return saidas;
-}
-
-/**
- * Os caminhos que dá para citar numa saída já gravada: cada campo, o primeiro
- * item de cada lista e os objetos aninhados até a terceira camada.
- */
-export function caminhosDaSaida(valor: unknown, prefixo = "", profundidade = 0): string[] {
-  if (valor === null || typeof valor !== "object" || profundidade >= 3) return [];
-  const entradas = Array.isArray(valor) ? valor.slice(0, 1).map((v, i) => [String(i), v] as const) : Object.entries(valor);
-  return entradas.flatMap(([nome, v]) => {
-    const caminho = prefixo === "" ? nome : `${prefixo}.${nome}`;
-    return [caminho, ...caminhosDaSaida(v, caminho, profundidade + 1)];
-  });
+/** O catálogo achatado, para quem só precisa da lista de caminhos. */
+export function referenciasDisponiveis(r: Rascunho, chave: string, fontes: FontesDoCatalogo = {}): ReferenciaDisponivel[] {
+  return catalogoDoPasso(r, chave, fontes).flatMap((g) => g.itens.slice(g.tipo === "event" ? 1 : 0).map((i) => ({ caminho: i.caminho, grupo: g.tipo })));
 }
 
 /** Todo passo de que `chave` depende, direta ou indiretamente. */
@@ -1161,3 +1108,5 @@ export function rascunhoDoModelo(
     }
   }
 }
+
+export { caminhosDaSaida, saidasDosRuns };

@@ -7,7 +7,8 @@ import { esperaChats, triggerService, type TriggerEntry } from "../services/trig
 import { scheduler } from "../triggers/scheduler.js";
 import { lerDescartes } from "../triggers/descartes.js";
 import { lerErro } from "../triggers/erros.js";
-import type { AgentSpec, TriggerConfigInput } from "../config/types.js";
+import { AgentSpec as EsquemaDoSpec, TriggerConfig as EsquemaDoGatilho, type AgentSpec, type TriggerConfig, type TriggerConfigInput } from "../config/types.js";
+import { referenciasDoFluxo } from "../services/referencias-service.js";
 import { specAtual } from "./config-tools.js";
 import { restoreSpec } from "./redact.js";
 import { limparSegredos } from "../pacote/limpeza.js";
@@ -84,6 +85,32 @@ export function registerAutomationTools(server: McpServer): void {
     "An automation with the spec of its latest version and its triggers (config, enabled state and last error of each).",
     { agentId: z.string().describe("automation id, as shown by list_automations") },
     ({ agentId }) => getAutomation(agentId));
+
+  def(server, "list_step_references", "read",
+    "What a step can cite with {{...}}, as the editor offers it: groups in flow order, the event of the triggers first and then each earlier step with its number and name, each with the paths the executor resolves (event.title, steps.review.findings.0.severity) and the type and description the source declares in its JSON Schema. Items marked origin last-run come from the last run's output, not from a schema. Pass agentId for a saved automation, or spec and triggers for a draft. The marker always uses the step key, never the number: the number only places the step in the flow and changes with it.",
+    {
+      agentId: z.string().optional().describe("saved automation id; the last runs outputs are read too"),
+      spec: z.record(z.string(), z.unknown()).optional().describe("draft AgentSpec, when there is no saved automation"),
+      triggers: z.array(z.record(z.string(), z.unknown())).optional().describe("draft trigger configs, as in set_trigger"),
+      stepKey: z.string().optional().describe("only this step; omitted gives every step"),
+    },
+    async ({ agentId, spec, triggers, stepKey }) => {
+      let fluxo: { spec: AgentSpec; triggers: TriggerConfig[] };
+      if (spec !== undefined) {
+        fluxo = { spec: EsquemaDoSpec.parse(spec), triggers: (triggers ?? []).map((t) => EsquemaDoGatilho.parse(t)) };
+      } else if (agentId !== undefined) {
+        const automacao = await automationService.get(agentId);
+        if (automacao === null) throw new Error(`automacao "${agentId}" nao cadastrada`);
+        fluxo = { spec: automacao.version.spec, triggers: automacao.triggers.map((t) => t.config) };
+      } else {
+        throw new Error("informe agentId ou spec");
+      }
+      const todas = await referenciasDoFluxo({ ...fluxo, ...(agentId === undefined ? {} : { agentId }) });
+      if (stepKey === undefined) return todas;
+      const dele = todas[stepKey];
+      if (dele === undefined) throw new Error(`passo "${stepKey}" nao existe no fluxo`);
+      return { [stepKey]: dele };
+    });
 
   def(server, "list_triggers", "read",
     "Triggers of every automation, or of one, with config, enabled state and last error (configuration or poll). A Teams trigger from a package that still waits for its chats says so and cannot be turned on.",

@@ -1,3 +1,4 @@
+import type { EsquemaJson } from "../src/config/referencias.js";
 import type { TeamsChannelOption } from "../src/teams/channels.js";
 import type { TeamsChatOption } from "../src/teams/chats.js";
 import type { AgentService } from "../src/services/agent-service.js";
@@ -95,7 +96,7 @@ interface ServiceApi {
    */
   "agents.saveEdited": AgentService["saveEdited"];
   /** Os modos que cada ação aceita, perguntados ao handler. Só leitura. */
-  "actions.describe": () => { kind: string; modes: readonly ("approve" | "draft" | "auto")[]; holdsByContent: boolean }[];
+  "actions.describe": () => { kind: string; modes: readonly ("approve" | "draft" | "auto")[]; holdsByContent: boolean; outputSchema: EsquemaJson }[];
   "agents.duplicate": AgentService["duplicate"];
   /**
    * Importar e exportar pelo seletor de arquivo do sistema. Importar grava

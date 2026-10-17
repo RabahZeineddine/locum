@@ -62,6 +62,8 @@ export function saidaDaResposta(resultado: RespostaMcp | undefined): unknown {
 
 export function mcpCallHandler(options: McpCallOptions): ActionHandler {
   return {
+    // O formato é o da ferramenta chamada: o catálogo troca este esquema pelo `outputSchema` dela quando o app o declara.
+    outputSchema: { description: "The tool's response: structuredContent, the JSON it printed, or { text }." },
     async propose(payload) {
       // Só os campos da chamada: o resto do evento que o executor junta não é
       // argumento da ferramenta, e não entra na pendência.
