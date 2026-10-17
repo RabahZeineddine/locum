@@ -149,7 +149,7 @@ export class AutomationService {
       version = await this.agents.upsert(spec, nota, "human");
     } else {
       // A versão esperada é conferida dentro da transação que grava a versão nova.
-      version = await this.agents.saveEdited(agentId, spec, input.note, input.expectedVersion);
+      version = await this.agents.saveEdited(agentId, spec, input.note, input.expectedVersion, { dispensadas: input.dispensadas ?? [], limpeza: { gatilhos: identificados, removidos } });
     }
 
     const mantidos = new Set<string>();

@@ -109,7 +109,7 @@ export class TriggerService {
     const ultima = await agents.getLatestVersion(agentId);
     if (ultima?.spec.pendentes?.some((p) => p.onde === ondeDoGatilho(gatilho.id)) !== true) return;
     const limpo = limparPendenciasPreenchidas(ultima.spec, { gatilhos: [{ id: gatilho.id, config: gatilho.config }], existe: recursoExiste });
-    if (limpo !== ultima.spec) await agents.saveEdited(agentId, limpo, "campo do gatilho preenchido", ultima.version);
+    if (limpo !== ultima.spec) await agents.saveEdited(agentId, limpo, "campo do gatilho preenchido", ultima.version, { limpeza: { gatilhos: [{ id: gatilho.id, config: gatilho.config }] } });
   }
 
   private async gravar(
