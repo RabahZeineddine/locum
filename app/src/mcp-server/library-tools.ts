@@ -1,4 +1,4 @@
-import { ACOES_DE_CONVERSA_REGISTRO } from "../acao/destino.js";
+import { catalogoDeDestinos } from "../acao/destino.js";
 import { recusarEscritaDaConta } from "../runtimes/claude-account.js";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -180,10 +180,8 @@ function catalogo() {
         destino: {
           where:
             "params.destino on teams.post, slack.post, teams.react and slack.react: where the message goes. { tipo: 'evento' } (default, also when absent) is the message that started the run, in its thread; { tipo: 'novo' } is a new message in the event's chat or channel, outside the thread; { tipo: 'fixo', conversa: { app, ref, rotulo } } is a conversation the person chose, the same list the trigger uses. It comes only from the event or from this fixed value: a {{...}} marker, a model output or {{steps.*}} is refused when saving. A fixed destination needs no event, so it works on a manual run and in a dry run; 'evento' and 'novo' without a message of the app in the event only show what they would send.",
-          refs: "fixo.conversa.app must be the action's app. ref: Teams 'chat/<chatId>' or 'canal/<teamId>/<channelId>' (ids from list_teams_chats and list_teams_channels); Slack: the channel id.",
-          porAcao: Object.fromEntries(
-            Object.entries(ACOES_DE_CONVERSA_REGISTRO).map(([acao, r]) => [acao, { app: r.app, efeito: r.efeito, destinos: r.destinos }]),
-          ),
+          refs: "fixo.conversa: { app, ref, rotulo?, conta? }. app must be the action's app. rotulo is only the name the screen showed; the queue shows what ref resolves to. conta is the account the list was read by, which the Teams server needs when it has more than one. ref and the list that gives it, per app, are in porApp.",
+          ...catalogoDeDestinos(),
         },
         target: "tracker.create_issue: id of the registered tracker",
         modes:

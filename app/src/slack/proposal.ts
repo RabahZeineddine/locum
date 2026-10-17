@@ -9,10 +9,8 @@ import type { AlvoResolvido } from "../acao/conversa.js";
  * sabem de onde a conversa saiu; um modelo que também escolhesse o canal
  * responderia no lugar errado com a cara de quem foi respondido.
  *
- * A thread é o meio termo, e é conferida: o modelo devolve o carimbo que
- * recebeu, e quem valida é `src/slack/thread.ts`, contra o que o Locum leu do
- * canal. Assim o carimbo continua vindo do evento mesmo passando pelo modelo,
- * porque um carimbo inventado não acha thread nenhuma e o passo falha limpo.
+ * A thread também vem do evento, e é conferida por `src/slack/thread.ts`
+ * contra o que o Locum leu do canal: o modelo não a escreve nem a troca.
  */
 
 /**
@@ -28,8 +26,6 @@ const TETO_DE_TEXTO = 3000;
 /** O que o passo de modelo devolve. Sem isto não há resposta para propor. */
 export const SlackReply = z.object({
   text: z.string().trim().min(1).max(TETO_DE_TEXTO),
-  /** A thread a que se responde, como ela veio no evento. */
-  threadTs: z.string().trim().min(1),
 });
 export type SlackReply = z.infer<typeof SlackReply>;
 
@@ -42,10 +38,9 @@ export type SlackReply = z.infer<typeof SlackReply>;
 export const SLACK_REPLY_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["text", "threadTs"],
+  required: ["text"],
   properties: {
     text: { type: "string" },
-    threadTs: { type: "string" },
   },
 } as const;
 
@@ -87,34 +82,36 @@ export function channelOf(payload: unknown): string {
 /**
  * Monta a resposta a partir da saída do passo de modelo e do destino resolvido.
  *
- * `subject` e `permalink` ficam vazios aqui: quem os preenche é o handler,
- * depois de achar a thread no que já foi lido. Sem essa conferência a proposta
- * ficaria completa mesmo apontando para uma thread que nunca existiu. Só o
- * destino `evento` precisa da thread; `novo` e `fixo` abrem conversa nova.
+ * O modelo escreve só o texto. Canal e thread vêm do destino resolvido, que
+ * sai do evento (ou do valor fixo do passo). `subject` e `permalink` ficam
+ * vazios aqui: quem os preenche é o handler, depois de achar a thread no que já
+ * foi lido. Só o destino `evento` tem thread; `novo` e `fixo` abrem conversa nova.
  */
 export function buildPostProposal(
   payload: unknown,
   server: string,
-  alvo: Pick<AlvoResolvido, "tipo" | "conversa" | "rotulo">,
+  alvo: Pick<AlvoResolvido, "tipo" | "conversa" | "mensagem" | "rotulo">,
 ): Omit<SlackPostProposal, "subject" | "permalink"> {
   if (payload === null || typeof payload !== "object") {
     throw new Error("o passo de acao do Slack recebeu uma saida que nao e objeto");
   }
 
-  const destino = { tipo: alvo.tipo, rotulo: alvo.rotulo };
-  const resposta = (alvo.tipo === "evento" ? SlackReply : SlackReply.partial({ threadTs: true })).safeParse(payload);
+  const resposta = SlackReply.safeParse(payload);
   if (!resposta.success) {
     const onde = resposta.error.issues[0];
     throw new Error(
       `o passo de modelo nao escreveu a resposta: ${onde?.path.join(".") ?? ""} ${onde?.message ?? ""}`.trim(),
     );
   }
+  if (alvo.tipo === "evento" && alvo.mensagem === null) {
+    throw new Error("o evento nao traz a mensagem do Slack a que responder");
+  }
 
   return {
     server,
     channel: alvo.conversa,
-    ...(alvo.tipo === "evento" && resposta.data.threadTs !== undefined ? { threadTs: resposta.data.threadTs } : {}),
+    ...(alvo.tipo === "evento" && alvo.mensagem !== null ? { threadTs: alvo.mensagem } : {}),
     text: resposta.data.text,
-    destino,
+    destino: { tipo: alvo.tipo, rotulo: alvo.rotulo },
   };
 }

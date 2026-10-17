@@ -114,7 +114,7 @@ export function capacidadesDoTeams(nomes: readonly string[]): Omit<TeamsNoMcp, "
   return {
     leitura: tem(LEITURA),
     canal: tem(CANAL),
-    responder: nomes.includes("send-chat-message") || nomes.includes("reply-to-channel-message"),
+    responder: ["send-chat-message", "reply-to-channel-message", "send-channel-message"].some((n) => nomes.includes(n)),
     reagir: nomes.includes("set-chat-message-reaction") || nomes.includes("set-channel-message-reaction"),
   };
 }

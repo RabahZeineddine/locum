@@ -8,6 +8,8 @@ export interface TeamsChatOption {
   /** Tópico do chat ou nomes dos outros membros. */
   label: string;
   chatType: "oneOnOne" | "group";
+  /** A conta do servidor MCP por onde a lista saiu; o destino fixo grava junto com a conversa. */
+  conta?: string;
 }
 
 /** Páginas de `/me/chats` lidas, de cinquenta em cinquenta. */
@@ -52,6 +54,7 @@ export async function listTeamsChats(options: ListTeamsChatsOptions = {}): Promi
   const teams = await abrirTeams(guardada === null ? graph : { ...graph, account: guardada });
   try {
     const eu = (await teams.get("/me?$select=id,userPrincipalName")).id;
+    const conta = teams.conta();
     const opcoes: TeamsChatOption[] = [];
     let proxima: string | null = "/me/chats?$expand=members&$top=50";
     for (let pagina = 0; pagina < PAGINAS && proxima !== null; pagina++) {
@@ -59,7 +62,7 @@ export async function listTeamsChats(options: ListTeamsChatsOptions = {}): Promi
       for (const item of Array.isArray(corpo.value) ? (corpo.value as Record<string, unknown>[]) : []) {
         if (typeof item.id !== "string") continue;
         if (item.chatType !== "oneOnOne" && item.chatType !== "group") continue;
-        opcoes.push({ chatId: item.id, label: rotuloDoChat(item, String(eu)), chatType: item.chatType });
+        opcoes.push({ chatId: item.id, label: rotuloDoChat(item, String(eu)), chatType: item.chatType, ...(conta === null ? {} : { conta }) });
       }
       proxima = typeof corpo["@odata.nextLink"] === "string" ? corpo["@odata.nextLink"] : null;
     }

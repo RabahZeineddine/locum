@@ -972,7 +972,7 @@ const TEAMS_REACAO = ["teamsChatId", "teamsTeamId", "teamsChannelId", "teamsMess
 const DESTINO = ["owner", "repo", "pull", "headSha", "prOwner", ...TEAMS_REACAO] as const;
 
 /** A mensagem do Slack onde a reação cai: o evento diz, e a saída do modelo não troca. */
-const SLACK_REACAO = ["slackChannel", "slackTs", "channel", "ts"] as const;
+const SLACK_REACAO = ["slackChannel", "slackTs", "channel", "ts", "threadTs"] as const;
 
 export function destinoDoEvento(alvo: Record<string, unknown>): Record<string, unknown> {
   const destino: Record<string, unknown> = {};

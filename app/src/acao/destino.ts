@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { refDoTeams } from "../teams/ref.js";
 
 // O renderer, o MCP e o executor importam este arquivo: nada de Node aqui.
 
@@ -11,7 +12,10 @@ import { z } from "zod";
 export const ConversaRef = z.object({
   app: z.string().min(1),
   ref: z.string().min(1),
+  /** Só o nome que a tela mostrou na hora de escolher; a Fila mostra o que o `ref` resolve. */
   rotulo: z.string().optional(),
+  /** A conta do app por onde a conversa foi listada, para apps com mais de uma. Quem não usa ignora. */
+  conta: z.string().min(1).optional(),
 });
 export type ConversaRef = z.infer<typeof ConversaRef>;
 
@@ -46,16 +50,117 @@ export interface AcaoDeConversa {
   destinos: readonly TipoDeDestino[];
 }
 
+/** Uma conversa que a pessoa pode escolher como destino fixo. */
+export interface OpcaoDeConversa {
+  ref: string;
+  rotulo: string;
+  /** Agrupa na lista (a equipe de um canal do Teams). */
+  grupo?: string;
+  conta?: string;
+}
+
+/** Uma lista de conversas do app: a tela chama o canal da ponte, e o MCP tem a ferramenta equivalente. */
+export interface ListaDeConversas {
+  id: string;
+  /** O canal da ponte (`connections.teamsChats`) que devolve a lista. */
+  canal: string;
+  args?: readonly unknown[];
+  /** A ferramenta do MCP que lista o mesmo. */
+  fonteMcp: string;
+  /** Transforma a resposta do canal nas opções. */
+  opcoes(dados: readonly unknown[]): OpcaoDeConversa[];
+}
+
+/** O que a tela e o MCP sabem de um app de conversa, sem conhecer o app. */
+export interface AppDeConversa {
+  app: string;
+  /** Os `kind` de gatilho que entregam uma mensagem do app para a ação responder. */
+  gatilhos: readonly string[];
+  listas: readonly ListaDeConversas[];
+  /** Como é o `ref` do destino fixo, para o MCP. */
+  refs: string;
+}
+
+export interface RegistroDeConversa {
+  acoes: Readonly<Record<string, AcaoDeConversa>>;
+  apps: Readonly<Record<string, AppDeConversa>>;
+}
+
+const lista = <T>(dados: readonly unknown[]): T[] => (Array.isArray(dados[0]) ? (dados[0] as T[]) : (dados as T[]));
+
 /**
- * As ações que têm o parâmetro `destino`. A tela, o MCP e o executor leem daqui:
- * app de conversa novo entra com uma linha e o adaptador.
+ * As ações e os apps de conversa. A tela, o MCP e o executor leem daqui: app de
+ * conversa novo entra com o adaptador (`conversa.ts`), uma linha em cada mapa
+ * e nada mais.
  */
-export const ACOES_DE_CONVERSA_REGISTRO: Readonly<Record<string, AcaoDeConversa>> = {
-  "teams.post": { app: "teams", efeito: "responder", destinos: ["evento", "fixo", "novo"] },
-  "slack.post": { app: "slack", efeito: "responder", destinos: ["evento", "fixo", "novo"] },
-  "teams.react": { app: "teams", efeito: "reagir", destinos: ["evento"] },
-  "slack.react": { app: "slack", efeito: "reagir", destinos: ["evento"] },
+export const REGISTRO_DE_CONVERSA: RegistroDeConversa = {
+  acoes: {
+    "teams.post": { app: "teams", efeito: "responder", destinos: ["evento", "fixo", "novo"] },
+    "slack.post": { app: "slack", efeito: "responder", destinos: ["evento", "fixo", "novo"] },
+    "teams.react": { app: "teams", efeito: "reagir", destinos: ["evento"] },
+    "slack.react": { app: "slack", efeito: "reagir", destinos: ["evento"] },
+  },
+  apps: {
+    teams: {
+      app: "teams",
+      gatilhos: ["teams-inbox"],
+      refs: "Teams: 'chat/<chatId>' or 'canal/<teamId>/<channelId>' (ids from list_teams_chats and list_teams_channels); `conta` is the account the list was read by, needed when the ms365 server has more than one",
+      listas: [
+        {
+          id: "chats",
+          canal: "connections.teamsChats",
+          fonteMcp: "list_teams_chats",
+          opcoes: (dados) =>
+            lista<{ chatId: string; label: string; conta?: string }>(dados).map((c) => ({
+              ref: refDoTeams({ tipo: "chat", chatId: c.chatId }),
+              rotulo: c.label,
+              ...(c.conta === undefined ? {} : { conta: c.conta }),
+            })),
+        },
+        {
+          id: "canais",
+          canal: "connections.teamsChannels",
+          fonteMcp: "list_teams_channels",
+          opcoes: (dados) =>
+            lista<{ teamId: string; teamName: string; channelId: string; channelName: string; conta?: string }>(dados).map((c) => ({
+              ref: refDoTeams({ tipo: "canal", teamId: c.teamId, channelId: c.channelId }),
+              rotulo: c.channelName,
+              grupo: c.teamName,
+              ...(c.conta === undefined ? {} : { conta: c.conta }),
+            })),
+        },
+      ],
+    },
+    slack: {
+      app: "slack",
+      gatilhos: ["slack-channel", "slack-inbox"],
+      refs: "Slack: the channel id (from list_slack_channels)",
+      listas: [
+        {
+          id: "canais",
+          canal: "connections.slackChannels",
+          args: [[]],
+          fonteMcp: "list_slack_channels",
+          opcoes: (dados) =>
+            ((dados[0] as { canais?: { id: string; name: string }[] } | undefined)?.canais ?? []).map((c) => ({ ref: c.id, rotulo: `#${c.name}` })),
+        },
+      ],
+    },
+  },
 };
+
+/** As ações de conversa, pelo nome. */
+export const ACOES_DE_CONVERSA_REGISTRO = REGISTRO_DE_CONVERSA.acoes;
+
+/** O que `describe_steps` conta do destino, lido do registro: opções por ação e como cada app lista suas conversas. */
+export function catalogoDeDestinos(registro: RegistroDeConversa = REGISTRO_DE_CONVERSA) {
+  return {
+    porAcao: Object.fromEntries(Object.entries(registro.acoes).map(([acao, r]) => [acao, { app: r.app, efeito: r.efeito, destinos: r.destinos }])),
+    porApp: Object.fromEntries(
+      Object.entries(registro.apps).map(([app, a]) => [app, { gatilhos: a.gatilhos, refs: a.refs, listas: a.listas.map((l) => l.fonteMcp) }]),
+    ),
+  };
+}
 
 /** Os destinos que a ação aceita; vazio para ação que não tem o parâmetro. */
 export function destinosDaAcao(acao: string): readonly TipoDeDestino[] {
@@ -63,16 +168,17 @@ export function destinosDaAcao(acao: string): readonly TipoDeDestino[] {
 }
 
 /** Lê e confere um destino cru contra o que a ação aceita. Sem valor, o padrão da ação. */
-export function exigirDestino(acao: string, cru: unknown): DestinoDaAcao {
-  const registro = ACOES_DE_CONVERSA_REGISTRO[acao];
+export function exigirDestino(acao: string, cru: unknown, acoes: RegistroDeConversa["acoes"] = ACOES_DE_CONVERSA_REGISTRO): DestinoDaAcao {
+  const registro = acoes[acao];
   if (registro === undefined) throw new Error(`a ação ${acao} não tem destino`);
   if (cru === undefined || cru === null) return { tipo: "evento" };
 
   // Confere o valor ainda sem interpolação: depois de `renderParams` um
-  // `{{steps.x.y}}` já virou texto comum e ninguém mais distingue.
-  if (JSON.stringify(cru).includes("{{")) {
+  // `{{steps.x.y}}` já virou texto comum e ninguém mais distingue. O `rotulo` é
+  // só o nome que a tela mostrou, e não decide nada.
+  if (decideComMarcador(cru)) {
     throw new Error(
-      "o destino não aceita marcador: ele vem do evento ou de um valor fixo, e não de um passo anterior",
+      "o destino não aceita marcador ({{...}}): ele vem do evento ou de uma conversa escolhida, e não de um passo anterior",
     );
   }
   const lido = DestinoDaAcao.safeParse(cru);
@@ -93,6 +199,18 @@ export function exigirDestino(acao: string, cru: unknown): DestinoDaAcao {
 }
 
 /** O destino que o passo grava em `params.destino`, ou o padrão da ação quando não há. */
-export function destinoDoPasso(acao: string, params: Record<string, unknown> | undefined): DestinoDaAcao {
-  return exigirDestino(acao, params?.destino);
+export function destinoDoPasso(
+  acao: string,
+  params: Record<string, unknown> | undefined,
+  acoes: RegistroDeConversa["acoes"] = ACOES_DE_CONVERSA_REGISTRO,
+): DestinoDaAcao {
+  return exigirDestino(acao, params?.destino, acoes);
+}
+
+/** Se algum campo que decide o destino (tipo, app, ref, conta) traz marcador, ou o destino inteiro é um marcador. */
+function decideComMarcador(cru: unknown): boolean {
+  if (typeof cru === "string") return cru.includes("{{");
+  if (cru === null || typeof cru !== "object") return false;
+  const d = cru as { tipo?: unknown; conversa?: { app?: unknown; ref?: unknown; conta?: unknown } | null };
+  return [d.tipo, d.conversa?.app, d.conversa?.ref, d.conversa?.conta].some((v) => typeof v === "string" && v.includes("{{"));
 }

@@ -6,6 +6,8 @@ export interface TeamsChannelOption {
   teamName: string;
   channelId: string;
   channelName: string;
+  /** A conta do servidor MCP por onde a lista saiu; o destino fixo grava junto com a conversa. */
+  conta?: string;
 }
 
 /** Teto de equipes lidas, para quem está em centenas delas. */
@@ -36,7 +38,10 @@ export async function listTeamsChannels(options: ListTeamsChannelsOptions = {}):
       return Array.isArray(corpo.value) ? (corpo.value as Record<string, unknown>[]) : [];
     };
 
+    // A conta do servidor só é descoberta na primeira chamada a /me.
+    if (teams.multiConta) await teams.get("/me?$select=id,userPrincipalName");
     const equipes = (await get("/me/joinedTeams?$select=id,displayName")).slice(0, TETO_DE_EQUIPES);
+    const conta = teams.conta();
     const opcoes: TeamsChannelOption[] = [];
     for (const equipe of equipes) {
       if (typeof equipe.id !== "string") continue;
@@ -48,6 +53,7 @@ export async function listTeamsChannels(options: ListTeamsChannelsOptions = {}):
           teamName: String(equipe.displayName ?? equipe.id),
           channelId: canal.id,
           channelName: String(canal.displayName ?? canal.id),
+          ...(conta === null ? {} : { conta }),
         });
       }
     }

@@ -1,9 +1,10 @@
+import { ACOES_DE_CONVERSA_REGISTRO } from "../acao/destino.js";
 import type { AgentSpec, Step } from "../config/types.js";
 
 // O renderer importa este arquivo para traduzir a recusa: nada de Node aqui.
 
-/** Ações que respondem a uma conversa e não têm o que fazer sem o evento dela. */
-export const ACOES_DE_CONVERSA = new Set(["teams.post", "slack.post", "teams.react", "slack.react"]);
+/** Ações que respondem a uma conversa e não têm o que fazer sem o evento dela, do registro de conversa. */
+export const ACOES_DE_CONVERSA: ReadonlySet<string> = new Set(Object.keys(ACOES_DE_CONVERSA_REGISTRO));
 
 /**
  * Por que a automação depende de evento, em código e parâmetros. Quem mostra
@@ -21,7 +22,7 @@ function acaoExigeEvento(passo: Step): string | null {
   if (ACOES_DE_CONVERSA.has(passo.action)) {
     // Resposta para uma conversa escolhida pela pessoa não precisa do evento.
     const destino = (passo.params ?? {}).destino as { tipo?: unknown } | undefined;
-    return destino?.tipo === "fixo" && passo.action.endsWith(".post") ? null : passo.action;
+    return destino?.tipo === "fixo" && ACOES_DE_CONVERSA_REGISTRO[passo.action]?.efeito === "responder" ? null : passo.action;
   }
   if (passo.action === "github.review_comment") {
     const params = passo.params ?? {};

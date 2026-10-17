@@ -69,11 +69,18 @@ export const adaptadorDoTeams: AdaptadorDeConversa = {
   app: "teams",
   enderecoDoEvento(payload) {
     const d = destinoDe(payload);
-    return d.tipo === "chat"
-      ? { conversa: refDoTeams(d), mensagem: null }
-      : { conversa: refDoTeams(d), mensagem: d.threadId };
+    const conta = (payload as { teamsAccount?: unknown } | null)?.teamsAccount;
+    return {
+      conversa: refDoTeams(d),
+      mensagem: d.tipo === "chat" ? null : d.threadId,
+      conta: typeof conta === "string" && conta !== "" ? conta : null,
+    };
   },
   validarRef(ref) {
     lerRefDoTeams(ref);
+  },
+  descreverRef(ref) {
+    const c = lerRefDoTeams(ref);
+    return c.tipo === "chat" ? `Chat ${c.chatId}` : `Canal ${c.channelId} (equipe ${c.teamId})`;
   },
 };

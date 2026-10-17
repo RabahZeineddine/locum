@@ -101,12 +101,14 @@ export function teamsPostHandler(options: TeamsPostHandlerOptions = {}): ActionH
 
       if (alvo.tipo === "fixo") {
         // Conversa que a pessoa escolheu: não precisa ter sido lida pelo gatilho.
-        const conta = (payload as { teamsAccount?: unknown }).teamsAccount;
-        const comConta = typeof conta === "string" && conta !== "" ? { account: conta } : {};
+        // A conta é a que a pessoa escolheu junto com a conversa: a do evento pode ser outra.
+        const comConta = alvo.conta === null ? {} : { account: alvo.conta };
         const conversa = lerRefDoTeams(alvo.conversa);
         const destino = { tipo: "fixo" as const, rotulo: alvo.rotulo };
         const base = { text, subject: "", author: null, webUrl: null, destino, ...comConta };
-        return TeamsPostProposal.parse(
+        return exigirConta(
+          options,
+          TeamsPostProposal.parse(
           conversa.tipo === "chat"
             ? { chatId: conversa.chatId, ...base }
             : {
@@ -114,6 +116,7 @@ export function teamsPostHandler(options: TeamsPostHandlerOptions = {}): ActionH
                 ...base,
                 channel: { teamId: conversa.teamId, channelId: conversa.channelId, label: alvo.rotulo },
               },
+          ),
         );
       }
 
@@ -126,7 +129,7 @@ export function teamsPostHandler(options: TeamsPostHandlerOptions = {}): ActionH
           throw new Error(`a thread ${lugar.threadId} nao aparece no que o Locum leu do canal`);
         }
         const { label, ...resto } = lida;
-        return TeamsPostProposal.parse({
+        return exigirConta(options, TeamsPostProposal.parse({
           chatId: lugar.channelId,
           text,
           ...resto,
@@ -137,14 +140,14 @@ export function teamsPostHandler(options: TeamsPostHandlerOptions = {}): ActionH
             ...(alvo.mensagem === null ? {} : { threadId: alvo.mensagem }),
             label,
           },
-        });
+        }));
       }
 
       const lida = await ultimaLida(db, lugar.chatId);
       if (lida === null) {
         throw new Error(`a conversa ${lugar.chatId} nao aparece no que o Locum leu do Teams`);
       }
-      return TeamsPostProposal.parse({ chatId: lugar.chatId, text, ...lida, destino });
+      return exigirConta(options, TeamsPostProposal.parse({ chatId: lugar.chatId, text, ...lida, destino }));
     },
 
     async publish(payload) {
@@ -172,6 +175,25 @@ export function teamsPostHandler(options: TeamsPostHandlerOptions = {}): ActionH
       }
     },
   };
+}
+
+/**
+ * Servidor com várias contas e proposta sem conta: a resposta não saberia por
+ * qual sair, e falharia só no clique de aprovar. Recusa aqui, antes da Fila.
+ */
+async function exigirConta(options: TeamsGraphOptions, proposta: TeamsPostProposal): Promise<TeamsPostProposal> {
+  if (proposta.account !== undefined) return proposta;
+  const teams = await abrirTeams(options);
+  try {
+    if (teams.multiConta) {
+      throw new Error(
+        `O servidor "${teams.servidor}" tem várias contas e este destino não diz por qual sair. Escolha a conversa de novo no nó, para gravar a conta.`,
+      );
+    }
+  } finally {
+    await teams.close();
+  }
+  return proposta;
 }
 
 /** A mensagem mais recente lida da conversa, ou nulo se ela nunca foi lida. */

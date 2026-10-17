@@ -1,38 +1,15 @@
-import { ACOES_DE_CONVERSA_REGISTRO, destinoDoPasso, type DestinoDaAcao } from "../../src/acao/destino";
-import { refDoTeams } from "../../src/teams/ref";
+import { destinoDoPasso, REGISTRO_DE_CONVERSA, type DestinoDaAcao, type OpcaoDeConversa, type RegistroDeConversa } from "../../src/acao/destino";
 
-/** Uma conversa que a pessoa pode escolher como destino fixo, no formato do `ref` do app. */
-export interface OpcaoDeConversa {
-  ref: string;
-  rotulo: string;
-  /** Agrupa na lista (a equipe de um canal do Teams). */
-  grupo?: string;
+export type { OpcaoDeConversa } from "../../src/acao/destino";
+
+/** A conversa escolhida na lista, no formato que o passo grava: com a conta por onde a lista saiu, se houver. */
+export function conversaEscolhida(app: string, o: OpcaoDeConversa | null): { app: string; ref: string; rotulo: string; conta?: string } {
+  return { app, ref: o?.ref ?? "", rotulo: o?.rotulo ?? "", ...(o?.conta === undefined ? {} : { conta: o.conta }) };
 }
 
-export interface ListasDeConversa {
-  teamsChats?: readonly { chatId: string; label: string }[];
-  teamsCanais?: readonly { teamId: string; teamName: string; channelId: string; channelName: string }[];
-  slackCanais?: readonly { id: string; name: string; isPrivate: boolean }[];
-}
-
-/**
- * As conversas que o app oferece, das mesmas listas que o gatilho usa. Cada app
- * só diz como a sua lista vira `ref`; o resto da tela é igual para todos.
- */
-export function opcoesDeConversa(app: string, listas: ListasDeConversa): OpcaoDeConversa[] {
-  if (app === "teams") {
-    const chats = (listas.teamsChats ?? []).map((c) => ({ ref: refDoTeams({ tipo: "chat", chatId: c.chatId }), rotulo: c.label }));
-    const canais = (listas.teamsCanais ?? []).map((c) => ({
-      ref: refDoTeams({ tipo: "canal", teamId: c.teamId, channelId: c.channelId }),
-      rotulo: c.channelName,
-      grupo: c.teamName,
-    }));
-    return [...chats, ...canais];
-  }
-  if (app === "slack") {
-    return (listas.slackCanais ?? []).map((c) => ({ ref: c.id, rotulo: `#${c.name}` }));
-  }
-  return [];
+/** As opções de cada lista do app, na ordem em que o registro as declara. */
+export function opcoesDoApp(app: string, dados: Readonly<Record<string, readonly unknown[]>>, registro: RegistroDeConversa = REGISTRO_DE_CONVERSA): OpcaoDeConversa[] {
+  return (registro.apps[app]?.listas ?? []).flatMap((l) => l.opcoes(dados[l.id] ?? []));
 }
 
 /** O destino do passo como a tela o mostra: o gravado, ou o padrão (evento) quando o passo é antigo. */
@@ -55,15 +32,9 @@ export function paramsComDestino(params: Record<string, unknown> | undefined, de
   return destino.tipo === "evento" ? resto : { ...resto, destino };
 }
 
-/** Os gatilhos que trazem mensagem de cada app de conversa. */
-const GATILHOS_DO_APP: Record<string, readonly string[]> = {
-  teams: ["teams-inbox"],
-  slack: ["slack-channel", "slack-inbox"],
-};
-
-/** Se algum dos gatilhos entrega uma mensagem do app para a ação responder (manual e cron não entregam). */
-export function gatilhoTrazMensagem(acao: string, kinds: readonly string[]): boolean {
-  const app = ACOES_DE_CONVERSA_REGISTRO[acao]?.app;
-  const doApp = app === undefined ? [] : (GATILHOS_DO_APP[app] ?? []);
+/** Se algum dos gatilhos entrega uma mensagem do app da ação (manual e cron não entregam). */
+export function gatilhoTrazMensagem(acao: string, kinds: readonly string[], registro: RegistroDeConversa = REGISTRO_DE_CONVERSA): boolean {
+  const app = registro.acoes[acao]?.app;
+  const doApp = app === undefined ? [] : (registro.apps[app]?.gatilhos ?? []);
   return kinds.some((k) => doApp.includes(k));
 }

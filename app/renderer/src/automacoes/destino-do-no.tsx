@@ -1,8 +1,15 @@
 import { call, useRead } from "@/lib/bridge";
-import { chaveDaListaDoSlack, chaveDaListaDoTeams } from "@/lib/cache-de-lista";
-import { destinoDoNo, gatilhoTrazMensagem, opcoesDeConversa, paramsComDestino, type OpcaoDeConversa } from "@/lib/destino-da-conversa";
+import { conversaEscolhida, destinoDoNo, gatilhoTrazMensagem, paramsComDestino } from "@/lib/destino-da-conversa";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ACOES_DE_CONVERSA_REGISTRO, destinosDaAcao, type DestinoDaAcao } from "../../../src/acao/destino";
+import {
+  ACOES_DE_CONVERSA_REGISTRO,
+  REGISTRO_DE_CONVERSA,
+  destinosDaAcao,
+  type DestinoDaAcao,
+  type ListaDeConversas,
+  type OpcaoDeConversa,
+} from "../../../src/acao/destino";
 import { Campo, CAMPO } from "./campos";
 import { useListaEmCache } from "./combobox";
 
@@ -66,7 +73,7 @@ export function DestinoDoNo({
           chave={chave}
           escolhida={destino.conversa}
           escolher={(o) =>
-            aoMudar(paramsComDestino(params, { tipo: "fixo", conversa: { app: registro.app, ref: o?.ref ?? "", rotulo: o?.rotulo ?? "" } } as DestinoDaAcao))
+            aoMudar(paramsComDestino(params, { tipo: "fixo", conversa: conversaEscolhida(registro.app, o) } as DestinoDaAcao))
           }
         />
       ) : null}
@@ -79,7 +86,10 @@ export function DestinoDoNo({
   );
 }
 
-/** A lista do app vira o mesmo select para todos: cada app só lê a sua lista. */
+/**
+ * O select de conversas, igual para todo app: cada lista que o registro declara
+ * para o app vira um grupo de opções, pelo canal da ponte que ela nomeia.
+ */
 function SeletorDeConversa({
   app,
   agentId,
@@ -93,84 +103,99 @@ function SeletorDeConversa({
   escolhida: { ref: string; rotulo?: string };
   escolher: (o: OpcaoDeConversa | null) => void;
 }) {
-  if (app === "teams") return <ConversasDoTeams agentId={agentId} chave={chave} escolhida={escolhida} escolher={escolher} />;
-  if (app === "slack") return <ConversasDoSlack escolhida={escolhida} escolher={escolher} />;
-  return null;
-}
-
-function ConversasDoTeams(p: { agentId: string; chave: string; escolhida: { ref: string; rotulo?: string }; escolher: (o: OpcaoDeConversa | null) => void }) {
-  const conexao = useRead("connections.list").data?.find((c) => c.id === "teams");
-  const chats = useListaEmCache(chaveDaListaDoTeams("chats", conexao, { agentId: p.agentId, chave: `destino-${p.chave}` }), () => call("connections.teamsChats"));
-  const canais = useListaEmCache(chaveDaListaDoTeams("canais", conexao), () => call("connections.teamsChannels"));
-  const opcoes = opcoesDeConversa("teams", { teamsChats: chats.dados ?? [], teamsCanais: canais.dados ?? [] });
-  return (
-    <ListaDeConversas
-      {...p}
-      aoAbrir={() => {
-        chats.pedir();
-        canais.pedir();
-      }}
-      carregando={chats.lendo || canais.lendo}
-      erro={chats.erro ?? canais.erro}
-      opcoes={opcoes}
-    />
-  );
-}
-
-function ConversasDoSlack(p: { escolhida: { ref: string; rotulo?: string }; escolher: (o: OpcaoDeConversa | null) => void }) {
-  const app = useRead("connections.slackApp").data;
-  const lista = useListaEmCache(chaveDaListaDoSlack(app), async () => [await call("connections.slackChannels", [])]);
-  const opcoes = opcoesDeConversa("slack", { slackCanais: lista.dados?.[0]?.canais ?? [] });
-  return <ListaDeConversas {...p} aoAbrir={() => lista.pedir()} carregando={lista.lendo} erro={lista.erro} opcoes={opcoes} />;
-}
-
-function ListaDeConversas({
-  opcoes,
-  escolhida,
-  escolher,
-  aoAbrir,
-  carregando,
-  erro,
-}: {
-  opcoes: OpcaoDeConversa[];
-  escolhida: { ref: string; rotulo?: string };
-  escolher: (o: OpcaoDeConversa | null) => void;
-  aoAbrir: () => void;
-  carregando: boolean;
-  erro: string | null;
-}) {
   const { t } = useTranslation();
-  // A conversa já gravada continua à vista mesmo antes de a lista carregar.
-  const gravada = escolhida.ref !== "" && !opcoes.some((o) => o.ref === escolhida.ref);
-  const grupos = [...new Set(opcoes.map((o) => o.grupo ?? ""))];
-  const linha = (o: OpcaoDeConversa) => (
-    <option key={o.ref} value={o.ref}>
-      {o.rotulo}
-    </option>
-  );
+  const listas = REGISTRO_DE_CONVERSA.apps[app]?.listas ?? [];
+  const conexao = useRead("connections.list").data?.find((c) => c.id === app);
+  // Cada vez que a pessoa abre o campo, as listas ainda não lidas carregam.
+  const [aberturas, setAberturas] = useState(0);
+  const [estado, setEstado] = useState<Record<string, { lendo: boolean; erro: string | null }>>({});
+  const lendo = Object.values(estado).some((e) => e.lendo);
+  const erro = Object.values(estado).find((e) => e.erro !== null)?.erro ?? null;
+  // A conversa já gravada continua à vista antes de a lista carregar.
+  const gravada = escolhida.ref !== "";
+
   return (
-    <Campo ajuda={carregando ? t("automations.steps.destination.loading") : undefined} rotulo={t("automations.steps.destination.conversation")}>
+    <Campo ajuda={lendo ? t("automations.steps.destination.loading") : undefined} rotulo={t("automations.steps.destination.conversation")}>
       <select
         className={CAMPO}
         data-locum-destino-conversa=""
-        onChange={(e) => escolher(opcoes.find((o) => o.ref === e.target.value) ?? null)}
-        onFocus={aoAbrir}
-        onMouseDown={aoAbrir}
+        onChange={(e) => {
+          const o = e.target.selectedOptions[0];
+          escolher(o === undefined || o.value === "" ? null : { ref: o.value, rotulo: o.dataset.rotulo ?? o.text, ...(o.dataset.conta ? { conta: o.dataset.conta } : {}) });
+        }}
+        onFocus={() => setAberturas((n) => n + 1)}
+        onMouseDown={() => setAberturas((n) => n + 1)}
         value={escolhida.ref}
       >
         <option value="">{t("automations.steps.destination.choose")}</option>
         {gravada ? <option value={escolhida.ref}>{escolhida.rotulo || escolhida.ref}</option> : null}
-        {grupos.map((g) =>
-          g === "" ? (
-            opcoes.filter((o) => o.grupo === undefined).map(linha)
-          ) : (
-            <optgroup key={g} label={g}>
-              {opcoes.filter((o) => o.grupo === g).map(linha)}
-            </optgroup>
-          ),
-        )}
+        {listas.map((l) => (
+          <OpcoesDaLista
+            key={l.id}
+            agentId={agentId}
+            aberturas={aberturas}
+            app={app}
+            chave={chave}
+            conexao={`${conexao?.via ?? ""}:${conexao?.account ?? ""}`}
+            lista={l}
+            ocultar={escolhida.ref}
+            relatar={(e) => setEstado((antes) => (antes[l.id]?.lendo === e.lendo && antes[l.id]?.erro === e.erro ? antes : { ...antes, [l.id]: e }))}
+          />
+        ))}
       </select>
       {erro === null ? null : <p className="text-destructive text-xs">{erro}</p>}
     </Campo>
+  );
+}
+
+/** Uma lista do registro: lê pelo canal da ponte, guarda em cache e devolve as opções agrupadas. */
+function OpcoesDaLista({
+  app,
+  agentId,
+  chave,
+  conexao,
+  lista,
+  aberturas,
+  ocultar,
+  relatar,
+}: {
+  app: string;
+  agentId: string;
+  chave: string;
+  conexao: string;
+  lista: ListaDeConversas;
+  aberturas: number;
+  ocultar: string;
+  relatar: (e: { lendo: boolean; erro: string | null }) => void;
+}) {
+  const carregada = useListaEmCache<unknown>(`destino:${app}:${lista.id}:${conexao}:${agentId}:${chave}`, async () => {
+    const dados = (await (call as (c: string, a?: readonly unknown[]) => Promise<unknown>)(lista.canal, lista.args)) as unknown;
+    return Array.isArray(dados) ? dados : [dados];
+  });
+  useEffect(() => {
+    if (aberturas > 0) carregada.pedir();
+  }, [aberturas]);
+  useEffect(() => {
+    relatar({ lendo: carregada.lendo, erro: carregada.erro });
+  }, [carregada.lendo, carregada.erro]);
+  const opcoes = lista.opcoes(carregada.dados ?? []).filter((o) => o.ref !== ocultar);
+  const grupos = [...new Set(opcoes.map((o) => o.grupo ?? ""))];
+  const linha = (o: OpcaoDeConversa) => (
+    <option key={o.ref} data-conta={o.conta} data-rotulo={o.rotulo} value={o.ref}>
+      {o.rotulo}
+    </option>
+  );
+  return (
+    <>
+      {grupos.map((g) =>
+        g === "" ? (
+          opcoes.filter((o) => o.grupo === undefined).map(linha)
+        ) : (
+          <optgroup key={g} label={g}>
+            {opcoes.filter((o) => o.grupo === g).map(linha)}
+          </optgroup>
+        ),
+      )}
+    </>
   );
 }

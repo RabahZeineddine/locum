@@ -36,6 +36,11 @@ test("marcador de passo ou de evento no destino é recusado: só o evento ou um 
   assert.throws(() => destinoDoPasso("slack.post", { destino: "{{steps.x}}" }), /marcador/);
 });
 
+test("o rótulo não decide o destino: marcador nele não é recusado, no ref é", () => {
+  assert.equal(destinoDoPasso("slack.post", fixo("slack", "C1", "{{steps.x}}")).tipo, "fixo");
+  assert.throws(() => destinoDoPasso("slack.post", { destino: { tipo: "fixo", conversa: { app: "slack", ref: "C1", conta: "{{steps.x}}" } } }), /marcador/);
+});
+
 test("tipo desconhecido ou fixo sem conversa é recusado", () => {
   assert.throws(() => destinoDoPasso("teams.post", { destino: { tipo: "qualquer" } }), /inválido/);
   assert.throws(() => destinoDoPasso("teams.post", { destino: { tipo: "fixo" } }), /inválido/);
@@ -51,20 +56,24 @@ const adaptador: AdaptadorDeConversa = {
   validarRef: (ref) => {
     if (!ref.startsWith("f/")) throw new Error("ref inválido");
   },
+  descreverRef: (ref) => `Conversa ${ref}`,
 };
 
 test("resolverDestino é igual para qualquer app: evento no fio, novo fora do fio, fixo sem evento", () => {
   // `falso` não está no registro: usa-se uma ação registrada só para o tipo de destino.
   const ev = { conversa: "f/1", fio: "m9" };
   const comoApp = (cru: unknown) => resolverDestino({ ...adaptador, app: "teams" }, "teams.post", cru, ev);
-  assert.deepEqual(comoApp(undefined), { tipo: "evento", conversa: "f/1", mensagem: "m9", rotulo: null });
-  assert.deepEqual(comoApp({ tipo: "novo" }), { tipo: "novo", conversa: "f/1", mensagem: null, rotulo: null });
-  assert.deepEqual(comoApp(fixo("teams", "f/2", "Time").destino), {
+  assert.deepEqual(comoApp(undefined), { tipo: "evento", conversa: "f/1", mensagem: "m9", rotulo: null, conta: null });
+  assert.deepEqual(comoApp({ tipo: "novo" }), { tipo: "novo", conversa: "f/1", mensagem: null, rotulo: null, conta: null });
+  // O rótulo gravado é só o nome que a tela mostrou: a Fila recebe o que o ref descreve.
+  assert.deepEqual(comoApp(fixo("teams", "f/2", "Nome que diverge").destino), {
     tipo: "fixo",
     conversa: "f/2",
     mensagem: null,
-    rotulo: "Time",
+    rotulo: "Conversa f/2",
+    conta: null,
   });
+  assert.equal(comoApp({ tipo: "fixo", conversa: { app: "teams", ref: "f/2", conta: "a@x.test" } }).conta, "a@x.test");
   // O fixo não depende do evento: serve no gatilho manual e no ensaio.
   assert.equal(resolverDestino({ ...adaptador, app: "teams" }, "teams.post", fixo("teams", "f/2").destino, {}).conversa, "f/2");
   assert.throws(() => comoApp(fixo("teams", "g/2").destino), /ref inválido/);

@@ -8,6 +8,8 @@ export interface EnderecoDeConversa {
   conversa: string;
   /** A mensagem ou o fio a que se responde, ou nulo quando o app não tem fio ali. */
   mensagem: string | null;
+  /** A conta do app por onde o evento chegou, para apps com mais de uma. */
+  conta?: string | null;
 }
 
 /**
@@ -21,6 +23,8 @@ export interface AdaptadorDeConversa {
   enderecoDoEvento(payload: unknown): EnderecoDeConversa;
   /** Confere um `ref` escolhido pela pessoa; estoura se não for desse app. */
   validarRef(ref: string): void;
+  /** O `ref` em palavras, para a Fila: é o que o app entende, e não o nome que a tela gravou. */
+  descreverRef(ref: string): string;
 }
 
 /** O alvo já resolvido: o handler só traduz isto para a chamada do app. */
@@ -29,8 +33,10 @@ export interface AlvoResolvido {
   conversa: string;
   /** Presente só quando a resposta vai no fio da mensagem do evento. */
   mensagem: string | null;
-  /** O nome que a Fila mostra quando o destino é fixo. */
+  /** A conversa fixa em palavras, como o adaptador a descreve a partir do `ref`; o rótulo gravado no passo não entra. */
   rotulo: string | null;
+  /** A conta por onde sair: a escolhida no destino fixo, ou a do evento. */
+  conta: string | null;
 }
 
 /**
@@ -43,7 +49,13 @@ export function resolverDestino(adaptador: AdaptadorDeConversa, acao: string, cr
   const destino = exigirDestino(acao, cru);
   if (destino.tipo === "fixo") {
     adaptador.validarRef(destino.conversa.ref);
-    return { tipo: "fixo", conversa: destino.conversa.ref, mensagem: null, rotulo: destino.conversa.rotulo ?? destino.conversa.ref };
+    return {
+      tipo: "fixo",
+      conversa: destino.conversa.ref,
+      mensagem: null,
+      rotulo: adaptador.descreverRef(destino.conversa.ref),
+      conta: destino.conversa.conta ?? null,
+    };
   }
   const endereco = adaptador.enderecoDoEvento(payload);
   return {
@@ -51,5 +63,6 @@ export function resolverDestino(adaptador: AdaptadorDeConversa, acao: string, cr
     conversa: endereco.conversa,
     mensagem: destino.tipo === "evento" ? endereco.mensagem : null,
     rotulo: null,
+    conta: endereco.conta ?? null,
   };
 }

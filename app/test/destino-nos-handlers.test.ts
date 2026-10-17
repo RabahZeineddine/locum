@@ -8,6 +8,7 @@ import { db, schema } from "../src/db/index.js";
 import { migrateDb } from "../src/db/migrate.js";
 import { Executor } from "../src/executor/executor.js";
 import { McpRegistry } from "../src/mcp/registry.js";
+import type { Runtime } from "../src/runtimes/types.js";
 import { AgentService } from "../src/services/agent-service.js";
 import { slackPostHandler } from "../src/slack/action.js";
 import { slackReactHandler } from "../src/slack/react-action.js";
@@ -19,6 +20,7 @@ import { bancoDeTeste } from "./helpers/db.js";
 
 before(() => {
   migrateDb();
+  process.env.OLLAMA_BASE_URL = "http://127.0.0.1:9";
 });
 
 const lido = (banco: ReturnType<typeof bancoDeTeste>) =>
@@ -40,7 +42,7 @@ test("teams.post: destino fixo em chat não depende do gatilho ter lido a conver
     subject: "",
     author: null,
     webUrl: null,
-    destino: { tipo: "fixo", rotulo: "Time de plataforma" },
+    destino: { tipo: "fixo", rotulo: "Chat 19:time" },
   });
 });
 
@@ -49,7 +51,8 @@ test("teams.post: destino fixo em canal vira mensagem nova no canal, sem thread"
   const p = (await handler.propose!({ text: "oi", destino: fixo("teams", "canal/T1/C1", "Equipe > Geral") }, null)) as {
     channel: object;
   };
-  assert.deepEqual(p.channel, { teamId: "T1", channelId: "C1", label: "Equipe > Geral" });
+  // O nome que a tela gravou não vira verdade na Fila: vale o que o ref descreve.
+  assert.deepEqual(p.channel, { teamId: "T1", channelId: "C1", label: "Canal C1 (equipe T1)" });
 });
 
 test("teams.post: novo no canal do evento usa o mesmo canal e tira a thread; evento mantém a thread", async () => {
@@ -93,7 +96,7 @@ test("slack.post: destino fixo manda para o canal escolhido, sem thread e sem co
     server: "slack",
     channel: "C9",
     text: "oi",
-    destino: { tipo: "fixo", rotulo: "#geral" },
+    destino: { tipo: "fixo", rotulo: "Canal C9" },
     subject: "",
     permalink: null,
   });
@@ -105,7 +108,7 @@ test("slack.post: novo fica no canal do evento fora do fio; evento exige o carim
   const novo = (await handler.propose!({ ...evento, destino: { tipo: "novo" } }, null)) as { channel: string; threadTs?: string };
   assert.equal(novo.channel, "C1");
   assert.equal(novo.threadTs, undefined);
-  await assert.rejects(handler.propose!(evento, null), /threadTs/);
+  await assert.rejects(handler.propose!(evento, null), /nao traz a mensagem do Slack/);
   const noFio = (await handler.propose!({ ...evento, threadTs: "1.1" }, null)) as { threadTs: string };
   assert.equal(noFio.threadTs, "1.1");
 });
@@ -122,6 +125,53 @@ test("reação só aceita a mensagem do evento", async () => {
   );
   const ok = await teamsReactHandler({}).propose!({ ...campos, destino: { tipo: "evento" } }, null);
   assert.equal((ok as { emoji: string }).emoji, "👀");
+});
+
+const runtimeQueEscreve = (saida: Record<string, unknown>): Runtime => ({
+  id: "native",
+  run: async () => ({ text: "", structured: saida, promptTokens: 1, completionTokens: 0, costUsd: 0, billable: false, toolsUsed: [] }),
+});
+
+test("slack.post no fio do evento: a thread vem do evento, e o modelo devolvendo outra thread lida do mesmo canal não a troca", async () => {
+  const lidas = new Set(["100.1", "200.2"]);
+  const lookupDasDuas = async (_s: string, channel: string, threadTs: string) =>
+    lidas.has(threadTs) ? { channel, threadTs, subject: `thread ${threadTs}`, permalink: null } : null;
+  const gate = new ApprovalGate(new Map([["slack.post", slackPostHandler({ slack: slackFalso, lookup: lookupDasDuas })]]));
+  const executor = new Executor({
+    mcp: registroFalso,
+    runtimes: new Map([["native", runtimeQueEscreve({ text: "resposta", threadTs: "200.2", channel: "C2" })]]),
+    gate,
+    machineId: "m",
+  });
+  const versao = await new AgentService().upsert(
+    AgentSpec.parse({
+      id: `dest-${randomUUID().slice(0, 8)}`,
+      name: "Thread",
+      steps: [
+        { type: "model", key: "escrever", name: "Escrever", model: "ollama/m", prompt: "responda", outputSchema: { type: "object", properties: { text: { type: "string" } } } },
+        { type: "action", key: "post", name: "Responder", action: "slack.post", mode: "approve", needs: ["escrever"] },
+      ],
+    }),
+    undefined,
+    "human",
+  );
+  const eventoId = randomUUID();
+  await db.insert(schema.events).values({
+    id: eventoId,
+    source: "slack",
+    externalId: `s:${eventoId}`,
+    payload: { repo: "slack/C1", channel: "C1", ts: "100.1", threadTs: "100.1", text: "pergunta", author: "ana" },
+  });
+  const runId = await executor.createRun(versao.id, eventoId);
+  const estado = await executor.execute(runId);
+  const passos = await db.select().from(schema.steps).where(eq(schema.steps.runId, runId));
+  const acao = passos.find((p) => p.stepKey === "post")!;
+  assert.equal(acao.status, "awaiting_approval", `${estado}: ${JSON.stringify(passos.map((p) => [p.stepKey, p.status, p.error]))}`);
+  const [pendencia] = await db.select().from(schema.approvals).where(eq(schema.approvals.stepId, acao.id));
+  const payload = pendencia!.payload as { threadTs: string; channel: string; subject: string };
+  assert.equal(payload.threadTs, "100.1");
+  assert.equal(payload.channel, "C1");
+  assert.equal(payload.subject, "thread 100.1");
 });
 
 const registroFalso = { missing: () => [], toolsFor: async () => ({ tools: {}, release: () => undefined }) } as unknown as McpRegistry;
@@ -172,5 +222,5 @@ test("executor: destino fixo gravado no passo chega ao handler e a pendência mo
   const [pendencia] = await db.select().from(schema.approvals).where(eq(schema.approvals.stepId, passo.id));
   const payload = pendencia!.payload as { destino: { tipo: string; rotulo: string }; chatId: string };
   assert.equal(payload.chatId, "19:time");
-  assert.deepEqual(payload.destino, { tipo: "fixo", rotulo: "Time" });
+  assert.deepEqual(payload.destino, { tipo: "fixo", rotulo: "Chat 19:time" });
 });
