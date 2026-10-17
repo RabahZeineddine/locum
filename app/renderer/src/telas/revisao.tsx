@@ -158,6 +158,7 @@ function RevisaoDaPendencia({ detalhe, navegar, aoRecarregar, aoRecusar }: TelaP
   const [mexidas, setMexidas] = useState(0);
   const gravadas = useRef(0);
   const hashBase = useRef<string | null>(null);
+  const conhecidos = useRef<string[]>([]);
   const [mudouPorFora, setMudouPorFora] = useState(false);
   const edicaoPendente = mexidas !== gravadas.current;
   const mexer = (): void => setMexidas((n) => n + 1);
@@ -190,6 +191,7 @@ function RevisaoDaPendencia({ detalhe, navegar, aoRecarregar, aoRecusar }: TelaP
       }),
     );
     hashBase.current = p.hash;
+    conhecidos.current.push(p.hash);
     gravadas.current = mexidas;
     setMudouPorFora(false);
   }
@@ -202,7 +204,7 @@ function RevisaoDaPendencia({ detalhe, navegar, aoRecarregar, aoRecusar }: TelaP
   // A releitura trouxe outro payload: sem edição daqui a tela adota o novo; com edição, avisa.
   useEffect(() => {
     if (!pendencia || contexto || mensagem || documento || achados === null || gravando) return;
-    const acao = acaoDaReleitura({ hashBase: hashBase.current, hashAtual: pendencia.hash, edicaoPendente });
+    const acao = acaoDaReleitura({ hashBase: hashBase.current, hashAtual: pendencia.hash, edicaoPendente, conhecidos: conhecidos.current });
     if (acao === "recarregar") {
       esquecerEdicao(pendencia.id);
       carregarDe(pendencia);
@@ -225,6 +227,7 @@ function RevisaoDaPendencia({ detalhe, navegar, aoRecarregar, aoRecusar }: TelaP
       )
         .then((hash) => {
           hashBase.current = hash;
+          conhecidos.current.push(hash);
           gravadas.current = versao;
         })
         .catch((e: unknown) => aoRecusar(e instanceof Error ? e.message : String(e)))

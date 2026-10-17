@@ -61,7 +61,8 @@ export function registerApprovalTools(server: McpServer, amb: Ambiente): void {
       const atual = await approvalService.get(approvalId);
       if (atual === undefined) throw new Error(`aprovacao ${approvalId} nao encontrada`);
       exigirImpressao(hash, impressaoDaAprovacao(atual), "a aprovação");
-      return { approvalId, decision, status: (await amb.decidir(approvalId, decision)).status };
+      // A gate confere de novo, na tomada, que o payload é o que acabou de ser conferido aqui.
+      return { approvalId, decision, status: (await amb.decidir(approvalId, decision, impressaoDe(atual.payload))).status };
     });
 
   def(server, "settle_stuck_approval", "danger",

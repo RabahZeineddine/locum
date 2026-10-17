@@ -1,6 +1,5 @@
 import { PassoIncompletoError, descreverPendencia, pendenciasDoPasso, recusaDeRodar } from "../config/pendencia.js";
 import { REBAIXADO_NA_REEXECUCAO, rebaixadaPorInstrucao } from "../config/rebaixado.js";
-import { erroComCodigo } from "../services/erro-com-codigo.js";
 import { i18nService } from "../services/i18n-service.js";
 import { translate } from "../services/text-service.js";
 import { randomUUID } from "node:crypto";
@@ -28,7 +27,6 @@ import { conexoesIndisponiveis, libraryService, type LibraryService } from "../s
 import { runLogic } from "./logic.js";
 import { discoverSkills, selectSkills, skillsAusentes, skillsIndisponiveis, skillsPreamble, type LoadedSkill, type SkillContext } from "../skills/loader.js";
 import { ApprovalGate, settleStep } from "../approval/gate.js";
-import { impressaoDe } from "../approval/impressao.js";
 import { BudgetExceeded, assertWithinBudget, recordSpend, type Spend } from "./budget.js";
 import { ehLeituraNaAcao, type FerramentaClassificavel } from "../config/leitura.js";
 import { avisoDeDadoExterno, blocoDeInstrucao, delimitarDado, ehDadoExterno, novaMarca, novaMarcaDeInstrucao } from "./dado-externo.js";
@@ -127,19 +125,15 @@ export class Executor {
    *
    * `hashVisto` é a impressão do payload que a pessoa viu (`ApprovalSummary.hash`).
    * Dado, a decisão só vale se a pendência continua igual: a conversa do run ou o
-   * MCP podem tê-la editado depois de a tela carregar.
+   * MCP podem tê-la editado depois de a tela carregar. A gate confere na própria tomada.
    */
   async decide(
     approvalId: string,
     decision: "approved" | "rejected",
     hashVisto?: string,
   ): Promise<{ status: "approved" | "rejected" | "conflict"; run: "done" | "paused" | "failed"; motivo?: string }> {
-    if (hashVisto !== undefined) {
-      const [atual] = await db.select({ payload: schema.approvals.payload }).from(schema.approvals).where(eq(schema.approvals.id, approvalId));
-      if (atual !== undefined && impressaoDe(atual.payload) !== hashVisto) throw erroComCodigo("pendencia_mudou", "", "a pendência mudou desde que você viu");
-    }
     const avulso = await this.ehAvulso(approvalId);
-    const { runId, status, motivo } = await this.deps.gate.decide(approvalId, decision);
+    const { runId, status, motivo } = await this.deps.gate.decide(approvalId, decision, hashVisto);
     const run = avulso ? await this.estadoDoRun(runId) : await this.execute(runId);
     return { status, run, ...(motivo === undefined ? {} : { motivo }) };
   }

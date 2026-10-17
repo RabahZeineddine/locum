@@ -1,3 +1,4 @@
+import { impressaoDe } from "../src/approval/impressao.js";
 import { before, test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -201,8 +202,10 @@ test("falha ao ler o Teams volta como resultado com a mensagem", async () => {
 
 test("a fila devolve o texto como está, e decidir passa pela gate que o servidor recebeu", async () => {
   const decisoes: [string, string][] = [];
+  const hashesDoPayload: (string | undefined)[] = [];
   const client = await ligarCliente({
-    decidir: async (approvalId, decision) => {
+    decidir: async (approvalId, decision, payloadHash) => {
+      hashesDoPayload.push(payloadHash);
       decisoes.push([approvalId, decision]);
       return { status: decision };
     },
@@ -250,6 +253,8 @@ test("a fila devolve o texto como está, e decidir passa pela gate que o servido
     status: "rejected",
   });
   assert.deepEqual(decisoes, [[aprovacao, "rejected"]]);
+  // A gate confere a impressão do payload na própria tomada: o MCP manda a do que acabou de conferir.
+  assert.deepEqual(hashesDoPayload, [impressaoDe({ text: "outro texto, que o cliente não viu", channel: "C1" })]);
   recusa(await client.callTool({ name: "decide_approval", arguments: { approvalId: aprovacao, decision: "talvez", hash: nova.hash } }), /./);
 });
 

@@ -160,6 +160,11 @@ test("editar pela conversa muda o payload e marca a pendência; pela pessoa, mud
   const pelaConversa = await service.editarCampos("pendencia", { text: "da conversa" }, { conversa: "run" });
   assert.deepEqual(pelaConversa.payload, { ...RESPOSTA, text: "da conversa" });
   assert.ok(pelaConversa.alteradaPelaConversaEm! >= antes);
+
+  // Quem editou por último vale: a pessoa sobrescreve e a marca da conversa some.
+  const depois = await service.editarCampos("pendencia", { text: "a pessoa voltou atrás" }, "pessoa");
+  assert.equal((depois.payload as { text: string }).text, "a pessoa voltou atrás");
+  assert.equal(depois.alteradaPelaConversaEm, null);
 });
 
 test("editar pela conversa recusa campo fora do esquema da ação, e a pendência fica como estava", async () => {

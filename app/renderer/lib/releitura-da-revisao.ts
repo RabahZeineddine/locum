@@ -6,12 +6,13 @@
 export type AcaoDaReleitura = "manter" | "recarregar" | "avisar";
 
 /**
- * `hashBase` é a impressão do payload com que o estado local foi montado (ou gravado pela última vez
+ * `conhecidos` são as impressões que esta janela já teve como base. `hashBase` é a impressão do payload com que o estado local foi montado (ou gravado pela última vez
  * por esta janela). Sem edição pendente a tela adota o que veio; com edição, avisa e deixa a pessoa
  * escolher, porque gravar o estado local por cima apagaria a mudança de fora.
  */
-export function acaoDaReleitura(a: { hashBase: string | null; hashAtual: string; edicaoPendente: boolean }): AcaoDaReleitura {
-  if (a.hashBase === null || a.hashAtual === a.hashBase) return "manter";
+export function acaoDaReleitura(a: { hashBase: string | null; hashAtual: string; edicaoPendente: boolean; conhecidos?: readonly string[] }): AcaoDaReleitura {
+  // Uma releitura que chega atrasada, com um conteúdo que esta janela já viu ou gravou, não é mudança de fora.
+  if (a.hashBase === null || a.hashAtual === a.hashBase || a.conhecidos?.includes(a.hashAtual) === true) return "manter";
   return a.edicaoPendente ? "avisar" : "recarregar";
 }
 

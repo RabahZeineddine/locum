@@ -15,6 +15,11 @@ test("payload diferente com edição local pendente: avisa e não grava por cima
   assert.equal(acaoDaReleitura({ hashBase: "a", hashAtual: "b", edicaoPendente: true }), "avisar");
 });
 
+test("releitura atrasada de um conteúdo que esta janela já conheceu (antes da própria gravação) não conta como mudança de fora", () => {
+  assert.equal(acaoDaReleitura({ hashBase: "b", hashAtual: "a", edicaoPendente: false, conhecidos: ["a", "b"] }), "manter");
+  assert.equal(acaoDaReleitura({ hashBase: "b", hashAtual: "c", edicaoPendente: false, conhecidos: ["a", "b"] }), "recarregar");
+});
+
 test("sem base ainda (estado local não carregado), a releitura não decide nada", () => {
   assert.equal(acaoDaReleitura({ hashBase: null, hashAtual: "b", edicaoPendente: false }), "manter");
 });

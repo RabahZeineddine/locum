@@ -36,7 +36,8 @@ export interface Ambiente {
   systemLocale: () => string;
   appVersion: () => string;
   /** A decisão da fila, pela gate do executor: a única porta de saída (ADR 0002). */
-  decidir: (approvalId: string, decision: "approved" | "rejected") => Promise<{ status: string }>;
+  /** `payloadHash` é a impressão do payload que quem decide viu; a gate a confere na tomada. */
+  decidir: (approvalId: string, decision: "approved" | "rejected", payloadHash?: string) => Promise<{ status: string }>;
   resolverEstancada: (approvalId: string, outcome: "published" | "retry") => Promise<{ status: string }>;
 }
 
@@ -75,6 +76,6 @@ export const ambientePadrao: Ambiente = {
   runChat: null,
   systemLocale: () => Intl.DateTimeFormat().resolvedOptions().locale,
   appVersion: () => process.env.npm_package_version ?? "desconhecida",
-  decidir: async (id, decision) => (await (await import("../executor/build.js")).buildExecutor()).decide(id, decision),
+  decidir: async (id, decision, payloadHash) => (await (await import("../executor/build.js")).buildExecutor()).decide(id, decision, payloadHash),
   resolverEstancada: async (id, outcome) => (await (await import("../executor/build.js")).buildExecutor()).settleStuck(id, outcome),
 };

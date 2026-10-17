@@ -122,7 +122,8 @@ export class ApprovalService {
         .update(schema.approvals)
         .set({
           payload: { ...(approval.payload as object), ...novos },
-          ...(origem === "pessoa" ? {} : { alteradaPelaConversaEm: Math.floor(Date.now() / 1000) }),
+          // Quem editou por último vale: a pessoa sobrescreve e a marca da conversa some.
+          alteradaPelaConversaEm: origem === "pessoa" ? null : Math.floor(Date.now() / 1000),
         })
         .where(and(eq(schema.approvals.id, approvalId), eq(schema.approvals.status, "pending")))
         .run();
