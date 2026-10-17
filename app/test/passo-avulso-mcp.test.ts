@@ -41,13 +41,13 @@ test("propose_run_action cria a pendência na Fila e não publica, e describe_st
   const runId = randomUUID();
   await db.insert(schema.runs).values({ id: runId, agentVersionId: versao.id, eventId: eventoId, status: "done" });
 
-  const resposta = JSON.parse(texto(await client.callTool({ name: "propose_run_action", arguments: { runId, kind: "github.review_comment", conteudo: { verdict: "APPROVE", summary: "", findings: [] } } }))) as { approvalId: string; stepKey: string };
+  const resposta = JSON.parse(texto(await client.callTool({ name: "propose_run_action", arguments: { runId, kind: "github.review_comment", content: { verdict: "APPROVE", summary: "", findings: [] } } }))) as { approvalId: string; stepKey: string };
   assert.equal(resposta.stepKey, "avulso-1");
   const [pendencia] = await db.select().from(schema.approvals).where(eq(schema.approvals.runId, runId));
   assert.equal(pendencia!.id, resposta.approvalId);
   assert.equal(pendencia!.status, "pending");
   assert.equal((pendencia!.payload as { headSha: string }).headSha, "aaa111");
 
-  const alvoNoConteudo = await client.callTool({ name: "propose_run_action", arguments: { runId, kind: "github.review_comment", conteudo: { verdict: "APPROVE", findings: [], owner: "outra-org" } } });
+  const alvoNoConteudo = await client.callTool({ name: "propose_run_action", arguments: { runId, kind: "github.review_comment", content: { verdict: "APPROVE", findings: [], owner: "outra-org" } } });
   assert.equal((alvoNoConteudo as { isError?: boolean }).isError, true);
 });

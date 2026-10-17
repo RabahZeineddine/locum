@@ -72,8 +72,9 @@ export function registerRunTools(server: McpServer): void {
     {
       runId: z.string().min(1),
       kind: z.string().min(1).describe("action kind, as listed by describe_steps"),
-      conteudo: z.record(z.string(), z.unknown()).describe("the action content, validated by the inputSchema of the kind"),
-      derivaDe: z.string().optional().describe("key of the flow step this action derives from; re-running that step expires the pending approval"),
+      content: z.record(z.string(), z.unknown()).describe("the action content, validated by the inputSchema of the kind"),
+      derivedFrom: z.string().optional().describe("key of the flow step this action derives from; re-running that step expires the pending approval"),
     },
-    ({ runId, kind, conteudo, derivaDe }) => passoAvulsoService.proporAcao(runId, { kind, conteudo, derivaDe }));
+    ({ runId, kind, content, derivedFrom }) =>
+      passoAvulsoService.proporAcao(runId, { kind, conteudo: content, ...(derivedFrom === undefined ? {} : { derivaDe: derivedFrom }) }));
 }

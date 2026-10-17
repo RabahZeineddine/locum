@@ -785,6 +785,11 @@ export function githubReviewHandler(client: () => ReviewClient = octokit): Actio
       // Aprovar depois de commits novos aprovaria código que ninguém revisou.
       if (p.headSha) {
         const { data } = await client().rest.pulls.get({ owner: p.owner, repo: p.repo, pull_number: p.pull });
+        // Pull request fechado ou mergeado não recebe review: nada sai.
+        if (data.state === "closed" || data.merged === true) {
+          const motivo = "publish_conflict:pr_fechado";
+          throw new PublishConflict(motivo, motivo);
+        }
         if (data.head.sha !== p.headSha) {
           // O texto é o código do motivo: a tela e o erro do passo o traduzem.
           const motivo = `publish_conflict:head_mudou:${p.headSha}:${data.head.sha}`;

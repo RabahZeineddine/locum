@@ -35,8 +35,11 @@ export type SkillRule = z.infer<typeof SkillRule>;
 export const ActionMode = z.enum(["approve", "draft", "auto"]);
 export type ActionMode = z.infer<typeof ActionMode>;
 
+/** Prefixo das chaves dos passos avulsos (ADR 0007): nenhum passo do fluxo usa. */
+export const PREFIXO_DO_PASSO_AVULSO = "avulso-";
+
 const StepBase = z.object({
-  key: z.string(),
+  key: z.string().refine((k) => !k.startsWith(PREFIXO_DO_PASSO_AVULSO), { message: `a chave do passo nao pode comecar com "${PREFIXO_DO_PASSO_AVULSO}": o prefixo e dos passos avulsos` }),
   name: z.string(),
   /**
    * Dependencias. O editor da v1 e uma lista, mas o modelo de dados ja e um

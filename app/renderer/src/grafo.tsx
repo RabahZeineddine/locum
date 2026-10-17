@@ -17,7 +17,7 @@ import type {
   NodeProps as PropsDoNo,
 } from "@xyflow/react";
 import { MarkerType } from "@xyflow/react";
-import { rotuloDeEstado, rotuloDoModelo, rotuloDoMotivo } from "@/lib/rotulos";
+import { rotuloDaAcao, rotuloDeEstado, rotuloDoModelo, rotuloDoMotivo } from "@/lib/rotulos";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -187,7 +187,7 @@ function NoDoPasso({ data }: PropsDoNo<NoDoFluxo<DadosDoPasso>>) {
       style={{ height: ALTURA_DO_NO, width: LARGURA_DO_NO }}
     >
       <NodeHeader>
-        <NodeTitle className="truncate text-sm">{data.nome}</NodeTitle>
+        <NodeTitle className="truncate text-sm">{data.avulso ? rotuloDaAcao(t, data.nome) : data.nome}</NodeTitle>
       </NodeHeader>
       <NodeContent className="flex flex-col gap-1 text-xs">
         <span className="flex items-center gap-2">

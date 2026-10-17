@@ -720,7 +720,8 @@
       "publish_conflict_head": "the pull request got new commits after the evaluation (evaluated {{avaliado}}, current {{atual}}): nothing was published",
       "dependency_rejected": "skipped because step {{step}} was rejected",
       "not_run": "an earlier step failed, so this one did not run",
-      "expired": "the approval expired because the step it derives from was re-run"
+      "expired": "the approval expired because the step it derives from was re-run",
+      "publish_conflict_closed": "the pull request was closed or merged before this could be published"
     },
     "tabs": {
       "executive": "Executive View",
@@ -790,6 +791,23 @@
         "obrigatorio": "required field",
         "tipo": "value of another type",
         "json": "invalid JSON"
+      },
+      "refused": "The action refused the proposal ({{kind}}), for example a review on your own pull request.",
+      "fields": {
+        "github_review_comment": {
+          "verdict": {
+            "label": "Verdict",
+            "help": "The review event on GitHub."
+          },
+          "summary": {
+            "label": "Summary",
+            "help": "The review body. Empty publishes only the invisible marks."
+          },
+          "findings": {
+            "label": "Findings",
+            "help": "A JSON list. A finding with a file and line becomes an inline comment."
+          }
+        }
       }
     }
   },

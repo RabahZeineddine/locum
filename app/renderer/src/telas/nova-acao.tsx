@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { call, useRead, type ReadResult } from "@/lib/bridge";
 import { semPrefixoDoIpc } from "@/lib/erro-da-ponte";
 import { camposDoSchema, type Campo as CampoDoEsquema } from "@/lib/formulario-de-schema";
+import { rotuloDaAcao } from "@/lib/rotulos";
 import { escritoComoJson, montarConteudo, valoresIniciais, type ErroDoFormulario } from "@/lib/passo-avulso";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -16,7 +17,7 @@ type Detalhe = NonNullable<ReadResult<"runs.get">>;
 
 /** O run aceita ação nova quando terminou (ou espera uma decisão) e não é um ensaio. O serviço recusa de novo ao gravar. */
 export function aceitaAcaoNova(detalhe: Detalhe): boolean {
-  return detalhe.status !== "queued" && detalhe.status !== "running" && detalhe.event?.semConversa !== true;
+  return detalhe.status !== "queued" && detalhe.status !== "running" && detalhe.event?.semConversa !== true && !detalhe.agentArchived;
 }
 
 /**
@@ -75,7 +76,9 @@ function Dialogo({ detalhe, navegar, aoFechar }: { detalhe: Detalhe; navegar: Te
       },
       (e: unknown) => {
         setEnviando(false);
-        setRecusa(semPrefixoDoIpc(e instanceof Error ? e.message : String(e)));
+        const mensagem = semPrefixoDoIpc(e instanceof Error ? e.message : String(e));
+        const recusada = /proposta_recusada:([^:]+):/.exec(mensagem);
+        setRecusa(recusada === null ? mensagem : t("runs.newAction.refused", { kind: rotuloDaAcao(t, recusada[1]!) }));
       },
     );
   };
@@ -111,7 +114,7 @@ function Dialogo({ detalhe, navegar, aoFechar }: { detalhe: Detalhe; navegar: Te
                 <option value="">{t("runs.newAction.choose")}</option>
                 {oferecidas.map((a) => (
                   <option key={a.kind} value={a.kind}>
-                    {a.kind}
+                    {rotuloDaAcao(t, a.kind)}
                   </option>
                 ))}
               </Select>
@@ -125,6 +128,7 @@ function Dialogo({ detalhe, navegar, aoFechar }: { detalhe: Detalhe; navegar: Te
                 {campos.map((campo) => (
                   <CampoDoFormulario
                     campo={campo}
+                    kind={kind}
                     erro={erros.find((e) => e.campo === campo.nome)?.motivo}
                     key={campo.nome}
                     texto={textos[campo.nome] ?? ""}
@@ -134,8 +138,8 @@ function Dialogo({ detalhe, navegar, aoFechar }: { detalhe: Detalhe; navegar: Te
                 <Campo rotulo={t("runs.newAction.derivesFrom")}>
                   <Select onChange={(e) => setDerivaDe(e.target.value)} value={derivaDe}>
                     <option value="">{t("runs.newAction.derivesNone")}</option>
-                    {detalhe.spec.steps.map((p) => (
-                      <option key={p.key} value={p.key}>
+                    {detalhe.steps.filter((p) => p.origem === "fluxo").map((p) => (
+                      <option key={p.stepKey} value={p.stepKey}>
                         {p.name}
                       </option>
                     ))}
@@ -170,17 +174,23 @@ function Dialogo({ detalhe, navegar, aoFechar }: { detalhe: Detalhe; navegar: Te
 /** Um campo do esquema: o controle vem do tipo, e o nome e a descrição são os que o handler declarou. */
 function CampoDoFormulario({
   campo,
+  kind,
   texto,
   erro,
   aoMudar,
 }: {
   campo: CampoDoEsquema;
+  kind: string;
   texto: string;
   erro: ErroDoFormulario["motivo"] | undefined;
   aoMudar: (valor: string) => void;
 }) {
   const { t } = useTranslation();
-  const rotulo = campo.obrigatorio ? `${campo.nome} *` : campo.nome;
+  // Rótulo e ajuda vêm do dicionário, por ação e campo; o nome e a descrição do esquema só entram sem texto.
+  const base = `runs.newAction.fields.${kind.replaceAll(".", "_")}.${campo.nome}`;
+  const nome = t(`${base}.label`, { defaultValue: campo.nome });
+  const rotulo = campo.obrigatorio ? `${nome} *` : nome;
+  const ajuda = t(`${base}.help`, { defaultValue: campo.descricao ?? "" });
   let controle;
   if (campo.tipo === "enum") {
     controle = (
@@ -215,7 +225,7 @@ function CampoDoFormulario({
   }
   return (
     <div className="flex flex-col gap-1">
-      <Campo ajuda={campo.descricao} rotulo={rotulo}>
+      <Campo ajuda={ajuda === "" ? undefined : ajuda} rotulo={rotulo}>
         {controle}
       </Campo>
       {erro === undefined ? null : <span className="text-destructive text-xs">{t(`runs.newAction.error.${erro}`)}</span>}

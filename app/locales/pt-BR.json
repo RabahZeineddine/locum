@@ -744,7 +744,8 @@
       "publish_conflict_head": "o pull request recebeu commits depois da avaliação (avaliado {{avaliado}}, atual {{atual}}): nada foi publicado",
       "dependency_rejected": "pulado porque o passo {{step}} foi recusado",
       "not_run": "um passo anterior falhou, então este não rodou",
-      "expired": "a pendência expirou porque o passo de que ela deriva foi reexecutado"
+      "expired": "a pendência expirou porque o passo de que ela deriva foi reexecutado",
+      "publish_conflict_closed": "o pull request foi fechado ou mergeado antes disso poder ser publicado"
     },
     "tabs": {
       "executive": "Visão Executiva",
@@ -814,6 +815,23 @@
         "obrigatorio": "campo obrigatório",
         "tipo": "valor de outro tipo",
         "json": "JSON inválido"
+      },
+      "refused": "A ação recusou a proposta ({{kind}}), por exemplo uma review em pull request seu.",
+      "fields": {
+        "github_review_comment": {
+          "verdict": {
+            "label": "Veredito",
+            "help": "O evento da review no GitHub."
+          },
+          "summary": {
+            "label": "Resumo",
+            "help": "O corpo da review. Vazio publica só as marcas invisíveis."
+          },
+          "findings": {
+            "label": "Achados",
+            "help": "Lista em JSON. Achado com arquivo e linha vira comentário na linha."
+          }
+        }
       }
     }
   },

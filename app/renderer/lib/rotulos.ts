@@ -51,6 +51,11 @@ export function rotuloDeSeveridade(t: TFunction, severidade: string): string {
     : severidade;
 }
 
+/** O nome de uma ação pelo dicionário; ação sem texto sai com o código dela. */
+export function rotuloDaAcao(t: TFunction, kind: string): string {
+  return t(`agents.step.actionKind.${kind}`, { defaultValue: kind });
+}
+
 export function rotuloDeEstado(t: TFunction, estado: string): string {
   return (ESTADOS as readonly string[]).includes(estado) ? t(`status.${estado}`) : estado;
 }
@@ -62,6 +67,7 @@ export type MotivoDePasso = (typeof MOTIVOS_DE_PASSO)[number];
 export function rotuloDoMotivo(t: TFunction, motivo: string): string {
   const cabeca = /^publish_conflict:head_mudou:([^:]+):([^:]+)$/.exec(motivo);
   if (cabeca) return t("runs.stepReason.publish_conflict_head", { avaliado: cabeca[1]!.slice(0, 7), atual: cabeca[2]!.slice(0, 7) });
+  if (motivo === "publish_conflict:pr_fechado") return t("runs.stepReason.publish_conflict_closed");
   if (motivo.startsWith("dependency_rejected:")) return t("runs.stepReason.dependency_rejected", { step: motivo.slice("dependency_rejected:".length) });
   return (MOTIVOS_DE_PASSO as readonly string[]).includes(motivo)
     ? t(`runs.stepReason.${motivo}`)

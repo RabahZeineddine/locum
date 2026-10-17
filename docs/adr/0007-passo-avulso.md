@@ -25,7 +25,7 @@ automação, e não só aquele run.
    fica em `steps.input`.
 4. O alvo vem do evento do run, pelo mesmo caminho do executor para passo de
    ação. O conteúdo nunca escolhe dono, repositório, pull, commit nem conversa.
-   O destino `fixo` só entra por parâmetro explícito, escolhido na tela ou no MCP.
+   O destino `fixo` de uma ação de conversa só entrará por parâmetro explícito, escolhido na tela ou no MCP, quando um handler de conversa ganhar `inputSchema`; hoje nenhum tem, e o avulso não escolhe destino.
 5. O handler declara o que o conteúdo aceita em `inputSchema` (JSON Schema, só
    conteúdo). Handler sem `inputSchema` não é oferecido como avulso: não há lista
    de ações permitidas no código. A tela monta o formulário e o MCP valida pelo

@@ -8,6 +8,7 @@ import { db, schema } from "../src/db/index.js";
 import { migrateDb } from "../src/db/migrate.js";
 import { Executor } from "../src/executor/executor.js";
 import { githubReviewHandler, LOCUM_MARKER, type ReviewClient } from "../src/sources/github.js";
+import { PREFIXO_DO_PASSO_AVULSO } from "../src/config/types.js";
 import { AgentService } from "../src/services/agent-service.js";
 import { PassoAvulsoService } from "../src/services/passo-avulso-service.js";
 import { RunService, type StepRunner } from "../src/services/run-service.js";
@@ -19,26 +20,28 @@ before(() => {
 type Chamada = Record<string, unknown>;
 
 /** Cliente falso: nada sai para o GitHub. */
-function clienteFalso(headAtual = "aaa111") {
+function clienteFalso(headAtual = "aaa111", estado = "open") {
   const criadas: Chamada[] = [];
   const fake = {
     rest: {
       pulls: {
         createReview: async (p: Chamada) => (criadas.push(p), {}),
         listReviews: async () => ({ data: [] }),
-        get: async () => ({ data: { head: { sha: headAtual } } }),
+        get: async () => ({ data: { head: { sha: headAtual }, state: estado, merged: false } }),
       },
     },
   } as unknown as ReviewClient;
   return { fake, criadas };
 }
 
-function montarGate() {
-  const { fake, criadas } = clienteFalso();
+function montarGate(estadoDoPr = "open") {
+  const { fake, criadas } = clienteFalso("aaa111", estadoDoPr);
   const automaticas: unknown[] = [];
   const handlers = new Map<string, ActionHandler>([
     ["github.review_comment", githubReviewHandler(() => fake)],
     // Sem `inputSchema`: não é oferecida como avulsa.
+    // Esquema sem `additionalProperties: false`: o esquema não barra o alvo, quem barra é o serviço.
+    ["teste.solto", { inputSchema: { type: "object", properties: { text: { type: "string" } } }, publish: async () => undefined }],
     ["teste.auto", { publish: async (p) => void automaticas.push(p) }],
     // Declara esquema, mas não aceita `approve`.
     ["teste.so-auto", { modes: ["auto"], inputSchema: { type: "object", properties: {} }, publish: async () => undefined }],
@@ -253,4 +256,104 @@ test("o padrão do esquema vale também para quem propõe pelo serviço: sem ach
   const { runId } = await montar();
   await new PassoAvulsoService(db, gate).proporAcao(runId, { kind: "github.review_comment", conteudo: { verdict: "APPROVE" } });
   assert.deepEqual((await pendencias(runId))[0]!.payload, { verdict: "APPROVE", findings: [], owner: "acme", repo: "api", repoName: "api", pull: 7, headSha: "aaa111" });
+});
+
+test("o serviço garante o alvo: chave de alvo no conteúdo é recusada mesmo que o esquema a aceite", async () => {
+  const { gate } = montarGate();
+  const { runId } = await montar();
+  const servico = new PassoAvulsoService(db, gate);
+  await assert.rejects(servico.proporAcao(runId, { kind: "teste.solto", conteudo: { text: "x", author: "outra-pessoa" } }), /author/);
+  await assert.rejects(servico.proporAcao(runId, { kind: "teste.solto", conteudo: { text: "x", headSha: "ccc333" } }), /headSha/);
+  await servico.proporAcao(runId, { kind: "teste.solto", conteudo: { text: "x" } });
+});
+
+for (const [rotulo, extra] of [["pausado", {}], ["pausado por orçamento", { error: "budget_exceeded" }]] as const) {
+  test(`decidir o avulso num run ${rotulo} não retoma o run`, async () => {
+    const { gate } = montarGate();
+    const { runId } = await montar({ status: "paused" });
+    if (Object.keys(extra).length > 0) await db.update(schema.runs).set(extra).where(eq(schema.runs.id, runId));
+    const { approvalId } = await new PassoAvulsoService(db, gate).proporAcao(runId, { kind: "github.review_comment", conteudo: APROVAR_SEM_COMENTARIO });
+    const executor = new Executor({ mcp: {} as never, runtimes: new Map(), gate, machineId: "m" });
+    executor.execute = async () => {
+      throw new Error("execute não devia rodar");
+    };
+    const { run } = await executor.decide(approvalId, "approved");
+    assert.equal(run, "paused");
+    assert.equal((await passos(runId)).at(-1)!.status, "done");
+    assert.equal((await db.select().from(schema.runs).where(eq(schema.runs.id, runId)))[0]!.status, "paused");
+  });
+}
+
+test("resolver à mão o avulso parado na publicação fecha só o passo dele", async () => {
+  const { gate } = montarGate();
+  const { runId } = await montar();
+  const { approvalId } = await new PassoAvulsoService(db, gate).proporAcao(runId, { kind: "github.review_comment", conteudo: APROVAR_SEM_COMENTARIO });
+  await db.update(schema.approvals).set({ status: "publishing", decidedAt: 1 }).where(eq(schema.approvals.id, approvalId));
+  const executor = new Executor({ mcp: {} as never, runtimes: new Map(), gate, machineId: "m" });
+  executor.execute = async () => {
+    throw new Error("execute não devia rodar");
+  };
+  const { status, run } = await executor.settleStuck(approvalId, "published");
+  assert.deepEqual([status, run], ["approved", "failed"]);
+  assert.equal((await passos(runId)).at(-1)!.status, "done");
+});
+
+test("avulso derivado que está publicando recusa o rerun, e a pendência dele não é tocada", async () => {
+  const { gate } = montarGate();
+  const { runId } = await montar();
+  const { approvalId } = await new PassoAvulsoService(db, gate).proporAcao(runId, { kind: "github.review_comment", conteudo: APROVAR_SEM_COMENTARIO, derivaDe: "revisar" });
+  await db.update(schema.approvals).set({ status: "publishing", decidedAt: 1 }).where(eq(schema.approvals.id, approvalId));
+  const { service, execucoes } = servicoDeRun();
+  await assert.rejects(service.rerunStep(runId, "revisar"), /esta publicando/);
+  assert.deepEqual(execucoes, []);
+  assert.equal((await passos(runId)).at(-1)!.status, "awaiting_approval");
+});
+
+test("o avulso expirado pelo rerun não reabre por resolver à mão", async () => {
+  const { gate } = montarGate();
+  const { runId } = await montar();
+  const { approvalId } = await new PassoAvulsoService(db, gate).proporAcao(runId, { kind: "github.review_comment", conteudo: APROVAR_SEM_COMENTARIO, derivaDe: "revisar" });
+  await servicoDeRun().service.rerunStep(runId, "revisar");
+  assert.equal((await passos(runId)).at(-1)!.status, "skipped");
+  await assert.rejects(gate.settleStuck(approvalId, "retry"), /nao esta parada/);
+  await assert.rejects(gate.settleStuck(approvalId, "published"), /nao esta parada/);
+  assert.equal((await pendencias(runId))[0]!.status, "expired");
+});
+
+test("a retomada acerta o avulso cuja pendência já foi decidida", async () => {
+  const { gate } = montarGate();
+  const { runId } = await montar();
+  const { approvalId } = await new PassoAvulsoService(db, gate).proporAcao(runId, { kind: "github.review_comment", conteudo: APROVAR_SEM_COMENTARIO });
+  await db.update(schema.approvals).set({ status: "approved", output: { state: "published" } }).where(eq(schema.approvals.id, approvalId));
+  await new Executor({ mcp: {} as never, runtimes: new Map(), gate, machineId: "m" }).resume([]);
+  const avulso = (await passos(runId)).at(-1)!;
+  assert.equal(avulso.status, "done");
+  assert.deepEqual(avulso.output, { state: "published" });
+});
+
+test("o avulso aparece depois dos passos do fluxo e fica fora da contagem do run", async () => {
+  const { gate } = montarGate();
+  const { runId } = await montar();
+  const servico = new PassoAvulsoService(db, gate);
+  await servico.proporAcao(runId, { kind: "github.review_comment", conteudo: APROVAR_SEM_COMENTARIO });
+  // Um passo do fluxo gravado depois (reexecução, retomada) ainda vem antes do avulso.
+  await db.insert(schema.steps).values({ id: randomUUID(), runId, idx: 9, stepKey: "tardio", name: "Tardio", status: "done" });
+  const run = new RunService(db, async () => ({}) as StepRunner);
+  assert.deepEqual((await run.steps(runId)).map((p) => p.stepKey), ["ler", "revisar", "avisar", "tardio", "avulso-1"]);
+  const [resumo] = await run.list({ limit: 200 }).then((l) => l.filter((r) => r.id === runId));
+  assert.equal(resumo!.stepTotal, 4);
+});
+
+test("a chave avulso- é reservada: nenhum passo do fluxo a usa", () => {
+  const passo = { type: "model", key: `${PREFIXO_DO_PASSO_AVULSO}1`, name: "x", model: "a/b", prompt: "p" };
+  assert.throws(() => AgentSpec.parse({ id: "x", name: "x", steps: [passo] }), /avulso-/);
+});
+
+test("pull request fechado ou mergeado: publicar vira conflito, nada sai", async () => {
+  const { gate, criadas } = montarGate("closed");
+  const { runId } = await montar();
+  const { approvalId } = await new PassoAvulsoService(db, gate).proporAcao(runId, { kind: "github.review_comment", conteudo: APROVAR_SEM_COMENTARIO });
+  const { status, motivo } = await gate.decide(approvalId, "approved");
+  assert.deepEqual([status, motivo], ["conflict", "publish_conflict:pr_fechado"]);
+  assert.equal(criadas.length, 0);
 });

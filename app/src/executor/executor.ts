@@ -178,6 +178,7 @@ export class Executor {
 
   /** Retoma os runs dados, um de cada vez. Falha de um não segura os outros. */
   async resume(ids: string[]): Promise<void> {
+    await this.acertarAvulsos();
     for (const id of ids) {
       try {
         await this.executarRun(id, { interrompido: true });
@@ -189,9 +190,33 @@ export class Executor {
 
   /** Runs interrompidos por fechamento do app ou por crash. */
   async resumeAll(): Promise<string[]> {
+    await this.acertarAvulsos();
     const ids = await this.interruptedRuns();
     for (const id of ids) await this.executarRun(id, { interrompido: true });
     return ids;
+  }
+
+  /**
+   * O avulso que ficou `awaiting_approval` com a pendência já decidida (a queda
+   * veio entre fechar a pendência e fechar o passo) leva o passo ao estado da
+   * decisão. O run dele não volta a rodar: só os do fluxo são retomados.
+   */
+  private async acertarAvulsos(): Promise<void> {
+    const presos = await db
+      .select({ stepId: schema.steps.id, status: schema.approvals.status, output: schema.approvals.output })
+      .from(schema.steps)
+      .innerJoin(schema.approvals, eq(schema.approvals.stepId, schema.steps.id))
+      .where(
+        and(
+          eq(schema.steps.origem, "avulso"),
+          eq(schema.steps.status, "awaiting_approval"),
+          inArray(schema.approvals.status, ["approved", "rejected", "conflict", "expired"]),
+        ),
+      );
+    for (const p of presos) {
+      const saida = (p.output as { conflito?: string } | null) ?? null;
+      await settleStep(p.stepId, p.status, p.status === "approved" ? { output: p.output ?? undefined } : { motivo: saida?.conflito });
+    }
   }
 
   /** Veio de gatilho que não é o botão: só essas execuções cedem ao limite do provedor. */
@@ -1068,15 +1093,9 @@ function resumoDoCard(card: object): string | null {
   return json === undefined || json === "{}" ? null : json;
 }
 
-/**
- * Os campos do evento que identificam o destino de uma ação.
- *
- * Só o que nomeia o alvo, e não o evento inteiro: o diff de um pull request
- * tem dezenas de milhares de caracteres, e ele iria parar dentro da fila de
- * aprovação, gravado em cada pendência.
- */
-export function alvoDoEvento(payload: EventPayload): Record<string, unknown> {
-  const campos = [
+/** Os campos do evento que nomeiam o alvo de uma ação. */
+export function camposDoAlvo(): readonly string[] {
+  return [
     "owner",
     "repo",
     "repoName",
@@ -1104,7 +1123,18 @@ export function alvoDoEvento(payload: EventPayload): Record<string, unknown> {
     // A mensagem do Teams onde o review reage ao sair, e o `prOwner` que
     // distingue o evento de PR do de conversa na hora de achar a resposta.
     ...camposDeEndereco(),
-  ] as const;
+  ];
+}
+
+/**
+ * Os campos do evento que identificam o destino de uma ação.
+ *
+ * Só o que nomeia o alvo, e não o evento inteiro: o diff de um pull request
+ * tem dezenas de milhares de caracteres, e ele iria parar dentro da fila de
+ * aprovação, gravado em cada pendência.
+ */
+export function alvoDoEvento(payload: EventPayload): Record<string, unknown> {
+  const campos = camposDoAlvo();
   const alvo: Record<string, unknown> = {};
   for (const campo of campos) {
     const valor = (payload as Record<string, unknown>)[campo];

@@ -1221,8 +1221,10 @@ async function esperarPonte(
 
     if (visto !== null) {
       if (visto.estado === "erro") throw new Error(`a janela nao leu pela ponte: ${visto.erro}`);
-      if (visto.estado === "pronto") return visto;
-      ultimo = visto.estado;
+      // O probe pode ter lido antes de uma gravação direta no banco (os `delete` do
+      // check anterior): espera a fila e a janela concordarem, dentro do mesmo prazo.
+      if (visto.estado === "pronto" && visto.pendencias === (await countPending())) return visto;
+      ultimo = visto.estado === "pronto" ? `pronto com ${visto.pendencias} pendencia(s) fora da fila` : visto.estado;
     }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }

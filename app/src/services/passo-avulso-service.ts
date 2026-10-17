@@ -3,12 +3,16 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { ACOES_DE_CONVERSA_REGISTRO, destinoDoPasso } from "../acao/destino.js";
 import type { ApprovalGate } from "../approval/gate.js";
+import { PREFIXO_DO_PASSO_AVULSO } from "../config/types.js";
 import { recusarSeArquivada } from "../db/arquivada.js";
 import { db as defaultDb, schema } from "../db/index.js";
 import { buildGate } from "../executor/build.js";
-import { alvoDoEvento, aplicarCamposDoEvento, destinoDoEvento, type EventPayload } from "../executor/executor.js";
+import { alvoDoEvento, aplicarCamposDoEvento, camposDoAlvo, destinoDoEvento, type EventPayload } from "../executor/executor.js";
 
 type Db = typeof defaultDb;
+
+/** Prefixo do erro de uma proposta que o handler recusou: a tela o traduz. */
+export const PROPOSTA_RECUSADA = "proposta_recusada";
 
 export type PropostaAvulsa = {
   kind: string;
@@ -43,14 +47,18 @@ export class PassoAvulsoService {
     // e o alvo e os campos do evento valem por cima dele.
     const alvo = alvoDoEvento(evento);
     const doEvento = Object.fromEntries(this.gate.camposDoEvento(kind).map((campo) => [campo, (evento as Record<string, unknown>)[campo]]));
-    const doConteudo = { ...alvo, ...conteudo, ...destinoDoEvento(alvo) };
+    // O alvo é garantido aqui, e não pelo esquema do handler: chave de alvo no conteúdo é recusada, mesmo que o esquema a aceite.
+    const reservados = new Set([...camposDoAlvo(), ...this.gate.camposDoEvento(kind), ...(ACOES_DE_CONVERSA_REGISTRO[kind] === undefined ? [] : ["destino"])]);
+    const invadidos = Object.keys(proposta.conteudo as object).filter((chave) => reservados.has(chave));
+    if (invadidos.length > 0) throw new Error(`conteudo nao define o alvo da acao: ${invadidos.join(", ")} vem do evento do run`);
+    const doConteudo = { ...conteudo, ...alvo, ...destinoDoEvento(alvo) };
     const payload = aplicarCamposDoEvento(
       ACOES_DE_CONVERSA_REGISTRO[kind] === undefined ? doConteudo : { ...doConteudo, destino: destinoDoPasso(kind, undefined) },
       doEvento,
     );
 
     const preparado = await this.gate.prepare(kind, payload, "approve");
-    if (preparado.payload === null || preparado.payload === undefined) throw new Error(`a acao "${kind}" recusou a proposta`);
+    if (preparado.payload === null || preparado.payload === undefined) throw new Error(`${PROPOSTA_RECUSADA}:${kind}: a acao recusou a proposta, por exemplo review em pull request da propria pessoa`);
 
     return this.db.transaction(
       (tx) => {
@@ -65,10 +73,10 @@ export class PassoAvulsoService {
           throw new Error(`derivaDe "${proposta.derivaDe}" nao e um passo do fluxo deste run`);
         }
         const numeros = passos
-          .map((p) => /^avulso-(\d+)$/.exec(p.chave)?.[1])
+          .map((p) => new RegExp(`^${PREFIXO_DO_PASSO_AVULSO}(\\d+)$`).exec(p.chave)?.[1])
           .filter((n): n is string => n !== undefined)
           .map(Number);
-        const stepKey = `avulso-${Math.max(0, ...numeros) + 1}`;
+        const stepKey = `${PREFIXO_DO_PASSO_AVULSO}${Math.max(0, ...numeros) + 1}`;
         const stepId = randomUUID();
         tx.insert(schema.steps)
           .values({

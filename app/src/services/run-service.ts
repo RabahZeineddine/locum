@@ -74,6 +74,8 @@ export interface RunEvent {
 
 export interface RunDetail extends Omit<RunSummary, "stepTotal" | "stepDone" | "stepPending" | "stepFailed" | "findingCount" | "stepDryRun" | "failedStep"> {
   event: RunEvent | null;
+  /** A automação do run está arquivada: nada novo se propõe nele. */
+  agentArchived: boolean;
   failedStep: RunSummary["failedStep"];
   /** A versao exata que executou, nao a mais recente do agent. */
   spec: AgentSpec;
@@ -205,7 +207,8 @@ export class RunService {
         ) else 0 end)`,
       })
       .from(s)
-      .where(inArray(s.runId, runIds))
+      // O avulso é uma proposta à parte: rejeitado ou expirado não conta como passo do fluxo.
+      .where(and(inArray(s.runId, runIds), eq(s.origem, "fluxo")))
       .groupBy(s.runId);
 
     return new Map(
@@ -230,6 +233,7 @@ export class RunService {
         agentId: schema.agents.id,
         agentName: schema.agents.name,
         agentVersion: schema.agentVersions.version,
+        agentArchivedAt: schema.agents.archivedAt,
         spec: schema.agentVersions.spec,
         evento: schema.events.payload,
       })
@@ -250,6 +254,7 @@ export class RunService {
       agentId: row.agentId,
       agentName: row.agentName,
       agentVersion: row.agentVersion,
+      agentArchived: row.agentArchivedAt !== null,
       target: alvo(row.evento),
       spec,
       steps: passos,
@@ -291,7 +296,8 @@ export class RunService {
       .select()
       .from(schema.steps)
       .where(eq(schema.steps.runId, runId))
-      .orderBy(asc(schema.steps.idx));
+      // Os avulsos vêm sempre depois dos passos do fluxo.
+      .orderBy(sql`${schema.steps.origem} = 'avulso'`, asc(schema.steps.idx));
   }
 
   /**
@@ -405,8 +411,19 @@ export class RunService {
         throw new Error(`run ${runId} esta publicando a aprovacao ${saindo.id}; espere terminar para reexecutar`);
       }
     }
+    // O avulso derivado que está publicando sairia sobre um resultado que o run vai descartar.
+    const derivados = this.avulsosDerivados(detail.steps, affected);
+    if (derivados.length > 0) {
+      const [saindo] = await this.db
+        .select({ id: schema.approvals.id })
+        .from(schema.approvals)
+        .where(and(inArray(schema.approvals.stepId, derivados), eq(schema.approvals.status, "publishing")));
+      if (saindo !== undefined) {
+        throw new Error(`run ${runId} esta publicando a aprovacao ${saindo.id}; espere terminar para reexecutar`);
+      }
+    }
     await this.reset(detail, targets);
-    await this.expirarAvulsosDerivados(runId, affected);
+    await this.expirarAvulsosDerivados(derivados);
 
     const runner = await this.makeRunner();
     if (options.wait === false) {
@@ -416,23 +433,40 @@ export class RunService {
     return runner.execute(runId, { manual: true });
   }
 
+  /** Os avulsos ainda esperando decisão cujo `derivaDe` é um dos passos reexecutados. */
+  private avulsosDerivados(passos: StepRow[], reexecutados: ReadonlySet<string>): string[] {
+    return passos
+      .filter((s) => s.origem === "avulso" && s.status === "awaiting_approval")
+      .filter((s) => reexecutados.has((s.input as { derivaDe?: string | null } | null)?.derivaDe ?? ""))
+      .map((s) => s.id);
+  }
+
   /**
    * O avulso que deriva de um passo reexecutado parte do resultado antigo: a
-   * pendência dele não pode ser aprovada sobre o que o run descartou.
+   * pendência dele não pode ser aprovada sobre o que o run descartou. Só o passo
+   * cuja pendência de fato expirou fecha, na mesma transação: uma decisão que
+   * chegou no meio deixa o passo e a pendência como ela os deixou.
    */
-  private async expirarAvulsosDerivados(runId: string, reexecutados: ReadonlySet<string>): Promise<void> {
-    const avulsos = await this.db
-      .select()
-      .from(schema.steps)
-      .where(and(eq(schema.steps.runId, runId), eq(schema.steps.origem, "avulso"), eq(schema.steps.status, "awaiting_approval")));
-    const ids = avulsos.filter((s) => reexecutados.has((s.input as { derivaDe?: string | null } | null)?.derivaDe ?? "")).map((s) => s.id);
+  private async expirarAvulsosDerivados(ids: string[]): Promise<void> {
     if (ids.length === 0) return;
     const agora = Math.floor(Date.now() / 1000);
-    await this.db
-      .update(schema.approvals)
-      .set({ status: "expired", decidedAt: agora })
-      .where(and(inArray(schema.approvals.stepId, ids), eq(schema.approvals.status, "pending")));
-    await this.db.update(schema.steps).set({ status: "skipped", error: "expired", endedAt: agora }).where(inArray(schema.steps.id, ids));
+    this.db.transaction(
+      (tx) => {
+        for (const id of ids) {
+          const expirou = tx
+            .update(schema.approvals)
+            .set({ status: "expired", decidedAt: agora })
+            .where(and(eq(schema.approvals.stepId, id), eq(schema.approvals.status, "pending")))
+            .run().changes;
+          if (expirou === 0) continue;
+          tx.update(schema.steps)
+            .set({ status: "skipped", error: "expired", endedAt: agora })
+            .where(and(eq(schema.steps.id, id), eq(schema.steps.status, "awaiting_approval")))
+            .run();
+        }
+      },
+      { behavior: "immediate" },
+    );
   }
 
   private async reset(run: RunRow & { spec: AgentSpec }, targets: StepRow[]): Promise<void> {

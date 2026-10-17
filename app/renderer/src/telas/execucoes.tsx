@@ -28,6 +28,7 @@ import {
   rotuloDoModelo,
   rotuloDoMotivo,
   rotuloDoMotivoDoEnsaio,
+  rotuloDaAcao,
 } from "@/lib/rotulos";
 import { ensaioDoPasso, estimativaAcimaDoTeto, ondeSairia, passoDoDetalhe } from "@/lib/ensaio-do-run";
 import { cn } from "@/lib/utils";
@@ -762,7 +763,7 @@ function PassoDaExecucao({
     <div className="border-border bg-card rounded-lg border px-3 py-2.5" data-locum-passo={passo.stepKey}>
       <div className="flex flex-wrap items-center gap-2 text-[13px]">
         <span className="text-muted-foreground num">{passo.idx + 1}</span>
-        <span className="font-medium">{passo.name}</span>
+        <span className="font-medium">{passo.origem === "avulso" ? rotuloDaAcao(t, passo.name) : passo.name}</span>
         {passo.origem === "avulso" ? (
           <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[11px] font-medium" data-locum-passo-avulso="">
             {t("runs.step.standalone")}
