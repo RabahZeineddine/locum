@@ -35,8 +35,11 @@ o id continua ocupado. Dá para desarquivar: volta sem gatilhos e desligada.
 
 **Automação deletada**: automação arquivada que a pessoa apagou de vez, com tudo
 que pertencia a ela (versões, gatilhos e o estado deles, execuções com passos,
-aprovações e achados, orçamento, gasto). Só se deleta a arquivada, e não tem
-volta; o id fica livre. O agent da biblioteca e as skills ficam.
+aprovações e achados, métricas, orçamento, gasto e os eventos colados à mão para
+ela). Só se deleta a arquivada, e não tem volta; o id fica livre. O agent da
+biblioteca e as skills ficam. Como a dedupe de review lê as aprovações de todas as
+automações, os PRs que ela já revisou deixam de contar, e outra automação pode
+revisá-los de novo.
 
 **Nó**: cada peça da automação. Categorias: gatilho, agent, ação de app,
 ferramenta, lógica e aprovação.

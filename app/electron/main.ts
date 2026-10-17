@@ -2327,6 +2327,7 @@ async function checkAutomacaoNova(window: BrowserWindow): Promise<void> {
     await esperar("o item de arquivar no menu", () => existe("[data-locum-automacao-arquivar]"));
     await clicar("[data-locum-automacao-arquivar]");
     await esperar("o dialogo de arquivar", () => existe("[data-locum-automacao-arquivar-confirmar]"));
+    await esperar("a previa do arquivar", () => existe("[data-locum-automacao-arquivar-resumo]"));
     await clicar("[data-locum-automacao-arquivar-cancelar]");
     await esperar("o dialogo de arquivar fechar", async () => !(await existe("[data-locum-automacao-arquivar-confirmar]")));
     if ((await agentService.get(id))?.archivedAt !== null) throw new Error("cancelar o dialogo de arquivar arquivou a automacao");

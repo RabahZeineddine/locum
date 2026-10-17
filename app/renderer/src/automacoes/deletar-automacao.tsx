@@ -43,7 +43,14 @@ export function DialogoDeDeletar({ agentId, nome, aoDeletar, aoFechar }: { agent
       () => aoDeletar(),
       (e: unknown) => {
         setDeletando(false);
-        setErro(mensagem(e));
+        // A recusa vem de uma corrida: o que impede agora vem da prévia, que a tela diz pelo dicionário.
+        read("automations.deletePreview", agentId).then(
+          (p) => {
+            setPrevia(p);
+            if (p.blockers.length === 0) setErro(mensagem(e));
+          },
+          () => setErro(mensagem(e)),
+        );
       },
     );
   };

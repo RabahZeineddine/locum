@@ -55,7 +55,14 @@ export function DialogoDeArquivar({
       () => aoArquivar(),
       (e: unknown) => {
         setArquivando(false);
-        setErro(mensagem(e));
+        // A recusa vem de uma corrida: o que impede agora vem da prévia, que a tela diz pelo dicionário.
+        read("automations.archivePreview", agentId).then(
+          (p) => {
+            setPrevia(p);
+            if (p.blockers.length === 0) setErro(mensagem(e));
+          },
+          () => setErro(mensagem(e)),
+        );
       },
     );
   };

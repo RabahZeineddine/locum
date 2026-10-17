@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { db } from "../db/index.js";
 import { agentService } from "../services/agent-service.js";
-import { automationService, type BloqueioDeArquivar, type BloqueioDeExcluir } from "../services/automation-service.js";
+import { ArquivarRecusado, DeletarRecusado, automationService, type BloqueioDeArquivar, type BloqueioDeDeletar } from "../services/automation-service.js";
 import { esperaChats, triggerService, type TriggerEntry } from "../services/trigger-service.js";
 import { scheduler } from "../triggers/scheduler.js";
 import { lerDescartes } from "../triggers/descartes.js";
@@ -89,7 +89,7 @@ function frasesDeBloqueio(blockers: BloqueioDeArquivar[]): string {
   return blockers.map((b) => ACAO_DO_BLOQUEIO[b.kind](b.count)).join("; ");
 }
 
-function frasesDeBloqueioDeDeletar(blockers: BloqueioDeExcluir[]): string {
+function frasesDeBloqueioDeDeletar(blockers: BloqueioDeDeletar[]): string {
   return blockers
     .map((b) => (b.kind === "active" ? "the automation is in use: archive it first (archive_automation), then delete" : ACAO_DO_BLOQUEIO[b.kind](b.count).replace(/then archive$/, "then delete")))
     .join("; ");
@@ -229,16 +229,21 @@ export function registerAutomationTools(server: McpServer): void {
     async ({ agentId }) => {
       const previa = await automationService.archivePreview(agentId);
       if (previa.blockers.length > 0) throw new Error(frasesDeBloqueio(previa.blockers));
-      return automationService.archive(agentId, "agent");
+      // A recusa por corrida, dentro da transação, sai pela mesma frase da prévia.
+      return automationService.archive(agentId, "agent").catch((e: unknown) => {
+        throw e instanceof ArquivarRecusado ? new Error(frasesDeBloqueio(e.blockers)) : e;
+      });
     });
 
   def(server, "delete_automation", "danger",
-    "Deletes an ARCHIVED automation for good, with everything that belongs to it: versions, triggers and the state tied to them, runs with their steps, approvals and findings, budget, spend and the events pasted by hand for it. The agents of the library and the skills stay. Irreversible, and the id becomes free; the dedupe of reviews loses the approvals it read. An active automation is refused (archive_automation first), and so is one with a run queued or running, an approval publishing, or linked to an initiative (a person decides that, on the screen): the message says what to do.",
+    "Deletes an ARCHIVED automation for good, with everything that belongs to it: versions, triggers and the state tied to them, runs with their steps, approvals and findings, budget, spend and the events pasted by hand for it. The agents of the library and the skills stay. Irreversible, and the id becomes free; the dedupe of reviews loses the approvals it read. An active automation is refused (archive_automation first), and so is one with a run queued or running, an approval pending or publishing, or linked to an initiative (a person decides that, on the screen): the message says what to do.",
     { agentId: z.string().describe("id of an archived automation, as listed by list_automations with archived true") },
     async ({ agentId }) => {
       const previa = await automationService.deletePreview(agentId);
       if (previa.blockers.length > 0) throw new Error(frasesDeBloqueioDeDeletar(previa.blockers));
-      return automationService.delete(agentId, "agent");
+      return automationService.delete(agentId, "agent").catch((e: unknown) => {
+        throw e instanceof DeletarRecusado ? new Error(frasesDeBloqueioDeDeletar(e.blockers)) : e;
+      });
     });
 
   def(server, "unarchive_automation", "write",
