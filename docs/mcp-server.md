@@ -193,6 +193,7 @@ guardar segredo, e não é recomendado.
 | `remove_trigger` | danger | `triggers.remove` |
 | `archive_automation` | danger | `automations.archive`, `automations.archivePreview` |
 | `unarchive_automation` | write | `automations.unarchive` |
+| `delete_automation` | danger | `automations.delete`, `automations.deletePreview` |
 | `allow_all_chats_for_trigger` | danger | só MCP |
 | `run_automation_now` | publish | `automations.runNow` |
 | `tick_triggers` | publish | `triggers.tick` |

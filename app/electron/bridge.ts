@@ -217,6 +217,8 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "automations.archive": (agentId) => automationService.archive(agentId),
     "automations.unarchive": (agentId) => automationService.unarchive(agentId),
     "automations.archivePreview": (agentId) => automationService.archivePreview(agentId),
+    "automations.delete": (agentId) => automationService.delete(agentId),
+    "automations.deletePreview": (agentId) => automationService.deletePreview(agentId),
     "pacote.exportFile": async (agentId) => {
       const { texto, nomeDoArquivo, avisos } = await pacoteService.exportar(agentId);
       const janela = BrowserWindow.getFocusedWindow();

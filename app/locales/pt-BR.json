@@ -2201,8 +2201,6 @@
       },
       "eventWarning": "Versão {{version}} gravada. Este fluxo usa o evento ({{reason}}), mas {{triggers}} não traz evento: quando esse gatilho disparar, o run sai sem ele. Use um gatilho que grava evento ou tire a dependência.",
       "archive": {
-        "zone": "Zona de perigo",
-        "hint": "Arquiva a automação: ela sai das listas e do agendador, e os gatilhos saem. O histórico fica.",
         "button": "Arquivar",
         "title": "Arquivar \"{{name}}\"?",
         "triggers_zero": "{{count}} gatilhos",
@@ -2241,7 +2239,26 @@
         "confirm": "Arquivar",
         "done": "\"{{name}}\" arquivada. O histórico ficou."
       },
-      "archivedBanner": "Esta automação está arquivada: não roda, não liga e não se edita. Desarquive para voltar a usá-la, sem gatilhos e desligada."
+      "archivedBanner": "Esta automação está arquivada: não roda, não liga e não se edita. Desarquive para voltar a usá-la, sem gatilhos e desligada.",
+      "menu": {
+        "label": "Mais ações da automação",
+        "delete": "Deletar",
+        "deleteNeedsArchive": "Arquive antes"
+      },
+      "delete": {
+        "title": "Deletar \"{{name}}\" para sempre?",
+        "leaves": "Saem para sempre: {{itens}}, mais o estado dos gatilhos, o orçamento, o gasto e os eventos colados à mão para ela.",
+        "stays": "Ficam: os agents da biblioteca e as skills, que são compartilhados.",
+        "irreversible": "Não dá para desfazer, e o identificador fica livre.",
+        "dedupe": "Os PRs que ela já revisou deixam de contar, e outra automação pode revisá-los de novo.",
+        "initiative": "Ligada à iniciativa \"{{title}}\". O vínculo sai junto.",
+        "blocked": "Não dá para deletar agora:",
+        "blocker_active": "A automação está em uso: arquive antes de deletar.",
+        "previewFailed": "Não foi possível conferir o que seria deletado: {{erro}}",
+        "cancel": "Cancelar",
+        "confirm": "Deletar",
+        "done": "\"{{name}}\" deletada."
+      }
     },
     "palette": {
       "title": "Componentes",

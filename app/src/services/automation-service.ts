@@ -1,4 +1,4 @@
-import { and, count, desc, eq, inArray, isNotNull, or } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNotNull, notInArray, or, sql } from "drizzle-orm";
 import { AgentSpec, TriggerConfig, type TriggerConfigInput } from "../config/types.js";
 import { randomUUID } from "node:crypto";
 import { limparPendenciasPreenchidas, recusaDeLigar, recusaDeRodar } from "../config/pendencia.js";
@@ -11,7 +11,7 @@ import { comTrava } from "../triggers/trava.js";
 import type { EscopoActor } from "./initiative-service.js";
 import { agentService, ID_DE_AGENT, mensagemDeVersao, isReserved, type AgentService, type AgentVersion } from "./agent-service.js";
 import { dependenciaDeEvento, recusaSemEvento, type MotivoDeEvento } from "../executor/dependencia-de-evento.js";
-import { eventoManual, type EventoManual, type EventoRecente } from "./evento-manual.js";
+import { eventoManual, FONTE_MANUAL, type EventoManual, type EventoRecente } from "./evento-manual.js";
 import { executionService, type ExecutionService } from "./execution-service.js";
 import { esperaChats, MOTIVO_CHATS, recusaDaGravacao, triggerService, type TriggerEntry, type TriggerService } from "./trigger-service.js";
 
@@ -36,10 +36,37 @@ export interface PreviaDeArquivamento {
   blockers: BloqueioDeArquivar[];
 }
 
+/** O que impede deletar: o que impede arquivar, mais a automação ainda estar em uso. */
+export type BloqueioDeExcluir = { kind: BloqueioDeArquivar["kind"] | "active"; count: number };
+
+/** O que deletar leva. Tudo sai; só o agent da biblioteca e as skills, que são compartilhados, ficam. */
+export interface PreviaDeExclusao {
+  agentId: string;
+  archived: boolean;
+  triggers: number;
+  /** As pendências da fila e as já decididas: a aprovação é do run. */
+  approvals: number;
+  runs: number;
+  findings: number;
+  versions: number;
+  /** A iniciativa a que a automação está ligada; o vínculo sai com ela. */
+  initiative: { slug: string; title: string } | null;
+  /** Vazio quando pode deletar. */
+  blockers: BloqueioDeExcluir[];
+}
+
+/** Deletar recusado pelos bloqueios que existiam na hora de apagar. */
+export class ExcluirRecusado extends Error {
+  constructor(readonly blockers: BloqueioDeExcluir[]) {
+    super(`deletar recusado: ${blockers.map((b) => `${b.kind}=${b.count}`).join(", ")}`);
+    this.name = "ExcluirRecusado";
+  }
+}
+
 class GatilhosMudaram extends Error {}
 
-const mensagemDeIniciativa = (agentId: string, slug: string): string =>
-  `automação "${agentId}" está ligada à iniciativa "${slug}"; arquivar é decisão de uma pessoa, na tela do Locum`;
+const mensagemDeIniciativa = (agentId: string, slug: string, verbo = "arquivar"): string =>
+  `automação "${agentId}" está ligada à iniciativa "${slug}"; ${verbo} é decisão de uma pessoa, na tela do Locum`;
 
 /** Arquivar recusado pelos bloqueios que existiam na hora de gravar. */
 export class ArquivarRecusado extends Error {
@@ -407,6 +434,71 @@ export class AutomationService {
       .run();
   }
 
+  /** O que `delete` apagaria, sem gravar nada. A tela e a ferramenta MCP mostram o mesmo dado. */
+  async deletePreview(agentId: string): Promise<PreviaDeExclusao> {
+    await this.recusarSeNaoExiste(agentId);
+    return this.inspecionarExclusao(this.db, agentId);
+  }
+
+  /**
+   * Deleta a automação arquivada e tudo que pertence a ela: versões, gatilhos e o
+   * estado de cada um, runs com passos, aprovações e achados, orçamento, gasto e
+   * os eventos manuais dela. Uma transação só, que confere dentro dela que a
+   * automação ainda está arquivada e sem run em curso. O agent da biblioteca e as
+   * skills ficam: são compartilhados. Irreversível. Pelo MCP, automação ligada a
+   * iniciativa é recusada, como no arquivar.
+   */
+  async delete(agentId: string, actor: EscopoActor = "human"): Promise<{ agentId: string; deleted: true; runs: number; versions: number }> {
+    await this.recusarSeNaoExiste(agentId);
+    return this.db.transaction(
+      (tx) => {
+        const agent = tx.select().from(schema.agents).where(eq(schema.agents.id, agentId)).get();
+        if (agent === undefined) throw new Error(`automacao "${agentId}" nao cadastrada`);
+        const previa = this.inspecionarExclusao(tx, agentId);
+        if (actor !== "human" && previa.initiative !== null) throw new Error(mensagemDeIniciativa(agentId, previa.initiative.slug, "deletar"));
+        if (previa.blockers.length > 0) throw new ExcluirRecusado(previa.blockers);
+
+        const versoes = tx.select({ id: schema.agentVersions.id }).from(schema.agentVersions).where(eq(schema.agentVersions.agentId, agentId));
+        const runs = tx.select({ id: schema.runs.id }).from(schema.runs).where(inArray(schema.runs.agentVersionId, versoes));
+        const achados = tx.select({ id: schema.findings.id }).from(schema.findings).where(inArray(schema.findings.runId, runs));
+
+        // Gatilho que ainda existe, e o que só os runs lembram: o estado preso a ele sai junto.
+        const gatilhos = new Set([
+          ...tx.select({ id: schema.triggers.id }).from(schema.triggers).where(eq(schema.triggers.agentId, agentId)).all().map((g) => g.id),
+          ...tx.selectDistinct({ id: schema.runs.triggerId }).from(schema.runs).where(and(inArray(schema.runs.agentVersionId, versoes), isNotNull(schema.runs.triggerId))).all().flatMap((g) => (g.id === null ? [] : [g.id])),
+        ]);
+        for (const id of gatilhos) esquecerGatilho(tx, id);
+
+        // Evento colado à mão para esta automação; o de uma fonte externa é a dedupe da fonte e fica.
+        const manuais = tx
+          .select({ id: schema.events.id })
+          .from(schema.events)
+          .where(and(eq(schema.events.source, FONTE_MANUAL), sql`json_extract(${schema.events.payload}, '$.automacao') = ${agentId}`))
+          .all()
+          .map((e) => e.id);
+
+        tx.delete(schema.findingOutcomes).where(inArray(schema.findingOutcomes.findingId, achados)).run();
+        tx.delete(schema.approvals).where(inArray(schema.approvals.runId, runs)).run();
+        tx.delete(schema.findings).where(inArray(schema.findings.runId, runs)).run();
+        tx.delete(schema.steps).where(inArray(schema.steps.runId, runs)).run();
+        tx.delete(schema.agentMetrics).where(inArray(schema.agentMetrics.agentVersionId, versoes)).run();
+        tx.delete(schema.runs).where(inArray(schema.runs.agentVersionId, versoes)).run();
+        if (manuais.length > 0) {
+          // O run de outra automação que aponte para o evento o segura.
+          const emUso = tx.select({ id: schema.runs.eventId }).from(schema.runs).where(inArray(schema.runs.eventId, manuais));
+          tx.delete(schema.events).where(and(inArray(schema.events.id, manuais), notInArray(schema.events.id, emUso))).run();
+        }
+        tx.delete(schema.triggers).where(eq(schema.triggers.agentId, agentId)).run();
+        tx.delete(schema.budgets).where(eq(schema.budgets.agentId, agentId)).run();
+        tx.delete(schema.usageDaily).where(eq(schema.usageDaily.agentId, agentId)).run();
+        tx.delete(schema.agentVersions).where(eq(schema.agentVersions.agentId, agentId)).run();
+        tx.delete(schema.agents).where(eq(schema.agents.id, agentId)).run();
+        return { agentId, deleted: true as const, runs: previa.runs, versions: previa.versions };
+      },
+      { behavior: "immediate" },
+    );
+  }
+
   /** Tira do arquivo: volta para a lista, sem gatilhos e desligada. A pessoa recria os gatilhos e liga. */
   async unarchive(agentId: string): Promise<{ agentId: string; archived: false }> {
     await this.recusarSeNaoExiste(agentId);
@@ -427,6 +519,14 @@ export class AutomationService {
   private async recusarSeNaoExiste(agentId: string): Promise<void> {
     if ((await this.agents.get(agentId)) === undefined) throw new Error(`automacao "${agentId}" nao cadastrada`);
     if (isReserved(agentId)) throw new Error(`"${agentId}" e um agent do sistema e nao aceita escrita`);
+  }
+
+  /** A prévia da exclusão: as contagens de `inspecionar`, mais se está arquivada. Síncrona, para a transação do `delete`. */
+  private inspecionarExclusao(leitor: Pick<Db, "select">, agentId: string): PreviaDeExclusao {
+    const { runs, approvals, findings, versions, triggers, initiative, blockers } = this.inspecionar(leitor, agentId);
+    const arquivada = leitor.select({ archivedAt: schema.agents.archivedAt }).from(schema.agents).where(eq(schema.agents.id, agentId)).get()?.archivedAt != null;
+    const bloqueios: BloqueioDeExcluir[] = arquivada ? blockers : [{ kind: "active", count: 1 }, ...blockers];
+    return { agentId, archived: arquivada, triggers, approvals, runs, findings, versions, initiative, blockers: bloqueios };
   }
 
   /** Contagens e bloqueios. Síncrona, para rodar dentro da transação do `archive` com o mesmo resultado da prévia. */

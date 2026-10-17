@@ -3,57 +3,50 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { StatusDot } from "@/components/ui/status-dot";
 import { call, read, type ReadResult } from "@/lib/bridge";
 import { semPrefixoDoIpc } from "@/lib/erro-da-ponte";
-import { Loader2, Archive } from "lucide-react";
-import { useState } from "react";
+import { Loader2 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 type Previa = ReadResult<"automations.archivePreview">;
 
 /**
- * A zona de perigo no fim do editor: arquivar a automação. O clique pergunta ao
+ * O diálogo de arquivar, aberto pelo menu do editor: ao montar, pergunta ao
  * serviço o que sai, o que fica e o que impede, e só o confirmar arquiva.
  * `aoArquivar` deixa o editor limpar o que guardou no navegador antes de sair da tela.
  */
-export function ArquivarAutomacao({
+export function DialogoDeArquivar({
   agentId,
   nome,
   aoArquivar,
-  desabilitado,
+  aoFechar,
   edicaoNaoSalva,
 }: {
   agentId: string;
   nome: string;
   aoArquivar: () => void;
-  desabilitado: boolean;
+  aoFechar: () => void;
   edicaoNaoSalva: boolean;
 }) {
   const { t } = useTranslation();
   const [previa, setPrevia] = useState<Previa | null>(null);
-  const [consultando, setConsultando] = useState(false);
   const [arquivando, setArquivando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
   const mensagem = (e: unknown): string => semPrefixoDoIpc(e instanceof Error ? e.message : String(e));
   const fechar = (): void => {
-    if (arquivando) return;
-    setPrevia(null);
-    setErro(null);
+    if (!arquivando) aoFechar();
   };
 
-  const abrir = (): void => {
-    setConsultando(true);
-    setErro(null);
+  useEffect(() => {
+    let vivo = true;
     read("automations.archivePreview", agentId).then(
-      (p) => {
-        setConsultando(false);
-        setPrevia(p);
-      },
-      (e: unknown) => {
-        setConsultando(false);
-        setErro(t("automations.editor.archive.previewFailed", { erro: mensagem(e) }));
-      },
+      (p) => vivo && setPrevia(p),
+      (e: unknown) => vivo && setErro(t("automations.editor.archive.previewFailed", { erro: mensagem(e) })),
     );
-  };
+    return () => {
+      vivo = false;
+    };
+  }, [agentId, t]);
 
   const arquivar = (): void => {
     setArquivando(true);
@@ -69,28 +62,7 @@ export function ArquivarAutomacao({
 
   return (
     <>
-      <div className="border-destructive/40 flex flex-wrap items-center gap-3 rounded-lg border px-3 py-2" data-locum-automacao-zona-de-perigo="">
-        <span className="text-destructive text-xs font-medium">{t("automations.editor.archive.zone")}</span>
-        <span className="text-muted-foreground mr-auto text-xs">{t("automations.editor.archive.hint")}</span>
-        {previa === null && erro !== null ? (
-          <span className="text-xs" data-locum-automacao-arquivar-erro="">
-            <StatusDot estado="erro" /> {erro}
-          </span>
-        ) : null}
-        <Button
-          className="cursor-pointer"
-          data-locum-automacao-arquivar=""
-          disabled={desabilitado || consultando}
-          onClick={abrir}
-          size="sm"
-          variant="ghost"
-        >
-          {consultando ? <Loader2 className="animate-spin" /> : <Archive aria-hidden />}
-          {t("automations.editor.archive.button")}
-        </Button>
-      </div>
-
-      <Dialog onOpenChange={(aberto) => !aberto && fechar()} open={previa !== null}>
+      <Dialog onOpenChange={(aberto) => !aberto && fechar()} open>
         <DialogContent data-locum-automacao-arquivar-dialogo="">
           <DialogHeader>
             <DialogTitle>{t("automations.editor.archive.title", { name: nome })}</DialogTitle>

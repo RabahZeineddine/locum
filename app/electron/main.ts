@@ -2277,6 +2277,9 @@ async function checkAutomacaoNova(window: BrowserWindow): Promise<void> {
   const esperar = async (nome: string, ok: () => Promise<boolean>): Promise<void> => {
     await esperarDoServico(nome, async () => ((await ok()) ? true : undefined), 5_000);
   };
+  // O menu do Radix abre no pointerdown, nao no click.
+  const abrirMenu = (): Promise<unknown> =>
+    js(`(() => { document.querySelector("[data-locum-automacao-menu]").dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0, ctrlKey: false })); return null; })()`);
   const digitarNome = (nome: string): Promise<unknown> =>
     js(`(() => {
       const campo = document.querySelector("[data-locum-probe=automacao-editor] header input");
@@ -2303,7 +2306,7 @@ async function checkAutomacaoNova(window: BrowserWindow): Promise<void> {
     id = await abrirNova();
     if ((await agentService.get(id)) !== undefined) throw new Error("abrir uma automacao nova ja gravou o agent");
     if (!(await existe("[data-locum-automacao-nova-aviso]"))) throw new Error("o editor nao disse que a automacao ainda nao foi gravada");
-    if (await existe("[data-locum-automacao-arquivar]")) throw new Error("o editor da automacao ainda nao gravada mostra o botao de arquivar");
+    if (await existe("[data-locum-automacao-menu]")) throw new Error("o editor da automacao ainda nao gravada mostra o menu de arquivar e deletar");
     await clicar("[data-locum-rota=agents]");
     await esperar("sair sem pergunta", async () => (await rota()).startsWith("agents|"));
     if (await existe("[data-locum-saida]")) throw new Error("abandonar a automacao nova sem editar pediu confirmacao");
@@ -2319,7 +2322,9 @@ async function checkAutomacaoNova(window: BrowserWindow): Promise<void> {
     if ((await provisorias()) !== 0) throw new Error("salvar nao apagou a provisoria");
 
     // Arquivar: o botao so existe na automacao ja gravada, o dialogo abre com a previa, e cancelar nao arquiva nada.
-    await esperar("o botao de arquivar no editor gravado", () => existe("[data-locum-automacao-arquivar]"));
+    await esperar("o menu da automacao no editor gravado", () => existe("[data-locum-automacao-menu]"));
+    await abrirMenu();
+    await esperar("o item de arquivar no menu", () => existe("[data-locum-automacao-arquivar]"));
     await clicar("[data-locum-automacao-arquivar]");
     await esperar("o dialogo de arquivar", () => existe("[data-locum-automacao-arquivar-confirmar]"));
     await clicar("[data-locum-automacao-arquivar-cancelar]");
@@ -2347,6 +2352,17 @@ async function checkAutomacaoNova(window: BrowserWindow): Promise<void> {
     if (await existe(`[data-locum-automacao="${id}"]`)) throw new Error("a lista em uso mostra a automacao arquivada");
     await clicar("[data-locum-automacao-filtro-arquivadas=sim]");
     await esperar("a arquivada na aba Arquivadas", () => existe(`[data-locum-automacao-arquivada="${id}"]`));
+
+    // Deletar: o item so vale na arquivada, o dialogo mostra a previa, e confirmar apaga de verdade.
+    await irPara(window, "automations", id);
+    await esperar("o menu do editor da arquivada", () => existe("[data-locum-automacao-menu]"));
+    await abrirMenu();
+    await esperar("o item de deletar", () => existe("[data-locum-automacao-deletar]"));
+    if ((await js(`document.querySelector("[data-locum-automacao-deletar]").hasAttribute("data-disabled")`)) !== false) throw new Error("o item de deletar da arquivada esta desabilitado");
+    await clicar("[data-locum-automacao-deletar]");
+    await esperar("o dialogo de deletar com a previa", () => existe("[data-locum-automacao-deletar-resumo]"));
+    await clicar("[data-locum-automacao-deletar-confirmar]");
+    await esperar("a automacao deletada", async () => (await agentService.get(id)) === undefined);
   } finally {
     await js(`(Object.keys(localStorage).filter((k) => k.startsWith("locum.rascunho-automacao") || k.startsWith("locum.automacao-provisoria")).forEach((k) => localStorage.removeItem(k)), null)`);
     if (id !== "") {
@@ -2624,7 +2640,18 @@ async function checkPacote(window: BrowserWindow): Promise<void> {
 
     // Exportar: o botão existe no editor, e o arquivo sai sem o canal.
     await irPara(window, "automations", idOrigem);
-    await esperarProbe(window, "exportar", `document.querySelector("[data-locum-automacao-exportar]") !== null ? true : null`);
+    // O item mora no menu do cabecalho, que o Radix abre no pointerdown.
+    await esperarProbe(
+      window,
+      "exportar",
+      `(() => {
+        const gatilho = document.querySelector("[data-locum-automacao-menu]");
+        if (gatilho === null) return null;
+        if (document.querySelector("[data-locum-automacao-exportar]") !== null) return true;
+        if (gatilho.dataset.state === "closed") gatilho.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0, ctrlKey: false }));
+        return null;
+      })()`,
+    );
     await foto("exportar");
     const { texto, nomeDoArquivo } = await pacoteService.exportar(idOrigem);
     if (!nomeDoArquivo.endsWith(".locum.json")) throw new Error(`o arquivo exportado se chama ${nomeDoArquivo}`);

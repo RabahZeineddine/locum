@@ -713,6 +713,43 @@ test("archive_automation arquiva, aparece como destrutiva, diz o bloqueio pela c
   recusa(await client.callTool({ name: "archive_automation", arguments: { agentId: "nao-existe-x" } }), /nao cadastrada/);
 });
 
+test("delete_automation é destrutiva, recusa a ativa e a que tem run em curso, e deleta a arquivada com o que pende dela", async () => {
+  const client = await ligarCliente();
+  const ferramenta = (await client.listTools()).tools.find((t) => t.name === "delete_automation");
+  assert.equal(ferramenta?.annotations?.destructiveHint, true);
+
+  const agentId = id("auto");
+  const { gatilhos } = await comoPessoa(agentId, [ler], [{ kind: "manual" }]);
+  const versao = (await agentService.getLatestVersion(agentId))!;
+  const runId = `run-${agentId}`;
+  db.insert(schema.runs).values({ id: runId, agentVersionId: versao.id, triggerId: gatilhos[0]!.id, status: "done" }).run();
+  recusa(await client.callTool({ name: "delete_automation", arguments: { agentId } }), /archive it first/);
+  assert.notEqual(await agentService.get(agentId), undefined);
+
+  ok(await client.callTool({ name: "archive_automation", arguments: { agentId } }));
+  db.update(schema.runs).set({ status: "running" }).where(eq(schema.runs.id, runId)).run();
+  recusa(await client.callTool({ name: "delete_automation", arguments: { agentId } }), /1 run\(s\) queued or running: open the app.*then delete/);
+  assert.notEqual(await agentService.get(agentId), undefined);
+
+  db.update(schema.runs).set({ status: "done" }).where(eq(schema.runs.id, runId)).run();
+  assert.deepEqual(ok(await client.callTool({ name: "delete_automation", arguments: { agentId } })), { agentId, deleted: true, runs: 1, versions: 1 });
+  assert.equal(await agentService.get(agentId), undefined);
+  assert.equal(db.select().from(schema.runs).where(eq(schema.runs.id, runId)).all().length, 0);
+  recusa(await client.callTool({ name: "delete_automation", arguments: { agentId } }), /nao cadastrada/);
+});
+
+test("delete_automation recusa a automação ligada a uma iniciativa: é decisão de uma pessoa, na tela", async () => {
+  const client = await ligarCliente();
+  const agentId = id("auto");
+  await comoPessoa(agentId, [ler]);
+  const slug = `ini-${agentId}`;
+  db.insert(schema.initiatives).values({ id: slug, slug, title: "Plano", objective: "o", doneCriteria: "c", contextPath: "/tmp/ctx" }).run();
+  db.update(schema.agents).set({ initiativeId: slug }).where(eq(schema.agents.id, agentId)).run();
+  db.update(schema.agents).set({ archivedAt: 1 }).where(eq(schema.agents.id, agentId)).run();
+  recusa(await client.callTool({ name: "delete_automation", arguments: { agentId } }), /decisão de uma pessoa, na tela/);
+  assert.notEqual(await agentService.get(agentId), undefined);
+});
+
 test("archive_automation recusa a automação ligada a uma iniciativa: é decisão de uma pessoa, na tela", async () => {
   const client = await ligarCliente();
   const agentId = id("auto");

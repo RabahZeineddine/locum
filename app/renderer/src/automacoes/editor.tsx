@@ -75,7 +75,7 @@ import {
   useNodesInitialized,
   useReactFlow,
 } from "@xyflow/react";
-import { ArrowLeft, ChevronDown, ChevronRight, Download, List, Loader2, Play } from "lucide-react";
+import { ArrowLeft, ChevronDown, ChevronRight, List, Loader2, Play } from "lucide-react";
 import { MarcaLogo } from "@/components/marca-logo";
 import { appsDaPaleta, buscarNaPaleta, foiRenomeado, fonteDaMarca, fonteDaMarcaDoPasso, reconhecerPasso, temTrocaDeOperacao, tituloDaOperacaoDoPasso, nomeDoApp, passoDaOperacao, passoSemOperacao, servidorDoNoVazio, type AppDaPaleta, type OperacaoDoApp } from "@/lib/apps-da-paleta";
 import { tradutorDe } from "@/lib/operacao-da-ferramenta";
@@ -86,7 +86,7 @@ import { esquemasDasConexoes, useFerramentasDasConexoes, useSaidasDoUltimoRun, t
 import { useTranslation } from "react-i18next";
 import type { RotaId } from "../rotas";
 import { useToasts } from "../toasts";
-import { ArquivarAutomacao } from "./arquivar-automacao";
+import { MenuDaAutomacao } from "./menu-da-automacao";
 import { ModalDeAgent } from "./modal-de-agent";
 import { useExecutarAgora } from "./executar-com";
 import { PainelDoNo } from "./painel";
@@ -360,6 +360,15 @@ function EditorCarregado({
         setAviso({ tipo: "ok", texto: r.avisos.length === 0 ? t("pacote.export.done", { arquivo: r.nomeDoArquivo }) : t("pacote.export.doneWithLiterals", { arquivo: r.nomeDoArquivo, literais }) });
       },
       (e: unknown) => setAviso({ tipo: "erro", texto: semPrefixoDoIpc(e instanceof Error ? e.message : String(e)) }),
+    );
+  };
+
+  const desarquivar = (): void => {
+    call("automations.unarchive", agentId).then(
+      () => {
+        for (const canal of LEITURAS_DA_AUTOMACAO) invalidateReads(canal);
+      },
+      (e: unknown) => toasts.recusar(e instanceof Error ? e.message : String(e)),
     );
   };
 
@@ -697,18 +706,6 @@ function EditorCarregado({
           <List />
           {t("automations.editor.asList")}
         </Button>
-        <Button
-          className="cursor-pointer"
-          data-locum-automacao-exportar=""
-          disabled={ocupado !== null || mudou || nova}
-          onClick={exportar}
-          size="sm"
-          title={mudou ? t("pacote.export.saveFirst") : t("pacote.export.hint")}
-          variant="ghost"
-        >
-          <Download />
-          {t("pacote.export.button")}
-        </Button>
         <Button className="cursor-pointer" disabled={ocupado !== null || nova || arquivadaNoBanco || executarAgora.pedindo} onClick={executar} size="sm" variant="outline">
           {executarAgora.pedindo ? <Loader2 className="animate-spin" /> : <Play />}
           {t("automations.editor.runNow")}
@@ -726,6 +723,35 @@ function EditorCarregado({
           <StatusDot estado={ligada ? "ok" : "ocioso"} />
           {t(ligada ? "automations.editor.disable" : "automations.editor.enable")}
         </Button>
+        {nova ? null : (
+          <MenuDaAutomacao
+            agentId={agentId}
+            aoArquivar={() => {
+              // Antes de navegar: com o rascunho ainda no navegador, a próxima abertura do id o ofereceria de volta.
+              arquivada.current = true;
+              apagarRastroLocal(globalThis.localStorage, agentId);
+              for (const canal of LEITURAS_DA_AUTOMACAO) invalidateReads(canal);
+              toasts.informar(t("automations.editor.archive.done", { name: salvo.spec.name }));
+              voltar();
+            }}
+            aoDeletar={() => {
+              arquivada.current = true;
+              apagarRastroLocal(globalThis.localStorage, agentId);
+              for (const canal of LEITURAS_DA_AUTOMACAO) invalidateReads(canal);
+              toasts.informar(t("automations.editor.delete.done", { name: salvo.spec.name }));
+              voltar();
+            }}
+            arquivada={arquivadaNoBanco}
+            desarquivar={desarquivar}
+            edicaoNaoSalva={mudou}
+            exportar={exportar}
+            exportarDesabilitado={ocupado !== null || mudou}
+            exportarDica={mudou ? t("pacote.export.saveFirst") : t("pacote.export.hint")}
+            nome={salvo.spec.name}
+            ocupado={ocupado !== null}
+            podeArquivar={agentId !== AGENT_DO_CONTEXTO}
+          />
+        )}
       </header>
 
       {arquivadaNoBanco ? (
@@ -736,14 +762,7 @@ function EditorCarregado({
             className="cursor-pointer"
             data-locum-automacao-desarquivar=""
             disabled={ocupado !== null}
-            onClick={() => {
-              call("automations.unarchive", agentId).then(
-                () => {
-                  for (const canal of LEITURAS_DA_AUTOMACAO) invalidateReads(canal);
-                },
-                (e: unknown) => toasts.recusar(e instanceof Error ? e.message : String(e)),
-              );
-            }}
+            onClick={desarquivar}
             size="sm"
             variant="outline"
           >
@@ -985,23 +1004,6 @@ function EditorCarregado({
           />
         )}
       </div>
-
-      {nova || arquivadaNoBanco || agentId === AGENT_DO_CONTEXTO ? null : (
-        <ArquivarAutomacao
-          agentId={agentId}
-          aoArquivar={() => {
-            // Antes de navegar: com o rascunho ainda no navegador, a próxima abertura do id o ofereceria de volta.
-            arquivada.current = true;
-            apagarRastroLocal(globalThis.localStorage, agentId);
-            for (const canal of LEITURAS_DA_AUTOMACAO) invalidateReads(canal);
-            toasts.informar(t("automations.editor.archive.done", { name: salvo.spec.name }));
-            voltar();
-          }}
-          desabilitado={ocupado !== null}
-          edicaoNaoSalva={mudou}
-          nome={salvo.spec.name}
-        />
-      )}
 
       {modalDeAgent === null ? null : <ModalDeAgent detalhe={modalDeAgent.detalhe} fechar={fecharAgent} navegar={navegar} />}
 
