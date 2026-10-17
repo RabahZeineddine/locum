@@ -3649,8 +3649,46 @@
       "runArchived": "Run {{id}} da automação \"{{nome}}\", estado {{estado}}. A automação está arquivada: só se lê, e as ferramentas de escrita recusam.",
       "context": "Contexto do run:\n{{corpo}}"
     },
+    "tools": {
+      "ler_run": {
+        "description": "Lê o run. Sem `passo`, devolve a lista de passos com o estado de cada um, as pendências e as ações que se podem propor, com o esquema do conteúdo de cada uma. Com `passo`, devolve a saída inteira daquele passo.",
+        "passo": "a chave do passo, como na lista"
+      },
+      "propor_acao": {
+        "description": "Propõe uma ação nova sobre o run, por exemplo aprovar sem comentários. Ela só cria uma pendência na Fila, e a pessoa decide lá: nada é publicado agora. O alvo (repositório, pull request, conversa) vem do evento do run. `conteudo` segue o esquema que `ler_run` mostra para a ação.",
+        "acao": "a ação, como `ler_run` lista",
+        "conteudo": "o conteúdo da ação, no esquema dela",
+        "derivaDe": "a chave do passo do fluxo de que esta ação deriva"
+      },
+      "editar_pendencia": {
+        "description": "Muda campos de uma pendência do run que ainda espera na Fila, por exemplo o veredito ou o resumo de uma review. Ela continua esperando a decisão da pessoa, e a Fila a mostra como alterada pela conversa. Só os campos que `ler_run` lista em `camposEditaveis` daquela pendência: o alvo nunca muda. Passe só os campos a mudar.",
+        "pendencia": "o id da pendência, como `ler_run` lista",
+        "campos": "os campos a mudar, com o valor novo, no esquema de `camposEditaveis`"
+      },
+      "reexecutar_passo": {
+        "description": "Roda de novo um passo de modelo do run, com uma instrução a mais da pessoa, e os passos que dependem dele. O resultado novo substitui o anterior e as ações do run passam a esperar decisão na Fila. Leva minutos: a volta termina antes do run. Use quando a pessoa pede para olhar de novo ou acrescentar algo.",
+        "passo": "a chave do passo de modelo",
+        "instrucao": "o que a pessoa quer a mais, com as palavras dela"
+      }
+    },
     "errors": {
       "noTarget": "Este run não tem passo de modelo, então ainda não há com quem conversar. Escolha um agent ou um modelo para a conversa."
     }
+  },
+  "erroDoServico": {
+    "proposta_recusada": "A ação {{argumento}} recusou a proposta, por exemplo review em pull request da própria pessoa.",
+    "pendencia_mudou": "A pendência mudou desde que você a viu. Leia de novo e decida sobre o que está lá.",
+    "pendencia_nao_encontrada": "Pendência {{argumento}} não encontrada.",
+    "pendencia_de_outro_run": "A pendência {{argumento}} é de outro run, e a conversa só edita as do run dela.",
+    "pendencia_resolvida": "A pendência {{argumento}} já foi decidida.",
+    "run_nao_encontrado": "Run {{argumento}} não encontrado.",
+    "run_em_andamento": "O run {{argumento}} ainda está em andamento. Espere terminar para propor uma ação.",
+    "run_de_ensaio": "Run de ensaio (link colado) não recebe ação: nada sai dele.",
+    "modelo_inexistente": "O modelo {{argumento}} não existe no catálogo dos provedores.",
+    "acao_sem_esquema": "A ação {{argumento}} não se propõe à mão: o handler não declara o esquema do conteúdo.",
+    "acao_sem_approve": "A ação {{argumento}} não aceita aprovação, e o passo avulso só nasce assim.",
+    "conteudo_invalido": "O conteúdo está fora do esquema da ação {{argumento}}.",
+    "derivacao_invalida": "O passo {{argumento}} não é um passo do fluxo deste run.",
+    "alvo_no_conteudo": "O conteúdo não define o alvo da ação ({{argumento}}): ele vem do evento do run."
   }
 }

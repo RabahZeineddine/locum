@@ -5,6 +5,7 @@ import { buildRuntimes } from "../src/executor/build.js";
 import { approvalService } from "../src/services/approval-service.js";
 import { libraryService } from "../src/services/library-service.js";
 import { passoAvulsoService } from "../src/services/passo-avulso-service.js";
+import { providerService } from "../src/services/provider-service.js";
 import { priceService } from "../src/services/price-service.js";
 import { runService } from "../src/services/run-service.js";
 import { emitir, modeloDoChat } from "./agent-chat.js";
@@ -18,6 +19,7 @@ export const runChat = new ConversasDoRun({
   library: libraryService,
   mcp: async () => (await buildRuntimes()).mcp,
   modelo: (id) => modeloDoChat(id),
+  catalogo: () => providerService.listAllModels({ assinatura: true }),
   orcamento: { checar: assertWithinBudget, gastar: recordSpend },
   preco: (provedor, nome) => priceService.priceFor(provedor, nome),
   assinatura: (pedido) => rodarPelaAssinatura(pedido, { mensagemSemClaude: t("assistant.status.noClaude") }),

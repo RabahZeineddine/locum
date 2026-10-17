@@ -5,6 +5,7 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { call, useRead, type ReadResult } from "@/lib/bridge";
 import { semPrefixoDoIpc } from "@/lib/erro-da-ponte";
+import { traduzirErroDoServico } from "@/lib/erro-do-servico";
 import { camposDoSchema, type Campo as CampoDoEsquema } from "@/lib/formulario-de-schema";
 import { rotuloDaAcao } from "@/lib/rotulos";
 import { escritoComoJson, montarConteudo, valoresIniciais, type ErroDoFormulario } from "@/lib/passo-avulso";
@@ -78,7 +79,7 @@ function Dialogo({ detalhe, navegar, aoFechar }: { detalhe: Detalhe; navegar: Te
         setEnviando(false);
         const mensagem = semPrefixoDoIpc(e instanceof Error ? e.message : String(e));
         const recusada = /proposta_recusada:([^:]+):/.exec(mensagem);
-        setRecusa(recusada === null ? mensagem : t("runs.newAction.refused", { kind: rotuloDaAcao(t, recusada[1]!) }));
+        setRecusa(recusada === null ? traduzirErroDoServico(t, mensagem, (codigo, valor) => (codigo === "acao_sem_esquema" || codigo === "acao_sem_approve" || codigo === "conteudo_invalido" ? rotuloDaAcao(t, valor) : valor)) : t("runs.newAction.refused", { kind: rotuloDaAcao(t, recusada[1]!) }));
       },
     );
   };

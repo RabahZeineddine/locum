@@ -1,5 +1,6 @@
 import { PassoIncompletoError, descreverPendencia, pendenciasDoPasso, recusaDeRodar } from "../config/pendencia.js";
 import { REBAIXADO_NA_REEXECUCAO, rebaixadaPorInstrucao } from "../config/rebaixado.js";
+import { erroComCodigo } from "../services/erro-com-codigo.js";
 import { i18nService } from "../services/i18n-service.js";
 import { translate } from "../services/text-service.js";
 import { randomUUID } from "node:crypto";
@@ -135,7 +136,7 @@ export class Executor {
   ): Promise<{ status: "approved" | "rejected" | "conflict"; run: "done" | "paused" | "failed"; motivo?: string }> {
     if (hashVisto !== undefined) {
       const [atual] = await db.select({ payload: schema.approvals.payload }).from(schema.approvals).where(eq(schema.approvals.id, approvalId));
-      if (atual !== undefined && impressaoDe(atual.payload) !== hashVisto) throw new Error("a pendência mudou desde que você viu");
+      if (atual !== undefined && impressaoDe(atual.payload) !== hashVisto) throw erroComCodigo("pendencia_mudou", "", "a pendência mudou desde que você viu");
     }
     const avulso = await this.ehAvulso(approvalId);
     const { runId, status, motivo } = await this.deps.gate.decide(approvalId, decision);

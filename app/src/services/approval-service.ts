@@ -7,6 +7,7 @@ import { propostoPorDe, type PropostoPor } from "../config/types.js";
 import { recusarSeArquivada } from "../db/arquivada.js";
 import { db as defaultDb, schema } from "../db/index.js";
 import { buildGate } from "../executor/build.js";
+import { erroComCodigo } from "./erro-com-codigo.js";
 import { PREFIXO_DA_TROCA_POR_LIMITE } from "./limites-service.js";
 
 type Db = typeof defaultDb;
@@ -99,13 +100,13 @@ export class ApprovalService {
         .innerJoin(schema.agentVersions, eq(schema.runs.agentVersionId, schema.agentVersions.id))
         .where(eq(schema.approvals.id, approvalId))
         .get();
-      if (!atual) throw new Error(`aprovação ${approvalId} não encontrada`);
+      if (!atual) throw erroComCodigo("pendencia_nao_encontrada", approvalId, `aprovação ${approvalId} não encontrada`);
       const { approval } = atual;
       if (origem !== "pessoa") {
-        if (approval.runId !== origem.conversa) throw new Error(`aprovação ${approvalId} é de outro run, e a conversa só edita as do run dela`);
+        if (approval.runId !== origem.conversa) throw erroComCodigo("pendencia_de_outro_run", approvalId, `aprovação ${approvalId} é de outro run, e a conversa só edita as do run dela`);
         recusarSeArquivada(tx, atual.agentId);
       }
-      if (approval.status !== "pending") throw new Error(`aprovação ${approvalId} já resolvida: ${approval.status}`);
+      if (approval.status !== "pending") throw erroComCodigo("pendencia_resolvida", approvalId, `aprovação ${approvalId} já resolvida: ${approval.status}`);
 
       const editaveis = this.camposEditaveisDe(approval.kind)?.properties ?? {};
       const novos: Record<string, unknown> = {};
@@ -127,7 +128,7 @@ export class ApprovalService {
         .run();
       // A decisão pode ter começado a publicar entre a leitura e aqui; gravar
       // por cima faria o histórico mostrar um texto diferente do que saiu.
-      if (escrita.changes !== 1) throw new Error(`aprovação ${approvalId} já resolvida`);
+      if (escrita.changes !== 1) throw erroComCodigo("pendencia_resolvida", approvalId, `aprovação ${approvalId} já resolvida`);
     });
     return (await this.get(approvalId))!;
   }

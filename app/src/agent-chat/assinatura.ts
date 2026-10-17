@@ -52,10 +52,13 @@ export async function rodarPelaAssinatura(
 
   const cwd = join(appHome(), "chat-agents");
   mkdirSync(cwd, { recursive: true });
-  const aprovacao = await abrirServidorDeAprovacao(p.aprovar);
-  const locais = p.locais.length === 0 ? undefined : await abrirServidorLocal(p.locais, p.sinal);
-  const pasta = await mkdtemp(join(tmpdir(), "locum-chat-agent-"));
+  let aprovacao: Awaited<ReturnType<typeof abrirServidorDeAprovacao>> | undefined;
+  let locais: Awaited<ReturnType<typeof abrirServidorLocal>> | undefined;
+  let pasta: string | undefined;
   try {
+    aprovacao = await abrirServidorDeAprovacao(p.aprovar);
+    locais = p.locais.length === 0 ? undefined : await abrirServidorLocal(p.locais, p.sinal);
+    pasta = await mkdtemp(join(tmpdir(), "locum-chat-agent-"));
     const config = JSON.parse(mcpConfigJson(servidores.map((c) => c.name), new Map(servidores.map((c) => [c.name, c])))) as {
       mcpServers: Record<string, unknown>;
     };
@@ -86,8 +89,8 @@ export async function rodarPelaAssinatura(
       deps.abrir,
     );
   } finally {
-    await aprovacao.fechar();
+    await aprovacao?.fechar();
     await locais?.fechar();
-    await rm(pasta, { recursive: true, force: true });
+    if (pasta !== undefined) await rm(pasta, { recursive: true, force: true });
   }
 }

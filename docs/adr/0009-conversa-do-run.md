@@ -39,6 +39,19 @@ ferramentas de escrita seria o efeito escondido que o ADR 0006 proíbe.
 8. Uma volta em andamento bloqueia arquivar e deletar a automação. Deletar apaga a
    conversa junto com o run.
 
+10. Os limites técnicos de uma volta aparecem no estado e no MCP com o valor
+    escrito: passos do laço (12, ou o `maxSteps` do agent quando ele responde, e o
+    estado diz qual dos dois vale) e o teto de leitura do `ler_run` (20 000
+    caracteres). A `instrucao` dos passos que `ler_run` devolve vai entre as marcas
+    de dado de fora.
+11. Escolher um modelo para a conversa vale só para um id que o catálogo dos
+    provedores lista. A descrição das ferramentas para o modelo segue o idioma do
+    app, como o system.
+12. Os erros de serviço que chegam à tela levam código (`<código>:<argumento>:
+    <texto>`, em `erro-com-codigo.ts`) e a tela os traduz, como já fazia com
+    `proposta_recusada`. `run_chat_take` assume a conversa de um processo que
+    parou de responder, como `agent_chat_take`.
+
 ## Consequências
 
 - O passo avulso que a conversa propõe grava `propostoPor: "conversa"` em

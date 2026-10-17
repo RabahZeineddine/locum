@@ -81,6 +81,8 @@ export interface DoRunNaConversa {
   contexto: { teto: number; cortado: string[] };
   /** O que a conversa já gastou. */
   gasto: { usd: number; tokens: number };
+  /** Os limites técnicos de uma volta: passos do laço de ferramentas (o `maxSteps` do agent quando ele responde) e o que `ler_run` devolve de uma vez, em caracteres. */
+  limites: { passosDaVolta: number; passosDoAgent: boolean; tetoDaLeitura: number };
 }
 
 /** A chave da conversa de um agent, a mesma dos eventos e do histórico guardado. */

@@ -6,6 +6,7 @@ import type { ApprovalGate } from "../approval/gate.js";
 import { PREFIXO_DO_PASSO_AVULSO, type PropostoPor } from "../config/types.js";
 import { recusarSeArquivada } from "../db/arquivada.js";
 import { db as defaultDb, schema } from "../db/index.js";
+import { erroComCodigo } from "./erro-com-codigo.js";
 import { buildGate } from "../executor/build.js";
 import { alvoDoEvento, aplicarCamposDoEvento, camposDoAlvo, destinoDoEvento, type EventPayload } from "../executor/executor.js";
 
@@ -46,8 +47,8 @@ export class PassoAvulsoService {
   async proporAcao(runId: string, proposta: PropostaAvulsa): Promise<{ approvalId: string; stepKey: string }> {
     const { kind } = proposta;
     const esquema = this.gate.inputSchema(kind);
-    if (esquema === undefined) throw new Error(`a acao "${kind}" nao e oferecida como avulsa: o handler nao declara inputSchema`);
-    if (!this.gate.aceitaModo(kind, "approve")) throw new Error(`a acao "${kind}" nao aceita o modo approve, e o passo avulso so nasce em approve`);
+    if (esquema === undefined) throw erroComCodigo("acao_sem_esquema", kind, `a acao "${kind}" nao e oferecida como avulsa: o handler nao declara inputSchema`);
+    if (!this.gate.aceitaModo(kind, "approve")) throw erroComCodigo("acao_sem_approve", kind, `a acao "${kind}" nao aceita o modo approve, e o passo avulso so nasce em approve`);
     const conteudo = validarConteudo(kind, esquema, proposta.conteudo);
 
     const { evento } = this.conferir(this.db, runId);
@@ -59,7 +60,7 @@ export class PassoAvulsoService {
     // O alvo é garantido aqui, e não pelo esquema do handler: chave de alvo no conteúdo é recusada, mesmo que o esquema a aceite.
     const reservados = new Set([...camposDoAlvo(), ...this.gate.camposDoEvento(kind), ...(ACOES_DE_CONVERSA_REGISTRO[kind] === undefined ? [] : ["destino"])]);
     const invadidos = Object.keys(proposta.conteudo as object).filter((chave) => reservados.has(chave));
-    if (invadidos.length > 0) throw new Error(`conteudo nao define o alvo da acao: ${invadidos.join(", ")} vem do evento do run`);
+    if (invadidos.length > 0) throw erroComCodigo("alvo_no_conteudo", invadidos.join(","), `conteudo nao define o alvo da acao: ${invadidos.join(", ")} vem do evento do run`);
     const doConteudo = { ...conteudo, ...alvo, ...destinoDoEvento(alvo) };
     const payload = aplicarCamposDoEvento(
       ACOES_DE_CONVERSA_REGISTRO[kind] === undefined ? doConteudo : { ...doConteudo, destino: destinoDoPasso(kind, undefined) },
@@ -79,7 +80,7 @@ export class PassoAvulsoService {
           .where(eq(schema.steps.runId, runId))
           .all();
         if (proposta.derivaDe !== undefined && !passos.some((p) => p.chave === proposta.derivaDe && p.origem === "fluxo")) {
-          throw new Error(`derivaDe "${proposta.derivaDe}" nao e um passo do fluxo deste run`);
+          throw erroComCodigo("derivacao_invalida", proposta.derivaDe, `derivaDe "${proposta.derivaDe}" nao e um passo do fluxo deste run`);
         }
         const numeros = passos
           .map((p) => new RegExp(`^${PREFIXO_DO_PASSO_AVULSO}(\\d+)$`).exec(p.chave)?.[1])
@@ -115,13 +116,13 @@ export class PassoAvulsoService {
       .innerJoin(schema.agentVersions, eq(schema.runs.agentVersionId, schema.agentVersions.id))
       .where(eq(schema.runs.id, runId))
       .get();
-    if (run === undefined) throw new Error(`run ${runId} nao encontrado`);
+    if (run === undefined) throw erroComCodigo("run_nao_encontrado", runId, `run ${runId} nao encontrado`);
     recusarSeArquivada(leitor, run.agentId);
     const evento = run.eventId === null ? undefined : leitor.select().from(schema.events).where(eq(schema.events.id, run.eventId)).get();
     const payload = (evento?.payload ?? { repo: "", changedFiles: [] }) as EventPayload;
-    if (payload.semConversa === true) throw new Error("run de ensaio (link colado) nao recebe acao: nada sai dele");
+    if (payload.semConversa === true) throw erroComCodigo("run_de_ensaio", "", "run de ensaio (link colado) nao recebe acao: nada sai dele");
     if (run.status === "queued" || run.status === "running") {
-      throw new Error(`run ${runId} ainda esta em andamento; espere terminar para propor uma acao`);
+      throw erroComCodigo("run_em_andamento", runId, `run ${runId} ainda esta em andamento; espere terminar para propor uma acao`);
     }
     return { evento: payload };
   }
@@ -129,9 +130,9 @@ export class PassoAvulsoService {
 
 function validarConteudo(kind: string, esquema: object, conteudo: unknown): Record<string, unknown> {
   const lido = z.fromJSONSchema(esquema as never).safeParse(conteudo);
-  if (!lido.success) throw new Error(`conteudo fora do esquema da acao "${kind}": ${z.prettifyError(lido.error)}`);
+  if (!lido.success) throw erroComCodigo("conteudo_invalido", kind, `conteudo fora do esquema da acao "${kind}": ${z.prettifyError(lido.error)}`);
   if (lido.data === null || typeof lido.data !== "object" || Array.isArray(lido.data)) {
-    throw new Error(`conteudo da acao "${kind}" precisa ser um objeto`);
+    throw erroComCodigo("conteudo_invalido", kind, `conteudo da acao "${kind}" precisa ser um objeto`);
   }
   return lido.data as Record<string, unknown>;
 }

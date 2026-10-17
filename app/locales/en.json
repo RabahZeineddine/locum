@@ -3553,8 +3553,46 @@
       "runArchived": "Run {{id}} of the automation \"{{nome}}\", state {{estado}}. The automation is archived: you can only read, and the write tools refuse.",
       "context": "Run context:\n{{corpo}}"
     },
+    "tools": {
+      "ler_run": {
+        "description": "Reads the run. Without `passo`, it returns the list of steps with the state of each, the pending items and the actions that can be proposed, with the content schema of each one. With `passo`, it returns the whole output of that step.",
+        "passo": "the step key, as in the list"
+      },
+      "propor_acao": {
+        "description": "Proposes a new action on the run, for example approving without comments. It only creates a pending item in the queue, and the person decides there: nothing is published now. The target (repository, pull request, conversation) comes from the run's event. `conteudo` follows the schema that `ler_run` shows for the action.",
+        "acao": "the action, as `ler_run` lists it",
+        "conteudo": "the content of the action, in its schema",
+        "derivaDe": "the key of the flow step this action derives from"
+      },
+      "editar_pendencia": {
+        "description": "Changes fields of a pending item of the run that still waits in the queue, for example the verdict or the summary of a review. It keeps waiting for the person's decision, and the queue shows it as changed by the conversation. Only the fields that `ler_run` lists in `camposEditaveis` of that item: the target never changes. Pass only the fields to change.",
+        "pendencia": "the id of the pending item, as `ler_run` lists it",
+        "campos": "the fields to change, with the new value, in the schema of `camposEditaveis`"
+      },
+      "reexecutar_passo": {
+        "description": "Runs a model step of the run again, with one more instruction from the person, and the steps that depend on it. The new result replaces the old one and the run's actions go back to waiting for a decision in the queue. It takes minutes: the turn ends before the run does. Use it when the person asks to look again or to add something.",
+        "passo": "the key of the model step",
+        "instrucao": "what the person wants added, in their own words"
+      }
+    },
     "errors": {
       "noTarget": "This run has no model step, so there is nobody to talk to yet. Pick an agent or a model for the conversation."
     }
+  },
+  "erroDoServico": {
+    "proposta_recusada": "The {{argumento}} action refused the proposal, for example a review on the person's own pull request.",
+    "pendencia_mudou": "The pending item changed since you saw it. Read it again and decide on what is there.",
+    "pendencia_nao_encontrada": "Pending item {{argumento}} not found.",
+    "pendencia_de_outro_run": "Pending item {{argumento}} belongs to another run, and the conversation only edits those of its own run.",
+    "pendencia_resolvida": "Pending item {{argumento}} was already decided.",
+    "run_nao_encontrado": "Run {{argumento}} not found.",
+    "run_em_andamento": "Run {{argumento}} is still running. Wait for it to finish before proposing an action.",
+    "run_de_ensaio": "A dry run (pasted link) takes no action: nothing leaves it.",
+    "modelo_inexistente": "Model {{argumento}} is not in the providers' catalog.",
+    "acao_sem_esquema": "The {{argumento}} action cannot be proposed by hand: its handler declares no content schema.",
+    "acao_sem_approve": "The {{argumento}} action does not accept approval, and a standalone step only starts that way.",
+    "conteudo_invalido": "The content does not match the schema of the {{argumento}} action.",
+    "derivacao_invalida": "Step {{argumento}} is not a step of this run's flow.",
+    "alvo_no_conteudo": "The content does not set the action target ({{argumento}}): it comes from the run's event."
   }
 }

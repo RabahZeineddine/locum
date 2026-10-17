@@ -106,7 +106,12 @@ modelo do run, ou o modelo dele, até a pessoa escolher outro. Age só por
 ferramentas sobre mecanismos que já existem: `ler_run`, `propor_acao` (passo
 avulso), `reexecutar_passo` (instrução de reexecução) e `editar_pendencia`. O
 gasto vai para um campo do run separado dos passos, para a automação e, se há
-agent, para o dele. Em automação arquivada só se lê. ADR 0009.
+agent, para o dele, e o teto por execução o mede (com o custo dos passos) contra o
+orçamento da versão atual da automação. A pendência que ela propõe carrega
+`propostoPor: "conversa"` e a Fila mostra "proposta pela conversa". Os limites da
+volta (passos do laço, que é o `maxSteps` do agent quando ele responde, e o teto
+de leitura do `ler_run`) aparecem no estado. Em automação arquivada só se lê.
+ADR 0009.
 
 **Descarte**: o que um gatilho viu e deixou de fora, com o motivo.
 

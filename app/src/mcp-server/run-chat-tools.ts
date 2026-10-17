@@ -17,8 +17,8 @@ function conversas(amb: Ambiente): ConversasDoRun {
 }
 
 /** A conversa não aceita mensagem agora: o motivo volta como erro, e não como uma resposta que parece ter corrido. */
-function exigirLivre(estado: EstadoDaConversa): void {
-  if (estado.respondendo) throw new Error("the run conversation is still answering (or another Locum process is in the middle of a message); wait and check run_chat_state");
+async function exigirLivre(chat: ConversasDoRun, runId: string): Promise<void> {
+  if (await chat.ocupada(runId)) throw new Error("the run conversation is still answering (or another Locum process is in the middle of a message); wait and check run_chat_state");
 }
 
 /** Espera a volta terminar. A conversa do run não tem cartão: o que ela propõe vai para a Fila. */
@@ -30,8 +30,8 @@ async function esperarVolta(chat: ConversasDoRun, runId: string, volta: Promise<
   for (;;) {
     await new Promise((r) => setTimeout(r, INTERVALO_MS));
     if (erro !== undefined) throw erro;
-    const estado = await chat.estado(runId);
-    if (acabou || !estado.respondendo || Date.now() > limite) return estado;
+    // A consulta é a leve: o estado inteiro monta o contexto do run, e só o fim precisa dele.
+    if (acabou || !(await chat.ocupada(runId)) || Date.now() > limite) return chat.estado(runId);
   }
 }
 
@@ -50,7 +50,7 @@ export function registerRunChatTools(server: McpServer, amb: Ambiente): void {
     { runId: z.string().min(1), text: z.string().min(1) },
     async ({ runId, text }) => {
       const chat = conversas(amb);
-      exigirLivre(await chat.estado(runId));
+      await exigirLivre(chat, runId);
       return esperarVolta(chat, runId, chat.enviar(runId, text));
     });
 

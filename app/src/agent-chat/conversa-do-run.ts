@@ -20,6 +20,7 @@ import {
   type FerramentaLocal,
   type ProvedorDeConversa,
 } from "./nucleo.js";
+import { erroComCodigo } from "../services/erro-com-codigo.js";
 import { chaveDoRun, type DoRunNaConversa } from "./tipos.js";
 
 type Db = typeof defaultDb;
@@ -33,11 +34,11 @@ export type AlvoDaConversa = { agent: string } | { modelo: string };
  */
 export const TETO_DO_CONTEXTO = 32_000;
 
-/** O que `ler_run` devolve de uma vez. */
-const TETO_DA_LEITURA = 20_000;
+/** O que `ler_run` devolve de uma vez (caracteres). Aparece no estado e no MCP. */
+export const TETO_DA_LEITURA = 20_000;
 
-/** Passos do laço de ferramentas de uma volta. */
-const PASSOS_DA_VOLTA = 12;
+/** Passos do laço de ferramentas de uma volta, quando o alvo não é um agent. O do agent (`maxSteps`) vale no lugar. */
+export const PASSOS_DA_VOLTA = 12;
 
 export interface DepsDaConversaDoRun extends DepsDoNucleo {
   db?: Db;
@@ -45,6 +46,8 @@ export interface DepsDaConversaDoRun extends DepsDoNucleo {
   avulso: Pick<PassoAvulsoService, "proporAcao" | "acoesAvulsas">;
   aprovacoes: Pick<ApprovalService, "editarCampos" | "camposEditaveisDe">;
   library: Pick<LibraryService, "resolveProfile">;
+  /** Os modelos que os provedores declaram ter, para recusar um id que não existe. */
+  catalogo: () => Promise<{ provedor: string; modelos: string[]; erro?: string }[]>;
   orcamento: { checar: typeof assertWithinBudget; gastar: typeof recordSpend };
   /** O teto do contexto inicial. Ausente, `TETO_DO_CONTEXTO`. */
   tetoDoContexto?: number;
@@ -90,14 +93,28 @@ export class ConversasDoRun extends NucleoDeConversa {
   async definirAlvo(runId: string, alvo: AlvoDaConversa | null): Promise<void> {
     const db = this.dependencias.db ?? defaultDb;
     if (await this.ocupada(runId)) throw new Error(this.dependencias.texto("agentChat.errors.busy"));
+    if (db.select({ id: schema.runs.id }).from(schema.runs).where(eq(schema.runs.id, runId)).get() === undefined) throw runNaoEncontrado(runId);
     if (alvo !== null && "agent" in alvo) await this.dependencias.library.resolveProfile(alvo.agent);
-    if (db.select({ id: schema.runs.id }).from(schema.runs).where(eq(schema.runs.id, runId)).get() === undefined) throw new Error(`run ${runId} nao encontrado`);
+    if (alvo !== null && "modelo" in alvo && !(await this.modeloExiste(alvo.modelo))) {
+      throw erroComCodigo("modelo_inexistente", alvo.modelo, `o modelo ${alvo.modelo} nao esta no catalogo dos provedores`);
+    }
     db.insert(schema.runConversations)
       .values({ runId, alvo })
       .onConflictDoUpdate({ target: schema.runConversations.runId, set: { alvo } })
       .run();
   }
+
+  /** O id é `provedor/modelo`; vale o que o catálogo do provedor lista. */
+  private async modeloExiste(id: string): Promise<boolean> {
+    const barra = id.indexOf("/");
+    if (barra <= 0) return false;
+    const provedor = id.slice(0, barra);
+    const nome = id.slice(barra + 1);
+    return (await this.dependencias.catalogo()).some((c) => c.provedor === provedor && c.modelos.includes(nome));
+  }
 }
+
+const runNaoEncontrado = (id: string): Error => erroComCodigo("run_nao_encontrado", id, `run ${id} nao encontrado`);
 
 function provedorDoRun(deps: DepsDaConversaDoRun): ProvedorDeConversa {
   const db = deps.db ?? defaultDb;
@@ -105,7 +122,7 @@ function provedorDoRun(deps: DepsDaConversaDoRun): ProvedorDeConversa {
 
   const detalhe = async (runId: string): Promise<RunDetail> => {
     const d = await deps.runs.get(runId);
-    if (d === undefined) throw new Error(`run ${runId} nao encontrado`);
+    if (d === undefined) throw runNaoEncontrado(runId);
     return d;
   };
 
@@ -156,12 +173,13 @@ function provedorDoRun(deps: DepsDaConversaDoRun): ProvedorDeConversa {
     return { corpo: partes.join("\n\n"), cortado, marca };
   };
 
-  const ferramentas = (d: RunDetail, marca: string): FerramentaLocal[] => [
+  const ferramentas = (d: RunDetail, marca: string, idioma: Language): FerramentaLocal[] => {
+  const tx = (chave: string): string => translate(idioma, `conversaDoRun.tools.${chave}`);
+  return [
     {
       nome: "ler_run",
-      descricao:
-        "Lê o run. Sem `passo`, devolve a lista de passos com o estado de cada um, as pendências e as ações que se podem propor, com o esquema do conteúdo de cada uma. Com `passo`, devolve a saída inteira daquele passo.",
-      entrada: { passo: z.string().optional().describe("a chave do passo, como na lista") },
+      descricao: tx("ler_run.description"),
+      entrada: { passo: z.string().optional().describe(tx("ler_run.passo")) },
       executar: async ({ passo }) => {
         const atual = await detalhe(d.id);
         if (typeof passo === "string") {
@@ -173,7 +191,7 @@ function provedorDoRun(deps: DepsDaConversaDoRun): ProvedorDeConversa {
         return JSON.stringify(
           {
             status: atual.status,
-            passos: atual.steps.map((s) => ({ chave: s.stepKey, nome: s.name, estado: s.status, avulso: s.origem === "avulso", instrucao: s.instrucao ?? null })),
+            passos: atual.steps.map((s) => ({ chave: s.stepKey, nome: s.name, estado: s.status, avulso: s.origem === "avulso", instrucao: s.instrucao == null ? null : delimitarDado(s.instrucao, `instrucao do passo ${s.stepKey}`, marca) })),
             pendencias: pendencias.map((a) => ({ id: a.id, acao: a.kind, estado: a.status, camposEditaveis: deps.aprovacoes.camposEditaveisDe(a.kind) ?? null })),
             acoesQueSePodemPropor: deps.avulso.acoesAvulsas(),
           },
@@ -184,12 +202,11 @@ function provedorDoRun(deps: DepsDaConversaDoRun): ProvedorDeConversa {
     },
     {
       nome: "propor_acao",
-      descricao:
-        "Propõe uma ação nova sobre o run, por exemplo aprovar sem comentários. Ela só cria uma pendência na Fila, e a pessoa decide lá: nada é publicado agora. O alvo (repositório, pull request, conversa) vem do evento do run. `conteudo` segue o esquema que `ler_run` mostra para a ação.",
+      descricao: tx("propor_acao.description"),
       entrada: {
-        acao: z.string().describe("a ação, como `ler_run` lista"),
-        conteudo: z.record(z.string(), z.unknown()).describe("o conteúdo da ação, no esquema dela"),
-        derivaDe: z.string().optional().describe("a chave do passo do fluxo de que esta ação deriva"),
+        acao: z.string().describe(tx("propor_acao.acao")),
+        conteudo: z.record(z.string(), z.unknown()).describe(tx("propor_acao.conteudo")),
+        derivaDe: z.string().optional().describe(tx("propor_acao.derivaDe")),
       },
       executar: async ({ acao, conteudo, derivaDe }) => {
         const { approvalId, stepKey } = await deps.avulso.proporAcao(d.id, {
@@ -203,11 +220,10 @@ function provedorDoRun(deps: DepsDaConversaDoRun): ProvedorDeConversa {
     },
     {
       nome: "editar_pendencia",
-      descricao:
-        "Muda campos de uma pendência do run que ainda espera na Fila, por exemplo o veredito ou o resumo de uma review. Ela continua esperando a decisão da pessoa, e a Fila a mostra como alterada pela conversa. Só os campos que `ler_run` lista em `camposEditaveis` daquela pendência: o alvo nunca muda. Passe só os campos a mudar.",
+      descricao: tx("editar_pendencia.description"),
       entrada: {
-        pendencia: z.string().describe("o id da pendência, como `ler_run` lista"),
-        campos: z.record(z.string(), z.unknown()).describe("os campos a mudar, com o valor novo, no esquema de `camposEditaveis`"),
+        pendencia: z.string().describe(tx("editar_pendencia.pendencia")),
+        campos: z.record(z.string(), z.unknown()).describe(tx("editar_pendencia.campos")),
       },
       executar: async ({ pendencia, campos }) => {
         await deps.aprovacoes.editarCampos(pendencia as string, campos as Record<string, unknown>, { conversa: d.id });
@@ -216,11 +232,10 @@ function provedorDoRun(deps: DepsDaConversaDoRun): ProvedorDeConversa {
     },
     {
       nome: "reexecutar_passo",
-      descricao:
-        "Roda de novo um passo de modelo do run, com uma instrução a mais da pessoa, e os passos que dependem dele. O resultado novo substitui o anterior e as ações do run passam a esperar decisão na Fila. Leva minutos: a volta termina antes do run. Use quando a pessoa pede para olhar de novo ou acrescentar algo.",
+      descricao: tx("reexecutar_passo.description"),
       entrada: {
-        passo: z.string().describe("a chave do passo de modelo"),
-        instrucao: z.string().min(1).max(LIMITE_DA_INSTRUCAO).describe("o que a pessoa quer a mais, com as palavras dela"),
+        passo: z.string().describe(tx("reexecutar_passo.passo")),
+        instrucao: z.string().min(1).max(LIMITE_DA_INSTRUCAO).describe(tx("reexecutar_passo.instrucao")),
       },
       executar: async ({ passo, instrucao }) => {
         const status = await deps.runs.rerunStep(d.id, passo as string, { wait: false, instrucao: instrucao as string });
@@ -228,6 +243,7 @@ function provedorDoRun(deps: DepsDaConversaDoRun): ProvedorDeConversa {
       },
     },
   ];
+  };
 
   const system = (idioma: Language, d: RunDetail, persona: string, corpo: string, marca: string): string => {
     const t = (chave: string, variaveis: Record<string, unknown> = {}): string => translate(idioma, `conversaDoRun.system.${chave}`, variaveis);
@@ -249,6 +265,7 @@ function provedorDoRun(deps: DepsDaConversaDoRun): ProvedorDeConversa {
     estado: async (id) => {
       const d = await detalhe(id);
       const { alvo, padrao } = resolverAlvo(d);
+      const doAgent = alvo !== null && "agent" in alvo ? (await deps.library.resolveProfile(alvo.agent).catch(() => undefined))?.version.spec : undefined;
       return {
         semServidor: [],
         semSkill: [],
@@ -260,6 +277,7 @@ function provedorDoRun(deps: DepsDaConversaDoRun): ProvedorDeConversa {
           arquivada: d.agentArchived,
           contexto: { teto, cortado: montarContexto(d).cortado },
           gasto: { usd: d.conversaUsd, tokens: d.conversaTokens },
+          limites: { passosDaVolta: doAgent?.maxSteps ?? PASSOS_DA_VOLTA, passosDoAgent: doAgent !== undefined, tetoDaLeitura: TETO_DA_LEITURA },
         },
       };
     },
@@ -275,12 +293,12 @@ function provedorDoRun(deps: DepsDaConversaDoRun): ProvedorDeConversa {
       return {
         modelo: spec?.model ?? ("modelo" in alvo ? alvo.modelo : ""),
         system: () => system(idioma, d, perfil?.system ?? "", corpo, marca),
-        maxSteps: PASSOS_DA_VOLTA,
+        maxSteps: spec?.maxSteps ?? PASSOS_DA_VOLTA,
         ...(spec?.temperature === undefined ? {} : { temperature: spec.temperature }),
         // Nenhuma ferramenta de conexão: a conversa não escreve fora (ADR 0009).
         leitura: [],
         confirmar: [],
-        locais: ferramentas(d, marca),
+        locais: ferramentas(d, marca, idioma),
         // O teto por execução parte do que está gravado, e não do gasto em memória da conversa:
         // reiniciar o app ou limpar a conversa não devolve o que ela já gastou.
         checar: async () => {
