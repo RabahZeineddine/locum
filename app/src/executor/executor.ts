@@ -2,7 +2,8 @@ import { PassoIncompletoError, descreverPendencia, pendenciasDoPasso, recusaDeRo
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { and, desc, eq, inArray, ne } from "drizzle-orm";
+import { hostname } from "node:os";
+import { and, desc, eq, inArray, isNull, ne } from "drizzle-orm";
 import { db, schema } from "../db/index.js";
 import { GatilhoRemovido, gatilhoExiste, recusarSeArquivada } from "../db/arquivada.js";
 import {
@@ -122,10 +123,10 @@ export class Executor {
   async decide(
     approvalId: string,
     decision: "approved" | "rejected",
-  ): Promise<{ status: "approved" | "rejected" | "conflict"; run: "done" | "paused" | "failed" }> {
-    const { runId, status } = await this.deps.gate.decide(approvalId, decision);
+  ): Promise<{ status: "approved" | "rejected" | "conflict"; run: "done" | "paused" | "failed"; motivo?: string }> {
+    const { runId, status, motivo } = await this.deps.gate.decide(approvalId, decision);
     const run = await this.execute(runId);
-    return { status, run };
+    return { status, run, ...(motivo === undefined ? {} : { motivo }) };
   }
 
   /**
@@ -158,7 +159,7 @@ export class Executor {
   async resume(ids: string[]): Promise<void> {
     for (const id of ids) {
       try {
-        await this.execute(id);
+        await this.executarRun(id, { interrompido: true });
       } catch (err) {
         console.error(`retomada do run ${id} falhou`, err);
       }
@@ -168,7 +169,7 @@ export class Executor {
   /** Runs interrompidos por fechamento do app ou por crash. */
   async resumeAll(): Promise<string[]> {
     const ids = await this.interruptedRuns();
-    for (const id of ids) await this.execute(id);
+    for (const id of ids) await this.executarRun(id, { interrompido: true });
     return ids;
   }
 
@@ -198,9 +199,19 @@ export class Executor {
     }
   }
 
-  private async executarRun(runId: string): Promise<"done" | "paused" | "failed"> {
+  /**
+   * `interrompido`: quem retoma o que o app deixou em `running` ao cair. Fora
+   * dele, `running` é de outro executor vivo, e este não toca.
+   */
+  private async executarRun(runId: string, opcoes: { interrompido?: boolean; depoisDaJanela?: boolean } = {}): Promise<"done" | "paused" | "failed"> {
     const [run] = await db.select().from(schema.runs).where(eq(schema.runs.id, runId));
     if (!run) throw new Error(`run ${runId} nao encontrado`);
+    // Run terminado (failed, cancelled, done) não volta a rodar por uma decisão
+    // tardia: os passos pulados por não rodar seriam executados de novo.
+    // `running` só se reassume na retomada, e só com o dono morto: o outro
+    // processo (a janela e a linha de comando, por exemplo) pode estar vivo.
+    const reassume = run.status === "running" && opcoes.interrompido === true && !donoVivo(run);
+    if (run.status !== "queued" && run.status !== "paused" && !reassume) return resultadoDoRunParado(run.status);
 
     const [version] = await db
       .select()
@@ -225,17 +236,32 @@ export class Executor {
     const recusaDeIncompleto = payload.semConversa === true ? null : recusaDeRodar(spec.pendentes);
     if (recusaDeIncompleto !== null) return this.recusarSemEvento(runId, spec, recusaDeIncompleto);
 
-    // Retomar um run de automação arquivada é recusado na mesma transação que o põe a rodar.
-    db.transaction(
+    // Retomar um run de automação arquivada é recusado na mesma transação que o
+    // põe a rodar. A troca é condicionada ao status lido: dois executores no
+    // mesmo run não passam os dois, e quem perde não roda nada.
+    // Reassumir o `running` confere o batimento lido: se o dono voltou a bater
+    // entre a leitura e aqui, a troca não passa.
+    const condicaoDeStatus = reassume
+      ? and(
+          eq(schema.runs.status, "running"),
+          run.heartbeatAt === null ? isNull(schema.runs.heartbeatAt) : eq(schema.runs.heartbeatAt, run.heartbeatAt),
+        )
+      : inArray(schema.runs.status, ["queued", "paused"]);
+    const assumido = db.transaction(
       (tx) => {
         recusarSeArquivada(tx, version.agentId);
-        tx.update(schema.runs)
-          .set({ status: "running", startedAt: run.startedAt ?? nowSec() })
-          .where(eq(schema.runs.id, runId))
-          .run();
+        return tx
+          .update(schema.runs)
+          .set({ status: "running", startedAt: run.startedAt ?? nowSec(), ownerHost: hostname(), ownerPid: process.pid, heartbeatAt: nowSec() })
+          .where(and(eq(schema.runs.id, runId), condicaoDeStatus))
+          .run().changes;
       },
       { behavior: "immediate" },
     );
+    if (assumido !== 1) {
+      const [atual] = await db.select({ status: schema.runs.status }).from(schema.runs).where(eq(schema.runs.id, runId));
+      return resultadoDoRunParado(atual?.status ?? run.status);
+    }
 
     const fallbacks = await providerService.getFallbacks(this.deps.machineId);
 
@@ -284,6 +310,11 @@ export class Executor {
     const newRun = run.startedAt === null;
     // O passo em andamento, para o erro ficar nele e não só no run.
     let atual: string | null = null;
+    // O batimento diz a quem retoma que este processo ainda executa o run.
+    const batimento = setInterval(() => {
+      void db.update(schema.runs).set({ heartbeatAt: nowSec() }).where(eq(schema.runs.id, runId)).catch(() => undefined);
+    }, BATIMENTO_DO_RUN_MS);
+    batimento.unref();
 
     try {
       for (const [idx, step] of topoSort(spec.steps).entries()) {
@@ -316,9 +347,19 @@ export class Executor {
           // `publishing` é uma decisão que caiu no meio: sem saber se saiu,
           // o passo espera em vez de se dar por publicado.
           if (!approval || approval.status === "pending" || approval.status === "publishing") {
-            return this.pause(runId);
+            return this.pausarPorAprovacao(runId, opcoes.depoisDaJanela === true);
           }
-          outputs.set(step.key, (await settleStep(existing.id, approval.status, { output: approval.output ?? undefined, semResposta: approval.kind === "mcp.call" })).output);
+          const conflito = (approval.output as { conflito?: unknown } | null)?.conflito;
+          outputs.set(
+            step.key,
+            (
+              await settleStep(existing.id, approval.status, {
+                output: approval.output ?? undefined,
+                semResposta: this.deps.gate.semResposta(approval.kind),
+                ...(typeof conflito === "string" ? { motivo: conflito } : {}),
+              })
+            ).output,
+          );
           // Recusado na Fila: o que depende só dele não roda.
           if (approval.status === "rejected") {
             foraDoCaminho.add(step.key);
@@ -396,7 +437,7 @@ export class Executor {
               })
             : await this.runActionStepOpcional({ runId, stepId, step, outputs, payload, deFerramenta: new Set(spec.steps.filter((p) => p.type === "action" && p.action === "mcp.call").map((p) => p.key)) });
 
-        if (outcome.kind === "paused") return this.pause(runId);
+        if (outcome.kind === "paused") return this.pausarPorAprovacao(runId, opcoes.depoisDaJanela === true);
         if (outcome.kind === "skipped") {
           outputs.set(step.key, null);
           continue;
@@ -441,6 +482,7 @@ export class Executor {
         .where(eq(schema.runs.id, runId));
       return status;
     } finally {
+      clearInterval(batimento);
       // Servidor MCP não fecha aqui: o registro vive entre execuções e cada
       // processo sai sozinho depois do tempo ocioso, ou no encerramento do app.
       // O gasto já foi para o dia passo a passo; aqui só conta a execução.
@@ -491,6 +533,23 @@ export class Executor {
     await db.update(schema.runs).set({ status: "failed", startedAt: nowSec(), endedAt: nowSec(), error: message }).where(eq(schema.runs.id, runId));
     await this.marcarOQueFalhou(runId, spec, null, message);
     return "failed";
+  }
+
+  /**
+   * Pausa o run que espera a Fila. Entre gravar a pendência e gravar `paused`
+   * o run ainda está `running`, e uma decisão que chega nessa janela não
+   * consegue retomá-lo (`execute` não assume `running`). Se ao pausar não
+   * sobrou pendência aberta, a decisão já veio: segue daqui, uma vez só.
+   */
+  private async pausarPorAprovacao(runId: string, jaRetomado: boolean): Promise<"done" | "paused" | "failed"> {
+    await this.pause(runId);
+    if (jaRetomado) return "paused";
+    const abertas = await db
+      .select({ id: schema.approvals.id })
+      .from(schema.approvals)
+      .where(and(eq(schema.approvals.runId, runId), inArray(schema.approvals.status, ["pending", "publishing"])));
+    if (abertas.length > 0) return "paused";
+    return this.executarRun(runId, { depoisDaJanela: true });
   }
 
   private async pause(runId: string): Promise<"paused"> {
@@ -824,12 +883,16 @@ export class Executor {
         : saida;
     // `params` é de quem montou o fluxo, e não do modelo: por isso vale por
     // cima de tudo, inclusive do destino que o evento trouxe.
+    const doEvento = Object.fromEntries(
+      this.deps.gate.camposDoEvento(step.action).map((campo) => [campo, (args.payload as Record<string, unknown>)[campo]]),
+    );
     const comParams =
       step.params === undefined
-        ? doPasso
+        ? aplicarCamposDoEvento(doPasso, doEvento)
         : {
             ...(doPasso !== null && typeof doPasso === "object" ? (doPasso as object) : {}),
             ...(renderParams(step.params, args.payload, outputs) as object),
+            ...doEvento,
           };
     // O `destino` das ações de conversa vale como o passo o escreveu: conferido
     // antes da interpolação (um marcador de passo é recusado) e posto por cima
@@ -869,6 +932,7 @@ export class Executor {
         runId,
         stepId,
         kind: step.action,
+        attempt: (await this.loadStep(runId, step.key))?.attempt ?? 0,
         payload: seguraNaFila ? { ...(payload as object), aviso: "nao-e-leitura" } : payload,
         target: step.target ?? null,
       },
@@ -891,6 +955,49 @@ export class Executor {
       .where(eq(schema.steps.id, stepId));
     return { kind: "ok", output: saidaDoPasso, costUsd: 0, tokens: 0, billable: false };
   }
+}
+
+/**
+ * Os campos que o handler declarou como do evento valem por cima da saída do
+ * modelo, inclusive ausentes: o modelo leu o diff e não escolhe o que o
+ * evento diz. Saída que não é objeto passa como veio.
+ */
+function aplicarCamposDoEvento(saida: unknown, doEvento: Record<string, unknown>): unknown {
+  if (Object.keys(doEvento).length === 0) return saida;
+  return { ...(saida !== null && typeof saida === "object" ? (saida as object) : {}), ...doEvento };
+}
+
+/**
+ * De quanto em quanto tempo o executor grava o batimento do run, e quanto
+ * silêncio faz o dono contar como morto. É limite técnico de transporte (o
+ * quanto uma pausa de disco ou de laço de eventos aguenta), e não política:
+ * o prazo é folgado de propósito, porque reassumir um run vivo executa duas
+ * vezes o mesmo passo.
+ */
+const BATIMENTO_DO_RUN_MS = 15_000;
+const PRAZO_DO_BATIMENTO_S = 60;
+
+/** O processo que executa o run ainda está vivo: bateu há pouco e, na mesma máquina, o pid existe. */
+function donoVivo(run: { ownerHost: string | null; ownerPid: number | null; heartbeatAt: number | null }): boolean {
+  if (run.heartbeatAt === null || nowSec() - run.heartbeatAt > PRAZO_DO_BATIMENTO_S) return false;
+  if (run.ownerHost === hostname() && run.ownerPid !== null && run.ownerPid !== process.pid) {
+    try {
+      process.kill(run.ownerPid, 0);
+    } catch (erro) {
+      // EPERM: o processo existe, de outro usuário.
+      return (erro as NodeJS.ErrnoException).code === "EPERM";
+    }
+  }
+  return true;
+}
+
+/**
+ * O que `execute` devolve quando não rodou nada porque o run não estava em
+ * estado de rodar. `running` é de outro executor, que devolverá o resultado dele.
+ */
+function resultadoDoRunParado(status: string): "done" | "paused" | "failed" {
+  if (status === "done") return "done";
+  return status === "failed" || status === "cancelled" ? "failed" : "paused";
 }
 
 /** A reação que o ensaio faria, como `set 👀`; nula quando o passo ainda não a define. */

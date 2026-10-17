@@ -55,7 +55,7 @@ export function digestDeliverHandler(options: DigestDeliverHandlerOptions = {}):
       // inteiro para poder ser dada por lida.
       const proposta = DigestProposal.parse(payload);
 
-      // O externalId da gate é `<runId>:<stepId>`.
+      // O externalId da gate é `<runId>:<stepId>:<tentativa>` (pendência antiga: sem a tentativa); o runId vem primeiro nos dois.
       const runId = externalId.split(":")[0]!;
       const [run] = await db.select().from(schema.runs).where(eq(schema.runs.id, runId));
       if (!run?.initiativeId) return;

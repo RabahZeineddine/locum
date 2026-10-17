@@ -294,9 +294,9 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
       // externalId que ja estava gravado, e e a unica que fala com o handler de
       // publicacao. A ponte nao repete nada disso: ela leva o clique e volta.
       // É o executor quem chama a gate, para o run seguir depois da decisão.
-      const { status } = await (await buildExecutor()).decide(approvalId, decision);
+      const { status, motivo } = await (await buildExecutor()).decide(approvalId, decision);
       await refreshTray();
-      return { approvalId, decision, status };
+      return { approvalId, decision, status, ...(motivo === undefined ? {} : { motivo }) };
     },
     "approvals.settleStuck": async (approvalId, outcome) => {
       if (outcome !== "published" && outcome !== "retry") {

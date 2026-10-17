@@ -410,9 +410,23 @@ export class RunService {
     return runner.execute(runId, { manual: true });
   }
 
-  private async reset(run: RunRow, targets: StepRow[]): Promise<void> {
+  private async reset(run: RunRow & { spec: AgentSpec }, targets: StepRow[]): Promise<void> {
     if (targets.length > 0) {
       const ids = targets.map((s) => s.id);
+
+      // A acao que ja saiu ganha uma tentativa nova: o externalId dela leva a
+      // tentativa, e a marca da publicacao antiga nao pode valer para a
+      // seguinte. O passo que nao chegou a `done` (falhou depois do POST, por
+      // exemplo) mantem a tentativa e a marca: o `jaSaiu` do handler acha a
+      // que saiu em vez de assinar uma segunda igual.
+      const acoes = new Set(run.spec.steps.filter((p) => p.type === "action").map((p) => p.key));
+      const publicados = targets.filter((s) => s.status === "done" && acoes.has(s.stepKey)).map((s) => s.id);
+      if (publicados.length > 0) {
+        await this.db
+          .update(schema.steps)
+          .set({ attempt: sql`${schema.steps.attempt} + 1` })
+          .where(inArray(schema.steps.id, publicados));
+      }
 
       await this.db
         .update(schema.steps)

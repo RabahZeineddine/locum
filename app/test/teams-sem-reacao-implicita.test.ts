@@ -126,7 +126,13 @@ test("run que falha não mexe na mensagem do Teams", async () => {
 test("run pausado e retomado: a review publica e nada reage", async () => {
   const criadas: unknown[] = [];
   const cliente = {
-    rest: { pulls: { createReview: async (p: unknown) => void criadas.push(p), listReviews: async () => ({ data: [] }) } },
+    rest: {
+      pulls: {
+        createReview: async (p: unknown) => void criadas.push(p),
+        listReviews: async () => ({ data: [] }),
+        get: async () => ({ data: { head: { sha: "abc" } } }),
+      },
+    },
   } as unknown as ReviewClient;
   const runtime: Runtime = {
     id: "native",

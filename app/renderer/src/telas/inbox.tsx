@@ -6,7 +6,7 @@ import { Kbd } from "@/components/ui/kbd";
 import { StatusDot, type Estado as EstadoDoPonto } from "@/components/ui/status-dot";
 import { decidir, resolverParada } from "@/lib/aprovar";
 import { read, useRead, type ReadResult } from "@/lib/bridge";
-import { rotuloDeSeveridade, SEVERIDADES, type Severidade } from "@/lib/rotulos";
+import { rotuloDeSeveridade, rotuloDoMotivo, SEVERIDADES, type Severidade } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
 import { ChevronRight, Inbox as InboxIcon } from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -107,7 +107,7 @@ function Fila({ navegar, aoMudarFila }: TelaProps & { aoMudarFila: () => void })
   const [aberto, setAberto] = useState<string | null>(null);
   const [foco, setFoco] = useState(0);
   const [ocupado, setOcupado] = useState<string | null>(null);
-  const [conflitos, setConflitos] = useState<Set<string>>(new Set());
+  const [conflitos, setConflitos] = useState<Map<string, string | undefined>>(new Map());
   const listaRef = useRef<HTMLUListElement>(null);
   const [alvo, setAlvo] = useState<string | null>(null);
 
@@ -159,7 +159,7 @@ function Fila({ navegar, aoMudarFila }: TelaProps & { aoMudarFila: () => void })
           // `conflict`, e o item continua na tela so para explicar o que
           // aconteceu, sem mais botao de decisao. O motivo completo, com
           // diff quando fizer sentido, mora na revisao.
-          setConflitos((atual) => new Set(atual).add(item.pendencia.id));
+          setConflitos((atual) => new Map(atual).set(item.pendencia.id, resultado.motivo));
         } else {
           setItens((atual) => atual?.filter((x) => x.pendencia.id !== item.pendencia.id) ?? null);
         }
@@ -254,6 +254,7 @@ function Fila({ navegar, aoMudarFila }: TelaProps & { aoMudarFila: () => void })
                 aberta={aberto === item.pendencia.id}
                 ocupada={ocupado === item.pendencia.id}
                 emConflito={conflitos.has(item.pendencia.id)}
+                motivoDoConflito={conflitos.get(item.pendencia.id)}
                 aoFocar={() => setFoco(i)}
                 aoAlternar={() =>
                   setAberto((a) => (a === item.pendencia.id ? null : item.pendencia.id))
@@ -484,6 +485,8 @@ interface LinhaProps {
   aberta: boolean;
   ocupada: boolean;
   emConflito: boolean;
+  /** O código do motivo, quando a gate disse qual foi (commit novo no PR, por exemplo). */
+  motivoDoConflito?: string | undefined;
   aoFocar: () => void;
   aoAlternar: () => void;
   aoAprovar: () => void;
@@ -497,6 +500,7 @@ function Linha({
   aberta,
   ocupada,
   emConflito,
+  motivoDoConflito,
   aoFocar,
   aoAlternar,
   aoAprovar,
@@ -559,10 +563,17 @@ function Linha({
             <p className="text-muted-foreground mt-1 line-clamp-2 max-w-[72ch] text-xs leading-relaxed">{principal.problem}</p>
           )}
 
+          {(pendencia.payload as { semCommitAvaliado?: boolean } | null)?.semCommitAvaliado === true && (
+            <p className="text-muted-foreground mt-1 flex max-w-[72ch] items-center gap-1.5 text-xs" data-locum-sem-commit>
+              <StatusDot estado="aviso" />
+              {t("inbox.semCommitAvaliado")}
+            </p>
+          )}
+
           {emConflito && (
             <p className="border-border bg-muted/40 mt-1.5 flex max-w-[72ch] items-center gap-1.5 rounded-md border px-2 py-1 text-xs">
               <StatusDot estado="aviso" />
-              {t("inbox.conflict")}
+              {motivoDoConflito === undefined ? t("inbox.conflict") : rotuloDoMotivo(t, motivoDoConflito)}
             </p>
           )}
 

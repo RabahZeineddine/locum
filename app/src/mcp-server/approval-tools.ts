@@ -9,14 +9,22 @@ import { def } from "./tool-def.js";
 const impressaoDaAprovacao = (a: { kind: string; payload: unknown; status: string }): string => impressaoDe({ kind: a.kind, payload: a.payload, status: a.status });
 
 /**
+ * Review proposta sem o commit avaliado (o evento não trouxe o `headSha`): sai
+ * sem `commit_id` e pode valer para código novo. Fica à vista, e não só dentro do payload.
+ */
+const semCommitAvaliado = (a: { payload: unknown }): { semCommitAvaliado: boolean } => ({
+  semCommitAvaliado: (a.payload as { semCommitAvaliado?: unknown } | null)?.semCommitAvaliado === true,
+});
+
+/**
  * A fila de aprovação, inteira: ler, editar o que vai sair, propor tarefa e
  * decidir. Quem decide é a gate do executor, a mesma da tela, e a confirmação
  * de cada clique é do cliente MCP, pela anotação `destructiveHint`.
  */
 export function registerApprovalTools(server: McpServer, amb: Ambiente): void {
   def(server, "list_pending_approvals", "read",
-    "The approval queue: what waits for a decision, with the exact payload that would be published, the run, the step and the agent, and the hash decide_approval asks for. Credentials of the keychain and literal header values are hidden; the text comes as is.",
-    {}, async () => (await approvalService.listPending()).map((a) => ({ ...a, hash: impressaoDaAprovacao(a) })));
+    "The approval queue: what waits for a decision, with the exact payload that would be published (semCommitAvaliado is true when a review has no evaluated commit and goes out without pinning it), the run, the step and the agent, and the hash decide_approval asks for. Credentials of the keychain and literal header values are hidden; the text comes as is.",
+    {}, async () => (await approvalService.listPending()).map((a) => ({ ...a, ...semCommitAvaliado(a), hash: impressaoDaAprovacao(a) })));
 
   def(server, "list_stuck_approvals", "read",
     "Approvals that began to publish and did not finish (the app stopped midway). The message may or may not have gone out: check the destination, then settle_stuck_approval.",
@@ -28,7 +36,7 @@ export function registerApprovalTools(server: McpServer, amb: Ambiente): void {
     async ({ approvalId }) => {
       const aprovacao = await approvalService.get(approvalId);
       if (aprovacao === undefined) throw new Error(`aprovacao ${approvalId} nao encontrada`);
-      return { ...aprovacao, hash: impressaoDaAprovacao(aprovacao) };
+      return { ...aprovacao, ...semCommitAvaliado(aprovacao), hash: impressaoDaAprovacao(aprovacao) };
     });
 
   def(server, "edit_approval_findings", "write",

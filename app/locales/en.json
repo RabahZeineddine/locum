@@ -386,6 +386,7 @@
     "branch": "{{head}} → {{base}}",
     "conflictBadge": "Conflict",
     "conflict": "This item changed since it was queued. Open it to see what happened.",
+    "semCommitAvaliado": "No evaluated commit: the review goes out without pinning the commit.",
     "context_update": {
       "target": "Context update: {{slug}}",
       "kind": "Context",
@@ -714,6 +715,7 @@
       "outside_initiative": "step targets a server outside this initiative's scope",
       "rejected": "rejected",
       "publish_conflict": "the target changed before this could be published",
+      "publish_conflict_head": "the pull request got new commits after the evaluation (evaluated {{avaliado}}, current {{atual}}): nothing was published",
       "dependency_rejected": "skipped because step {{step}} was rejected",
       "not_run": "an earlier step failed, so this one did not run"
     },
@@ -1474,6 +1476,7 @@
         "call": "Make the call"
       }
     },
+    "semCommitAvaliado": "The event did not carry the evaluated commit: the review goes out without pinning the commit and may apply to newer code.",
     "customPlaceholder": "LGTM!",
     "comment_box_label": "Comment that will be posted to GitHub",
     "comment_box_hint": "Edit freely before clicking Approve",

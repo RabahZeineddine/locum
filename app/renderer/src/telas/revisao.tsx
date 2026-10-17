@@ -108,6 +108,7 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
   const [gravando, setGravando] = useState(false);
   const [resolvendo, setResolvendo] = useState(false);
   const [conflito, setConflito] = useState(false);
+  const [motivoDoConflito, setMotivoDoConflito] = useState<string | undefined>(undefined);
   const primeiroRender = useRef(true);
 
   useEffect(() => {
@@ -116,12 +117,9 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
     if ((VEREDITOS as readonly unknown[]).includes(carga?.verdict)) {
       setVeredito(carga!.verdict as Veredito);
     }
-    if (carga?.findings && Array.isArray(carga.findings) && carga.findings.length > 0) {
-      setComentarioCustom(typeof carga?.summary === "string" ? carga.summary : "");
-    } else {
-      // Sem achados impeditivos: aprovação limpa e concisa, nunca encher linguiça
-      setComentarioCustom("LGTM!");
-    }
+    // O campo abre com o resumo do payload, ou vazio: o autosave grava o que
+    // está aqui, e texto que a pessoa não escreveu não vai para o pull request.
+    setComentarioCustom(typeof carga?.summary === "string" ? carga.summary : "");
     setAchados(
       (carga?.findings ?? []).map((bruto) => {
         const f = bruto as Record<string, unknown>;
@@ -185,6 +183,7 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
       const resultado = await decidir(pendencia.id, decisao);
       if (resultado.status === "conflict") {
         setConflito(true);
+        setMotivoDoConflito(resultado.motivo);
         return;
       }
       navegar("inbox");
@@ -242,7 +241,11 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
     author?: string;
     url?: string;
     summary?: string;
+    semCommitAvaliado?: boolean;
   } | null;
+  // Pendência que já fechou como conflito guarda o motivo na saída; o clique desta tela o traz na hora.
+  const motivoGravado = (pendencia as { output?: { conflito?: unknown } | null }).output?.conflito;
+  const motivo = motivoDoConflito ?? (typeof motivoGravado === "string" ? motivoGravado : undefined);
   const marcados = achados.filter((a) => a.incluido).length;
   // Aprovar sem achado é uma review que diz alguma coisa; comentar sem achado
   // não diz nada.
@@ -272,6 +275,20 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
       </div>
 
       {carga?.title && <h1 className="text-base font-medium">{carga.title}</h1>}
+
+      {(pendencia.status === "conflict" || conflito) && (
+        <p className="border-border bg-card flex items-center gap-2 rounded-lg border px-3 py-2 text-[13px]" data-locum-conflito="">
+          <StatusDot estado="erro" />
+          {motivo === undefined ? t("inbox.conflict") : rotuloDoMotivo(t, motivo)}
+        </p>
+      )}
+
+      {carga?.semCommitAvaliado === true && (
+        <p className="border-border bg-card flex items-center gap-2 rounded-lg border px-3 py-2 text-[13px]" data-locum-sem-commit="">
+          <StatusDot estado="aviso" />
+          {t("review.semCommitAvaliado")}
+        </p>
+      )}
 
       <div className="flex flex-col gap-1.5">
         <label className="text-muted-foreground flex items-center justify-between text-xs font-medium">

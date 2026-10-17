@@ -24,7 +24,18 @@ type Db = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
  * gate fecha a pendência como `conflict` em vez de deixar o erro subir como
  * falha comum.
  */
-export class PublishConflict extends Error {}
+export class PublishConflict extends Error {
+  /**
+   * Código do motivo, gravado no passo e na pendência para a tela traduzir
+   * (`publish_conflict:<causa>:<parâmetros>`). Sem ele, vale `publish_conflict`.
+   */
+  constructor(message: string, readonly motivo?: string) {
+    super(message);
+  }
+}
+
+/** Motivo de conflito quando o handler não deu um código. */
+export const MOTIVO_DE_CONFLITO = "publish_conflict";
 
 /** A saída de uma ação que não devolve resposta: só o estado em que a publicação ficou. */
 export const SAIDA_PADRAO_DA_ACAO: EsquemaJson = {
@@ -40,6 +51,12 @@ export type ActionRequest = {
   payload: unknown;
   /** O `target` do passo, quando ele declarou um. */
   target?: string | null;
+  /**
+   * A tentativa do passo (`steps.attempt`). Reexecutar o passo mantém o id e
+   * soma uma tentativa: sem ela no `externalId`, a marca da publicação antiga
+   * faria a nova parecer já publicada. Ausente vale 0.
+   */
+  attempt?: number;
 };
 
 export type ActionHandler = {
@@ -58,6 +75,12 @@ export type ActionHandler = {
    * que não devolve resposta guarda só `{ state }`.
    */
   outputSchema?: EsquemaJson;
+  /**
+   * Campos do payload que só o evento do run pode dizer: o executor os põe por
+   * cima da saída do modelo, e ausentes no evento ficam ausentes. A review do
+   * GitHub declara `headSha`: o commit avaliado não é escolha do modelo.
+   */
+  camposDoEvento?: readonly string[];
   /**
    * Como cada param do passo desta ação viaja no pacote (`.locum.json`): portátil,
    * texto limpo, destino, url ou local. Param que a ação não declara não viaja, e
@@ -117,6 +140,19 @@ export class ApprovalGate {
    * divergem na primeira ação nova. A gate continua recusando o modo errado na
    * hora de publicar, com ou sem a tela ter avisado.
    */
+  /**
+   * A ação responde com algo que a gate não conhece (declara `outputSchema`
+   * próprio): dada por publicada à mão, a pendência não tem essa resposta.
+   */
+  semResposta(kind: string): boolean {
+    return this.handlers.get(kind)?.outputSchema !== undefined;
+  }
+
+  /** Os campos que o handler da ação declarou como do evento (ver `ActionHandler.camposDoEvento`). */
+  camposDoEvento(kind: string): readonly string[] {
+    return this.handlers.get(kind)?.camposDoEvento ?? [];
+  }
+
   describe(): { kind: string; modes: readonly ActionMode[]; holdsByContent: boolean; outputSchema: EsquemaJson; paramsDoPacote?: ParamsDoPacote }[] {
     return [...this.handlers.entries()].map(([kind, handler]) => ({
       kind,
@@ -169,7 +205,7 @@ export class ApprovalGate {
     prepared: { payload: unknown; mode: ActionMode },
   ): { id: string; externalId: string } {
     const id = randomUUID();
-    const externalId = `${req.runId}:${req.stepId}`;
+    const externalId = `${req.runId}:${req.stepId}:${req.attempt ?? 0}`;
     writer
       .insert(schema.approvals)
       .values({
@@ -213,7 +249,7 @@ export class ApprovalGate {
       }
 
       const publicada = await handler.publish(prepared.payload, externalId);
-      await this.close(id, "approved");
+      await this.close(id, "approved", { output: publicada?.output ?? { state: "published" } });
       return { state: "published", ...(publicada ? { output: publicada.output } : {}) };
     } catch (err) {
       await this.close(id, "failed");
@@ -229,13 +265,14 @@ export class ApprovalGate {
   async decide(
     approvalId: string,
     decision: "approved" | "rejected",
-  ): Promise<{ runId: string; status: "approved" | "rejected" | "conflict" }> {
+  ): Promise<{ runId: string; status: "approved" | "rejected" | "conflict"; motivo?: string }> {
     const [row] = await db.select().from(schema.approvals).where(eq(schema.approvals.id, approvalId));
     if (!row) throw new Error(`aprovacao ${approvalId} nao encontrada`);
     if (row.status !== "pending") throw new Error(`aprovacao ${approvalId} ja resolvida: ${row.status}`);
 
     let status: "approved" | "rejected" | "conflict" = decision;
     let resposta: { output: unknown } | undefined;
+    let motivo: string | undefined;
     if (decision === "approved") {
       const handler = this.handlers.get(row.kind);
       if (!handler) throw new Error(`acao "${row.kind}" sem handler registrado`);
@@ -264,6 +301,7 @@ export class ApprovalGate {
           throw err;
         }
         status = "conflict";
+        motivo = err.motivo;
       }
     } else {
       const fechada = db
@@ -275,12 +313,18 @@ export class ApprovalGate {
     }
     // A resposta vai para a pendência antes de o passo ser atualizado: uma
     // queda entre os dois não a perde.
-    await this.close(approvalId, status, status === "approved" ? { output: resposta?.output ?? { state: "published" } } : undefined);
-    await settleStep(row.stepId, status, status === "approved" ? { output: resposta?.output } : undefined);
+    await this.close(
+      approvalId,
+      status,
+      status === "approved"
+        ? { output: resposta?.output ?? { state: "published" } }
+        : motivo === undefined ? undefined : { output: { conflito: motivo } },
+    );
+    await settleStep(row.stepId, status, status === "approved" ? { output: resposta?.output } : { motivo });
     if (status !== "approved") {
       await this.handlers.get(row.kind)?.discard?.(row.payload).catch(() => undefined);
     }
-    return { runId: row.runId, status };
+    return { runId: row.runId, status, ...(motivo === undefined ? {} : { motivo }) };
   }
 
   /**
@@ -307,11 +351,13 @@ export class ApprovalGate {
       eq(schema.approvals.status, "publishing"),
       lte(schema.approvals.decidedAt, limite),
     );
+    // Dada por publicada à mão, a pendência não tem a resposta da ferramenta.
+    const saida = { state: "published", ...(this.semResposta(row.kind) ? { semResposta: true } : {}) };
     const escrita = db
       .update(schema.approvals)
       .set(
         outcome === "published"
-          ? { status: "approved", decidedAt: Math.floor(Date.now() / 1000) }
+          ? { status: "approved", decidedAt: Math.floor(Date.now() / 1000), output: saida }
           : { status: "pending", decidedAt: null },
       )
       .where(parada)
@@ -320,8 +366,7 @@ export class ApprovalGate {
       throw new Error(`aprovacao ${approvalId} nao esta parada na publicacao`);
     }
     if (outcome === "retry") return { runId: row.runId, status: "pending" };
-    // Dada por publicada à mão, a pendência não tem a resposta da ferramenta.
-    await settleStep(row.stepId, "approved", { semResposta: row.kind === "mcp.call" });
+    await settleStep(row.stepId, "approved", { output: saida });
     return { runId: row.runId, status: "approved" };
   }
 
@@ -346,7 +391,7 @@ export async function settleStep(
   stepId: string,
   status: string,
   /** `output`: o que a pendência guardou da publicação. `semResposta`: não há como saber a resposta (dada por publicada à mão). */
-  extra: { output?: unknown; semResposta?: boolean } = {},
+  extra: { output?: unknown; semResposta?: boolean; motivo?: string } = {},
 ): Promise<{ output: unknown }> {
   const endedAt = Math.floor(Date.now() / 1000);
   // Só o passo que ainda espera a decisão. O que foi zerado por uma
@@ -354,7 +399,7 @@ export async function settleStep(
   // fala por ela.
   const esperando = and(eq(schema.steps.id, stepId), eq(schema.steps.status, "awaiting_approval"));
   if (status === "rejected" || status === "conflict") {
-    const error = status === "conflict" ? "publish_conflict" : "rejected";
+    const error = status === "conflict" ? (extra.motivo ?? MOTIVO_DE_CONFLITO) : "rejected";
     await db.update(schema.steps).set({ status: "skipped", error, output: null, endedAt }).where(esperando);
     return { output: null };
   }
