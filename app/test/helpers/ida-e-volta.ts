@@ -142,7 +142,11 @@ export async function idaEVolta(fluxo: Fluxo): Promise<Volta> {
   return resultado;
 }
 
-const porChave = (spec: AgentSpec): unknown => ({ ...spec, steps: Object.fromEntries(spec.steps.map((p) => [p.key, p])) });
+/** Os passos pela chave, e os params de ação sempre presentes: sem nenhum viajante, `params` volta ausente, e ausente é vazio. */
+const porChave = (spec: AgentSpec): unknown => ({
+  ...spec,
+  steps: Object.fromEntries(spec.steps.map((p) => [p.key, p.type === "action" ? { ...p, params: p.params ?? {} } : p])),
+});
 
 async function conferirSpec(original: AgentSpec, v: Volta): Promise<void> {
   const declaracoes = Object.fromEntries(acoesRegistradas().map((a) => [a.kind, a.declaracao]));
@@ -209,7 +213,9 @@ async function conferirAgents(fluxo: Fluxo, v: Volta): Promise<void> {
     const doToolset = (await Promise.all(original.toolsets.map((id) => v.origem.library.getToolset(id)))).flatMap((t) => t?.tools ?? []);
     const vistas = new Set<string>();
     const tools = [...doToolset, ...original.tools].filter((t) => !vistas.has(`${t.server}/${t.tool}`) && vistas.add(`${t.server}/${t.tool}`));
-    const esperado = AgentProfile.parse({ ...original, toolsets: [], tools });
+    // `"read"` num mapa de ferramentas é a pessoa dizendo que só lê, e declaração de arquivo não vale: volta ligada (`true`).
+    const connections = original.connections.map((c) => ({ ...c, tools: Object.fromEntries(Object.entries(c.tools).map(([k, x]) => [k, x === "read" ? true : x])) }));
+    const esperado = AgentProfile.parse({ ...original, toolsets: [], tools, connections });
     const importado = (await v.destino.library.getProfile(bruto.id))?.spec;
     assert.ok(importado !== undefined, `agent ${bruto.id}: não foi importado`);
     conferir(`agent ${bruto.id}`, diferencas(esperado, importado, ""), new Set(camposLocais(MARCAS_DO_AGENT)));
