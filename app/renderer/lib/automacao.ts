@@ -570,7 +570,7 @@ export function catalogoDoPasso(r: Rascunho, chave: string, fontes: FontesDoCata
   return catalogoDeReferencias({
     passos: r.spec.steps,
     chave,
-    eventos: r.gatilhos.map((g) => esquemaDoEvento(g.config)),
+    eventos: r.gatilhos.map((g) => ({ fonte: g.config.kind, esquema: esquemaDoEvento(g.config) })),
     ...(fontes.saidas === undefined ? {} : { saidas: fontes.saidas }),
     fontes: {
       acao: (kind) => fontes.esquemasDeAcao?.[kind],

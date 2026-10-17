@@ -38,7 +38,7 @@ export async function referenciasDoFluxo(entrada: {
     saidas = saidasDosRuns(detalhes.filter((d) => d !== undefined));
   }
 
-  const eventos = entrada.triggers.map(esquemaDoEvento);
+  const eventos = entrada.triggers.map((t) => ({ fonte: t.kind, esquema: esquemaDoEvento(t) }));
   return Object.fromEntries(
     entrada.spec.steps.map((p) => [
       p.key,

@@ -2191,7 +2191,11 @@
     "variables": {
       "label": "Variables",
       "event": "Event",
-      "step": "{{numero}} · {{nome}}"
+      "step": "{{numero}} · {{nome}}",
+      "insert": "Insert variable",
+      "hint": "Type {{ to insert a variable.",
+      "count_one": "{{count}} variable",
+      "count_other": "{{count}} variables"
     },
     "panel": {
       "close": "Close panel",

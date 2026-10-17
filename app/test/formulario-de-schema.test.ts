@@ -198,12 +198,12 @@ test("o seletor oferece os caminhos da saída do último run e o outputSchema da
   const usar = { type: "action", key: "usar", name: "Usar", needs: ["ler", "outro"], optional: false, action: "mcp.call", mode: "approve", params: {} };
   const r = { spec: { id: "a", name: "A", model: "m", steps: [ler, outro, usar] }, gatilhos: [] } as never;
   const sem = referenciasDisponiveis(r, "usar").map((x) => x.caminho);
-  assert.deepEqual(sem, ["steps.ler", "steps.outro"], "sem run anterior nem schema, só o passo inteiro");
+  assert.deepEqual(sem, ["steps.ler", "steps.ler.state", "steps.ler.semResposta", "steps.outro", "steps.outro.state", "steps.outro.semResposta"], "sem run anterior nem schema, o passo inteiro e o formato de quando ele é dado por publicado à mão");
   const com = referenciasDisponiveis(r, "usar", {
     saidas: { ler: { total: 7, itens: ["a"] }, outro: { text: "oi" } },
     esquemasDeSaida: { "fx/totais": { type: "object", properties: { total: { type: "number" }, extra: { type: "string" } } } },
   }).map((x) => x.caminho);
-  assert.deepEqual(com, ["steps.ler", "steps.ler.total", "steps.ler.extra", "steps.ler.itens", "steps.ler.itens.0", "steps.outro", "steps.outro.text"]);
+  assert.deepEqual(com, ["steps.ler", "steps.ler.state", "steps.ler.semResposta", "steps.ler.total", "steps.ler.extra", "steps.ler.itens", "steps.ler.itens.0", "steps.outro", "steps.outro.state", "steps.outro.semResposta", "steps.outro.text"]);
 });
 
 test("as saídas do último run: a mais recente de cada passo, sem o estado de ensaio nem saída vazia", async () => {

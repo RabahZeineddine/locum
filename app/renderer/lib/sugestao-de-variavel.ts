@@ -8,21 +8,21 @@ import type { GrupoDeReferencias, Referencia } from "../../src/config/referencia
 export interface MarcadorAberto {
   /** Onde o `{{` começa. */
   inicio: number;
-  /** O que veio depois dele até o cursor, sem espaço nas pontas. */
+  /** O que veio depois dele até o cursor. */
   consulta: string;
 }
 
-/** O que o executor aceita num caminho, mais espaço: `{{ steps.x }}` também vale. */
-const DIGITADO = /^[\w.\- ]*$/;
+/** O que o executor aceita num caminho. Espaço fecha o marcador: `Veja {{ status` é texto, não variável. */
+const DIGITADO = /^[\w.-]*$/;
 
-/** Há um `{{` aberto logo antes do cursor? Fechado, com quebra de linha ou com caractere que não é de caminho, não. */
+/** Há um `{{` aberto logo antes do cursor? Fechado ou com qualquer caractere que não é de caminho, não. */
 export function marcadorAberto(texto: string, cursor: number): MarcadorAberto | null {
   const antes = texto.slice(0, cursor);
   const inicio = antes.lastIndexOf("{{");
   if (inicio < 0) return null;
   const digitado = antes.slice(inicio + 2);
   if (!DIGITADO.test(digitado)) return null;
-  return { inicio, consulta: digitado.trim() };
+  return { inicio, consulta: digitado };
 }
 
 /** Quanto mais perto do começo, melhor: 0 é caminho inteiro, 1 começo de trecho, 2 contido, 3 só no nome ou na descrição. */
@@ -56,17 +56,30 @@ export function filtrarSugestoes(grupos: readonly GrupoDeReferencias[], consulta
   return saida;
 }
 
-/** O que sobra do marcador depois do cursor: o resto da palavra e as chaves de fechar, para não duplicar. */
-const RESTO_DO_MARCADOR = /^[\w.-]*(?:\s*\}\})?/;
+/** O que sobra de um marcador já fechado depois do cursor: o resto do caminho e as chaves. Sem `}}` no fim, nada é de quem digitava. */
+const RESTO_DO_MARCADOR = /^[\w.-]*\s*\}\}/;
+
+export interface Insercao {
+  /** O texto inteiro depois de inserir, e onde o cursor fica. */
+  texto: string;
+  cursor: number;
+  /** O trecho do texto antigo que o marcador substitui, e o que entra no lugar: para inserir pelo desfazer do navegador. */
+  de: number;
+  ate: number;
+  marcador: string;
+}
 
 /**
  * Troca o marcador aberto por `{{caminho}}` e põe o cursor depois dele. O
- * caminho leva a chave do passo, nunca o número, que muda com o fluxo.
+ * caminho leva a chave do passo, nunca o número, que muda com o fluxo. As
+ * chaves que já estavam depois do cursor são consumidas, para não duplicar;
+ * o texto depois do cursor que não é um marcador fechado fica como estava.
  */
-export function inserirSugestao(texto: string, cursor: number, caminho: string): { texto: string; cursor: number } | null {
+export function inserirSugestao(texto: string, cursor: number, caminho: string): Insercao | null {
   const aberto = marcadorAberto(texto, cursor);
   if (aberto === null) return null;
-  const resto = RESTO_DO_MARCADOR.exec(texto.slice(cursor))![0];
+  const resto = RESTO_DO_MARCADOR.exec(texto.slice(cursor))?.[0] ?? "";
   const marcador = `{{${caminho}}}`;
-  return { texto: texto.slice(0, aberto.inicio) + marcador + texto.slice(cursor + resto.length), cursor: aberto.inicio + marcador.length };
+  const ate = cursor + resto.length;
+  return { texto: texto.slice(0, aberto.inicio) + marcador + texto.slice(ate), cursor: aberto.inicio + marcador.length, de: aberto.inicio, ate, marcador };
 }

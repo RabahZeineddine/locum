@@ -113,7 +113,9 @@ export function PainelDoNo({
             esquemasDeSaida: esquemasDeSaidaDasConexoes(conexoes.porServidor),
             esquemasDeAcao: Object.fromEntries((acoes ?? []).map((a) => [a.kind, a.outputSchema])),
           }),
-    [rascunho, chave, passo, saidas, conexoes.porServidor, acoes],
+    // O catálogo só depende dos passos e dos gatilhos: nome do fluxo ou posição no canvas não o refazem.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rascunho.spec.steps, rascunho.gatilhos, chave, passo, saidas, conexoes.porServidor, acoes],
   );
   if (gatilho === undefined && passo === undefined) return null;
 
@@ -1448,11 +1450,11 @@ function ConfigDaReacao({
             {mapa.map(([valor, emoji]) => (
               <div className="flex items-center gap-1.5" key={valor}>
                 <span className="w-32 shrink-0 truncate font-mono text-xs">{valor}</span>
-                <input
+                <CampoComVariaveis
                   aria-label={t("automations.steps.react.emojiFor", { value: valor })}
                   className={CAMPO}
-                  onChange={(e) => aplicarMapa({ ...porValor.mapa, [valor]: e.target.value })}
-                  value={emoji}
+                  mudar={(novo) => aplicarMapa({ ...porValor.mapa, [valor]: novo })}
+                  valor={emoji}
                 />
                 <button
                   aria-label={t("automations.steps.react.removeValue", { value: valor })}
@@ -1489,21 +1491,17 @@ function ConfigDaReacao({
             </div>
           </Campo>
           <Campo rotulo={t("automations.steps.react.fallback")}>
-            <input
-              className={CAMPO}
-              onChange={(e) => mudar({ porValor: { ...porValor, padrao: e.target.value } })}
-              value={porValor.padrao ?? ""}
-            />
+            <CampoComVariaveis className={CAMPO} mudar={(padrao) => mudar({ porValor: { ...porValor, padrao } })} valor={porValor.padrao ?? ""} />
           </Campo>
         </>
       )}
       {(params.operacao ?? "set") === "set" ? (
         <Campo ajuda={t("automations.steps.react.removeFirstHint")} rotulo={t("automations.steps.react.removeFirst")}>
-          <input
+          <CampoComVariaveis
             className={CAMPO}
             data-locum-reacao-tirar=""
-            onChange={(e) => mudar({ tirar: e.target.value === "" ? undefined : e.target.value })}
-            value={params.tirar ?? ""}
+            mudar={(tirar) => mudar({ tirar: tirar === "" ? undefined : tirar })}
+            valor={params.tirar ?? ""}
           />
         </Campo>
       ) : null}
@@ -1537,16 +1535,14 @@ function ConfigDoHttp({
             </option>
           ))}
         </select>
-        <div className="min-w-0 flex-1">
-          <CampoComVariaveis
-            aria-label={t("automations.steps.http.request.url")}
-            className={cn(CAMPO, "font-mono text-xs")}
-            data-locum-http-url=""
-            mudar={(url) => mudar({ url })}
-            placeholder={t("automations.steps.http.request.urlPlaceholder")}
-            valor={params.url ?? ""}
-          />
-        </div>
+        <CampoComVariaveis
+          aria-label={t("automations.steps.http.request.url")}
+          className={cn(CAMPO, "font-mono text-xs")}
+          data-locum-http-url=""
+          mudar={(url) => mudar({ url })}
+          placeholder={t("automations.steps.http.request.urlPlaceholder")}
+          valor={params.url ?? ""}
+        />
       </div>
       <Campo ajuda={t("automations.steps.http.request.headersHint")} rotulo={t("automations.steps.http.request.headers")}>
         {cabecalhos.map(([nome, valor]) => {

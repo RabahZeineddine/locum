@@ -26,13 +26,20 @@ export interface Referencia {
   caminho: string;
   tipo: string;
   descricao?: string;
+  /**
+   * De quais gatilhos vem o campo, quando o fluxo tem mais de um com evento
+   * (só no grupo do evento). Ausente: um gatilho só, ou campo de passo.
+   */
+  fontes?: string[];
   /** `esquema` vem do que a fonte declara; `ultimo-run` do que o último run gravou e o esquema não conhece. */
   origem: "esquema" | "ultimo-run";
 }
 
 /** Níveis de propriedade que o catálogo desce: `dono` e `dono.nome`, não `dono.dados.fundo`. */
 const NIVEIS = 2;
+/** Um trecho de caminho que `renderPrompt` resolve: o regex dele é `[\w.-]+`, e o ponto separa. */
 const NOME_QUE_O_EXECUTOR_ACEITA = /^[\w-]+$/;
+export const nomeCitavel = (nome: string): boolean => NOME_QUE_O_EXECUTOR_ACEITA.test(nome);
 
 const SEM_NULO = (v: EsquemaJson) => v.type !== "null";
 
@@ -71,7 +78,7 @@ export function referenciasDoEsquema(esquema: EsquemaJson, prefixo = "", nivel =
   const juntar = (nome: string) => (prefixo === "" ? nome : `${prefixo}.${nome}`);
   if (e.properties !== undefined && nivel < NIVEIS) {
     for (const [nome, filho] of Object.entries(e.properties)) {
-      if (!NOME_QUE_O_EXECUTOR_ACEITA.test(nome)) continue;
+      if (!nomeCitavel(nome)) continue;
       const caminho = juntar(nome);
       out.push({ caminho, tipo: rotuloDoTipo(filho), ...(filho.description === undefined ? {} : { descricao: filho.description }), origem: "esquema" });
       out.push(...referenciasDoEsquema(filho, caminho, nivel + 1));
@@ -93,6 +100,7 @@ export function caminhosDaSaida(valor: unknown, prefixo = "", profundidade = 0):
   if (valor === null || typeof valor !== "object" || profundidade >= 3) return [];
   const entradas = Array.isArray(valor) ? valor.slice(0, 1).map((v, i) => [String(i), v] as const) : Object.entries(valor);
   return entradas.flatMap(([nome, v]) => {
+    if (!nomeCitavel(nome)) return [];
     const caminho = prefixo === "" ? nome : `${prefixo}.${nome}`;
     return [caminho, ...caminhosDaSaida(v, caminho, profundidade + 1)];
   });
@@ -159,12 +167,19 @@ export function esquemaDaSaida(passo: Step, fontes: FontesDeEsquema): EsquemaJso
   if (passo.type === "model") return (passo.outputSchema as EsquemaJson | undefined) ?? { type: "string" };
   if (passo.type === "logic") return fontes.logica?.(passo.op);
   const params = (passo.params ?? {}) as { server?: unknown; tool?: unknown };
+  const daAcao = fontes.acao?.(passo.action);
   if (typeof params.server === "string" && typeof params.tool === "string") {
-    const daFerramenta = fontes.ferramenta?.(params.server, params.tool);
-    if (daFerramenta !== undefined) return daFerramenta;
+    // Dado por publicado à mão, o passo guarda só o estado: os campos da ferramenta podem faltar.
+    const base = fontes.ferramenta?.(params.server, params.tool) ?? daAcao ?? {};
+    return { ...base, properties: { ...SAIDA_DE_PASSO_PUBLICADO_A_MAO, ...(base.properties ?? {}) } };
   }
-  return fontes.acao?.(passo.action);
+  return daAcao;
 }
+
+const SAIDA_DE_PASSO_PUBLICADO_A_MAO: Record<string, EsquemaJson> = {
+  state: { type: "string", description: "Only when the step was marked as published by hand: the tool's fields are then missing." },
+  semResposta: { type: "boolean", description: "True when the step was marked as published by hand, with no tool response." },
+};
 
 export interface GrupoDeReferencias {
   /** `event` ou a chave do passo. */
@@ -181,8 +196,8 @@ export interface EntradaDoCatalogo {
   passos: readonly Step[];
   /** O passo em edição: só os anteriores a ele entram. */
   chave: string;
-  /** Esquema do evento de cada gatilho do fluxo, na ordem deles. */
-  eventos: readonly (EsquemaJson | null | undefined)[];
+  /** O esquema do evento de cada gatilho do fluxo, na ordem deles, com o tipo do gatilho. */
+  eventos: readonly { fonte: string; esquema: EsquemaJson | null | undefined }[];
   fontes?: FontesDeEsquema;
   /** A saída de cada passo no último run, pela chave do passo. */
   saidas?: Readonly<Record<string, unknown>>;
@@ -206,13 +221,24 @@ function grupo(raiz: string, esquemas: readonly EsquemaJson[], observada: unknow
 /** O catálogo do que o passo `chave` pode citar: o evento e, na ordem do fluxo, cada passo anterior. */
 export function catalogoDeReferencias(entrada: EntradaDoCatalogo): GrupoDeReferencias[] {
   const grupos: GrupoDeReferencias[] = [];
-  const esquemasDoEvento = entrada.eventos.filter((e): e is EsquemaJson => e !== null && e !== undefined);
-  if (esquemasDoEvento.length > 0) {
-    const tipoDoEvento = { caminho: "event", tipo: "object", origem: "esquema" } as const;
-    grupos.push({ id: "event", tipo: "event", itens: [tipoDoEvento, ...grupo("event", esquemasDoEvento, undefined)] });
+  const comEvento = entrada.eventos.filter((e): e is { fonte: string; esquema: EsquemaJson } => e.esquema !== null && e.esquema !== undefined);
+  if (comEvento.length > 0) {
+    const fontes = [...new Set(comEvento.map((e) => e.fonte))];
+    const varias = fontes.length > 1;
+    const porCaminho = new Map<string, Referencia>();
+    for (const e of comEvento) {
+      for (const r of grupo("event", [e.esquema], undefined)) {
+        const ja = porCaminho.get(r.caminho);
+        if (ja === undefined) porCaminho.set(r.caminho, varias ? { ...r, fontes: [e.fonte] } : r);
+        else if (varias && !ja.fontes!.includes(e.fonte)) ja.fontes!.push(e.fonte);
+      }
+    }
+    const raiz: Referencia = { caminho: "event", tipo: "object", origem: "esquema", ...(varias ? { fontes } : {}) };
+    grupos.push({ id: "event", tipo: "event", itens: [raiz, ...porCaminho.values()] });
   }
   const numeros = numerarPassos(entrada.passos);
   for (const passo of passosAnteriores(entrada.passos, entrada.chave)) {
+    if (!nomeCitavel(passo.key)) continue; // `{{steps.revisar pr}}` o executor não resolve: o passo fica fora da lista
     const esquema = esquemaDaSaida(passo, entrada.fontes ?? {});
     const raiz = `steps.${passo.key}`;
     grupos.push({

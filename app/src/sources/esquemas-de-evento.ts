@@ -1,6 +1,7 @@
 import type { EsquemaJson } from "../config/referencias.js";
 import type { TriggerConfig } from "../config/types.js";
 import { ESQUEMA_DO_EVENTO_DE_PR } from "./esquema-github.js";
+import { ESQUEMA_DO_EVENTO_MANUAL } from "./esquema-manual.js";
 import { ESQUEMA_DO_EVENTO_DA_CAIXA_DO_SLACK, ESQUEMA_DO_EVENTO_DO_CANAL_DO_SLACK } from "./esquema-slack.js";
 import { esquemaDoEventoDoTeams } from "./esquema-teams.js";
 
@@ -38,8 +39,7 @@ export function esquemaDoEvento(config: TriggerConfig): EsquemaJson | null {
         required: ["repo", "server", "tool", "item"],
       };
     case "manual":
-      // "Executar com" cola um link de PR: o evento sai como o do Teams com link, sem conversa.
-      return esquemaDoEventoDoTeams({ prLinks: true });
+      return ESQUEMA_DO_EVENTO_MANUAL;
     case "cron":
     case "schedule":
     case "webhook":

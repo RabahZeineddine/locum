@@ -6,6 +6,7 @@ import { schema } from "../src/db/index.js";
 import { catalogoDeReferencias, esquemaDaSaida, numerarPassos, referenciasDoEsquema, type EsquemaJson } from "../src/config/referencias.js";
 import { TriggerConfig, type Step } from "../src/config/types.js";
 import { ESQUEMA_DA_LOGICA } from "../src/executor/esquemas-de-logica.js";
+import { renderParams, renderPrompt, type EventPayload } from "../src/executor/executor.js";
 import { runLogic } from "../src/executor/logic.js";
 import { esquemaDoEvento } from "../src/sources/esquemas-de-evento.js";
 import { fetchPr, type PrClient, type PrContext } from "../src/sources/github.js";
@@ -82,7 +83,7 @@ test("catálogo: evento primeiro, depois só os passos anteriores, cada um com n
   const grupos = catalogoDeReferencias({
     passos: [revisar, publicar, depois],
     chave: "depois",
-    eventos: [{ type: "object", properties: { text: { type: "string" } } }, null],
+    eventos: [{ fonte: "slack-inbox", esquema: { type: "object", properties: { text: { type: "string" } } } }, { fonte: "cron", esquema: null }],
     fontes: { acao: () => ({ type: "object", properties: { state: { type: "string" } } }) },
     saidas: { publicar: { state: "published", messageId: "m1" } },
   });
@@ -115,8 +116,9 @@ test("toda ação do registro declara a saída, e a que só guarda o estado traz
   assert.ok(Object.keys(porKind.get("teams.post")?.properties ?? {}).includes("state"));
   const step = { type: "action", key: "k", name: "k", needs: [], optional: false, action: "mcp.call", mode: "approve", params: { server: "fx", tool: "t" } } as Step;
   const daFerramenta = { type: "object", properties: { id: { type: "string" } } };
-  assert.equal(esquemaDaSaida(step, { acao: (k) => porKind.get(k), ferramenta: () => daFerramenta }), daFerramenta, "o outputSchema da ferramenta vale sobre o da ação");
-  assert.equal(esquemaDaSaida(step, { acao: (k) => porKind.get(k) }), porKind.get("mcp.call"));
+  const comFerramenta = esquemaDaSaida(step, { acao: (k) => porKind.get(k), ferramenta: () => daFerramenta });
+  assert.deepEqual(Object.keys(comFerramenta?.properties ?? {}).sort(), ["id", "semResposta", "state"], "o outputSchema da ferramenta vale sobre o da ação, e o passo dado por publicado à mão traz só state e semResposta");
+  assert.ok(Object.keys(esquemaDaSaida(step, { acao: (k) => porKind.get(k) })?.properties ?? {}).includes("semResposta"));
 });
 
 /* ----------------------------- o evento que cada gatilho emite × esquema */
@@ -124,7 +126,12 @@ test("toda ação do registro declara a saída, e a que só guarda o estado traz
 /** Campos que o executor lê de todo evento ou que a fonte guarda crus, e que ninguém cita. */
 const INTERNOS = ["changedFiles", "item"];
 
-function confere(nome: string, config: TriggerConfig, payload: Record<string, unknown>, internos: string[] = []): void {
+/**
+ * O evento emitido cabe no esquema, e o esquema não promete o que a fonte não emite:
+ * emitido ⊆ declarado (menos os `internos`) e declarado ⊆ emitido (menos os `opcionais`,
+ * que dependem de o GitHub, o Teams ou o Slack responderem aquele campo).
+ */
+function confere(nome: string, config: TriggerConfig, payload: Record<string, unknown>, internos: string[] = [], opcionais: string[] = []): void {
   const esquema = esquemaDoEvento(config);
   assert.ok(esquema !== null, `${nome}: gatilho sem esquema`);
   const lido = z.fromJSONSchema(esquema as never).safeParse(payload);
@@ -133,7 +140,14 @@ function confere(nome: string, config: TriggerConfig, payload: Record<string, un
   const sobrando = Object.keys(payload).filter((k) => !declarados.has(k) && ![...INTERNOS, ...internos].includes(k));
   assert.deepEqual(sobrando, [], `${nome}: a fonte emite campo que o esquema não declara`);
   for (const k of esquema.required as string[] | undefined ?? []) assert.ok(k in payload, `${nome}: o esquema exige ${k} e o evento não traz`);
+  const prometidos = [...declarados].filter((k) => !(k in payload) && !opcionais.includes(k));
+  assert.deepEqual(prometidos, [], `${nome}: o esquema declara campo que a fonte não emitiu`);
 }
+
+/** Do Teams, o que depende de onde a mensagem veio (chat ou canal), de haver conta guardada ou de o PR trazer corte e falha. */
+const SO_NO_CANAL = ["teamId", "channelId", "channel", "threadId"];
+const SO_NO_CHAT = ["chatId"];
+const DO_ENVIO = ["teamsAccount", "prsFalharam", "prsCortados", "prsLimite", "teamsTeamId", "teamsChannelId", "teamsReplyToId"];
 
 const eventosDe = async (db: ReturnType<typeof bancoDeTeste>, source?: string) =>
   (await (source === undefined ? db.select().from(schema.events) : db.select().from(schema.events).where(eq(schema.events.source, source)))).map((e) => e.payload as Record<string, unknown>);
@@ -146,6 +160,7 @@ const agoraMenos = (m: number) => new Date(Date.now() - m * 60_000).toISOString(
 const prDeMentira = (owner: string, repo: string, pull: number): PrContext => ({
   repo: `${owner}/${repo}`, owner, repoName: repo, pull, title: "Corrige o saldo", description: "d", headSha: "abc", changedFiles: ["a.ts"], diff: "+x", author: "maria",
   baseBranch: "main", headBranch: "fix/saldo", url: PR, additions: 1, deletions: 0, fileCount: 1, draft: false, state: "open", merged: false,
+  omittedFiles: [], omittedSummary: "", ci: { state: "passing", checks: [], summary: "ok" },
 });
 
 function graphFalso(chats: { id: string; chatType: string; mensagens: unknown[] }[], threads: unknown[] = []) {
@@ -183,14 +198,14 @@ test("teams-inbox sem prLinks: o evento da mensagem direta e o da mensagem de ca
   await pollTeamsInbox({ mentions: true, dms: true }, { db: dm, token, fetchFn: graphFalso([{ id: "19:um@unq.gbl.spaces", chatType: "oneOnOne", mensagens: [mensagem("1", "<p>oi</p>")] }]) });
   const config = TriggerConfig.parse({ kind: "teams-inbox", mentions: true, dms: true, channels: [], prLinks: false });
   const [direta] = await eventosDe(dm, "teams");
-  confere("teams dm", config, direta!);
+  confere("teams dm", config, direta!, [], [...SO_NO_CANAL, "teamsAccount"]);
 
   const canal = bancoDoTeams();
   const mencao = mensagem("2", "<p>oi</p>", { mentions: [{ mentioned: { user: { id: "EU" } } }] });
   await pollTeamsInbox({ mentions: true, dms: false, channels: [{ teamId: EQUIPE, channelId: CANAL, label: "Time / Geral" }] }, { db: canal, token, fetchFn: graphFalso([], [mencao]) });
   const [doCanal] = await eventosDe(canal, "teams");
   assert.equal(doCanal?.chatType, "channel");
-  confere("teams canal", config, doCanal!);
+  confere("teams canal", config, doCanal!, [], [...SO_NO_CHAT, "teamsAccount"]);
 });
 
 test("teams-inbox com prLinks: prOwner, prRepo, prNumber, repo, title, description, diff, url, author e prsTexto", async () => {
@@ -198,7 +213,7 @@ test("teams-inbox com prLinks: prOwner, prRepo, prNumber, repo, title, descripti
   await pollTeamsInbox({ mentions: false, dms: false, prLinks: true }, { db, token, ...semGithub, fetchFn: graphFalso([{ id: "g", chatType: "group", mensagens: [mensagem("m1", `<p>${PR}</p>`)] }]) });
   const [evento] = await eventosDe(db, "teams");
   for (const k of ["prOwner", "prRepo", "prNumber", "repo", "title", "description", "diff", "url", "author", "prsTexto"]) assert.ok(k in evento!, k);
-  confere("teams com prLinks", TriggerConfig.parse({ kind: "teams-inbox", mentions: false, dms: false, channels: [], prLinks: true }), evento!);
+  confere("teams com prLinks", TriggerConfig.parse({ kind: "teams-inbox", mentions: false, dms: false, channels: [], prLinks: true }), evento!, [], [...SO_NO_CANAL, ...DO_ENVIO]);
 });
 
 test("slack-inbox e slack-channel: o evento emitido bate com o esquema", async () => {
@@ -247,11 +262,92 @@ test("manual: o evento do link colado bate com o esquema", async () => {
   const eventos = new EventoManual(db, async (o, r, p) => prDeMentira(o, r, p), new ExecutionService(db, agents));
   const { eventId } = await eventos.doLink(PR, "minha-automacao");
   const [linha] = await db.select().from(schema.events).where(eq(schema.events.id, eventId));
-  confere("manual", TriggerConfig.parse({ kind: "manual" }), linha!.payload as Record<string, unknown>, ["semConversa", "automacao"]);
+  confere("manual", TriggerConfig.parse({ kind: "manual" }), linha!.payload as Record<string, unknown>, ["automacao"]);
 });
 
 test("gatilho sem evento com formato diz isso: cron, schedule e webhook não têm esquema", () => {
   for (const config of [{ kind: "cron", expression: "0 9 * * *" }, { kind: "schedule", everyMinutes: 5 }, { kind: "webhook" }]) {
     assert.equal(esquemaDoEvento(config as never), null, config.kind);
   }
+});
+
+/* ------------------------------ todo caminho oferecido, o executor resolve */
+
+/** Um valor para cada folha do esquema que diz o próprio caminho, sem passar por nenhuma regra de descida. */
+function amostra(esquema: EsquemaJson, caminho: string): unknown {
+  if (esquema.properties !== undefined) return Object.fromEntries(Object.entries(esquema.properties).map(([k, v]) => [k, amostra(v, `${caminho}.${k}`)]));
+  if (esquema.items !== undefined) return [amostra(esquema.items, `${caminho}.0`)];
+  return `v:${caminho}`;
+}
+
+test("todo caminho do catálogo, renderizado pelo executor, devolve o valor e nunca texto literal ou vazio", () => {
+  const esquemaMau: EsquemaJson = {
+    type: "object",
+    properties: {
+      "Due Date": { type: "string" },
+      descrição: { type: "string" },
+      "a.b": { type: "string" },
+      ok: { type: "string" },
+      dono: { type: "object", properties: { nome: { type: "string" }, "nome completo": { type: "string" }, dados: { type: "object", properties: { fundo: { type: "string" } } } } },
+      findings: { type: "array", items: { type: "object", properties: { severity: { type: "string" }, "linha atual": { type: "number" } } } },
+    },
+  };
+  const passos = [
+    { ...passo("revisar", [], "Revisar"), outputSchema: esquemaMau } as Step,
+    passo("revisão", [], "Com acento"),
+    passo("revisar pr", [], "Com espaço"),
+    passo("a.b", [], "Com ponto"),
+    { type: "action", key: "ler", name: "Ler", needs: [], optional: false, action: "mcp.call", mode: "auto", params: { server: "fx", tool: "t" } } as Step,
+    { ...passo("usar", ["revisar", "revisão", "revisar pr", "a.b", "ler"]) } as Step,
+  ];
+  // O que o último run gravou, com nomes que o executor não resolve misturados aos que resolve.
+  const saidaDoRun = { "Due Date": "v:steps.ler.Due Date", ok: "v:steps.ler.ok", "a.b": "v:x", aninhado: { "nome ruim": "v:x", bom: "v:steps.ler.aninhado.bom" } };
+  const evento = { type: "object", properties: { title: { type: "string" }, "Nome ruim": { type: "string" }, prs: { type: "array", items: { type: "object", properties: { prNumber: { type: "number" } } } } } };
+
+  const grupos = catalogoDeReferencias({
+    passos,
+    chave: "usar",
+    eventos: [{ fonte: "manual", esquema: evento }],
+    saidas: { ler: saidaDoRun },
+    fontes: { ferramenta: () => ({ type: "object", properties: { total: { type: "number" } } }) },
+  });
+  const itens = grupos.flatMap((g) => g.itens);
+  const caminhos = itens.map((i) => i.caminho);
+  for (const ruim of ["Due Date", "descrição", "a.b", "nome completo", "Nome ruim", "linha atual", "nome ruim", "revisão", "revisar pr"]) {
+    assert.ok(!caminhos.some((c) => c.includes(ruim)), `${ruim} não é caminho que o executor resolve`);
+  }
+  assert.ok(caminhos.includes("steps.revisar.findings.0.severity") && caminhos.includes("steps.ler.aninhado.bom") && caminhos.includes("event.prs.0.prNumber"));
+  assert.ok(!grupos.some((g) => ["revisão", "revisar pr", "a.b"].includes(g.id)), "passo com chave que o executor não resolve fica fora");
+
+  // O executor de verdade, com o evento e as saídas montados do esquema (e do run), sem descer pelas regras dele.
+  const payload = { repo: "r", changedFiles: [], ...(amostra(evento, "event") as object) } as EventPayload;
+  const saidas = new Map<string, unknown>([
+    ["revisar", amostra(esquemaMau, "steps.revisar")],
+    ["ler", { ...saidaDoRun, state: "v:steps.ler.state", semResposta: "v:steps.ler.semResposta", ...(amostra({ type: "object", properties: { total: { type: "number" } } }, "steps.ler") as object) }],
+  ]);
+  for (const item of itens) {
+    const texto = renderPrompt(`{{${item.caminho}}}`, payload, saidas);
+    const bruto = renderParams(`{{${item.caminho}}}`, payload, saidas);
+    assert.notEqual(texto, "", item.caminho);
+    assert.notEqual(texto, `{{${item.caminho}}}`, item.caminho);
+    assert.notEqual(bruto, null, item.caminho);
+    if (item.tipo === "string") assert.equal(texto, `v:${item.caminho}`, item.caminho);
+  }
+});
+
+test("com vários gatilhos, cada campo do evento diz de quais gatilhos vem", () => {
+  const grupos = catalogoDeReferencias({
+    passos: [passo("a"), passo("b", ["a"])],
+    chave: "b",
+    eventos: [
+      { fonte: "slack-inbox", esquema: { type: "object", properties: { text: { type: "string" }, channel: { type: "string" } } } },
+      { fonte: "teams-inbox", esquema: { type: "object", properties: { text: { type: "string" }, chatId: { type: "string" } } } },
+    ],
+  });
+  const porCaminho = Object.fromEntries(grupos[0]!.itens.map((i) => [i.caminho, i.fontes]));
+  assert.deepEqual(porCaminho["event.text"], ["slack-inbox", "teams-inbox"]);
+  assert.deepEqual(porCaminho["event.channel"], ["slack-inbox"]);
+  assert.deepEqual(porCaminho["event.chatId"], ["teams-inbox"]);
+  const um = catalogoDeReferencias({ passos: [passo("a"), passo("b", ["a"])], chave: "b", eventos: [{ fonte: "slack-inbox", esquema: { type: "object", properties: { text: { type: "string" } } } }] });
+  assert.equal(um[0]!.itens[1]!.fontes, undefined, "com um gatilho só não há o que distinguir");
 });

@@ -10,7 +10,8 @@ const aberto = (texto: string) => marcadorAberto(sem(texto), cursor(texto));
 test("marcador aberto: só vale com {{ antes do cursor e sem fechar", () => {
   assert.deepEqual(aberto("Revise {{|"), { inicio: 7, consulta: "" });
   assert.deepEqual(aberto("Revise {{ev|"), { inicio: 7, consulta: "ev" });
-  assert.deepEqual(aberto("{{ steps.rev|isar}} depois"), { inicio: 0, consulta: "steps.rev" });
+  assert.deepEqual(aberto("{{steps.rev|isar}} depois"), { inicio: 0, consulta: "steps.rev" });
+  assert.equal(aberto("Veja {{ status|"), null, "espaço depois do {{ é texto, não variável");
   assert.equal(aberto("sem marcador|"), null);
   assert.equal(aberto("{{event.text}} e mais|"), null, "marcador já fechado antes do cursor");
   assert.deepEqual(aberto("{{event.text}} {{|"), { inicio: 15, consulta: "" });
@@ -61,9 +62,15 @@ test("inserir: troca o que foi digitado por {{caminho}}, com a chave estável, e
 test("inserir: não duplica as chaves que já estavam lá", () => {
   assert.equal(inserir("{{ev|}}", "event.title"), "{{event.title}}|");
   assert.equal(inserir("{{ev|ent.te}} x", "event.text"), "{{event.text}}| x", "come o resto da palavra e as chaves");
-  assert.equal(inserir("{{ev| }} x", "event.text"), "{{event.text}}| x", "{{ ev }} com espaço também fecha sem duplicar");
+  assert.equal(inserir("{{ev| }} x", "event.text"), "{{event.text}}| x", "espaço antes das chaves que já estavam lá não deixa duplicar");
 });
 
 test("inserir: sem marcador aberto não mexe", () => {
   assert.equal(inserir("nada aqui|", "event.title"), null);
+});
+
+test("inserir: o texto depois do cursor que não é marcador fechado fica como está", () => {
+  assert.equal(inserir("https://api/{{|v1/items", "event.repo"), "https://api/{{event.repo}}|v1/items");
+  assert.equal(inserir("Veja {{|status do PR", "event.title"), "Veja {{event.title}}|status do PR");
+  assert.equal(inserir("a {{ev|ent.te e mais", "event.text"), "a {{event.text}}|ent.te e mais");
 });

@@ -2240,7 +2240,12 @@
     "variables": {
       "label": "Variáveis",
       "event": "Evento",
-      "step": "{{numero}} · {{nome}}"
+      "step": "{{numero}} · {{nome}}",
+      "insert": "Inserir variável",
+      "hint": "Digite {{ para inserir uma variável.",
+      "count_zero": "Nenhuma variável",
+      "count_one": "{{count}} variável",
+      "count_other": "{{count}} variáveis"
     },
     "panel": {
       "close": "Fechar painel",

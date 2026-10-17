@@ -2234,7 +2234,7 @@ async function checkPassoDeAgent(window: BrowserWindow): Promise<void> {
     const ligado = (await js(`(() => {
       const c = document.querySelector("[data-locum-prompt]");
       const ativa = document.getElementById(c.getAttribute("aria-activedescendant") ?? "");
-      return c.getAttribute("role") === "combobox" && c.getAttribute("aria-expanded") === "true" && ativa?.getAttribute("role") === "option" && ativa.getAttribute("aria-selected") === "true";
+      return c.tagName === "TEXTAREA" && c.getAttribute("role") === null && c.getAttribute("aria-autocomplete") === "list" && c.getAttribute("aria-controls") === document.querySelector("[data-locum-variaveis]").id && ativa?.getAttribute("role") === "option" && ativa.getAttribute("aria-selected") === "true";
     })()`)) as boolean;
     if (!ligado) throw new Error("o campo com variáveis não aponta a opção ativa por aria-activedescendant");
     tecla("Enter");
@@ -2244,6 +2244,8 @@ async function checkPassoDeAgent(window: BrowserWindow): Promise<void> {
     await esperar("a lista reabre", () => existe("[data-locum-variaveis]"));
     tecla("Escape");
     await esperar("Esc fecha a lista", async () => !(await existe("[data-locum-variaveis]")));
+    await clicar("[data-locum-variaveis-botao]");
+    await esperar("o botão { } abre a mesma lista", () => existe("[data-locum-variaveis] [role=option]"));
     await clicar("[data-locum-passo-modo=agent]");
     await esperar("o select de volta", () => existe("[data-locum-passo-agent]"));
     if (await existe("[data-locum-agent-resumo]")) throw new Error("o resumo do agent ficou depois de trocar para instrução embutida");
