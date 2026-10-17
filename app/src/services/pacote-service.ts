@@ -25,7 +25,8 @@ import {
   type PassoDoPacote,
 } from "../pacote/formato.js";
 import { limparValor } from "../pacote/limpeza.js";
-import { origemDaUrl, paramsDoPacoteParaPasso, paramsParaPacote, type ParamsDoPacote } from "../pacote/params.js";
+import { MARCAS_DOS_GATILHOS } from "../pacote/marcacao.js";
+import { aplicarMarcas, origemDaUrl, paramsDoPacoteParaPasso, paramsParaPacote, type ParamsDoPacote } from "../pacote/params.js";
 import { ehLeitura, ehLeituraDa, type FerramentaClassificavel } from "../config/leitura.js";
 
 /**
@@ -333,7 +334,7 @@ export class PacoteService {
     const passos: PassoDoPacote[] = [];
     for (const p of spec.steps) passos.push(await this.passoParaPacote(p, omitir, declaracoes));
     const gatilhos: GatilhoDoPacote[] = [];
-    for (const g of automacao.triggers) gatilhos.push(this.gatilhoParaPacote(g.config, omitir));
+    for (const g of automacao.triggers) gatilhos.push(await this.gatilhoParaPacote(g.config, omitir));
 
     const base = {
       formato: NOME_DO_FORMATO,
@@ -438,39 +439,22 @@ export class PacoteService {
     };
   }
 
-  private gatilhoParaPacote(
+  /** O gatilho no pacote: um só código aplica `MARCAS_DOS_GATILHOS`; o que é da pessoa sai e vira pendência. */
+  private async gatilhoParaPacote(
     config: GatilhoConfig,
-    omitir: (c: CodigoOmitido, onde: string, q?: number) => void,
-  ): GatilhoDoPacote {
-    switch (config.kind) {
-      case "teams-inbox": {
-        const { channels, chats, chatsPendentes, ...resto } = config;
-        if (channels.length + chats.length > 0) omitir("canais", "teams-inbox", channels.length + chats.length);
-        const restritos = chats.length > 0 ? chats.length : chatsPendentes;
-        return restritos === 0 ? resto : { ...resto, chatsRestritos: restritos };
-      }
-      case "slack-channel": {
-        const { channels, ...resto } = config;
-        omitir("canais", "slack-channel", channels.length);
-        return resto;
-      }
-      case "poll": {
-        const { owner, filters, ...resto } = config;
-        if (owner !== undefined) omitir("dono-do-github", "poll");
-        if (filters === undefined) return resto;
-        const { authors, reviewRequested, teamMembers, ...paths } = filters;
-        const pessoas = [authors, reviewRequested, teamMembers].filter((f) => f !== undefined).length;
-        if (pessoas > 0) omitir("filtros-de-pessoa", "poll", pessoas);
-        return { ...resto, ...(Object.keys(paths).length === 0 ? {} : { filters: paths }) };
-      }
-      case "mcp-poll": {
-        const { args, ...resto } = config;
-        if (Object.keys(args).length > 0) omitir("argumentos", "mcp-poll", Object.keys(args).length);
-        return resto;
-      }
-      default:
-        return config;
-    }
+    omitir: (c: CodigoOmitido, onde: string, q?: number, params?: string[]) => void,
+  ): Promise<GatilhoDoPacote> {
+    const sensivel = await this.sensivelDaFerramenta(config as unknown as Record<string, unknown>);
+    const r = aplicarMarcas(MARCAS_DOS_GATILHOS[config.kind], config as unknown as Record<string, unknown>, {
+      ...(this.home === undefined ? {} : { home: this.home }),
+      sensivel,
+    });
+    for (const [codigo, d] of r.omitidos) omitir(codigo, config.kind, d.quantos, d.nomes);
+    if (r.limpos > 0) omitir("texto-limpo", config.kind, r.limpos);
+    if (config.kind !== "teams-inbox") return r.valor as GatilhoDoPacote;
+    // Quantos chats restringiam o gatilho, sem os ids; chats ainda por escolher contam também.
+    const restritos = config.chats.length > 0 ? config.chats.length : config.chatsPendentes;
+    return (restritos === 0 ? r.valor : { ...r.valor, chatsRestritos: restritos }) as GatilhoDoPacote;
   }
 
   private async requisitos(spec: AgentSpec, agents: readonly AgentDoPacote[], gatilhos: readonly GatilhoDoPacote[]): Promise<Pacote["requisitos"]> {
@@ -1043,19 +1027,11 @@ function usosDasDependencias(pacote: Pacote): {
 
 /** O gatilho do pacote como o cadastro o pede, ou nulo quando falta o que só a pessoa escolhe. */
 function gatilhoParaCadastro(g: GatilhoDoPacote, servidor: (nome: string) => string): TriggerConfigInput | null {
-  switch (g.kind) {
-    // Sem canal o cadastro recusa: a automação nasce sem este gatilho, e a pessoa o acrescenta.
-    case "slack-channel":
-      return null;
-    case "teams-inbox": {
-      const { chatsRestritos, ...resto } = g;
-      return { ...resto, channels: [], chats: [], chatsPendentes: chatsRestritos ?? 0 };
-    }
-    case "mcp-poll":
-      return { ...g, server: servidor(g.server), args: {} };
-    default:
-      return g;
-  }
+  // O que o arquivo não traz (marcado local) volta pelo padrão do esquema; sem o que é obrigatório, como o canal, o cadastro recusa.
+  const { chatsRestritos, ...resto } = g as GatilhoDoPacote & { chatsRestritos?: number };
+  const config: Record<string, unknown> = { ...resto, ...(chatsRestritos === undefined ? {} : { chatsPendentes: chatsRestritos }) };
+  if (config.kind === "mcp-poll" && typeof config.server === "string") config.server = servidor(config.server);
+  return TriggerConfig.safeParse(config).success ? (config as TriggerConfigInput) : null;
 }
 
 export const pacoteService = new PacoteService();

@@ -20,6 +20,7 @@ import {
   topoSort,
   type Step,
 } from "../config/types.js";
+import { MARCAS_DOS_GATILHOS, ehLocal, temFilhos, type MapaDeMarcas } from "./marcacao.js";
 
 /**
  * O pacote: o arquivo `.locum.json` que uma automação vira para ir a outra
@@ -78,24 +79,43 @@ const SpecDoPacote = z
 /* --------------------------------------------------------------- gatilhos */
 
 /**
- * O gatilho sem o que é desta máquina: canais e chats, dono e autores do
- * GitHub, argumentos de consulta. A pessoa escolhe isso ao importar.
+ * O esquema sem o que é desta máquina, derivado da marcação (`marcacao.ts`):
+ * campo local ou dobrado sai, e um objeto com `filhos` é derivado do mesmo jeito.
  */
-const GatilhoDoPacote = z.discriminatedUnion("kind", [
-  ScheduleTrigger.strict(),
-  WebhookTrigger.strict(),
-  CronTrigger.strict(),
-  ManualTrigger.strict(),
-  SlackInboxTrigger.strict(),
-  SlackChannelTrigger.omit({ channels: true }).strict(),
-  TeamsInboxTrigger.omit({ channels: true, chats: true, chatsPendentes: true })
-    // Quantos chats restringiam o gatilho, sem os ids. Ausente é gatilho em todos os chats.
+type Fora<M> = { [K in keyof M]: M[K] extends "dobrado" | { readonly local: unknown } ? K : never }[keyof M];
+function semLocais<S extends z.ZodObject<any>, M extends MapaDeMarcas>(schema: S, marcas: M): z.ZodType<Omit<z.infer<S>, Fora<M>>> {
+  const fora: Record<string, true> = {};
+  const trocas: Record<string, z.ZodType> = {};
+  for (const [campo, marca] of Object.entries(marcas)) {
+    if (marca === "dobrado" || ehLocal(marca)) fora[campo] = true;
+    else if (temFilhos(marca)) {
+      const nested = (schema.shape[campo] as unknown as z.ZodOptional<z.ZodObject<any>>).unwrap();
+      trocas[campo] = (semLocais(nested, marca.filhos) as unknown as z.ZodOptional<z.ZodObject<any>>).optional();
+    }
+  }
+  return schema.omit(fora as never).extend(trocas as never).strict() as never;
+}
+
+/**
+ * O gatilho sem o que é da pessoa (canais, chats, dono e autores do GitHub):
+ * a pessoa escolhe isso ao importar. A derivação lê `MARCAS_DOS_GATILHOS`.
+ */
+const M = MARCAS_DOS_GATILHOS;
+const GatilhoDoPacote = z.union([
+  semLocais(ScheduleTrigger, M.schedule),
+  semLocais(WebhookTrigger, M.webhook),
+  semLocais(CronTrigger, M.cron),
+  semLocais(ManualTrigger, M.manual),
+  semLocais(SlackInboxTrigger, M["slack-inbox"]),
+  semLocais(SlackChannelTrigger, M["slack-channel"]),
+  // Quantos chats restringiam o gatilho, sem os ids. Ausente é gatilho em todos os chats.
+  (semLocais(TeamsInboxTrigger, M["teams-inbox"]) as unknown as z.ZodObject<any>)
     .extend({ chatsRestritos: z.number().int().positive().optional() })
-    .strict(),
-  PollTrigger.omit({ owner: true, filters: true })
-    .extend({ filters: PollFilters.omit({ authors: true, reviewRequested: true, teamMembers: true }).strict().optional() })
-    .strict(),
-  McpPollTrigger.omit({ args: true }).strict(),
+    .strict() as unknown as z.ZodType<Omit<z.infer<typeof TeamsInboxTrigger>, "channels" | "chats" | "chatsPendentes"> & { chatsRestritos?: number }>,
+  semLocais(PollTrigger, M.poll) as unknown as z.ZodType<
+    Omit<z.infer<typeof PollTrigger>, "owner" | "filters"> & { filters?: Omit<PollFilters, "authors" | "reviewRequested" | "teamMembers"> }
+  >,
+  semLocais(McpPollTrigger, M["mcp-poll"]),
 ]);
 export type GatilhoDoPacote = z.infer<typeof GatilhoDoPacote>;
 

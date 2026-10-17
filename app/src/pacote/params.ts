@@ -1,4 +1,6 @@
 import { limparSegredos, limparTexto } from "./limpeza.js";
+import type { CodigoOmitido } from "./formato.js";
+import type { MapaDeMarcas } from "./marcacao.js";
 
 /**
  * Como cada param de uma ação viaja no pacote. A ação declara (`ActionHandler.paramsDoPacote`)
@@ -159,4 +161,52 @@ export function paramsDoPacoteParaPasso(declaracao: ParamsDoPacote, params: Reco
     else saida[nome] = valor;
   }
   return { params: saida, ...(origem === undefined ? {} : { origem }), descartados };
+}
+
+export interface MarcasAplicadas {
+  valor: Record<string, unknown>;
+  /** O que ficou de fora, agrupado pelo código que a prévia mostra. */
+  omitidos: Map<CodigoOmitido, { quantos: number; nomes: string[] }>;
+  limpos: number;
+}
+
+/**
+ * Aplica um mapa de marcação (`marcacao.ts`) a um objeto de configuração: gatilho,
+ * ou qualquer outro esquema marcado. Campo sem marca não viaja e fica dito.
+ */
+export function aplicarMarcas(marcas: MapaDeMarcas, valor: Record<string, unknown>, opcoes: OpcoesDosParams = {}, prefixo = ""): MarcasAplicadas {
+  const saida: MarcasAplicadas = { valor: {}, omitidos: new Map(), limpos: 0 };
+  const omitir = (codigo: CodigoOmitido, nome: string, quantos: number): void => {
+    const atual = saida.omitidos.get(codigo) ?? { quantos: 0, nomes: [] };
+    saida.omitidos.set(codigo, { quantos: atual.quantos + quantos, nomes: [...atual.nomes, nome] });
+  };
+  const juntar = (filho: MarcasAplicadas): void => {
+    for (const [codigo, d] of filho.omitidos) for (const nome of d.nomes) omitir(codigo, nome, d.quantos / d.nomes.length);
+    saida.limpos += filho.limpos;
+  };
+  for (const [campo, v] of Object.entries(valor)) {
+    if (v === undefined) continue;
+    const nome = `${prefixo}${campo}`;
+    const marca = marcas[campo];
+    if (marca === undefined) omitir("argumentos", nome, 1);
+    else if (marca === "dobrado") continue;
+    else if (marca === "portavel") saida.valor[campo] = v;
+    else if (marca === "texto") {
+      const limpo = limparEmProfundidade(v, [campo], { home: opcoes.home, sensivel: undefined, omitidos: [], limpos: { n: 0 } }, false);
+      saida.valor[campo] = limpo ?? v;
+    } else if (marca === "argumentos") {
+      const r = paramsParaPacote({ [campo]: "argumentos" }, { [campo]: v }, opcoes);
+      Object.assign(saida.valor, r.params);
+      for (const n of r.omitidos) omitir("argumentos", `${prefixo}${n}`, 1);
+      saida.limpos += r.limpos;
+    } else if ("local" in marca) {
+      const quantos = Array.isArray(v) ? v.length : typeof v === "number" ? v : 1;
+      if (quantos > 0) omitir(marca.local, nome, quantos);
+    } else if (ehObjeto(v)) {
+      const filho = aplicarMarcas(marca.filhos, v, opcoes, `${nome}.`);
+      if (Object.keys(filho.valor).length > 0) saida.valor[campo] = filho.valor;
+      juntar(filho);
+    }
+  }
+  return saida;
 }

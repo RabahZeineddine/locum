@@ -58,15 +58,16 @@ function reviewDoTeams(): AgentSpec {
   } as AgentSpec;
 }
 
-async function ida(spec: AgentSpec, parte: Partial<AmbienteDoPacote> = {}) {
+async function ida(spec: AgentSpec, parte: Partial<AmbienteDoPacote> = {}, triggers: { config: unknown; enabled: boolean }[] = []) {
   const dono = maquina(parte);
-  await dono.automations.save({ spec, triggers: [], note: "", create: true });
+  await dono.automations.save({ spec, triggers: triggers as never, note: "", create: true });
   const { texto, pacote } = await dono.pacotes.exportar(spec.id);
   const bruno = maquina(parte);
   const previa = await bruno.pacotes.previa(texto);
   const resultado = await bruno.pacotes.importar(texto);
   const importada = (await bruno.automations.get(spec.id))!.version.spec;
-  return { texto, pacote, previa, resultado, importada };
+  const gatilhos = (await bruno.automations.get(spec.id))!.triggers.map((g) => g.config);
+  return { texto, pacote, previa, resultado, importada, gatilhos };
 }
 
 test("review de PR do Teams: os params dos passos voltam iguais", async () => {
@@ -155,4 +156,17 @@ test("pacote mexido à mão: o que a ação não deixa viajar não entra na impo
 test("toda ação registrada declara como seus params viajam", () => {
   const sem = buildGate().describe().filter((a) => a.paramsDoPacote === undefined).map((a) => a.kind);
   assert.deepEqual(sem, []);
+});
+
+test("gatilho mcp-poll: marcador e literal limpo viajam, credencial sai por nome, e o que é da pessoa (canal do Slack) vira a escolher", async () => {
+  const gatilhos = [
+    { config: { kind: "mcp-poll", server: "feed", tool: "listar", args: { q: "{{event.termo}}", limite: 5, token: `Bearer ${TOKEN}`, dono: EMAIL }, everyMinutes: 15 }, enabled: true },
+    { config: { kind: "slack-channel", channels: ["C0123ABCD45"], everyMinutes: 5 }, enabled: true },
+  ];
+  const { texto, pacote, gatilhos: importados, resultado } = await ida(reviewDoTeams(), {}, gatilhos);
+  for (const proibido of [TOKEN, EMAIL, "C0123ABCD45"]) assert.ok(!texto.includes(proibido), `vazou ${proibido}`);
+  assert.deepEqual(importados.find((g) => g.kind === "mcp-poll"), { kind: "mcp-poll", server: "feed", tool: "listar", args: { q: "{{event.termo}}", limite: 5 }, everyMinutes: 15 });
+  assert.deepEqual(pacote.omitidos.find((o) => o.onde === "mcp-poll" && o.codigo === "argumentos")?.params?.sort(), ["args.dono", "args.token"]);
+  assert.deepEqual(pacote.omitidos.find((o) => o.codigo === "canais"), { codigo: "canais", onde: "slack-channel", quantos: 1, params: ["channels"] });
+  assert.ok(resultado.pendencias.some((p) => p.codigo === "gatilho-sem-canal" && p.onde === "slack-channel"));
 });
