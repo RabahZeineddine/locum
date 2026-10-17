@@ -87,6 +87,8 @@ mac:
   # linker), o selo do bundle não fechava, e num Mac que baixou o dmg o
   # Gatekeeper dizia "danificado", sem saída pela tela. Assinado, o aviso vira
   # "não verificado", que abre por Ajustes > Privacidade e Segurança.
+  # O `npm run release` troca pela identidade fixa da máquina, quando há uma
+  # (scripts/release.ts), para o keychain não pedir senha a cada versão.
   identity: "-"
   # Runtime endurecido com assinatura ad-hoc barra o carregamento do módulo
   # nativo do SQLite, que não tem a mesma assinatura do app.
