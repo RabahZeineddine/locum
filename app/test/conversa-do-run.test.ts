@@ -16,6 +16,8 @@ import { githubReviewHandler, type ReviewClient } from "../src/sources/github.js
 import { AgentService } from "../src/services/agent-service.js";
 import { AutomationService } from "../src/services/automation-service.js";
 import { PassoAvulsoService } from "../src/services/passo-avulso-service.js";
+import { ApprovalService } from "../src/services/approval-service.js";
+import { i18nService } from "../src/services/i18n-service.js";
 import { RunService, type StepRunner } from "../src/services/run-service.js";
 
 /**
@@ -73,6 +75,8 @@ const roteiro: Roteiro = (prompt) => {
   const pedido = prompt.filter((m) => m.role === "user").at(-1)?.content.map((p) => (p.type === "text" ? p.text : "")).join("") ?? "";
   if (/libera/.test(pedido)) return { chamadas: [{ nome: "propor_acao", entrada: JSON.parse(APROVAR) }] };
   if (/faltou revisar/.test(pedido)) return { chamadas: [{ nome: "reexecutar_passo", entrada: { passo: "ler", instrucao: "revise também o tratamento de erro em X" } }] };
+  const edicao = /edita (\S+) (\{.*\})/.exec(pedido);
+  if (edicao) return { chamadas: [{ nome: "editar_pendencia", entrada: { pendencia: edicao[1], campos: JSON.parse(edicao[2]!) } }] };
   if (/olha o passo/.test(pedido)) return { chamadas: [{ nome: "ler_run", entrada: { passo: "ler" } }] };
   return { texto: "ok" };
 };
@@ -88,6 +92,7 @@ function montar(opcoes: { roteiro?: Roteiro; deps?: Partial<DepsDaConversaDoRun>
     db,
     runs: new RunService(db, async () => runner),
     avulso: new PassoAvulsoService(db, gate),
+    aprovacoes: new ApprovalService(db),
     library: {
       resolveProfile: async (id: string) => ({
         version: { id: "v", profileId: id, version: 1, spec: AgentProfile.parse({ id, name: id, model: "falso/roteiro" }), note: null, createdAt: 0 },
@@ -248,4 +253,80 @@ test("sem o aplicativo, run_chat_* diz isso", async () => {
   const res = await client.callTool({ name: "run_chat_state", arguments: { runId: "x" } });
   assert.equal(res.isError, true);
   assert.match((res.content as { text: string }[])[0]!.text, /só existe com o aplicativo/);
+});
+
+/** Uma pendência de review esperando na Fila, como o executor a deixa. */
+async function pendenciaDeReview(runId: string): Promise<string> {
+  const passo = (await db.select().from(schema.steps).where(eq(schema.steps.runId, runId)).orderBy(schema.steps.idx))[1];
+  const id = randomUUID();
+  await db.insert(schema.approvals).values({ id, runId, stepId: passo!.id, kind: "github.review_comment", payload: { owner: "acme", repo: "api", pull: 7, verdict: "COMMENT", summary: "ok", findings: [] } });
+  return id;
+}
+
+const payloadDe = async (id: string) => (await db.select().from(schema.approvals).where(eq(schema.approvals.id, id)))[0]!;
+
+test("a pessoa pede para mudar o veredito: a pendência muda, fica marcada e nada sai", async () => {
+  const { runId } = await montarRun();
+  const id = await pendenciaDeReview(runId);
+  const c = montar();
+  await c.conversas.enviar(runId, `edita ${id} {"verdict":"REQUEST_CHANGES","summary":"faltou teste"}`);
+  const linha = await payloadDe(id);
+  assert.deepEqual(linha.payload, { owner: "acme", repo: "api", pull: 7, verdict: "REQUEST_CHANGES", summary: "faltou teste", findings: [] });
+  assert.ok(linha.alteradaPelaConversaEm !== null);
+  assert.equal(linha.status, "pending");
+  assert.deepEqual(c.criadas, []);
+  assert.deepEqual((await c.conversas.estado(runId)).falas.at(-1)?.ferramentas, ["editar_pendencia"]);
+});
+
+test("a conversa não muda o alvo da pendência: campo fora do esquema é recusado e nada grava", async () => {
+  const { runId } = await montarRun();
+  const id = await pendenciaDeReview(runId);
+  const c = montar();
+  await c.conversas.enviar(runId, `edita ${id} {"summary":"x","pull":99}`);
+  const linha = await payloadDe(id);
+  assert.equal((linha.payload as { pull: number }).pull, 7);
+  assert.equal((linha.payload as { summary: string }).summary, "ok");
+  assert.equal(linha.alteradaPelaConversaEm, null);
+  assert.match((await c.conversas.estado(runId)).falas.at(-1)?.texto ?? "", /não aceita edição de pull/);
+});
+
+test("pendência de outro run não se edita por esta conversa", async () => {
+  const um = await montarRun();
+  const outro = await montarRun();
+  const alheia = await pendenciaDeReview(outro.runId);
+  const c = montar();
+  await c.conversas.enviar(um.runId, `edita ${alheia} {"summary":"x"}`);
+  const linha = await payloadDe(alheia);
+  assert.equal((linha.payload as { summary: string }).summary, "ok");
+  assert.match((await c.conversas.estado(um.runId)).falas.at(-1)?.texto ?? "", /outro run/);
+});
+
+test("automação arquivada: a conversa não edita a pendência", async () => {
+  const { runId } = await montarRun({ arquivada: true });
+  const id = await pendenciaDeReview(runId);
+  const c = montar();
+  await c.conversas.enviar(runId, `edita ${id} {"summary":"x"}`);
+  assert.equal((await payloadDe(id)).alteradaPelaConversaEm, null);
+  assert.match((await c.conversas.estado(runId)).falas.at(-1)?.texto ?? "", /arquivada/);
+});
+
+test("o system da conversa segue o idioma do app", async () => {
+  const { runId } = await montarRun();
+  try {
+    await i18nService.setPreference("en");
+    const em = montar();
+    await em.conversas.enviar(runId, "oi");
+    const sistemaEn = JSON.stringify(em.modelo.recebidos[0]);
+    assert.match(sistemaEn, /You talk with the person about an automation run/);
+    assert.doesNotMatch(sistemaEn, /Você conversa com a pessoa/);
+
+    await i18nService.setPreference("pt-BR");
+    const pt = montar();
+    await pt.conversas.enviar(runId, "oi");
+    const sistemaPt = JSON.stringify(pt.modelo.recebidos[0]);
+    assert.match(sistemaPt, /Você conversa com a pessoa sobre um run de automação/);
+    assert.doesNotMatch(sistemaPt, /You talk with the person/);
+  } finally {
+    await i18nService.setPreference(null);
+  }
 });

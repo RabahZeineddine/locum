@@ -11,6 +11,7 @@ import { Executor, NAO_RODOU } from "../src/executor/executor.js";
 import { McpRegistry } from "../src/mcp/registry.js";
 import type { Runtime } from "../src/runtimes/types.js";
 import { AgentService } from "../src/services/agent-service.js";
+import { impressaoDe } from "../src/approval/impressao.js";
 import { ApprovalService } from "../src/services/approval-service.js";
 import { RunService } from "../src/services/run-service.js";
 
@@ -475,4 +476,26 @@ test("decisão que chega com o run ainda running não deixa o run parado sem pen
   assert.equal(await estadoDoRun(runId), "done");
   assert.equal(publicados.length, 1);
   assert.equal((await passo(runId, "depois"))?.status, "done");
+});
+
+test("decidir com o hash do que a pessoa viu: se a pendência mudou desde então, a decisão é recusada e nada sai", async () => {
+  const { runId, approvalId, executor, publicados } = await montar();
+  const visto = impressaoDe((await new ApprovalService().get(approvalId))!.payload);
+  await db.update(schema.approvals).set({ payload: { texto: "mudou por fora" } }).where(eq(schema.approvals.id, approvalId));
+
+  await assert.rejects(executor.decide(approvalId, "approved", visto), /a pendência mudou desde que você viu/);
+
+  assert.deepEqual(publicados, []);
+  assert.equal((await new ApprovalService().get(approvalId))!.status, "pending");
+  assert.equal(await estadoDoRun(runId), "paused");
+});
+
+test("decidir com o hash atual passa, e sem hash vale como antes", async () => {
+  const um = await montar();
+  const atual = (await new ApprovalService().get(um.approvalId))!;
+  assert.equal(atual.hash, impressaoDe(atual.payload));
+  assert.equal((await um.executor.decide(um.approvalId, "approved", atual.hash)).status, "approved");
+
+  const outro = await montar();
+  assert.equal((await outro.executor.decide(outro.approvalId, "approved")).status, "approved");
 });

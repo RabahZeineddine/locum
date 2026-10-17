@@ -83,6 +83,13 @@ export type ActionHandler = {
    */
   inputSchema?: EsquemaJson;
   /**
+   * O que da pendência desta ação se pode editar antes do clique (JSON Schema de
+   * objeto): só os campos listados em `properties`, cada um validado pelo esquema
+   * dele. O resto do payload (alvo, conversa, commit) é o que o executor gravou e
+   * nunca muda por edição. Ausente, a pendência não se edita.
+   */
+  camposEditaveis?: EsquemaJson;
+  /**
    * Campos do payload que só o evento do run pode dizer: o executor os põe por
    * cima da saída do modelo, e ausentes no evento ficam ausentes. A review do
    * GitHub declara `headSha`: o commit avaliado não é escolha do modelo.
@@ -169,19 +176,25 @@ export class ApprovalGate {
     return this.handlers.get(kind)?.inputSchema;
   }
 
+  /** O esquema dos campos que a pendência desta ação aceita editar, quando ela os declara. */
+  camposEditaveis(kind: string): EsquemaJson | undefined {
+    return this.handlers.get(kind)?.camposEditaveis;
+  }
+
   /** O modo é aceito pela ação (ver `ActionHandler.modes`). */
   aceitaModo(kind: string, mode: ActionMode): boolean {
     const modes = this.handlers.get(kind)?.modes;
     return modes === undefined || modes.includes(mode);
   }
 
-  describe(): { kind: string; modes: readonly ActionMode[]; holdsByContent: boolean; outputSchema: EsquemaJson; inputSchema?: EsquemaJson; paramsDoPacote?: ParamsDoPacote }[] {
+  describe(): { kind: string; modes: readonly ActionMode[]; holdsByContent: boolean; outputSchema: EsquemaJson; inputSchema?: EsquemaJson; camposEditaveis?: EsquemaJson; paramsDoPacote?: ParamsDoPacote }[] {
     return [...this.handlers.entries()].map(([kind, handler]) => ({
       kind,
       modes: handler.modes ?? (["approve", "draft", "auto"] as const),
       holdsByContent: typeof handler.holdForApproval === "function",
       outputSchema: handler.outputSchema ?? SAIDA_PADRAO_DA_ACAO,
       ...(handler.inputSchema === undefined ? {} : { inputSchema: handler.inputSchema }),
+      ...(handler.camposEditaveis === undefined ? {} : { camposEditaveis: handler.camposEditaveis }),
       ...(handler.paramsDoPacote === undefined ? {} : { paramsDoPacote: handler.paramsDoPacote }),
     }));
   }

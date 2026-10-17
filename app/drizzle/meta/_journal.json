@@ -127,6 +127,13 @@
       "when": 1792269839564,
       "tag": "0017_conversa-do-run",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1792270614237,
+      "tag": "0018_pendencia-alterada-pela-conversa",
+      "breakpoints": true
     }
   ]
 }

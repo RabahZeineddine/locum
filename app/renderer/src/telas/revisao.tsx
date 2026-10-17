@@ -180,7 +180,7 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
     if (!pendencia) return;
     setResolvendo(true);
     try {
-      const resultado = await decidir(pendencia.id, decisao);
+      const resultado = await decidir(pendencia.id, decisao, pendencia.hash);
       if (resultado.status === "conflict") {
         setConflito(true);
         setMotivoDoConflito(resultado.motivo);

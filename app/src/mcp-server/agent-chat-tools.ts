@@ -3,7 +3,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ConversasDeAgent } from "../agent-chat/conversas.js";
 import type { Cartao, EstadoDaConversa } from "../agent-chat/tipos.js";
 import type { Ambiente } from "./ambiente.js";
-import { exigirImpressao, impressaoDe } from "./impressao.js";
+import { exigirImpressao, impressaoDe } from "../approval/impressao.js";
 import { def } from "./tool-def.js";
 
 /** Teto da espera de uma volta; passado dele a resposta sai com `respondendo` e se confere com agent_chat_state. */

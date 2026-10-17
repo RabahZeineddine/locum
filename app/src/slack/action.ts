@@ -4,7 +4,7 @@ import { resolverDestino } from "../acao/conversa.js";
 import { PARAMS_DE_DESTINO_NO_PACOTE } from "../acao/destino.js";
 import { adaptadorDoSlack } from "./conversa.js";
 import { postSlackReply, type SlackPostOptions } from "./post.js";
-import { buildPostProposal, SlackPostProposal } from "./proposal.js";
+import { buildPostProposal, CAMPOS_EDITAVEIS_DA_MENSAGEM, SlackPostProposal } from "./proposal.js";
 import { findThread, type SlackThread } from "./thread.js";
 
 export interface SlackPostHandlerOptions {
@@ -36,6 +36,7 @@ export function slackPostHandler(options: SlackPostHandlerOptions = {}): ActionH
 
   return {
     modes: ["approve", "auto"],
+    camposEditaveis: CAMPOS_EDITAVEIS_DA_MENSAGEM,
     paramsDoPacote: PARAMS_DE_DESTINO_NO_PACOTE,
 
     async propose(payload, target) {

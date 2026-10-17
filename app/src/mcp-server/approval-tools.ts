@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { approvalService } from "../services/approval-service.js";
 import type { Ambiente } from "./ambiente.js";
-import { exigirImpressao, impressaoDe } from "./impressao.js";
+import { exigirImpressao, impressaoDe } from "../approval/impressao.js";
 import { def } from "./tool-def.js";
 
 /** O que o hash da aprovação cobre: o que vai sair e o estado dela. */

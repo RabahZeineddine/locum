@@ -715,6 +715,36 @@ export const ENTRADA_DA_REVIEW: EsquemaJson = {
 };
 
 /**
+ * O que da pendência de review se edita: veredito, resumo e achados. Os achados aceitam
+ * também `confidence` e `category`, que pendências gravadas antes do esquema avulso trazem.
+ */
+export const CAMPOS_EDITAVEIS_DA_REVIEW: EsquemaJson = {
+  type: "object",
+  properties: {
+    verdict: ENTRADA_DA_REVIEW.properties!.verdict!,
+    summary: ENTRADA_DA_REVIEW.properties!.summary!,
+    findings: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          file: { type: "string", minLength: 1 },
+          line: { type: "integer", minimum: 1 },
+          severity: { type: "string", enum: ["critical", "high", "medium", "low"] },
+          confidence: { type: "string", enum: ["high", "medium", "low"] },
+          category: { type: "string" },
+          problem: { type: "string", minLength: 1 },
+          fix: { type: "string" },
+        },
+        required: ["severity", "problem"],
+        additionalProperties: false,
+      },
+    },
+  },
+  additionalProperties: false,
+};
+
+/**
  * Handler da acao de review.
  *
  * O modo rascunho usa o proprio mecanismo do GitHub: review criada sem `event`
@@ -755,6 +785,7 @@ export function githubReviewHandler(client: () => ReviewClient = octokit): Actio
     // O PR de destino é desta máquina (dono, repositório e número); o marcador do evento viaja.
     paramsDoPacote: { owner: "local", repo: "local", pull: "local" },
     inputSchema: ENTRADA_DA_REVIEW,
+    camposEditaveis: CAMPOS_EDITAVEIS_DA_REVIEW,
     // O commit avaliado é o do evento, nunca o que o modelo escreveu.
     camposDoEvento: ["headSha"],
     // Aprovar ou pedir mudança no pull request de outra pessoa é decisão

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { EsquemaJson } from "../config/referencias.js";
 import { destinoParaFila, type AlvoResolvido } from "../acao/conversa.js";
 import { DestinoNaFila } from "../acao/destino.js";
 
@@ -23,6 +24,13 @@ import { DestinoNaFila } from "../acao/destino.js";
  * conversa.
  */
 const TETO_DE_TEXTO = 3000;
+
+/** O que da pendência se edita: o texto, no mesmo teto que o handler aplica ao do modelo. */
+export const CAMPOS_EDITAVEIS_DA_MENSAGEM: EsquemaJson = {
+  type: "object",
+  properties: { text: { type: "string", minLength: 1, maxLength: TETO_DE_TEXTO } },
+  additionalProperties: false,
+};
 
 /** O que o passo de modelo devolve. Sem isto não há resposta para propor. */
 export const SlackReply = z.object({

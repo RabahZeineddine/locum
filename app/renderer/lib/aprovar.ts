@@ -16,9 +16,9 @@ type Decisao = "approved" | "rejected";
 
 interface PonteDeDecisao {
   approvals: {
-    decide: (id: string, decisao: Decisao) => Promise<DecisionResult>;
-    update: (id: string, findings: unknown[], verdict: string, summary?: string) => Promise<unknown>;
-    updateText: (id: string, text: string) => Promise<unknown>;
+    decide: (id: string, decisao: Decisao, hashVisto?: string) => Promise<DecisionResult>;
+    update: (id: string, findings: unknown[], verdict: string, summary?: string) => Promise<{ hash: string }>;
+    updateText: (id: string, text: string) => Promise<{ hash: string }>;
     settleStuck: (id: string, outcome: "published" | "retry") => Promise<{ status: "approved" | "pending" }>;
   };
 }
@@ -31,8 +31,15 @@ function ponte(): PonteDeDecisao {
   return achada;
 }
 
-export async function decidir(approvalId: string, decisao: Decisao): Promise<DecisionResult> {
-  const res = await ponte().approvals.decide(approvalId, decisao);
+/** O hash da pendência depois da última edição desta janela: a decisão carrega o que a pessoa viu, edição dela inclusa. */
+const hashDaEdicao = new Map<string, string>();
+
+/**
+ * `hashVisto` é o `hash` da pendência como a tela a mostrou. Se a conversa do run ou o MCP
+ * a mudaram desde então, a decisão é recusada em vez de publicar o que a pessoa não viu.
+ */
+export async function decidir(approvalId: string, decisao: Decisao, hashVisto?: string): Promise<DecisionResult> {
+  const res = await ponte().approvals.decide(approvalId, decisao, hashDaEdicao.get(approvalId) ?? hashVisto);
   invalidateReads("approvals.listPending");
   invalidateReads("runs.list");
   return res;
@@ -51,12 +58,12 @@ export async function gravarRevisao(
   verdict: string,
   summary?: string,
 ): Promise<void> {
-  await ponte().approvals.update(approvalId, findings, verdict, summary);
+  hashDaEdicao.set(approvalId, (await ponte().approvals.update(approvalId, findings, verdict, summary)).hash);
 }
 
 /** Grava o texto revisado de uma resposta de Slack ou Teams, sem publicar. */
 export async function gravarTexto(approvalId: string, texto: string): Promise<void> {
-  await ponte().approvals.updateText(approvalId, texto);
+  hashDaEdicao.set(approvalId, (await ponte().approvals.updateText(approvalId, texto)).hash);
 }
 
 /**

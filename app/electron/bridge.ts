@@ -290,7 +290,7 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
       approvalService.updateFindings(approvalId, findings, verdict, summary),
     "approvals.updateText": (approvalId, text) => approvalService.updateText(approvalId, text),
 
-    "approvals.decide": async (approvalId, decision) => {
+    "approvals.decide": async (approvalId, decision, hashVisto) => {
       if (decision !== "approved" && decision !== "rejected") {
         throw new Error(`decisao "${String(decision)}" nao existe`);
       }
@@ -298,7 +298,7 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
       // externalId que ja estava gravado, e e a unica que fala com o handler de
       // publicacao. A ponte nao repete nada disso: ela leva o clique e volta.
       // É o executor quem chama a gate, para o run seguir depois da decisão.
-      const { status, motivo } = await (await buildExecutor()).decide(approvalId, decision);
+      const { status, motivo } = await (await buildExecutor()).decide(approvalId, decision, hashVisto);
       await refreshTray();
       return { approvalId, decision, status, ...(motivo === undefined ? {} : { motivo }) };
     },

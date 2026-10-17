@@ -259,6 +259,8 @@ export const approvals = sqliteTable(
      */
     output: text("output", { mode: "json" }),
     decidedAt: integer("decided_at"),
+    /** Quando a conversa do run editou o payload. A edição da pessoa, na tela, não grava. */
+    alteradaPelaConversaEm: integer("alterada_pela_conversa_em"),
     createdAt: integer("created_at").notNull().default(now),
   },
   (t) => [index("approvals_status_idx").on(t.status)],

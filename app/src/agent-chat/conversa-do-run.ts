@@ -2,8 +2,11 @@ import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { AgentProfile } from "../config/types.js";
 import { db as defaultDb, schema } from "../db/index.js";
-import { avisoDeDadoExterno, delimitarDado, novaMarca } from "../executor/dado-externo.js";
+import { delimitarDado, novaMarca } from "../executor/dado-externo.js";
 import type { assertWithinBudget, recordSpend } from "../executor/budget.js";
+import type { ApprovalService } from "../services/approval-service.js";
+import { i18nService, type Language } from "../services/i18n-service.js";
+import { translate } from "../services/text-service.js";
 import type { LibraryService } from "../services/library-service.js";
 import type { PassoAvulsoService } from "../services/passo-avulso-service.js";
 import type { RunDetail, RunService } from "../services/run-service.js";
@@ -40,6 +43,7 @@ export interface DepsDaConversaDoRun extends DepsDoNucleo {
   db?: Db;
   runs: Pick<RunService, "get" | "rerunStep">;
   avulso: Pick<PassoAvulsoService, "proporAcao" | "acoesAvulsas">;
+  aprovacoes: Pick<ApprovalService, "editarCampos" | "camposEditaveisDe">;
   library: Pick<LibraryService, "resolveProfile">;
   orcamento: { checar: typeof assertWithinBudget; gastar: typeof recordSpend };
   /** O teto do contexto inicial. Ausente, `TETO_DO_CONTEXTO`. */
@@ -74,7 +78,7 @@ function armazemDoRun(db: Db): Armazem {
  * Quem conversa é o agent do primeiro passo de modelo do run (ou o modelo dele), salvo
  * escolha da pessoa. O modelo recebe o evento, a saída de cada passo e as pendências, e
  * age só por ferramentas sobre os mecanismos que já existem: ler o run, propor ação avulsa
- * (ADR 0007) e reexecutar um passo com instrução (ADR 0008). Nenhuma escreve fora da
+ * (ADR 0007), editar pendência que espera na Fila e reexecutar um passo com instrução (ADR 0008). Nenhuma escreve fora da
  * máquina: o que sai passa pela Fila.
  */
 export class ConversasDoRun extends NucleoDeConversa {
@@ -170,7 +174,7 @@ function provedorDoRun(deps: DepsDaConversaDoRun): ProvedorDeConversa {
           {
             status: atual.status,
             passos: atual.steps.map((s) => ({ chave: s.stepKey, nome: s.name, estado: s.status, avulso: s.origem === "avulso", instrucao: s.instrucao ?? null })),
-            pendencias: pendencias.map((a) => ({ id: a.id, acao: a.kind, estado: a.status })),
+            pendencias: pendencias.map((a) => ({ id: a.id, acao: a.kind, estado: a.status, camposEditaveis: deps.aprovacoes.camposEditaveisDe(a.kind) ?? null })),
             acoesQueSePodemPropor: deps.avulso.acoesAvulsas(),
           },
           null,
@@ -197,6 +201,19 @@ function provedorDoRun(deps: DepsDaConversaDoRun): ProvedorDeConversa {
       },
     },
     {
+      nome: "editar_pendencia",
+      descricao:
+        "Muda campos de uma pendência do run que ainda espera na Fila, por exemplo o veredito ou o resumo de uma review. Ela continua esperando a decisão da pessoa, e a Fila a mostra como alterada pela conversa. Só os campos que `ler_run` lista em `camposEditaveis` daquela pendência: o alvo nunca muda. Passe só os campos a mudar.",
+      entrada: {
+        pendencia: z.string().describe("o id da pendência, como `ler_run` lista"),
+        campos: z.record(z.string(), z.unknown()).describe("os campos a mudar, com o valor novo, no esquema de `camposEditaveis`"),
+      },
+      executar: async ({ pendencia, campos }) => {
+        await deps.aprovacoes.editarCampos(pendencia as string, campos as Record<string, unknown>, { conversa: d.id });
+        return `Pendência ${pendencia as string} alterada (${Object.keys(campos as object).join(", ")}). Nada foi publicado: a pessoa decide na Fila.`;
+      },
+    },
+    {
       nome: "reexecutar_passo",
       descricao:
         "Roda de novo um passo de modelo do run, com uma instrução a mais da pessoa, e os passos que dependem dele. O resultado novo substitui o anterior e as ações do run passam a esperar decisão na Fila. Leva minutos: a volta termina antes do run. Use quando a pessoa pede para olhar de novo ou acrescentar algo.",
@@ -211,17 +228,19 @@ function provedorDoRun(deps: DepsDaConversaDoRun): ProvedorDeConversa {
     },
   ];
 
-  const system = (d: RunDetail, persona: string, corpo: string, marca: string): string =>
-    [
+  const system = (idioma: Language, d: RunDetail, persona: string, corpo: string, marca: string): string => {
+    const t = (chave: string, variaveis: Record<string, unknown> = {}): string => translate(idioma, `conversaDoRun.system.${chave}`, variaveis);
+    return [
       persona,
-      "Você conversa com a pessoa sobre um run de automação que já rodou. Ela pede mudanças no resultado e você as faz pelas ferramentas.",
-      "Você só age por `ler_run`, `propor_acao` e `reexecutar_passo`. Nada é publicado por você: `propor_acao` cria uma pendência na Fila e `reexecutar_passo` roda o passo de novo com a instrução da pessoa. Diga o que fez e o que falta ela decidir.",
-      avisoDeDadoExterno(marca),
-      `Run ${d.id} da automação "${d.agentName}", estado ${d.status}${d.agentArchived ? ". A automação está arquivada: só se lê, e as ferramentas de escrita recusam." : "."}`,
-      `Contexto do run:\n${corpo}`,
+      t("intro"),
+      t("tools"),
+      t("externalData", { marca }),
+      t(d.agentArchived ? "runArchived" : "run", { id: d.id, nome: d.agentName, estado: d.status }),
+      t("context", { corpo }),
     ]
       .filter((p) => p !== "")
       .join("\n\n");
+  };
 
   return {
     chave: chaveDoRun,
@@ -248,10 +267,11 @@ function provedorDoRun(deps: DepsDaConversaDoRun): ProvedorDeConversa {
       const perfil = "agent" in alvo ? await deps.library.resolveProfile(alvo.agent) : undefined;
       const spec: AgentProfile | undefined = perfil?.version.spec;
       const { corpo, marca } = montarContexto(d);
+      const idioma = await i18nService.current();
       const chaveDoAgent = spec === undefined ? undefined : `biblioteca:${spec.id}`;
       return {
         modelo: spec?.model ?? ("modelo" in alvo ? alvo.modelo : ""),
-        system: () => system(d, perfil?.system ?? "", corpo, marca),
+        system: () => system(idioma, d, perfil?.system ?? "", corpo, marca),
         maxSteps: PASSOS_DA_VOLTA,
         ...(spec?.temperature === undefined ? {} : { temperature: spec.temperature }),
         // Nenhuma ferramenta de conexão: a conversa não escreve fora (ADR 0009).

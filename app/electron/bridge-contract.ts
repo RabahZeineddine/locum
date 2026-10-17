@@ -238,6 +238,8 @@ interface ServiceApi {
   "approvals.decide": (
     approvalId: string,
     decision: "approved" | "rejected",
+    /** O hash do payload que a tela mostrou (`ApprovalSummary.hash`): mudou desde então, a decisão é recusada. */
+    hashVisto?: string,
   ) => Promise<DecisionResult>;
   /**
    * A pessoa conferiu a pendência parada na publicação e diz o que aconteceu:
