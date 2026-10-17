@@ -128,6 +128,8 @@ export interface OpcoesDaLimpeza {
   gatilhos?: readonly GatilhoIdentificado[];
   /** Os gatilhos que saíram da lista: a pendência deles some junto. */
   removidos?: ReadonlySet<string>;
+  /** A pendência de um gatilho que a lista não traz some, em vez de ficar à espera de um gatilho que não existe (cópia, versão restaurada). */
+  descartarOrfas?: boolean;
   /** Se o recurso que a pendência nomeia existe aqui (motivo de resolução `existe`). Sem isto a pendência fica. */
   existe?: (p: Pendencia) => boolean;
 }
@@ -152,13 +154,13 @@ function resolvida(p: Pendencia, valorDe: () => unknown, existe: OpcoesDaLimpeza
  */
 export function limparPendenciasPreenchidas<S extends { steps: readonly object[]; pendentes?: Pendencia[] | undefined }>(spec: S, opcoes: OpcoesDaLimpeza = {}): S {
   if (spec.pendentes === undefined) return spec;
-  const { gatilhos, removidos = new Set<string>(), existe } = opcoes;
+  const { gatilhos, removidos = new Set<string>(), existe, descartarOrfas = false } = opcoes;
   const restantes = spec.pendentes.filter((p) => {
     const id = idDoGatilhoNoOnde(p.onde);
     if (id !== undefined) {
       if (gatilhos === undefined) return true;
       const gatilho = gatilhos.find((g) => g.id === id);
-      return gatilho === undefined ? !removidos.has(id) : !resolvida(p, () => valorNoCaminho(gatilho.config, p.campo), existe);
+      return gatilho === undefined ? !descartarOrfas && !removidos.has(id) : !resolvida(p, () => valorNoCaminho(gatilho.config, p.campo), existe);
     }
     const passo = spec.steps.find((s) => (s as { key?: unknown }).key === p.onde);
     return passo === undefined ? false : !resolvida(p, () => valorNoCaminho(passo, p.campo), existe);

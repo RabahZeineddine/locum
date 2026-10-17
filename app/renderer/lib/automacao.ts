@@ -638,6 +638,12 @@ export function dispensarPendencia(spec: AgentSpec, onde: string, campo: string)
   return restantes.length === 0 ? resto : { ...resto, pendentes: restantes };
 }
 
+/** As pendências que o rascunho tirou da versão gravada: dispensadas por nome, que a gravação não deixa voltar. */
+export function pendenciasDispensadas(gravado: AgentSpec, rascunho: AgentSpec): { onde: string; campo: string }[] {
+  const ficam = new Set((rascunho.pendentes ?? []).map((p) => `${p.onde}\u0000${p.campo}`));
+  return (gravado.pendentes ?? []).filter((p) => !ficam.has(`${p.onde}\u0000${p.campo}`)).map(({ onde, campo }) => ({ onde, campo }));
+}
+
 /** Algum gatilho existente tem campo a preencher: não liga até a pessoa preencher ou dispensar. */
 export const gatilhoIncompleto = (spec: AgentSpec, ids: readonly string[]): boolean => recusaDeLigar(spec.pendentes, ids) !== null;
 

@@ -671,3 +671,19 @@ test("automação com campo a preencher: get e list mostram, ligar recusa com o 
   assert.deepEqual(limpa.pending, []);
   ok(await client.callTool({ name: "set_trigger_enabled", arguments: { triggerId: salva.triggers[0]!.id, enabled: true } }));
 });
+
+test("save_automation mantém a pendência de uma versão a outra e só dismissPending, por nome, a tira sem preencher", async () => {
+  const client = await ligarCliente();
+  const agentId = `dispensa-${randomUUID().slice(0, 8)}`;
+  const pendentes = [{ onde: "publicar", campo: "params.destino", motivo: "destino-a-escolher" }];
+  const base = spec(agentId);
+  ok(await client.callTool({ name: "save_automation", arguments: { spec: { ...base, pendentes }, triggers: [], note: "importada", create: true } }));
+
+  // O spec remontado sem pendentes não a apaga.
+  const mantida = ok<{ pending: unknown[] }>(await client.callTool({ name: "save_automation", arguments: { spec: base, triggers: [], note: "remontado" } }));
+  assert.deepEqual(mantida.pending, pendentes);
+
+  recusa(await client.callTool({ name: "save_automation", arguments: { spec: base, triggers: [], note: "x", dismissPending: [{ onde: "publicar", campo: "nao-existe" }] } }), /não há pendência/);
+  const dispensada = ok<{ pending: unknown[] }>(await client.callTool({ name: "save_automation", arguments: { spec: base, triggers: [], note: "dispensei", dismissPending: [{ onde: "publicar", campo: "params.destino" }] } }));
+  assert.deepEqual(dispensada.pending, []);
+});

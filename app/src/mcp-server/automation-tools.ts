@@ -141,7 +141,7 @@ export function registerAutomationTools(server: McpServer): void {
     async ({ config }) => (await import("../services/trigger-preview.js")).previaDoGatilho(config as unknown as TriggerConfigInput));
 
   def(server, "save_automation", "publish",
-    "Records an automation as the app screen does when it saves: the flow spec (AgentSpec, as in upsert_agent) as a new immutable version, and its triggers in one call. Triggers with an id update that trigger, the ones without id are new, and existing triggers left out of the list are removed. Saved as a person: an action step can be set to auto here, and then it publishes without approval once the automation runs (upsert_agent, in contrast, lowers actions to approval). An mcp.call that writes is the exception: it only publishes without approval with params.autoEscrita: true, written on the node itself (a {{...}} reference does not count); without it the call goes to the approval queue even in auto. A new trigger starts disabled unless enabled is true, which turns it on (so this tool acts like set_automation_enabled: " + EFEITO_DE_LIGAR + "). A Teams trigger from a package that waits for its chats refuses to be saved empty unless valerParaTodosOsChats is true. Fields still to fill (spec.pendentes) are cleared when the saved step or trigger has a value at the path; enabled true is refused while any remains. Without create the automation must already exist; with create the id must be free.",
+    "Records an automation as the app screen does when it saves: the flow spec (AgentSpec, as in upsert_agent) as a new immutable version, and its triggers in one call. Triggers with an id update that trigger, the ones without id are new, and existing triggers left out of the list are removed. Saved as a person: an action step can be set to auto here, and then it publishes without approval once the automation runs (upsert_agent, in contrast, lowers actions to approval). An mcp.call that writes is the exception: it only publishes without approval with params.autoEscrita: true, written on the node itself (a {{...}} reference does not count); without it the call goes to the approval queue even in auto. A new trigger starts disabled unless enabled is true, which turns it on (so this tool acts like set_automation_enabled: " + EFEITO_DE_LIGAR + "). A Teams trigger from a package that waits for its chats refuses to be saved empty unless valerParaTodosOsChats is true. Fields still to fill (pending) are cleared when the saved step or trigger has a value at the path (a skill one, when the skill exists here); saving keeps the ones left from the previous version, even if the spec you send has no pendentes, and only dismissPending removes one without filling it; enabled true is refused while any remains. Without create the automation must already exist; with create the id must be free.",
     {
       spec: z.record(z.string(), z.unknown()).describe("full AgentSpec: id, name, steps and the rest of the get_agent format"),
       triggers: z
@@ -156,8 +156,12 @@ export function registerAutomationTools(server: McpServer): void {
         .describe("the whole list of triggers the automation should have"),
       note: z.string().describe("what changed, stored with the version"),
       create: z.boolean().optional().describe("true for a new automation: refused when the id already exists"),
+      dismissPending: z
+        .array(z.object({ onde: z.string().describe("the step key, or gatilho:<trigger id>"), campo: z.string().describe("the field path, as listed in pending") }))
+        .optional()
+        .describe("pending items the person dismisses by name, leaving the field as it is; one that does not exist is refused"),
     },
-    async ({ spec, triggers, note, create }) => {
+    async ({ spec, triggers, note, create, dismissPending }) => {
       const { spec: inteiro, semValor } = restoreSpec(await specAtual(spec), spec);
       const salvo = await automationService.save({
         spec: inteiro as unknown as AgentSpec,
@@ -169,6 +173,7 @@ export function registerAutomationTools(server: McpServer): void {
         })),
         note,
         ...(create === undefined ? {} : { create }),
+        ...(dismissPending === undefined ? {} : { dispensadas: dismissPending }),
       });
       return {
         agentId: salvo.version.agentId,

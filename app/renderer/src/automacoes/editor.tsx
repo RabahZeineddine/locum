@@ -32,6 +32,7 @@ import {
   type Problema,
   type Rascunho,
   gatilhoIncompleto,
+  pendenciasDispensadas,
 } from "@/lib/automacao";
 import { call, invalidateReads, read, useRead, type ReadResult } from "@/lib/bridge";
 import { semPrefixoDoIpc } from "@/lib/erro-da-ponte";
@@ -372,6 +373,7 @@ function EditorCarregado({
       spec,
       triggers: gatilhosParaGravar(resultado.gatilhos, gravadoAgora.gatilhos),
       knownTriggerIds: gravadoAgora.gatilhos.flatMap((g) => (g.id === undefined ? [] : [g.id])),
+      dispensadas: pendenciasDispensadas(gravadoAgora.spec, resultado.spec),
       note: nota.trim() || (nova ? provisoria?.nota : undefined) || t("automations.editor.noteDefault"),
       ...(nova ? { create: true } : { expectedVersion: sobre?.version.version ?? versao }),
     }).then(

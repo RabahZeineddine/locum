@@ -356,8 +356,8 @@ test("gatilho restrito a chats: o pacote só diz quantos, e a importação não 
 /** A pessoa que revê o que o pacote deixou a preencher e dispensa o que não precisa: grava o spec sem as pendências. */
 async function dispensarPendencias(m: Maquina, id: string): Promise<void> {
   const { version, triggers } = (await m.automations.get(id))!;
-  const { pendentes: _pendentes, ...spec } = version.spec;
-  await m.automations.save({ spec, triggers: triggers.map((g) => ({ id: g.id, config: g.config })), note: "pendências revistas" });
+  const { pendentes = [], ...spec } = version.spec;
+  await m.automations.save({ spec, triggers: triggers.map((g) => ({ id: g.id, config: g.config })), dispensadas: pendentes.map(({ onde, campo }) => ({ onde, campo })), note: "pendências revistas" });
 }
 
 test("pacote antigo, sem chatsRestritos, segue válido e o gatilho liga", async () => {

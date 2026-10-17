@@ -386,7 +386,22 @@ export class AgentService {
     const origem = await this.getLatestVersion(fromId);
     if (!origem) throw new Error(`agent "${fromId}" não existe`);
 
-    return this.upsert({ ...origem.spec, id, name: nome }, `duplicado de ${fromId}`, "human");
+    // A cópia não leva os gatilhos: a pendência de gatilho da origem não tem a quem apontar.
+    const spec = limparPendenciasPreenchidas(origem.spec, { gatilhos: [], descartarOrfas: true, existe: recursoExiste });
+    return this.upsert({ ...spec, id, name: nome }, `duplicado de ${fromId}`, "human");
+  }
+
+  /**
+   * Grava de novo uma versão antiga, como versão nova. A pendência de gatilho da versão
+   * antiga vale só para o gatilho que ainda existe e ainda não tem o campo; a de um
+   * gatilho que saiu, ou que já foi preenchido, não volta.
+   */
+  async restoreVersion(agentId: string, version: number, note?: string): Promise<AgentVersion> {
+    const antiga = (await this.listVersions(agentId)).find((v) => v.version === version);
+    if (antiga === undefined) throw new Error(`agent "${agentId}" não tem a versão ${version}`);
+    const gatilhos = (await this.db.select().from(schema.triggers).where(eq(schema.triggers.agentId, agentId))).map((g) => ({ id: g.id, config: g.config as object }));
+    const spec = limparPendenciasPreenchidas(antiga.spec, { gatilhos, descartarOrfas: true, existe: recursoExiste });
+    return this.saveEdited(agentId, spec, note ?? `restaurada da versão ${version}`);
   }
 
   /**

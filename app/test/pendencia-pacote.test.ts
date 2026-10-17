@@ -133,3 +133,53 @@ test("set_trigger que preenche o campo limpa a pendência do gatilho, e só a de
   const depois = (await b.automations.get("gatilho-pelo-mcp"))!;
   assert.deepEqual(depois.version.spec.pendentes?.map((p) => p.campo), ["filters.authors"]);
 });
+
+test("gravar mantém a pendência que não foi preenchida nem dispensada, e dispensar é por nome", async () => {
+  const m = maquina();
+  const pendentes = [
+    { onde: "ler", campo: "prompt", motivo: "argumentos" },
+    { onde: "ler", campo: "model", motivo: "argumentos" },
+  ];
+  const spec = AgentSpec.parse({ id: "mantem", name: "X", steps: [{ ...base, type: "model", key: "ler", name: "Ler", model: "", prompt: "", maxSteps: 3 }], pendentes });
+  const criada = await m.automations.save({ spec, triggers: [], note: "importada", create: true });
+  const { pendentes: _p, ...sem } = criada.version.spec;
+
+  // O spec remontado sem pendentes não apaga nada em silêncio.
+  const mesma = await m.automations.save({ spec: AgentSpec.parse({ ...sem, name: "Y" }), triggers: [], note: "remontado" });
+  assert.deepEqual(mesma.version.spec.pendentes?.map((p) => p.campo), ["prompt", "model"]);
+
+  // Dispensar nomeia a pendência, e só essa sai.
+  const dispensada = await m.automations.save({ spec: AgentSpec.parse({ ...sem, name: "Y" }), triggers: [], note: "dispensei", dispensadas: [{ onde: "ler", campo: "prompt" }] });
+  assert.deepEqual(dispensada.version.spec.pendentes?.map((p) => p.campo), ["model"]);
+  await assert.rejects(() => m.automations.save({ spec: AgentSpec.parse({ ...sem, name: "Y" }), triggers: [], note: "x", dispensadas: [{ onde: "ler", campo: "nao-existe" }] }), /não há pendência/);
+});
+
+async function comGatilhoPendente(id: string) {
+  const a = maquina();
+  const spec = AgentSpec.parse({ id, name: "X", steps: [{ ...base, type: "model", key: "ler", name: "Ler", model: "claude-code/claude-sonnet-5", prompt: "oi" }] });
+  await a.automations.save({ spec, triggers: [{ config: { kind: "poll", source: "github", owner: "empresa-ana", repoMatch: "x-.*", authorship: "others" } }], note: "", create: true });
+  const b = maquina();
+  await b.pacotes.importar((await a.pacotes.exportar(id)).texto);
+  return { b, gravada: (await b.automations.get(id))! };
+}
+
+test("duplicar leva só a pendência de passo: a de gatilho não tem a quem apontar na cópia", async () => {
+  const { b, gravada } = await comGatilhoPendente("origem-dup");
+  const comPasso = { ...gravada.version.spec, pendentes: [...gravada.version.spec.pendentes!, { onde: "ler", campo: "params.destino", motivo: "destino-a-escolher" }] };
+  await b.automations.save({ spec: comPasso, triggers: [{ id: gravada.triggers[0]!.id, config: gravada.triggers[0]!.config }], note: "com passo" });
+  const copia = await b.agents.duplicate("origem-dup", "copia-dup", "Cópia");
+  assert.deepEqual(copia.spec.pendentes, [{ onde: "ler", campo: "params.destino", motivo: "destino-a-escolher" }]);
+});
+
+test("restaurar uma versão antiga: a pendência do gatilho volta só se o gatilho existe e segue vazio", async () => {
+  const { b, gravada } = await comGatilhoPendente("origem-rest");
+  const idDoGatilho = gravada.triggers[0]!.id;
+  const antiga = gravada.version.version;
+  // Gatilho preenchido: a pendência saiu, e restaurar a versão antiga não a traz de volta.
+  await b.triggers.set("origem-rest", { ...gravada.triggers[0]!.config, owner: "empresa-bruno" } as never, { id: idDoGatilho });
+  assert.equal((await b.agents.restoreVersion("origem-rest", antiga)).spec.pendentes, undefined);
+
+  // Gatilho que saiu: nada fica à espera dele.
+  await b.automations.save({ spec: (await b.automations.get("origem-rest"))!.version.spec, triggers: [], note: "sem gatilho" });
+  assert.equal((await b.agents.restoreVersion("origem-rest", antiga)).spec.pendentes, undefined);
+});

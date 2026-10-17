@@ -44,6 +44,12 @@ export interface AutomationSaveInput {
    * editor abriu fica. Sem ela, a lista de `triggers` é a lista inteira.
    */
   knownTriggerIds?: string[];
+  /**
+   * As pendências que a pessoa dispensa, por nome (`onde` e `campo`). Gravar mantém as
+   * da versão anterior que não foram preenchidas nem dispensadas aqui: spec remontado
+   * sem `pendentes` não apaga nada em silêncio.
+   */
+  dispensadas?: { onde: string; campo: string }[];
 }
 
 /** O que a gravação conseguiu, mas a pessoa precisa saber. */
@@ -125,7 +131,8 @@ export class AutomationService {
     });
     const ficam = new Set(identificados.flatMap((g) => (g.id === undefined ? [] : [g.id])));
     const removidos = new Set(atuais.filter((a) => !ficam.has(a.id) && (input.knownTriggerIds === undefined || input.knownTriggerIds.includes(a.id))).map((a) => a.id));
-    const spec = limparPendenciasPreenchidas(input.spec, { gatilhos: identificados, removidos, existe: recursoExiste });
+    const comPendencias = await this.mantendoPendencias(input, agentId);
+    const spec = limparPendenciasPreenchidas(comPendencias, { gatilhos: identificados, removidos, existe: recursoExiste });
     if (identificados.some((g) => g.ligar)) {
       const recusa = recusaDeLigar(spec.pendentes, identificados.flatMap((g) => (g.ligar && g.id !== undefined ? [g.id] : [])));
       if (recusa !== null) throw new Error(recusa);
@@ -162,6 +169,28 @@ export class AutomationService {
 
     const gravados = await this.triggers.list(agentId);
     return { version, createdAt: (await this.agents.get(agentId))!.createdAt, triggers: gravados, avisos: avisosDaGravacao(version.spec, gravados) };
+  }
+
+  /**
+   * O spec com as pendências da versão anterior que a gravação não preencheu nem dispensou
+   * por nome. Quem remonta o spec sem `pendentes` (a tela, o MCP) não as apaga por omissão.
+   */
+  private async mantendoPendencias(input: AutomationSaveInput, agentId: string): Promise<AgentSpec> {
+    const anteriores = input.create === true ? [] : ((await this.agents.getLatestVersion(agentId))?.spec.pendentes ?? []);
+    const trazidas = input.spec.pendentes ?? [];
+    const dispensadas = input.dispensadas ?? [];
+    const chave = (p: { onde: string; campo: string }): string => `${p.onde}\u0000${p.campo}`;
+    const conhecidas = new Set([...anteriores, ...trazidas].map(chave));
+    for (const d of dispensadas) if (!conhecidas.has(chave(d))) throw new Error(`não há pendência "${d.onde}: ${d.campo}" para dispensar`);
+    const dispensa = new Set(dispensadas.map(chave));
+    const vistas = new Set<string>();
+    const pendentes = [...trazidas, ...anteriores].filter((p) => {
+      if (dispensa.has(chave(p)) || vistas.has(chave(p))) return false;
+      vistas.add(chave(p));
+      return true;
+    });
+    const { pendentes: _antes, ...resto } = input.spec;
+    return pendentes.length === 0 ? (resto as AgentSpec) : { ...resto, pendentes };
   }
 
   /**
