@@ -64,13 +64,21 @@ imutável, nenhuma versão entra em execução agendada sem o gatilho ser habili
 e o histórico permite desfazer. Editar é reversível e auditável; publicar no nome
 de outra pessoa não é.
 
-Não há excluir automação: arquivar (`archive_automation`, `danger`) tira os
+Excluir é em dois passos: primeiro arquivar, depois deletar. Arquivar (`archive_automation`, `danger`) tira os
 gatilhos e o estado deles e deixa runs, aprovações, achados e versões, que são o
 registro do que foi publicado em nome da pessoa e o que a dedupe de review lê.
 Recusa enquanto houver run na fila ou rodando, ou aprovação pendente ou em
 publicação, e, pelo MCP, quando a automação está ligada a uma iniciativa (decisão
 de uma pessoa, na tela). `unarchive_automation` desfaz, sem os gatilhos. A
 confirmação fica com o cliente, que pergunta a cada chamada de ferramenta `danger`.
+
+Deletar (`delete_automation`, `danger`) só vale para a arquivada e apaga tudo que
+pertence a ela, numa transação que confere dentro dela que segue arquivada: versões,
+gatilhos e o estado deles, runs com passos, aprovações e achados, orçamento, gasto e
+os eventos colados à mão. O agent da biblioteca e as skills ficam, por serem
+compartilhados. Recusa com run na fila ou rodando, aprovação em publicação e, pelo
+MCP, automação ligada a iniciativa, como o arquivar. A prévia (`deletePreview`)
+vem na recusa da ferramenta, como no arquivar.
 
 ### 5. O servidor MCP antecede a interface na ordem de construção
 

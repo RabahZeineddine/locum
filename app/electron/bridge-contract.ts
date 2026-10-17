@@ -506,6 +506,8 @@ interface ServiceApi {
   "automations.archive": AutomationService["archive"];
   "automations.unarchive": AutomationService["unarchive"];
   "automations.archivePreview": AutomationService["archivePreview"];
+  "automations.delete": AutomationService["delete"];
+  "automations.deletePreview": AutomationService["deletePreview"];
   /**
    * O pacote: a automação e os agents dela num `.locum.json`, sem segredo.
    * Exportar e escolher o arquivo usam o seletor do sistema e devolvem `null`
@@ -792,6 +794,8 @@ export const BRIDGE_CHANNELS = [
   "automations.archive",
   "automations.unarchive",
   "automations.archivePreview",
+  "automations.delete",
+  "automations.deletePreview",
   "pacote.exportFile",
   "pacote.chooseFile",
   "pacote.preview",

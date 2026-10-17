@@ -2152,8 +2152,6 @@
       },
       "eventWarning": "Version {{version}} saved. This flow uses the event ({{reason}}), but {{triggers}} does not bring an event: when that trigger fires, the run goes out without it. Use a trigger that records events or drop the dependency.",
       "archive": {
-        "zone": "Danger zone",
-        "hint": "Archives the automation: it leaves the lists and the scheduler, and its triggers are removed. The history stays.",
         "button": "Archive",
         "title": "Archive \"{{name}}\"?",
         "triggers_one": "{{count}} trigger",
@@ -2184,7 +2182,26 @@
         "confirm": "Archive",
         "done": "\"{{name}}\" archived. The history stays."
       },
-      "archivedBanner": "This automation is archived: it does not run, turn on or accept edits. Unarchive it to use it again, without triggers and off."
+      "archivedBanner": "This automation is archived: it does not run, turn on or accept edits. Unarchive it to use it again, without triggers and off.",
+      "menu": {
+        "label": "More automation actions",
+        "delete": "Delete",
+        "deleteNeedsArchive": "Archive first"
+      },
+      "delete": {
+        "title": "Delete \"{{name}}\" for good?",
+        "leaves": "Gone for good: {{itens}}, plus the state of the triggers, the budget, the spend and the events pasted by hand for it.",
+        "stays": "Stays: the library agents and the skills, which are shared.",
+        "irreversible": "This cannot be undone, and the identifier becomes free.",
+        "dedupe": "The PRs it already reviewed stop counting, and another automation can review them again.",
+        "initiative": "Linked to the initiative \"{{title}}\". The link goes with it.",
+        "blocked": "Cannot delete right now:",
+        "blocker_active": "The automation is in use: archive it before deleting.",
+        "previewFailed": "Could not check what would be deleted: {{erro}}",
+        "cancel": "Cancel",
+        "confirm": "Delete",
+        "done": "\"{{name}}\" deleted."
+      }
     },
     "palette": {
       "title": "Components",

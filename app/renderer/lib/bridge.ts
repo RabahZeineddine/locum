@@ -144,6 +144,8 @@ export const READ_CHANNELS = [
   "automations.eventsForRun",
   // O que arquivar leva, o que deixa e o que impede: o diálogo de confirmação. Leitura pura.
   "automations.archivePreview",
+  // O que deletar leva e o que impede: o diálogo de confirmação. Leitura pura.
+  "automations.deletePreview",
   "library.profiles",
   "library.profile",
   "library.profileVersions",
@@ -240,6 +242,7 @@ export const AO_VIVO: Record<ReadChannel, boolean> = {
   "automations.get": false,
   "automations.eventsForRun": true,
   "automations.archivePreview": true,
+  "automations.deletePreview": true,
   "library.profiles": true,
   "library.profile": true,
   "library.profileVersions": true,
@@ -409,6 +412,8 @@ export const ACTION_CHANNELS = [
   // Arquivar e desarquivar: cliques de quem está usando; arquivar vem depois do diálogo de confirmação.
   "automations.archive",
   "automations.unarchive",
+  // Deletar: clique de quem está usando, depois do diálogo de confirmação com a prévia.
+  "automations.delete",
   // Exportar e importar pacote: cliques de quem está usando. A prévia não grava
   // nada; importar grava o que a pessoa escolheu, e gatilho nenhum entra ligado.
   "pacote.exportFile",

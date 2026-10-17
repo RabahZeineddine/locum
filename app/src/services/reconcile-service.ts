@@ -1,3 +1,4 @@
+import { FONTE_RECONCILE } from "../db/estado-do-run.js";
 import { randomUUID } from "node:crypto";
 import { and, asc, eq, gte, inArray } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
@@ -19,7 +20,7 @@ type Db = typeof defaultDb;
  * reconciliação, que é derivada, e misturar isso com o estado da execução
  * faria um `reset` de run apagar a conferência junto.
  */
-const CURSOR_SOURCE = "reconcile";
+const CURSOR_SOURCE = FONTE_RECONCILE;
 
 /**
  * Status de execução que vale conferir.

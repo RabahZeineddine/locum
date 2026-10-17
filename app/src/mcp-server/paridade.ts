@@ -182,6 +182,9 @@ export const FERRAMENTA_DO_CANAL: Record<string, string> = {
   "automations.archive": "archive_automation",
   "automations.archivePreview": "archive_automation",
   "automations.unarchive": "unarchive_automation",
+  // A prévia é a recusa do delete_automation, como no archive.
+  "automations.delete": "delete_automation",
+  "automations.deletePreview": "delete_automation",
   "pacote.exportFile": "export_package",
   "pacote.preview": "preview_package",
   "pacote.import": "import_package",

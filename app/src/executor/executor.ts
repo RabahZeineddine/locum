@@ -444,7 +444,10 @@ export class Executor {
       // Servidor MCP não fecha aqui: o registro vive entre execuções e cada
       // processo sai sozinho depois do tempo ocioso, ou no encerramento do app.
       // O gasto já foi para o dia passo a passo; aqui só conta a execução.
-      if (newRun) await recordSpend(spec.id, { usd: 0, tokens: 0 }, true);
+      // Confere que a automação ainda existe: deletada entre o fim do run e aqui, o gasto não a recria.
+      if (newRun && (await db.select({ id: schema.agents.id }).from(schema.agents).where(eq(schema.agents.id, spec.id))).length > 0) {
+        await recordSpend(spec.id, { usd: 0, tokens: 0 }, true);
+      }
     }
   }
 

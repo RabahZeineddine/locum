@@ -31,8 +31,15 @@ agents trabalham e o que acontece com a saída deles.
 **Automação arquivada**: automação tirada de uso. Some das listas e do agendador,
 e os gatilhos saem com o estado preso a eles. Execuções, aprovações, achados e
 versões ficam, porque são o registro do que foi publicado em nome da pessoa, e
-o id continua ocupado. Dá para desarquivar: volta sem gatilhos e desligada. Não
-existe excluir.
+o id continua ocupado. Dá para desarquivar: volta sem gatilhos e desligada.
+
+**Automação deletada**: automação arquivada que a pessoa apagou de vez, com tudo
+que pertencia a ela (versões, gatilhos e o estado deles, execuções com passos,
+aprovações e achados, métricas, orçamento, gasto e os eventos colados à mão para
+ela). Só se deleta a arquivada, e não tem volta; o id fica livre. O agent da
+biblioteca e as skills ficam. Como a dedupe de review lê as aprovações de todas as
+automações, os PRs que ela já revisou deixam de contar, e outra automação pode
+revisá-los de novo.
 
 **Nó**: cada peça da automação. Categorias: gatilho, agent, ação de app,
 ferramenta, lógica e aprovação.
