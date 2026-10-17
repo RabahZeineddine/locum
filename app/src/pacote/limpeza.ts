@@ -49,14 +49,32 @@ const PADROES_DE_SEGREDO: readonly [RegExp, string][] = [
   [/\bBearer\s+[A-Za-z0-9._~+/-]{16,}=*/gi, `Bearer ${SEGREDO}`],
 ];
 
-/** Identificadores, e-mail e caminho do home: dado pessoal, que não é credencial. */
-const PADROES_PESSOAIS: readonly [RegExp, string][] = [
+/** Quem é a pessoa ou onde ela conversa: chat do Teams, canal ou usuário do Slack e e-mail. */
+const PADROES_DE_IDENTIDADE: readonly [RegExp, string][] = [
   // Teams, explícitos: chat e canal (`@thread.v2`, `@thread.tacv2`), reunião e DM (`@unq.gbl.spaces`).
   [/\b19:[A-Za-z0-9_.=-]+@(?:thread\.[A-Za-z0-9]+|unq\.gbl\.spaces)/g, "[chat removido]"],
-  [/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, ID],
   // Slack: canal, grupo, DM, workspace e usuário (`<@U...>` também), com ao menos um dígito.
   [/\b[CGDWU](?=[A-Z0-9]*\d)[A-Z0-9]{8,}\b/g, ID],
   [/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g, "[e-mail removido]"],
+];
+
+/** Identificadores, e-mail e caminho do home: dado pessoal, que não é credencial. */
+const PADROES_PESSOAIS: readonly [RegExp, string][] = [
+  PADROES_DE_IDENTIDADE[0]!,
+  [/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, ID],
+  ...PADROES_DE_IDENTIDADE.slice(1),
+];
+
+/**
+ * O que identifica a pessoa ou a conversa dentro de um texto que a limpeza deixa passar
+ * (o da skill): quem exporta precisa ver, por skill, para decidir antes de mandar o arquivo.
+ */
+export function identidadesNoTexto(texto: string): string[] {
+  return [...new Set(PADROES_DE_IDENTIDADE.flatMap(([padrao]) => texto.match(padrao) ?? []))];
+}
+
+/** O caminho do home de quem escreveu: o usuário aparece no caminho. */
+const CAMINHOS_DO_HOME: readonly [RegExp, string][] = [
   [/[A-Za-z]:\\Users\\[^\\\s"']+/g, "~"],
   [/\/(?:Users|home)\/[^/\s"']+/g, "~"],
 ];
@@ -65,7 +83,7 @@ function escapar(texto: string): string {
   return texto.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-const PADROES: readonly [RegExp, string][] = [...PADROES_DE_SEGREDO, ...PADROES_PESSOAIS];
+const PADROES: readonly [RegExp, string][] = [...PADROES_DE_SEGREDO, ...PADROES_PESSOAIS, ...CAMINHOS_DO_HOME];
 
 /** Webhook de entrada e segredo na query: o que numa URL é credencial, sem mexer no resto do texto. */
 export function ocultarCredencialDeUrl(url: string, marcador: string): string {
@@ -84,6 +102,24 @@ export function limparSegredos(texto: string): string {
     saida = saida.replace(padrao, (...args: unknown[]) => por.replace(/\$(\d)/g, (_, n: string) => String(args[Number(n)])));
   }
   return saida;
+}
+
+/**
+ * A limpeza do texto de uma skill: só credencial e caminho do home. E-mail de exemplo,
+ * uuid e palavra com dígitos são conteúdo da skill, e trocá-los a estraga.
+ */
+export function limparSkill(texto: string, home: string = homedir()): Limpeza {
+  let saida = texto;
+  let removidos = 0;
+  const trocar = (padrao: RegExp, por: string): void => {
+    saida = saida.replace(padrao, (...args: unknown[]) => {
+      removidos += 1;
+      return por.replace(/\$(\d)/g, (_, n: string) => String(args[Number(n)]));
+    });
+  };
+  if (home.length > 1) trocar(new RegExp(escapar(home), "g"), "~");
+  for (const [padrao, por] of [...PADROES_DE_SEGREDO, ...CAMINHOS_DO_HOME]) trocar(padrao, por);
+  return { texto: saida, removidos };
 }
 
 export function limparTexto(texto: string, home: string = homedir()): Limpeza {
@@ -106,7 +142,7 @@ export function limparTexto(texto: string, home: string = homedir()): Limpeza {
  * servidor, ferramenta) é estrutura: mexer nele quebraria o fluxo, e o formato
  * já não carrega nada sensível nele.
  */
-const TEXTO_LIVRE = new Set(["prompt", "instructions", "context", "description", "input", "value", "against", "title", "path", "cases", "name", "repoMatch", "labels", "pergunta"]);
+const TEXTO_LIVRE = new Set(["prompt", "instructions", "context", "description", "input", "value", "against", "title", "path", "cases", "name", "repoMatch", "labels", "pergunta", "corpo", "descricao"]);
 
 /** Limpa as strings dos campos de texto livre, em profundidade, sem mexer no resto. */
 export function limparValor<T>(valor: T, home?: string): { valor: T; removidos: number } {

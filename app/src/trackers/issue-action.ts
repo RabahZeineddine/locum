@@ -19,6 +19,8 @@ import { buildIssueProposal, TrackerIssueProposal } from "./proposal.js";
 export function trackerIssueHandler(service: TrackerService = trackerService): ActionHandler {
   return {
     modes: ["approve", "auto"],
+    // O tracker vem de `target`, que não viaja; o passo não tem params próprios.
+    paramsDoPacote: {},
 
     async propose(payload, target) {
       if (target === null || target.trim().length === 0) {

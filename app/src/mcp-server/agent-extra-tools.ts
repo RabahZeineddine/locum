@@ -54,12 +54,10 @@ export function registerAgentExtraTools(server: McpServer, amb: Ambiente): void 
     { agentId: z.string() }, ({ agentId }) => agentService.listVersions(agentId));
 
   def(server, "restore_agent_version", "danger",
-    "Restores an old version of an agent by recording its spec as a NEW version, AS A PERSON, like the editor: the current version stays in the history, and the action modes the old version had (draft or auto) come back with it, so an auto action publishes without approval whenever the agent runs. Read the versions with list_agent_versions.",
+    "Restores an old version of an agent by recording its spec as a NEW version, AS A PERSON, like the editor: the current version stays in the history, and the action modes the old version had (draft or auto) come back with it, so an auto action publishes without approval whenever the agent runs. Fields still to fill (pending) of a trigger come back only for a trigger that still exists and is still empty there. Read the versions with list_agent_versions.",
     { agentId: z.string(), version: z.number().int().positive(), note: z.string().optional() },
     async ({ agentId, version, note }) => {
-      const antiga = (await agentService.listVersions(agentId)).find((v) => v.version === version);
-      if (antiga === undefined) throw new Error(`agent "${agentId}" não tem a versão ${version}`);
-      const v = await agentService.saveEdited(agentId, antiga.spec, note ?? `restaurada da versão ${version}`);
+      const v = await agentService.restoreVersion(agentId, version, note);
       return { agentId: v.agentId, version: v.version, note: v.note };
     });
 

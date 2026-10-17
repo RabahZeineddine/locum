@@ -323,7 +323,7 @@ test("gateway fora do ar não levanta erro", async () => {
 function agendador(pausa: ConstructorParameters<typeof Scheduler>[11]) {
   const db = bancoDeTeste();
   const iniciados: (string | null)[] = [];
-  const triggers = { enabled: async () => gatilhos, list: async () => gatilhos } as unknown as TriggerService;
+  const triggers = { enabled: async () => gatilhos, list: async () => gatilhos, pendencias: async () => [] } as unknown as TriggerService;
   const executions = {
     startForEvent: async (input: { eventId: string | null }) => {
       iniciados.push(input.eventId);
@@ -370,7 +370,7 @@ test("gatilho de relógio no limite não toma a batida e dispara na primeira dep
   const iniciados: unknown[] = [];
   const gatilhos: TriggerEntry[] = [{ id: "g", agentId: "a", enabled: true, config: { kind: "schedule", everyMinutes: 30 } as TriggerConfig }];
   const scheduler = new Scheduler(
-    db, { enabled: async () => gatilhos, list: async () => gatilhos } as unknown as TriggerService,
+    db, { enabled: async () => gatilhos, list: async () => gatilhos, pendencias: async () => [] } as unknown as TriggerService,
     { startForEvent: async () => (iniciados.push(1), { runId: "r" }) } as unknown as ExecutionService,
     {} as McpService, {} as SlackService, undefined, (async () => ({ checked: 0, settled: [], stillOpen: 0, unreadable: 0, failed: [] })) as never,
     undefined, undefined, undefined, undefined,
@@ -472,7 +472,7 @@ function agendadorComEventos(quantos: number, pausa: ConstructorParameters<typeo
   };
   const scheduler = new Scheduler(
     db,
-    { enabled: async () => gatilhos, list: async () => gatilhos } as unknown as TriggerService,
+    { enabled: async () => gatilhos, list: async () => gatilhos, pendencias: async () => [] } as unknown as TriggerService,
     { startForEvent: async (i: { eventId: string | null }) => (iniciados.push(i.eventId), { runId: `r${iniciados.length}` }) } as unknown as ExecutionService,
     {} as McpService, {} as SlackService, poll as never,
     (async () => ({ checked: 0, settled: [], stillOpen: 0, unreadable: 0, failed: [] })) as never,

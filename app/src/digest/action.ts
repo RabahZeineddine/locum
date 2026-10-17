@@ -44,6 +44,7 @@ export function digestDeliverHandler(options: DigestDeliverHandlerOptions = {}):
 
   return {
     modes: ["approve"],
+    paramsDoPacote: {},
 
     async propose(payload) {
       return buildDigestProposal(payload);

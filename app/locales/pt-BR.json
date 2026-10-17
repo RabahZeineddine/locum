@@ -2662,6 +2662,9 @@
       "verdict": "Reagir pelo veredito"
     },
     "problems": {
+      "downgraded": "Este nó veio em automático no pacote e entrou em aprovação: nada publica sozinho até você dizer.",
+      "downgradedBack": "Voltar para automático",
+      "downgradedBackHint": "Põe o nó em automático por sua conta: ele passa a publicar sem aprovação",
       "noName": "A automação precisa de nome.",
       "noSteps": "Acrescente pelo menos um passo.",
       "noTrigger": "Sem gatilho, ela só roda pelo botão.",
@@ -2686,7 +2689,23 @@
       "refNotBefore": "A ação cita {{ref}}, que não vem antes dela no fluxo.",
       "destinationMissing": "Escolha o chat ou canal do destino fixo.",
       "replyNeedsApp": "Responder no {{app}} precisa de um gatilho do {{app}}: é dele que vem a mensagem a que se responde.",
-      "reactNeedsApp": "Reagir no {{app}} precisa de um gatilho do {{app}}: é dele que vem a mensagem."
+      "reactNeedsApp": "Reagir no {{app}} precisa de um gatilho do {{app}}: é dele que vem a mensagem.",
+      "pending": {
+        "destino-a-escolher": "Escolha o destino deste nó ({{campo}}): o do pacote era desta máquina.",
+        "url-a-preencher": "Preencha o endereço deste nó ({{campo}}).",
+        "argumentos": "Preencha o que o pacote deixou de fora ({{campo}}).",
+        "tracker": "Escolha o tracker deste nó ({{campo}}).",
+        "canais": "Escolha os canais deste gatilho ({{campo}}).",
+        "filtros-de-pessoa": "Escolha os filtros de pessoa deste gatilho ({{campo}}): sem eles vale para todos.",
+        "dono-do-github": "Escolha o dono no GitHub ({{campo}}): sem ele vale para todos.",
+        "gatilho-sem-canal": "Escolha o canal deste gatilho ({{campo}}).",
+        "generic": "Preencha o campo {{campo}}, que o pacote deixou de fora.",
+        "dismiss": "Dispensar",
+        "dismissHint": "Deixar o campo como está e tirar o aviso",
+        "enableBlocked": "Gatilho incompleto: preencha ou dispense o que falta antes de ligar.",
+        "skill-ausente": "Esta skill não veio no pacote e não existe aqui ({{campo}}): instale-a ou dispense o aviso.",
+        "passo-a-revisar": "Este nó veio de um pacote antigo, sem dizer o que faltou: revise-o e dispense o aviso."
+      }
     },
     "github": {
       "repos": {
@@ -3205,7 +3224,8 @@
       "button": "Exportar",
       "hint": "Gera um arquivo .locum.json sem segredos, para outra pessoa importar",
       "saveFirst": "Salve a automação antes de exportar",
-      "done": "Exportado para {{arquivo}}"
+      "done": "Exportado para {{arquivo}}",
+      "doneWithLiterals": "Exportado para {{arquivo}}. Estes valores viajaram nos argumentos e no texto das skills, confira antes de mandar: {{literais}}"
     },
     "import": {
       "button": "Importar",
@@ -3257,7 +3277,7 @@
       "confirm": "Importar",
       "answerFirst": "Responda sobre o agent de mesmo nome.",
       "done": "Importada. Os gatilhos estão desligados.",
-      "donePending": "Ainda faltam escolhas na automação, como os canais.",
+      "donePending": "Ainda faltam escolhas na automação, como canais e destinos. Elas ficam marcadas nos nós: o passo incompleto não roda e o gatilho incompleto não liga.",
       "open": "Abrir a automação",
       "notJson": "Só arquivos .locum.json.",
       "unreadable": "Não consegui ler o arquivo.",
@@ -3301,10 +3321,41 @@
         "escrita": "escrita"
       },
       "declaredRead": "o arquivo dizia leitura, vale a classificação daqui. Para usar, ligue a ferramenta na conexão do agent (aba Ferramentas): cada uso vai pedir confirmação.",
-      "urlFill": "O endereço do passo {{passo}} não vem no pacote: preencha na automação.",
-      "urlFillHost": "O endereço do passo {{passo}} não vem no pacote: preencha na automação (era em {{host}}).",
       "toolRemoved": "não entra: escrita não roda como ferramenta avulsa. Para escrever, use um nó de ação da automação, que passa pela fila.",
-      "toolAsks": "entra e pede confirmação a cada uso"
+      "toolAsks": "entra e pede confirmação a cada uso",
+      "fill": {
+        "title": "O que será criado e o que fica a preencher",
+        "step": "Passo {{nome}}",
+        "trigger": "Gatilho {{tipo}}",
+        "notCreated": "não será criado: falta escolher",
+        "ready": "pronto",
+        "toFill_zero": "{{count}} campos a preencher",
+        "toFill_one": "{{count}} campo a preencher",
+        "toFill_other": "{{count}} campos a preencher",
+        "host": "o endereço original era {{host}}",
+        "motivo": {
+          "destino-a-escolher": "escolha o destino; o do pacote era de outra pessoa",
+          "url-a-preencher": "preencha o endereço",
+          "argumentos": "preencha o que o pacote deixou de fora",
+          "tracker": "escolha o tracker",
+          "canais": "escolha os canais",
+          "filtros-de-pessoa": "escolha os filtros de pessoa; sem eles vale para todos",
+          "dono-do-github": "escolha o dono no GitHub; sem ele vale para todos",
+          "gatilho-sem-canal": "escolha o canal",
+          "generic": "preencha o campo",
+          "skill-ausente": "instale a skill ou dispense o aviso",
+          "passo-a-revisar": "revise o nó e dispense o aviso"
+        }
+      },
+      "skills": "Skills",
+      "skillDiff": "A daqui fica; ver a diferença",
+      "skillState": {
+        "nova": "será criada",
+        "igual": "igual à daqui",
+        "conflito": "já existe diferente: fica a daqui",
+        "existente": "já existe aqui",
+        "ausente": "não veio no pacote"
+      }
     }
   },
   "limits": {

@@ -509,7 +509,7 @@ interface ServiceApi {
    * quando a pessoa cancela. A prévia só lê o texto e olha esta máquina;
    * importar grava o que a pessoa decidiu, e gatilho nenhum entra ligado.
    */
-  "pacote.exportFile": (agentId: string) => Promise<{ caminho: string; nomeDoArquivo: string } | null>;
+  "pacote.exportFile": (agentId: string) => Promise<{ caminho: string; nomeDoArquivo: string; avisos: { onde: string; campo: string; valor: string }[] } | null>;
   "pacote.chooseFile": () => Promise<{ nome: string; texto: string } | null>;
   "pacote.preview": PacoteService["previa"];
   "pacote.import": PacoteService["importar"];

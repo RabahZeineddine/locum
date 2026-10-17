@@ -2611,6 +2611,9 @@
       "verdict": "React by verdict"
     },
     "problems": {
+      "downgraded": "This node came as automatic in the package and entered in approval: nothing publishes by itself until you say so.",
+      "downgradedBack": "Back to automatic",
+      "downgradedBackHint": "Sets the node to automatic on your own: it publishes without approval",
       "noName": "The automation needs a name.",
       "noSteps": "Add at least one step.",
       "noTrigger": "Without a trigger it only runs from the button.",
@@ -2635,7 +2638,23 @@
       "refNotBefore": "The action cites {{ref}}, which does not come before it in the flow.",
       "destinationMissing": "Choose the chat or channel of the fixed destination.",
       "replyNeedsApp": "Replying in {{app}} needs a {{app}} trigger: that is where the message to reply to comes from.",
-      "reactNeedsApp": "Reacting in {{app}} needs a {{app}} trigger: that is where the message comes from."
+      "reactNeedsApp": "Reacting in {{app}} needs a {{app}} trigger: that is where the message comes from.",
+      "pending": {
+        "destino-a-escolher": "Choose the destination of this node ({{campo}}): the package's was from another machine.",
+        "url-a-preencher": "Fill in the address of this node ({{campo}}).",
+        "argumentos": "Fill in what the package left out ({{campo}}).",
+        "tracker": "Choose the tracker of this node ({{campo}}).",
+        "canais": "Choose the channels of this trigger ({{campo}}).",
+        "filtros-de-pessoa": "Choose the people filters of this trigger ({{campo}}): without them it covers everyone.",
+        "dono-do-github": "Choose the GitHub owner ({{campo}}): without it it covers every owner.",
+        "gatilho-sem-canal": "Choose the channel of this trigger ({{campo}}).",
+        "generic": "Fill in the field {{campo}}, which the package left out.",
+        "dismiss": "Dismiss",
+        "dismissHint": "Keep the field as it is and remove the warning",
+        "enableBlocked": "Incomplete trigger: fill in or dismiss what is missing before turning it on.",
+        "skill-ausente": "This skill is not in the package and does not exist here ({{campo}}): install it or dismiss the notice.",
+        "passo-a-revisar": "This node came from an old package that did not say what is missing: review it and dismiss the notice."
+      }
     },
     "github": {
       "repos": {
@@ -3121,7 +3140,8 @@
       "button": "Export",
       "hint": "Writes a .locum.json file with no secrets, for someone else to import",
       "saveFirst": "Save the automation before exporting",
-      "done": "Exported to {{arquivo}}"
+      "done": "Exported to {{arquivo}}",
+      "doneWithLiterals": "Exported to {{arquivo}}. These values traveled in the arguments and in the text of skills, check before sending: {{literais}}"
     },
     "import": {
       "button": "Import",
@@ -3172,7 +3192,7 @@
       "confirm": "Import",
       "answerFirst": "Answer about the agent with the same name.",
       "done": "Imported. Triggers are off.",
-      "donePending": "The automation still needs choices, like channels.",
+      "donePending": "The automation still needs choices, like channels and destinations. They are marked on the nodes: an incomplete step does not run and an incomplete trigger does not turn on.",
       "open": "Open the automation",
       "notJson": "Only .locum.json files.",
       "unreadable": "Could not read the file.",
@@ -3214,10 +3234,41 @@
         "escrita": "write"
       },
       "declaredRead": "the file said read, the classification here wins. To use it, turn the tool on in the agent's connection (Tools tab): each use will ask for confirmation.",
-      "urlFill": "The address of step {{passo}} is not in the package: fill it in the automation.",
-      "urlFillHost": "The address of step {{passo}} is not in the package: fill it in the automation (it was on {{host}}).",
       "toolRemoved": "left out: writes do not run as loose tools. To write, use an action node in the automation, which goes through the queue.",
-      "toolAsks": "comes in and asks for confirmation on each use"
+      "toolAsks": "comes in and asks for confirmation on each use",
+      "fill": {
+        "title": "What will be created and what is left to fill",
+        "step": "Step {{nome}}",
+        "trigger": "Trigger {{tipo}}",
+        "notCreated": "will not be created: needs a choice",
+        "ready": "ready",
+        "toFill_zero": "{{count}} fields to fill",
+        "toFill_one": "{{count}} field to fill",
+        "toFill_other": "{{count}} fields to fill",
+        "host": "the original address was {{host}}",
+        "motivo": {
+          "destino-a-escolher": "pick the destination; the package's was someone else's",
+          "url-a-preencher": "fill in the address",
+          "argumentos": "fill in what the package left out",
+          "tracker": "pick the tracker",
+          "canais": "pick the channels",
+          "filtros-de-pessoa": "pick the people filters; without them it covers everyone",
+          "dono-do-github": "pick the GitHub owner; without it it covers everyone",
+          "gatilho-sem-canal": "pick the channel",
+          "generic": "fill in the field",
+          "skill-ausente": "install the skill or dismiss the notice",
+          "passo-a-revisar": "review the node and dismiss the notice"
+        }
+      },
+      "skills": "Skills",
+      "skillDiff": "The local one stays; see the difference",
+      "skillState": {
+        "nova": "will be created",
+        "igual": "same as the local one",
+        "conflito": "exists and differs: the local one stays",
+        "existente": "already here",
+        "ausente": "not in the package"
+      }
     }
   },
   "limits": {

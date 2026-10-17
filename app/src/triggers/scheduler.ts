@@ -1,4 +1,5 @@
 import { and, eq } from "drizzle-orm";
+import { recusaDeLigar } from "../config/pendencia.js";
 import { db as defaultDb, schema } from "../db/index.js";
 import { type Authorship, type PollFilters, type TriggerConfig, type WorkingHoursConfig } from "../config/types.js";
 import { executionService, type ExecutionService } from "../services/execution-service.js";
@@ -402,6 +403,11 @@ export class Scheduler {
         nextDueAt: null,
       };
     }
+
+    // Automação incompleta não acorda sozinha (ligada antes da pendência, ou restaurada ligada). O cursor não
+    // anda, e o que ela perderia fica para a batida em que o campo estiver preenchido.
+    const incompleta = recusaDeLigar(await this.triggers.pendencias(trigger.agentId), [trigger.id]);
+    if (incompleta !== null) return { ...base, status: "skipped", detail: incompleta, nextDueAt: vencimento(trigger.config, at, at, globalHours) };
 
     const { raw, last } = await this.readFire(trigger.id);
 

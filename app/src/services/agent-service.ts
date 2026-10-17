@@ -5,6 +5,9 @@ import { desc, eq } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
 import { AgentBudgetPatch, AgentSpec, resolveTools, serversInScope, type ActionMode, type ActionStep, type AgentBudget, type ToolRef } from "../config/types.js";
 import { today } from "../executor/budget.js";
+import { limparPendenciasPreenchidas, type OpcoesDaLimpeza } from "../config/pendencia.js";
+import { limparRebaixados, manterRebaixados } from "../config/rebaixado.js";
+import { recursoExiste } from "./pendencia-recursos.js";
 import { splitModelId } from "../providers/registry.js";
 import { SUBSCRIPTION_RUNTIMES } from "../runtimes/types.js";
 
@@ -253,8 +256,13 @@ export class AgentService {
     latest: AgentVersionRow | undefined,
     note?: string,
     expectedVersion?: number,
+    opcoes: OpcoesDaGravacao = {},
   ): Promise<AgentVersion> {
-    const parsed = guarded.spec;
+    // Omitir não é preencher, em nenhum caminho (tela, MCP, importação, restauração): o que a versão
+    // anterior deixou a preencher volta, salvo o que a pessoa dispensou por nome. Depois, o campo que
+    // ganhou valor deixa de ser pendência.
+    const mantido = manterPendencias(guarded.spec, latest?.spec, opcoes.dispensadas ?? []);
+    const parsed = limparRebaixados(limparPendenciasPreenchidas(mantido, { ...opcoes.limpeza, existe: recursoExiste }));
     refuseReserved(parsed.id);
     // O destino de resposta e de reação é conferido ao gravar: marcador de passo, tipo que a ação não aceita ou conversa de outro app.
     for (const passo of parsed.steps) {
@@ -349,7 +357,7 @@ export class AgentService {
    * subir o modo de um passo de ação. A nota é obrigatória porque é o que o
    * histórico mostra, e versão sem motivo é versão que ninguém entende depois.
    */
-  async saveEdited(agentId: string, spec: AgentSpec, note: string, expectedVersion?: number): Promise<AgentVersion> {
+  async saveEdited(agentId: string, spec: AgentSpec, note: string, expectedVersion?: number, opcoes: OpcoesDaGravacao = {}): Promise<AgentVersion> {
     const motivo = note.trim();
     if (motivo.length === 0) throw new Error("diga o que mudou: a nota vira o registro da versão");
     if (spec.id !== agentId) {
@@ -357,7 +365,7 @@ export class AgentService {
     }
     if (!(await this.get(agentId))) throw new Error(`agent "${agentId}" não existe`);
     const parsed = AgentSpec.parse(spec);
-    return this.write({ spec: parsed, downgrades: [] }, await this.latestRow(parsed.id), motivo, expectedVersion);
+    return this.write({ spec: parsed, downgrades: [] }, await this.latestRow(parsed.id), motivo, expectedVersion, opcoes);
   }
 
   /**
@@ -381,7 +389,22 @@ export class AgentService {
     const origem = await this.getLatestVersion(fromId);
     if (!origem) throw new Error(`agent "${fromId}" não existe`);
 
-    return this.upsert({ ...origem.spec, id, name: nome }, `duplicado de ${fromId}`, "human");
+    // A cópia não leva os gatilhos: a pendência de gatilho da origem não tem a quem apontar.
+    const spec = limparPendenciasPreenchidas(origem.spec, { gatilhos: [], descartarOrfas: true, existe: recursoExiste });
+    return this.upsert({ ...spec, id, name: nome }, `duplicado de ${fromId}`, "human");
+  }
+
+  /**
+   * Grava de novo uma versão antiga, como versão nova. A pendência de gatilho da versão
+   * antiga vale só para o gatilho que ainda existe e ainda não tem o campo; a de um
+   * gatilho que saiu, ou que já foi preenchido, não volta.
+   */
+  async restoreVersion(agentId: string, version: number, note?: string): Promise<AgentVersion> {
+    const antiga = (await this.listVersions(agentId)).find((v) => v.version === version);
+    if (antiga === undefined) throw new Error(`agent "${agentId}" não tem a versão ${version}`);
+    const gatilhos = (await this.db.select().from(schema.triggers).where(eq(schema.triggers.agentId, agentId))).map((g) => ({ id: g.id, config: g.config as object }));
+    const spec = limparPendenciasPreenchidas(antiga.spec, { gatilhos, descartarOrfas: true, existe: recursoExiste });
+    return this.saveEdited(agentId, spec, note ?? `restaurada da versão ${version}`, undefined, { limpeza: { gatilhos, descartarOrfas: true } });
   }
 
   /**
@@ -692,3 +715,21 @@ function sameSpec(stored: unknown, spec: AgentSpec): boolean {
 }
 
 export const agentService = new AgentService();
+
+/** O que quem grava sabe e a gravação não: as pendências que a pessoa dispensou por nome, e como ler os gatilhos ao limpar. */
+export interface OpcoesDaGravacao {
+  dispensadas?: readonly { onde: string; campo: string }[];
+  limpeza?: Omit<OpcoesDaLimpeza, "existe">;
+}
+
+/** As pendências e os rebaixados da versão anterior que o spec novo deixou de trazer voltam: omitir não é preencher. */
+function manterPendencias(spec: AgentSpec, anterior: unknown, dispensadas: readonly { onde: string; campo: string }[]): AgentSpec {
+  const chave = (p: { onde: string; campo: string }): string => `${p.onde}\u0000${p.campo}`;
+  const novo = manterRebaixados(spec, (anterior as Pick<AgentSpec, "rebaixados"> | undefined)?.rebaixados ?? []);
+  const dispensa = new Set(dispensadas.map(chave));
+  const antigas = ((anterior as Pick<AgentSpec, "pendentes"> | undefined)?.pendentes ?? []).filter((p) => !dispensa.has(chave(p)));
+  if (antigas.length === 0) return novo;
+  const tem = new Set((novo.pendentes ?? []).map(chave));
+  const voltam = antigas.filter((p) => !tem.has(chave(p)));
+  return voltam.length === 0 ? novo : { ...novo, pendentes: [...(novo.pendentes ?? []), ...voltam] };
+}

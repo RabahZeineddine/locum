@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { PARAMS_DE_DESTINO_NO_PACOTE } from "../acao/destino.js";
+import type { ViagemDoParam } from "../pacote/params.js";
 
 // O renderer e o executor importam este arquivo: nada de Node aqui.
 
@@ -25,6 +27,15 @@ export const ParamsDeReacao = z.object({
     })
     .optional(),
 });
+
+/** Todo campo de `ParamsDeReacao` viaja como está; campo novo sem linha aqui não compila. */
+export const PARAMS_DE_REACAO_NO_PACOTE: Record<keyof typeof ParamsDeReacao.shape, ViagemDoParam> & typeof PARAMS_DE_DESTINO_NO_PACOTE = {
+  emoji: "portavel",
+  operacao: "portavel",
+  tirar: "portavel",
+  porValor: "portavel",
+  ...PARAMS_DE_DESTINO_NO_PACOTE,
+};
 
 export type ReacaoDoPasso = { operacao: "set" | "unset"; emoji: string; tirar?: string };
 

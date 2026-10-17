@@ -215,7 +215,7 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "automations.eventsForRun": (agentId) => automationService.eventsForRun(agentId),
     "automations.suggestId": (nome) => automationService.suggestId(nome),
     "pacote.exportFile": async (agentId) => {
-      const { texto, nomeDoArquivo } = await pacoteService.exportar(agentId);
+      const { texto, nomeDoArquivo, avisos } = await pacoteService.exportar(agentId);
       const janela = BrowserWindow.getFocusedWindow();
       const opcoes = {
         title: t("pacote.exportTitle"),
@@ -226,7 +226,7 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
       if (escolha.canceled || escolha.filePath === undefined) return null;
       const caminho = escolha.filePath.endsWith(".json") ? escolha.filePath : `${escolha.filePath}${EXTENSAO_DO_PACOTE}`;
       await writeFile(caminho, texto);
-      return { caminho, nomeDoArquivo: basename(caminho) };
+      return { caminho, nomeDoArquivo: basename(caminho), avisos };
     },
     "pacote.chooseFile": async () => {
       const janela = BrowserWindow.getFocusedWindow();

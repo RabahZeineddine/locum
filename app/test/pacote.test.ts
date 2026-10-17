@@ -202,7 +202,7 @@ test("o pacote exportado não carrega segredo, id de canal, conta, e-mail nem ca
     assert.doesNotMatch(texto, /[\w.+-]+@[\w-]+\.[a-z]{2,}/i, "sobrou algo com cara de e-mail");
     assert.doesNotMatch(texto, /\/(?:Users|home)\//, "sobrou caminho de home");
     for (const chave of ["credentialRef", "cursor", "headers", "env", "lastError", "channelId", "teamId", "chatId"]) {
-      assert.ok(!texto.includes(`"${chave}"`), `o pacote tem o campo ${chave}`);
+      assert.ok(!texto.includes(`"${chave}":`), `o pacote tem o campo ${chave}`);
     }
 
     // O que ficou de fora é dito, para a prévia pedir à pessoa.
@@ -210,9 +210,9 @@ test("o pacote exportado não carrega segredo, id de canal, conta, e-mail nem ca
     for (const esperado of ["canais", "dono-do-github", "filtros-de-pessoa", "tracker", "argumentos", "texto-limpo"] as const) {
       assert.ok(codigos.has(esperado), `faltou avisar ${esperado}`);
     }
-    // O que serve de sugestão continua: servidor e ferramenta do passo, sem argumento.
+    // O que serve de sugestão continua: servidor e ferramenta do passo, sem o argumento que era um id.
     const aviso = pacote.automacao.spec.steps.find((p) => p.key === "avisar");
-    assert.deepEqual(aviso?.type === "action" && aviso.params, { server: "ms365", tool: "send-chat-message" });
+    assert.deepEqual(aviso?.type === "action" && aviso.params, { server: "ms365", tool: "send-chat-message", args: {} });
     // O que não é segredo continua: o filtro de rótulo.
     const poll = pacote.automacao.gatilhos.find((g) => g.kind === "poll");
     assert.deepEqual(poll?.kind === "poll" && poll.filters, { labels: { include: ["review"] } });
@@ -273,7 +273,7 @@ test("a prévia mostra o que será criado e cada dependência com o estado dela"
   assert.deepEqual(previa.agents.map((a) => [a.id, a.situacao]), [["revisor", "novo"]]);
   assert.deepEqual(previa.dependencias.find((d) => d.tipo === "skill"), { tipo: "skill", chave: "review-pr", nome: "review-pr", estado: "ok", usadoPor: ["agent:revisor"], atalho: null, candidatos: [] });
   assert.equal(previa.agents[0]!.modelo.disponivel, true);
-  assert.deepEqual(previa.gatilhos.find((g) => g.tipo === "slack-channel"), { tipo: "slack-channel", precisaCanal: true, precisaChats: false });
+  assert.deepEqual(previa.gatilhos.find((g) => g.tipo === "slack-channel"), { tipo: "slack-channel", precisaCanal: true, precisaChats: false, criado: false });
   assert.deepEqual(previa.acoesRebaixadas, ["avisar"]);
 
   const estado = (tipo: string, chave: string) => previa.dependencias.find((d) => d.tipo === tipo && d.chave === chave);
@@ -337,7 +337,7 @@ test("gatilho restrito a chats: o pacote só diz quantos, e a importação não 
   const previa = await bruno.pacotes.previa(texto);
   assert.ok(previa.gatilhos.some((g) => g.tipo === "teams-inbox" && g.precisaChats));
   const r = await bruno.pacotes.importar(texto);
-  assert.ok(r.pendencias.some((p) => p.codigo === "chats-a-escolher" && p.onde === "teams-inbox"));
+  assert.ok(r.pendencias.some((p) => p.codigo === "chats-a-escolher" && p.onde === "gatilho:0"));
 
   const gatilho = (await bruno.automations.get("revisao-de-pr"))!.triggers.find((g) => g.config.kind === "teams-inbox")!;
   assert.equal(gatilho.config.kind === "teams-inbox" && gatilho.config.chatsPendentes, 1);
@@ -349,8 +349,16 @@ test("gatilho restrito a chats: o pacote só diz quantos, e a importação não 
   // Escolhidos os chats, liga.
   const escolhido = { ...gatilho.config, chats: [{ chatId: CHAT_DO_TEAMS }] };
   await bruno.triggers.set("revisao-de-pr", escolhido, { id: gatilho.id });
+  await dispensarPendencias(bruno, "revisao-de-pr");
   assert.equal((await bruno.triggers.setEnabled(gatilho.id, true)).enabled, true);
 });
+
+/** A pessoa que revê o que o pacote deixou a preencher e dispensa o que não precisa: grava o spec sem as pendências. */
+async function dispensarPendencias(m: Maquina, id: string): Promise<void> {
+  const { version, triggers } = (await m.automations.get(id))!;
+  const { pendentes = [], ...spec } = version.spec;
+  await m.automations.save({ spec, triggers: triggers.map((g) => ({ id: g.id, config: g.config })), dispensadas: pendentes.map(({ onde, campo }) => ({ onde, campo })), note: "pendências revistas" });
+}
 
 test("pacote antigo, sem chatsRestritos, segue válido e o gatilho liga", async () => {
   const dono = maquina();
@@ -361,6 +369,7 @@ test("pacote antigo, sem chatsRestritos, segue válido e o gatilho liga", async 
   const r = await bruno.pacotes.importar(JSON.stringify(pacote));
   assert.ok(!r.pendencias.some((p) => p.codigo === "chats-a-escolher"));
   const gatilho = (await bruno.automations.get("revisao-de-pr"))!.triggers.find((g) => g.config.kind === "teams-inbox")!;
+  await dispensarPendencias(bruno, "revisao-de-pr");
   assert.equal((await bruno.triggers.setEnabled(gatilho.id, true)).enabled, true);
 });
 
@@ -380,7 +389,7 @@ test("importar cria a automação com gatilhos desligados e sem canal, e o agent
   const teams = automacao.triggers.find((g) => g.config.kind === "teams-inbox");
   assert.deepEqual(teams?.config.kind === "teams-inbox" && teams.config.channels, []);
   assert.deepEqual(teams?.config.kind === "teams-inbox" && teams.config.chats, []);
-  assert.ok(r.pendencias.some((p) => p.codigo === "gatilho-sem-canal" && p.onde === "slack-channel"));
+  assert.ok(r.pendencias.some((p) => p.codigo === "gatilho-sem-canal" && /^gatilho:\d+$/.test(p.onde)));
   assert.ok(r.pendencias.some((p) => p.codigo === "dono-do-github"));
   // Ação em `auto` entra em aprovação: ninguém disse que podia sair sozinha.
   const passos = automacao.version.spec.steps;
@@ -577,7 +586,7 @@ test("arquivo que não é pacote dá erro claro, sem quebrar", async () => {
   await recusa("isto não é json", /JSON válido/);
   await recusa("[]", /não é um pacote/);
   await recusa(JSON.stringify({ nome: "outro formato" }), /não é um pacote/);
-  await recusa(JSON.stringify({ formato: NOME_DO_FORMATO, versao: 2 }), /versão 2 do formato.*lê a 1.*Atualize/);
+  await recusa(JSON.stringify({ formato: NOME_DO_FORMATO, versao: 99 }), /versão 99 do formato.*lê a 2.*Atualize/);
   await recusa(JSON.stringify({ formato: NOME_DO_FORMATO, versao: "1" }), /versão 1 do formato/);
   await recusa("x".repeat(3 * 1024 * 1024), /grande demais/);
 });

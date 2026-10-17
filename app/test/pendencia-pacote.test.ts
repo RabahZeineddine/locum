@@ -1,0 +1,312 @@
+import { before, test } from "node:test";
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { AgentSpec } from "../src/config/types.js";
+import { migrateDb } from "../src/db/migrate.js";
+import { AgentService } from "../src/services/agent-service.js";
+import { AutomationService } from "../src/services/automation-service.js";
+import { LibraryService } from "../src/services/library-service.js";
+import { PacoteService, type AmbienteDoPacote } from "../src/services/pacote-service.js";
+import { skillsService } from "../src/services/skills-service.js";
+import { TriggerService } from "../src/services/trigger-service.js";
+import { bancoDeTeste } from "./helpers/db.js";
+
+/** Pendência que atravessa pacote: o formato antigo sem nome de param, e a reexportação que não a perde. */
+
+before(() => {
+  migrateDb();
+  process.env.OLLAMA_BASE_URL = "http://127.0.0.1:9";
+});
+
+const HOME = "/Users/ana.souza";
+const CHAT = "19:abcdef0123456789abcdef0123456789@thread.v2";
+const ambiente: AmbienteDoPacote = {
+  conexoes: async () => [],
+  servidores: async () => [],
+  guardadas: async () => null,
+  skills: async () => [],
+  provedores: async () => [{ provedor: "claude-code", disponivel: true, modelos: ["claude-sonnet-5"] }],
+};
+const base = { needs: [] as string[], optional: false };
+
+function maquina() {
+  const bd = bancoDeTeste();
+  const agents = new AgentService(bd);
+  const triggers = new TriggerService(bd);
+  const automations = new AutomationService(agents, triggers, {} as never);
+  const library = new LibraryService(bd, { servidoresDe: async () => [], ferramentasDe: async () => [] });
+  return { agents, triggers, automations, pacotes: new PacoteService(agents, library, automations, ambiente, HOME) };
+}
+
+test("pacote v1 com omitido de argumentos sem nome de param: o passo fica incompleto até a pessoa dispensar", async () => {
+  // O formato antigo: o passo chega sem o que foi omitido, e o omitido só diz quantos.
+  const v1 = {
+    formato: "locum-pacote",
+    versao: 1,
+    automacao: {
+      id: "aviso-antigo",
+      spec: { name: "Aviso antigo", steps: [{ ...base, type: "action", key: "avisar", name: "Avisar", action: "teams.post", mode: "approve" }] },
+      gatilhos: [],
+    },
+    agents: [],
+    requisitos: { conexoes: [], servidores: [], provedores: [] },
+    omitidos: [{ codigo: "argumentos", onde: "avisar", quantos: 2 }],
+  };
+  const bruno = maquina();
+  await bruno.pacotes.importar(JSON.stringify(v1));
+  const gravada = (await bruno.automations.get("aviso-antigo"))!;
+  assert.deepEqual(gravada.version.spec.pendentes, [{ onde: "avisar", campo: "params", motivo: "passo-a-revisar" }]);
+
+  // Salvar o passo com params preenchidos não resolve: só dispensar.
+  const comParams = { ...gravada.version.spec, steps: gravada.version.spec.steps.map((p) => (p.type === "action" ? { ...p, params: { destino: { tipo: "evento" } } } : p)) };
+  const salva = await bruno.automations.save({ spec: AgentSpec.parse(comParams), triggers: [], note: "revisei" });
+  assert.equal(salva.version.spec.pendentes?.length, 1);
+});
+
+test("A exporta, B importa sem preencher e reexporta: C recebe a mesma pendência", async () => {
+  const a = maquina();
+  const spec = AgentSpec.parse({
+    id: "aviso-do-time",
+    name: "Aviso",
+    steps: [{ ...base, type: "action", key: "avisar", name: "Avisar", action: "teams.post", mode: "approve", params: { destino: { tipo: "fixo", conversa: { app: "teams", ref: `chat/${CHAT}`, rotulo: "Equipe" } } } }],
+  });
+  await a.automations.save({ spec, triggers: [{ config: { kind: "poll", source: "github", owner: "empresa-ana", repoMatch: "pagamentos-.*", authorship: "others" } }], note: "", create: true });
+  const doA = (await a.pacotes.exportar("aviso-do-time")).texto;
+
+  const b = maquina();
+  await b.pacotes.importar(doA);
+  const emB = (await b.automations.get("aviso-do-time"))!;
+  const doB = (await b.pacotes.exportar("aviso-do-time")).texto;
+
+  const c = maquina();
+  await c.pacotes.importar(doB);
+  const emC = (await c.automations.get("aviso-do-time"))!;
+  const resumo = (x: typeof emB): string[] => (x.version.spec.pendentes ?? []).map((p) => `${p.onde.startsWith("gatilho:") ? "gatilho" : p.onde}|${p.campo}|${p.motivo}`).sort();
+  assert.deepEqual(resumo(emC), resumo(emB));
+  assert.ok(resumo(emC).includes("avisar|params.destino|destino-a-escolher"));
+  assert.ok(resumo(emC).includes("gatilho|owner|dono-do-github"));
+});
+
+test("skill-ausente some quando a skill passa a existir aqui, por salvar ou por upsert do agent, que não a ressuscita", async () => {
+  const nome = `estilo-${randomUUID().slice(0, 6)}`;
+  const v1 = {
+    formato: "locum-pacote",
+    versao: 1,
+    automacao: {
+      id: "com-skill",
+      spec: { name: "Com skill", skills: [{ skill: nome, when: { always: true } }], steps: [{ ...base, type: "model", key: "ler", name: "Ler", model: "claude-code/claude-sonnet-5", prompt: "oi" }] },
+      gatilhos: [],
+    },
+    agents: [],
+    requisitos: { conexoes: [], servidores: [], provedores: [], skills: [{ nome }] },
+    omitidos: [],
+  };
+  const m = maquina();
+  await m.pacotes.importar(JSON.stringify(v1));
+  await m.pacotes.importar(JSON.stringify(v1), { automacaoId: "com-skill-2" });
+  const aberta = (await m.automations.get("com-skill"))!;
+  assert.equal(aberta.version.spec.pendentes?.length, 1);
+  // Enquanto a skill não existe, salvar não resolve.
+  assert.equal((await m.automations.save({ spec: aberta.version.spec, triggers: [], note: "ainda sem a skill" })).version.spec.pendentes?.length, 1);
+
+  await skillsService.criar({ name: nome, description: "Estilo", body: "corpo" });
+  // O agent regrava sem a pendência: a que a skill resolveu não volta.
+  const outra = (await m.automations.get("com-skill-2"))!.version.spec;
+  const { pendentes: _p, ...sem } = outra;
+  assert.equal((await m.agents.upsert(AgentSpec.parse({ ...sem, name: "Outra" }), "agent", "agent")).spec.pendentes, undefined);
+  // A pessoa salva e a pendência some, sem ninguém dispensar.
+  assert.equal((await m.automations.save({ spec: aberta.version.spec, triggers: [], note: "skill instalada" })).version.spec.pendentes, undefined);
+});
+
+test("set_trigger que preenche o campo limpa a pendência do gatilho, e só a dele", async () => {
+  const a = maquina();
+  const spec = AgentSpec.parse({ id: "gatilho-pelo-mcp", name: "X", steps: [{ ...base, type: "model", key: "ler", name: "Ler", model: "claude-code/claude-sonnet-5", prompt: "oi" }] });
+  await a.automations.save({ spec, triggers: [{ config: { kind: "poll", source: "github", owner: "empresa-ana", repoMatch: "x-.*", authorship: "others", filters: { authors: { include: ["ana"] } } } }], note: "", create: true });
+  const b = maquina();
+  await b.pacotes.importar((await a.pacotes.exportar("gatilho-pelo-mcp")).texto);
+  const gravada = (await b.automations.get("gatilho-pelo-mcp"))!;
+  const gatilho = gravada.triggers[0]!;
+  assert.deepEqual(gravada.version.spec.pendentes?.map((p) => p.campo), ["owner", "filters.authors"]);
+
+  // Pelo MCP, sem passar pela gravação da automação: o dono preenchido tira a pendência dele.
+  await b.triggers.set("gatilho-pelo-mcp", { ...gatilho.config, owner: "empresa-bruno" } as never, { id: gatilho.id, fromTool: true });
+  const depois = (await b.automations.get("gatilho-pelo-mcp"))!;
+  assert.deepEqual(depois.version.spec.pendentes?.map((p) => p.campo), ["filters.authors"]);
+});
+
+test("gravar mantém a pendência que não foi preenchida nem dispensada, e dispensar é por nome", async () => {
+  const m = maquina();
+  const pendentes = [
+    { onde: "ler", campo: "prompt", motivo: "argumentos" },
+    { onde: "ler", campo: "model", motivo: "argumentos" },
+  ];
+  const spec = AgentSpec.parse({ id: "mantem", name: "X", steps: [{ ...base, type: "model", key: "ler", name: "Ler", model: "", prompt: "", maxSteps: 3 }], pendentes });
+  const criada = await m.automations.save({ spec, triggers: [], note: "importada", create: true });
+  const { pendentes: _p, ...sem } = criada.version.spec;
+
+  // O spec remontado sem pendentes não apaga nada em silêncio.
+  const mesma = await m.automations.save({ spec: AgentSpec.parse({ ...sem, name: "Y" }), triggers: [], note: "remontado" });
+  assert.deepEqual(mesma.version.spec.pendentes?.map((p) => p.campo), ["prompt", "model"]);
+
+  // Dispensar nomeia a pendência, e só essa sai.
+  const dispensada = await m.automations.save({ spec: AgentSpec.parse({ ...sem, name: "Y" }), triggers: [], note: "dispensei", dispensadas: [{ onde: "ler", campo: "prompt" }] });
+  assert.deepEqual(dispensada.version.spec.pendentes?.map((p) => p.campo), ["model"]);
+  await assert.rejects(() => m.automations.save({ spec: AgentSpec.parse({ ...sem, name: "Y" }), triggers: [], note: "x", dispensadas: [{ onde: "ler", campo: "nao-existe" }] }), /não há pendência/);
+});
+
+async function comGatilhoPendente(id: string) {
+  const a = maquina();
+  const spec = AgentSpec.parse({ id, name: "X", steps: [{ ...base, type: "model", key: "ler", name: "Ler", model: "claude-code/claude-sonnet-5", prompt: "oi" }] });
+  await a.automations.save({ spec, triggers: [{ config: { kind: "poll", source: "github", owner: "empresa-ana", repoMatch: "x-.*", authorship: "others" } }], note: "", create: true });
+  const b = maquina();
+  await b.pacotes.importar((await a.pacotes.exportar(id)).texto);
+  return { b, gravada: (await b.automations.get(id))! };
+}
+
+test("duplicar leva só a pendência de passo: a de gatilho não tem a quem apontar na cópia", async () => {
+  const { b, gravada } = await comGatilhoPendente("origem-dup");
+  const comPasso = { ...gravada.version.spec, pendentes: [...gravada.version.spec.pendentes!, { onde: "ler", campo: "params.destino", motivo: "destino-a-escolher" }] };
+  await b.automations.save({ spec: comPasso, triggers: [{ id: gravada.triggers[0]!.id, config: gravada.triggers[0]!.config }], note: "com passo" });
+  const copia = await b.agents.duplicate("origem-dup", "copia-dup", "Cópia");
+  assert.deepEqual(copia.spec.pendentes, [{ onde: "ler", campo: "params.destino", motivo: "destino-a-escolher" }]);
+});
+
+test("restaurar uma versão antiga: a pendência do gatilho volta só se o gatilho existe e segue vazio", async () => {
+  const { b, gravada } = await comGatilhoPendente("origem-rest");
+  const idDoGatilho = gravada.triggers[0]!.id;
+  const antiga = gravada.version.version;
+  // Gatilho preenchido: a pendência saiu, e restaurar a versão antiga não a traz de volta.
+  await b.triggers.set("origem-rest", { ...gravada.triggers[0]!.config, owner: "empresa-bruno" } as never, { id: idDoGatilho });
+  assert.equal((await b.agents.restoreVersion("origem-rest", antiga)).spec.pendentes, undefined);
+
+  // Gatilho que saiu: nada fica à espera dele.
+  await b.automations.save({ spec: (await b.automations.get("origem-rest"))!.version.spec, triggers: [], note: "sem gatilho" });
+  assert.equal((await b.agents.restoreVersion("origem-rest", antiga)).spec.pendentes, undefined);
+});
+
+test("url que viajou como marcador não vira pendência, e a literal continua sendo", async () => {
+  const a = maquina();
+  const passo = (key: string, url: string) => ({ ...base, type: "action", key, name: key, action: "http.request", mode: "approve", params: { method: "POST", url } });
+  const spec = AgentSpec.parse({ id: "urls", name: "Urls", steps: [passo("literal", "https://api.exemplo.com/x"), passo("marcador", "{{event.url}}")] });
+  await a.automations.save({ spec, triggers: [], note: "", create: true });
+  const { texto } = await a.pacotes.exportar("urls");
+  const b = maquina();
+  const previa = await b.pacotes.previa(texto);
+  assert.deepEqual(previa.aPreencher.filter((p) => p.motivo === "url-a-preencher").map((p) => p.no.tipo === "passo" && p.no.chave), ["literal"]);
+  assert.deepEqual(previa.urlsAPreencher.map((u) => u.passo), ["literal"]);
+  const r = await b.pacotes.importar(texto);
+  assert.deepEqual(r.pendencias.filter((p) => p.codigo === "url-a-preencher").map((p) => p.onde), ["literal"]);
+  assert.deepEqual((await b.automations.get("urls"))!.version.spec.pendentes?.map((p) => p.onde), ["literal"]);
+});
+
+test("nó que veio em auto e entrou em approve fica marcado, não some por omissão, e a pessoa volta para auto", async () => {
+  const a = maquina();
+  const spec = AgentSpec.parse({ id: "veio-auto", name: "X", steps: [{ ...base, type: "action", key: "chamar", name: "Chamar", action: "mcp.call", mode: "auto", params: { server: "feed", tool: "listar", args: {} } }] });
+  await a.automations.save({ spec, triggers: [], note: "", create: true });
+  const b = maquina();
+  await b.pacotes.importar((await a.pacotes.exportar("veio-auto")).texto);
+  const gravada = (await b.automations.get("veio-auto"))!.version.spec;
+  assert.equal(gravada.steps[0]!.type === "action" && gravada.steps[0]!.mode, "approve");
+  assert.deepEqual(gravada.rebaixados, [{ passo: "chamar", motivo: "rebaixado-na-importacao" }]);
+
+  // Remontar o spec sem a marca (a tela, o MCP, o agent) não a apaga.
+  const { rebaixados: _r, ...sem } = gravada;
+  assert.equal((await b.automations.save({ spec: AgentSpec.parse({ ...sem, name: "Y" }), triggers: [], note: "remontado" })).version.spec.rebaixados?.length, 1);
+  assert.equal((await b.agents.upsert(AgentSpec.parse({ ...sem, name: "Z" }), "agent", "agent")).spec.rebaixados?.length, 1);
+
+  // A pessoa põe o nó em auto: a marca sai.
+  const emAuto = { ...sem, name: "Y", steps: gravada.steps.map((p) => (p.type === "action" ? { ...p, mode: "auto" as const } : p)) };
+  const volta = await b.automations.save({ spec: AgentSpec.parse(emAuto), triggers: [], note: "voltei para auto" });
+  assert.equal(volta.version.spec.rebaixados, undefined);
+  assert.equal(volta.version.spec.steps[0]!.type === "action" && volta.version.spec.steps[0]!.mode, "auto");
+});
+
+test("pacote v1 com omitidos de gatilho sem nome de param: cada campo local vira pendência e o ligar trava", async () => {
+  const v1 = {
+    formato: "locum-pacote",
+    versao: 1,
+    automacao: {
+      id: "gatilhos-antigos",
+      spec: { name: "Gatilhos antigos", steps: [{ ...base, type: "model", key: "ler", name: "Ler", model: "claude-code/claude-sonnet-5", prompt: "oi" }] },
+      gatilhos: [
+        { kind: "teams-inbox", mentions: true, dms: false, prLinks: false },
+        { kind: "poll", source: "github", repoMatch: "a-.*", authorship: "others" },
+      ],
+    },
+    agents: [],
+    requisitos: { conexoes: [], servidores: [], provedores: [] },
+    omitidos: [
+      { codigo: "canais", onde: "teams-inbox", quantos: 2 },
+      { codigo: "filtros-de-pessoa", onde: "poll", quantos: 1 },
+      { codigo: "dono-do-github", onde: "poll" },
+    ],
+  };
+  const m = maquina();
+  const previa = await m.pacotes.previa(JSON.stringify(v1));
+  const resumo = previa.aPreencher.map((p) => [p.no.tipo === "gatilho" ? p.no.posicao : p.no.chave, p.campo, p.motivo]);
+  assert.deepEqual(resumo, [
+    [0, "channels", "canais"],
+    [1, "filters.authors", "filtros-de-pessoa"],
+    [1, "filters.reviewRequested", "filtros-de-pessoa"],
+    [1, "filters.teamMembers", "filtros-de-pessoa"],
+    [1, "owner", "dono-do-github"],
+  ]);
+  await m.pacotes.importar(JSON.stringify(v1));
+  const gravada = (await m.automations.get("gatilhos-antigos"))!;
+  assert.ok(gravada.triggers.length > 0);
+  for (const g of gravada.triggers) await assert.rejects(m.triggers.setEnabled(g.id, true));
+});
+
+test("preencher o campo do gatilho grava o gatilho e a versão juntos: se a versão falha, o gatilho não muda", async () => {
+  const { b, gravada } = await comGatilhoPendente("gatilho-junto");
+  const gatilho = gravada.triggers[0]!;
+  // Queda real do banco ao gravar a versão que tira a pendência.
+  (b.agents as unknown as { db: { $client: { exec(sql: string): void } } }).db.$client.exec(
+    "CREATE TRIGGER queda BEFORE INSERT ON agent_versions WHEN NEW.note = 'campo do gatilho preenchido' BEGIN SELECT RAISE(ABORT, 'queda do banco'); END;",
+  );
+  await assert.rejects(() => b.triggers.set("gatilho-junto", { ...gatilho.config, owner: "empresa-bruno" } as never, { id: gatilho.id }), /queda do banco/);
+  const depois = (await b.automations.get("gatilho-junto"))!;
+  assert.equal((depois.triggers[0]!.config as { owner?: string }).owner, undefined, "o gatilho mudou sem a pendência sair");
+  assert.deepEqual(depois.version.spec.pendentes?.map((p) => p.campo), ["owner"]);
+});
+
+test("reexportar leva a pendência do gatilho que nunca chegou a ser criado, para quem recebe saber que falta um", async () => {
+  const a = maquina();
+  const spec = AgentSpec.parse({ id: "gatilho-orfao", name: "X", steps: [{ ...base, type: "model", key: "ler", name: "Ler", model: "claude-code/claude-sonnet-5", prompt: "oi" }] });
+  await a.automations.save({ spec, triggers: [{ config: { kind: "slack-channel", channels: ["C0123ABCD45"], everyMinutes: 5 } }], note: "", create: true });
+  const b = maquina();
+  await b.pacotes.importar((await a.pacotes.exportar("gatilho-orfao")).texto);
+  const gravada = (await b.automations.get("gatilho-orfao"))!;
+  assert.equal(gravada.triggers.length, 0, "o gatilho sem canal não devia existir");
+  assert.equal(gravada.version.spec.pendentes?.length, 1);
+
+  const { pacote } = await b.pacotes.exportar("gatilho-orfao");
+  assert.deepEqual(pacote.omitidos.filter((o) => o.codigo === "gatilho-sem-canal"), [{ codigo: "gatilho-sem-canal", onde: "automacao", params: ["channels"] }]);
+  const c = maquina();
+  const previa = await c.pacotes.previa(JSON.stringify(pacote));
+  assert.ok(previa.omitidos.some((o) => o.codigo === "gatilho-sem-canal"));
+});
+
+test("campo de identificador (path do webhook) com credencial vira pendência, não um valor com marcador no lugar", async () => {
+  const TOKEN = "ghp_" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"; // formato de teste, montado por concatenação
+  const a = maquina();
+  const spec = AgentSpec.parse({ id: "hook-com-segredo", name: "X", steps: [{ ...base, type: "model", key: "ler", name: "Ler", model: "claude-code/claude-sonnet-5", prompt: "oi" }] });
+  await a.automations.save({
+    spec,
+    triggers: [{ config: { kind: "webhook", path: `/hook/${TOKEN}` } }, { config: { kind: "webhook", path: "/hook/deploy" } }],
+    note: "",
+    create: true,
+  });
+  const { texto, pacote } = await a.pacotes.exportar("hook-com-segredo");
+  assert.ok(!texto.includes("segredo removido"), "o marcador ficou no lugar do caminho");
+  assert.deepEqual(pacote.automacao.gatilhos, [{ kind: "webhook" }, { kind: "webhook", path: "/hook/deploy" }]);
+  assert.deepEqual(pacote.omitidos.filter((o) => o.codigo === "argumentos"), [{ codigo: "argumentos", onde: "gatilho:0", quantos: 1, params: ["path"] }]);
+
+  const b = maquina();
+  const previa = await b.pacotes.previa(texto);
+  assert.deepEqual(previa.aPreencher.map((p) => [p.no.tipo === "gatilho" ? p.no.posicao : p.no.chave, p.campo, p.motivo, p.criado]), [[0, "path", "argumentos", false]]);
+  await b.pacotes.importar(texto);
+  const gravada = (await b.automations.get("hook-com-segredo"))!;
+  assert.deepEqual(gravada.triggers.map((g) => (g.config as { path: string }).path), ["/hook/deploy"]);
+  assert.deepEqual(gravada.version.spec.pendentes?.map((p) => p.campo), ["path"]);
+});

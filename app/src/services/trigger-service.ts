@@ -1,10 +1,13 @@
 import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
 import { TriggerConfig, type TriggerConfigInput } from "../config/types.js";
+import { Pendencia, limparPendenciasPreenchidas, ondeDoGatilho, recusaDeLigar } from "../config/pendencia.js";
+import { transacaoDoBanco } from "../db/transacao.js";
+import { recursoExiste } from "./pendencia-recursos.js";
 import { esquecerDescartes } from "../triggers/descartes.js";
 import { limparErro } from "../triggers/erros.js";
-import { isReserved } from "./agent-service.js";
+import { AgentService, isReserved } from "./agent-service.js";
 
 type Db = typeof defaultDb;
 
@@ -94,7 +97,30 @@ export class TriggerService {
   async set(
     agentId: string,
     config: TriggerConfigInput,
-    options: { id?: string; enabled?: boolean; fromTool?: boolean; valerParaTodosOsChats?: boolean } = {},
+    options: { id?: string; idNovo?: string; enabled?: boolean; fromTool?: boolean; valerParaTodosOsChats?: boolean } = {},
+  ): Promise<TriggerEntry> {
+    // O gatilho e a versão que tira a pendência dele entram juntos: a falha de um desfaz o outro.
+    // A versão nova é o preço de a pendência morar no spec, que é imutável por versão (o run aponta para ele).
+    return transacaoDoBanco(this.db)(async () => {
+      const salvo = await this.gravar(agentId, config, options);
+      await this.limparPendenciaDoGatilho(agentId, salvo);
+      return salvo;
+    });
+  }
+
+  /** O campo do gatilho que ganhou valor deixa de ser pendência da automação, pelo mesmo código da gravação dela. */
+  private async limparPendenciaDoGatilho(agentId: string, gatilho: TriggerEntry): Promise<void> {
+    const agents = new AgentService(this.db);
+    const ultima = await agents.getLatestVersion(agentId);
+    if (ultima?.spec.pendentes?.some((p) => p.onde === ondeDoGatilho(gatilho.id)) !== true) return;
+    const limpo = limparPendenciasPreenchidas(ultima.spec, { gatilhos: [{ id: gatilho.id, config: gatilho.config }], existe: recursoExiste });
+    if (limpo !== ultima.spec) await agents.saveEdited(agentId, limpo, "campo do gatilho preenchido", ultima.version, { limpeza: { gatilhos: [{ id: gatilho.id, config: gatilho.config }] } });
+  }
+
+  private async gravar(
+    agentId: string,
+    config: TriggerConfigInput,
+    options: { id?: string; idNovo?: string; enabled?: boolean; fromTool?: boolean; valerParaTodosOsChats?: boolean },
   ): Promise<TriggerEntry> {
     // Ligar é o passo que deixa o agent acordar e gastar sozinho, e só uma
     // pessoa dá esse passo, pela interface ou pela linha de comando.
@@ -136,7 +162,7 @@ export class TriggerService {
     const [inserted] = await this.db
       .insert(schema.triggers)
       .values({
-        id: randomUUID(),
+        id: options.idNovo ?? randomUUID(),
         agentId,
         kind: parsed.kind,
         config: parsed as unknown as object,
@@ -146,6 +172,17 @@ export class TriggerService {
     return toEntry(inserted!);
   }
 
+  /** Os campos a preencher da última versão da automação: com algum, nenhum gatilho dela liga. */
+  async pendencias(agentId: string): Promise<Pendencia[]> {
+    const [ultima] = await this.db
+      .select({ spec: schema.agentVersions.spec })
+      .from(schema.agentVersions)
+      .where(eq(schema.agentVersions.agentId, agentId))
+      .orderBy(desc(schema.agentVersions.version))
+      .limit(1);
+    return (ultima?.spec as { pendentes?: Pendencia[] } | undefined)?.pendentes ?? [];
+  }
+
   async setEnabled(id: string, enabled: boolean): Promise<TriggerEntry> {
     const existing = await this.row(id);
     if (!existing) throw new Error(`gatilho ${id} nao cadastrado`);
@@ -153,6 +190,10 @@ export class TriggerService {
       throw new Error(`"${existing.agentId}" e um agent do sistema e nao aceita escrita`);
     }
     if (enabled && esperaChats(toEntry(existing).config)) throw new Error(MOTIVO_CHATS);
+    if (enabled) {
+      const recusa = recusaDeLigar(await this.pendencias(existing.agentId), [existing.id]);
+      if (recusa !== null) throw new Error(recusa);
+    }
     const [updated] = await this.db
       .update(schema.triggers)
       .set({ enabled })

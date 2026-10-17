@@ -233,16 +233,54 @@ export function ImportarPacote({
             </div>
           ) : null}
 
-          {previa.urlsAPreencher.length > 0 ? (
-            <ul className="flex flex-col gap-0.5 text-xs" data-locum-pacote-urls="">
-              {previa.urlsAPreencher.map((u) => (
-                <li className="flex items-center gap-2" key={u.passo}>
-                  <StatusDot estado="aviso" />
-                  {u.origem === undefined ? t("pacote.import.urlFill", { passo: u.passo }) : t("pacote.import.urlFillHost", { passo: u.passo, host: u.origem })}
-                </li>
+          {previa.skills.length > 0 ? (
+            <div className="flex flex-col gap-1" data-locum-pacote-skills="">
+              <span className="text-muted-foreground text-xs">{t("pacote.import.skills")}</span>
+              <ul className="flex flex-col gap-1 text-xs">
+                {previa.skills.map((k) => (
+                  <li className="flex flex-col gap-0.5" data-locum-pacote-skill={`${k.nome}:${k.situacao}`} key={k.nome}>
+                    <span className="flex items-center gap-2">
+                      <StatusDot estado={k.situacao === "ausente" || k.situacao === "conflito" ? "aviso" : "ok"} />
+                      <span className="flex-1 truncate font-mono">{k.nome}</span>
+                      <Badge variant="outline">{t(`pacote.import.skillState.${k.situacao}`)}</Badge>
+                    </span>
+                    {k.diferenca === undefined ? null : (
+                      <details className="text-muted-foreground pl-5">
+                        <summary className="cursor-pointer">{t("pacote.import.skillDiff")}</summary>
+                        <span className="whitespace-pre-wrap break-words font-mono">{t("pacote.import.diffHere")}: {k.diferenca.descricaoDaqui}{"\n"}{k.diferenca.daqui}</span>
+                        <span className="whitespace-pre-wrap break-words font-mono">{t("pacote.import.diffPackage")}: {k.diferenca.descricaoDoPacote}{"\n"}{k.diferenca.pacote}</span>
+                      </details>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          <div className="flex flex-col gap-1" data-locum-pacote-nos="">
+            <span className="text-muted-foreground text-xs">{t("pacote.import.fill.title")}</span>
+            <ul className="flex flex-col gap-1 text-xs">
+              {previa.passos.map((p) => (
+                <NoDaPrevia
+                  campos={previa.aPreencher.filter((x) => x.no.tipo === "passo" && x.no.chave === p.chave)}
+                  chave={`passo:${p.chave}`}
+                  hosts={previa.urlsAPreencher.filter((u) => u.passo === p.chave).flatMap((u) => (u.origem === undefined ? [] : [u.origem]))}
+                  key={`passo:${p.chave}`}
+                  rotulo={t("pacote.import.fill.step", { nome: p.nome })}
+                />
+              ))}
+              {previa.gatilhos.map((g, i) => (
+                <NoDaPrevia
+                  campos={previa.aPreencher.filter((x) => x.no.tipo === "gatilho" && x.no.posicao === i)}
+                  chave={`gatilho:${i}`}
+                  hosts={[]}
+                  key={`gatilho:${i}`}
+                  naoCriado={!g.criado}
+                  rotulo={t("pacote.import.fill.trigger", { tipo: g.tipo })}
+                />
               ))}
             </ul>
-          ) : null}
+          </div>
 
           <div className="flex flex-col gap-2" data-locum-pacote-dependencias="">
             <span className="text-muted-foreground text-xs">{t("pacote.import.needs")}</span>
@@ -321,5 +359,27 @@ function ModeloSelect({
         </option>
       ))}
     </select>
+  );
+}
+
+type PreviaDeNo = { campo: string; motivo: string };
+
+/** Um nó do pacote (passo ou gatilho) e o que fica a preencher nele: sem campo, entra pronto. */
+function NoDaPrevia({ rotulo, chave, campos, hosts, naoCriado = false }: { rotulo: string; chave: string; campos: PreviaDeNo[]; hosts: string[]; naoCriado?: boolean }) {
+  const { t } = useTranslation();
+  return (
+    <li className="flex flex-col gap-0.5" data-locum-pacote-no={chave} data-pendencias={campos.length}>
+      <span className="flex items-center gap-2">
+        <StatusDot estado={campos.length === 0 && !naoCriado ? "ok" : "aviso"} />
+        <span className="flex-1 truncate">{rotulo}</span>
+        <span className="text-muted-foreground">{naoCriado ? t("pacote.import.fill.notCreated") : campos.length === 0 ? t("pacote.import.fill.ready") : t("pacote.import.fill.toFill", { count: campos.length })}</span>
+      </span>
+      {campos.map((c) => (
+        <span className="text-muted-foreground pl-5" key={`${c.motivo}:${c.campo}`}>
+          <span className="font-mono">{c.campo}</span>: {t(`pacote.import.fill.motivo.${c.motivo}`, { defaultValue: t("pacote.import.fill.motivo.generic") })}
+          {c.motivo === "url-a-preencher" && hosts.length > 0 ? ` (${t("pacote.import.fill.host", { host: hosts.join(", ") })})` : ""}
+        </span>
+      ))}
+    </li>
   );
 }

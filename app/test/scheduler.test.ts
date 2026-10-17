@@ -19,14 +19,17 @@ type Montagem = {
   viewer?: ViewerFn;
   /** Banco já existente, para dois agendadores baterem no mesmo. */
   db?: ReturnType<typeof bancoDeTeste>;
+  /** O que a automação de cada gatilho ainda tem a preencher, por id do agent. */
+  pendencias?: Record<string, { onde: string; campo: string; motivo: string }[] | undefined>;
 };
 
 /** Um agendador com cadastro em memória e um executor que só anota o que recebeu. */
-function montar({ gatilhos, poll, sweep, viewer, db = bancoDeTeste() }: Montagem) {
+function montar({ gatilhos, poll, sweep, viewer, db = bancoDeTeste(), pendencias = {} }: Montagem) {
   const iniciados: { eventId: string | null; triggerId: string }[] = [];
   const triggers = {
     enabled: async () => gatilhos.filter((g) => g.enabled),
     list: async () => gatilhos,
+    pendencias: async (agentId: string) => pendencias[agentId] ?? [],
   } as unknown as TriggerService;
   const executions = {
     startForEvent: async (input: { eventId: string | null; triggerId: string }) => {
@@ -160,7 +163,7 @@ test("evento que não abre run não impede os outros da mesma janela", async () 
   ];
   const scheduler = new Scheduler(
     db,
-    { enabled: async () => gatilhos, list: async () => gatilhos } as unknown as TriggerService,
+    { enabled: async () => gatilhos, list: async () => gatilhos, pendencias: async () => [] } as unknown as TriggerService,
     executions,
     {} as McpService,
     {} as SlackService,
@@ -198,7 +201,7 @@ test("evento que não abriu run volta na batida seguinte, mesmo sem vir na varre
   let batidas = 0;
   const scheduler = new Scheduler(
     db,
-    { enabled: async () => gatilhos, list: async () => gatilhos } as unknown as TriggerService,
+    { enabled: async () => gatilhos, list: async () => gatilhos, pendencias: async () => [] } as unknown as TriggerService,
     executions,
     {} as McpService,
     {} as SlackService,
@@ -237,7 +240,7 @@ test("evento que segue sem run depois de um dia sai da lista de retry", async ()
   let batidas = 0;
   const scheduler = new Scheduler(
     db,
-    { enabled: async () => gatilhos, list: async () => gatilhos } as unknown as TriggerService,
+    { enabled: async () => gatilhos, list: async () => gatilhos, pendencias: async () => [] } as unknown as TriggerService,
     executions,
     {} as McpService,
     {} as SlackService,
@@ -332,6 +335,7 @@ test("canal do Slack sem conexão falha com o caminho para ligar", async () => {
   const triggers = {
     enabled: async () => gatilhos,
     list: async () => gatilhos,
+    pendencias: async () => [],
   } as unknown as TriggerService;
   const scheduler = new Scheduler(
     bancoDeTeste(),
@@ -348,3 +352,16 @@ test("canal do Slack sem conexão falha com o caminho para ligar", async () => {
   assert.match(batida.outcomes[0]?.detail ?? "", /Conexões/);
 });
 
+
+test("gatilho de automação com campo a preencher não dispara, e dispara quando a pendência sai", async () => {
+  const pendencias: NonNullable<Montagem["pendencias"]> = { "agent-g1": [{ onde: "avisar", campo: "params.destino", motivo: "destino-a-escolher" }] };
+  const { scheduler, iniciados } = montar({ gatilhos: [gatilho("g1", { kind: "schedule", everyMinutes: 30 } as TriggerConfig)], pendencias });
+  const parada = await scheduler.tick({ at: T0 });
+  assert.equal(parada.outcomes[0]?.status, "skipped");
+  assert.match(parada.outcomes[0]?.detail ?? "", /incompleta.*avisar/);
+  assert.equal(iniciados.length, 0);
+
+  pendencias["agent-g1"] = undefined;
+  assert.equal((await scheduler.tick({ at: T0 + MINUTO })).outcomes[0]?.status, "fired");
+  assert.equal(iniciados.length, 1);
+});

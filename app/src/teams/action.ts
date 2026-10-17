@@ -4,7 +4,7 @@ import type { ActionHandler } from "../approval/gate.js";
 import { db as defaultDb, schema } from "../db/index.js";
 import { TEAMS_CHANNEL_PREFIX, TEAMS_SOURCE } from "../sources/teams-inbox.js";
 import { abrirTeams, servidorDeVariasContas, type TeamsGraphOptions } from "./graph.js";
-import { DestinoNaFila } from "../acao/destino.js";
+import { DestinoNaFila, PARAMS_DE_DESTINO_NO_PACOTE } from "../acao/destino.js";
 import { destinoParaFila, resolverDestino } from "../acao/conversa.js";
 import { adaptadorDoTeams, destinoDe } from "./conversa.js";
 import { lerRefDoTeams } from "./ref.js";
@@ -85,6 +85,7 @@ export function teamsPostHandler(options: TeamsPostHandlerOptions = {}): ActionH
 
   return {
     modes: ["approve", "auto"],
+    paramsDoPacote: PARAMS_DE_DESTINO_NO_PACOTE,
 
     async propose(payload) {
       if (payload === null || typeof payload !== "object") {

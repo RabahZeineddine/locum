@@ -1,3 +1,4 @@
+import { PassoIncompletoError, descreverPendencia, pendenciasDoPasso, recusaDeRodar } from "../config/pendencia.js";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -205,6 +206,9 @@ export class Executor {
     // traz evento, e seguir com `null` é o que ele sempre fez.
     const faltaEvento = event === undefined && !(await this.vemDeGatilho(run.triggerId)) ? dependenciaDeEvento(spec) : null;
     if (faltaEvento !== null) return this.recusarSemEvento(runId, spec, recusaSemEvento(faltaEvento));
+    // Nenhum run começa com nó incompleto, pedido à mão ou por gatilho. Só o ensaio (link colado) segue e mostra o nó.
+    const recusaDeIncompleto = payload.semConversa === true ? null : recusaDeRodar(spec.pendentes);
+    if (recusaDeIncompleto !== null) return this.recusarSemEvento(runId, spec, recusaDeIncompleto);
 
     await db
       .update(schema.runs)
@@ -324,6 +328,22 @@ export class Executor {
             .where(eq(schema.steps.id, stepId));
           outputs.set(step.key, null);
           foraDoCaminho.add(step.key);
+          continue;
+        }
+
+        // Campo a preencher não cai em padrão: o nó incompleto para o run em vez de rodar com o que sobrou.
+        const incompletas = pendenciasDoPasso(spec, step.key);
+        if (incompletas.length > 0) {
+          const incompleto = new PassoIncompletoError(step.key, incompletas);
+          // No ensaio o nó aparece como incompleto e o resto segue; o passo opcional só falha, como qualquer opcional.
+          const ensaio = payload.semConversa === true;
+          if (!ensaio && !step.optional) throw incompleto;
+          const motivo = incompletas.map(descreverPendencia).join("; ");
+          await db
+            .update(schema.steps)
+            .set(ensaio ? { status: "done", startedAt: nowSec(), endedAt: nowSec(), output: { state: "ensaio", motivo: `incompleto: ${motivo}`, text: "" } } : { status: "failed", endedAt: nowSec(), error: incompleto.message })
+            .where(eq(schema.steps.id, stepId));
+          outputs.set(step.key, ensaio ? { state: "ensaio", motivo: `incompleto: ${motivo}`, text: "" } : null);
           continue;
         }
 

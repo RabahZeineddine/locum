@@ -31,6 +31,8 @@ import {
   type GatilhoNoCanvas,
   type Problema,
   type Rascunho,
+  gatilhoIncompleto,
+  pendenciasDispensadas,
 } from "@/lib/automacao";
 import { call, invalidateReads, read, useRead, type ReadResult } from "@/lib/bridge";
 import { semPrefixoDoIpc } from "@/lib/erro-da-ponte";
@@ -333,7 +335,10 @@ function EditorCarregado({
     setAviso(null);
     call("pacote.exportFile", agentId).then(
       (r) => {
-        if (r !== null) setAviso({ tipo: "ok", texto: t("pacote.export.done", { arquivo: r.nomeDoArquivo }) });
+        if (r === null) return;
+        // O que viajou como literal nos argumentos de ferramenta: quem exporta confere antes de mandar o arquivo.
+        const literais = r.avisos.map((a) => `${a.onde} ${a.campo} = ${a.valor}`).join("; ");
+        setAviso({ tipo: "ok", texto: r.avisos.length === 0 ? t("pacote.export.done", { arquivo: r.nomeDoArquivo }) : t("pacote.export.doneWithLiterals", { arquivo: r.nomeDoArquivo, literais }) });
       },
       (e: unknown) => setAviso({ tipo: "erro", texto: semPrefixoDoIpc(e instanceof Error ? e.message : String(e)) }),
     );
@@ -371,6 +376,7 @@ function EditorCarregado({
       spec,
       triggers: gatilhosParaGravar(resultado.gatilhos, gravadoAgora.gatilhos),
       knownTriggerIds: gravadoAgora.gatilhos.flatMap((g) => (g.id === undefined ? [] : [g.id])),
+      dispensadas: pendenciasDispensadas(gravadoAgora.spec, resultado.spec),
       note: nota.trim() || (nova ? provisoria?.nota : undefined) || t("automations.editor.noteDefault"),
       ...(nova ? { create: true } : { expectedVersion: sobre?.version.version ?? versao }),
     }).then(
@@ -689,10 +695,10 @@ function EditorCarregado({
         <Button
           className="cursor-pointer"
           data-locum-automacao-ligar=""
-          disabled={ocupado !== null || nova || salvo.gatilhos.length === 0}
+          disabled={ocupado !== null || nova || salvo.gatilhos.length === 0 || (!ligada && gatilhoIncompleto(salvo.spec, salvo.gatilhos.flatMap((g) => (g.id === undefined ? [] : [g.id]))))}
           onClick={alternar}
           size="sm"
-          title={t("automations.editor.enabledHint")}
+          title={!ligada && gatilhoIncompleto(salvo.spec, salvo.gatilhos.flatMap((g) => (g.id === undefined ? [] : [g.id]))) ? t("automations.problems.pending.enableBlocked") : t("automations.editor.enabledHint")}
           variant="outline"
         >
           <StatusDot estado={ligada ? "ok" : "ocioso"} />

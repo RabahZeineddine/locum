@@ -1,6 +1,7 @@
 import type { ActionHandler } from "../approval/gate.js";
 import { slackService, type SlackService } from "../services/slack-service.js";
 import { resolverDestino } from "../acao/conversa.js";
+import { PARAMS_DE_DESTINO_NO_PACOTE } from "../acao/destino.js";
 import { adaptadorDoSlack } from "./conversa.js";
 import { postSlackReply, type SlackPostOptions } from "./post.js";
 import { buildPostProposal, SlackPostProposal } from "./proposal.js";
@@ -35,6 +36,7 @@ export function slackPostHandler(options: SlackPostHandlerOptions = {}): ActionH
 
   return {
     modes: ["approve", "auto"],
+    paramsDoPacote: PARAMS_DE_DESTINO_NO_PACOTE,
 
     async propose(payload, target) {
       // `target` existe para o agent que aponta para um servidor específico. Sem

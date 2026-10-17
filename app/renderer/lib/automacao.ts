@@ -12,6 +12,7 @@
  * apagada. A seta entre passos é o `needs`, e essa a pessoa liga e desliga.
  */
 import { topoSort, type AgentSpec, type LogicStep, type Step, type TriggerConfig } from "../../src/config/types";
+import { idDoGatilhoNoOnde, recusaDeLigar } from "../../src/config/pendencia";
 import { REGISTRO_DE_CONVERSA } from "../../src/acao/destino";
 import { gatilhoTrazMensagem } from "./destino-da-conversa";
 import { SLACK_REPLY_SCHEMA } from "../../src/slack/proposal";
@@ -608,7 +609,58 @@ export interface Problema {
   valores?: Record<string, string>;
   /** Para onde levar a pessoa a resolver. */
   atalho?: { rota: "connections" | "agents"; detalhe: string };
+  /** Campo a preencher que veio do pacote: o painel oferece dispensar, e ligar fica barrado enquanto durar. */
+  pendencia?: { onde: string; campo: string };
+  /** Passo que o pacote trouxe em `auto` e entrou em aprovação: o painel oferece voltar para `auto`. */
+  rebaixado?: { passo: string };
 }
+
+/** Os motivos de pendência que o dicionário diz por extenso; outro cai no texto genérico. */
+const MOTIVOS_DICIONADOS = new Set(["destino-a-escolher", "url-a-preencher", "argumentos", "tracker", "canais", "filtros-de-pessoa", "dono-do-github", "gatilho-sem-canal", "skill-ausente", "passo-a-revisar"]);
+
+/** O campo que o pacote deixou a preencher, como problema do nó: aviso, que não impede salvar. */
+export function problemasDePendencia(r: Rascunho): Problema[] {
+  return (r.spec.pendentes ?? []).map((p) => {
+    const idDoGatilho = idDoGatilhoNoOnde(p.onde);
+    const no = idDoGatilho === undefined ? p.onde : r.gatilhos.find((g) => g.id === idDoGatilho)?.chave;
+    return {
+      chave: MOTIVOS_DICIONADOS.has(p.motivo) ? `automations.problems.pending.${p.motivo}` : "automations.problems.pending.generic",
+      ...(no === undefined ? {} : { no }),
+      bloqueia: false,
+      valores: { campo: p.campo },
+      pendencia: { onde: p.onde, campo: p.campo },
+    };
+  });
+}
+
+/** Os passos que o pacote trouxe em `auto` e entraram em aprovação, como aviso do nó. */
+export function problemasDeRebaixado(r: Rascunho): Problema[] {
+  return (r.spec.rebaixados ?? []).map((x) => ({ chave: "automations.problems.downgraded", no: x.passo, bloqueia: false, rebaixado: { passo: x.passo } }));
+}
+
+/** A pessoa devolve o passo ao modo `auto`: a marca do rebaixamento sai junto, porque o passo deixou de estar em aprovação. */
+export function voltarParaAuto(spec: AgentSpec, passo: string): AgentSpec {
+  const steps = spec.steps.map((p) => (p.key === passo && p.type === "action" ? { ...p, mode: "auto" as const } : p));
+  const restantes = (spec.rebaixados ?? []).filter((x) => x.passo !== passo);
+  const { rebaixados: _antes, ...resto } = spec;
+  return restantes.length === 0 ? { ...resto, steps } : { ...resto, steps, rebaixados: restantes };
+}
+
+/** Tira uma pendência do rascunho: o campo foi preenchido, ou a pessoa disse que não precisa dele. */
+export function dispensarPendencia(spec: AgentSpec, onde: string, campo: string): AgentSpec {
+  const restantes = (spec.pendentes ?? []).filter((p) => !(p.onde === onde && p.campo === campo));
+  const { pendentes: _antes, ...resto } = spec;
+  return restantes.length === 0 ? resto : { ...resto, pendentes: restantes };
+}
+
+/** As pendências que o rascunho tirou da versão gravada: dispensadas por nome, que a gravação não deixa voltar. */
+export function pendenciasDispensadas(gravado: AgentSpec, rascunho: AgentSpec): { onde: string; campo: string }[] {
+  const ficam = new Set((rascunho.pendentes ?? []).map((p) => `${p.onde}\u0000${p.campo}`));
+  return (gravado.pendentes ?? []).filter((p) => !ficam.has(`${p.onde}\u0000${p.campo}`)).map(({ onde, campo }) => ({ onde, campo }));
+}
+
+/** Algum gatilho existente tem campo a preencher: não liga até a pessoa preencher ou dispensar. */
+export const gatilhoIncompleto = (spec: AgentSpec, ids: readonly string[]): boolean => recusaDeLigar(spec.pendentes, ids) !== null;
 
 export interface Contexto {
   slackConectado: boolean;
@@ -639,7 +691,7 @@ const destinoFixoSemConversa = (p: { params?: Record<string, unknown> }): boolea
  * pode montar a automação antes de ligar o Slack.
  */
 export function problemas(r: Rascunho, ctx: Contexto): Problema[] {
-  const lista: Problema[] = [];
+  const lista: Problema[] = [...problemasDePendencia(r), ...problemasDeRebaixado(r)];
   const kinds = new Set(r.gatilhos.map((g) => g.config.kind));
   const agrupa = r.gatilhos.some((g) => g.config.kind === "teams-inbox" && g.config.prLinks && g.config.agruparPrs);
 

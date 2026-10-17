@@ -7,6 +7,8 @@ import {
   componenteDoPasso,
   ehGatilho,
   numerarPassos,
+  dispensarPendencia,
+  voltarParaAuto,
   FORMATOS,
   formatoDe,
   passoComAgent,
@@ -194,6 +196,26 @@ export function PainelDoNo({
               {p.atalho === undefined ? null : (
                 <button className="ml-2 cursor-pointer underline" onClick={() => navegar(p.atalho!.rota, p.atalho!.detalhe)} type="button">
                   {t("automations.problems.openConnection")}
+                </button>
+              )}
+              {p.rebaixado === undefined ? null : (
+                <button
+                  className="ml-2 cursor-pointer underline"
+                  onClick={() => setRascunho((r) => ({ ...r, spec: voltarParaAuto(r.spec, p.rebaixado!.passo) }))}
+                  title={t("automations.problems.downgradedBackHint")}
+                  type="button"
+                >
+                  {t("automations.problems.downgradedBack")}
+                </button>
+              )}
+              {p.pendencia === undefined ? null : (
+                <button
+                  className="ml-2 cursor-pointer underline"
+                  onClick={() => setRascunho((r) => ({ ...r, spec: dispensarPendencia(r.spec, p.pendencia!.onde, p.pendencia!.campo) }))}
+                  title={t("automations.problems.pending.dismissHint")}
+                  type="button"
+                >
+                  {t("automations.problems.pending.dismiss")}
                 </button>
               )}
             </li>

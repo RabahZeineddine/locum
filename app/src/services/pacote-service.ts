@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { basename } from "node:path";
 import {
   AgentProfile,
@@ -19,12 +20,24 @@ import {
   VERSAO_DO_FORMATO,
   EXTENSAO_DO_PACOTE,
   lerPacote,
+  NOME_DE_SKILL,
+  TETO_DO_CORPO_DA_SKILL,
+  TETO_DA_DESCRICAO_DA_SKILL,
+  type SkillDoPacote,
+  ondeDoGatilhoNoPacote,
   type AgentDoPacote,
   type CodigoOmitido,
   type GatilhoDoPacote,
   type PassoDoPacote,
 } from "../pacote/formato.js";
-import { limparValor } from "../pacote/limpeza.js";
+import { configuracaoDoGatilho, omitidoDaPendencia, pendenciasDoPacote, type PendenciaDoPacote } from "../pacote/pendencias.js";
+import { idDoGatilhoNoOnde, ondeDoGatilho, type Pendencia } from "../config/pendencia.js";
+import { REBAIXADO_NA_IMPORTACAO, type Rebaixado } from "../config/rebaixado.js";
+import { db } from "../db/index.js";
+import { transacaoDoBanco, type EmTransacao } from "../db/transacao.js";
+import { identidadesNoTexto, limparSkill, limparValor } from "../pacote/limpeza.js";
+import { MARCAS_DO_AGENT, MARCAS_DO_SPEC, MARCAS_DOS_GATILHOS } from "../pacote/marcacao.js";
+import { aplicarMarcas, ehMarcador, literaisQueViajam, origemDaUrl, paramsDoPacoteParaPasso, paramsParaPacote, type ParamsDoPacote } from "../pacote/params.js";
 import { ehLeitura, ehLeituraDa, type FerramentaClassificavel } from "../config/leitura.js";
 
 /**
@@ -50,20 +63,49 @@ export interface AmbienteDoPacote {
   /** Provedores conhecidos, com os modelos de quem está disponível. */
   provedores(): Promise<{ provedor: string; disponivel: boolean; modelos: string[] }[]>;
   /** A última lista boa de ferramentas do servidor, com as anotações dele. Nula sem cache. */
-  guardadas(servidor: string): Promise<FerramentaClassificavel[] | null>;
+  guardadas(servidor: string): Promise<(FerramentaClassificavel & { inputSchema?: Record<string, unknown> })[] | null>;
+  /** Como cada ação declara que seus params viajam. Padrão: o que os handlers registrados declaram. */
+  acoes?(): Promise<Record<string, ParamsDoPacote>>;
   /** Nomes das skills que esta máquina tem. */
   skills(): Promise<string[]>;
+  /** A descrição e o corpo de uma skill daqui, ou nulo se não existe. Sem isto o pacote não leva o conteúdo. */
+  conteudoDaSkill?(nome: string): Promise<{ descricao: string; corpo: string } | null>;
+  /** Cria a skill no Locum, com o nome pedido. Sem isto a importação não cria skills. */
+  criarSkill?(skill: { nome: string; descricao: string; corpo: string }): Promise<void>;
+  /** Tira uma skill que a importação acabou de criar, quando a gravação seguinte falha. */
+  removerSkill?(nome: string): Promise<void>;
 }
 
 const ambientePadrao: AmbienteDoPacote = {
   guardadas: async (servidor) => {
     const { mcpService } = await import("./mcp-service.js");
     const guardada = await mcpService.cachedTools(servidor);
-    return guardada?.tools.map(({ name, readOnlyHint, destructiveHint }) => ({ name, readOnlyHint, destructiveHint })) ?? null;
+    return guardada?.tools.map(({ name, readOnlyHint, destructiveHint, inputSchema }) => ({ name, readOnlyHint, destructiveHint, ...(inputSchema === undefined ? {} : { inputSchema }) })) ?? null;
+  },
+  acoes: async () => {
+    const { buildGate } = await import("../executor/build.js");
+    return Object.fromEntries(buildGate().describe().map((a) => [a.kind, a.paramsDoPacote ?? {}]));
   },
   skills: async () => {
     const { discoverSkills } = await import("../skills/loader.js");
     return [...discoverSkills().keys()];
+  },
+  conteudoDaSkill: async (nome) => {
+    const { skillsService } = await import("./skills-service.js");
+    try {
+      const skill = await skillsService.obter(nome);
+      return { descricao: skill.description, corpo: skill.corpo };
+    } catch {
+      return null;
+    }
+  },
+  criarSkill: async ({ nome, descricao, corpo }) => {
+    const { skillsService } = await import("./skills-service.js");
+    await skillsService.criar({ name: nome, description: descricao, body: corpo });
+  },
+  removerSkill: async (nome) => {
+    const { skillsService } = await import("./skills-service.js");
+    await skillsService.remover(nome);
   },
   conexoes: async () => {
     const { connectionService } = await import("./connection-service.js");
@@ -180,11 +222,24 @@ export interface PreviaDoPacote {
   /** Os modelos que esta máquina oferece, como `provedor/modelo`, para ligar cada agent. */
   modelosAqui: string[];
   /** Todos entram desligados; `precisaCanal` fica de fora até a pessoa escolher. */
-  gatilhos: { tipo: string; precisaCanal: boolean; precisaChats: boolean }[];
+  gatilhos: { tipo: string; precisaCanal: boolean; precisaChats: boolean; criado: boolean }[];
+  /** Os passos que a automação nova terá, na ordem do pacote. */
+  passos: { chave: string; nome: string; tipo: string }[];
+  /** O que o pacote faz com cada skill citada. */
+  skills: SkillNaPrevia[];
+  /** O que fica a preencher por nó e por gatilho: o mesmo que a importação grava em `pendentes`. */
+  aPreencher: PendenciaDoPacote[];
   /** O que o pacote deixou de fora de propósito, para a pessoa escolher aqui. */
   omitidos: Pacote["omitidos"];
   /** Passos de ação que o pacote trazia em modo `auto` e entram em `approve`. */
   acoesRebaixadas: string[];
+}
+
+export interface SkillNaPrevia {
+  nome: string;
+  /** `nova` é criada; `conflito` fica como está aqui (a skill da máquina vence), com a diferença à vista; `ausente` não veio no pacote e não existe aqui. */
+  situacao: "nova" | "igual" | "conflito" | "existente" | "ausente";
+  diferenca?: { daqui: string; pacote: string; descricaoDaqui: string; descricaoDoPacote: string };
 }
 
 export interface EscolhasDaImportacao {
@@ -208,7 +263,7 @@ export interface ResultadoDaImportacao {
   agents: { id: string; acao: "criado" | "atualizado" | "igual" | "existente"; versao: number }[];
   gatilhos: number;
   /** O que a pessoa ainda precisa escolher na automação criada. */
-  pendencias: { codigo: CodigoOmitido; onde: string; dica?: string }[];
+  pendencias: { codigo: CodigoOmitido; onde: string; dica?: string; params?: string[] }[];
 }
 
 /** Falta decisão da pessoa: a mensagem diz sobre o quê. */
@@ -219,11 +274,26 @@ export class DecisaoPendenteError extends Error {
   }
 }
 
+/** O que a marcação de texto do spec e dos agents limpou, para entrar na conta do `texto-limpo`. */
+interface TextosDoPacote {
+  limpos: number;
+}
+
+/** Um literal de argumento (de `mcp.call` ou `mcp-poll`) que viaja no pacote: login, organização, o que for. */
+export interface AvisoDeLiteral {
+  /** A chave do passo, ou `gatilho:<posição>`. */
+  onde: string;
+  campo: string;
+  valor: string;
+}
+
 /** O pacote exportado: o texto do arquivo e o nome sugerido para ele. */
 export interface PacoteExportado {
   texto: string;
   nomeDoArquivo: string;
   pacote: Pacote;
+  /** O que viajou como literal nos argumentos de ferramenta, para quem exporta conferir antes de mandar. */
+  avisos: AvisoDeLiteral[];
 }
 
 /* ------------------------------------------------------------------ ajudas */
@@ -258,19 +328,7 @@ function hostDe(url: string | undefined): string | undefined {
   }
 }
 
-/**
- * Só esquema e host. O caminho de um webhook (Slack, Discord, Teams, n8n,
- * Zapier) é o segredo dele, e usuário, senha e consulta também: nada disso sai.
- */
-export function origemDaUrl(url: string): string | undefined {
-  try {
-    const u = new URL(url);
-    if (u.protocol !== "https:" && u.protocol !== "http:") return undefined;
-    return `${u.protocol}//${u.host}`;
-  } catch {
-    return undefined;
-  }
-}
+export { origemDaUrl };
 
 const EXECUTORES_DE_PACOTE = new Set(["npx", "bunx", "pnpx", "uvx", "pipx"]);
 const GERENTES = new Set(["npm", "pnpm", "yarn", "bun"]);
@@ -316,6 +374,8 @@ export class PacoteService {
     private readonly ambiente: AmbienteDoPacote = ambientePadrao,
     /** O home a esconder do texto livre. Padrão: o da máquina. */
     private readonly home?: string,
+    /** Onde a importação grava tudo junto: ou entra inteira, ou nada. Padrão: o banco do aplicativo. */
+    private readonly emTransacao: EmTransacao = transacaoDoBanco(db),
   ) {}
 
   /* --------------------------------------------------------------- exportar */
@@ -325,57 +385,149 @@ export class PacoteService {
     if (automacao === null) throw new Error(`a automação "${agentId}" não existe`);
     const spec = automacao.version.spec;
     const omitidos: Pacote["omitidos"] = [];
-    const omitir = (codigo: CodigoOmitido, onde: string, quantos?: number): void => {
-      omitidos.push({ codigo, onde, ...(quantos === undefined ? {} : { quantos }) });
+    const omitir = (codigo: CodigoOmitido, onde: string, quantos?: number, params?: string[], motivo?: string): void => {
+      omitidos.push({ codigo, onde, ...(quantos === undefined ? {} : { quantos }), ...(params === undefined ? {} : { params }), ...(motivo === undefined ? {} : { motivo }) });
     };
+    const declaracoes = await this.declaracoes();
 
     // Agents que o fluxo usa, na ordem em que aparecem.
     const idsDosAgents = [...new Set(spec.steps.flatMap((p) => (p.type === "model" && p.profile !== undefined ? [p.profile] : [])))];
     const agents: AgentDoPacote[] = [];
-    for (const id of idsDosAgents) agents.push(await this.agentParaPacote(id));
+    // O que a marcação deixou de fora por ser credencial, e quanto texto limpou, do agent e do spec.
+    const dosTextos: TextosDoPacote = { limpos: 0 };
+    for (const id of idsDosAgents) agents.push(await this.agentParaPacote(id, omitir, dosTextos));
 
-    const passos = spec.steps.map((p) => this.passoParaPacote(p, omitir));
+    const avisos: AvisoDeLiteral[] = [];
+    const passos: PassoDoPacote[] = [];
+    for (const p of spec.steps) passos.push(await this.passoParaPacote(p, omitir, declaracoes, avisos));
     const gatilhos: GatilhoDoPacote[] = [];
-    for (const g of automacao.triggers) gatilhos.push(this.gatilhoParaPacote(g.config, omitir));
+    for (const [i, g] of automacao.triggers.entries()) gatilhos.push(await this.gatilhoParaPacote(g.config, ondeDoGatilhoNoPacote(i), omitir, avisos));
 
+    // A pendência ainda aberta segue como omitido: quem recebe este pacote herda o que o anterior não preencheu.
+    const posicaoDoGatilho = new Map(automacao.triggers.map((g, i) => [g.id, i]));
+    for (const p of spec.pendentes ?? []) {
+      const idDoGatilho = idDoGatilhoNoOnde(p.onde);
+      const posicao = idDoGatilho === undefined ? undefined : posicaoDoGatilho.get(idDoGatilho);
+      if (idDoGatilho !== undefined && posicao === undefined) {
+        // O gatilho nunca chegou a ser criado, então não há config para o pacote levar: o omitido diz que falta um, e o quê.
+        if (!omitidos.some((x) => x.codigo === "gatilho-sem-canal" && x.params?.includes(p.campo))) omitir("gatilho-sem-canal", "automacao", undefined, [p.campo]);
+        continue;
+      }
+      if (idDoGatilho === undefined && !spec.steps.some((s) => s.key === p.onde)) continue;
+      const o = omitidoDaPendencia(p.motivo, p.campo, idDoGatilho === undefined ? "passo" : "gatilho");
+      if (o === null) continue;
+      const onde = posicao === undefined ? p.onde : ondeDoGatilhoNoPacote(posicao);
+      const dito = omitidos.some((x) => x.codigo === o.codigo && x.onde === onde && (o.params === undefined || o.params.every((n) => x.params?.includes(n))));
+      if (!dito) omitir(o.codigo, onde, undefined, o.params);
+    }
+
+    const requisitos = await this.requisitos(spec, agents, gatilhos);
+    // O spec e o agent saem pela mesma marcação que a importação lê: campo portável novo viaja sem mexer aqui.
+    const doSpec = aplicarMarcas(MARCAS_DO_SPEC, { ...spec, steps: passos } as unknown as Record<string, unknown>, this.opcoesDeTexto());
+    for (const [codigo, d] of doSpec.omitidos) omitir(codigo, "automacao", d.quantos, d.nomes);
+    dosTextos.limpos += doSpec.limpos;
+    const { id: idDoSpec, ...specNoPacote } = doSpec.valor;
     const base = {
       formato: NOME_DO_FORMATO,
       versao: VERSAO_DO_FORMATO,
-      automacao: {
-        id: spec.id,
-        spec: {
-          name: spec.name,
-          defaultTools: spec.defaultTools,
-          skills: spec.skills,
-          steps: passos,
-          budget: spec.budget,
-          ...(spec.layout === undefined ? {} : { layout: spec.layout }),
-        },
-        gatilhos,
-      },
+      automacao: { id: idDoSpec, spec: specNoPacote, gatilhos },
       agents,
-      requisitos: await this.requisitos(spec, agents, gatilhos),
+      requisitos,
       omitidos,
     };
 
+    // O texto das skills tem a limpeza própria (só segredo e caminho do home), e o teto conta o texto depois dela.
+    const skills = await this.conteudoDasSkills(requisitos.skills.map((k) => k.nome), omitir, avisos);
     const limpo = limparValor(base, this.home);
-    const pacote = Pacote.parse(limpo.valor);
-    if (limpo.removidos > 0) pacote.omitidos.push({ codigo: "texto-limpo", onde: "automacao", quantos: limpo.removidos });
+    const pacote = Pacote.parse({ ...limpo.valor, skills });
+    const limpos = limpo.removidos + dosTextos.limpos;
+    if (limpos > 0) pacote.omitidos.push({ codigo: "texto-limpo", onde: "automacao", quantos: limpos });
     return {
       pacote,
       texto: `${JSON.stringify(pacote, null, 2)}\n`,
       nomeDoArquivo: `${spec.id}${EXTENSAO_DO_PACOTE}`,
+      avisos,
     };
   }
 
-  private async agentParaPacote(id: string): Promise<AgentDoPacote> {
-    const versao = await this.library.getProfile(id);
-    if (versao === null) throw new Error(`o agent "${id}", usado pela automação, não existe`);
-    return this.perfilParaPacote(versao.spec);
+  /**
+   * O conteúdo das skills citadas que esta máquina tem; o que não tem fica só como requisito.
+   * Skill que existe aqui e não vai (nome inválido, sem descrição, grande demais, ilegível)
+   * sai com omitido por nome, e a exportação nunca lança por causa dela.
+   */
+  private async conteudoDasSkills(
+    nomes: readonly string[],
+    omitir: (c: CodigoOmitido, onde: string, q?: number, params?: string[], motivo?: string) => void,
+    avisos: AvisoDeLiteral[],
+  ): Promise<SkillDoPacote[]> {
+    if (this.ambiente.conteudoDaSkill === undefined) return [];
+    const locais = new Set(await this.ambiente.skills());
+    const lista: SkillDoPacote[] = [];
+    for (const nome of nomes) {
+      const nao = (motivo: string): void => omitir("skill-nao-levada", `skill:${nome}`, undefined, undefined, motivo);
+      if (!NOME_DE_SKILL.test(nome)) {
+        if (locais.has(nome)) nao("nome-invalido");
+        continue;
+      }
+      const skill = await this.ambiente.conteudoDaSkill(nome).catch(() => null);
+      if (skill === null) {
+        if (locais.has(nome)) nao("nao-lida");
+        continue;
+      }
+      const descricao = limparSkill(skill.descricao, this.home);
+      const corpo = limparSkill(skill.corpo, this.home);
+      if (descricao.texto.trim() === "") nao("sem-descricao");
+      else if (descricao.texto.length > TETO_DA_DESCRICAO_DA_SKILL || Buffer.byteLength(corpo.texto) > TETO_DO_CORPO_DA_SKILL) nao("grande-demais");
+      else {
+        lista.push({ nome, descricao: descricao.texto, corpo: corpo.texto });
+        // E-mail, chat do Teams e canal do Slack ficam no texto da skill: viram aviso por skill, como o literal de argumento.
+        for (const [campo, texto] of [["descricao", descricao.texto], ["corpo", corpo.texto]] as const) {
+          for (const valor of identidadesNoTexto(texto)) avisos.push({ onde: `skill:${nome}`, campo, valor });
+        }
+        // Qual skill mudou fica dito, por nome.
+        if (descricao.removidos + corpo.removidos > 0) omitir("texto-limpo", `skill:${nome}`, descricao.removidos + corpo.removidos);
+      }
+    }
+    return lista;
   }
 
-  /** O agent na forma do pacote: o toolset vira ferramentas avulsas dele. */
-  private async perfilParaPacote(s: AgentProfile): Promise<AgentDoPacote> {
+  /** Cada skill do pacote frente a esta máquina: nova, igual, em conflito (mesmo nome, outro texto), já aqui sem texto no pacote, ou ausente. */
+  private async situacaoDasSkills(pacote: Pacote, locais: readonly string[]): Promise<SkillNaPrevia[]> {
+    const traz = new Map(pacote.skills.map((k) => [k.nome, k]));
+    const lista: SkillNaPrevia[] = [];
+    for (const { nome } of pacote.requisitos.skills) {
+      const doPacote = traz.get(nome);
+      const aqui = locais.includes(nome);
+      if (doPacote === undefined) {
+        lista.push({ nome, situacao: aqui ? "existente" : "ausente" });
+      } else if (!aqui) {
+        lista.push({ nome, situacao: "nova" });
+      } else {
+        const atual = await this.ambiente.conteudoDaSkill?.(nome);
+        const igual = atual != null && atual.corpo.trim() === doPacote.corpo.trim() && atual.descricao.trim() === doPacote.descricao.trim();
+        lista.push(
+          igual || atual == null
+            ? { nome, situacao: "igual" }
+            : { nome, situacao: "conflito", diferenca: { daqui: atual.corpo, pacote: doPacote.corpo, descricaoDaqui: atual.descricao, descricaoDoPacote: doPacote.descricao } },
+        );
+      }
+    }
+    return lista;
+  }
+
+  private async agentParaPacote(id: string, omitir?: (c: CodigoOmitido, onde: string, q?: number, params?: string[]) => void, textos?: TextosDoPacote): Promise<AgentDoPacote> {
+    const versao = await this.library.getProfile(id);
+    if (versao === null) throw new Error(`o agent "${id}", usado pela automação, não existe`);
+    return this.perfilParaPacote(versao.spec, omitir, textos);
+  }
+
+  /** O que a limpeza de texto precisa saber: o home a esconder. */
+  private opcoesDeTexto(): { home?: string } {
+    return this.home === undefined ? {} : { home: this.home };
+  }
+
+  /** O agent na forma do pacote: o toolset vira ferramentas avulsas dele, e o resto pela marcação do agent. */
+  private async perfilParaPacote(s: AgentProfile, omitir?: (c: CodigoOmitido, onde: string, q?: number, params?: string[]) => void, textos?: TextosDoPacote): Promise<AgentDoPacote> {
     const id = s.id;
     // O toolset vira ferramentas do próprio agent: o pacote não carrega conjuntos compartilhados.
     const doToolset: ToolRef[] = [];
@@ -384,78 +536,82 @@ export class PacoteService {
       if (toolset === null) throw new Error(`o agent "${id}" usa o toolset "${toolsetId}", que não existe mais`);
       doToolset.push(...toolset.tools);
     }
-    return {
-      id: s.id,
-      name: s.name,
-      description: s.description,
-      context: s.context,
-      instructions: s.instructions,
-      model: s.model,
-      ...(s.temperature === undefined ? {} : { temperature: s.temperature }),
-      tools: semRepetir([...doToolset, ...s.tools]),
-      connections: s.connections,
-      skills: s.skills.map((k) => (typeof k === "string" ? { skill: k, when: { always: true } } : k)),
-      budget: s.budget,
-      maxSteps: s.maxSteps,
-    };
+    const r = aplicarMarcas(
+      MARCAS_DO_AGENT,
+      { ...s, tools: semRepetir([...doToolset, ...s.tools]), skills: s.skills.map((k) => (typeof k === "string" ? { skill: k, when: { always: true } } : k)) } as unknown as Record<string, unknown>,
+      this.opcoesDeTexto(),
+    );
+    for (const [codigo, d] of r.omitidos) omitir?.(codigo, `agent:${id}`, d.quantos, d.nomes);
+    if (textos !== undefined) textos.limpos += r.limpos;
+    return r.valor as unknown as AgentDoPacote;
   }
 
-  private passoParaPacote(passo: Step, omitir: (c: CodigoOmitido, onde: string, q?: number) => void): PassoDoPacote {
+  /** O que cada ação declara sobre a viagem dos params; a de uma ação desconhecida é vazia (nada viaja). */
+  private async declaracoes(): Promise<Record<string, ParamsDoPacote>> {
+    return (this.ambiente.acoes ?? ambientePadrao.acoes!)();
+  }
+
+  private async passoParaPacote(
+    passo: Step,
+    omitir: (c: CodigoOmitido, onde: string, q?: number, params?: string[]) => void,
+    declaracoes: Record<string, ParamsDoPacote>,
+    avisos: AvisoDeLiteral[],
+  ): Promise<PassoDoPacote> {
     if (passo.type !== "action") return passo;
     const { target, params, ...resto } = passo;
     if (target !== undefined) omitir("tracker", passo.key);
-    const mantidos: Record<string, string> = {};
-    let descartados = 0;
-    for (const [chave, valor] of Object.entries(params ?? {})) {
-      if (chave === "server" || chave === "tool" || chave === "method") {
-        if (typeof valor === "string" && valor !== "") mantidos[chave] = valor;
-        else descartados += 1;
-      } else if (chave === "url" && typeof valor === "string" && valor !== "") {
-        const origem = origemDaUrl(valor.replace(/\{\{[^}]*\}\}/g, "x"));
-        if (origem === undefined) descartados += 1;
-        else mantidos.origem = origem;
-        omitir("url-a-preencher", passo.key);
-      } else {
-        descartados += 1;
-      }
+    const sensivel = await this.sensivelDaFerramenta(params);
+    const r = paramsParaPacote(declaracoes[passo.action] ?? {}, params ?? {}, { ...(this.home === undefined ? {} : { home: this.home }), sensivel });
+    const urls = new Set(r.urls.map((u) => u.param));
+    const fixos = new Set(r.destinosFixos);
+    const faltou = r.omitidos.filter((n) => !urls.has(n) && !fixos.has(n));
+    if (faltou.length > 0) omitir("argumentos", passo.key, faltou.length, faltou);
+    if (fixos.size > 0) omitir("destino-a-escolher", passo.key, fixos.size, [...fixos]);
+    if (urls.size > 0) omitir("url-a-preencher", passo.key, undefined, [...urls]);
+    if (r.limpos > 0) omitir("texto-limpo", passo.key, r.limpos);
+    for (const [nome, como] of Object.entries(declaracoes[passo.action] ?? {})) {
+      if (como === "argumentos") for (const l of literaisQueViajam(r.params[nome], nome)) avisos.push({ onde: passo.key, ...l });
     }
-    if (descartados > 0) omitir("argumentos", passo.key, descartados);
-    return { ...resto, ...(Object.keys(mantidos).length === 0 ? {} : { params: mantidos }) };
+    return { ...resto, ...(Object.keys(r.params).length === 0 ? {} : { params: r.params }) };
   }
 
-  private gatilhoParaPacote(
+  /** Diz se um argumento de `server`/`tool` é sensível pelo esquema da ferramenta (`writeOnly` ou `format: password`). */
+  private async sensivelDaFerramenta(params: Record<string, unknown> | undefined): Promise<(caminho: string[]) => boolean> {
+    const { server, tool } = params ?? {};
+    if (typeof server !== "string" || typeof tool !== "string") return () => false;
+    const esquema = (await this.ambiente.guardadas(server).catch(() => null))?.find((f) => f.name === tool)?.inputSchema;
+    return (caminho) => {
+      let no: unknown = esquema;
+      for (const parte of caminho) {
+        no = (no as { properties?: Record<string, unknown> } | undefined)?.properties?.[parte];
+        if (no === undefined) return false;
+      }
+      const n = no as { writeOnly?: unknown; format?: unknown };
+      return n.writeOnly === true || n.format === "password";
+    };
+  }
+
+  /** O gatilho no pacote: um só código aplica `MARCAS_DOS_GATILHOS`; o que é da pessoa sai e vira pendência. */
+  private async gatilhoParaPacote(
     config: GatilhoConfig,
-    omitir: (c: CodigoOmitido, onde: string, q?: number) => void,
-  ): GatilhoDoPacote {
-    switch (config.kind) {
-      case "teams-inbox": {
-        const { channels, chats, chatsPendentes, ...resto } = config;
-        if (channels.length + chats.length > 0) omitir("canais", "teams-inbox", channels.length + chats.length);
-        const restritos = chats.length > 0 ? chats.length : chatsPendentes;
-        return restritos === 0 ? resto : { ...resto, chatsRestritos: restritos };
-      }
-      case "slack-channel": {
-        const { channels, ...resto } = config;
-        omitir("canais", "slack-channel", channels.length);
-        return resto;
-      }
-      case "poll": {
-        const { owner, filters, ...resto } = config;
-        if (owner !== undefined) omitir("dono-do-github", "poll");
-        if (filters === undefined) return resto;
-        const { authors, reviewRequested, teamMembers, ...paths } = filters;
-        const pessoas = [authors, reviewRequested, teamMembers].filter((f) => f !== undefined).length;
-        if (pessoas > 0) omitir("filtros-de-pessoa", "poll", pessoas);
-        return { ...resto, ...(Object.keys(paths).length === 0 ? {} : { filters: paths }) };
-      }
-      case "mcp-poll": {
-        const { args, ...resto } = config;
-        if (Object.keys(args).length > 0) omitir("argumentos", "mcp-poll", Object.keys(args).length);
-        return resto;
-      }
-      default:
-        return config;
+    onde: string,
+    omitir: (c: CodigoOmitido, onde: string, q?: number, params?: string[]) => void,
+    avisos: AvisoDeLiteral[],
+  ): Promise<GatilhoDoPacote> {
+    const sensivel = await this.sensivelDaFerramenta(config as unknown as Record<string, unknown>);
+    const r = aplicarMarcas(MARCAS_DOS_GATILHOS[config.kind], config as unknown as Record<string, unknown>, {
+      ...(this.home === undefined ? {} : { home: this.home }),
+      sensivel,
+    });
+    for (const [codigo, d] of r.omitidos) omitir(codigo, onde, d.quantos, d.nomes);
+    if (r.limpos > 0) omitir("texto-limpo", onde, r.limpos);
+    for (const [campo, marca] of Object.entries(MARCAS_DOS_GATILHOS[config.kind] as Record<string, unknown>)) {
+      if (marca === "argumentos") for (const l of literaisQueViajam(r.valor[campo], campo)) avisos.push({ onde, ...l });
     }
+    if (config.kind !== "teams-inbox") return r.valor as GatilhoDoPacote;
+    // Quantos chats restringiam o gatilho, sem os ids; chats ainda por escolher contam também.
+    const restritos = config.chats.length > 0 ? config.chats.length : config.chatsPendentes;
+    return (restritos === 0 ? r.valor : { ...r.valor, chatsRestritos: restritos }) as GatilhoDoPacote;
   }
 
   private async requisitos(spec: AgentSpec, agents: readonly AgentDoPacote[], gatilhos: readonly GatilhoDoPacote[]): Promise<Pacote["requisitos"]> {
@@ -538,6 +694,7 @@ export class PacoteService {
 
   async previa(texto: string): Promise<PreviaDoPacote> {
     const pacote = lerPacote(texto);
+    const declaracoes = await this.declaracoes();
     const [conexoes, servidores, provedores, existentes, skills] = await Promise.all([
       this.ambiente.conexoes(),
       this.ambiente.servidores(),
@@ -591,21 +748,28 @@ export class PacoteService {
       p.type === "model" && p.profile === undefined ? [modeloNaPrevia(`passo:${p.key}`, p.name, p.model)] : [],
     );
 
+    const situacoesDasSkills = await this.situacaoDasSkills(pacote, skills);
     return {
       automacao: { id: pacote.automacao.id, nome: pacote.automacao.spec.name, existe: automacaoExiste, idSugerido },
       agents,
       passosDeIA,
-      dependencias: this.dependencias(pacote, { conexoes, servidores, provedores, disponiveis, skills }),
+      dependencias: this.dependencias(pacote, { conexoes, servidores, provedores, disponiveis, skills: [...skills, ...pacote.skills.map((k) => k.nome)] }),
       ferramentas: await this.ferramentasDoPacote(pacote),
       urlsAPreencher: pacote.automacao.spec.steps.flatMap((p) =>
-        p.type === "action" && p.action === "http.request" ? [{ passo: p.key, ...(p.params?.origem === undefined ? {} : { origem: p.params.origem }) }] : [],
+        p.type === "action" && Object.entries(declaracoes[p.action] ?? {}).some(([nome, como]) => como === "url" && !ehMarcador(p.params?.[nome]))
+          ? [{ passo: p.key, ...(typeof p.params?.origem === "string" ? { origem: p.params.origem } : {}) }]
+          : [],
       ),
       modelosAqui: [...disponiveis].sort(),
       gatilhos: pacote.automacao.gatilhos.map((g) => ({
         tipo: g.kind,
         precisaCanal: g.kind === "slack-channel",
         precisaChats: g.kind === "teams-inbox" && g.chatsRestritos !== undefined,
+        criado: configuracaoDoGatilho(g) !== null,
       })),
+      passos: pacote.automacao.spec.steps.map((p) => ({ chave: p.key, nome: p.name, tipo: p.type === "action" ? p.action : p.type })),
+      skills: situacoesDasSkills,
+      aPreencher: pendenciasDoPacote(pacote, declaracoes, ausentesDasSkills(situacoesDasSkills, usosDasDependencias(pacote).skills)),
       omitidos: pacote.omitidos,
       acoesRebaixadas: pacote.automacao.spec.steps.flatMap((p) => (p.type === "action" && p.mode === "auto" ? [p.key] : [])),
     };
@@ -745,6 +909,7 @@ export class PacoteService {
 
   async importar(texto: string, escolhas: EscolhasDaImportacao = {}): Promise<ResultadoDaImportacao> {
     const pacote = lerPacote(texto);
+    const declaracoes = await this.declaracoes();
     const previa = await this.previa(texto);
     const servidor = (nome: string): string => escolhas.servidores?.[nome] ?? nome;
     const conexao = (id: string): string => escolhas.conexoes?.[id] ?? (CATALOGO.has(id) ? id : servidor(id));
@@ -791,7 +956,16 @@ export class PacoteService {
 
     const pendencias: ResultadoDaImportacao["pendencias"] = pacote.omitidos
       .filter((o) => o.codigo !== "texto-limpo" && o.codigo !== "url-a-preencher")
-      .map((o) => ({ codigo: o.codigo, onde: o.onde }));
+      .map((o) => ({ codigo: o.codigo, onde: o.onde, ...(o.params === undefined ? {} : { params: o.params }) }));
+
+    // O que ficou a preencher também fica gravado na automação: a pendência do resultado some quando a tela fecha.
+    // O id de cada gatilho é escolhido já: a pendência dele aponta para o id, e dois gatilhos do mesmo tipo não a dividem.
+    const idsDosGatilhos: string[] = pacote.automacao.gatilhos.map(() => randomUUID());
+    const pendentes: Pendencia[] = pendenciasDoPacote(pacote, declaracoes, ausentesDasSkills(previa.skills, usosDasDependencias(pacote).skills)).map((p) => ({
+      onde: p.no.tipo === "passo" ? p.no.chave : ondeDoGatilho(idsDosGatilhos[p.no.posicao]!),
+      campo: p.campo,
+      motivo: p.motivo,
+    }));
 
     // Validação completa antes de gravar qualquer agent. A classe das
     // ferramentas é recalculada aqui: a do arquivo nunca vale.
@@ -812,10 +986,13 @@ export class PacoteService {
         for (const id of toolsets) for (const t of (await this.library.getToolset(id))?.tools ?? []) doToolset.add(chaveDaFerramenta(t));
         tools = leituras.filter((t) => !doToolset.has(chaveDaFerramenta(t)));
       }
+      // O texto já saiu limpo da exportação: aqui só a credencial é conferida, e o campo que ela alterou fica dito.
+      const conferido = aplicarMarcas(MARCAS_DO_AGENT, agent as unknown as Record<string, unknown>, { ...this.opcoesDeTexto(), conferir: true });
+      if (conferido.camposLimpos.length > 0) pendencias.push({ codigo: "texto-limpo", onde: `agent:${alvo.id}`, params: conferido.camposLimpos });
       specsDosAgents.set(
         alvo.id,
         AgentProfile.parse({
-          ...agent,
+          ...conferido.valor,
           id: alvo.id,
           model: modelo(`agent:${agent.id}`, agent.model),
           toolsets,
@@ -833,6 +1010,7 @@ export class PacoteService {
       return leituras;
     };
     const passos: Step[] = [];
+    const rebaixados: Rebaixado[] = [];
     for (const p of pacote.automacao.spec.steps) {
       if (p.type === "model") {
         const { profile, ...resto } = p;
@@ -844,53 +1022,72 @@ export class PacoteService {
           ...(profile === undefined ? {} : { profile: destino.get(profile)!.id }),
         });
       } else if (p.type === "action") {
-        const { origem, ...resto } = p.params ?? {};
-        if (p.action === "http.request") pendencias.push({ codigo: "url-a-preencher", onde: p.key, ...(origem === undefined ? {} : { dica: origem }) });
-        const params = { ...resto, ...(resto.server === undefined ? {} : { server: servidor(resto.server) }) };
+        const declaracao = declaracoes[p.action] ?? {};
+        const { params: viajantes, origem, descartados } = paramsDoPacoteParaPasso(declaracao, p.params ?? {});
+        const urls = Object.entries(declaracao).filter(([nome, como]) => como === "url" && !ehMarcador(viajantes[nome]));
+        if (urls.length > 0) pendencias.push({ codigo: "url-a-preencher", onde: p.key, ...(origem === undefined ? {} : { dica: origem }) });
+        // O que o arquivo traz e a ação não deixa viajar (pacote mexido à mão) não entra, e fica dito.
+        if (descartados.length > 0) pendencias.push({ codigo: "argumentos", onde: p.key, params: descartados });
+        const params = { ...viajantes, ...(typeof viajantes.server === "string" ? { server: servidor(viajantes.server) } : {}) };
         // Ação em `auto` publicaria sem que ninguém tenha dito que pode: entra em aprovação.
+        if (p.mode === "auto") rebaixados.push({ passo: p.key, motivo: REBAIXADO_NA_IMPORTACAO });
         passos.push({ ...p, mode: p.mode === "auto" ? "approve" : p.mode, ...(p.params === undefined ? {} : { params }) });
       } else {
         passos.push(p);
       }
     }
+    const doSpec = aplicarMarcas(MARCAS_DO_SPEC, pacote.automacao.spec as unknown as Record<string, unknown>, { ...this.opcoesDeTexto(), conferir: true });
+    if (doSpec.camposLimpos.length > 0) pendencias.push({ codigo: "texto-limpo", onde: "automacao", params: doSpec.camposLimpos });
     const spec = AgentSpec.parse({
+      ...doSpec.valor,
       id: automacaoId,
-      name: pacote.automacao.spec.name,
       defaultTools: await soLeitura(pacote.automacao.spec.defaultTools, "automacao"),
-      skills: pacote.automacao.spec.skills,
       steps: passos,
-      budget: pacote.automacao.spec.budget,
-      ...(pacote.automacao.spec.layout === undefined ? {} : { layout: pacote.automacao.spec.layout }),
+      ...(rebaixados.length === 0 ? {} : { rebaixados }),
     });
 
-    const gatilhos: { config: TriggerConfigInput; enabled: false }[] = [];
-    for (const g of pacote.automacao.gatilhos) {
+    const gatilhos: { config: TriggerConfigInput; enabled: false; idNovo: string }[] = [];
+    for (const [i, g] of pacote.automacao.gatilhos.entries()) {
       const config = gatilhoParaCadastro(g, servidor);
       if (config === null) {
-        pendencias.push({ codigo: "gatilho-sem-canal", onde: g.kind });
+        pendencias.push({ codigo: "gatilho-sem-canal", onde: ondeDoGatilhoNoPacote(i) });
         continue;
       }
       TriggerConfig.parse(config);
       if (g.kind === "teams-inbox" && g.chatsRestritos !== undefined) {
-        pendencias.push({ codigo: "chats-a-escolher", onde: g.kind });
+        pendencias.push({ codigo: "chats-a-escolher", onde: ondeDoGatilhoNoPacote(i) });
       }
-      gatilhos.push({ config, enabled: false });
+      gatilhos.push({ config, enabled: false, idNovo: idsDosGatilhos[i]! });
     }
 
-    // Gravação: agents primeiro, a automação por último, que é o que referencia.
+    // Gravação: tudo ou nada. A skill é arquivo, então vem primeiro e sai se o resto falhar; agents, automação,
+    // versão e gatilhos entram numa transação só, e a falha em qualquer etapa desfaz o que as outras gravaram.
+    // Tudo já foi validado acima, e esta etapa só espera o próprio banco.
+    const criadas: string[] = [];
     const resultado: ResultadoDaImportacao["agents"] = [];
-    for (const agent of pacote.agents) {
-      const alvo = destino.get(agent.id)!;
-      const antes = await this.library.getProfile(alvo.id);
-      const novoSpec = specsDosAgents.get(alvo.id);
-      if (novoSpec === undefined) {
-        resultado.push({ id: alvo.id, acao: alvo.acao === "igual" ? "igual" : "existente", versao: antes?.version ?? 0 });
-        continue;
+    try {
+      for (const nova of pacote.skills.filter((k) => previa.skills.some((p) => p.nome === k.nome && p.situacao === "nova"))) {
+        await this.ambiente.criarSkill?.({ nome: nova.nome, descricao: nova.descricao, corpo: nova.corpo });
+        criadas.push(nova.nome);
       }
-      const salvo = await this.library.saveProfile({ spec: novoSpec, note: "importado de pacote", ...(antes === null ? { create: true } : {}) });
-      resultado.push({ id: alvo.id, acao: antes === null ? "criado" : salvo.version === antes.version ? "igual" : "atualizado", versao: salvo.version });
+      await this.emTransacao(async () => {
+        for (const agent of pacote.agents) {
+          const alvo = destino.get(agent.id)!;
+          const antes = await this.library.getProfile(alvo.id);
+          const novoSpec = specsDosAgents.get(alvo.id);
+          if (novoSpec === undefined) {
+            resultado.push({ id: alvo.id, acao: alvo.acao === "igual" ? "igual" : "existente", versao: antes?.version ?? 0 });
+            continue;
+          }
+          const salvo = await this.library.saveProfile({ spec: novoSpec, note: "importado de pacote", ...(antes === null ? { create: true } : {}) });
+          resultado.push({ id: alvo.id, acao: antes === null ? "criado" : salvo.version === antes.version ? "igual" : "atualizado", versao: salvo.version });
+        }
+        await this.automations.save({ spec: pendentes.length === 0 ? spec : { ...spec, pendentes }, triggers: gatilhos, note: "importada de pacote", create: true });
+      });
+    } catch (erro) {
+      for (const nome of criadas) await this.ambiente.removerSkill?.(nome).catch(() => undefined);
+      throw erro;
     }
-    await this.automations.save({ spec, triggers: gatilhos, note: "importada de pacote", create: true });
 
     return { automacaoId, agents: resultado, gatilhos: gatilhos.length, pendencias };
   }
@@ -965,6 +1162,11 @@ function mapearConexao(c: AgentConnection, conexao: (id: string) => string, serv
 }
 
 /** Quem usa cada dependência, para a prévia dizer "usado por" em cada uma. */
+/** As skills sem texto no pacote que esta máquina também não tem, com quem as usa. */
+function ausentesDasSkills(situacoes: readonly SkillNaPrevia[], usos: ReadonlyMap<string, string[]>): Map<string, string[]> {
+  return new Map(situacoes.filter((k) => k.situacao === "ausente").map((k) => [k.nome, usos.get(k.nome) ?? []]));
+}
+
 function usosDasDependencias(pacote: Pacote): {
   conexoes: Map<string, string[]>;
   servidores: Map<string, string[]>;
@@ -991,7 +1193,7 @@ function usosDasDependencias(pacote: Pacote): {
     } else if (passo.type === "action") {
       const dona = CONEXAO_DA_ACAO[passo.action];
       if (dona !== undefined) somar(conexoes, dona, quem);
-      if (passo.action === "mcp.call" && passo.params?.server !== undefined) servidorDe(passo.params.server, quem);
+      if (passo.action === "mcp.call" && typeof passo.params?.server === "string") servidorDe(passo.params.server, quem);
     }
   }
   for (const t of pacote.automacao.spec.defaultTools) servidorDe(t.server, "automacao");
@@ -1021,19 +1223,11 @@ function usosDasDependencias(pacote: Pacote): {
 
 /** O gatilho do pacote como o cadastro o pede, ou nulo quando falta o que só a pessoa escolhe. */
 function gatilhoParaCadastro(g: GatilhoDoPacote, servidor: (nome: string) => string): TriggerConfigInput | null {
-  switch (g.kind) {
-    // Sem canal o cadastro recusa: a automação nasce sem este gatilho, e a pessoa o acrescenta.
-    case "slack-channel":
-      return null;
-    case "teams-inbox": {
-      const { chatsRestritos, ...resto } = g;
-      return { ...resto, channels: [], chats: [], chatsPendentes: chatsRestritos ?? 0 };
-    }
-    case "mcp-poll":
-      return { ...g, server: servidor(g.server), args: {} };
-    default:
-      return g;
-  }
+  // O que o arquivo não traz (marcado local) volta pelo padrão do esquema; sem o que é obrigatório, como o canal, o cadastro recusa.
+  const config = configuracaoDoGatilho(g);
+  if (config === null) return null;
+  if (config.kind === "mcp-poll" && typeof config.server === "string") config.server = servidor(config.server);
+  return config as TriggerConfigInput;
 }
 
 export const pacoteService = new PacoteService();
