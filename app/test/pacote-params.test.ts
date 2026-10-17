@@ -166,7 +166,7 @@ test("gatilho mcp-poll: marcador e literal limpo viajam, credencial sai por nome
   const { texto, pacote, gatilhos: importados, resultado } = await ida(reviewDoTeams(), {}, gatilhos);
   for (const proibido of [TOKEN, EMAIL, "C0123ABCD45"]) assert.ok(!texto.includes(proibido), `vazou ${proibido}`);
   assert.deepEqual(importados.find((g) => g.kind === "mcp-poll"), { kind: "mcp-poll", server: "feed", tool: "listar", args: { q: "{{event.termo}}", limite: 5 }, everyMinutes: 15 });
-  assert.deepEqual(pacote.omitidos.find((o) => o.onde === "mcp-poll" && o.codigo === "argumentos")?.params?.sort(), ["args.dono", "args.token"]);
-  assert.deepEqual(pacote.omitidos.find((o) => o.codigo === "canais"), { codigo: "canais", onde: "slack-channel", quantos: 1, params: ["channels"] });
-  assert.ok(resultado.pendencias.some((p) => p.codigo === "gatilho-sem-canal" && p.onde === "slack-channel"));
+  assert.deepEqual(pacote.omitidos.find((o) => o.onde === "gatilho:0" && o.codigo === "argumentos")?.params?.sort(), ["args.dono", "args.token"]);
+  assert.deepEqual(pacote.omitidos.find((o) => o.codigo === "canais"), { codigo: "canais", onde: "gatilho:1", quantos: 1, params: ["channels"] });
+  assert.ok(resultado.pendencias.some((p) => p.codigo === "gatilho-sem-canal" && p.onde === "gatilho:1"));
 });

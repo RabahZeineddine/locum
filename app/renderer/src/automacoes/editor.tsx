@@ -690,10 +690,10 @@ function EditorCarregado({
         <Button
           className="cursor-pointer"
           data-locum-automacao-ligar=""
-          disabled={ocupado !== null || nova || salvo.gatilhos.length === 0 || (!ligada && gatilhoIncompleto(salvo.spec))}
+          disabled={ocupado !== null || nova || salvo.gatilhos.length === 0 || (!ligada && gatilhoIncompleto(salvo.spec, salvo.gatilhos.flatMap((g) => (g.id === undefined ? [] : [g.id]))))}
           onClick={alternar}
           size="sm"
-          title={!ligada && gatilhoIncompleto(salvo.spec) ? t("automations.problems.pending.enableBlocked") : t("automations.editor.enabledHint")}
+          title={!ligada && gatilhoIncompleto(salvo.spec, salvo.gatilhos.flatMap((g) => (g.id === undefined ? [] : [g.id]))) ? t("automations.problems.pending.enableBlocked") : t("automations.editor.enabledHint")}
           variant="outline"
         >
           <StatusDot estado={ligada ? "ok" : "ocioso"} />

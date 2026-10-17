@@ -424,14 +424,15 @@ test("o id sugerido pula o que já é provisória de outra automação nova", ()
 
 test("pendência do pacote vira aviso no nó, dispensar a tira, e o gatilho incompleto barra o ligar", () => {
   const b = base();
-  const gatilho = b.gatilhos[0]!;
+  const gatilho = { ...b.gatilhos[0]!, id: "g-1" };
   const r: Rascunho = {
     ...b,
+    gatilhos: [gatilho],
     spec: {
       ...b.spec,
       pendentes: [
         { onde: b.spec.steps[0]!.key, campo: "params.destino", motivo: "destino-a-escolher" },
-        { onde: `gatilho:${gatilho.config.kind}`, campo: "owner", motivo: "dono-do-github" },
+        { onde: `gatilho:${gatilho.id}`, campo: "owner", motivo: "dono-do-github" },
       ],
     },
   };
@@ -440,8 +441,8 @@ test("pendência do pacote vira aviso no nó, dispensar a tira, e o gatilho inco
     [b.spec.steps[0]!.key, "automations.problems.pending.destino-a-escolher", false],
     [gatilho.chave, "automations.problems.pending.dono-do-github", false],
   ]);
-  assert.equal(gatilhoIncompleto(r.spec), true);
-  const sem = dispensarPendencia(dispensarPendencia(r.spec, `gatilho:${gatilho.config.kind}`, "owner"), b.spec.steps[0]!.key, "params.destino");
+  assert.equal(gatilhoIncompleto(r.spec, [gatilho.id]), true);
+  const sem = dispensarPendencia(dispensarPendencia(r.spec, `gatilho:${gatilho.id}`, "owner"), b.spec.steps[0]!.key, "params.destino");
   assert.equal(sem.pendentes, undefined);
-  assert.equal(gatilhoIncompleto(sem), false);
+  assert.equal(gatilhoIncompleto(sem, [gatilho.id]), false);
 });

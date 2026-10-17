@@ -2,7 +2,7 @@ import { before, test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { ApprovalGate } from "../src/approval/gate.js";
-import { AgentSpec } from "../src/config/types.js";
+import { AgentSpec, type TriggerConfigInput } from "../src/config/types.js";
 import { db } from "../src/db/index.js";
 import { migrateDb } from "../src/db/migrate.js";
 import { Executor } from "../src/executor/executor.js";
@@ -60,10 +60,11 @@ test("pacote com destino fixo omitido: a automação grava a pendência, não li
   await bruno.pacotes.importar(texto);
   // O pacote traz o gatilho; a importação grava desligado.
   const gravada = (await bruno.automations.get("aviso-do-time"))!;
+  const idDoPoll = gravada.triggers[0]!.id;
   assert.deepEqual(gravada.version.spec.pendentes, [
     { onde: "avisar", campo: "params.destino", motivo: "destino-a-escolher" },
-    { onde: "gatilho:poll", campo: "owner", motivo: "dono-do-github" },
-    { onde: "gatilho:poll", campo: "filters.authors", motivo: "filtros-de-pessoa" },
+    { onde: `gatilho:${idDoPoll}`, campo: "owner", motivo: "dono-do-github" },
+    { onde: `gatilho:${idDoPoll}`, campo: "filters.authors", motivo: "filtros-de-pessoa" },
   ]);
   assert.ok(gravada.triggers.length > 0 && gravada.triggers.every((g) => !g.enabled));
 
@@ -77,7 +78,7 @@ test("pacote com destino fixo omitido: a automação grava a pendência, não li
   const preenchida = { ...gravada.version.spec, steps: gravada.version.spec.steps.map((p) => (p.type === "action" ? { ...p, params: { destino: { tipo: "novo" } } } : p)) };
   // O destino preenchido tira a pendência do passo; a do gatilho espera o dono e os autores.
   const meio = await bruno.automations.save({ spec: preenchida, triggers: gravada.triggers.map((g) => ({ id: g.id, config: g.config })), note: "destino escolhido" });
-  assert.deepEqual(meio.version.spec.pendentes?.map((p) => p.onde), ["gatilho:poll", "gatilho:poll"]);
+  assert.deepEqual(meio.version.spec.pendentes?.map((p) => p.onde), [`gatilho:${idDoPoll}`, `gatilho:${idDoPoll}`]);
   await assert.rejects(() => bruno.automations.setEnabled("aviso-do-time", true), /gatilho incompleto/);
   const config = { ...gravada.triggers[0]!.config, owner: "empresa-bruno", filters: { authors: { include: ["bruno"] } } };
   const salva = await bruno.automations.save({ spec: meio.version.spec, triggers: [{ id: gravada.triggers[0]!.id, config }], note: "gatilho escolhido" });
@@ -129,4 +130,28 @@ test("o executor não roda o passo com campo a preencher, e roda depois de preen
   const run2 = await executor.createRun(v2.id, null);
   assert.equal(await executor.execute(run2), "done");
   assert.equal(pedidos.length, 1);
+});
+
+test("dois gatilhos do mesmo tipo têm pendências separadas: preencher um não limpa nem libera o outro", async () => {
+  const dono = maquina();
+  const spec = AgentSpec.parse({ id: "dois-polls", name: "Dois", steps: [{ ...base, type: "model", key: "ler", name: "Ler", prompt: "olhe", model: "claude-code/claude-sonnet-5" }] });
+  const poll = (owner: string): TriggerConfigInput => ({ kind: "poll" as const, source: "github" as const, owner, repoMatch: `${owner}-.*`, authorship: "others" as const });
+  await dono.automations.save({ spec, triggers: [{ config: poll("empresa-a") }, { config: poll("empresa-b") }], note: "", create: true });
+  const { texto } = await dono.pacotes.exportar("dois-polls");
+
+  const outra = maquina();
+  await outra.pacotes.importar(texto);
+  const gravada = (await outra.automations.get("dois-polls"))!;
+  const [a, b] = gravada.triggers;
+  assert.deepEqual(gravada.version.spec.pendentes?.map((p) => p.onde), [`gatilho:${a!.id}`, `gatilho:${b!.id}`]);
+
+  // O dono do primeiro preenchido: a pendência do segundo continua, e só o primeiro liga.
+  const salva = await outra.automations.save({ spec: gravada.version.spec, triggers: [{ id: a!.id, config: { ...a!.config, owner: "empresa-c" } as TriggerConfigInput }, { id: b!.id, config: b!.config }], note: "a" });
+  assert.deepEqual(salva.version.spec.pendentes?.map((p) => p.onde), [`gatilho:${b!.id}`]);
+  await outra.triggers.setEnabled(a!.id, true);
+  await assert.rejects(() => outra.triggers.setEnabled(b!.id, true), /gatilho incompleto/);
+
+  // Tirar o segundo gatilho leva a pendência dele junto.
+  const sem = await outra.automations.save({ spec: salva.version.spec, triggers: [{ id: a!.id, config: { ...a!.config, owner: "empresa-c" } as TriggerConfigInput }], note: "tirei" });
+  assert.equal(sem.version.spec.pendentes, undefined);
 });

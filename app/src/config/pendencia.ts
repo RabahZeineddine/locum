@@ -9,7 +9,7 @@ import { z } from "zod";
  * é o campo e o motivo é a origem (os omitidos do pacote); nada aqui conhece uma
  * ação ou um app.
  *
- * - `onde`: a chave do passo, ou `gatilho:<kind>` para um gatilho.
+ * - `onde`: a chave do passo, ou `gatilho:<id>` para um gatilho (o id do cadastro: dois gatilhos do mesmo tipo têm pendências separadas).
  * - `campo`: o caminho dentro do passo (`params.destino`) ou da configuração do gatilho (`channels`).
  * - `motivo`: o código do que falta, o mesmo dos omitidos do pacote (`destino-a-escolher`, `url-a-preencher`...).
  */
@@ -21,8 +21,8 @@ export const Pendencia = z.object({
 export type Pendencia = z.infer<typeof Pendencia>;
 
 const PREFIXO_DO_GATILHO = "gatilho:";
-export const ondeDoGatilho = (kind: string): string => `${PREFIXO_DO_GATILHO}${kind}`;
-export const kindDoOnde = (onde: string): string | undefined => (onde.startsWith(PREFIXO_DO_GATILHO) ? onde.slice(PREFIXO_DO_GATILHO.length) : undefined);
+export const ondeDoGatilho = (id: string): string => `${PREFIXO_DO_GATILHO}${id}`;
+export const idDoGatilhoNoOnde = (onde: string): string | undefined => (onde.startsWith(PREFIXO_DO_GATILHO) ? onde.slice(PREFIXO_DO_GATILHO.length) : undefined);
 
 /** O que cada motivo diz à pessoa, em texto de erro. A tela usa as chaves `pendencia.motivo.<código>` do i18n. */
 const TEXTO_DO_MOTIVO: Readonly<Record<string, string>> = {
@@ -58,13 +58,14 @@ export const pendenciasDoPasso = (spec: { pendentes?: readonly Pendencia[] | und
 
 /**
  * Por que estes gatilhos não ligam, ou `null`: o gatilho com campo a preencher
- * (`gatilho:<kind>`) não liga. A pendência de um passo não impede o gatilho, que o
- * run dela diz ao falhar.
+ * (`gatilho:<id>`) não liga. A pendência de um passo não impede o gatilho, que o
+ * run dela diz ao falhar. Gatilho que o pacote não chegou a criar não tem id
+ * cadastrado: a pendência dele fica à vista, sem travar os outros.
  */
-export function recusaDeLigar(pendentes: readonly Pendencia[] | undefined, tipos: readonly string[]): string | null {
+export function recusaDeLigar(pendentes: readonly Pendencia[] | undefined, idsDosGatilhos: readonly string[]): string | null {
   const dos = (pendentes ?? []).filter((p) => {
-    const kind = kindDoOnde(p.onde);
-    return kind !== undefined && tipos.includes(kind);
+    const id = idDoGatilhoNoOnde(p.onde);
+    return id !== undefined && idsDosGatilhos.includes(id);
   });
   if (dos.length === 0) return null;
   return `gatilho incompleto: ${dos.map((p) => `${p.onde}: ${descreverPendencia(p)}`).join("; ")}`;
@@ -88,21 +89,30 @@ export function temValor(v: unknown): boolean {
   return true;
 }
 
+/** Um gatilho como a gravação o conhece: o id (do cadastro, ou o já escolhido para o que nasce agora) e a configuração. */
+export interface GatilhoIdentificado {
+  id?: string | undefined;
+  config: object;
+}
+
 /**
  * Tira as pendências que o spec (ou os gatilhos, quando conhecidos) já preenche.
  * Pendência de gatilho sem a lista de gatilhos fica como está: só quem grava os
- * dois juntos sabe se foi preenchida.
+ * dois juntos sabe se foi preenchida. Com a lista, a do gatilho que saiu dela
+ * (`removidos`) some junto; a do que nunca foi cadastrado fica até a pessoa dispensar.
  */
 export function limparPendenciasPreenchidas<S extends { steps: readonly object[]; pendentes?: Pendencia[] | undefined }>(
   spec: S,
-  gatilhos?: readonly object[],
+  gatilhos?: readonly GatilhoIdentificado[],
+  removidos: ReadonlySet<string> = new Set(),
 ): S {
   if (spec.pendentes === undefined) return spec;
   const restantes = spec.pendentes.filter((p) => {
-    const kind = kindDoOnde(p.onde);
-    if (kind !== undefined) {
+    const id = idDoGatilhoNoOnde(p.onde);
+    if (id !== undefined) {
       if (gatilhos === undefined) return true;
-      return !gatilhos.some((g) => (g as { kind?: unknown }).kind === kind && temValor(valorNoCaminho(g, p.campo)));
+      const gatilho = gatilhos.find((g) => g.id === id);
+      return gatilho === undefined ? !removidos.has(id) : !temValor(valorNoCaminho(gatilho.config, p.campo));
     }
     const passo = spec.steps.find((s) => (s as { key?: unknown }).key === p.onde);
     return passo === undefined ? false : !temValor(valorNoCaminho(passo, p.campo));

@@ -12,6 +12,7 @@
  * apagada. A seta entre passos é o `needs`, e essa a pessoa liga e desliga.
  */
 import { topoSort, type AgentSpec, type LogicStep, type Step, type TriggerConfig } from "../../src/config/types";
+import { idDoGatilhoNoOnde, recusaDeLigar } from "../../src/config/pendencia";
 import { REGISTRO_DE_CONVERSA } from "../../src/acao/destino";
 import { gatilhoTrazMensagem } from "./destino-da-conversa";
 import { SLACK_REPLY_SCHEMA } from "../../src/slack/proposal";
@@ -618,8 +619,8 @@ const MOTIVOS_DICIONADOS = new Set(["destino-a-escolher", "url-a-preencher", "ar
 /** O campo que o pacote deixou a preencher, como problema do nó: aviso, que não impede salvar. */
 export function problemasDePendencia(r: Rascunho): Problema[] {
   return (r.spec.pendentes ?? []).map((p) => {
-    const kind = p.onde.startsWith("gatilho:") ? p.onde.slice("gatilho:".length) : undefined;
-    const no = kind === undefined ? p.onde : r.gatilhos.find((g) => g.config.kind === kind)?.chave;
+    const idDoGatilho = idDoGatilhoNoOnde(p.onde);
+    const no = idDoGatilho === undefined ? p.onde : r.gatilhos.find((g) => g.id === idDoGatilho)?.chave;
     return {
       chave: MOTIVOS_DICIONADOS.has(p.motivo) ? `automations.problems.pending.${p.motivo}` : "automations.problems.pending.generic",
       ...(no === undefined ? {} : { no }),
@@ -637,8 +638,8 @@ export function dispensarPendencia(spec: AgentSpec, onde: string, campo: string)
   return restantes.length === 0 ? resto : { ...resto, pendentes: restantes };
 }
 
-/** O gatilho tem campo a preencher: não liga até a pessoa preencher ou dispensar. */
-export const gatilhoIncompleto = (spec: AgentSpec): boolean => (spec.pendentes ?? []).some((p) => p.onde.startsWith("gatilho:"));
+/** Algum gatilho existente tem campo a preencher: não liga até a pessoa preencher ou dispensar. */
+export const gatilhoIncompleto = (spec: AgentSpec, ids: readonly string[]): boolean => recusaDeLigar(spec.pendentes, ids) !== null;
 
 export interface Contexto {
   slackConectado: boolean;

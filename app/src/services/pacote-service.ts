@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { basename } from "node:path";
 import {
   AgentProfile,
@@ -19,12 +20,14 @@ import {
   VERSAO_DO_FORMATO,
   EXTENSAO_DO_PACOTE,
   lerPacote,
+  indicesDoOndeDeGatilho,
+  ondeDoGatilhoNoPacote,
   type AgentDoPacote,
   type CodigoOmitido,
   type GatilhoDoPacote,
   type PassoDoPacote,
 } from "../pacote/formato.js";
-import { ondeDoGatilho, type Pendencia } from "../config/pendencia.js";
+import { idDoGatilhoNoOnde, ondeDoGatilho, type Pendencia } from "../config/pendencia.js";
 import { limparValor } from "../pacote/limpeza.js";
 import { MARCAS_DOS_GATILHOS } from "../pacote/marcacao.js";
 import { aplicarMarcas, origemDaUrl, paramsDoPacoteParaPasso, paramsParaPacote, type ParamsDoPacote } from "../pacote/params.js";
@@ -339,7 +342,7 @@ export class PacoteService {
     const passos: PassoDoPacote[] = [];
     for (const p of spec.steps) passos.push(await this.passoParaPacote(p, omitir, declaracoes));
     const gatilhos: GatilhoDoPacote[] = [];
-    for (const g of automacao.triggers) gatilhos.push(await this.gatilhoParaPacote(g.config, omitir));
+    for (const [i, g] of automacao.triggers.entries()) gatilhos.push(await this.gatilhoParaPacote(g.config, ondeDoGatilhoNoPacote(i), omitir));
 
     const base = {
       formato: NOME_DO_FORMATO,
@@ -447,6 +450,7 @@ export class PacoteService {
   /** O gatilho no pacote: um só código aplica `MARCAS_DOS_GATILHOS`; o que é da pessoa sai e vira pendência. */
   private async gatilhoParaPacote(
     config: GatilhoConfig,
+    onde: string,
     omitir: (c: CodigoOmitido, onde: string, q?: number, params?: string[]) => void,
   ): Promise<GatilhoDoPacote> {
     const sensivel = await this.sensivelDaFerramenta(config as unknown as Record<string, unknown>);
@@ -454,8 +458,8 @@ export class PacoteService {
       ...(this.home === undefined ? {} : { home: this.home }),
       sensivel,
     });
-    for (const [codigo, d] of r.omitidos) omitir(codigo, config.kind, d.quantos, d.nomes);
-    if (r.limpos > 0) omitir("texto-limpo", config.kind, r.limpos);
+    for (const [codigo, d] of r.omitidos) omitir(codigo, onde, d.quantos, d.nomes);
+    if (r.limpos > 0) omitir("texto-limpo", onde, r.limpos);
     if (config.kind !== "teams-inbox") return r.valor as GatilhoDoPacote;
     // Quantos chats restringiam o gatilho, sem os ids; chats ainda por escolher contam também.
     const restritos = config.chats.length > 0 ? config.chats.length : config.chatsPendentes;
@@ -803,20 +807,24 @@ export class PacoteService {
 
     // O que ficou a preencher também fica gravado na automação: a pendência do resultado some quando a tela fecha.
     const chavesDosPassos = new Set(pacote.automacao.spec.steps.map((p) => p.key));
-    const tiposDosGatilhos = new Set(pacote.automacao.gatilhos.map((g) => g.kind));
+    const tiposDosGatilhos = pacote.automacao.gatilhos.map((g) => g.kind);
+    // O id de cada gatilho é escolhido já: a pendência dele aponta para o id, e dois gatilhos do mesmo tipo não a dividem.
+    const idsDosGatilhos: string[] = tiposDosGatilhos.map(() => randomUUID());
     const pendentes: Pendencia[] = [];
     const pendente = (onde: string, campo: string, motivo: string): void => {
       if (!pendentes.some((p) => p.onde === onde && p.campo === campo)) pendentes.push({ onde, campo, motivo });
     };
     for (const o of pacote.omitidos) {
       if (INFORMATIVOS.has(o.codigo)) continue;
-      const onde = chavesDosPassos.has(o.onde) ? o.onde : tiposDosGatilhos.has(o.onde as GatilhoDoPacote["kind"]) ? ondeDoGatilho(o.onde) : undefined;
-      if (onde === undefined) continue;
-      const doPasso = onde === o.onde;
-      for (const nome of o.params ?? (CAMPO_SEM_PARAMS[o.codigo] === undefined ? [] : [CAMPO_SEM_PARAMS[o.codigo]!])) {
-        // Os chats do Teams já esperam pela escolha no próprio gatilho (`chatsPendentes`).
-        if (!doPasso && o.onde === "teams-inbox" && nome === "chats") continue;
-        pendente(onde, doPasso && o.params !== undefined ? `params.${nome}` : nome, o.codigo);
+      const doPasso = chavesDosPassos.has(o.onde);
+      const ondes = doPasso ? [o.onde] : indicesDoOndeDeGatilho(o.onde, tiposDosGatilhos).map((i) => ondeDoGatilho(idsDosGatilhos[i]!));
+      const kindDoGatilho = (onde: string): string | undefined => tiposDosGatilhos[idsDosGatilhos.indexOf(idDoGatilhoNoOnde(onde) ?? "")];
+      for (const onde of ondes) {
+        for (const nome of o.params ?? (CAMPO_SEM_PARAMS[o.codigo] === undefined ? [] : [CAMPO_SEM_PARAMS[o.codigo]!])) {
+          // Os chats do Teams já esperam pela escolha no próprio gatilho (`chatsPendentes`).
+          if (!doPasso && kindDoGatilho(onde) === "teams-inbox" && nome === "chats") continue;
+          pendente(onde, doPasso && o.params !== undefined ? `params.${nome}` : nome, o.codigo);
+        }
       }
     }
 
@@ -896,21 +904,21 @@ export class PacoteService {
       ...(pacote.automacao.spec.layout === undefined ? {} : { layout: pacote.automacao.spec.layout }),
     });
 
-    const gatilhos: { config: TriggerConfigInput; enabled: false }[] = [];
-    for (const g of pacote.automacao.gatilhos) {
+    const gatilhos: { config: TriggerConfigInput; enabled: false; idNovo: string }[] = [];
+    for (const [i, g] of pacote.automacao.gatilhos.entries()) {
       const config = gatilhoParaCadastro(g, servidor);
       if (config === null) {
-        pendencias.push({ codigo: "gatilho-sem-canal", onde: g.kind });
+        pendencias.push({ codigo: "gatilho-sem-canal", onde: ondeDoGatilhoNoPacote(i) });
         // O gatilho não chega a existir: a pendência fica na automação, no campo que o cadastro recusou.
         const faltando = TriggerConfig.safeParse({ ...g }).error?.issues[0]?.path.join(".");
-        pendente(ondeDoGatilho(g.kind), faltando ?? g.kind, "gatilho-sem-canal");
+        pendente(ondeDoGatilho(idsDosGatilhos[i]!), faltando ?? g.kind, "gatilho-sem-canal");
         continue;
       }
       TriggerConfig.parse(config);
       if (g.kind === "teams-inbox" && g.chatsRestritos !== undefined) {
-        pendencias.push({ codigo: "chats-a-escolher", onde: g.kind });
+        pendencias.push({ codigo: "chats-a-escolher", onde: ondeDoGatilhoNoPacote(i) });
       }
-      gatilhos.push({ config, enabled: false });
+      gatilhos.push({ config, enabled: false, idNovo: idsDosGatilhos[i]! });
     }
 
     // Gravação: agents primeiro, a automação por último, que é o que referencia.

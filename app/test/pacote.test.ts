@@ -337,7 +337,7 @@ test("gatilho restrito a chats: o pacote só diz quantos, e a importação não 
   const previa = await bruno.pacotes.previa(texto);
   assert.ok(previa.gatilhos.some((g) => g.tipo === "teams-inbox" && g.precisaChats));
   const r = await bruno.pacotes.importar(texto);
-  assert.ok(r.pendencias.some((p) => p.codigo === "chats-a-escolher" && p.onde === "teams-inbox"));
+  assert.ok(r.pendencias.some((p) => p.codigo === "chats-a-escolher" && p.onde === "gatilho:0"));
 
   const gatilho = (await bruno.automations.get("revisao-de-pr"))!.triggers.find((g) => g.config.kind === "teams-inbox")!;
   assert.equal(gatilho.config.kind === "teams-inbox" && gatilho.config.chatsPendentes, 1);
@@ -389,7 +389,7 @@ test("importar cria a automação com gatilhos desligados e sem canal, e o agent
   const teams = automacao.triggers.find((g) => g.config.kind === "teams-inbox");
   assert.deepEqual(teams?.config.kind === "teams-inbox" && teams.config.channels, []);
   assert.deepEqual(teams?.config.kind === "teams-inbox" && teams.config.chats, []);
-  assert.ok(r.pendencias.some((p) => p.codigo === "gatilho-sem-canal" && p.onde === "slack-channel"));
+  assert.ok(r.pendencias.some((p) => p.codigo === "gatilho-sem-canal" && /^gatilho:\d+$/.test(p.onde)));
   assert.ok(r.pendencias.some((p) => p.codigo === "dono-do-github"));
   // Ação em `auto` entra em aprovação: ninguém disse que podia sair sozinha.
   const passos = automacao.version.spec.steps;

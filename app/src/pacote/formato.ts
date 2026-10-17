@@ -34,6 +34,17 @@ import { MARCAS_DOS_GATILHOS, ehLocal, temFilhos, type MapaDeMarcas } from "./ma
  */
 
 export const NOME_DO_FORMATO = "locum-pacote";
+
+/**
+ * Onde, no pacote, um omitido do gatilho aponta: a posição dele na lista de gatilhos.
+ * Pacote antigo dizia o tipo (`poll`); `indicesDoOndeDeGatilho` lê os dois.
+ */
+export const ondeDoGatilhoNoPacote = (indice: number): string => `gatilho:${indice}`;
+export function indicesDoOndeDeGatilho(onde: string, tipos: readonly string[]): number[] {
+  const posicao = /^gatilho:(\d+)$/.exec(onde);
+  if (posicao !== null) return Number(posicao[1]) < tipos.length ? [Number(posicao[1])] : [];
+  return tipos.flatMap((tipo, i) => (tipo === onde ? [i] : []));
+}
 export const VERSAO_DO_FORMATO = 1;
 export const EXTENSAO_DO_PACOTE = ".locum.json";
 /** Um pacote de verdade tem poucos KB; acima disto não é um. */

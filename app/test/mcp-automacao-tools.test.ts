@@ -652,10 +652,12 @@ test("run_automation_now ganha eventId e prUrl, e list_automation_events é leit
 test("automação com campo a preencher: get e list mostram, ligar recusa com o motivo, e salvar com o campo preenchido limpa", async () => {
   const client = await ligarCliente();
   const agentId = `pendente-${randomUUID().slice(0, 8)}`;
-  const comPendencia = { ...spec(agentId), pendentes: [{ onde: "gatilho:poll", campo: "owner", motivo: "dono-do-github" }] };
   const poll = { kind: "poll", source: "github", repoMatch: "x-.*", authorship: "others" };
-  const salva = ok<Salva>(await client.callTool({ name: "save_automation", arguments: { spec: comPendencia, triggers: [{ config: poll }], note: "importada", create: true } }));
-  const esperado = [{ onde: "gatilho:poll", campo: "owner", motivo: "dono-do-github" }];
+  const criada = ok<Salva>(await client.callTool({ name: "save_automation", arguments: { spec: spec(agentId), triggers: [{ config: poll }], note: "importada", create: true } }));
+  // A pendência de gatilho aponta para o id do gatilho cadastrado.
+  const esperado = [{ onde: `gatilho:${criada.triggers[0]!.id}`, campo: "owner", motivo: "dono-do-github" }];
+  const comPendencia = { ...spec(agentId), pendentes: esperado };
+  const salva = ok<Salva>(await client.callTool({ name: "save_automation", arguments: { spec: comPendencia, triggers: [{ id: criada.triggers[0]!.id, config: poll }], note: "com pendência" } }));
 
   assert.deepEqual(ok<{ pending: unknown }>(await client.callTool({ name: "get_automation", arguments: { agentId } })).pending, esperado);
   const lista = ok<{ id: string; pending: unknown }[]>(await client.callTool({ name: "list_automations", arguments: {} }));

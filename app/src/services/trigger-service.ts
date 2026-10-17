@@ -95,7 +95,7 @@ export class TriggerService {
   async set(
     agentId: string,
     config: TriggerConfigInput,
-    options: { id?: string; enabled?: boolean; fromTool?: boolean; valerParaTodosOsChats?: boolean } = {},
+    options: { id?: string; idNovo?: string; enabled?: boolean; fromTool?: boolean; valerParaTodosOsChats?: boolean } = {},
   ): Promise<TriggerEntry> {
     // Ligar é o passo que deixa o agent acordar e gastar sozinho, e só uma
     // pessoa dá esse passo, pela interface ou pela linha de comando.
@@ -137,7 +137,7 @@ export class TriggerService {
     const [inserted] = await this.db
       .insert(schema.triggers)
       .values({
-        id: randomUUID(),
+        id: options.idNovo ?? randomUUID(),
         agentId,
         kind: parsed.kind,
         config: parsed as unknown as object,
@@ -166,7 +166,7 @@ export class TriggerService {
     }
     if (enabled && esperaChats(toEntry(existing).config)) throw new Error(MOTIVO_CHATS);
     if (enabled) {
-      const recusa = recusaDeLigar(await this.pendencias(existing.agentId), [existing.kind]);
+      const recusa = recusaDeLigar(await this.pendencias(existing.agentId), [existing.id]);
       if (recusa !== null) throw new Error(recusa);
     }
     const [updated] = await this.db
