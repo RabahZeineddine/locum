@@ -32,6 +32,7 @@ import {
 } from "../pacote/formato.js";
 import { configuracaoDoGatilho, omitidoDaPendencia, pendenciasDoPacote, type PendenciaDoPacote } from "../pacote/pendencias.js";
 import { idDoGatilhoNoOnde, ondeDoGatilho, type Pendencia } from "../config/pendencia.js";
+import { REBAIXADO_NA_IMPORTACAO, type Rebaixado } from "../config/rebaixado.js";
 import { limparSkill, limparValor } from "../pacote/limpeza.js";
 import { MARCAS_DO_AGENT, MARCAS_DO_SPEC, MARCAS_DOS_GATILHOS } from "../pacote/marcacao.js";
 import { aplicarMarcas, ehMarcador, literaisQueViajam, origemDaUrl, paramsDoPacoteParaPasso, paramsParaPacote, type ParamsDoPacote } from "../pacote/params.js";
@@ -989,6 +990,7 @@ export class PacoteService {
       return leituras;
     };
     const passos: Step[] = [];
+    const rebaixados: Rebaixado[] = [];
     for (const p of pacote.automacao.spec.steps) {
       if (p.type === "model") {
         const { profile, ...resto } = p;
@@ -1008,6 +1010,7 @@ export class PacoteService {
         if (descartados.length > 0) pendencias.push({ codigo: "argumentos", onde: p.key, params: descartados });
         const params = { ...viajantes, ...(typeof viajantes.server === "string" ? { server: servidor(viajantes.server) } : {}) };
         // Ação em `auto` publicaria sem que ninguém tenha dito que pode: entra em aprovação.
+        if (p.mode === "auto") rebaixados.push({ passo: p.key, motivo: REBAIXADO_NA_IMPORTACAO });
         passos.push({ ...p, mode: p.mode === "auto" ? "approve" : p.mode, ...(p.params === undefined ? {} : { params }) });
       } else {
         passos.push(p);
@@ -1018,6 +1021,7 @@ export class PacoteService {
       id: automacaoId,
       defaultTools: await soLeitura(pacote.automacao.spec.defaultTools, "automacao"),
       steps: passos,
+      ...(rebaixados.length === 0 ? {} : { rebaixados }),
     });
 
     const gatilhos: { config: TriggerConfigInput; enabled: false; idNovo: string }[] = [];

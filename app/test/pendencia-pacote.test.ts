@@ -198,3 +198,25 @@ test("url que viajou como marcador não vira pendência, e a literal continua se
   assert.deepEqual(r.pendencias.filter((p) => p.codigo === "url-a-preencher").map((p) => p.onde), ["literal"]);
   assert.deepEqual((await b.automations.get("urls"))!.version.spec.pendentes?.map((p) => p.onde), ["literal"]);
 });
+
+test("nó que veio em auto e entrou em approve fica marcado, não some por omissão, e a pessoa volta para auto", async () => {
+  const a = maquina();
+  const spec = AgentSpec.parse({ id: "veio-auto", name: "X", steps: [{ ...base, type: "action", key: "chamar", name: "Chamar", action: "mcp.call", mode: "auto", params: { server: "feed", tool: "listar", args: {} } }] });
+  await a.automations.save({ spec, triggers: [], note: "", create: true });
+  const b = maquina();
+  await b.pacotes.importar((await a.pacotes.exportar("veio-auto")).texto);
+  const gravada = (await b.automations.get("veio-auto"))!.version.spec;
+  assert.equal(gravada.steps[0]!.type === "action" && gravada.steps[0]!.mode, "approve");
+  assert.deepEqual(gravada.rebaixados, [{ passo: "chamar", motivo: "rebaixado-na-importacao" }]);
+
+  // Remontar o spec sem a marca (a tela, o MCP, o agent) não a apaga.
+  const { rebaixados: _r, ...sem } = gravada;
+  assert.equal((await b.automations.save({ spec: AgentSpec.parse({ ...sem, name: "Y" }), triggers: [], note: "remontado" })).version.spec.rebaixados?.length, 1);
+  assert.equal((await b.agents.upsert(AgentSpec.parse({ ...sem, name: "Z" }), "agent", "agent")).spec.rebaixados?.length, 1);
+
+  // A pessoa põe o nó em auto: a marca sai.
+  const emAuto = { ...sem, name: "Y", steps: gravada.steps.map((p) => (p.type === "action" ? { ...p, mode: "auto" as const } : p)) };
+  const volta = await b.automations.save({ spec: AgentSpec.parse(emAuto), triggers: [], note: "voltei para auto" });
+  assert.equal(volta.version.spec.rebaixados, undefined);
+  assert.equal(volta.version.spec.steps[0]!.type === "action" && volta.version.spec.steps[0]!.mode, "auto");
+});

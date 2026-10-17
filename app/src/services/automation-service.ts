@@ -1,6 +1,7 @@
 import { TriggerConfig, type AgentSpec, type TriggerConfigInput } from "../config/types.js";
 import { limparPendenciasPreenchidas, recusaDeLigar, recusaDeRodar } from "../config/pendencia.js";
 import { recursoExiste } from "./pendencia-recursos.js";
+import { manterRebaixados } from "../config/rebaixado.js";
 import { agentService, ID_DE_AGENT, mensagemDeVersao, isReserved, type AgentService, type AgentVersion } from "./agent-service.js";
 import { dependenciaDeEvento, recusaSemEvento, type MotivoDeEvento } from "../executor/dependencia-de-evento.js";
 import { eventoManual, type EventoManual, type EventoRecente } from "./evento-manual.js";
@@ -176,7 +177,8 @@ export class AutomationService {
    * por nome. Quem remonta o spec sem `pendentes` (a tela, o MCP) não as apaga por omissão.
    */
   private async mantendoPendencias(input: AutomationSaveInput, agentId: string): Promise<AgentSpec> {
-    const anteriores = input.create === true ? [] : ((await this.agents.getLatestVersion(agentId))?.spec.pendentes ?? []);
+    const ultima = input.create === true ? undefined : await this.agents.getLatestVersion(agentId);
+    const anteriores = ultima?.spec.pendentes ?? [];
     const trazidas = input.spec.pendentes ?? [];
     const dispensadas = input.dispensadas ?? [];
     const chave = (p: { onde: string; campo: string }): string => `${p.onde}\u0000${p.campo}`;
@@ -190,7 +192,8 @@ export class AutomationService {
       return true;
     });
     const { pendentes: _antes, ...resto } = input.spec;
-    return pendentes.length === 0 ? (resto as AgentSpec) : { ...resto, pendentes };
+    // O rebaixamento da importação também não some por omissão: só a pessoa pondo o passo em `auto`.
+    return manterRebaixados(pendentes.length === 0 ? (resto as AgentSpec) : { ...resto, pendentes }, ultima?.spec.rebaixados ?? []);
   }
 
   /**

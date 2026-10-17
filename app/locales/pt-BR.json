@@ -2662,6 +2662,9 @@
       "verdict": "Reagir pelo veredito"
     },
     "problems": {
+      "downgraded": "Este nó veio em automático no pacote e entrou em aprovação: nada publica sozinho até você dizer.",
+      "downgradedBack": "Voltar para automático",
+      "downgradedBackHint": "Põe o nó em automático por sua conta: ele passa a publicar sem aprovação",
       "noName": "A automação precisa de nome.",
       "noSteps": "Acrescente pelo menos um passo.",
       "noTrigger": "Sem gatilho, ela só roda pelo botão.",

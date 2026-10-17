@@ -114,6 +114,8 @@ export interface Volta {
   /** O que a importação gravou na automação, sem `pendentes`. */
   importada: AgentSpec;
   pendentes: NonNullable<AgentSpec["pendentes"]>;
+  /** Os passos que vieram em `auto` e entraram em aprovação. */
+  rebaixados: NonNullable<AgentSpec["rebaixados"]>;
   /** Os gatilhos criados na máquina de destino. */
   gatilhos: { id: string; enabled: boolean; config: TriggerConfig }[];
 }
@@ -131,9 +133,9 @@ export async function idaEVolta(fluxo: Fluxo): Promise<Volta> {
 
   const original = (await origem.automations.get(spec.id))!;
   const volta = (await destino.automations.get(spec.id))!;
-  const { pendentes = [], ...importada } = volta.version.spec;
+  const { pendentes = [], rebaixados = [], ...importada } = volta.version.spec;
   const gatilhos = volta.triggers.map((g) => ({ id: g.id, enabled: g.enabled, config: TriggerConfig.parse(g.config) }));
-  const resultado: Volta = { texto, origem, destino, importada: importada as AgentSpec, pendentes, gatilhos };
+  const resultado: Volta = { texto, origem, destino, importada: importada as AgentSpec, pendentes, rebaixados, gatilhos };
 
   await conferirSpec(original.version.spec, resultado);
   await conferirGatilhos(original.triggers.map((g) => TriggerConfig.parse(g.config)), resultado);

@@ -2,6 +2,7 @@ import { PROVEDORES_FORA_DO_FILTRO } from "./filtro-ia.js";
 import { z } from "zod";
 import { cronValida } from "../triggers/cron.js";
 import { Pendencia } from "./pendencia.js";
+import { Rebaixado } from "./rebaixado.js";
 
 /**
  * Classe da ferramenta. `external_write` e o unico valor que forca aprovacao,
@@ -294,6 +295,12 @@ export const AgentSpec = z.object({
    * quando o campo ganha valor e a pessoa salva. Ver `pendencia.ts`.
    */
   pendentes: z.array(Pendencia).optional(),
+  /**
+   * Passos de ação que entraram em `approve` sem que a pessoa tivesse dito (vieram `auto`
+   * num pacote). O motivo é um código; some quando o passo deixa de estar em `approve`,
+   * que é a pessoa voltando para `auto`. Ver `rebaixado.ts`.
+   */
+  rebaixados: z.array(Rebaixado).optional(),
 });
 export type AgentSpec = z.infer<typeof AgentSpec>;
 

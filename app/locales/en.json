@@ -2611,6 +2611,9 @@
       "verdict": "React by verdict"
     },
     "problems": {
+      "downgraded": "This node came as automatic in the package and entered in approval: nothing publishes by itself until you say so.",
+      "downgradedBack": "Back to automatic",
+      "downgradedBackHint": "Sets the node to automatic on your own: it publishes without approval",
       "noName": "The automation needs a name.",
       "noSteps": "Add at least one step.",
       "noTrigger": "Without a trigger it only runs from the button.",

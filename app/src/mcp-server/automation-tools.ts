@@ -73,6 +73,7 @@ async function getAutomation(agentId: string) {
     note: automacao.version.note,
     spec: automacao.version.spec,
     pending: automacao.version.spec.pendentes ?? [],
+    downgraded: automacao.version.spec.rebaixados ?? [],
     enabled: automacao.triggers.some((t) => t.enabled),
     triggers: await Promise.all(automacao.triggers.map(paraLeitura)),
   };
@@ -84,7 +85,7 @@ export function registerAutomationTools(server: McpServer): void {
     {}, listAutomations);
 
   def(server, "get_automation", "read",
-    "An automation with the spec of its latest version and its triggers (config, enabled state and last error of each). pending lists the fields still to fill after a package import (where: a step key or gatilho:<trigger id>; field: the path inside it; reason: a code such as destino-a-escolher). A step with a pending field does not run (the run fails naming it) and the automation cannot be turned on; saving with the field filled clears it.",
+    "An automation with the spec of its latest version and its triggers (config, enabled state and last error of each). pending lists the fields still to fill after a package import (where: a step key or gatilho:<trigger id>; field: the path inside it; reason: a code such as destino-a-escolher). downgraded lists the action steps that came as auto in a package and entered in approval (step, reason): setting the step to auto in save_automation, as a person, brings it back and clears the mark. A step with a pending field does not run (the run fails naming it) and the automation cannot be turned on; saving with the field filled clears it.",
     { agentId: z.string().describe("automation id, as shown by list_automations") },
     ({ agentId }) => getAutomation(agentId));
 

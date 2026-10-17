@@ -611,6 +611,8 @@ export interface Problema {
   atalho?: { rota: "connections" | "agents"; detalhe: string };
   /** Campo a preencher que veio do pacote: o painel oferece dispensar, e ligar fica barrado enquanto durar. */
   pendencia?: { onde: string; campo: string };
+  /** Passo que o pacote trouxe em `auto` e entrou em aprovação: o painel oferece voltar para `auto`. */
+  rebaixado?: { passo: string };
 }
 
 /** Os motivos de pendência que o dicionário diz por extenso; outro cai no texto genérico. */
@@ -629,6 +631,19 @@ export function problemasDePendencia(r: Rascunho): Problema[] {
       pendencia: { onde: p.onde, campo: p.campo },
     };
   });
+}
+
+/** Os passos que o pacote trouxe em `auto` e entraram em aprovação, como aviso do nó. */
+export function problemasDeRebaixado(r: Rascunho): Problema[] {
+  return (r.spec.rebaixados ?? []).map((x) => ({ chave: "automations.problems.downgraded", no: x.passo, bloqueia: false, rebaixado: { passo: x.passo } }));
+}
+
+/** A pessoa devolve o passo ao modo `auto`: a marca do rebaixamento sai junto, porque o passo deixou de estar em aprovação. */
+export function voltarParaAuto(spec: AgentSpec, passo: string): AgentSpec {
+  const steps = spec.steps.map((p) => (p.key === passo && p.type === "action" ? { ...p, mode: "auto" as const } : p));
+  const restantes = (spec.rebaixados ?? []).filter((x) => x.passo !== passo);
+  const { rebaixados: _antes, ...resto } = spec;
+  return restantes.length === 0 ? { ...resto, steps } : { ...resto, steps, rebaixados: restantes };
 }
 
 /** Tira uma pendência do rascunho: o campo foi preenchido, ou a pessoa disse que não precisa dele. */
@@ -676,7 +691,7 @@ const destinoFixoSemConversa = (p: { params?: Record<string, unknown> }): boolea
  * pode montar a automação antes de ligar o Slack.
  */
 export function problemas(r: Rascunho, ctx: Contexto): Problema[] {
-  const lista: Problema[] = [...problemasDePendencia(r)];
+  const lista: Problema[] = [...problemasDePendencia(r), ...problemasDeRebaixado(r)];
   const kinds = new Set(r.gatilhos.map((g) => g.config.kind));
   const agrupa = r.gatilhos.some((g) => g.config.kind === "teams-inbox" && g.config.prLinks && g.config.agruparPrs);
 

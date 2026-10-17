@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { dispensarPendencia, gatilhoIncompleto, problemasDePendencia, rascunhoDoModelo, type Rascunho } from "../renderer/lib/automacao.js";
+import { AgentSpec } from "../src/config/types.js";
+import { dispensarPendencia, gatilhoIncompleto, problemasDePendencia, problemasDeRebaixado, rascunhoDoModelo, voltarParaAuto, type Rascunho } from "../renderer/lib/automacao.js";
 import {
   chaveDoRascunho,
   descartarReserva,
@@ -445,4 +446,18 @@ test("pendência do pacote vira aviso no nó, dispensar a tira, e o gatilho inco
   const sem = dispensarPendencia(dispensarPendencia(r.spec, `gatilho:${gatilho.id}`, "owner"), b.spec.steps[0]!.key, "params.destino");
   assert.equal(sem.pendentes, undefined);
   assert.equal(gatilhoIncompleto(sem, [gatilho.id]), false);
+});
+
+test("passo rebaixado na importação aparece como aviso do nó, e voltar para auto tira a marca e põe o modo", () => {
+  const spec = AgentSpec.parse({
+    id: "rebaixada",
+    name: "X",
+    steps: [{ type: "action", key: "chamar", name: "Chamar", needs: [], optional: false, action: "mcp.call", mode: "approve" }],
+    rebaixados: [{ passo: "chamar", motivo: "rebaixado-na-importacao" }],
+  });
+  const r = { spec, gatilhos: [] } as unknown as Rascunho;
+  assert.deepEqual(problemasDeRebaixado(r).map((p) => [p.chave, p.no, p.bloqueia, p.rebaixado]), [["automations.problems.downgraded", "chamar", false, { passo: "chamar" }]]);
+  const volta = voltarParaAuto(spec, "chamar");
+  assert.equal(volta.rebaixados, undefined);
+  assert.equal(volta.steps[0]!.type === "action" && volta.steps[0]!.mode, "auto");
 });
