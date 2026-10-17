@@ -351,3 +351,20 @@ test("com vários gatilhos, cada campo do evento diz de quais gatilhos vem", () 
   const um = catalogoDeReferencias({ passos: [passo("a"), passo("b", ["a"])], chave: "b", eventos: [{ fonte: "slack-inbox", esquema: { type: "object", properties: { text: { type: "string" } } } }] });
   assert.equal(um[0]!.itens[1]!.fontes, undefined, "com um gatilho só não há o que distinguir");
 });
+
+test("o catálogo não oferece campo que só pode ser nulo, e põe o que só existe às vezes no fim do grupo", () => {
+  const manual = catalogoDeReferencias({ passos: [passo("a")], chave: "b", eventos: [{ fonte: "manual", esquema: esquemaDoEvento(TriggerConfig.parse({ kind: "manual" })) }] });
+  const campos = manual[0]!.itens.map((i) => i.caminho);
+  for (const nulo of ["event.chatId", "event.messageId", "event.teamsAuthor"]) assert.ok(!campos.includes(nulo), nulo);
+  assert.ok(campos.includes("event.prNumber"));
+
+  const chamada = { type: "action", key: "ler", name: "Ler", needs: [], optional: false, action: "mcp.call", mode: "auto", params: { server: "fx", tool: "t" } } as Step;
+  const [ler] = catalogoDeReferencias({
+    passos: [chamada, passo("depois", ["ler"])],
+    chave: "depois",
+    eventos: [],
+    saidas: { ler: { extra: 1 } },
+    fontes: { ferramenta: () => ({ type: "object", properties: { total: { type: "number" } } }) },
+  });
+  assert.deepEqual(ler!.itens.map((i) => i.caminho), ["steps.ler", "steps.ler.total", "steps.ler.extra", "steps.ler.state", "steps.ler.semResposta"]);
+});

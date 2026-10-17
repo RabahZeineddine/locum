@@ -37,3 +37,16 @@ export function posicaoDoCursor(campo: HTMLInputElement | HTMLTextAreaElement, c
   espelho.remove();
   return posicao;
 }
+
+/** A faixa vertical que a pessoa vê de `el`: a interseção da janela com cada ancestral que rola. */
+export function faixaVisivel(el: HTMLElement): { top: number; bottom: number } {
+  let top = 0;
+  let bottom = window.innerHeight;
+  for (let pai = el.parentElement; pai !== null; pai = pai.parentElement) {
+    if (!/(auto|scroll|overlay)/.test(getComputedStyle(pai).overflowY)) continue;
+    const r = pai.getBoundingClientRect();
+    top = Math.max(top, r.top);
+    bottom = Math.min(bottom, r.bottom);
+  }
+  return { top, bottom };
+}

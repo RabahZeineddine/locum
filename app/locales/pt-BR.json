@@ -2241,8 +2241,11 @@
       "label": "Variáveis",
       "event": "Evento",
       "step": "{{numero}} · {{nome}}",
+      "condicao": {
+        "publicado-a-mao": "só se dado por publicado à mão"
+      },
       "insert": "Inserir variável",
-      "hint": "Digite {{ para inserir uma variável.",
+      "hint": "Digite {{ ou Ctrl+Espaço para inserir uma variável.",
       "count_zero": "Nenhuma variável",
       "count_one": "{{count}} variável",
       "count_other": "{{count}} variáveis"

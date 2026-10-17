@@ -31,6 +31,8 @@ export interface Referencia {
    * (só no grupo do evento). Ausente: um gatilho só, ou campo de passo.
    */
   fontes?: string[];
+  /** Quando o campo existe, se não é sempre: o catálogo o põe no fim do grupo (`publicado-a-mao`). */
+  condicao?: string;
   /** `esquema` vem do que a fonte declara; `ultimo-run` do que o último run gravou e o esquema não conhece. */
   origem: "esquema" | "ultimo-run";
 }
@@ -59,6 +61,12 @@ function achatar(esquema: EsquemaJson): EsquemaJson {
   };
 }
 
+/** Campo que só pode ser nulo não tem o que citar. */
+function soNulo(esquema: EsquemaJson): boolean {
+  const e = achatar(esquema);
+  return e.type === "null" || (Array.isArray(e.type) && e.type.length > 0 && e.type.every((t) => t === "null"));
+}
+
 function rotuloDoTipo(esquema: EsquemaJson): string {
   const e = achatar(esquema);
   const tipos = (Array.isArray(e.type) ? e.type : e.type === undefined ? [] : [e.type]).filter((t) => t !== "null");
@@ -78,9 +86,9 @@ export function referenciasDoEsquema(esquema: EsquemaJson, prefixo = "", nivel =
   const juntar = (nome: string) => (prefixo === "" ? nome : `${prefixo}.${nome}`);
   if (e.properties !== undefined && nivel < NIVEIS) {
     for (const [nome, filho] of Object.entries(e.properties)) {
-      if (!nomeCitavel(nome)) continue;
+      if (!nomeCitavel(nome) || soNulo(filho)) continue;
       const caminho = juntar(nome);
-      out.push({ caminho, tipo: rotuloDoTipo(filho), ...(filho.description === undefined ? {} : { descricao: filho.description }), origem: "esquema" });
+      out.push({ caminho, tipo: rotuloDoTipo(filho), ...(typeof filho["x-condicao"] === "string" ? { condicao: filho["x-condicao"] } : {}), ...(filho.description === undefined ? {} : { descricao: filho.description }), origem: "esquema" });
       out.push(...referenciasDoEsquema(filho, caminho, nivel + 1));
     }
   }
@@ -177,8 +185,8 @@ export function esquemaDaSaida(passo: Step, fontes: FontesDeEsquema): EsquemaJso
 }
 
 const SAIDA_DE_PASSO_PUBLICADO_A_MAO: Record<string, EsquemaJson> = {
-  state: { type: "string", description: "Only when the step was marked as published by hand: the tool's fields are then missing." },
-  semResposta: { type: "boolean", description: "True when the step was marked as published by hand, with no tool response." },
+  state: { type: "string", "x-condicao": "publicado-a-mao", description: "Only when the step was marked as published by hand: the tool's fields are then missing." },
+  semResposta: { type: "boolean", "x-condicao": "publicado-a-mao", description: "True when the step was marked as published by hand, with no tool response." },
 };
 
 export interface GrupoDeReferencias {
@@ -215,7 +223,8 @@ function grupo(raiz: string, esquemas: readonly EsquemaJson[], observada: unknow
     const caminho = `${raiz}.${sub}`;
     if (!itens.has(caminho)) itens.set(caminho, { caminho, tipo: "any", origem: "ultimo-run" });
   }
-  return [...itens.values()];
+  // O que só existe em certos casos vai para o fim do grupo, depois dos campos de sempre.
+  return [...itens.values()].sort((a, b) => Number(a.condicao !== undefined) - Number(b.condicao !== undefined));
 }
 
 /** O catálogo do que o passo `chave` pode citar: o evento e, na ordem do fluxo, cada passo anterior. */

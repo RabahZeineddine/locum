@@ -1,6 +1,6 @@
 import { Braces } from "lucide-react";
 import type { GrupoDeReferencias, Referencia } from "../../../src/config/referencias";
-import { posicaoDoCursor, type PosicaoDoCursor } from "@/lib/posicao-do-cursor";
+import { faixaVisivel, posicaoDoCursor, type PosicaoDoCursor } from "@/lib/posicao-do-cursor";
 import { filtrarSugestoes, inserirSugestao, marcadorAberto } from "@/lib/sugestao-de-variavel";
 import { cn } from "@/lib/utils";
 import { createContext, createElement, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ComponentPropsWithoutRef } from "react";
@@ -45,6 +45,10 @@ export function CampoComVariaveis({ tipo = "input", valor, mudar, grupos: dosPro
   const [ativo, setAtivo] = useState(0);
   const [posicao, setPosicao] = useState<PosicaoDoCursor>({ top: 0, left: 0, altura: 0 });
   /** O marcador que a pessoa dispensou com Esc: volta a abrir assim que o texto dele muda. */
+  /** A lista não cabe embaixo do marcador dentro da área que se vê: abre para cima. */
+  const [acima, setAcima] = useState(false);
+  /** A lista está mesmo à vista: sem isso Enter e Tab não inserem o que a pessoa não vê. */
+  const visivel = useRef(false);
   const [dispensado, setDispensado] = useState<{ inicio: number; consulta: string } | null>(null);
 
   const marcador = focado ? marcadorAberto(valor, cursor) : null;
@@ -58,10 +62,28 @@ export function CampoComVariaveis({ tipo = "input", valor, mudar, grupos: dosPro
 
   useEffect(() => setAtivo(0), [marcador?.consulta]);
 
-  // A lista abre onde o cursor está, e não no pé do campo.
+  // A lista abre onde o marcador começou, e só se reposiciona quando começa outro: não a cada tecla.
   useLayoutEffect(() => {
-    if (aberto && campo.current !== null) setPosicao(posicaoDoCursor(campo.current, cursor));
-  }, [aberto, cursor, valor]);
+    setAcima(false);
+    if (aberto && campo.current !== null && marcador !== null) setPosicao(posicaoDoCursor(campo.current, marcador.inicio));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aberto, marcador?.inicio]);
+
+  // Abre para cima quando embaixo não cabe, rola o mínimo para a lista aparecer e só então deixa Enter inserir.
+  useLayoutEffect(() => {
+    const caixa = lista.current;
+    const el = campo.current;
+    visivel.current = false;
+    if (!aberto || caixa === null || el === null) return;
+    const faixa = faixaVisivel(caixa);
+    const cabeEmbaixo = caixa.getBoundingClientRect().bottom <= faixa.bottom;
+    const cabeEmCima = el.getBoundingClientRect().top + posicao.top - caixa.offsetHeight - 4 >= faixa.top;
+    if (!acima && !cabeEmbaixo && cabeEmCima) return setAcima(true);
+    caixa.scrollIntoView?.({ block: "nearest" });
+    const r = caixa.getBoundingClientRect();
+    const depois = faixaVisivel(caixa);
+    visivel.current = r.top >= depois.top - 1 && r.bottom <= depois.bottom + 1;
+  }, [aberto, acima, posicao, opcoes.length]);
 
   // Só a lista rola para mostrar a opção ativa: a página e o painel ficam onde estão.
   useEffect(() => {
@@ -103,11 +125,16 @@ export function CampoComVariaveis({ tipo = "input", valor, mudar, grupos: dosPro
 
   const aoTeclar = (e: React.KeyboardEvent<Campo>): void => {
     onKeyDown?.(e);
+    if (e.ctrlKey && e.key === " ") {
+      e.preventDefault();
+      abrirPeloBotao();
+      return;
+    }
     if (!aberto || e.defaultPrevented) return;
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
       setAtivo((a) => (a + (e.key === "ArrowDown" ? 1 : opcoes.length - 1)) % opcoes.length);
-    } else if ((e.key === "Enter" || e.key === "Tab") && !e.nativeEvent.isComposing) {
+    } else if ((e.key === "Enter" || e.key === "Tab") && !e.nativeEvent.isComposing && visivel.current) {
       e.preventDefault();
       inserir(opcoes[ativo]!);
     } else if (e.key === "Escape") {
@@ -130,6 +157,7 @@ export function CampoComVariaveis({ tipo = "input", valor, mudar, grupos: dosPro
           ...(area ? {} : { role: "combobox", "aria-expanded": aberto }),
           "aria-autocomplete": "list",
           "aria-haspopup": "listbox",
+          "aria-keyshortcuts": "Control+Space",
           "aria-controls": aberto ? idLista : undefined,
           "aria-activedescendant": aberto ? idDaOpcao(ativo) : undefined,
           onChange: (e: React.ChangeEvent<Campo>) => {
@@ -156,6 +184,7 @@ export function CampoComVariaveis({ tipo = "input", valor, mudar, grupos: dosPro
             // mousedown, e não click: o click tiraria o foco do campo antes de inserir.
             onMouseDown={(e) => e.preventDefault()}
             onClick={abrirPeloBotao}
+            tabIndex={-1}
             title={t("automations.variables.insert")}
             type="button"
           >
@@ -170,7 +199,7 @@ export function CampoComVariaveis({ tipo = "input", valor, mudar, grupos: dosPro
             id={idLista}
             ref={lista}
             role="listbox"
-            style={{ top: posicao.top + posicao.altura + 4, left: Math.max(0, Math.min(posicao.left, (campo.current?.offsetWidth ?? LARGURA_DA_LISTA) - LARGURA_DA_LISTA)), width: LARGURA_DA_LISTA }}
+            style={{ ...(acima ? { bottom: (campo.current?.offsetHeight ?? 0) - posicao.top + 4 } : { top: posicao.top + posicao.altura + 4 }), left: Math.max(0, Math.min(posicao.left, (campo.current?.offsetWidth ?? LARGURA_DA_LISTA) - LARGURA_DA_LISTA)), width: LARGURA_DA_LISTA }}
           >
             {filtrados.map((grupo) => {
               const idTitulo = `${idLista}-g-${grupo.id}`;
@@ -200,7 +229,7 @@ export function CampoComVariaveis({ tipo = "input", valor, mudar, grupos: dosPro
                         title={deQuem === "" ? undefined : deQuem}
                       >
                         <span className="truncate">{item.caminho}</span>
-                        <span className="text-muted-foreground max-w-[45%] shrink-0 truncate text-[10px]">{deQuem === "" ? item.tipo : `${item.tipo} · ${deQuem}`}</span>
+                        <span className="text-muted-foreground max-w-[45%] shrink-0 truncate text-[10px]">{[item.tipo, item.condicao === undefined ? "" : t(`automations.variables.condicao.${item.condicao}`), deQuem].filter((x) => x !== "").join(" · ")}</span>
                       </div>
                     );
                   })}

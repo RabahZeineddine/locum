@@ -203,7 +203,7 @@ test("o seletor oferece os caminhos da saída do último run e o outputSchema da
     saidas: { ler: { total: 7, itens: ["a"] }, outro: { text: "oi" } },
     esquemasDeSaida: { "fx/totais": { type: "object", properties: { total: { type: "number" }, extra: { type: "string" } } } },
   }).map((x) => x.caminho);
-  assert.deepEqual(com, ["steps.ler", "steps.ler.state", "steps.ler.semResposta", "steps.ler.total", "steps.ler.extra", "steps.ler.itens", "steps.ler.itens.0", "steps.outro", "steps.outro.state", "steps.outro.semResposta", "steps.outro.text"]);
+  assert.deepEqual(com, ["steps.ler", "steps.ler.total", "steps.ler.extra", "steps.ler.itens", "steps.ler.itens.0", "steps.ler.state", "steps.ler.semResposta", "steps.outro", "steps.outro.text", "steps.outro.state", "steps.outro.semResposta"]);
 });
 
 test("as saídas do último run: a mais recente de cada passo, sem o estado de ensaio nem saída vazia", async () => {
