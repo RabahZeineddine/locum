@@ -20,10 +20,11 @@ import {
 import { semPrefixoDoIpc } from "@/lib/erro-da-ponte";
 import { rotuloDeEstado, rotuloDoErroDeRun } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
-import { Loader2, Play, Plus, Upload } from "lucide-react";
+import { Loader2, Play, Plus, Trash2, Upload } from "lucide-react";
 import { useEffect, useState, type DragEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { TriggerConfig } from "../../../src/config/types";
+import { DialogoDeDeletar } from "../automacoes/deletar-automacao";
 import { EditorDeAutomacao } from "../automacoes/editor";
 import { useExecutarAgora } from "../automacoes/executar-com";
 import { ImportarPacote } from "../automacoes/importar-pacote";
@@ -208,6 +209,7 @@ function ListaDeAutomacoes({ navegar }: Pick<TelaProps, "navegar">) {
     invalidateReads("agents.overview");
   };
   const [erroAoDesarquivar, setErroAoDesarquivar] = useState<string | null>(null);
+  const [deletando, setDeletando] = useState<{ id: string; nome: string } | null>(null);
   const desarquivar = (agentId: string): void => {
     setErroAoDesarquivar(null);
     call("automations.unarchive", agentId).then(reler, (e: unknown) =>
@@ -297,6 +299,17 @@ function ListaDeAutomacoes({ navegar }: Pick<TelaProps, "navegar">) {
         ))}
       </div>
       {erroAoDesarquivar === null ? null : <p className="text-destructive text-xs">{erroAoDesarquivar}</p>}
+      {deletando === null ? null : (
+        <DialogoDeDeletar
+          agentId={deletando.id}
+          aoDeletar={() => {
+            setDeletando(null);
+            reler();
+          }}
+          aoFechar={() => setDeletando(null)}
+          nome={deletando.nome}
+        />
+      )}
 
       {arquivadas ? null : provisorias.length === 0 ? null : (
         <ListGroup>
@@ -342,12 +355,28 @@ function ListaDeAutomacoes({ navegar }: Pick<TelaProps, "navegar">) {
         ) : (
           <ListGroup>
             {lista.map((linha) => (
-              <ListRow className="min-h-11" data-locum-automacao-arquivada={linha.id} key={linha.id} rotulo={linha.name}>
+              <ListRow
+                className="min-h-11"
+                data-locum-automacao-arquivada={linha.id}
+                key={linha.id}
+                onClick={() => navegar("automations", linha.id)}
+                rotulo={linha.name}
+              >
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="truncate font-medium">{linha.name}</span>
                 </span>
                 <Badge variant="outline">{t("automations.list.archivedBadge")}</Badge>
-                <span className="flex shrink-0 items-center" onClick={(e) => e.stopPropagation()}>
+                <span className="flex shrink-0 items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                  <Button
+                    className="cursor-pointer"
+                    data-locum-automacao-deletar-arquivada={linha.id}
+                    onClick={() => setDeletando({ id: linha.id, nome: linha.name })}
+                    size="sm"
+                    variant="ghost"
+                  >
+                    <Trash2 />
+                    {t("automations.editor.menu.delete")}
+                  </Button>
                   <Button className="cursor-pointer" data-locum-automacao-desarquivar={linha.id} onClick={() => desarquivar(linha.id)} size="sm" variant="outline">
                     {t("automations.list.unarchive")}
                   </Button>
