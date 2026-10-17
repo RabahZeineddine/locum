@@ -40,6 +40,12 @@ export type ActionRequest = {
   payload: unknown;
   /** O `target` do passo, quando ele declarou um. */
   target?: string | null;
+  /**
+   * A tentativa do passo (`steps.attempt`). Reexecutar o passo mantém o id e
+   * soma uma tentativa: sem ela no `externalId`, a marca da publicação antiga
+   * faria a nova parecer já publicada. Ausente vale 0.
+   */
+  attempt?: number;
 };
 
 export type ActionHandler = {
@@ -117,6 +123,14 @@ export class ApprovalGate {
    * divergem na primeira ação nova. A gate continua recusando o modo errado na
    * hora de publicar, com ou sem a tela ter avisado.
    */
+  /**
+   * A ação responde com algo que a gate não conhece (declara `outputSchema`
+   * próprio): dada por publicada à mão, a pendência não tem essa resposta.
+   */
+  semResposta(kind: string): boolean {
+    return this.handlers.get(kind)?.outputSchema !== undefined;
+  }
+
   describe(): { kind: string; modes: readonly ActionMode[]; holdsByContent: boolean; outputSchema: EsquemaJson; paramsDoPacote?: ParamsDoPacote }[] {
     return [...this.handlers.entries()].map(([kind, handler]) => ({
       kind,
@@ -169,7 +183,7 @@ export class ApprovalGate {
     prepared: { payload: unknown; mode: ActionMode },
   ): { id: string; externalId: string } {
     const id = randomUUID();
-    const externalId = `${req.runId}:${req.stepId}`;
+    const externalId = `${req.runId}:${req.stepId}:${req.attempt ?? 0}`;
     writer
       .insert(schema.approvals)
       .values({
@@ -213,7 +227,7 @@ export class ApprovalGate {
       }
 
       const publicada = await handler.publish(prepared.payload, externalId);
-      await this.close(id, "approved");
+      await this.close(id, "approved", { output: publicada?.output ?? { state: "published" } });
       return { state: "published", ...(publicada ? { output: publicada.output } : {}) };
     } catch (err) {
       await this.close(id, "failed");
@@ -307,11 +321,13 @@ export class ApprovalGate {
       eq(schema.approvals.status, "publishing"),
       lte(schema.approvals.decidedAt, limite),
     );
+    // Dada por publicada à mão, a pendência não tem a resposta da ferramenta.
+    const saida = { state: "published", ...(this.semResposta(row.kind) ? { semResposta: true } : {}) };
     const escrita = db
       .update(schema.approvals)
       .set(
         outcome === "published"
-          ? { status: "approved", decidedAt: Math.floor(Date.now() / 1000) }
+          ? { status: "approved", decidedAt: Math.floor(Date.now() / 1000), output: saida }
           : { status: "pending", decidedAt: null },
       )
       .where(parada)
@@ -320,8 +336,7 @@ export class ApprovalGate {
       throw new Error(`aprovacao ${approvalId} nao esta parada na publicacao`);
     }
     if (outcome === "retry") return { runId: row.runId, status: "pending" };
-    // Dada por publicada à mão, a pendência não tem a resposta da ferramenta.
-    await settleStep(row.stepId, "approved", { semResposta: row.kind === "mcp.call" });
+    await settleStep(row.stepId, "approved", { output: saida });
     return { runId: row.runId, status: "approved" };
   }
 

@@ -6,7 +6,7 @@ import { ApprovalGate, STUCK_AFTER_SECONDS, type ActionHandler } from "../src/ap
 import { AgentSpec } from "../src/config/types.js";
 import { db, schema } from "../src/db/index.js";
 import { migrateDb } from "../src/db/migrate.js";
-import { Executor } from "../src/executor/executor.js";
+import { Executor, NAO_RODOU } from "../src/executor/executor.js";
 import { McpRegistry } from "../src/mcp/registry.js";
 import type { Runtime } from "../src/runtimes/types.js";
 import { AgentService } from "../src/services/agent-service.js";
@@ -101,7 +101,7 @@ test("execução aprovada publica uma vez, roda o passo seguinte e termina em do
   assert.equal(await estadoDoRun(runId), "done");
   assert.equal((await passo(runId, "publicar"))?.status, "done");
   assert.equal((await passo(runId, "depois"))?.status, "done");
-  assert.deepEqual(publicados, [`${runId}:${(await passo(runId, "publicar"))!.id}`]);
+  assert.deepEqual(publicados, [`${runId}:${(await passo(runId, "publicar"))!.id}:0`]);
 });
 
 test("execução rejeitada sai de paused sem publicar, com a ação pulada", async () => {
@@ -251,3 +251,103 @@ test("reexecução é recusada enquanto a aprovação do passo está saindo", as
   const runs = new RunService(db, async () => executor);
   await assert.rejects(runs.rerunStep(runId, "ler"), /esta publicando/);
 });
+
+test("reexecutar um passo já publicado abre outra tentativa: o externalId muda e a ação sai de novo", async () => {
+  const { runId, approvalId, executor, publicados } = await montar();
+  const runs = new RunService(db, async () => executor);
+  await executor.decide(approvalId, "approved");
+  const publicar = (await passo(runId, "publicar"))!;
+
+  assert.equal(await runs.rerunStep(runId, "publicar"), "paused");
+  assert.equal((await passo(runId, "publicar"))!.attempt, publicar.attempt + 1);
+  const [nova] = await db
+    .select()
+    .from(schema.approvals)
+    .where(and(eq(schema.approvals.stepId, publicar.id), eq(schema.approvals.status, "pending")));
+  assert.equal(nova?.externalId, `${runId}:${publicar.id}:1`);
+
+  await executor.decide(nova!.id, "approved");
+  assert.deepEqual(publicados, [`${runId}:${publicar.id}:0`, `${runId}:${publicar.id}:1`]);
+});
+
+for (const terminal of ["failed", "cancelled"]) {
+  test(`decisão sobre run ${terminal} grava a decisão e não retoma o run`, async () => {
+    const { runId, approvalId, executor } = await montar();
+    await db.insert(schema.steps).values({ id: randomUUID(), runId, idx: 2, stepKey: "depois", name: "Depois", status: "skipped", error: NAO_RODOU });
+    await db.update(schema.runs).set({ status: terminal }).where(eq(schema.runs.id, runId));
+
+    const { status, run } = await executor.decide(approvalId, "approved");
+
+    assert.equal(status, "approved");
+    assert.equal(run, "failed");
+    assert.equal(await estadoDoRun(runId), terminal);
+    assert.equal((await passo(runId, "depois"))?.status, "skipped");
+  });
+}
+
+test("dois executores no mesmo run: só um roda", async () => {
+  const { runId, approvalId, gate, executor } = await montar();
+  await gate.decide(approvalId, "approved");
+
+  await Promise.all([executor.execute(runId), executor.execute(runId)]);
+
+  assert.equal(await estadoDoRun(runId), "done");
+  const depois = await db.select().from(schema.steps).where(and(eq(schema.steps.runId, runId), eq(schema.steps.stepKey, "depois")));
+  assert.equal(depois.length, 1);
+  assert.equal(depois[0]?.attempt, 1);
+});
+
+test("a saída da ação fica gravada na pendência no caminho automático", async () => {
+  const gate = new ApprovalGate(new Map([["teste.auto", { publish: async () => undefined } as ActionHandler]]));
+  const runId = randomUUID();
+  const stepId = randomUUID();
+  const versao = await new AgentService().upsert(
+    AgentSpec.parse({ id: `a-${randomUUID()}`, name: "A", steps: [{ type: "action", key: "x", name: "X", action: "teste.auto" }] }),
+    undefined,
+    "human",
+  );
+  await db.insert(schema.runs).values({ id: runId, agentVersionId: versao.id, status: "running" });
+  await db.insert(schema.steps).values({ id: stepId, runId, idx: 0, stepKey: "x", name: "X", status: "running" });
+
+  await gate.submit({ runId, stepId, kind: "teste.auto", payload: {} }, "auto");
+
+  const [pendencia] = await db.select().from(schema.approvals).where(eq(schema.approvals.stepId, stepId));
+  assert.deepEqual(pendencia?.output, { state: "published" });
+});
+
+test("dada por publicada à mão, a pendência guarda a saída; semResposta vem de o handler declarar outputSchema", async () => {
+  const comEsquema: ActionHandler = { publish: async () => undefined, outputSchema: { description: "resposta da ferramenta" } };
+  const semEsquema: ActionHandler = { publish: async () => undefined };
+  const gate = new ApprovalGate(new Map([["teste.com", comEsquema], ["teste.sem", semEsquema]]));
+  for (const [kind, esperado] of [
+    ["teste.com", { state: "published", semResposta: true }],
+    ["teste.sem", { state: "published" }],
+  ] as const) {
+    const { runId, stepId } = await passoAguardando();
+    await gate.submit({ runId, stepId, kind, payload: {} }, "approve");
+    const [p] = await db.select().from(schema.approvals).where(eq(schema.approvals.stepId, stepId));
+    await db
+      .update(schema.approvals)
+      .set({ status: "publishing", decidedAt: Math.floor(Date.now() / 1000) - STUCK_AFTER_SECONDS - 1 })
+      .where(eq(schema.approvals.id, p!.id));
+
+    await gate.settleStuck(p!.id, "published");
+
+    const [fechada] = await db.select().from(schema.approvals).where(eq(schema.approvals.id, p!.id));
+    assert.deepEqual(fechada?.output, esperado);
+    assert.deepEqual((await db.select().from(schema.steps).where(eq(schema.steps.id, stepId)))[0]?.output, esperado);
+  }
+});
+
+async function passoAguardando() {
+  const versao = await new AgentService().upsert(
+    AgentSpec.parse({ id: `a-${randomUUID()}`, name: "A", steps: [{ type: "action", key: "x", name: "X", action: "teste.com" }] }),
+    undefined,
+    "human",
+  );
+  const runId = randomUUID();
+  const stepId = randomUUID();
+  await db.insert(schema.runs).values({ id: runId, agentVersionId: versao.id, status: "paused" });
+  await db.insert(schema.steps).values({ id: stepId, runId, idx: 0, stepKey: "x", name: "X", status: "awaiting_approval" });
+  return { runId, stepId };
+}

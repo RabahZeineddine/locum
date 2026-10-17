@@ -418,7 +418,9 @@ export class RunService {
         .update(schema.steps)
         .set({
           status: "pending",
-          // A tentativa e historico do passo, e continua contando.
+          // A tentativa e historico do passo, e continua contando: a seguinte
+          // entra no externalId da acao, para a marca da antiga nao valer.
+          attempt: sql`${schema.steps.attempt} + 1`,
           modelUsed: null,
           substitutionReason: null,
           skillsUsed: null,

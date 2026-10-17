@@ -3,7 +3,7 @@ import { Octokit } from "octokit";
 import { and, eq } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
 import { FONTE_ULTIMA_CHAVE_GITHUB, gravarCursorDoGatilho } from "../triggers/estado-do-gatilho.js";
-import type { ActionHandler } from "../approval/gate.js";
+import { PublishConflict, type ActionHandler } from "../approval/gate.js";
 import type { Authorship, PollFilters, ReviewFinding, ReviewVerdict } from "../config/types.js";
 import type { EventPayload } from "../executor/executor.js";
 import { GITHUB_TOKEN_ENV, githubService, githubToken, invalidarTokenDoGh } from "../services/github-service.js";
@@ -37,6 +37,10 @@ export type ReviewPayload = {
   author?: string;
   // Opcional porque pendência gravada antes do veredito existir continua na fila.
   verdict?: ReviewVerdict;
+  /** O commit que o run avaliou, vindo do evento. A review sai presa a ele. */
+  headSha?: string;
+  /** Marcado na proposta quando o evento não trouxe o commit: a review sai sem `commit_id`. */
+  semCommitAvaliado?: boolean;
 };
 
 /**
@@ -79,7 +83,7 @@ export function octokit(opcoes: { timeoutMs?: number; fetch?: typeof fetch } = {
 export const PRAZO_DA_CHAMADA_MS = 30_000;
 
 /** O pedaço do cliente que a ação de review usa. Existe para o teste trocar. */
-export type ReviewClient = { rest: { pulls: Pick<Octokit["rest"]["pulls"], "createReview" | "listReviews"> } };
+export type ReviewClient = { rest: { pulls: Pick<Octokit["rest"]["pulls"], "createReview" | "listReviews" | "get"> } };
 
 export type PrContext = EventPayload & {
   owner: string;
@@ -666,12 +670,9 @@ const SEVERITY_MARK: Record<Finding["severity"], string> = {
 
 function renderBody(findings: Finding[], summary?: string): string {
   if (findings.length === 0) {
-    // Quando aprovado sem achados, publica estritamente texto curto e natural humano, ou vazio com LGTM
+    // O corpo vem só do payload: sem resumo, sai só a marca invisível.
     const texto = summary?.trim();
-    if (texto && texto.length > 0 && texto !== "LGTM!") {
-      return `${texto}\n\n${LOCUM_MARKER}`;
-    }
-    return `LGTM!\n\n${LOCUM_MARKER}`;
+    return texto ? `${texto}\n\n${LOCUM_MARKER}` : LOCUM_MARKER;
   }
   const corpo = findings
     .map((f) => {
@@ -744,17 +745,27 @@ export function githubReviewHandler(client: () => ReviewClient = octokit): Actio
           }
         } catch {}
       }
-      return payload;
+      return p.headSha ? payload : { ...p, semCommitAvaliado: true };
     },
     async publish(payload, externalId) {
       const p = payload as ReviewPayload & { summary?: string };
       if (await jaSaiu(p, externalId)) return;
+      // Aprovar depois de commits novos aprovaria código que ninguém revisou.
+      if (p.headSha) {
+        const { data } = await client().rest.pulls.get({ owner: p.owner, repo: p.repo, pull_number: p.pull });
+        if (data.head.sha !== p.headSha) {
+          throw new PublishConflict(
+            `o pull request recebeu commits depois da avaliacao: avaliado ${p.headSha}, atual ${data.head.sha}`,
+          );
+        }
+      }
       await client().rest.pulls.createReview({
         owner: p.owner,
         repo: p.repo,
         pull_number: p.pull,
         event: p.verdict ?? "COMMENT",
         body: `${renderBody(p.findings, p.summary)}\n${marca(externalId)}`,
+        ...(p.headSha ? { commit_id: p.headSha } : {}),
         comments: comments(p.findings),
       });
     },
@@ -766,6 +777,7 @@ export function githubReviewHandler(client: () => ReviewClient = octokit): Actio
         repo: p.repo,
         pull_number: p.pull,
         body: `${renderBody(p.findings, p.summary)}\n${marca(externalId)}`,
+        ...(p.headSha ? { commit_id: p.headSha } : {}),
         comments: comments(p.findings),
       });
     },

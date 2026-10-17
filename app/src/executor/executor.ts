@@ -158,7 +158,7 @@ export class Executor {
   async resume(ids: string[]): Promise<void> {
     for (const id of ids) {
       try {
-        await this.execute(id);
+        await this.executarRun(id, { interrompido: true });
       } catch (err) {
         console.error(`retomada do run ${id} falhou`, err);
       }
@@ -168,7 +168,7 @@ export class Executor {
   /** Runs interrompidos por fechamento do app ou por crash. */
   async resumeAll(): Promise<string[]> {
     const ids = await this.interruptedRuns();
-    for (const id of ids) await this.execute(id);
+    for (const id of ids) await this.executarRun(id, { interrompido: true });
     return ids;
   }
 
@@ -198,9 +198,17 @@ export class Executor {
     }
   }
 
-  private async executarRun(runId: string): Promise<"done" | "paused" | "failed"> {
+  /**
+   * `interrompido`: quem retoma o que o app deixou em `running` ao cair. Fora
+   * dele, `running` é de outro executor vivo, e este não toca.
+   */
+  private async executarRun(runId: string, opcoes: { interrompido?: boolean } = {}): Promise<"done" | "paused" | "failed"> {
     const [run] = await db.select().from(schema.runs).where(eq(schema.runs.id, runId));
     if (!run) throw new Error(`run ${runId} nao encontrado`);
+    // Run terminado (failed, cancelled, done) não volta a rodar por uma decisão
+    // tardia: os passos pulados por não rodar seriam executados de novo.
+    const retomaveis: string[] = opcoes.interrompido === true ? ["queued", "paused", "running"] : ["queued", "paused"];
+    if (!retomaveis.includes(run.status)) return resultadoDoRunParado(run.status);
 
     const [version] = await db
       .select()
@@ -225,17 +233,24 @@ export class Executor {
     const recusaDeIncompleto = payload.semConversa === true ? null : recusaDeRodar(spec.pendentes);
     if (recusaDeIncompleto !== null) return this.recusarSemEvento(runId, spec, recusaDeIncompleto);
 
-    // Retomar um run de automação arquivada é recusado na mesma transação que o põe a rodar.
-    db.transaction(
+    // Retomar um run de automação arquivada é recusado na mesma transação que o
+    // põe a rodar. A troca é condicionada ao status lido: dois executores no
+    // mesmo run não passam os dois, e quem perde não roda nada.
+    const assumido = db.transaction(
       (tx) => {
         recusarSeArquivada(tx, version.agentId);
-        tx.update(schema.runs)
+        return tx
+          .update(schema.runs)
           .set({ status: "running", startedAt: run.startedAt ?? nowSec() })
-          .where(eq(schema.runs.id, runId))
-          .run();
+          .where(and(eq(schema.runs.id, runId), inArray(schema.runs.status, retomaveis)))
+          .run().changes;
       },
       { behavior: "immediate" },
     );
+    if (assumido !== 1) {
+      const [atual] = await db.select({ status: schema.runs.status }).from(schema.runs).where(eq(schema.runs.id, runId));
+      return resultadoDoRunParado(atual?.status ?? run.status);
+    }
 
     const fallbacks = await providerService.getFallbacks(this.deps.machineId);
 
@@ -318,7 +333,7 @@ export class Executor {
           if (!approval || approval.status === "pending" || approval.status === "publishing") {
             return this.pause(runId);
           }
-          outputs.set(step.key, (await settleStep(existing.id, approval.status, { output: approval.output ?? undefined, semResposta: approval.kind === "mcp.call" })).output);
+          outputs.set(step.key, (await settleStep(existing.id, approval.status, { output: approval.output ?? undefined, semResposta: this.deps.gate.semResposta(approval.kind) })).output);
           // Recusado na Fila: o que depende só dele não roda.
           if (approval.status === "rejected") {
             foraDoCaminho.add(step.key);
@@ -866,6 +881,7 @@ export class Executor {
         runId,
         stepId,
         kind: step.action,
+        attempt: (await this.loadStep(runId, step.key))?.attempt ?? 0,
         payload: seguraNaFila ? { ...(payload as object), aviso: "nao-e-leitura" } : payload,
         target: step.target ?? null,
       },
@@ -888,6 +904,15 @@ export class Executor {
       .where(eq(schema.steps.id, stepId));
     return { kind: "ok", output: saidaDoPasso, costUsd: 0, tokens: 0, billable: false };
   }
+}
+
+/**
+ * O que `execute` devolve quando não rodou nada porque o run não estava em
+ * estado de rodar. `running` é de outro executor, que devolverá o resultado dele.
+ */
+function resultadoDoRunParado(status: string): "done" | "paused" | "failed" {
+  if (status === "done") return "done";
+  return status === "failed" || status === "cancelled" ? "failed" : "paused";
 }
 
 /** A reação que o ensaio faria, como `set 👀`; nula quando o passo ainda não a define. */
@@ -1018,6 +1043,9 @@ export function destinoDoEvento(
   for (const campo of DESTINO) {
     if (alvo[campo] !== undefined) destino[campo] = alvo[campo];
   }
+  // O commit avaliado é do evento, nunca do modelo: ausente, apaga o que a
+  // saída trouxesse, e a review sai sem commit e marcada como tal.
+  destino.headSha = alvo.headSha;
   // Os campos de endereço de cada app de conversa (declarados no registro)
   // entram mesmo ausentes, como `undefined`: ao serem espalhados por cima da
   // saída do modelo, apagam o que ele inventou. Sem isso, evento de outra
