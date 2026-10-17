@@ -1,5 +1,6 @@
 import { TriggerConfig, type AgentSpec, type TriggerConfigInput } from "../config/types.js";
-import { limparPendenciasPreenchidas, recusaDeLigar } from "../config/pendencia.js";
+import { limparPendenciasPreenchidas, recusaDeLigar, recusaDeRodar } from "../config/pendencia.js";
+import { recursoExiste } from "./pendencia-recursos.js";
 import { agentService, ID_DE_AGENT, mensagemDeVersao, isReserved, type AgentService, type AgentVersion } from "./agent-service.js";
 import { dependenciaDeEvento, recusaSemEvento, type MotivoDeEvento } from "../executor/dependencia-de-evento.js";
 import { eventoManual, type EventoManual, type EventoRecente } from "./evento-manual.js";
@@ -124,7 +125,7 @@ export class AutomationService {
     });
     const ficam = new Set(identificados.flatMap((g) => (g.id === undefined ? [] : [g.id])));
     const removidos = new Set(atuais.filter((a) => !ficam.has(a.id) && (input.knownTriggerIds === undefined || input.knownTriggerIds.includes(a.id))).map((a) => a.id));
-    const spec = limparPendenciasPreenchidas(input.spec, { gatilhos: identificados, removidos });
+    const spec = limparPendenciasPreenchidas(input.spec, { gatilhos: identificados, removidos, existe: recursoExiste });
     if (identificados.some((g) => g.ligar)) {
       const recusa = recusaDeLigar(spec.pendentes, identificados.flatMap((g) => (g.ligar && g.id !== undefined ? [g.id] : [])));
       if (recusa !== null) throw new Error(recusa);
@@ -225,6 +226,11 @@ export class AutomationService {
       const version = await this.agents.getLatestVersion(agentId);
       const motivo = version === undefined ? null : dependenciaDeEvento(version.spec);
       if (motivo !== null) throw new Error(recusaSemEvento(motivo));
+    }
+    // Sem link colado a execução é de verdade: nó incompleto recusa antes de abrir o run.
+    if (evento.prUrl === undefined) {
+      const recusa = recusaDeRodar((await this.agents.getLatestVersion(agentId))?.spec.pendentes);
+      if (recusa !== null) throw new Error(recusa);
     }
 
     const manual = (await this.triggers.list(agentId)).find((g) => g.config.kind === "manual");

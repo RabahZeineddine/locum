@@ -52,7 +52,7 @@ export function descreverPendencia(p: Pendencia): string {
   return `${textoDoMotivo(p.motivo)} (${p.campo})`;
 }
 
-/** O passo que não pode rodar por ter campo a preencher: o executor para o run com este erro. */
+/** O passo que não pode rodar por ter campo a preencher: o executor para o run com este erro (o opcional só falha). */
 export class PassoIncompletoError extends Error {
   readonly codigo = "step_incomplete";
   constructor(
@@ -67,19 +67,36 @@ export class PassoIncompletoError extends Error {
 export const pendenciasDoPasso = (spec: { pendentes?: readonly Pendencia[] | undefined }, chave: string): Pendencia[] =>
   (spec.pendentes ?? []).filter((p) => p.onde === chave);
 
+const ehDeGatilho = (p: Pendencia): boolean => idDoGatilhoNoOnde(p.onde) !== undefined;
+
+/** Os nós incompletos, um por passo, como o run diz: `nó "x" incompleto: o que falta`. */
+function descreverNos(pendencias: readonly Pendencia[]): string {
+  const porPasso = new Map<string, Pendencia[]>();
+  for (const p of pendencias) porPasso.set(p.onde, [...(porPasso.get(p.onde) ?? []), p]);
+  return [...porPasso].map(([passo, lista]) => `nó "${passo}" incompleto: ${lista.map(descreverPendencia).join("; ")}`).join("; ");
+}
+
 /**
- * Por que estes gatilhos não ligam, ou `null`: o gatilho com campo a preencher
- * (`gatilho:<id>`) não liga. A pendência de um passo não impede o gatilho, que o
- * run dela diz ao falhar. Gatilho que o pacote não chegou a criar não tem id
- * cadastrado: a pendência dele fica à vista, sem travar os outros.
+ * Por que esta automação não liga, ou `null`: passo com campo a preencher impede, e
+ * gatilho com campo a preencher (`gatilho:<id>`) também. Gatilho que o pacote não
+ * chegou a criar não tem id cadastrado: a pendência dele fica à vista, sem travar os outros.
  */
 export function recusaDeLigar(pendentes: readonly Pendencia[] | undefined, idsDosGatilhos: readonly string[]): string | null {
-  const dos = (pendentes ?? []).filter((p) => {
+  const lista = pendentes ?? [];
+  const dosPassos = lista.filter((p) => !ehDeGatilho(p));
+  const dosGatilhos = lista.filter((p) => {
     const id = idDoGatilhoNoOnde(p.onde);
     return id !== undefined && idsDosGatilhos.includes(id);
   });
-  if (dos.length === 0) return null;
-  return `gatilho incompleto: ${dos.map((p) => `${p.onde}: ${descreverPendencia(p)}`).join("; ")}`;
+  if (dosPassos.length === 0 && dosGatilhos.length === 0) return null;
+  const partes = [...(dosPassos.length === 0 ? [] : [descreverNos(dosPassos)]), ...(dosGatilhos.length === 0 ? [] : [`gatilho incompleto: ${dosGatilhos.map((p) => `${p.onde}: ${descreverPendencia(p)}`).join("; ")}`])];
+  return `automação incompleta: ${partes.join("; ")}`;
+}
+
+/** Por que um run de verdade não começa, ou `null`: há passo com campo a preencher. */
+export function recusaDeRodar(pendentes: readonly Pendencia[] | undefined): string | null {
+  const dosPassos = (pendentes ?? []).filter((p) => !ehDeGatilho(p));
+  return dosPassos.length === 0 ? null : `automação incompleta, nada rodou: ${descreverNos(dosPassos)}`;
 }
 
 export function valorNoCaminho(objeto: unknown, caminho: string): unknown {

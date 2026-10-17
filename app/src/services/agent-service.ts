@@ -6,6 +6,7 @@ import { db as defaultDb, schema } from "../db/index.js";
 import { AgentBudgetPatch, AgentSpec, resolveTools, serversInScope, type ActionMode, type ActionStep, type AgentBudget, type ToolRef } from "../config/types.js";
 import { today } from "../executor/budget.js";
 import { limparPendenciasPreenchidas } from "../config/pendencia.js";
+import { recursoExiste } from "./pendencia-recursos.js";
 import { splitModelId } from "../providers/registry.js";
 import { SUBSCRIPTION_RUNTIMES } from "../runtimes/types.js";
 
@@ -258,7 +259,7 @@ export class AgentService {
     expectedVersion?: number,
   ): Promise<AgentVersion> {
     // O campo que ganhou valor deixa de ser pendência, por qualquer caminho de gravação.
-    const parsed = limparPendenciasPreenchidas(guarded.spec);
+    const parsed = limparPendenciasPreenchidas(guarded.spec, { existe: recursoExiste });
     refuseReserved(parsed.id);
     // O destino de resposta e de reação é conferido ao gravar: marcador de passo, tipo que a ação não aceita ou conversa de outro app.
     for (const passo of parsed.steps) {

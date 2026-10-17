@@ -2,10 +2,11 @@ import { randomUUID } from "node:crypto";
 import { and, desc, eq } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
 import { TriggerConfig, type TriggerConfigInput } from "../config/types.js";
-import { Pendencia, recusaDeLigar } from "../config/pendencia.js";
+import { Pendencia, limparPendenciasPreenchidas, ondeDoGatilho, recusaDeLigar } from "../config/pendencia.js";
+import { recursoExiste } from "./pendencia-recursos.js";
 import { esquecerDescartes } from "../triggers/descartes.js";
 import { limparErro } from "../triggers/erros.js";
-import { isReserved } from "./agent-service.js";
+import { AgentService, isReserved } from "./agent-service.js";
 
 type Db = typeof defaultDb;
 
@@ -96,6 +97,25 @@ export class TriggerService {
     agentId: string,
     config: TriggerConfigInput,
     options: { id?: string; idNovo?: string; enabled?: boolean; fromTool?: boolean; valerParaTodosOsChats?: boolean } = {},
+  ): Promise<TriggerEntry> {
+    const salvo = await this.gravar(agentId, config, options);
+    await this.limparPendenciaDoGatilho(agentId, salvo);
+    return salvo;
+  }
+
+  /** O campo do gatilho que ganhou valor deixa de ser pendência da automação, pelo mesmo código da gravação dela. */
+  private async limparPendenciaDoGatilho(agentId: string, gatilho: TriggerEntry): Promise<void> {
+    const agents = new AgentService(this.db);
+    const ultima = await agents.getLatestVersion(agentId);
+    if (ultima?.spec.pendentes?.some((p) => p.onde === ondeDoGatilho(gatilho.id)) !== true) return;
+    const limpo = limparPendenciasPreenchidas(ultima.spec, { gatilhos: [{ id: gatilho.id, config: gatilho.config }], existe: recursoExiste });
+    if (limpo !== ultima.spec) await agents.saveEdited(agentId, limpo, "campo do gatilho preenchido", ultima.version);
+  }
+
+  private async gravar(
+    agentId: string,
+    config: TriggerConfigInput,
+    options: { id?: string; idNovo?: string; enabled?: boolean; fromTool?: boolean; valerParaTodosOsChats?: boolean },
   ): Promise<TriggerEntry> {
     // Ligar é o passo que deixa o agent acordar e gastar sozinho, e só uma
     // pessoa dá esse passo, pela interface ou pela linha de comando.
