@@ -3,6 +3,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
 import { TriggerConfig, type TriggerConfigInput } from "../config/types.js";
 import { Pendencia, limparPendenciasPreenchidas, ondeDoGatilho, recusaDeLigar } from "../config/pendencia.js";
+import { transacaoDoBanco } from "../db/transacao.js";
 import { recursoExiste } from "./pendencia-recursos.js";
 import { esquecerDescartes } from "../triggers/descartes.js";
 import { limparErro } from "../triggers/erros.js";
@@ -98,9 +99,13 @@ export class TriggerService {
     config: TriggerConfigInput,
     options: { id?: string; idNovo?: string; enabled?: boolean; fromTool?: boolean; valerParaTodosOsChats?: boolean } = {},
   ): Promise<TriggerEntry> {
-    const salvo = await this.gravar(agentId, config, options);
-    await this.limparPendenciaDoGatilho(agentId, salvo);
-    return salvo;
+    // O gatilho e a versão que tira a pendência dele entram juntos: a falha de um desfaz o outro.
+    // A versão nova é o preço de a pendência morar no spec, que é imutável por versão (o run aponta para ele).
+    return transacaoDoBanco(this.db)(async () => {
+      const salvo = await this.gravar(agentId, config, options);
+      await this.limparPendenciaDoGatilho(agentId, salvo);
+      return salvo;
+    });
   }
 
   /** O campo do gatilho que ganhou valor deixa de ser pendência da automação, pelo mesmo código da gravação dela. */

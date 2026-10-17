@@ -256,3 +256,16 @@ test("pacote v1 com omitidos de gatilho sem nome de param: cada campo local vira
   assert.ok(gravada.triggers.length > 0);
   for (const g of gravada.triggers) await assert.rejects(m.triggers.setEnabled(g.id, true));
 });
+
+test("preencher o campo do gatilho grava o gatilho e a versão juntos: se a versão falha, o gatilho não muda", async () => {
+  const { b, gravada } = await comGatilhoPendente("gatilho-junto");
+  const gatilho = gravada.triggers[0]!;
+  // Queda real do banco ao gravar a versão que tira a pendência.
+  (b.agents as unknown as { db: { $client: { exec(sql: string): void } } }).db.$client.exec(
+    "CREATE TRIGGER queda BEFORE INSERT ON agent_versions WHEN NEW.note = 'campo do gatilho preenchido' BEGIN SELECT RAISE(ABORT, 'queda do banco'); END;",
+  );
+  await assert.rejects(() => b.triggers.set("gatilho-junto", { ...gatilho.config, owner: "empresa-bruno" } as never, { id: gatilho.id }), /queda do banco/);
+  const depois = (await b.automations.get("gatilho-junto"))!;
+  assert.equal((depois.triggers[0]!.config as { owner?: string }).owner, undefined, "o gatilho mudou sem a pendência sair");
+  assert.deepEqual(depois.version.spec.pendentes?.map((p) => p.campo), ["owner"]);
+});
