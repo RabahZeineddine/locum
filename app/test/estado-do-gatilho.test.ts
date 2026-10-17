@@ -6,6 +6,7 @@ import { ESTADO_DO_GATILHO, esquecerGatilho } from "../src/triggers/estado-do-ga
 import { AgentSpec } from "../src/config/types.js";
 import { AgentService } from "../src/services/agent-service.js";
 import { TriggerService } from "../src/services/trigger-service.js";
+import { comTrava } from "../src/triggers/trava.js";
 import { bancoDeTeste } from "./helpers/db.js";
 
 type Banco = ReturnType<typeof bancoDeTeste>;
@@ -81,4 +82,25 @@ test("TriggerService.remove esquece o estado do gatilho", async () => {
   assert.equal(db.select().from(schema.cursors).where(and(eq(schema.cursors.key, g.id))).all().length, 0);
   assert.equal(db.select().from(schema.cursors).all().length, 0);
   assert.equal(db.select().from(schema.settings).all().length, 0);
+});
+
+test("TriggerService.remove espera a batida que segura a trava do gatilho", async () => {
+  const db = bancoDeTeste();
+  await new AgentService(db).upsert(
+    AgentSpec.parse({ id: "vigia", name: "Vigia", steps: [{ type: "model", key: "ler", name: "Ler", model: "ollama/m", prompt: "leia" }] }),
+    undefined,
+    "human",
+  );
+  const triggers = new TriggerService(db);
+  const g = await triggers.set("vigia", { kind: "schedule", everyMinutes: 30 });
+  let solta!: () => void;
+  const batida = comTrava(`gatilho:${g.id}`, () => new Promise<void>((r) => (solta = r)));
+  let removeu = false;
+  const removendo = triggers.remove(g.id).then(() => (removeu = true));
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(removeu, false);
+  solta();
+  await batida;
+  await removendo;
+  assert.equal(removeu, true);
 });

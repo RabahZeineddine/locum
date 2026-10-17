@@ -5,7 +5,7 @@ import { schema } from "../src/db/index.js";
 import { TriggerConfig } from "../src/config/types.js";
 import { extractGithubPrLinks, extrairLinksDePr } from "../src/sources/github-pr-link.js";
 import { pollTeamsInbox } from "../src/sources/teams-inbox.js";
-import { bancoDeTeste as bancoVazio } from "./helpers/db.js";
+import { bancoDeTeste as bancoVazio, plantarGatilho } from "./helpers/db.js";
 
 const token = async () => "token-graph";
 const agoraMenos = (minutos: number) => new Date(Date.now() - minutos * 60_000).toISOString();
@@ -506,6 +506,8 @@ test("o gatilho sem cursor próprio parte do compartilhado de antes, sem reproce
 
 test("primeira batida sem cursor nenhum não puxa link de PR anterior à ativação", async () => {
   const db = bancoVazio();
+  const gatilhoT = { id: "T", agentId: "dono", config: { kind: "schedule", everyMinutes: 30 }, enabled: true };
+  plantarGatilho(db, gatilhoT);
   const chats = [
     {
       id: "g",
@@ -519,6 +521,7 @@ test("primeira batida sem cursor nenhum não puxa link de PR anterior à ativaç
 
   // Com dms ligado a mensagem antiga ainda acorda como conversa, mas sem virar evento de PR.
   const comDms = bancoVazio();
+  plantarGatilho(comDms, gatilhoT);
   await pollTeamsInbox({ ...watch, dms: true }, { db: comDms, triggerId: "T", ...OPCOES, ...graphFalso({ chats }) });
   assert.deepEqual(
     (await eventos(comDms)).map((e) => [e.messageId, e.kind, e.prOwner]).sort(),

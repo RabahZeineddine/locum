@@ -5,6 +5,7 @@ import { TriggerConfig, type TriggerConfigInput } from "../config/types.js";
 import { Pendencia, limparPendenciasPreenchidas, ondeDoGatilho, recusaDeLigar } from "../config/pendencia.js";
 import { transacaoDoBanco } from "../db/transacao.js";
 import { recursoExiste } from "./pendencia-recursos.js";
+import { comTrava } from "../triggers/trava.js";
 import { esquecerGatilho } from "../triggers/estado-do-gatilho.js";
 import { AgentService, isReserved } from "./agent-service.js";
 
@@ -204,12 +205,18 @@ export class TriggerService {
   }
 
   async remove(id: string): Promise<boolean> {
-    // O gatilho e o que ficou preso a ele saem juntos.
-    return this.db.transaction((tx) => {
-      const deleted = tx.delete(schema.triggers).where(eq(schema.triggers.id, id)).returning().all();
-      esquecerGatilho(tx, id);
-      return deleted.length > 0;
-    });
+    // Espera a batida em curso do gatilho (a trava é a do agendador). Entre processos quem garante é o banco:
+    // o gatilho e o estado saem juntos, e a gravação de estado confere na transação que o gatilho existe.
+    return comTrava(`gatilho:${id}`, async () =>
+      this.db.transaction(
+        (tx) => {
+          const deleted = tx.delete(schema.triggers).where(eq(schema.triggers.id, id)).returning().all();
+          esquecerGatilho(tx, id);
+          return deleted.length > 0;
+        },
+        { behavior: "immediate" },
+      ),
+    );
   }
 
   private async requireRow(id: string, agentId: string): Promise<TriggerRow> {

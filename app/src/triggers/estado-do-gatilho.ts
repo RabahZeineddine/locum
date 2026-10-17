@@ -1,4 +1,5 @@
 import { and, eq, sql } from "drizzle-orm";
+import { gatilhoExiste } from "../db/arquivada.js";
 import { db as defaultDb, schema } from "../db/index.js";
 
 type Db = Pick<typeof defaultDb, "delete">;
@@ -60,4 +61,64 @@ export function esquecerGatilho(db: Db, triggerId: string): void {
           : undefined;
     db.delete(schema.cursors).where(and(fonte, chave)).run();
   }
+}
+
+type LinhaDeCursor = { source: string; key: string };
+
+/** A linha é de um dos formatos que a tabela declara para este gatilho. */
+function declarada(linha: LinhaDeCursor, triggerId: string): boolean {
+  const sufixo = `:${triggerId}`;
+  return ESTADO_DO_GATILHO.some(
+    (e) =>
+      e.onde === "cursor" &&
+      linha.source === (e.fonte.com === "id" ? `${e.fonte.nome}:${triggerId}` : e.fonte.nome) &&
+      (e.chave === "qualquer" || (e.chave === "id" ? linha.key === triggerId : linha.key.endsWith(sufixo))),
+  );
+}
+
+/**
+ * Grava o estado de um gatilho só se ele ainda existe, conferido na mesma
+ * transação que grava. Quem arquiva ou remove o gatilho (inclusive em outro
+ * processo) apaga o estado e o gatilho juntos, e uma batida que ainda corria
+ * não o recria: a gravação é descartada, com aviso no log. Devolve se gravou.
+ * Linha que a tabela não declara é erro de programação, não gravação silenciosa.
+ */
+export function gravarCursorDoGatilho(
+  db: Pick<typeof defaultDb, "transaction">,
+  triggerId: string,
+  linha: LinhaDeCursor,
+  value: string,
+  at: number = Date.now(),
+): boolean {
+  if (!declarada(linha, triggerId)) throw new Error(`ESTADO_DO_GATILHO nao declara ${linha.source}/${linha.key} para o gatilho ${triggerId}`);
+  return db.transaction(
+    (tx) => {
+      if (!gatilhoExiste(tx, triggerId)) {
+        console.warn(`estado do gatilho ${triggerId} descartado (${linha.source}): o gatilho nao existe mais`);
+        return false;
+      }
+      tx.insert(schema.cursors)
+        .values({ ...linha, value })
+        .onConflictDoUpdate({ target: [schema.cursors.source, schema.cursors.key], set: { value, updatedAt: Math.floor(at / 1000) } })
+        .run();
+      return true;
+    },
+    { behavior: "immediate" },
+  );
+}
+
+/** O mesmo para a configuração guardada por gatilho (`<chave>:<id>`): grava se não havia, e mantém a que havia. */
+export function gravarSettingDoGatilho(db: Pick<typeof defaultDb, "transaction">, triggerId: string, chave: string, value: string): boolean {
+  if (!ESTADO_DO_GATILHO.some((e) => e.onde === "setting" && e.chave === chave)) throw new Error(`ESTADO_DO_GATILHO nao declara a configuracao ${chave}`);
+  return db.transaction(
+    (tx) => {
+      if (!gatilhoExiste(tx, triggerId)) {
+        console.warn(`configuracao ${chave} do gatilho ${triggerId} descartada: o gatilho nao existe mais`);
+        return false;
+      }
+      tx.insert(schema.settings).values({ key: `${chave}:${triggerId}`, value }).onConflictDoNothing().run();
+      return true;
+    },
+    { behavior: "immediate" },
+  );
 }

@@ -10,7 +10,7 @@ import type { TriggerEntry, TriggerService } from "../src/services/trigger-servi
 import { scanOpenPullRequests } from "../src/sources/github.js";
 import { previaDoGatilho } from "../src/services/trigger-preview.js";
 import { Scheduler, type PollFn, type SweepFn } from "../src/triggers/scheduler.js";
-import { bancoDeTeste } from "./helpers/db.js";
+import { bancoDeTeste, plantarGatilho } from "./helpers/db.js";
 import { githubFalso, type Pr } from "./helpers/github-falso.js";
 
 const MINUTO = 60_000;
@@ -35,7 +35,7 @@ function montar(opcoes: { gatilho: () => TriggerEntry; poll: PollFn; viewer?: st
   // O run de mentira não tem versão de agent por trás.
   db.run(sql`PRAGMA foreign_keys = OFF`);
   const iniciados: { eventId: string | null }[] = [];
-  const triggers = { enabled: async () => [opcoes.gatilho()], list: async () => [opcoes.gatilho()], get: async () => opcoes.gatilho(), pendencias: async () => [] } as unknown as TriggerService;
+  const triggers = { enabled: async () => [opcoes.gatilho()], list: async () => [opcoes.gatilho()], get: async () => plantarGatilho(db, opcoes.gatilho()), pendencias: async () => [] } as unknown as TriggerService;
   const executions = {
     startForEvent: async (input: { eventId: string | null; triggerId: string }) => {
       iniciados.push({ eventId: input.eventId });
@@ -197,6 +197,7 @@ test("a batida manual espera a agendada do mesmo gatilho, e dois registros de de
   assert.equal(maximo, 1, "uma varredura por vez no mesmo gatilho");
 
   const db = bancoDeTeste();
+  plantarGatilho(db, { id: "g9", agentId: "dono", config: { kind: "schedule", everyMinutes: 30 }, enabled: true });
   const { registrarDescartes, lerDescartes } = await import("../src/triggers/descartes.js");
   await Promise.all(
     Array.from({ length: 10 }, (_, i) => registrarDescartes(db, "g9", [{ pr: `o/api#${i}`, motivo: "draft" }], T0 + i)),
@@ -208,6 +209,7 @@ test("remover o gatilho apaga o registro de descartes dele", async () => {
   const db = bancoDeTeste();
   const { registrarDescartes, lerDescartes } = await import("../src/triggers/descartes.js");
   const { TriggerService } = await import("../src/services/trigger-service.js");
+  plantarGatilho(db, { id: "g1", agentId: "dono", config: { kind: "schedule", everyMinutes: 30 }, enabled: true });
   await registrarDescartes(db, "g1", [{ pr: "o/api#1", motivo: "draft" }], T0);
   await new TriggerService(db).remove("g1");
   assert.deepEqual(await lerDescartes(db, "g1"), []);

@@ -1,7 +1,8 @@
 import { and, eq } from "drizzle-orm";
 import { recusaDeLigar } from "../config/pendencia.js";
 import { db as defaultDb, schema } from "../db/index.js";
-import { FONTE_RELOGIO, FONTE_RETENTATIVA } from "./estado-do-gatilho.js";
+import { gatilhoExiste } from "../db/arquivada.js";
+import { FONTE_RELOGIO, FONTE_RETENTATIVA, gravarCursorDoGatilho } from "./estado-do-gatilho.js";
 import { type Authorship, type PollFilters, type TriggerConfig, type WorkingHoursConfig } from "../config/types.js";
 import { executionService, type ExecutionService } from "../services/execution-service.js";
 import { AgentService } from "../services/agent-service.js";
@@ -778,14 +779,7 @@ export class Scheduler {
         .where(and(eq(schema.cursors.source, RETRY_SOURCE), eq(schema.cursors.key, triggerId)));
       return;
     }
-    const value = JSON.stringify(pendentes);
-    await this.db
-      .insert(schema.cursors)
-      .values({ source: RETRY_SOURCE, key: triggerId, value })
-      .onConflictDoUpdate({
-        target: [schema.cursors.source, schema.cursors.key],
-        set: { value, updatedAt: Math.floor(Date.now() / 1000) },
-      });
+    gravarCursorDoGatilho(this.db, triggerId, { source: RETRY_SOURCE, key: triggerId }, JSON.stringify(pendentes));
   }
 
   /** O valor gravado, para a escrita condicional, e o instante que ele diz. */
@@ -803,26 +797,31 @@ export class Scheduler {
   /** Grava o disparo só se o cursor ainda é o que esta batida leu. */
   private async claim(triggerId: string, raw: string | null, at: number): Promise<boolean> {
     const value = new Date(at).toISOString();
-    if (raw === null) {
-      const inserted = await this.db
-        .insert(schema.cursors)
-        .values({ source: CURSOR_SOURCE, key: triggerId, value })
-        .onConflictDoNothing()
-        .returning({ key: schema.cursors.key });
-      return inserted.length > 0;
-    }
-    const updated = await this.db
-      .update(schema.cursors)
-      .set({ value, updatedAt: Math.floor(at / 1000) })
-      .where(
-        and(
-          eq(schema.cursors.source, CURSOR_SOURCE),
-          eq(schema.cursors.key, triggerId),
-          eq(schema.cursors.value, raw),
-        ),
-      )
-      .returning({ key: schema.cursors.key });
-    return updated.length > 0;
+    // Na mesma transação da conferência de que o gatilho existe: arquivado por outro processo, não toma a batida.
+    return this.db.transaction(
+      (tx) => {
+        if (!gatilhoExiste(tx, triggerId)) return false;
+        if (raw === null) {
+          return (
+            tx
+              .insert(schema.cursors)
+              .values({ source: CURSOR_SOURCE, key: triggerId, value })
+              .onConflictDoNothing()
+              .returning({ key: schema.cursors.key })
+              .all().length > 0
+          );
+        }
+        return (
+          tx
+            .update(schema.cursors)
+            .set({ value, updatedAt: Math.floor(at / 1000) })
+            .where(and(eq(schema.cursors.source, CURSOR_SOURCE), eq(schema.cursors.key, triggerId), eq(schema.cursors.value, raw)))
+            .returning({ key: schema.cursors.key })
+            .all().length > 0
+        );
+      },
+      { behavior: "immediate" },
+    );
   }
 }
 

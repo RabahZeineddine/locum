@@ -1,6 +1,6 @@
 import { and, eq, gte, isNull, ne, notInArray, or } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
-import { CHAVE_CONTA_DO_TEAMS, FONTE_FALHAS_DO_FILTRO, FONTE_TEAMS } from "../triggers/estado-do-gatilho.js";
+import { CHAVE_CONTA_DO_TEAMS, FONTE_FALHAS_DO_FILTRO, FONTE_TEAMS, gravarCursorDoGatilho, gravarSettingDoGatilho } from "../triggers/estado-do-gatilho.js";
 import { TEAMS_SERVER } from "../services/teams-app.js";
 import { pollMcpServer, CURSOR_TOKEN, type Admissao, type McpCaller, type McpPollShape } from "./mcp-poll.js";
 import { assertWithinBudget, BudgetExceeded, recordSpend, type Spend } from "../executor/budget.js";
@@ -183,10 +183,8 @@ export async function pollTeamsInbox(
     return await varrer(watch, options, db, teams);
   } finally {
     if (guardada === null && teams.conta() !== null) {
-      await db
-        .insert(schema.settings)
-        .values({ key: chaveConta, value: teams.conta()! })
-        .onConflictDoNothing();
+      if (options.triggerId !== undefined) gravarSettingDoGatilho(db, options.triggerId, CHAVE_CONTA_DO_TEAMS, teams.conta()!);
+      else await db.insert(schema.settings).values({ key: chaveConta, value: teams.conta()! }).onConflictDoNothing();
     }
     await teams.close();
   }
@@ -251,7 +249,7 @@ async function varrer(
     await acolher(
       await pollMcpServer(
         { server: TEAMS_SERVER, tool: "inbox", args: { since: CURSOR_TOKEN } },
-        { db, call: caixa(graph, watch.chats), shape: inboxShape(vigia, eu, chave, teams.conta, filtro?.origem(chave)) },
+        { db, ...(options.triggerId === undefined ? {} : { gatilho: options.triggerId }), call: caixa(graph, watch.chats), shape: inboxShape(vigia, eu, chave, teams.conta, filtro?.origem(chave)) },
       ),
       "inbox",
       chave,
@@ -270,7 +268,7 @@ async function varrer(
       await acolher(
         await pollMcpServer(
           { server: TEAMS_SERVER, tool: "channel", args: { since: CURSOR_TOKEN } },
-          { db, call: doCanal(graph, canal, watch.filtroIa !== undefined), shape: canalShape(canal, eu, vigia, `${antiga}${sufixo}`, teams.conta, filtro?.origem(`${antiga}${sufixo}`)) },
+          { db, ...(options.triggerId === undefined ? {} : { gatilho: options.triggerId }), call: doCanal(graph, canal, watch.filtroIa !== undefined), shape: canalShape(canal, eu, vigia, `${antiga}${sufixo}`, teams.conta, filtro?.origem(`${antiga}${sufixo}`)) },
         ),
         "channel",
         `${antiga}${sufixo}`,
@@ -460,13 +458,17 @@ function filtroDaBatida(
           return { admissao: { kind: "passa" } };
         }
         const valor = JSON.stringify({ n: vezes, at: carimbo(bruto.createdDateTime), cursor: chaveDoCursor });
-        await db
-          .insert(schema.cursors)
-          .values({ source: falhas, key: id, value: valor })
-          .onConflictDoUpdate({
-            target: [schema.cursors.source, schema.cursors.key],
-            set: { value: valor, updatedAt: Math.floor(Date.now() / 1000) },
-          });
+        if (options.triggerId !== undefined) {
+          gravarCursorDoGatilho(db, options.triggerId, { source: falhas, key: id }, valor);
+        } else {
+          await db
+            .insert(schema.cursors)
+            .values({ source: falhas, key: id, value: valor })
+            .onConflictDoUpdate({
+              target: [schema.cursors.source, schema.cursors.key],
+              set: { value: valor, updatedAt: Math.floor(Date.now() / 1000) },
+            });
+        }
         return adia;
       }
     };

@@ -15,7 +15,7 @@ import { listTeamsChannels } from "../src/teams/channels.js";
 import { alvoDaReacao } from "../src/teams/reaction.js";
 import { capacidadesDoTeams, compartilhar, soltarSessoes, teamsNoMcp } from "../src/teams/graph.js";
 import type { McpCaller } from "../src/sources/mcp-poll.js";
-import { bancoDeTeste as bancoVazio } from "./helpers/db.js";
+import { bancoDeTeste as bancoVazio, plantarGatilho } from "./helpers/db.js";
 
 const agoraMenos = (minutos: number) => new Date(Date.now() - minutos * 60_000).toISOString();
 const PR = "https://github.com/acme/api/pull/7";
@@ -611,6 +611,7 @@ test("várias contas e nenhuma padrão: o erro diz o que fazer; a conta da prime
       ? { isError: true, content: [{ type: "text", text: "Multiple accounts configured but no default selected." }] }
       : base(server, tool, args);
 
+  plantarGatilho(db, { id: "t1", agentId: "dono", config: { kind: "schedule", everyMinutes: 30 }, enabled: true });
   const falha = await pollTeamsInbox({ mentions: false, dms: true }, { db, token: semLogin, mcp, call: semPadrao, ...semGithub });
   assert.match(falha.errors[0]!.error, /tem várias contas e nenhuma escolhida\. Escolha a conta padrão dele/);
 

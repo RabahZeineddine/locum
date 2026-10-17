@@ -9,7 +9,7 @@ import type { TriggerEntry, TriggerService } from "../src/services/trigger-servi
 import { Scheduler, type PollFn, type SweepFn, type ViewerFn } from "../src/triggers/scheduler.js";
 import { AutomacaoArquivada } from "../src/db/arquivada.js";
 import { comTrava } from "../src/triggers/trava.js";
-import { bancoDeTeste } from "./helpers/db.js";
+import { bancoDeTeste, plantarGatilho } from "./helpers/db.js";
 
 const MINUTO = 60_000;
 const T0 = Date.UTC(2026, 9, 2, 3, 0, 0);
@@ -31,7 +31,7 @@ function montar({ gatilhos, poll, sweep, viewer, db = bancoDeTeste(), pendencias
   const triggers = {
     enabled: async () => gatilhos.filter((g) => g.enabled),
     list: async () => gatilhos,
-    get: async (id: string) => gatilhos.find((g) => g.id === id),
+    get: async (id: string) => plantarGatilho(db, gatilhos.find((g) => g.id === id)),
     pendencias: async (agentId: string) => pendencias[agentId] ?? [],
   } as unknown as TriggerService;
   const executions = {
@@ -194,7 +194,7 @@ test("evento que não abre run não impede os outros da mesma janela", async () 
   ];
   const scheduler = new Scheduler(
     db,
-    { enabled: async () => gatilhos, list: async () => gatilhos, get: async (id: string) => gatilhos.find((g) => g.id === id), pendencias: async () => [] } as unknown as TriggerService,
+    { enabled: async () => gatilhos, list: async () => gatilhos, get: async (id: string) => plantarGatilho(db, gatilhos.find((g) => g.id === id)), pendencias: async () => [] } as unknown as TriggerService,
     executions,
     {} as McpService,
     {} as SlackService,
@@ -232,7 +232,7 @@ test("evento que não abriu run volta na batida seguinte, mesmo sem vir na varre
   let batidas = 0;
   const scheduler = new Scheduler(
     db,
-    { enabled: async () => gatilhos, list: async () => gatilhos, get: async (id: string) => gatilhos.find((g) => g.id === id), pendencias: async () => [] } as unknown as TriggerService,
+    { enabled: async () => gatilhos, list: async () => gatilhos, get: async (id: string) => plantarGatilho(db, gatilhos.find((g) => g.id === id)), pendencias: async () => [] } as unknown as TriggerService,
     executions,
     {} as McpService,
     {} as SlackService,
@@ -271,7 +271,7 @@ test("evento que segue sem run depois de um dia sai da lista de retry", async ()
   let batidas = 0;
   const scheduler = new Scheduler(
     db,
-    { enabled: async () => gatilhos, list: async () => gatilhos, get: async (id: string) => gatilhos.find((g) => g.id === id), pendencias: async () => [] } as unknown as TriggerService,
+    { enabled: async () => gatilhos, list: async () => gatilhos, get: async (id: string) => plantarGatilho(db, gatilhos.find((g) => g.id === id)), pendencias: async () => [] } as unknown as TriggerService,
     executions,
     {} as McpService,
     {} as SlackService,
@@ -363,14 +363,15 @@ test("gatilho manual não entra na batida nem promete horário na agenda", async
 
 test("canal do Slack sem conexão falha com o caminho para ligar", async () => {
   const gatilhos = [gatilho("s1", { kind: "slack-channel", channels: ["C1"], everyMinutes: 5 } as TriggerConfig)];
+  const db = bancoDeTeste();
   const triggers = {
     enabled: async () => gatilhos,
     list: async () => gatilhos,
-    get: async (id: string) => gatilhos.find((g) => g.id === id),
+    get: async (id: string) => plantarGatilho(db, gatilhos.find((g) => g.id === id)),
     pendencias: async () => [],
   } as unknown as TriggerService;
   const scheduler = new Scheduler(
-    bancoDeTeste(),
+    db,
     triggers,
     {} as ExecutionService,
     {} as McpService,

@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { scanOpenPullRequests, type PollClient } from "../src/sources/github.js";
 import type { Authorship, PollFilters } from "../src/config/types.js";
-import { bancoDeTeste } from "./helpers/db.js";
+import { bancoDeTeste, plantarGatilho } from "./helpers/db.js";
 import { githubFalso, type Membros, type Mundo, type Pr } from "./helpers/github-falso.js";
 
 const agora = Date.parse("2026-09-22T12:00:00Z");
@@ -375,6 +375,7 @@ test("mudar o filtro herda o cursor que o gatilho tinha, e o hash que nunca teve
   const db = bancoDeTeste();
   const { client, chamadas } = githubFalso([{ number: 1 }]);
   const base = { client, db, now: agora, diffMaxChars: 100_000, triggerId: "g1" };
+  for (const id of ["g1", "g2"]) plantarGatilho(db, { id, agentId: "dono", config: { kind: "schedule", everyMinutes: 30 }, enabled: true });
   await scanOpenPullRequests("o", /.*/, { ...base, filters: { maxChangedLines: 500 } });
   const { schema } = await import("../src/db/index.js");
   await db.update(schema.cursors).set({ value: "2026-09-18T00:00:00Z" }).where((await import("drizzle-orm")).eq(schema.cursors.source, "github"));
