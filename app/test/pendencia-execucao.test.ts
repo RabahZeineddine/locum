@@ -71,15 +71,12 @@ test("ensaio não falha no nó incompleto: mostra o nó como incompleto e segue 
   assert.match((no.output as { motivo: string }).motivo, /^incompleto: escolha o destino \(params\.destino\)/);
 });
 
-test("passo opcional com campo a preencher falha como opcional, com o motivo, e o run segue", async () => {
+test("run de gatilho com campo a preencher recusa na saída, igual ao manual, sem gastar o passo de modelo", async () => {
   const pedidos: RuntimeRequest[] = [];
-  const { id, versao } = await gravar([modelo("ler"), { ...avisar, optional: true }, modelo("depois", { needs: ["ler"] })]);
+  const { id, versao } = await gravar([modelo("ler"), avisar]);
   const gatilho = await new TriggerService().set(id, { kind: "cron", expression: "0 9 * * *" });
   const runId = await executor(pedidos).createRun(versao.id, null, gatilho.id);
-  assert.equal(await executor(pedidos).execute(runId), "done");
-  const lista = await passos(runId);
-  const opcional = lista.find((p) => p.stepKey === "avisar")!;
-  assert.equal(opcional.status, "failed");
-  assert.match(opcional.error ?? "", /incompleto: escolha o destino/);
-  assert.equal(lista.find((p) => p.stepKey === "depois")!.status, "done");
+  assert.equal(await executor(pedidos).execute(runId), "failed");
+  assert.match((await run(runId)).error ?? "", /nó "avisar" incompleto: escolha o destino/);
+  assert.equal(pedidos.length, 0);
 });

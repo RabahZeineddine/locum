@@ -206,8 +206,8 @@ export class Executor {
     // traz evento, e seguir com `null` é o que ele sempre fez.
     const faltaEvento = event === undefined && !(await this.vemDeGatilho(run.triggerId)) ? dependenciaDeEvento(spec) : null;
     if (faltaEvento !== null) return this.recusarSemEvento(runId, spec, recusaSemEvento(faltaEvento));
-    // Execução pedida à mão não começa com nó incompleto. O ensaio (link colado) segue e mostra o nó; o run de gatilho falha no nó.
-    const recusaDeIncompleto = payload.semConversa === true || (await this.vemDeGatilho(run.triggerId)) ? null : recusaDeRodar(spec.pendentes);
+    // Nenhum run começa com nó incompleto, pedido à mão ou por gatilho. Só o ensaio (link colado) segue e mostra o nó.
+    const recusaDeIncompleto = payload.semConversa === true ? null : recusaDeRodar(spec.pendentes);
     if (recusaDeIncompleto !== null) return this.recusarSemEvento(runId, spec, recusaDeIncompleto);
 
     await db
