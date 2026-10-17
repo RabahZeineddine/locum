@@ -1,19 +1,19 @@
 import { and, desc, eq, inArray, like, lte, type SQL } from "drizzle-orm";
 import { z } from "zod";
-import { ReviewFinding, ReviewVerdict } from "../config/types.js";
 import { STUCK_AFTER_SECONDS } from "../approval/gate.js";
+import { impressaoDe } from "../approval/impressao.js";
+import type { EsquemaJson } from "../config/referencias.js";
+import { propostoPorDe, type PropostoPor } from "../config/types.js";
+import { recusarSeArquivada } from "../db/arquivada.js";
 import { db as defaultDb, schema } from "../db/index.js";
+import { buildGate } from "../executor/build.js";
+import { erroComCodigo } from "./erro-com-codigo.js";
 import { PREFIXO_DA_TROCA_POR_LIMITE } from "./limites-service.js";
 
 type Db = typeof defaultDb;
 
-const REVIEW_KIND = "github.review_comment";
-
-/** Ações cuja pendência é uma mensagem, e o texto dela é o que a pessoa edita. */
-const MESSAGE_KINDS: readonly string[] = ["slack.post", "teams.post"];
-
-/** O mesmo teto que os handlers aplicam ao texto que vem do modelo. */
-const TETO_DE_MENSAGEM = 3000;
+/** Quem edita: a pessoa na tela, ou a conversa de um run (o id dele). */
+export type OrigemDaEdicao = "pessoa" | { conversa: string };
 
 export type ApprovalRow = typeof schema.approvals.$inferSelect;
 
@@ -26,6 +26,10 @@ export interface ApprovalSummary extends ApprovalRow {
   agentVersion: number;
   /** "feito com <modelo> por limite do <provedor>", quando um passo do run trocou de modelo por limite. */
   trocaPorLimite: string | null;
+  /** Quem propôs o passo avulso de onde vem a pendência. Nulo quando o passo é do fluxo. */
+  propostoPor: PropostoPor | null;
+  /** A impressão do payload (não é o `hash` do MCP, que também cobre o tipo e o estado): quem decide manda de volta a do que viu, e a decisão só vale se o payload é o mesmo. */
+  payloadHash: string;
 }
 
 /**
@@ -37,7 +41,11 @@ export interface ApprovalSummary extends ApprovalRow {
  * segundo caminho de publicacao. Ver ADR 0002.
  */
 export class ApprovalService {
-  constructor(private readonly db: Db = defaultDb) {}
+  constructor(
+    private readonly db: Db = defaultDb,
+    /** O esquema dos campos editáveis da ação, perguntado ao handler dela. */
+    private readonly esquemaDosCampos: (kind: string) => EsquemaJson | undefined = (kind) => buildGate().camposEditaveis(kind),
+  ) {}
 
   async listPending(): Promise<ApprovalSummary[]> {
     return this.query(eq(schema.approvals.status, "pending"));
@@ -58,98 +66,86 @@ export class ApprovalService {
     return row;
   }
 
+  /** O esquema dos campos que a pendência desta ação aceita editar (`ActionHandler.camposEditaveis`). */
+  camposEditaveisDe(kind: string): EsquemaJson | undefined {
+    return this.esquemaDosCampos(kind);
+  }
+
   /**
    * Grava o que vai sair, antes de sair.
    *
    * Editar não é publicar: o texto revisado fica na pendência e continua
    * esperando. Só a ApprovalGate publica, e só depois do clique.
    *
-   * Só a lista de achados e o veredito são editáveis. Dono, repositório e pull request são os
-   * que o executor gravou, e o payload que a janela mandasse inteiro poderia
-   * redirecionar a publicação para outro pull request enquanto a tela mostra o
-   * de sempre: a pessoa aprovaria achando que é o que está vendo.
+   * Só os campos que o handler da ação declara em `camposEditaveis` mudam, cada
+   * um validado pelo esquema dele. O resto do payload (dono, repositório, pull
+   * request, conversa) é o que o executor gravou: um payload inteiro vindo da
+   * janela poderia redirecionar a publicação enquanto a tela mostra o de sempre,
+   * e a pessoa aprovaria achando que é o que está vendo.
    *
    * Pendência já resolvida não aceita edição. Sem essa trava, alterar o payload
    * depois do envio mudaria o registro do que foi publicado, e o histórico
    * passaria a mentir sobre o que saiu.
    *
-   * Veredito ausente fica o que estava gravado.
+   * Pela conversa (`origem.conversa` é o run dela) vale mais: a pendência tem de
+   * ser desse run e a automação não pode estar arquivada, conferido na mesma
+   * transação que grava. A edição fica marcada em `alteradaPelaConversaEm`.
    */
-  async updateFindings(
-    approvalId: string,
-    findings: unknown,
-    verdict?: unknown,
-    summary?: unknown,
-  ): Promise<ApprovalSummary> {
-    const [atual] = await this.query(eq(schema.approvals.id, approvalId));
-    if (!atual) throw new Error(`aprovação ${approvalId} não encontrada`);
-    if (atual.status !== "pending") {
-      throw new Error(`aprovação ${approvalId} já resolvida: ${atual.status}`);
-    }
-    if (atual.kind !== REVIEW_KIND) {
-      throw new Error(`aprovação ${approvalId} é ${atual.kind}, e só pendência de review tem achados`);
-    }
+  async editarCampos(approvalId: string, campos: Record<string, unknown>, origem: OrigemDaEdicao): Promise<ApprovalSummary> {
+    this.db.transaction((tx) => {
+      const atual = tx
+        .select({ approval: schema.approvals, agentId: schema.agentVersions.agentId })
+        .from(schema.approvals)
+        .innerJoin(schema.runs, eq(schema.approvals.runId, schema.runs.id))
+        .innerJoin(schema.agentVersions, eq(schema.runs.agentVersionId, schema.agentVersions.id))
+        .where(eq(schema.approvals.id, approvalId))
+        .get();
+      if (!atual) throw erroComCodigo("pendencia_nao_encontrada", approvalId, `aprovação ${approvalId} não encontrada`);
+      const { approval } = atual;
+      if (origem !== "pessoa") {
+        if (approval.runId !== origem.conversa) throw erroComCodigo("pendencia_de_outro_run", approvalId, `aprovação ${approvalId} é de outro run, e a conversa só edita as do run dela`);
+        recusarSeArquivada(tx, atual.agentId);
+      }
+      if (approval.status !== "pending") throw erroComCodigo("pendencia_resolvida", approvalId, `aprovação ${approvalId} já resolvida: ${approval.status}`);
 
-    const lidos = z.array(ReviewFinding).safeParse(findings);
-    if (!lidos.success) {
-      throw new Error(`achado fora do formato: ${z.prettifyError(lidos.error)}`);
-    }
-    const veredito = ReviewVerdict.optional().safeParse(verdict);
-    if (!veredito.success) {
-      throw new Error(`veredito fora do formato: ${String(verdict)}`);
-    }
-    const resumo = z.string().optional().safeParse(summary);
+      const editaveis = this.camposEditaveisDe(approval.kind)?.properties ?? {};
+      const novos: Record<string, unknown> = {};
+      for (const [campo, valor] of Object.entries(campos)) {
+        const esquema = editaveis[campo];
+        if (esquema === undefined) throw erroComCodigo("campo_nao_editavel", campo, `a ação ${approval.kind} não aceita edição de ${campo}`);
+        const lido = z.fromJSONSchema(esquema as never).safeParse(valor);
+        if (!lido.success) throw erroComCodigo("campo_fora_do_formato", campo, `${campo} fora do formato: ${z.prettifyError(lido.error)}`);
+        novos[campo] = lido.data;
+      }
 
-    const escrita = this.db
-      .update(schema.approvals)
-      .set({
-        payload: {
-          ...(atual.payload as object),
-          findings: lidos.data,
-          ...(veredito.data !== undefined && { verdict: veredito.data }),
-          ...(resumo.data !== undefined && { summary: resumo.data }),
-        },
-      })
-      .where(and(eq(schema.approvals.id, approvalId), eq(schema.approvals.status, "pending")))
-      .run();
-    // A decisão pode ter começado a publicar entre a leitura e aqui; gravar
-    // por cima faria o histórico mostrar um texto diferente do que saiu.
-    if (escrita.changes !== 1) throw new Error(`aprovação ${approvalId} já resolvida`);
-
-    const [novo] = await this.query(eq(schema.approvals.id, approvalId));
-    return novo!;
+      const escrita = tx
+        .update(schema.approvals)
+        .set({
+          payload: { ...(approval.payload as object), ...novos },
+          // Quem editou por último vale: a pessoa sobrescreve e a marca da conversa some.
+          alteradaPelaConversaEm: origem === "pessoa" ? null : Math.floor(Date.now() / 1000),
+        })
+        .where(and(eq(schema.approvals.id, approvalId), eq(schema.approvals.status, "pending")))
+        .run();
+      // A decisão pode ter começado a publicar entre a leitura e aqui; gravar
+      // por cima faria o histórico mostrar um texto diferente do que saiu.
+      if (escrita.changes !== 1) throw erroComCodigo("pendencia_resolvida", approvalId, `aprovação ${approvalId} já resolvida`);
+    });
+    return (await this.get(approvalId))!;
   }
 
-  /**
-   * Troca o texto de uma resposta de Slack ou Teams antes de ela sair.
-   *
-   * Mesma trava de `updateFindings`: só o texto muda. Canal, thread e
-   * servidor são os que o handler conferiu contra o que o Locum leu, e um
-   * payload inteiro vindo da janela poderia mandar a resposta para outra
-   * conversa enquanto a tela mostra a de sempre.
-   */
-  async updateText(approvalId: string, text: unknown): Promise<ApprovalSummary> {
-    const [atual] = await this.query(eq(schema.approvals.id, approvalId));
-    if (!atual) throw new Error(`aprovação ${approvalId} não encontrada`);
-    if (atual.status !== "pending") {
-      throw new Error(`aprovação ${approvalId} já resolvida: ${atual.status}`);
-    }
-    if (!MESSAGE_KINDS.includes(atual.kind)) {
-      throw new Error(`aprovação ${approvalId} é ${atual.kind}, e só resposta de Slack ou Teams tem texto`);
-    }
+  /** A edição da pessoa na tela de revisão: achados, e veredito e resumo quando vêm. Ausente fica o que estava. */
+  updateFindings(approvalId: string, findings: unknown, verdict?: unknown, summary?: unknown): Promise<ApprovalSummary> {
+    return this.editarCampos(
+      approvalId,
+      { findings, ...(verdict === undefined ? {} : { verdict }), ...(summary === undefined ? {} : { summary }) },
+      "pessoa",
+    );
+  }
 
-    const lido = z.string().trim().min(1, "a mensagem não pode ficar vazia").max(TETO_DE_MENSAGEM).safeParse(text);
-    if (!lido.success) throw new Error(`texto fora do formato: ${z.prettifyError(lido.error)}`);
-
-    const escrita = this.db
-      .update(schema.approvals)
-      .set({ payload: { ...(atual.payload as object), text: lido.data } })
-      .where(and(eq(schema.approvals.id, approvalId), eq(schema.approvals.status, "pending")))
-      .run();
-    if (escrita.changes !== 1) throw new Error(`aprovação ${approvalId} já resolvida`);
-
-    const [novo] = await this.query(eq(schema.approvals.id, approvalId));
-    return novo!;
+  /** A edição da pessoa no texto de uma resposta. Espaço nas pontas não conta. */
+  updateText(approvalId: string, text: unknown): Promise<ApprovalSummary> {
+    return this.editarCampos(approvalId, { text: typeof text === "string" ? text.trim() : text }, "pessoa");
   }
 
   private async query(where: SQL): Promise<ApprovalSummary[]> {
@@ -158,6 +154,7 @@ export class ApprovalService {
         approval: schema.approvals,
         stepKey: schema.steps.stepKey,
         stepName: schema.steps.name,
+        stepInput: schema.steps.input,
         agentId: schema.agents.id,
         agentName: schema.agents.name,
         agentVersion: schema.agentVersions.version,
@@ -182,9 +179,11 @@ export class ApprovalService {
 
     return rows.map((r) => ({
       ...r.approval,
+      payloadHash: impressaoDe(r.approval.payload),
       trocaPorLimite: trocas.get(r.approval.runId) ?? null,
       stepKey: r.stepKey,
       stepName: r.stepName,
+      propostoPor: propostoPorDe(r.stepInput),
       agentId: r.agentId,
       agentName: r.agentName,
       agentVersion: r.agentVersion,

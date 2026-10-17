@@ -122,13 +122,18 @@ export class Executor {
    * A decisão sozinha não basta: sem retomar, o run fica `paused`, o que vem
    * depois da ação nunca roda e a tela continua mostrando aguardando numa
    * execução que já saiu.
+   *
+   * `hashVisto` é a impressão do payload que a pessoa viu (`ApprovalSummary.payloadHash`).
+   * Dado, a decisão só vale se a pendência continua igual: a conversa do run ou o
+   * MCP podem tê-la editado depois de a tela carregar. A gate confere na própria tomada.
    */
   async decide(
     approvalId: string,
     decision: "approved" | "rejected",
+    hashVisto?: string,
   ): Promise<{ status: "approved" | "rejected" | "conflict"; run: "done" | "paused" | "failed"; motivo?: string }> {
     const avulso = await this.ehAvulso(approvalId);
-    const { runId, status, motivo } = await this.deps.gate.decide(approvalId, decision);
+    const { runId, status, motivo } = await this.deps.gate.decide(approvalId, decision, hashVisto);
     const run = avulso ? await this.estadoDoRun(runId) : await this.execute(runId);
     return { status, run, ...(motivo === undefined ? {} : { motivo }) };
   }

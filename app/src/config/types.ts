@@ -38,6 +38,15 @@ export type ActionMode = z.infer<typeof ActionMode>;
 /** Prefixo das chaves dos passos avulsos (ADR 0007): nenhum passo do fluxo usa. */
 export const PREFIXO_DO_PASSO_AVULSO = "avulso-";
 
+/** Quem propôs um passo avulso: a pessoa (à mão, pela tela ou pelo MCP) ou a conversa do run (ADR 0009). */
+export type PropostoPor = "pessoa" | "conversa";
+
+/** A origem gravada em `steps.input`. Nulo nos passos do fluxo, que ninguém propôs. */
+export function propostoPorDe(input: unknown): PropostoPor | null {
+  const valor = (input as { propostoPor?: unknown } | null | undefined)?.propostoPor;
+  return valor === "conversa" || valor === "pessoa" ? valor : null;
+}
+
 const StepBase = z.object({
   key: z.string().refine((k) => !k.startsWith(PREFIXO_DO_PASSO_AVULSO), { message: `a chave do passo nao pode comecar com "${PREFIXO_DO_PASSO_AVULSO}": o prefixo e dos passos avulsos` }),
   name: z.string(),

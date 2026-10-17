@@ -1,6 +1,7 @@
 import { desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import type { ActionHandler } from "../approval/gate.js";
+import type { EsquemaJson } from "../config/referencias.js";
 import { db as defaultDb, schema } from "../db/index.js";
 import { TEAMS_CHANNEL_PREFIX, TEAMS_SOURCE } from "../sources/teams-inbox.js";
 import { abrirTeams, servidorDeVariasContas, type TeamsGraphOptions } from "./graph.js";
@@ -16,6 +17,13 @@ const TETO_DE_TEXTO = 3000;
 
 /** Quantos eventos do Teams a conferência lê antes de desistir. */
 const TETO_DE_LEITURA = 500;
+
+/** O que da pendência se edita: o texto, no mesmo teto que o handler aplica ao do modelo. */
+export const CAMPOS_EDITAVEIS_DA_MENSAGEM: EsquemaJson = {
+  type: "object",
+  properties: { text: { type: "string", minLength: 1, maxLength: TETO_DE_TEXTO } },
+  additionalProperties: false,
+};
 
 /** O que o passo de modelo devolve: só o texto. A conversa vem do evento. */
 export const TeamsReply = z.object({
@@ -85,6 +93,7 @@ export function teamsPostHandler(options: TeamsPostHandlerOptions = {}): ActionH
 
   return {
     modes: ["approve", "auto"],
+    camposEditaveis: CAMPOS_EDITAVEIS_DA_MENSAGEM,
     paramsDoPacote: PARAMS_DE_DESTINO_NO_PACOTE,
 
     async propose(payload) {

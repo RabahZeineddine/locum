@@ -97,6 +97,22 @@ que não é de modelo recusa a instrução. Enquanto qualquer passo do run tiver
 `auto` ou `draft` vai para a Fila (`steps.rebaixado`, ADR 0008); a
 prévia mostra isso antes de confirmar.
 
+**Conversa do run**: chat sobre uma execução que já rodou, no qual a pessoa pede
+mudanças e o resultado muda. Uma por run (`run_conversations`), separada do chat
+de agent e sem cartão. O modelo recebe o evento, a saída dos passos e as
+pendências, entre marcas de dado de fora, até um teto de tamanho (o que passa
+dele fica de fora e a tela mostra). Quem responde é o agent do primeiro passo de
+modelo do run, ou o modelo dele, até a pessoa escolher outro. Age só por
+ferramentas sobre mecanismos que já existem: `ler_run`, `propor_acao` (passo
+avulso), `reexecutar_passo` (instrução de reexecução) e `editar_pendencia`. O
+gasto vai para um campo do run separado dos passos, para a automação e, se há
+agent, para o dele, e o teto por execução o mede (com o custo dos passos) contra o
+orçamento da versão atual da automação. A pendência que ela propõe carrega
+`propostoPor: "conversa"` e a Fila mostra "proposta pela conversa". Os limites da
+volta (passos do laço, que é o `maxSteps` do agent quando ele responde, e o teto
+de leitura do `ler_run`) aparecem no estado. Em automação arquivada só se lê.
+ADR 0009.
+
 **Descarte**: o que um gatilho viu e deixou de fora, com o motivo.
 
 **Iniciativa**: objetivo que agrupa contexto, automações, agents, sessões e o

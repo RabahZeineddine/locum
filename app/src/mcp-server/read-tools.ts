@@ -57,7 +57,7 @@ export function registerReadTools(server: McpServer): void {
   server.registerTool(
     "get_run",
     {
-      description: "Returns a run with its steps and the spec of the version it ran.",
+      description: "Returns a run with its steps and the spec of the version it ran. A standalone step carries propostoPor: conversa when the run conversation proposed it, pessoa when a person did.",
       inputSchema: { runId: z.string() },
     },
     async ({ runId }) => respond(() => getRun(runId)),

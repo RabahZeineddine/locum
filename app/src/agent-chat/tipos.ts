@@ -47,6 +47,12 @@ export interface ConexaoSemServidor {
   motivo: string;
 }
 
+/** O retrato leve da conversa, para a janela saber quando vale pedir o estado inteiro: há volta em andamento, e uma versão que muda com o que o estado mostra. */
+export interface MarcaDaConversa {
+  ocupada: boolean;
+  versao: string;
+}
+
 /** O retrato da conversa, para a tela reabrir onde parou e escutar o resto. */
 export interface EstadoDaConversa {
   falas: FalaDoAgent[];
@@ -63,10 +69,36 @@ export interface EstadoDaConversa {
   contaIgnorada: number;
   /** O `seq` do último evento já refletido nas falas. */
   seq: number;
+  /** Só na conversa de um run: o que a tela e o MCP mostram além das falas. */
+  run?: DoRunNaConversa;
+}
+
+/** Com quem a conversa de um run fala, como a escolha da pessoa: um agent da biblioteca ou um modelo (`provedor/modelo`). */
+export type AlvoDaConversa = { agent: string } | { modelo: string };
+
+/** O que a conversa de um run diz de si, para a pessoa saber com quem fala e o que o modelo viu. */
+export interface DoRunNaConversa {
+  /** Quem conversa agora: um agent da biblioteca ou um modelo solto. Nulo quando o run não tem passo de modelo e a pessoa ainda não escolheu. */
+  alvo: { tipo: "agent"; id: string } | { tipo: "modelo"; id: string } | null;
+  /** Por que não há alvo, no idioma do app. Nulo quando há. */
+  motivoSemAlvo: string | null;
+  /** O alvo é o padrão (o do primeiro passo de modelo do run) ou foi escolhido. */
+  padrao: boolean;
+  /** O run é de uma automação arquivada: a conversa só lê. */
+  arquivada: boolean;
+  /** O contexto inicial passou do teto e perdeu algo: o que ficou de fora. */
+  contexto: { teto: number; cortado: string[] };
+  /** O que a conversa já gastou. */
+  gasto: { usd: number; tokens: number };
+  /** Os limites técnicos de uma volta: passos do laço de ferramentas (o `maxSteps` do agent quando ele responde) e o que `ler_run` devolve de uma vez, em caracteres. */
+  limites: { passosDaVolta: number; passosDoAgent: boolean; tetoDaLeitura: number };
 }
 
 /** A chave da conversa de um agent, a mesma dos eventos e do histórico guardado. */
 export const chaveDoAgent = (id: string): string => `agent:${id}`;
+
+/** A chave da conversa de um run. */
+export const chaveDoRun = (id: string): string => `run:${id}`;
 
 /** Aplica um evento na fala do assistente a que ele pertence. */
 export function aplicarEvento(fala: FalaDoAgent, evento: EventoDoAgent): FalaDoAgent {

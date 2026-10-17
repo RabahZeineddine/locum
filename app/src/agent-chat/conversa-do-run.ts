@@ -1,0 +1,329 @@
+import { desc, eq, sql } from "drizzle-orm";
+import { z } from "zod";
+import type { AgentProfile, AgentSpec } from "../config/types.js";
+import { db as defaultDb, schema } from "../db/index.js";
+import { delimitarDado, novaMarca } from "../executor/dado-externo.js";
+import type { assertWithinBudget, recordSpend } from "../executor/budget.js";
+import type { ApprovalService } from "../services/approval-service.js";
+import { i18nService, type Language } from "../services/i18n-service.js";
+import { translate } from "../services/text-service.js";
+import type { LibraryService } from "../services/library-service.js";
+import type { PassoAvulsoService } from "../services/passo-avulso-service.js";
+import type { RunDetail, RunService } from "../services/run-service.js";
+import { LIMITE_DA_INSTRUCAO } from "../services/run-service.js";
+import {
+  NucleoDeConversa,
+  type Armazem,
+  type CampoGuardado,
+  type ContextoDaVolta,
+  type DepsDoNucleo,
+  type FerramentaLocal,
+  type ProvedorDeConversa,
+} from "./nucleo.js";
+import { erroComCodigo } from "../services/erro-com-codigo.js";
+import { chaveDoRun, type AlvoDaConversa, type DoRunNaConversa } from "./tipos.js";
+
+type Db = typeof defaultDb;
+
+export type { AlvoDaConversa };
+
+/**
+ * Limite técnico do que entra no contexto inicial (caracteres). Passado dele, o resto
+ * é cortado e a tela diz o que ficou de fora. O que o modelo precisar, ele lê com `ler_run`.
+ */
+export const TETO_DO_CONTEXTO = 32_000;
+
+/** O que `ler_run` devolve de uma vez (caracteres). Aparece no estado e no MCP. */
+export const TETO_DA_LEITURA = 20_000;
+
+/** Passos do laço de ferramentas de uma volta, quando o alvo não é um agent. O do agent (`maxSteps`) vale no lugar. */
+export const PASSOS_DA_VOLTA = 12;
+
+export interface DepsDaConversaDoRun extends DepsDoNucleo {
+  db?: Db;
+  runs: Pick<RunService, "get" | "rerunStep">;
+  avulso: Pick<PassoAvulsoService, "proporAcao" | "acoesAvulsas">;
+  aprovacoes: Pick<ApprovalService, "editarCampos" | "camposEditaveisDe">;
+  library: Pick<LibraryService, "resolveProfile">;
+  /** Os modelos que os provedores declaram ter, para recusar um id que não existe. */
+  catalogo: () => Promise<{ provedor: string; modelos: string[]; erro?: string }[]>;
+  orcamento: { checar: typeof assertWithinBudget; gastar: typeof recordSpend };
+  /** O teto do contexto inicial. Ausente, `TETO_DO_CONTEXTO`. */
+  tetoDoContexto?: number;
+}
+
+const texto = (valor: unknown): string => (typeof valor === "string" ? valor : (JSON.stringify(valor, null, 2) ?? ""));
+
+function cortar(conteudo: string, teto: number): string {
+  return conteudo.length > teto ? `${conteudo.slice(0, teto)}\n[... cortado: passa de ${teto} caracteres]` : conteudo;
+}
+
+/** O que a conversa guarda na linha `run_conversations` do run. */
+function armazemDoRun(db: Db): Armazem {
+  return {
+    ler: async (id, campo: CampoGuardado) => {
+      const linha = db.select().from(schema.runConversations).where(eq(schema.runConversations.runId, id)).get();
+      return linha?.[campo] ?? undefined;
+    },
+    gravar: async (id, campo, valor) => {
+      db.insert(schema.runConversations)
+        .values({ runId: id, [campo]: valor })
+        .onConflictDoUpdate({ target: schema.runConversations.runId, set: { [campo]: valor } })
+        .run();
+    },
+  };
+}
+
+/**
+ * A conversa de um run que já rodou (ADR 0009): o núcleo de turno com o contexto do run.
+ *
+ * Quem conversa é o agent do primeiro passo de modelo do run (ou o modelo dele), salvo
+ * escolha da pessoa. O modelo recebe o evento, a saída de cada passo e as pendências, e
+ * age só por ferramentas sobre os mecanismos que já existem: ler o run, propor ação avulsa
+ * (ADR 0007), editar pendência que espera na Fila e reexecutar um passo com instrução (ADR 0008). Nenhuma escreve fora da
+ * máquina: o que sai passa pela Fila.
+ */
+export class ConversasDoRun extends NucleoDeConversa {
+  constructor(private readonly dependencias: DepsDaConversaDoRun) {
+    super(dependencias, provedorDoRun(dependencias));
+  }
+
+  /** Troca com quem a conversa fala. Nulo volta ao padrão. */
+  async definirAlvo(runId: string, alvo: AlvoDaConversa | null): Promise<void> {
+    const db = this.dependencias.db ?? defaultDb;
+    if (await this.ocupada(runId)) throw new Error(this.dependencias.texto("agentChat.errors.busy"));
+    if (db.select({ id: schema.runs.id }).from(schema.runs).where(eq(schema.runs.id, runId)).get() === undefined) throw runNaoEncontrado(runId);
+    if (alvo !== null && "agent" in alvo) await this.dependencias.library.resolveProfile(alvo.agent);
+    if (alvo !== null && "modelo" in alvo && !(await this.modeloExiste(alvo.modelo))) {
+      throw erroComCodigo("modelo_inexistente", alvo.modelo, `o modelo ${alvo.modelo} nao esta no catalogo dos provedores`);
+    }
+    db.insert(schema.runConversations)
+      .values({ runId, alvo })
+      .onConflictDoUpdate({ target: schema.runConversations.runId, set: { alvo } })
+      .run();
+  }
+
+  /** O id é `provedor/modelo`; vale o que o catálogo do provedor lista. */
+  private async modeloExiste(id: string): Promise<boolean> {
+    const barra = id.indexOf("/");
+    if (barra <= 0) return false;
+    const provedor = id.slice(0, barra);
+    const nome = id.slice(barra + 1);
+    return (await this.dependencias.catalogo()).some((c) => c.provedor === provedor && c.modelos.includes(nome));
+  }
+}
+
+const runNaoEncontrado = (id: string): Error => erroComCodigo("run_nao_encontrado", id, `run ${id} nao encontrado`);
+
+function provedorDoRun(deps: DepsDaConversaDoRun): ProvedorDeConversa {
+  const db = deps.db ?? defaultDb;
+  const teto = deps.tetoDoContexto ?? TETO_DO_CONTEXTO;
+
+  const detalhe = async (runId: string): Promise<RunDetail> => {
+    const d = await deps.runs.get(runId);
+    if (d === undefined) throw runNaoEncontrado(runId);
+    return d;
+  };
+
+  /** O alvo escolhido, ou o do primeiro passo de modelo do run. */
+  const resolverAlvo = (d: RunDetail): { alvo: AlvoDaConversa | null; padrao: boolean } => {
+    const guardado = db.select({ alvo: schema.runConversations.alvo }).from(schema.runConversations).where(eq(schema.runConversations.runId, d.id)).get()?.alvo as AlvoDaConversa | null | undefined;
+    if (guardado !== null && guardado !== undefined) return { alvo: guardado, padrao: false };
+    const passo = d.spec.steps.find((p) => p.type === "model");
+    if (passo === undefined || passo.type !== "model") return { alvo: null, padrao: true };
+    return { alvo: passo.profile === undefined ? { modelo: passo.model } : { agent: passo.profile }, padrao: true };
+  };
+
+  const alvoNaTela = (alvo: AlvoDaConversa | null): DoRunNaConversa["alvo"] => (alvo === null ? null : "agent" in alvo ? { tipo: "agent", id: alvo.agent } : { tipo: "modelo", id: alvo.modelo });
+
+  /** O que o modelo vê do run, na ordem de importância e dentro do teto. */
+  const montarContexto = (d: RunDetail): { corpo: string; cortado: string[]; marca: string } => {
+    const marca = novaMarca();
+    const evento = d.eventId === null ? undefined : db.select({ payload: schema.events.payload }).from(schema.events).where(eq(schema.events.id, d.eventId)).get()?.payload;
+    const pendencias = db.select().from(schema.approvals).where(eq(schema.approvals.runId, d.id)).all();
+    const blocos: { rotulo: string; origem: string; conteudo: string }[] = [
+      { rotulo: "evento", origem: "evento", conteudo: texto(evento ?? null) },
+      {
+        rotulo: "passos",
+        origem: "passos",
+        conteudo: d.steps.map((s) => `${s.stepKey} (${s.name}): ${s.status}${s.origem === "avulso" ? ", avulso" : ""}`).join("\n"),
+      },
+      ...pendencias.map((a) => ({ rotulo: `pendencia:${a.id}`, origem: `pendencia ${a.id} (${a.kind}, ${a.status})`, conteudo: texto(a.payload) })),
+      // Os passos sem saída não têm o que cortar: o estado deles já vem no resumo.
+      ...d.steps.filter((s) => s.output != null || s.error != null).map((s) => ({
+        rotulo: `passo:${s.stepKey}`,
+        origem: `passo ${s.stepKey} (${s.status}${s.origem === "avulso" ? ", avulso" : ""})`,
+        conteudo: texto(s.output ?? s.error ?? null),
+      })),
+    ];
+    let sobra = teto;
+    const cortado: string[] = [];
+    const partes: string[] = [];
+    for (const b of blocos) {
+      if (sobra <= 0) {
+        cortado.push(b.rotulo);
+        continue;
+      }
+      if (b.conteudo.length > sobra) cortado.push(b.rotulo);
+      const dentro = cortar(b.conteudo, sobra);
+      sobra -= Math.min(b.conteudo.length, sobra);
+      partes.push(delimitarDado(dentro, b.origem, marca));
+    }
+    return { corpo: partes.join("\n\n"), cortado, marca };
+  };
+
+  const ferramentas = (d: RunDetail, marca: string, idioma: Language): FerramentaLocal[] => {
+  const tx = (chave: string): string => translate(idioma, `conversaDoRun.tools.${chave}`);
+  return [
+    {
+      nome: "ler_run",
+      descricao: tx("ler_run.description"),
+      entrada: { passo: z.string().optional().describe(tx("ler_run.passo")) },
+      executar: async ({ passo }) => {
+        const atual = await detalhe(d.id);
+        if (typeof passo === "string") {
+          const achado = atual.steps.find((s) => s.stepKey === passo);
+          if (achado === undefined) throw new Error(`o run nao tem o passo "${passo}"`);
+          return delimitarDado(cortar(texto(achado.output ?? achado.error ?? null), TETO_DA_LEITURA), `passo ${passo}`, marca);
+        }
+        const pendencias = db.select().from(schema.approvals).where(eq(schema.approvals.runId, d.id)).all();
+        return JSON.stringify(
+          {
+            status: atual.status,
+            passos: atual.steps.map((s) => ({ chave: s.stepKey, nome: s.name, estado: s.status, avulso: s.origem === "avulso", instrucao: s.instrucao == null ? null : delimitarDado(s.instrucao, `instrucao do passo ${s.stepKey}`, marca) })),
+            pendencias: pendencias.map((a) => ({ id: a.id, acao: a.kind, estado: a.status, camposEditaveis: deps.aprovacoes.camposEditaveisDe(a.kind) ?? null })),
+            acoesQueSePodemPropor: deps.avulso.acoesAvulsas(),
+          },
+          null,
+          2,
+        );
+      },
+    },
+    {
+      nome: "propor_acao",
+      descricao: tx("propor_acao.description"),
+      entrada: {
+        acao: z.string().describe(tx("propor_acao.acao")),
+        conteudo: z.record(z.string(), z.unknown()).describe(tx("propor_acao.conteudo")),
+        derivaDe: z.string().optional().describe(tx("propor_acao.derivaDe")),
+      },
+      executar: async ({ acao, conteudo, derivaDe }) => {
+        const { approvalId, stepKey } = await deps.avulso.proporAcao(d.id, {
+          kind: acao as string,
+          propostoPor: "conversa",
+          conteudo,
+          ...(typeof derivaDe === "string" ? { derivaDe } : {}),
+        });
+        return `Pendência ${approvalId} criada na Fila (passo ${stepKey}). Nada foi publicado: a pessoa decide lá.`;
+      },
+    },
+    {
+      nome: "editar_pendencia",
+      descricao: tx("editar_pendencia.description"),
+      entrada: {
+        pendencia: z.string().describe(tx("editar_pendencia.pendencia")),
+        campos: z.record(z.string(), z.unknown()).describe(tx("editar_pendencia.campos")),
+      },
+      executar: async ({ pendencia, campos }) => {
+        await deps.aprovacoes.editarCampos(pendencia as string, campos as Record<string, unknown>, { conversa: d.id });
+        return `Pendência ${pendencia as string} alterada (${Object.keys(campos as object).join(", ")}). Nada foi publicado: a pessoa decide na Fila.`;
+      },
+    },
+    {
+      nome: "reexecutar_passo",
+      descricao: tx("reexecutar_passo.description"),
+      entrada: {
+        passo: z.string().describe(tx("reexecutar_passo.passo")),
+        instrucao: z.string().min(1).max(LIMITE_DA_INSTRUCAO).describe(tx("reexecutar_passo.instrucao")),
+      },
+      executar: async ({ passo, instrucao }) => {
+        const status = await deps.runs.rerunStep(d.id, passo as string, { wait: false, instrucao: instrucao as string });
+        return `O passo ${passo as string} voltou a rodar (${status}) com a instrução. As ações do run esperam decisão na Fila.`;
+      },
+    },
+  ];
+  };
+
+  const system = (idioma: Language, d: RunDetail, persona: string, corpo: string, marca: string): string => {
+    const t = (chave: string, variaveis: Record<string, unknown> = {}): string => translate(idioma, `conversaDoRun.system.${chave}`, variaveis);
+    return [
+      persona,
+      t("intro"),
+      t("tools"),
+      t("externalData", { marca }),
+      t(d.agentArchived ? "runArchived" : "run", { id: d.id, nome: d.agentName, estado: d.status }),
+      t("context", { corpo }),
+    ]
+      .filter((p) => p !== "")
+      .join("\n\n");
+  };
+
+  return {
+    chave: chaveDoRun,
+    armazem: armazemDoRun(db),
+    // O que o estado mostra além das falas e que outro processo muda: o alvo, o gasto e a automação arquivada.
+    marca: async (id) => {
+      const d = await detalhe(id);
+      return JSON.stringify([resolverAlvo(d), d.conversaUsd, d.conversaTokens, d.agentArchived]);
+    },
+    estado: async (id) => {
+      const d = await detalhe(id);
+      const { alvo, padrao } = resolverAlvo(d);
+      const doAgent = alvo !== null && "agent" in alvo ? (await deps.library.resolveProfile(alvo.agent).catch(() => undefined))?.version.spec : undefined;
+      return {
+        semServidor: [],
+        semSkill: [],
+        contaIgnorada: 0,
+        run: {
+          alvo: alvoNaTela(alvo),
+          motivoSemAlvo: alvo === null ? deps.texto("conversaDoRun.errors.noTarget") : null,
+          padrao,
+          arquivada: d.agentArchived,
+          contexto: { teto, cortado: montarContexto(d).cortado },
+          gasto: { usd: d.conversaUsd, tokens: d.conversaTokens },
+          limites: { passosDaVolta: doAgent?.maxSteps ?? PASSOS_DA_VOLTA, passosDoAgent: doAgent !== undefined, tetoDaLeitura: TETO_DA_LEITURA },
+        },
+      };
+    },
+    contexto: async (id): Promise<ContextoDaVolta> => {
+      const d = await detalhe(id);
+      const { alvo } = resolverAlvo(d);
+      if (alvo === null) throw new Error(deps.texto("conversaDoRun.errors.noTarget"));
+      const perfil = "agent" in alvo ? await deps.library.resolveProfile(alvo.agent) : undefined;
+      const spec: AgentProfile | undefined = perfil?.version.spec;
+      const { corpo, marca } = montarContexto(d);
+      const idioma = await i18nService.current();
+      const chaveDoAgent = spec === undefined ? undefined : `biblioteca:${spec.id}`;
+      return {
+        modelo: spec?.model ?? ("modelo" in alvo ? alvo.modelo : ""),
+        system: () => system(idioma, d, perfil?.system ?? "", corpo, marca),
+        maxSteps: spec?.maxSteps ?? PASSOS_DA_VOLTA,
+        ...(spec?.temperature === undefined ? {} : { temperature: spec.temperature }),
+        // Nenhuma ferramenta de conexão: a conversa não escreve fora (ADR 0009).
+        leitura: [],
+        confirmar: [],
+        locais: ferramentas(d, marca, idioma),
+        // O teto por execução parte do que está gravado, e não do gasto em memória da conversa:
+        // reiniciar o app ou limpar a conversa não devolve o que ela já gastou.
+        checar: async () => {
+          const run = db.select({ usd: schema.runs.costUsd, tokens: schema.runs.tokens, conversaUsd: schema.runs.conversaUsd, conversaTokens: schema.runs.conversaTokens }).from(schema.runs).where(eq(schema.runs.id, d.id)).get();
+          const gasto = { usd: (run?.usd ?? 0) + (run?.conversaUsd ?? 0), tokens: (run?.tokens ?? 0) + (run?.conversaTokens ?? 0) };
+          // O teto é o da versão atual da automação: quem o aperta ou afrouxa depois do run vale para a conversa.
+          const atual = db.select({ spec: schema.agentVersions.spec }).from(schema.agentVersions).where(eq(schema.agentVersions.agentId, d.agentId)).orderBy(desc(schema.agentVersions.version)).limit(1).get();
+          await deps.orcamento.checar(d.agentId, gasto, (atual?.spec as AgentSpec | undefined)?.budget ?? d.spec.budget);
+          // O teto do agent da biblioteca é dele: mede o que a conversa gastou, e não os passos do run, que podem ser de outro agent.
+          if (spec !== undefined && chaveDoAgent !== undefined) await deps.orcamento.checar(chaveDoAgent, { usd: run?.conversaUsd ?? 0, tokens: run?.conversaTokens ?? 0 }, spec.budget, spec.name);
+        },
+        gastar: async (gasto, novaMensagem) => {
+          // Num campo do run separado dos passos: o `reset` de uma reexecução não o desconta.
+          db.update(schema.runs)
+            .set({ conversaUsd: sql`${schema.runs.conversaUsd} + ${gasto.usd}`, conversaTokens: sql`${schema.runs.conversaTokens} + ${gasto.tokens}` })
+            .where(eq(schema.runs.id, d.id))
+            .run();
+          await deps.orcamento.gastar(d.agentId, gasto, false);
+          if (chaveDoAgent !== undefined) await deps.orcamento.gastar(chaveDoAgent, gasto, novaMensagem);
+        },
+      };
+    },
+  };
+}

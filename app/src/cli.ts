@@ -579,8 +579,8 @@ async function main(): Promise<void> {
     }
     case "approve":
     case "reject": {
-      if (!arg) throw new Error(`uso: ${cmd} <approval-id>`);
-      const { status, run, motivo } = await (await executor()).decide(arg, cmd === "approve" ? "approved" : "rejected");
+      if (!arg) throw new Error(`uso: ${cmd} <approval-id> [hash]`);
+      const { status, run, motivo } = await (await executor()).decide(arg, cmd === "approve" ? "approved" : "rejected", args[1]);
       const desfecho =
         status === "conflict" ? `conflito, nada publicado${motivo === undefined ? "" : ` (${motivo})`}` : status === "approved" ? "aprovado e publicado" : "rejeitado";
       console.log(`${arg} ${desfecho}, run ${run}`);
@@ -652,8 +652,8 @@ async function main(): Promise<void> {
           "  mcp:remove <nome>        tira o servidor do cadastro",
           "  mcp:enable <nome>        volta a expor o servidor ao executor",
           "  mcp:disable <nome>       tira o servidor do executor sem apagar",
-          "  approve <id>             publica a acao",
-          "  reject <id>              descarta",
+          "  approve <id> [hash]      publica a acao; com o hash que approvals mostrou, recusa se a pendencia mudou",
+          "  reject <id> [hash]       descarta",
           "  resume                   retoma runs interrompidos",
           "  run <run-id>             continua um run especifico",
           "  rerun <run-id> <passo> [--instrucao <texto>]   zera o passo e os que dependem dele, e roda de novo",

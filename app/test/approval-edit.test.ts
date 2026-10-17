@@ -2,8 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { AgentSpec } from "../src/config/types.js";
 import { schema } from "../src/db/index.js";
+import { eq } from "drizzle-orm";
+import { buildGate } from "../src/executor/build.js";
 import { ApprovalService } from "../src/services/approval-service.js";
 import { AgentService } from "../src/services/agent-service.js";
+import { lerErroComCodigo } from "../src/services/erro-com-codigo.js";
 import { bancoDeTeste } from "./helpers/db.js";
 
 const ALVO = { owner: "dono", repo: "repositorio", pull: 42 };
@@ -83,20 +86,21 @@ test("achado fora do formato é recusado e a pendência fica como estava", async
   const invalidos: unknown[] = [
     [{ ...achado, severity: "gravissimo" }],
     [{ ...achado, problem: "" }],
+    [{ ...achado, problem: "   \n\t " }],
     [{ ...achado, line: -3 }],
     [{ ...achado, owner: "outro" }],
     "não é lista",
   ];
 
   for (const entrada of invalidos) {
-    await assert.rejects(service.updateFindings("pendencia", entrada), /achado/);
+    await assert.rejects(service.updateFindings("pendencia", entrada), /findings/);
   }
   assert.deepEqual((await service.get("pendencia"))!.payload, { ...ALVO, findings: [achado] });
 });
 
 test("pendência que não é de review não aceita edição de achados", async () => {
   const service = await pendencia("slack.post", { channel: "C1", text: "oi" });
-  await assert.rejects(service.updateFindings("pendencia", [achado]), /review/);
+  await assert.rejects(service.updateFindings("pendencia", [achado]), /não aceita edição de findings/);
   assert.deepEqual((await service.get("pendencia"))!.payload, { channel: "C1", text: "oi" });
 });
 
@@ -110,12 +114,12 @@ test("resposta do Teams troca só o texto, e o destino fica o gravado", async ()
 
 test("texto vazio, longo demais ou em pendência que não é mensagem é recusado", async () => {
   const service = await pendencia("slack.post", { ...RESPOSTA, channel: "C1", threadTs: "1.0" });
-  await assert.rejects(service.updateText("pendencia", "   "), /vazia/);
+  await assert.rejects(service.updateText("pendencia", "   "), /text/);
   await assert.rejects(service.updateText("pendencia", "x".repeat(3001)));
   await assert.rejects(service.updateText("pendencia", { text: "objeto" }));
 
   const review = await pendencia();
-  await assert.rejects(review.updateText("pendencia", "oi"), /só resposta de Slack ou Teams/);
+  await assert.rejects(review.updateText("pendencia", "oi"), /não aceita edição de text/);
 });
 
 test("a Fila não cria tarefa de tracker a partir de uma review: abrir tarefa é nó do fluxo", async () => {
@@ -134,4 +138,67 @@ test("pendência de tracker.create_issue gravada antes continua na Fila e decid�
 
   const fila = await service.listPending();
   assert.deepEqual(fila.map((p) => [p.id, p.kind]), [["pendencia", "tracker.create_issue"]]);
+});
+
+const bancoDe = (service: ApprovalService) => (service as unknown as { db: ReturnType<typeof bancoDeTeste> }).db;
+
+test("cada ação que se edita declara os campos editáveis num esquema, e a gate os expõe", () => {
+  const gate = buildGate();
+  assert.deepEqual(Object.keys(gate.camposEditaveis("github.review_comment")!.properties!).sort(), ["findings", "summary", "verdict"]);
+  assert.deepEqual(Object.keys(gate.camposEditaveis("teams.post")!.properties!), ["text"]);
+  assert.deepEqual(Object.keys(gate.camposEditaveis("slack.post")!.properties!), ["text"]);
+  assert.equal(gate.camposEditaveis("tracker.create_issue"), undefined);
+  const descrita = gate.describe().find((a) => a.kind === "teams.post");
+  assert.deepEqual(descrita?.camposEditaveis, gate.camposEditaveis("teams.post"));
+});
+
+test("editar pela conversa muda o payload e marca a pendência; pela pessoa, muda e não marca", async () => {
+  const service = await pendencia("teams.post", RESPOSTA);
+  const pelaPessoa = await service.editarCampos("pendencia", { text: "da pessoa" }, "pessoa");
+  assert.equal((pelaPessoa.payload as { text: string }).text, "da pessoa");
+  assert.equal(pelaPessoa.alteradaPelaConversaEm, null);
+
+  const antes = Math.floor(Date.now() / 1000);
+  const pelaConversa = await service.editarCampos("pendencia", { text: "da conversa" }, { conversa: "run" });
+  assert.deepEqual(pelaConversa.payload, { ...RESPOSTA, text: "da conversa" });
+  assert.ok(pelaConversa.alteradaPelaConversaEm! >= antes);
+
+  // Quem editou por último vale: a pessoa sobrescreve e a marca da conversa some.
+  const depois = await service.editarCampos("pendencia", { text: "a pessoa voltou atrás" }, "pessoa");
+  assert.equal((depois.payload as { text: string }).text, "a pessoa voltou atrás");
+  assert.equal(depois.alteradaPelaConversaEm, null);
+});
+
+test("editar pela conversa recusa campo fora do esquema da ação, e a pendência fica como estava", async () => {
+  const service = await pendencia("teams.post", RESPOSTA);
+  await assert.rejects(service.editarCampos("pendencia", { chatId: "19:outra" }, { conversa: "run" }), /chatId/);
+  await assert.rejects(service.editarCampos("pendencia", { text: "ok", chatId: "19:outra" }, { conversa: "run" }), /chatId/);
+  const intacta = await service.get("pendencia");
+  assert.deepEqual(intacta!.payload, RESPOSTA);
+  assert.equal(intacta!.alteradaPelaConversaEm, null);
+});
+
+test("editar pela conversa recusa pendência de outro run", async () => {
+  const service = await pendencia("teams.post", RESPOSTA);
+  await assert.rejects(service.editarCampos("pendencia", { text: "x" }, { conversa: "outro-run" }), /outro run/);
+  assert.deepEqual((await service.get("pendencia"))!.payload, RESPOSTA);
+});
+
+test("editar pela conversa recusa automação arquivada e pendência já resolvida", async () => {
+  const service = await pendencia("teams.post", RESPOSTA);
+  const db = bancoDe(service);
+  await db.update(schema.agents).set({ archivedAt: 1 }).where(eq(schema.agents.id, "revisor"));
+  await assert.rejects(service.editarCampos("pendencia", { text: "x" }, { conversa: "run" }), /arquivada/);
+  await db.update(schema.agents).set({ archivedAt: null }).where(eq(schema.agents.id, "revisor"));
+  await db.update(schema.approvals).set({ status: "approved" }).where(eq(schema.approvals.id, "pendencia"));
+  await assert.rejects(service.editarCampos("pendencia", { text: "x" }, { conversa: "run" }), /já resolvida/);
+  assert.deepEqual((await service.get("pendencia"))!.payload, RESPOSTA);
+});
+
+test("os erros de edição têm código, para a tela traduzir: campo que a ação não aceita e valor fora do formato", async () => {
+  const service = await pendencia("teams.post", RESPOSTA);
+  const fora = await service.editarCampos("pendencia", { chatId: "19:outra" }, { conversa: "run" }).catch((e: Error) => e);
+  assert.deepEqual(lerErroComCodigo((fora as Error).message), { codigo: "campo_nao_editavel", argumento: "chatId" });
+  const formato = await service.editarCampos("pendencia", { text: 42 }, "pessoa").catch((e: Error) => e);
+  assert.deepEqual(lerErroComCodigo((formato as Error).message), { codigo: "campo_fora_do_formato", argumento: "text" });
 });

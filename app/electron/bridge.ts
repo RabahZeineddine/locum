@@ -8,6 +8,7 @@ import { readFile, stat, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { agentBuilder, criadorDisponivel } from "./agent-builder.js";
 import { agentChat } from "./agent-chat.js";
+import { runChat } from "./run-chat.js";
 import { chatSession } from "./chat.js";
 import { terminalService } from "./terminal.js";
 import {
@@ -289,7 +290,7 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
       approvalService.updateFindings(approvalId, findings, verdict, summary),
     "approvals.updateText": (approvalId, text) => approvalService.updateText(approvalId, text),
 
-    "approvals.decide": async (approvalId, decision) => {
+    "approvals.decide": async (approvalId, decision, hashVisto) => {
       if (decision !== "approved" && decision !== "rejected") {
         throw new Error(`decisao "${String(decision)}" nao existe`);
       }
@@ -297,7 +298,7 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
       // externalId que ja estava gravado, e e a unica que fala com o handler de
       // publicacao. A ponte nao repete nada disso: ela leva o clique e volta.
       // É o executor quem chama a gate, para o run seguir depois da decisão.
-      const { status, motivo } = await (await buildExecutor()).decide(approvalId, decision);
+      const { status, motivo } = await (await buildExecutor()).decide(approvalId, decision, hashVisto);
       await refreshTray();
       return { approvalId, decision, status, ...(motivo === undefined ? {} : { motivo }) };
     },
@@ -361,6 +362,31 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "agentChat.cancel": async (id) => agentChat.cancelar(id),
     "agentChat.reset": (id) => agentChat.limpar(id),
     "agentChat.take": (id) => agentChat.tomar(id),
+    "agentChat.mark": (id) => agentChat.marca(id),
+
+    "runChat.state": (runId) => runChat.estado(runId),
+    // Volta assim que a volta começa, como a do agent: a resposta chega pelo canal de evento, com a chave `run:<id>`.
+    "runChat.send": (runId, texto) =>
+      new Promise<void>((resolve, reject) => {
+        let comecou = false;
+        runChat
+          .enviar(runId, texto, () => {
+            comecou = true;
+            resolve();
+          })
+          .then(
+            () => resolve(),
+            (erro: unknown) => {
+              if (comecou) console.error("conversa do run:", erro);
+              else reject(erro);
+            },
+          );
+      }),
+    "runChat.cancel": async (runId) => runChat.cancelar(runId),
+    "runChat.reset": (runId) => runChat.limpar(runId),
+    "runChat.take": (runId) => runChat.tomar(runId),
+    "runChat.mark": (runId) => runChat.marca(runId),
+    "runChat.setModel": (runId, alvo) => runChat.definirAlvo(runId, alvo),
 
     "mcp.list": () => mcpService.list(),
     "mcp.test": (name) => mcpService.testConnection(name),

@@ -143,7 +143,7 @@ test("a edição troca o veredito e recusa o que não é veredito", async () => 
   const nova = await service.updateFindings(id, [achado], "COMMENT");
   assert.deepEqual(nova.payload, { ...ALVO, findings: [achado], verdict: "COMMENT" });
 
-  await assert.rejects(service.updateFindings(id, [achado], "MERGE"), /veredito/);
+  await assert.rejects(service.updateFindings(id, [achado], "MERGE"), /verdict/);
   assert.equal(((await service.get(id))!.payload as { verdict: string }).verdict, "COMMENT");
 
   // Edição só de achados não mexe no veredito gravado.

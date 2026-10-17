@@ -34,6 +34,7 @@ async function semear(m: Montagem, agentId: string, runStatus = "done") {
   db.insert(schema.events).values({ id: `ev-run-${agentId}`, source: "github", externalId: `ext-${agentId}`, payload: {} }).run();
   db.insert(schema.events).values({ id: `ev-man-${agentId}`, source: "manual", externalId: `man-${agentId}`, payload: { automacao: agentId } }).run();
   db.insert(schema.runs).values({ id: `run-${agentId}`, agentVersionId: versao.id, triggerId: gatilho.id, eventId: `ev-run-${agentId}`, status: runStatus }).run();
+  db.insert(schema.runConversations).values({ runId: `run-${agentId}` }).run();
   db.insert(schema.steps).values({ id: `st-${agentId}`, runId: `run-${agentId}`, idx: 0, stepKey: "k", name: "k" }).run();
   db.insert(schema.findings).values({ id: `fi-${agentId}`, runId: `run-${agentId}`, severity: "low", body: "x" }).run();
   db.insert(schema.findingOutcomes).values({ id: `fo-${agentId}`, findingId: `fi-${agentId}`, state: "ignored" }).run();
@@ -74,7 +75,7 @@ test("deletar a arquivada apaga a automação e tudo que pendia dela, e deixa a 
   assert.equal(resultado.agentId, "acme-a");
 
   assert.equal(await m.agents.get("acme-a"), undefined);
-  for (const t of [schema.agents, schema.runs, schema.steps, schema.findings, schema.findingOutcomes, schema.approvals, schema.agentVersions, schema.budgets, schema.usageDaily, schema.agentMetrics]) {
+  for (const t of [schema.agents, schema.runs, schema.steps, schema.findings, schema.findingOutcomes, schema.approvals, schema.runConversations, schema.agentVersions, schema.budgets, schema.usageDaily, schema.agentMetrics]) {
     assert.equal(tabela(m.db, t), 1, "a outra automação mantém a linha dela");
   }
   assert.equal(tabela(m.db, schema.cursors), cursoresDeB, "o estado de b fica, o de a sai");
@@ -209,7 +210,7 @@ test("depois do delete nenhuma tabela que referencia a automação, o gatilho ou
 
   const refs = tabelasDaAutomacao(m);
   // Tabela nova que passe a referenciar a automação precisa entrar em `semear` e no delete: o teste acusa aqui.
-  const semeadas = ["agent_versions", "triggers", "runs", "steps", "approvals", "findings", "finding_outcomes", "agent_metrics", "budgets", "usage_daily"];
+  const semeadas = ["agent_versions", "triggers", "runs", "run_conversations", "steps", "approvals", "findings", "finding_outcomes", "agent_metrics", "budgets", "usage_daily"];
   const esquecidas = [...new Set(refs.map((r) => r.tabela))].filter((t) => !semeadas.includes(t));
   assert.deepEqual(esquecidas, [], "tabela nova ligada à automação: semeie em `semear` e confira o delete");
 

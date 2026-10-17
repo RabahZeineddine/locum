@@ -35,8 +35,11 @@ export function usarModeloDoAgentChat(outro: EscolherModelo | null): void {
   modelo = outro ?? escolherModelo;
 }
 
+/** O modelo de uma conversa nesta máquina: o mesmo para a do agent e a do run, e a fumaça troca os dois. */
+export const modeloDoChat: EscolherModelo = (id) => modelo(id);
+
 /** O fluxo vai a todas as janelas: quem abriu a conversa pode ter trocado de tela ou de janela. */
-function emitir(evento: unknown): void {
+export function emitir(evento: unknown): void {
   for (const janela of BrowserWindow.getAllWindows()) {
     if (!janela.isDestroyed() && !janela.webContents.isDestroyed()) janela.webContents.send(CHAT_EVENT, evento);
   }

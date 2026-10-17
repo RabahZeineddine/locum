@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, lte } from "drizzle-orm";
 import { db, schema } from "../db/index.js";
+import { erroComCodigo } from "../services/erro-com-codigo.js";
+import { impressaoDe } from "./impressao.js";
 import type { EsquemaJson } from "../config/referencias.js";
 import type { ActionMode } from "../config/types.js";
 import type { ParamsDoPacote } from "../pacote/params.js";
@@ -82,6 +84,13 @@ export type ActionHandler = {
    * Ausente, a ação não é oferecida como avulsa.
    */
   inputSchema?: EsquemaJson;
+  /**
+   * O que da pendência desta ação se pode editar antes do clique (JSON Schema de
+   * objeto): só os campos listados em `properties`, cada um validado pelo esquema
+   * dele. O resto do payload (alvo, conversa, commit) é o que o executor gravou e
+   * nunca muda por edição. Ausente, a pendência não se edita.
+   */
+  camposEditaveis?: EsquemaJson;
   /**
    * Campos do payload que só o evento do run pode dizer: o executor os põe por
    * cima da saída do modelo, e ausentes no evento ficam ausentes. A review do
@@ -169,19 +178,25 @@ export class ApprovalGate {
     return this.handlers.get(kind)?.inputSchema;
   }
 
+  /** O esquema dos campos que a pendência desta ação aceita editar, quando ela os declara. */
+  camposEditaveis(kind: string): EsquemaJson | undefined {
+    return this.handlers.get(kind)?.camposEditaveis;
+  }
+
   /** O modo é aceito pela ação (ver `ActionHandler.modes`). */
   aceitaModo(kind: string, mode: ActionMode): boolean {
     const modes = this.handlers.get(kind)?.modes;
     return modes === undefined || modes.includes(mode);
   }
 
-  describe(): { kind: string; modes: readonly ActionMode[]; holdsByContent: boolean; outputSchema: EsquemaJson; inputSchema?: EsquemaJson; paramsDoPacote?: ParamsDoPacote }[] {
+  describe(): { kind: string; modes: readonly ActionMode[]; holdsByContent: boolean; outputSchema: EsquemaJson; inputSchema?: EsquemaJson; camposEditaveis?: EsquemaJson; paramsDoPacote?: ParamsDoPacote }[] {
     return [...this.handlers.entries()].map(([kind, handler]) => ({
       kind,
       modes: handler.modes ?? (["approve", "draft", "auto"] as const),
       holdsByContent: typeof handler.holdForApproval === "function",
       outputSchema: handler.outputSchema ?? SAIDA_PADRAO_DA_ACAO,
       ...(handler.inputSchema === undefined ? {} : { inputSchema: handler.inputSchema }),
+      ...(handler.camposEditaveis === undefined ? {} : { camposEditaveis: handler.camposEditaveis }),
       ...(handler.paramsDoPacote === undefined ? {} : { paramsDoPacote: handler.paramsDoPacote }),
     }));
   }
@@ -281,17 +296,46 @@ export class ApprovalGate {
   }
 
   /**
+   * A troca de `pending` para o estado de quem decide, com a leitura do payload e a conferência do
+   * hash na mesma transação. Devolve a linha como estava na tomada.
+   */
+  private tomar(approvalId: string, para: "publishing" | "rejected", payloadHash: string | undefined) {
+    return db.transaction((tx) => {
+      const atual = tx.select().from(schema.approvals).where(eq(schema.approvals.id, approvalId)).get();
+      if (atual === undefined) throw new Error(`aprovacao ${approvalId} nao encontrada`);
+      if (atual.status !== "pending") throw new Error(`aprovacao ${approvalId} ja esta sendo resolvida`);
+      if (payloadHash !== undefined && impressaoDe(atual.payload) !== payloadHash) {
+        throw erroComCodigo("pendencia_mudou", "", "a pendência mudou desde que você viu");
+      }
+      const tomada = tx
+        .update(schema.approvals)
+        .set({ status: para, decidedAt: Math.floor(Date.now() / 1000) })
+        .where(and(eq(schema.approvals.id, approvalId), eq(schema.approvals.status, "pending")))
+        .run();
+      if (tomada.changes !== 1) throw new Error(`aprovacao ${approvalId} ja esta sendo resolvida`);
+      return atual;
+    }, { behavior: "immediate" });
+  }
+
+  /**
    * Chamado pela inbox quando você clica. Devolve o run da pendência, que quem
    * chamou precisa retomar: a gate só fecha a pendência e o passo, e rodar o
    * resto do pipeline é trabalho do executor.
+   *
+   * `payloadHash` é a impressão do payload que quem decide viu. Dada, é conferida na própria
+   * tomada (a troca de `pending` para `publishing` ou `rejected`, numa transação só com a leitura
+   * do payload): uma edição entre a conferência e a tomada faz a decisão ser recusada, e o que se
+   * publica e se registra é o payload lido ali.
    */
   async decide(
     approvalId: string,
     decision: "approved" | "rejected",
+    payloadHash?: string,
   ): Promise<{ runId: string; status: "approved" | "rejected" | "conflict"; motivo?: string }> {
-    const [row] = await db.select().from(schema.approvals).where(eq(schema.approvals.id, approvalId));
-    if (!row) throw new Error(`aprovacao ${approvalId} nao encontrada`);
-    if (row.status !== "pending") throw new Error(`aprovacao ${approvalId} ja resolvida: ${row.status}`);
+    const [lida] = await db.select().from(schema.approvals).where(eq(schema.approvals.id, approvalId));
+    if (!lida) throw new Error(`aprovacao ${approvalId} nao encontrada`);
+    if (lida.status !== "pending") throw new Error(`aprovacao ${approvalId} ja resolvida: ${lida.status}`);
+    let row = lida;
 
     let status: "approved" | "rejected" | "conflict" = decision;
     let resposta: { output: unknown } | undefined;
@@ -305,12 +349,7 @@ export class ApprovalGate {
       // Quem cai no meio da publicação deixa a pendência em `publishing`, e
       // ela não volta para a fila sozinha: melhor uma pessoa conferir do que
       // sair uma segunda resposta.
-      const tomada = db
-        .update(schema.approvals)
-        .set({ status: "publishing", decidedAt: Math.floor(Date.now() / 1000) })
-        .where(and(eq(schema.approvals.id, approvalId), eq(schema.approvals.status, "pending")))
-        .run();
-      if (tomada.changes !== 1) throw new Error(`aprovacao ${approvalId} ja esta sendo resolvida`);
+      row = this.tomar(approvalId, "publishing", payloadHash);
       try {
         resposta = (await handler.publish(row.payload, row.externalId!)) || undefined;
       } catch (err) {
@@ -327,12 +366,7 @@ export class ApprovalGate {
         motivo = err.motivo;
       }
     } else {
-      const fechada = db
-        .update(schema.approvals)
-        .set({ status: "rejected", decidedAt: Math.floor(Date.now() / 1000) })
-        .where(and(eq(schema.approvals.id, approvalId), eq(schema.approvals.status, "pending")))
-        .run();
-      if (fechada.changes !== 1) throw new Error(`aprovacao ${approvalId} ja esta sendo resolvida`);
+      row = this.tomar(approvalId, "rejected", payloadHash);
     }
     // A resposta vai para a pendência antes de o passo ser atualizado: uma
     // queda entre os dois não a perde.

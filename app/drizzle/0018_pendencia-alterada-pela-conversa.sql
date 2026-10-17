@@ -1,0 +1,1 @@
+ALTER TABLE `approvals` ADD `alterada_pela_conversa_em` integer;

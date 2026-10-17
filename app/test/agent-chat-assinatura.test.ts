@@ -41,7 +41,10 @@ test("a escrita não entra nas liberadas: o Claude Code a leva à ferramenta de 
     modelo: "sonnet",
     system: perfil.system,
     sessao: "s0",
-    perfil,
+    leitura: perfil.tools,
+    confirmar: perfil.confirmar,
+    locais: [],
+    maxSteps: perfil.version.spec.maxSteps,
     aprovar: async (nome, entrada) => {
       const d: DecisaoDaAssinatura = { permitir: true, entrada: { nome, entrada } };
       aprovados.push(d);
@@ -92,7 +95,7 @@ test("a escrita não entra nas liberadas: o Claude Code a leva à ferramenta de 
 test("sem o Claude Code instalado, a volta diz isso", async () => {
   await assert.rejects(
     rodarPelaAssinatura(
-      { texto: "x", modelo: "sonnet", system: "", sessao: undefined, perfil, aprovar: async () => ({ permitir: false, mensagem: "" }), emitir: () => undefined, sinal: new AbortController().signal },
+      { texto: "x", modelo: "sonnet", system: "", sessao: undefined, leitura: [], confirmar: [], locais: [], maxSteps: 1, aprovar: async () => ({ permitir: false, mensagem: "" }), emitir: () => undefined, sinal: new AbortController().signal },
       { binario: async () => undefined, configs: async () => [], mensagemSemClaude: "sem claude" },
     ),
     /sem claude/,

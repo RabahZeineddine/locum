@@ -1,7 +1,10 @@
 import { Button } from "@/components/ui/button";
 import { StatusDot, type Estado as EstadoDoPonto } from "@/components/ui/status-dot";
-import { gravarRevisao, gravarTexto, decidir } from "@/lib/aprovar";
-import { BridgeError, read, useRead, type ReadResult, type ReadState } from "@/lib/bridge";
+import { gravarRevisao, gravarTexto, decidir, esquecerEdicao } from "@/lib/aprovar";
+import { BridgeError, invalidateReads, read, useRead, type ReadResult, type ReadState } from "@/lib/bridge";
+import { marcaDaAlteracao } from "@/lib/conversa-do-run";
+import { pedeRecarregar, traduzirErroDoServico } from "@/lib/erro-do-servico";
+import { acaoDaReleitura, devoGravar } from "@/lib/releitura-da-revisao";
 import { comContexto, diffLinhas, type LinhaDoDiff } from "@/lib/diff";
 import {
   CONFIANCAS,
@@ -66,7 +69,48 @@ const PONTO: Record<Severidade, EstadoDoPonto> = {
  * continua precisando de tela para explicar o que aconteceu. Buscando só nas
  * pendentes, ela sumiria assim que fechasse.
  */
-export function Revisao({ detalhe, navegar }: TelaProps) {
+export function Revisao(props: TelaProps) {
+  const { t, i18n } = useTranslation();
+  const aprovacao = useRead("approvals.get", props.detalhe ?? "");
+  const pendencia = aprovacao.status === "ready" ? aprovacao.data : undefined;
+  // A decisão que o serviço recusou, como veio; e a contagem de recargas, que remonta a tela com a pendência de agora.
+  const [recusa, setRecusa] = useState<string | null>(null);
+  const [recargas, setRecargas] = useState(0);
+  const alteradaPelaConversa = marcaDaAlteracao(t, pendencia?.alteradaPelaConversaEm, i18n.language);
+
+  function recarregar(): void {
+    if (pendencia) esquecerEdicao(pendencia.id);
+    setRecusa(null);
+    setRecargas((n) => n + 1);
+    invalidateReads("approvals.get");
+    invalidateReads("approvals.listPending");
+  }
+
+  return (
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-3">
+      {alteradaPelaConversa === null ? null : (
+        <p className="text-muted-foreground flex items-center gap-1.5 text-xs" data-locum-alterada-pela-conversa>
+          <StatusDot estado="aviso" />
+          {alteradaPelaConversa}
+        </p>
+      )}
+      {recusa === null ? null : (
+        <p className="border-border bg-muted/40 flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-[13px]" data-locum-decisao-recusada>
+          <StatusDot estado="erro" />
+          <span className="min-w-0 break-words">{traduzirErroDoServico(t, recusa)}</span>
+          {pedeRecarregar(recusa) && (
+            <Button className="ml-auto cursor-pointer" data-locum-recarregar-pendencia onClick={recarregar} size="sm" variant="outline">
+              {t("inbox.recarregarPendencia")}
+            </Button>
+          )}
+        </p>
+      )}
+      <RevisaoDaPendencia {...props} aoRecarregar={recarregar} aoRecusar={setRecusa} key={recargas} />
+    </div>
+  );
+}
+
+function RevisaoDaPendencia({ detalhe, navegar, aoRecarregar, aoRecusar }: TelaProps & { aoRecarregar: () => void; aoRecusar: (mensagem: string | null) => void }) {
   const { t } = useTranslation();
   const aprovacao = useRead("approvals.get", detalhe ?? "");
   const pendencia = aprovacao.status === "ready" ? aprovacao.data : undefined;
@@ -109,11 +153,18 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
   const [resolvendo, setResolvendo] = useState(false);
   const [conflito, setConflito] = useState(false);
   const [motivoDoConflito, setMotivoDoConflito] = useState<string | undefined>(undefined);
-  const primeiroRender = useRef(true);
+  // O que a pessoa mexeu aqui e o que já foi gravado: o autosave só grava depois de uma interação, e
+  // não por a releitura ter trazido outro payload (a conversa do run edita a pendência por fora).
+  const [mexidas, setMexidas] = useState(0);
+  const gravadas = useRef(0);
+  const hashBase = useRef<string | null>(null);
+  const conhecidos = useRef<string[]>([]);
+  const [mudouPorFora, setMudouPorFora] = useState(false);
+  const edicaoPendente = mexidas !== gravadas.current;
+  const mexer = (): void => setMexidas((n) => n + 1);
 
-  useEffect(() => {
-    if (!pendencia || contexto || mensagem || documento || achados !== null) return;
-    const carga = pendencia.payload as { findings?: unknown[]; verdict?: unknown; summary?: unknown } | null;
+  function carregarDe(p: Pendencia): void {
+    const carga = p.payload as { findings?: unknown[]; verdict?: unknown; summary?: unknown } | null;
     if ((VEREDITOS as readonly unknown[]).includes(carga?.verdict)) {
       setVeredito(carga!.verdict as Veredito);
     }
@@ -139,27 +190,51 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
         };
       }),
     );
+    hashBase.current = p.payloadHash;
+    conhecidos.current.push(p.payloadHash);
+    gravadas.current = mexidas;
+    setMudouPorFora(false);
+  }
+
+  useEffect(() => {
+    if (!pendencia || contexto || mensagem || documento || achados !== null) return;
+    carregarDe(pendencia);
   }, [pendencia, achados]);
+
+  // A releitura trouxe outro payload: sem edição daqui a tela adota o novo; com edição, avisa.
+  useEffect(() => {
+    if (!pendencia || contexto || mensagem || documento || achados === null || gravando) return;
+    const acao = acaoDaReleitura({ hashBase: hashBase.current, hashAtual: pendencia.payloadHash, edicaoPendente, conhecidos: conhecidos.current });
+    if (acao === "recarregar") {
+      esquecerEdicao(pendencia.id);
+      carregarDe(pendencia);
+    } else if (acao === "avisar") setMudouPorFora(true);
+  }, [pendencia?.payloadHash, gravando]);
 
   // Grava sozinho depois que a digitação para. Botão de salvar num editor de
   // um item só é cerimônia: o risco real é fechar a tela e perder a edição.
   useEffect(() => {
     if (achados === null || !pendencia || contexto || mensagem || documento) return;
-    if (primeiroRender.current) {
-      primeiroRender.current = false;
-      return;
-    }
+    if (!devoGravar({ edicaoPendente, avisando: mudouPorFora })) return;
     const id = setTimeout(() => {
+      const versao = mexidas;
       setGravando(true);
       void gravarRevisao(
         pendencia.id,
         achados.filter((a) => a.incluido).map(({ incluido: _, ...resto }) => resto),
         veredito,
         comentarioCustom,
-      ).finally(() => setGravando(false));
+      )
+        .then((hash) => {
+          hashBase.current = hash;
+          conhecidos.current.push(hash);
+          gravadas.current = versao;
+        })
+        .catch((e: unknown) => aoRecusar(e instanceof Error ? e.message : String(e)))
+        .finally(() => setGravando(false));
     }, 700);
     return () => clearTimeout(id);
-  }, [achados, veredito, comentarioCustom, pendencia, contexto]);
+  }, [achados, veredito, comentarioCustom, mexidas, mudouPorFora, pendencia?.id, contexto]);
 
   if (aprovacao.status === "ready" && !pendencia) {
     return (
@@ -179,14 +254,17 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
   async function resolver(decisao: "approved" | "rejected") {
     if (!pendencia) return;
     setResolvendo(true);
+    aoRecusar(null);
     try {
-      const resultado = await decidir(pendencia.id, decisao);
+      const resultado = await decidir(pendencia.id, decisao, pendencia.payloadHash);
       if (resultado.status === "conflict") {
         setConflito(true);
         setMotivoDoConflito(resultado.motivo);
         return;
       }
       navegar("inbox");
+    } catch (e) {
+      aoRecusar(e instanceof Error ? e.message : String(e));
     } finally {
       setResolvendo(false);
     }
@@ -253,6 +331,15 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
+      {mudouPorFora && (
+        <p className="border-border bg-muted/40 flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-[13px]" data-locum-mudou-por-fora>
+          <StatusDot estado="aviso" />
+          <span className="min-w-0 flex-1">{t("review.mudouPorFora")}</span>
+          <Button className="cursor-pointer" data-locum-recarregar-pendencia onClick={aoRecarregar} size="sm" variant="outline">
+            {t("inbox.recarregarPendencia")}
+          </Button>
+        </p>
+      )}
       <div className="flex items-baseline gap-3">
         <Voltar navegar={navegar} />
         {carga?.pull && (
@@ -299,7 +386,10 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
         </label>
         <textarea
           className="focus:border-ring ia-borda w-full resize-y rounded-lg border p-3 font-mono text-xs leading-relaxed outline-none transition-colors"
-          onChange={(e) => setComentarioCustom(e.target.value)}
+          onChange={(e) => {
+            mexer();
+            setComentarioCustom(e.target.value);
+          }}
           placeholder={t("review.customPlaceholder")}
           rows={Math.min(6, Math.max(2, Math.ceil((comentarioCustom || "").length / 80)))}
           value={comentarioCustom}
@@ -311,7 +401,10 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
         <select
           className="border-border bg-background text-foreground cursor-pointer rounded border px-1.5 py-0.5 text-xs"
           data-locum-veredito=""
-          onChange={(e) => setVeredito(e.target.value as Veredito)}
+          onChange={(e) => {
+            mexer();
+            setVeredito(e.target.value as Veredito);
+          }}
           value={veredito}
         >
           {VEREDITOS.map((v) => (
@@ -349,13 +442,14 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
                   <select
                     aria-label={t("review.severity")}
                     className="border-border bg-background cursor-pointer rounded border px-1.5 py-0.5 text-xs"
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      mexer();
                       setAchados((atual) =>
                         (atual ?? []).map((a, j) =>
                           j === i ? { ...a, severity: e.target.value as Severidade } : a,
                         ),
-                      )
-                    }
+                      );
+                    }}
                     value={achado.severity}
                   >
                     {SEVERIDADES.map((s) => (
@@ -375,13 +469,14 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
                     <input
                       checked={achado.incluido}
                       className="accent-primary cursor-pointer"
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        mexer();
                         setAchados((atual) =>
                           (atual ?? []).map((a, j) =>
                             j === i ? { ...a, incluido: e.target.checked } : a,
                           ),
-                        )
-                      }
+                        );
+                      }}
                       type="checkbox"
                     />
                     {t(achado.incluido ? "review.include" : "review.excluded")}
@@ -391,11 +486,12 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
                 <textarea
                   aria-label={t("review.body_label")}
                   className="focus:border-ring border-input mt-2 w-full resize-y rounded-md border bg-transparent px-2.5 py-2 text-[13px] leading-relaxed outline-none transition-colors duration-200"
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    mexer();
                     setAchados((atual) =>
                       (atual ?? []).map((a, j) => (j === i ? { ...a, problem: e.target.value } : a)),
-                    )
-                  }
+                    );
+                  }}
                   rows={Math.min(8, Math.max(2, Math.ceil(achado.problem.length / 90)))}
                   value={achado.problem}
                 />
@@ -408,7 +504,7 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
       <div className="flex items-center gap-3">
         <Button
           className="cursor-pointer"
-          disabled={resolvendo || vazia || jaResolvida}
+          disabled={resolvendo || vazia || jaResolvida || mudouPorFora}
           onClick={() => void resolver("approved")}
         >
           {t("review.approve")}

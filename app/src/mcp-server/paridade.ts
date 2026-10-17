@@ -221,6 +221,13 @@ export const FERRAMENTA_DO_CANAL: Record<string, string> = {
   "agentChat.cancel": "agent_chat_cancel",
   "agentChat.reset": "agent_chat_reset",
   "agentChat.take": "agent_chat_take",
+
+  "runChat.state": "run_chat_state",
+  "runChat.send": "run_chat_send",
+  "runChat.cancel": "run_chat_cancel",
+  "runChat.reset": "run_chat_reset",
+  "runChat.take": "run_chat_take",
+  "runChat.setModel": "run_chat_set_model",
 };
 
 /**
@@ -228,6 +235,8 @@ export const FERRAMENTA_DO_CANAL: Record<string, string> = {
  * ponto vale para o grupo inteiro.
  */
 export const CANAIS_SEM_FERRAMENTA: Record<string, string> = {
+  "agentChat.mark": "a janela consulta de tempos em tempos para saber se vale reler o estado; pelo MCP o estado inteiro vem em agent_chat_state, e quem espera a volta já usa agent_chat_send",
+  "runChat.mark": "a janela consulta de tempos em tempos para saber se vale reler o estado; pelo MCP o estado inteiro vem em run_chat_state, e quem espera a volta já usa run_chat_send",
   "terminal.": "o terminal embutido é teclado e tela ao vivo dentro da janela; pelo MCP a sessão abre num aplicativo de terminal (open_initiative_session, resume_claude_session)",
   "chat.": "o console da janela é o assistente da própria tela; quem fala pelo MCP já é o assistente",
   "window.inboxTarget": "diz para onde o último clique de notificação levou a janela; não há janela do lado do MCP",

@@ -6,6 +6,7 @@ import { dbPath } from "../db/path.js";
 import { RESERVED_AGENT_IDS } from "../services/agent-service.js";
 import { machineId } from "../services/machine-service.js";
 import { registerAgentChatTools } from "./agent-chat-tools.js";
+import { registerRunChatTools } from "./run-chat-tools.js";
 import { registerAgentExtraTools } from "./agent-extra-tools.js";
 import { ambientePadrao, type Ambiente } from "./ambiente.js";
 import { registerApprovalTools } from "./approval-tools.js";
@@ -67,6 +68,7 @@ export function buildMcpServer(fora: Partial<Ambiente> = {}): McpServer {
   registerPackageTools(server);
   registerAgentExtraTools(server, amb);
   registerAgentChatTools(server, amb);
+  registerRunChatTools(server, amb);
   registerProviderTools(server);
   registerMcpAdminTools(server);
   registerSessionTools(server, amb);

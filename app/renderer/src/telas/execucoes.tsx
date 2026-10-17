@@ -62,6 +62,7 @@ import { LeituraDoDigest, lerDigest } from "../leitura-do-digest";
 import type { TelaProps } from "../rotas";
 import { aceitaAcaoNova, NovaAcao } from "./nova-acao";
 import { Reexecutar } from "./reexecutar";
+import { ConversaDoRun } from "../conversa-do-run";
 
 export type Execucao = ReadResult<"runs.list">[number];
 type Detalhe = NonNullable<ReadResult<"runs.get">>;
@@ -83,7 +84,7 @@ export function Execucoes({ detalhe, navegar }: TelaProps) {
   const run = passoDoDetalhe(detalhe);
 
   return run !== null ? (
-    <Execucao navegar={navegar} passoAberto={run.stepKey} runId={run.runId} />
+    <Execucao abaInicial={run.aba ?? "execucao"} navegar={navegar} passoAberto={run.stepKey} runId={run.runId} />
   ) : (
     <Lista filtroAgente={detalhe} navegar={navegar} />
   );
@@ -343,8 +344,11 @@ export function LinhaDeExecucao({
 
 /* ----------------------------------------------------------------- detalhe */
 
-function Execucao({ navegar, runId, passoAberto }: { navegar: TelaProps["navegar"]; runId: string; passoAberto: string | null }) {
+function Execucao({ abaInicial, navegar, runId, passoAberto }: { abaInicial: "execucao" | "conversa"; navegar: TelaProps["navegar"]; runId: string; passoAberto: string | null }) {
   const { t } = useTranslation();
+  // A aba vem da rota (a Fila abre o run já na conversa) e a pessoa troca depois pelo clique.
+  const [aba, setAba] = useState<"execucao" | "conversa">(abaInicial);
+  useEffect(() => setAba(abaInicial), [abaInicial, runId]);
   const run = useRead("runs.get", runId);
   const achados = useRead("runs.findings", runId);
   // O passo grava o que vai fazendo e o aviso `dados:mudou` relê o run: a
@@ -353,9 +357,9 @@ function Execucao({ navegar, runId, passoAberto }: { navegar: TelaProps["navegar
   // "Ver o que sairia" chega com o passo na rota: leva a tela até ele.
   const carregado = run.status === "ready";
   useEffect(() => {
-    if (passoAberto === null || !carregado) return;
+    if (passoAberto === null || !carregado || aba !== "execucao") return;
     document.querySelector(`[data-locum-passo="${CSS.escape(passoAberto)}"]`)?.scrollIntoView({ block: "center" });
-  }, [passoAberto, carregado]);
+  }, [passoAberto, carregado, aba]);
 
   if (run.status === "error") {
     return <Aviso probe="execucao">{t("runs.refused", { message: run.error.message })}</Aviso>;
@@ -419,6 +423,21 @@ function Execucao({ navegar, runId, passoAberto }: { navegar: TelaProps["navegar
         </p>
       )}
 
+      <Tabs onValueChange={(v) => setAba(v as typeof aba)} value={aba}>
+        <TabsList>
+          <TabsTrigger className="cursor-pointer" data-locum-run-aba="execucao" onClick={() => setAba("execucao")} value="execucao">
+            {t("runs.tabs.run")}
+          </TabsTrigger>
+          <TabsTrigger className="cursor-pointer" data-locum-run-aba="conversa" onClick={() => setAba("conversa")} value="conversa">
+            {t("runs.tabs.conversation")}
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      {aba === "conversa" ? (
+        <ConversaDoRun runId={detalhe.id} />
+      ) : (
+        <>
       {detalhe.error !== null ? (
         <p className="border-border bg-card flex items-start gap-2 rounded-lg border px-3 py-2 text-[13px]" data-locum-run-falha={detalhe.failedStep?.key ?? ""}>
           <StatusDot className="mt-1.5" estado="erro" />
@@ -452,6 +471,8 @@ function Execucao({ navegar, runId, passoAberto }: { navegar: TelaProps["navegar
           </li>
         ))}
       </ol>
+        </>
+      )}
     </div>
   );
 }
@@ -773,6 +794,11 @@ function PassoDaExecucao({
         {passo.origem === "avulso" ? (
           <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[11px] font-medium" data-locum-passo-avulso="">
             {t("runs.step.standalone")}
+          </span>
+        ) : null}
+        {passo.propostoPor === "conversa" ? (
+          <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[11px] font-medium" data-locum-proposta-pela-conversa="">
+            {t("runs.step.proposedByConversation")}
           </span>
         ) : null}
         <Estado rotulo={naoRodou ? t("runs.step.notRun") : undefined} status={passo.status} />

@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import type { ConversasDoRun } from "../agent-chat/conversa-do-run.js";
 import type { ConversasDeAgent } from "../agent-chat/conversas.js";
 import type { SessaoDoClaude } from "../services/claude-sessions-service.js";
 import { claudeSessionsService } from "../services/claude-sessions-service.js";
@@ -29,11 +30,14 @@ export interface Ambiente {
   templates: () => TemplateSource;
   /** O chat de cada agent da biblioteca. Só existe com o aplicativo; sem ele as ferramentas dizem isso. */
   agentChat: ConversasDeAgent | null;
+  /** A conversa de cada run (ADR 0009). Só existe com o aplicativo, como o chat de agent. */
+  runChat: ConversasDoRun | null;
   /** A etiqueta de idioma do sistema, que só o Electron sabe. */
   systemLocale: () => string;
   appVersion: () => string;
   /** A decisão da fila, pela gate do executor: a única porta de saída (ADR 0002). */
-  decidir: (approvalId: string, decision: "approved" | "rejected") => Promise<{ status: string }>;
+  /** `payloadHash` é a impressão do payload que quem decide viu; a gate a confere na tomada. */
+  decidir: (approvalId: string, decision: "approved" | "rejected", payloadHash?: string) => Promise<{ status: string }>;
   resolverEstancada: (approvalId: string, outcome: "published" | "retry") => Promise<{ status: string }>;
 }
 
@@ -69,8 +73,9 @@ export const ambientePadrao: Ambiente = {
   sessions: () => claudeSessionsService.list(),
   templates: () => (fonte ??= new TemplateSource({ pastaLocal: process.env.LOCUM_TEMPLATES_DIR ?? join(process.cwd(), "examples", "agents") })),
   agentChat: null,
+  runChat: null,
   systemLocale: () => Intl.DateTimeFormat().resolvedOptions().locale,
   appVersion: () => process.env.npm_package_version ?? "desconhecida",
-  decidir: async (id, decision) => (await (await import("../executor/build.js")).buildExecutor()).decide(id, decision),
+  decidir: async (id, decision, payloadHash) => (await (await import("../executor/build.js")).buildExecutor()).decide(id, decision, payloadHash),
   resolverEstancada: async (id, outcome) => (await (await import("../executor/build.js")).buildExecutor()).settleStuck(id, outcome),
 };

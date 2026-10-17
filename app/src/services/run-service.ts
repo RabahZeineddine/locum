@@ -3,7 +3,7 @@ import { and, asc, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
 import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 import { db as defaultDb, schema } from "../db/index.js";
 import { AutomacaoArquivada, recusarSeArquivada } from "../db/arquivada.js";
-import { AgentSpec, topoSort } from "../config/types.js";
+import { AgentSpec, propostoPorDe, topoSort, type PropostoPor } from "../config/types.js";
 import { rebaixadaPorInstrucao } from "../config/rebaixado.js";
 import { buildExecutor } from "../executor/build.js";
 import { NAO_RODOU } from "../executor/executor.js";
@@ -17,7 +17,10 @@ type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 export const LIMITE_DA_INSTRUCAO = 2000;
 
 export type RunRow = typeof schema.runs.$inferSelect;
-export type StepRow = typeof schema.steps.$inferSelect;
+type LinhaDoPasso = typeof schema.steps.$inferSelect;
+
+/** O passo como o run o mostra: a linha, mais quem propôs o passo avulso (nulo nos do fluxo). */
+export type StepRow = LinhaDoPasso & { propostoPor: PropostoPor | null };
 
 /** O minimo do executor que este servico usa, para poder trocar em teste. */
 export interface StepRunner {
@@ -299,12 +302,13 @@ export class RunService {
   }
 
   async steps(runId: string): Promise<StepRow[]> {
-    return this.db
+    const linhas = await this.db
       .select()
       .from(schema.steps)
       .where(eq(schema.steps.runId, runId))
       // Os avulsos vêm sempre depois dos passos do fluxo.
       .orderBy(sql`${schema.steps.origem} = 'avulso'`, asc(schema.steps.idx));
+    return linhas.map((l) => ({ ...l, propostoPor: propostoPorDe(l.input) }));
   }
 
   /**
@@ -410,6 +414,8 @@ export class RunService {
     // pendência nova para o que já saiu, e aprovar essa publicaria de novo.
     this.db.transaction(
       (tx) => {
+        // O arquivamento pode ter vindo depois da leitura acima: vale de novo dentro da transação.
+        recusarSeArquivada(tx, detail.agentId);
         const saindo = aprovacaoPublicando(tx, [...targets.map((s) => s.id), ...derivados]);
         if (saindo !== undefined) throw new Error(`run ${runId} esta publicando a aprovacao ${saindo}; espere terminar para reexecutar`);
         this.reset(tx, detail, targets);

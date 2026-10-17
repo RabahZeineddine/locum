@@ -4,8 +4,10 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Kbd } from "@/components/ui/kbd";
 import { StatusDot, type Estado as EstadoDoPonto } from "@/components/ui/status-dot";
-import { decidir, resolverParada } from "@/lib/aprovar";
-import { read, useRead, type ReadResult } from "@/lib/bridge";
+import { decidir, esquecerEdicao, resolverParada } from "@/lib/aprovar";
+import { invalidateReads, read, useRead, type ReadResult } from "@/lib/bridge";
+import { marcaDaAlteracao } from "@/lib/conversa-do-run";
+import { pedeRecarregar, traduzirErroDoServico } from "@/lib/erro-do-servico";
 import { rotuloDeSeveridade, rotuloDoMotivo, SEVERIDADES, type Severidade } from "@/lib/rotulos";
 import { cn } from "@/lib/utils";
 import { ChevronRight, Inbox as InboxIcon } from "lucide-react";
@@ -13,6 +15,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import type { TelaProps } from "../rotas";
+import { detalheDaConversa } from "@/lib/ensaio-do-run";
 import { Revisao } from "./revisao";
 
 type Pendencia = ReadResult<"approvals.listPending">[number];
@@ -108,6 +111,8 @@ function Fila({ navegar, aoMudarFila }: TelaProps & { aoMudarFila: () => void })
   const [foco, setFoco] = useState(0);
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [conflitos, setConflitos] = useState<Map<string, string | undefined>>(new Map());
+  // A decisão que o serviço recusou, já no idioma do app (a pendência mudou desde que a tela a mostrou, por exemplo).
+  const [recusas, setRecusas] = useState<Map<string, string>>(new Map());
   const listaRef = useRef<HTMLUListElement>(null);
   const [alvo, setAlvo] = useState<string | null>(null);
 
@@ -152,8 +157,14 @@ function Fila({ navegar, aoMudarFila }: TelaProps & { aoMudarFila: () => void })
   const resolver = useCallback(
     async (item: Item, decisao: "approved" | "rejected") => {
       setOcupado(item.pendencia.id);
+      setRecusas((atual) => {
+        if (!atual.has(item.pendencia.id)) return atual;
+        const novo = new Map(atual);
+        novo.delete(item.pendencia.id);
+        return novo;
+      });
       try {
-        const resultado = await decidir(item.pendencia.id, decisao);
+        const resultado = await decidir(item.pendencia.id, decisao, item.pendencia.payloadHash);
         if (resultado.status === "conflict") {
           // O alvo mudou por fora antes do clique: a pendencia ja fechou como
           // `conflict`, e o item continua na tela so para explicar o que
@@ -163,12 +174,25 @@ function Fila({ navegar, aoMudarFila }: TelaProps & { aoMudarFila: () => void })
         } else {
           setItens((atual) => atual?.filter((x) => x.pendencia.id !== item.pendencia.id) ?? null);
         }
+      } catch (e) {
+        const mensagem = e instanceof Error ? e.message : String(e);
+        setRecusas((atual) => new Map(atual).set(item.pendencia.id, mensagem));
       } finally {
         setOcupado(null);
       }
     },
     [],
   );
+
+  const recarregar = useCallback((id: string) => {
+    esquecerEdicao(id);
+    setRecusas((atual) => {
+      const novo = new Map(atual);
+      novo.delete(id);
+      return novo;
+    });
+    invalidateReads("approvals.listPending");
+  }, []);
 
   // Teclado antes do mouse: a fila e trabalho repetitivo, e tirar a mao do
   // teclado a cada item e o que faz uma inbox parecer longa.
@@ -255,6 +279,9 @@ function Fila({ navegar, aoMudarFila }: TelaProps & { aoMudarFila: () => void })
                 ocupada={ocupado === item.pendencia.id}
                 emConflito={conflitos.has(item.pendencia.id)}
                 motivoDoConflito={conflitos.get(item.pendencia.id)}
+                recusa={recusas.get(item.pendencia.id)}
+                aoRecarregar={() => recarregar(item.pendencia.id)}
+                aoConversar={() => navegar("runs", detalheDaConversa(item.pendencia.runId))}
                 aoFocar={() => setFoco(i)}
                 aoAlternar={() =>
                   setAberto((a) => (a === item.pendencia.id ? null : item.pendencia.id))
@@ -487,6 +514,10 @@ interface LinhaProps {
   emConflito: boolean;
   /** O código do motivo, quando a gate disse qual foi (commit novo no PR, por exemplo). */
   motivoDoConflito?: string | undefined;
+  /** A mensagem de erro com que o serviço recusou a última decisão, como veio. */
+  recusa?: string | undefined;
+  aoRecarregar: () => void;
+  aoConversar: () => void;
   aoFocar: () => void;
   aoAlternar: () => void;
   aoAprovar: () => void;
@@ -501,14 +532,18 @@ function Linha({
   ocupada,
   emConflito,
   motivoDoConflito,
+  recusa,
+  aoRecarregar,
+  aoConversar,
   aoFocar,
   aoAlternar,
   aoAprovar,
   aoDescartar,
   aoEditar,
 }: LinhaProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { pendencia, achados, severidade } = item;
+  const alteradaPelaConversa = marcaDaAlteracao(t, pendencia.alteradaPelaConversaEm, i18n.language);
   const { texto: quando, velho } = idade(t, pendencia.createdAt);
   const principal = achados[0];
   const alvo = alvoDaPendencia(pendencia, t);
@@ -553,6 +588,16 @@ function Linha({
           )}
 
           {alvo.origem && <p className="text-muted-foreground mt-0.5 text-xs">{alvo.origem}</p>}
+          {pendencia.propostoPor === "conversa" && (
+            <p className="text-muted-foreground mt-0.5 text-xs" data-locum-proposta-pela-conversa>
+              {t("inbox.propostaPelaConversa")}
+            </p>
+          )}
+          {alteradaPelaConversa !== null && (
+            <p className="text-muted-foreground mt-0.5 text-xs" data-locum-alterada-pela-conversa>
+              {alteradaPelaConversa}
+            </p>
+          )}
           {pendencia.trocaPorLimite !== null && (
             <p className="text-muted-foreground mt-0.5 text-xs" data-locum-troca-por-limite>
               {pendencia.trocaPorLimite}
@@ -570,12 +615,33 @@ function Linha({
             </p>
           )}
 
+          {recusa !== undefined && (
+            <p className="border-border bg-muted/40 mt-1.5 flex max-w-[72ch] flex-wrap items-center gap-1.5 rounded-md border px-2 py-1 text-xs" data-locum-decisao-recusada>
+              <StatusDot estado="erro" />
+              <span className="min-w-0 break-words">{traduzirErroDoServico(t, recusa)}</span>
+              {pedeRecarregar(recusa) && (
+                <Button className="h-6 cursor-pointer px-2" data-locum-recarregar-pendencia onClick={aoRecarregar} size="sm" variant="outline">
+                  {t("inbox.recarregarPendencia")}
+                </Button>
+              )}
+            </p>
+          )}
+
           {emConflito && (
             <p className="border-border bg-muted/40 mt-1.5 flex max-w-[72ch] items-center gap-1.5 rounded-md border px-2 py-1 text-xs">
               <StatusDot estado="aviso" />
               {motivoDoConflito === undefined ? t("inbox.conflict") : rotuloDoMotivo(t, motivoDoConflito)}
             </p>
           )}
+
+          <button
+            className="text-muted-foreground hover:text-foreground focus-visible:ring-ring mt-0.5 w-fit cursor-pointer rounded text-xs underline-offset-2 transition-colors hover:underline focus-visible:ring-2 focus-visible:outline-none"
+            data-locum-conversar-sobre-o-run
+            onClick={aoConversar}
+            type="button"
+          >
+            {t("inbox.conversarSobreORun")}
+          </button>
 
           {achados.length > 1 && (
             <button

@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { approvalService } from "../services/approval-service.js";
 import type { Ambiente } from "./ambiente.js";
-import { exigirImpressao, impressaoDe } from "./impressao.js";
+import { exigirImpressao, impressaoDe } from "../approval/impressao.js";
 import { def } from "./tool-def.js";
 
 /** O que o hash da aprovação cobre: o que vai sair e o estado dela. */
@@ -23,7 +23,7 @@ const semCommitAvaliado = (a: { payload: unknown }): { semCommitAvaliado: boolea
  */
 export function registerApprovalTools(server: McpServer, amb: Ambiente): void {
   def(server, "list_pending_approvals", "read",
-    "The approval queue: what waits for a decision, with the exact payload that would be published (semCommitAvaliado is true when a review has no evaluated commit and goes out without pinning it), the run, the step and the agent, and the hash decide_approval asks for. Credentials of the keychain and literal header values are hidden; the text comes as is.",
+    "The approval queue: what waits for a decision, with propostoPor (conversa when the run conversation proposed it, pessoa when a person did, null for a step of the flow),  the exact payload that would be published (semCommitAvaliado is true when a review has no evaluated commit and goes out without pinning it), the run, the step and the agent, and the hash decide_approval asks for. Credentials of the keychain and literal header values are hidden; the text comes as is.",
     {}, async () => (await approvalService.listPending()).map((a) => ({ ...a, ...semCommitAvaliado(a), hash: impressaoDaAprovacao(a) })));
 
   def(server, "list_stuck_approvals", "read",
@@ -31,7 +31,7 @@ export function registerApprovalTools(server: McpServer, amb: Ambiente): void {
     {}, () => approvalService.listStuck());
 
   def(server, "get_approval", "read",
-    "One approval of the queue, pending or already decided, with its payload and the hash decide_approval asks for. Credentials of the keychain and literal header values are hidden; the text comes as is.",
+    "One approval of the queue, pending or already decided, with propostoPor (conversa when the run conversation proposed it, pessoa when a person did, null for a step of the flow), its payload and the hash decide_approval asks for. Credentials of the keychain and literal header values are hidden; the text comes as is.",
     { approvalId: z.string().min(1) },
     async ({ approvalId }) => {
       const aprovacao = await approvalService.get(approvalId);
@@ -61,7 +61,8 @@ export function registerApprovalTools(server: McpServer, amb: Ambiente): void {
       const atual = await approvalService.get(approvalId);
       if (atual === undefined) throw new Error(`aprovacao ${approvalId} nao encontrada`);
       exigirImpressao(hash, impressaoDaAprovacao(atual), "a aprovação");
-      return { approvalId, decision, status: (await amb.decidir(approvalId, decision)).status };
+      // A gate confere de novo, na tomada, que o payload é o que acabou de ser conferido aqui.
+      return { approvalId, decision, status: (await amb.decidir(approvalId, decision, impressaoDe(atual.payload))).status };
     });
 
   def(server, "settle_stuck_approval", "danger",

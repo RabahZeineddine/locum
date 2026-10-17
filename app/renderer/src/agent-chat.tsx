@@ -8,216 +8,81 @@ import { StatusDot, type Estado } from "@/components/ui/status-dot";
 import { useRead } from "@/lib/bridge";
 import { chatDoAgent } from "@/lib/agent-chat";
 import { argumentosLegiveis } from "@/lib/argumentos-legiveis";
+import { useConversa, type Conversa } from "@/lib/use-conversa";
 import { cn } from "@/lib/utils";
 import { ArrowUp, Bot, Check, RotateCcw, Square, Wrench, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Streamdown } from "streamdown";
-import {
-  aplicarEvento,
-  chaveDoAgent,
-  type Cartao,
-  type ConexaoSemServidor,
-  type EventoDaConversa,
-  type FalaDoAgent,
-} from "../../src/agent-chat/tipos";
+import type { Cartao } from "../../src/agent-chat/tipos";
 
-/** De quanto em quanto tempo a tela relê a conversa que o outro processo grava. */
-const RELEITURA_MS = 3_000;
+/** Os textos que mudam de uma conversa para outra; já no idioma do app. */
+export interface TextosDoPainel {
+  titulo: string;
+  recomecar: string;
+  vazio: { titulo: string; corpo: string };
+  placeholder: string;
+  /** O campo de uma conversa com cartão à espera. */
+  placeholderPendente?: string;
+  nota: string;
+}
 
 /**
- * A conversa com um agent da biblioteca, na aba Conversar do editor.
- *
- * O estado mora no processo principal: a tela pede o retrato ao montar e depois
- * só escuta o fluxo, descartando o que o retrato já contém. Trocar de tela no
- * meio de uma resposta, ou com um cartão à espera, volta onde estava.
+ * O painel de uma conversa: as falas, o aviso de outro processo, o erro e o campo de envio.
+ * É o mesmo para o agent e para o run; quem muda é o cabeçalho, os avisos, o cartão e os textos.
  */
-export function ChatDoAgent({ id, modelo, versao, naoSalvo }: { id: string; modelo: string; versao: number; naoSalvo: boolean }) {
+export function PainelDeConversa({
+  conversa,
+  id,
+  cabecalho,
+  avisos,
+  cartao,
+  textos,
+  semEnvio = false,
+  classe,
+}: {
+  conversa: Conversa;
+  id: string;
+  cabecalho: ReactNode;
+  avisos?: ReactNode;
+  /** Como mostrar um cartão de escrita; só o chat do agent tem. */
+  cartao?: (cartao: Cartao, decidir: (d: "executar" | "recusar") => void, deOutroProcesso: boolean) => ReactNode;
+  textos: TextosDoPainel;
+  /** Não há com quem conversar: o campo fica desligado. */
+  semEnvio?: boolean;
+  classe?: string;
+}) {
   const { t } = useTranslation();
-  const [falas, setFalas] = useState<FalaDoAgent[]>([]);
-  const [respondendo, setRespondendo] = useState(false);
-  // Outro processo do Locum (o Claude Code, pelo --mcp) está com a conversa.
-  const [outro, setOutro] = useState(false);
-  const [resumido, setResumido] = useState(false);
-  const [semServidor, setSemServidor] = useState<ConexaoSemServidor[]>([]);
-  const [semSkill, setSemSkill] = useState<string[]>([]);
-  const [contaIgnorada, setContaIgnorada] = useState(0);
-  const [carregado, setCarregado] = useState(false);
+  const { falas, respondendo, outro, resumido, carregado, falha, aguardando } = conversa;
   const [rascunho, setRascunho] = useState("");
-  const [falha, setFalha] = useState<string | null>(null);
-  const conexoes = useRead("connections.list");
   const campo = useRef<HTMLTextAreaElement>(null);
-
-  useEffect(() => {
-    let vivo = true;
-    let seq: number | null = null;
-    const guardados: EventoDaConversa[] = [];
-    const aplicar = (evento: EventoDaConversa): void => {
-      if (evento.tipo === "resumido") setResumido(true);
-      if (evento.tipo === "fim") setRespondendo(false);
-      setFalas((atual) => {
-        const ultima = atual.at(-1);
-        if (ultima?.de !== "assistant") return atual;
-        return [...atual.slice(0, -1), aplicarEvento(ultima, evento)];
-      });
-    };
-    setCarregado(false);
-    setFalas([]);
-    setFalha(null);
-    const parar = chatDoAgent.assinar((evento) => {
-      if (evento.chave !== chaveDoAgent(id)) return;
-      // Antes do retrato chegar, guarda; depois, só vale o que veio depois dele.
-      if (seq === null) guardados.push(evento);
-      else if (evento.seq > seq) aplicar(evento);
-    });
-    chatDoAgent.estado(id).then(
-      (estado) => {
-        if (!vivo) return;
-        seq = estado.seq;
-        setFalas(estado.falas);
-        setRespondendo(estado.respondendo);
-        setOutro(estado.outroProcesso);
-        setResumido(estado.resumido);
-        setSemServidor(estado.semServidor);
-        setSemSkill(estado.semSkill);
-        setContaIgnorada(estado.contaIgnorada);
-        setCarregado(true);
-        for (const evento of guardados) if (evento.seq > estado.seq) aplicar(evento);
-      },
-      (erro: unknown) => {
-        if (vivo) setFalha(erro instanceof Error ? erro.message : String(erro));
-      },
-    );
-    return () => {
-      vivo = false;
-      parar();
-    };
-  }, [id]);
-
-  const aguardando = falas.some((f) => f.cartoes.some((c) => c.estado === "pendente"));
-
-  // O servidor MCP (outro processo) grava na mesma conversa: relê ao voltar para a janela e, com
-  // o chat aberto, a cada poucos segundos. Com o outro processo na vez ele continua lendo, para
-  // a tela voltar ao normal sozinha quando ele decide ou morre; só a volta daqui a dispensa.
-  useEffect(() => {
-    let vivo = true;
-    const recarregar = (): void => {
-      if (!outro && (respondendo || aguardando)) return;
-      chatDoAgent.estado(id).then(
-        (estado) => {
-          if (!vivo) return;
-          setFalas(estado.falas);
-          setRespondendo(estado.respondendo);
-          setOutro(estado.outroProcesso);
-        },
-        () => undefined,
-      );
-    };
-    window.addEventListener("focus", recarregar);
-    const timer = setInterval(recarregar, RELEITURA_MS);
-    return () => {
-      vivo = false;
-      window.removeEventListener("focus", recarregar);
-      clearInterval(timer);
-    };
-  }, [id, respondendo, aguardando, outro]);
-  // Nome da conexão pelo id dela, e pelo nome de cada servidor que ela tem: o cartão traz o servidor.
-  const nomes = new Map((conexoes.data ?? []).map((c) => [c.id, c.name]));
-  const nomesPorServidor = new Map((conexoes.data ?? []).flatMap((c) => c.servers.map((s) => [s, c.name] as const)));
-  // A marca é a da conexão que tem o servidor, e não a do nome com que ele foi cadastrado.
-  const marcasPorServidor = new Map((conexoes.data ?? []).flatMap((c) => c.servers.map((s) => [s, { name: c.id, url: c.url }] as const)));
 
   async function enviar(): Promise<void> {
     const texto = rascunho.trim();
-    if (texto === "" || respondendo || aguardando) return;
+    if (texto === "" || respondendo || aguardando || semEnvio) return;
     setRascunho("");
-    setRespondendo(true);
-    setFalha(null);
-    setFalas((a) => [...a, { de: "user", texto, ferramentas: [], cartoes: [] }, { de: "assistant", texto: "", ferramentas: [], cartoes: [] }]);
-    try {
-      await chatDoAgent.enviar(id, texto);
-    } catch (erro) {
-      // Recusada antes de a volta começar (o outro processo está com a conversa): a fala não existiu.
-      setFalas((a) => a.slice(0, -2));
-      setRascunho(texto);
-      setRespondendo(false);
-      setFalha(erro instanceof Error ? erro.message : String(erro));
-    }
-  }
-
-  async function tomar(): Promise<void> {
-    setFalha(null);
-    try {
-      await chatDoAgent.tomar(id);
-      const estado = await chatDoAgent.estado(id);
-      setFalas(estado.falas);
-      setRespondendo(estado.respondendo);
-      setOutro(estado.outroProcesso);
-    } catch (erro) {
-      setFalha(erro instanceof Error ? erro.message : String(erro));
-    }
-  }
-
-  async function decidir(cartao: Cartao, decisao: "executar" | "recusar"): Promise<void> {
-    setFalha(null);
-    try {
-      await chatDoAgent.decidir(id, cartao.id, decisao);
-    } catch (erro) {
-      setFalha(erro instanceof Error ? erro.message : String(erro));
-    }
-  }
-
-  async function recomecar(): Promise<void> {
-    await chatDoAgent.limpar(id);
-    setFalas([]);
-    setResumido(false);
-    setRespondendo(false);
+    if (!(await conversa.enviar(texto))) setRascunho(texto);
   }
 
   return (
-    <div className="flex h-[calc(100dvh-16rem)] min-h-[420px] flex-col rounded-lg border border-border bg-card" data-locum-agent-chat="">
+    <div className={cn("flex h-[calc(100dvh-16rem)] min-h-[420px] flex-col rounded-lg border border-border bg-card", classe)} data-locum-agent-chat="" data-locum-conversa={id}>
       <div className="flex min-h-10 items-center gap-2 border-b border-border px-3 py-1.5">
-        <Bot aria-hidden className="size-4 text-muted-foreground" />
-        <span className="text-[13px] font-medium">{t("agentChat.title")}</span>
-        <span className="truncate font-mono text-[11px] text-muted-foreground">{modelo}</span>
-        <Badge variant="secondary">{t("agentChat.version", { version: versao })}</Badge>
+        {cabecalho}
         {falas.length > 0 && !respondendo ? (
-          <Button className="ml-auto cursor-pointer" data-locum-agent-chat-limpar="" onClick={() => void recomecar()} size="xs" variant="ghost">
+          <Button className="ml-auto cursor-pointer" data-locum-agent-chat-limpar="" onClick={() => void conversa.recomecar()} size="xs" variant="ghost">
             <RotateCcw aria-hidden />
-            {t("agentChat.reset")}
+            {textos.recomecar}
           </Button>
         ) : null}
       </div>
 
-      {semServidor.length === 0 && semSkill.length === 0 && !naoSalvo && contaIgnorada === 0 ? null : (
-        <div className="flex flex-col gap-1 border-b border-border px-3 py-2 text-xs text-muted-foreground" data-locum-agent-chat-avisos="">
-          {semServidor.map((c) => (
-            <p className="flex items-start gap-1.5" key={c.connectionId}>
-              <StatusDot className="mt-[5px]" estado="aviso" />
-              {t("agentChat.noServer", { connection: nomes.get(c.connectionId) ?? c.connectionId, reason: c.motivo })}
-            </p>
-          ))}
-          {semSkill.map((nome) => (
-            <p className="flex items-start gap-1.5" data-locum-agent-chat-sem-skill={nome} key={nome}>
-              <StatusDot className="mt-[5px]" estado="aviso" />
-              {t("agentChat.noSkill", { name: nome })}
-            </p>
-          ))}
-          {contaIgnorada === 0 ? null : (
-            <p className="flex items-start gap-1.5" data-locum-agent-chat-conta="">
-              <StatusDot className="mt-[5px]" estado="aviso" />
-              {t("agentChat.accountIgnored", { count: contaIgnorada })}
-            </p>
-          )}
-          {naoSalvo ? <p>{t("agentChat.unsaved")}</p> : null}
-        </div>
-      )}
+      {avisos}
 
       <Conversation className="min-h-0 flex-1">
         <ConversationContent className={cn("flex min-h-full flex-col gap-3 p-3", falas.length === 0 && "justify-center")}>
           {falas.length === 0 && carregado ? (
             <ConversationEmptyState>
-              <EmptyState className="border-0" descricao={t("agentChat.empty.body")} icone={<Bot aria-hidden />} titulo={t("agentChat.empty.title")} />
+              <EmptyState className="border-0" descricao={textos.vazio.corpo} icone={<Bot aria-hidden />} titulo={textos.vazio.titulo} />
             </ConversationEmptyState>
           ) : null}
           {resumido ? (
@@ -227,7 +92,7 @@ export function ChatDoAgent({ id, modelo, versao, naoSalvo }: { id: string; mode
             <Message from={fala.de} key={i}>
               <MessageContent className="gap-1.5 text-[13px] group-[.is-user]:rounded-md group-[.is-user]:px-3 group-[.is-user]:py-2">
                 {fala.ferramentas.length > 0 ? (
-                  <p className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                  <p className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground" data-locum-agent-chat-ferramentas="">
                     <Wrench aria-hidden className="size-3" />
                     <span className="font-mono">{fala.ferramentas.map(nomeCurto).join(", ")}</span>
                   </p>
@@ -242,16 +107,7 @@ export function ChatDoAgent({ id, modelo, versao, naoSalvo }: { id: string; mode
                 ) : (
                   <p className="whitespace-pre-wrap text-[13px]">{fala.texto}</p>
                 )}
-                {fala.cartoes.map((cartao) => (
-                  <CartaoDeEscrita
-                    cartao={cartao}
-                    decidir={(d) => void decidir(cartao, d)}
-                    deOutroProcesso={outro}
-                    key={cartao.id}
-                    marca={marcasPorServidor.get(cartao.servidor) ?? { name: cartao.servidor }}
-                    nomeDaConexao={nomesPorServidor.get(cartao.servidor)}
-                  />
-                ))}
+                {cartao === undefined ? null : fala.cartoes.map((c) => <Fragment key={c.id}>{cartao(c, (d) => void conversa.decidir(c, d), outro)}</Fragment>)}
               </MessageContent>
             </Message>
           ))}
@@ -262,7 +118,7 @@ export function ChatDoAgent({ id, modelo, versao, naoSalvo }: { id: string; mode
         <div className="flex flex-wrap items-center gap-2 border-t border-border px-3 py-2 text-xs text-muted-foreground" data-locum-agent-chat-outro="">
           <StatusDot estado="aviso" />
           <span>{t("agentChat.otherProcessNotice")}</span>
-          <Button className="ml-auto cursor-pointer" data-locum-agent-chat-tomar="" onClick={() => void tomar()} size="xs" variant="outline">
+          <Button className="ml-auto cursor-pointer" data-locum-agent-chat-tomar="" onClick={() => void conversa.tomar()} size="xs" variant="outline">
             {t("agentChat.take")}
           </Button>
         </div>
@@ -276,9 +132,9 @@ export function ChatDoAgent({ id, modelo, versao, naoSalvo }: { id: string; mode
       <div className="border-t border-border p-3">
         <div className="flex items-end gap-2 rounded-lg border border-input bg-background px-3 py-2 transition-colors focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/40">
           <textarea
-            aria-label={t("agentChat.title")}
+            aria-label={textos.titulo}
             className="max-h-32 min-h-[20px] flex-1 resize-none bg-transparent text-[13px] outline-none placeholder:text-muted-foreground disabled:opacity-50"
-            disabled={!carregado || aguardando}
+            disabled={!carregado || aguardando || semEnvio}
             onChange={(e) => setRascunho(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
@@ -286,13 +142,13 @@ export function ChatDoAgent({ id, modelo, versao, naoSalvo }: { id: string; mode
                 void enviar();
               }
             }}
-            placeholder={t(aguardando ? "agentChat.placeholderPending" : "agentChat.placeholder")}
+            placeholder={aguardando && textos.placeholderPendente !== undefined ? textos.placeholderPendente : textos.placeholder}
             ref={campo}
             rows={1}
             value={rascunho}
           />
           {respondendo ? (
-            <Button className="cursor-pointer" data-locum-agent-chat-parar="" onClick={() => void chatDoAgent.cancelar(id)} size="icon-sm" variant="ghost">
+            <Button className="cursor-pointer" data-locum-agent-chat-parar="" onClick={conversa.cancelar} size="icon-sm" variant="ghost">
               <Square aria-hidden />
               <span className="sr-only">{t("assistant.stop")}</span>
             </Button>
@@ -300,7 +156,7 @@ export function ChatDoAgent({ id, modelo, versao, naoSalvo }: { id: string; mode
             <Button
               className="cursor-pointer"
               data-locum-agent-chat-enviar=""
-              disabled={!carregado || aguardando || rascunho.trim() === ""}
+              disabled={!carregado || aguardando || semEnvio || rascunho.trim() === ""}
               onClick={() => void enviar()}
               size="icon-sm"
               variant={rascunho.trim() === "" ? "ghost" : "default"}
@@ -310,9 +166,79 @@ export function ChatDoAgent({ id, modelo, versao, naoSalvo }: { id: string; mode
             </Button>
           )}
         </div>
-        <p className="mt-1.5 text-[11px] text-muted-foreground">{t("agentChat.note")}</p>
+        <p className="mt-1.5 text-[11px] text-muted-foreground">{textos.nota}</p>
       </div>
     </div>
+  );
+}
+
+/** A conversa com um agent da biblioteca, na aba Conversar do editor. */
+export function ChatDoAgent({ id, modelo, versao, naoSalvo }: { id: string; modelo: string; versao: number; naoSalvo: boolean }) {
+  const { t } = useTranslation();
+  const conversa = useConversa(chatDoAgent, id);
+  const { semServidor, semSkill, contaIgnorada } = conversa;
+  const conexoes = useRead("connections.list");
+  // Nome da conexão pelo id dela, e pelo nome de cada servidor que ela tem: o cartão traz o servidor.
+  const nomes = new Map((conexoes.data ?? []).map((c) => [c.id, c.name]));
+  const nomesPorServidor = new Map((conexoes.data ?? []).flatMap((c) => c.servers.map((s) => [s, c.name] as const)));
+  // A marca é a da conexão que tem o servidor, e não a do nome com que ele foi cadastrado.
+  const marcasPorServidor = new Map((conexoes.data ?? []).flatMap((c) => c.servers.map((s) => [s, { name: c.id, url: c.url }] as const)));
+
+  return (
+    <PainelDeConversa
+      avisos={
+        semServidor.length === 0 && semSkill.length === 0 && !naoSalvo && contaIgnorada === 0 ? null : (
+          <div className="flex flex-col gap-1 border-b border-border px-3 py-2 text-xs text-muted-foreground" data-locum-agent-chat-avisos="">
+            {semServidor.map((c) => (
+              <p className="flex items-start gap-1.5" key={c.connectionId}>
+                <StatusDot className="mt-[5px]" estado="aviso" />
+                {t("agentChat.noServer", { connection: nomes.get(c.connectionId) ?? c.connectionId, reason: c.motivo })}
+              </p>
+            ))}
+            {semSkill.map((nome) => (
+              <p className="flex items-start gap-1.5" data-locum-agent-chat-sem-skill={nome} key={nome}>
+                <StatusDot className="mt-[5px]" estado="aviso" />
+                {t("agentChat.noSkill", { name: nome })}
+              </p>
+            ))}
+            {contaIgnorada === 0 ? null : (
+              <p className="flex items-start gap-1.5" data-locum-agent-chat-conta="">
+                <StatusDot className="mt-[5px]" estado="aviso" />
+                {t("agentChat.accountIgnored", { count: contaIgnorada })}
+              </p>
+            )}
+            {naoSalvo ? <p>{t("agentChat.unsaved")}</p> : null}
+          </div>
+        )
+      }
+      cabecalho={
+        <>
+          <Bot aria-hidden className="size-4 text-muted-foreground" />
+          <span className="text-[13px] font-medium">{t("agentChat.title")}</span>
+          <span className="truncate font-mono text-[11px] text-muted-foreground">{modelo}</span>
+          <Badge variant="secondary">{t("agentChat.version", { version: versao })}</Badge>
+        </>
+      }
+      cartao={(c, decidir, deOutroProcesso) => (
+        <CartaoDeEscrita
+          cartao={c}
+          decidir={decidir}
+          deOutroProcesso={deOutroProcesso}
+          marca={marcasPorServidor.get(c.servidor) ?? { name: c.servidor }}
+          nomeDaConexao={nomesPorServidor.get(c.servidor)}
+        />
+      )}
+      conversa={conversa}
+      id={id}
+      textos={{
+        titulo: t("agentChat.title"),
+        recomecar: t("agentChat.reset"),
+        vazio: { titulo: t("agentChat.empty.title"), corpo: t("agentChat.empty.body") },
+        placeholder: t("agentChat.placeholder"),
+        placeholderPendente: t("agentChat.placeholderPending"),
+        nota: t("agentChat.note"),
+      }}
+    />
   );
 }
 

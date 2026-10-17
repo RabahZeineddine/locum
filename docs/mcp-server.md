@@ -275,6 +275,12 @@ guardar segredo, e não é recomendado.
 | `agent_chat_decide` | publish | `agentChat.decide` |
 | `agent_chat_cancel` | write | `agentChat.cancel` |
 | `agent_chat_reset` | danger | `agentChat.reset` |
+| `run_chat_state` | read | `runChat.state` |
+| `run_chat_send` | external | `runChat.send` |
+| `run_chat_cancel` | write | `runChat.cancel` |
+| `run_chat_take` | write | `runChat.take` |
+| `run_chat_reset` | danger | `runChat.reset` |
+| `run_chat_set_model` | write | `runChat.setModel` |
 | `list_registered_providers` | read | `providers.registered` |
 | `register_provider` | publish | `providers.register` |
 | `set_provider_enabled` | write | `providers.setEnabled` |
@@ -360,6 +366,16 @@ O chat de agent (`agent_chat_*`) só existe com o servidor subido pelo binário 
 Locum (`--mcp`), que entrega o processo do chat; pelo `npm run mcp` as
 ferramentas respondem dizendo isso.
 
+A conversa de um run que já rodou (`run_chat_*`, [ADR 0009](adr/0009-conversa-do-run.md))
+vale o mesmo para o processo do app. Ela é separada do chat de agent: não tem
+cartão nem `decide`, porque o que o modelo propõe vai para a Fila e se decide com
+`decide_approval`. O modelo da conversa age só por `ler_run`, `propor_acao` e
+`reexecutar_passo`. `run_chat_set_model` escolhe o agent ou o modelo; sem
+nenhum dos dois, vale o padrão (o agent do primeiro passo de modelo do run, ou
+o modelo dele). `run_chat_state` mostra o teto do contexto e o que ele cortou.
+`run_chat_take` assume a conversa quando o outro processo que a segura parou de responder, como `agent_chat_take`.
+Uma volta em andamento bloqueia arquivar e deletar a automação.
+
 ## Execução
 
 Nenhuma ferramenta de execução espera o pipeline terminar por padrão. Uma
@@ -380,6 +396,14 @@ pessoa ter dito que sai.
 `accept_mcp_origin` pede o de `get_mcp_links`). Se o texto, os achados ou os
 argumentos do cartão mudaram desde a leitura, nada é decidido: a confirmação do
 cliente fica amarrada ao que ele viu.
+
+Há dois nomes, e eles não são a mesma coisa. `hash` é o do MCP: cobre o tipo, o
+payload e o estado da pendência, e é o que `decide_approval` pede. `payloadHash`
+é a impressão só do payload, a mesma que a tela e a ponte (`approvals.decide`)
+mandam à gate. O `decide_approval` confere o `hash`, e depois repassa à gate o
+`payloadHash` do que acabou de conferir: a gate o confere de novo na própria
+tomada, na mesma transação que lê o payload que será publicado, então uma edição
+entre as duas conferências faz a decisão ser recusada e nada sai.
 
 ## Chat de agent com o app aberto
 
