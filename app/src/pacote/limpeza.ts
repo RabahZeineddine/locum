@@ -49,15 +49,29 @@ const PADROES_DE_SEGREDO: readonly [RegExp, string][] = [
   [/\bBearer\s+[A-Za-z0-9._~+/-]{16,}=*/gi, `Bearer ${SEGREDO}`],
 ];
 
-/** Identificadores, e-mail e caminho do home: dado pessoal, que não é credencial. */
-const PADROES_PESSOAIS: readonly [RegExp, string][] = [
+/** Quem é a pessoa ou onde ela conversa: chat do Teams, canal ou usuário do Slack e e-mail. */
+const PADROES_DE_IDENTIDADE: readonly [RegExp, string][] = [
   // Teams, explícitos: chat e canal (`@thread.v2`, `@thread.tacv2`), reunião e DM (`@unq.gbl.spaces`).
   [/\b19:[A-Za-z0-9_.=-]+@(?:thread\.[A-Za-z0-9]+|unq\.gbl\.spaces)/g, "[chat removido]"],
-  [/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, ID],
   // Slack: canal, grupo, DM, workspace e usuário (`<@U...>` também), com ao menos um dígito.
   [/\b[CGDWU](?=[A-Z0-9]*\d)[A-Z0-9]{8,}\b/g, ID],
   [/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g, "[e-mail removido]"],
 ];
+
+/** Identificadores, e-mail e caminho do home: dado pessoal, que não é credencial. */
+const PADROES_PESSOAIS: readonly [RegExp, string][] = [
+  PADROES_DE_IDENTIDADE[0]!,
+  [/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, ID],
+  ...PADROES_DE_IDENTIDADE.slice(1),
+];
+
+/**
+ * O que identifica a pessoa ou a conversa dentro de um texto que a limpeza deixa passar
+ * (o da skill): quem exporta precisa ver, por skill, para decidir antes de mandar o arquivo.
+ */
+export function identidadesNoTexto(texto: string): string[] {
+  return [...new Set(PADROES_DE_IDENTIDADE.flatMap(([padrao]) => texto.match(padrao) ?? []))];
+}
 
 /** O caminho do home de quem escreveu: o usuário aparece no caminho. */
 const CAMINHOS_DO_HOME: readonly [RegExp, string][] = [

@@ -33,7 +33,7 @@ import {
 import { configuracaoDoGatilho, omitidoDaPendencia, pendenciasDoPacote, type PendenciaDoPacote } from "../pacote/pendencias.js";
 import { idDoGatilhoNoOnde, ondeDoGatilho, type Pendencia } from "../config/pendencia.js";
 import { REBAIXADO_NA_IMPORTACAO, type Rebaixado } from "../config/rebaixado.js";
-import { limparSkill, limparValor } from "../pacote/limpeza.js";
+import { identidadesNoTexto, limparSkill, limparValor } from "../pacote/limpeza.js";
 import { MARCAS_DO_AGENT, MARCAS_DO_SPEC, MARCAS_DOS_GATILHOS } from "../pacote/marcacao.js";
 import { aplicarMarcas, ehMarcador, literaisQueViajam, origemDaUrl, paramsDoPacoteParaPasso, paramsParaPacote, type ParamsDoPacote } from "../pacote/params.js";
 import { ehLeitura, ehLeituraDa, type FerramentaClassificavel } from "../config/leitura.js";
@@ -428,7 +428,7 @@ export class PacoteService {
     };
 
     // O texto das skills tem a limpeza própria (só segredo e caminho do home), e o teto conta o texto depois dela.
-    const skills = await this.conteudoDasSkills(requisitos.skills.map((k) => k.nome), omitir);
+    const skills = await this.conteudoDasSkills(requisitos.skills.map((k) => k.nome), omitir, avisos);
     const limpo = limparValor(base, this.home);
     const pacote = Pacote.parse({ ...limpo.valor, skills });
     const limpos = limpo.removidos + dosTextos.limpos;
@@ -446,7 +446,11 @@ export class PacoteService {
    * Skill que existe aqui e não vai (nome inválido, sem descrição, grande demais, ilegível)
    * sai com omitido por nome, e a exportação nunca lança por causa dela.
    */
-  private async conteudoDasSkills(nomes: readonly string[], omitir: (c: CodigoOmitido, onde: string, q?: number, params?: string[], motivo?: string) => void): Promise<SkillDoPacote[]> {
+  private async conteudoDasSkills(
+    nomes: readonly string[],
+    omitir: (c: CodigoOmitido, onde: string, q?: number, params?: string[], motivo?: string) => void,
+    avisos: AvisoDeLiteral[],
+  ): Promise<SkillDoPacote[]> {
     if (this.ambiente.conteudoDaSkill === undefined) return [];
     const locais = new Set(await this.ambiente.skills());
     const lista: SkillDoPacote[] = [];
@@ -467,6 +471,10 @@ export class PacoteService {
       else if (descricao.texto.length > TETO_DA_DESCRICAO_DA_SKILL || Buffer.byteLength(corpo.texto) > TETO_DO_CORPO_DA_SKILL) nao("grande-demais");
       else {
         lista.push({ nome, descricao: descricao.texto, corpo: corpo.texto });
+        // E-mail, chat do Teams e canal do Slack ficam no texto da skill: viram aviso por skill, como o literal de argumento.
+        for (const [campo, texto] of [["descricao", descricao.texto], ["corpo", corpo.texto]] as const) {
+          for (const valor of identidadesNoTexto(texto)) avisos.push({ onde: `skill:${nome}`, campo, valor });
+        }
         // Qual skill mudou fica dito, por nome.
         if (descricao.removidos + corpo.removidos > 0) omitir("texto-limpo", `skill:${nome}`, descricao.removidos + corpo.removidos);
       }

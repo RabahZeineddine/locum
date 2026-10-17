@@ -38,7 +38,7 @@ const ambiente: AmbienteDoPacote = {
   servidores: async () => [],
   guardadas: async () => null,
   skills: async () => ["estilo"],
-  conteudoDaSkill: async () => ({ descricao: `Estilo de ${EMAIL}`, corpo: SUJO }),
+  conteudoDaSkill: async () => ({ descricao: `Estilo de ${EMAIL}`, corpo: `${SUJO}; chat ${CHAT}; canal ${CANAL}` }),
   provedores: async () => [{ provedor: "claude-code", disponivel: true, modelos: ["claude-sonnet-5"] }],
 };
 
@@ -74,11 +74,18 @@ test("o texto do pacote inteiro não traz segredo, e-mail, caminho de home nem i
   ] as never;
   await automations.save({ spec, triggers: gatilhos.map((config) => ({ config })), note: "", create: true });
 
-  const { texto: inteiro, pacote } = await pacotes.exportar("tudo-sujo");
+  const { texto: inteiro, pacote, avisos } = await pacotes.exportar("tudo-sujo");
   // O texto das skills tem a limpeza própria: credencial e home saem, e o e-mail de exemplo é conteúdo dela e fica.
   const dasSkills = JSON.stringify(pacote.skills);
-  for (const segredo of SEGREDOS.filter((x) => x !== EMAIL)) assert.ok(!dasSkills.includes(segredo), `vazou ${segredo.slice(0, 8)}... na skill`);
-  assert.ok(pacote.skills.length > 0 && dasSkills.includes(EMAIL), "o e-mail de exemplo da skill foi trocado");
+  // E-mail, id de chat e de canal são conteúdo dela e ficam, mas a exportação os põe nos avisos, por skill.
+  const ficam = [EMAIL, CHAT, CANAL];
+  for (const segredo of SEGREDOS.filter((x) => !ficam.includes(x))) assert.ok(!dasSkills.includes(segredo), `vazou ${segredo.slice(0, 8)}... na skill`);
+  assert.ok(pacote.skills.length > 0);
+  const avisosDaSkill = avisos.filter((a) => a.onde === "skill:estilo").map((a) => a.valor);
+  for (const f of ficam) {
+    assert.ok(dasSkills.includes(f), "a limpeza da skill trocou o que o aviso devia dizer");
+    assert.ok(avisosDaSkill.includes(f), `a skill leva ${f.slice(0, 8)}... e a exportação não avisou`);
+  }
   const texto = JSON.stringify({ ...pacote, skills: [] });
   assert.ok(inteiro.length > 0);
   for (const segredo of SEGREDOS) assert.ok(!texto.includes(segredo), `vazou ${segredo.slice(0, 8)}... em: ${texto.slice(Math.max(0, texto.indexOf(segredo) - 80), texto.indexOf(segredo) + 40).replace(/\s+/g, " ")}`);
