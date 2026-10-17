@@ -273,7 +273,7 @@ test("a prévia mostra o que será criado e cada dependência com o estado dela"
   assert.deepEqual(previa.agents.map((a) => [a.id, a.situacao]), [["revisor", "novo"]]);
   assert.deepEqual(previa.dependencias.find((d) => d.tipo === "skill"), { tipo: "skill", chave: "review-pr", nome: "review-pr", estado: "ok", usadoPor: ["agent:revisor"], atalho: null, candidatos: [] });
   assert.equal(previa.agents[0]!.modelo.disponivel, true);
-  assert.deepEqual(previa.gatilhos.find((g) => g.tipo === "slack-channel"), { tipo: "slack-channel", precisaCanal: true, precisaChats: false });
+  assert.deepEqual(previa.gatilhos.find((g) => g.tipo === "slack-channel"), { tipo: "slack-channel", precisaCanal: true, precisaChats: false, criado: false });
   assert.deepEqual(previa.acoesRebaixadas, ["avisar"]);
 
   const estado = (tipo: string, chave: string) => previa.dependencias.find((d) => d.tipo === tipo && d.chave === chave);

@@ -155,3 +155,41 @@ test("dois gatilhos do mesmo tipo têm pendências separadas: preencher um não 
   const sem = await outra.automations.save({ spec: salva.version.spec, triggers: [{ id: a!.id, config: { ...a!.config, owner: "empresa-c" } as TriggerConfigInput }], note: "tirei" });
   assert.equal(sem.version.spec.pendentes, undefined);
 });
+
+test("a prévia lista por nó e por gatilho o mesmo que a importação grava em pendentes", async () => {
+  const dono = maquina();
+  const spec = AgentSpec.parse({
+    id: "previa-pendencias",
+    name: "Prévia",
+    steps: [
+      { ...base, type: "action", key: "avisar", name: "Avisar", action: "teams.post", mode: "approve", params: { destino: { tipo: "fixo", conversa: { app: "teams", ref: `chat/${CHAT}`, rotulo: "Equipe" } } } },
+      { ...base, type: "action", key: "hook", name: "Hook", action: "http.request", mode: "approve", params: { url: "https://api.exemplo.com/x", method: "POST" } },
+    ],
+  });
+  await dono.automations.save({
+    spec,
+    triggers: [{ config: { kind: "poll", source: "github", owner: "empresa-ana", repoMatch: "a-.*", authorship: "others" } }, { config: { kind: "poll", source: "github", owner: "empresa-ana", repoMatch: "b-.*", authorship: "others" } }, { config: { kind: "slack-channel", channels: ["C0123ABCD45"], everyMinutes: 5 } }],
+    note: "",
+    create: true,
+  });
+  const { texto } = await dono.pacotes.exportar("previa-pendencias");
+
+  const outra = maquina();
+  const previa = await outra.pacotes.previa(texto);
+  const resumo: (string | boolean)[][] = previa.aPreencher.map((p) => [p.no.tipo === "passo" ? p.no.chave : `gatilho:${p.no.posicao}`, p.campo, p.motivo, p.criado]);
+  assert.deepEqual(resumo, [
+    ["avisar", "params.destino", "destino-a-escolher", true],
+    ["gatilho:0", "owner", "dono-do-github", true],
+    ["gatilho:1", "owner", "dono-do-github", true],
+    ["gatilho:2", "channels", "canais", false],
+    ["hook", "params.url", "url-a-preencher", true],
+  ]);
+  assert.deepEqual(previa.gatilhos.map((g) => g.criado), [true, true, false]);
+
+  await outra.pacotes.importar(texto);
+  const gravada = (await outra.automations.get("previa-pendencias"))!;
+  const idDe = (posicao: number): string => gravada.triggers[posicao]!.id;
+  const gravadas = (gravada.version.spec.pendentes ?? []).filter((p) => !p.onde.startsWith("gatilho:") || p.onde === `gatilho:${idDe(0)}` || p.onde === `gatilho:${idDe(1)}`);
+  assert.equal(gravadas.length, resumo.filter((r) => r[3] === true).length);
+  assert.equal(gravada.triggers.length, 2);
+});

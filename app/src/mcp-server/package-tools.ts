@@ -11,7 +11,7 @@ import { def } from "./tool-def.js";
  */
 export function registerPackageTools(server: McpServer): void {
   def(server, "preview_package", "read",
-    "Reads the text of a package (.locum.json) and says what importing it would do on this machine: automation id, each agent as new, same id (with the differences), same name or equal, dependencies that are ok, missing or need connecting, every tool the package turns on with its class (write tools of a connection are highlighted), models and what is left to choose. Each omitted param is listed by name in omitidos (argumentos, destino-a-escolher, url-a-preencher, with params). Writes nothing.",
+    "Reads the text of a package (.locum.json) and says what importing it would do on this machine: automation id, each agent as new, same id (with the differences), same name or equal, dependencies that are ok, missing or need connecting, every tool the package turns on with its class (write tools of a connection are highlighted), models and what is left to choose. Each omitted param is listed by name in omitidos (argumentos, destino-a-escolher, url-a-preencher, with params), and aPreencher lists per step and per trigger (by position) the fields left to fill, the same ones the import writes as pending; gatilhos[].criado is false for a trigger that is not created until a channel is chosen. Writes nothing.",
     { text: z.string().min(1).describe("the content of the package file") },
     ({ text }) => pacoteService.previa(text));
 
