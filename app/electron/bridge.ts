@@ -41,6 +41,7 @@ import { metricsService } from "../src/services/metrics-service.js";
 import { priceService } from "../src/services/price-service.js";
 import { promptService } from "../src/services/prompt-service.js";
 import { providerService } from "../src/services/provider-service.js";
+import { passoAvulsoService } from "../src/services/passo-avulso-service.js";
 import { runService } from "../src/services/run-service.js";
 import { sessionService } from "../src/services/session-service.js";
 import { claudeSessionsService } from "../src/services/claude-sessions-service.js";
@@ -206,6 +207,7 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "runs.findings": (runId) => runService.findings(runId),
     "runs.findingsByRun": (runIds) => runService.findingsByRun(runIds),
     "runs.rerunStep": (runId, stepKey, options) => runService.rerunStep(runId, stepKey, options),
+    "runs.proporAcao": (runId, proposta) => passoAvulsoService.proporAcao(runId, proposta),
     "runs.start": (input) => executionService.start(input),
 
     "automations.get": (agentId) => automationService.get(agentId),

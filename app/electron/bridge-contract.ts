@@ -29,6 +29,7 @@ import type { ClaudeAccountService } from "../src/runtimes/claude-account.js";
 import type { PriceService } from "../src/services/price-service.js";
 import type { PromptService } from "../src/services/prompt-service.js";
 import type { ProviderService } from "../src/services/provider-service.js";
+import type { PassoAvulsoService } from "../src/services/passo-avulso-service.js";
 import type { RunService } from "../src/services/run-service.js";
 import type { SlackService } from "../src/services/slack-service.js";
 import type { SlackChannelList } from "../src/slack/channels.js";
@@ -98,7 +99,7 @@ interface ServiceApi {
    */
   "agents.saveEdited": AgentService["saveEdited"];
   /** Os modos que cada ação aceita, perguntados ao handler. Só leitura. */
-  "actions.describe": () => { kind: string; modes: readonly ("approve" | "draft" | "auto")[]; holdsByContent: boolean; outputSchema: EsquemaJson }[];
+  "actions.describe": () => { kind: string; modes: readonly ("approve" | "draft" | "auto")[]; holdsByContent: boolean; outputSchema: EsquemaJson; inputSchema?: EsquemaJson }[];
   "agents.duplicate": AgentService["duplicate"];
   /**
    * Importar e exportar pelo seletor de arquivo do sistema. Importar grava
@@ -202,6 +203,8 @@ interface ServiceApi {
   /** Os achados de várias execuções numa ida só, que é o que a inbox precisa. */
   "runs.findingsByRun": RunService["findingsByRun"];
   "runs.rerunStep": RunService["rerunStep"];
+  /** Propor uma ação nova sobre um run que já rodou (passo avulso, sempre na Fila). */
+  "runs.proporAcao": PassoAvulsoService["proporAcao"];
   /** Rodar um agent num pull request escolhido na tela, sem linha de comando. */
   "runs.start": ExecutionService["start"];
 
@@ -681,6 +684,7 @@ export const BRIDGE_CHANNELS = [
   "runs.findings",
   "runs.findingsByRun",
   "runs.rerunStep",
+  "runs.proporAcao",
   "runs.start",
   "approvals.listPending",
   "approvals.listStuck",

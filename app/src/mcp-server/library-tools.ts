@@ -36,7 +36,7 @@ export function registerLibraryTools(server: McpServer): void {
     "describe_steps",
     {
       description:
-        "Catalog of what an automation (AgentSpec) can contain: step types, logic operations, comparisons, action kinds with the modes each accepts, and the template markers. Read this before writing steps with upsert_agent.",
+        "Catalog of what an automation (AgentSpec) can contain: step types, logic operations, comparisons, action kinds with the modes each accepts (and, for the ones that can be proposed by hand on a finished run, the inputSchema of their content, used by propose_run_action), and the template markers. Read this before writing steps with upsert_agent.",
       inputSchema: {},
     },
     async () => respond(async () => catalogo()),

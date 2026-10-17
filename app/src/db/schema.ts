@@ -179,6 +179,8 @@ export const steps = sqliteTable(
     idx: integer("idx").notNull(),
     stepKey: text("step_key").notNull(),
     name: text("name").notNull(),
+    /** `fluxo`: veio do spec da automação. `avulso`: proposto depois, sobre um run que já rodou (ADR 0007). */
+    origem: text("origem").notNull().default("fluxo"),
     status: text("status").notNull().default("pending"),
     attempt: integer("attempt").notNull().default(0),
     modelRequested: text("model_requested"),

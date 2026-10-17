@@ -82,6 +82,13 @@ em Hoje e some quando lida. Nunca entra na Fila.
 **Execução**: uma passada de uma automação, do gatilho ao fim, com passos,
 custo e resultado.
 
+**Passo avulso**: ação proposta depois, sobre uma execução que já rodou, e não
+desenhada no fluxo. Nasce com origem `avulso`, sempre em aprovação, e aparece na
+execução depois dos passos do fluxo. O conteúdo vem do `inputSchema` do handler;
+o alvo (PR, conversa) vem do evento da execução. Decidir fecha só ele: a execução
+não retoma. Reexecutar o passo de que ele deriva expira a pendência. Exceção
+nomeada do ADR 0007 à regra 1 do ADR 0006.
+
 **Descarte**: o que um gatilho viu e deixou de fora, com o motivo.
 
 **Iniciativa**: objetivo que agrupa contexto, automações, agents, sessões e o

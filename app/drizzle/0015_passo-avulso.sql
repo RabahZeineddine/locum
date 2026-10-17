@@ -1,0 +1,1 @@
+ALTER TABLE `steps` ADD `origem` text DEFAULT 'fluxo' NOT NULL;

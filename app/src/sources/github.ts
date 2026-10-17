@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
 import { FONTE_ULTIMA_CHAVE_GITHUB, gravarCursorDoGatilho } from "../triggers/estado-do-gatilho.js";
 import { PublishConflict, type ActionHandler } from "../approval/gate.js";
+import type { EsquemaJson } from "../config/referencias.js";
 import type { Authorship, PollFilters, ReviewFinding, ReviewVerdict } from "../config/types.js";
 import type { EventPayload } from "../executor/executor.js";
 import { GITHUB_TOKEN_ENV, githubService, githubToken, invalidarTokenDoGh } from "../services/github-service.js";
@@ -685,6 +686,34 @@ function renderBody(findings: Finding[], summary?: string): string {
   return `${prefixo}${corpo}\n\n${LOCUM_MARKER}`;
 }
 
+/** O conteúdo de uma review proposta à mão: veredito, resumo e achados. Dono, repositório, pull e commit vêm do evento. */
+export const ENTRADA_DA_REVIEW: EsquemaJson = {
+  type: "object",
+  properties: {
+    verdict: { type: "string", enum: ["APPROVE", "COMMENT", "REQUEST_CHANGES"], description: "The review event." },
+    summary: { type: "string", description: "The review body. Empty publishes only the invisible marks." },
+    findings: {
+      type: "array",
+      description: "Findings with a file and line become inline comments. Empty by default.",
+      default: [],
+      items: {
+        type: "object",
+        properties: {
+          file: { type: "string", description: "Path of the file the finding is about." },
+          line: { type: "integer", minimum: 1, description: "Line in that file." },
+          severity: { type: "string", enum: ["critical", "high", "medium", "low"] },
+          problem: { type: "string", description: "What is wrong." },
+          fix: { type: "string", description: "How to fix it." },
+        },
+        required: ["severity", "problem"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["verdict"],
+  additionalProperties: false,
+};
+
 /**
  * Handler da acao de review.
  *
@@ -725,6 +754,7 @@ export function githubReviewHandler(client: () => ReviewClient = octokit): Actio
   return {
     // O PR de destino é desta máquina (dono, repositório e número); o marcador do evento viaja.
     paramsDoPacote: { owner: "local", repo: "local", pull: "local" },
+    inputSchema: ENTRADA_DA_REVIEW,
     // O commit avaliado é o do evento, nunca o que o modelo escreveu.
     camposDoEvento: ["headSha"],
     // Aprovar ou pedir mudança no pull request de outra pessoa é decisão
@@ -755,6 +785,11 @@ export function githubReviewHandler(client: () => ReviewClient = octokit): Actio
       // Aprovar depois de commits novos aprovaria código que ninguém revisou.
       if (p.headSha) {
         const { data } = await client().rest.pulls.get({ owner: p.owner, repo: p.repo, pull_number: p.pull });
+        // Pull request fechado ou mergeado não recebe review: nada sai.
+        if (data.state === "closed" || data.merged === true) {
+          const motivo = "publish_conflict:pr_fechado";
+          throw new PublishConflict(motivo, motivo);
+        }
         if (data.head.sha !== p.headSha) {
           // O texto é o código do motivo: a tela e o erro do passo o traduzem.
           const motivo = `publish_conflict:head_mudou:${p.headSha}:${data.head.sha}`;
