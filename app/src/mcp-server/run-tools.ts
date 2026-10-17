@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { executionService } from "../services/execution-service.js";
+import { passoAvulsoService } from "../services/passo-avulso-service.js";
 import { runService } from "../services/run-service.js";
 import { respond } from "./respond.js";
 import { def } from "./tool-def.js";
@@ -65,4 +66,14 @@ export function registerRunTools(server: McpServer): void {
         status: await runService.rerunStep(runId, stepKey, { wait: wait ?? false }),
       })),
   );
+
+  def(server, "propose_run_action", "write",
+    "Proposes a new action on a run that already ran (a standalone step). It only creates a pending approval in the queue; a person approves it there, and nothing is published here. The content must follow the inputSchema that describe_steps gives for the action kind (only kinds with an inputSchema are accepted). The target (repository, pull request, conversation) always comes from the run's event and cannot be set in the content. Refused while the run is queued or running, for an archived automation and for a dry run. Approving it runs only this step and does not resume the run.",
+    {
+      runId: z.string().min(1),
+      kind: z.string().min(1).describe("action kind, as listed by describe_steps"),
+      conteudo: z.record(z.string(), z.unknown()).describe("the action content, validated by the inputSchema of the kind"),
+      derivaDe: z.string().optional().describe("key of the flow step this action derives from; re-running that step expires the pending approval"),
+    },
+    ({ runId, kind, conteudo, derivaDe }) => passoAvulsoService.proporAcao(runId, { kind, conteudo, derivaDe }));
 }

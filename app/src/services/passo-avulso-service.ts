@@ -118,3 +118,5 @@ function validarConteudo(kind: string, esquema: object, conteudo: unknown): Reco
   }
   return lido.data as Record<string, unknown>;
 }
+
+export const passoAvulsoService = new PassoAvulsoService();

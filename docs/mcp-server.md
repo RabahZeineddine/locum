@@ -150,6 +150,7 @@ guardar segredo, e não é recomendado.
 | `list_findings_by_run` | read | `runs.findingsByRun` |
 | `run_agent` | publish | `runs.start` |
 | `rerun_step` | publish | `runs.rerunStep` |
+| `propose_run_action` | write | `runs.proporAcao` |
 | `list_initiatives` | read | `initiatives.list` |
 | `get_initiative` | read | `initiatives.detail` |
 | `read_initiative_context` | read | `initiatives.context` |
