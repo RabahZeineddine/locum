@@ -314,7 +314,7 @@ export class ApprovalGate {
         .run();
       if (tomada.changes !== 1) throw new Error(`aprovacao ${approvalId} ja esta sendo resolvida`);
       return atual;
-    });
+    }, { behavior: "immediate" });
   }
 
   /**
