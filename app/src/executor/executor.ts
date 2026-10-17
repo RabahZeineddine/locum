@@ -124,8 +124,9 @@ export class Executor {
     approvalId: string,
     decision: "approved" | "rejected",
   ): Promise<{ status: "approved" | "rejected" | "conflict"; run: "done" | "paused" | "failed"; motivo?: string }> {
+    const avulso = await this.ehAvulso(approvalId);
     const { runId, status, motivo } = await this.deps.gate.decide(approvalId, decision);
-    const run = await this.execute(runId);
+    const run = avulso ? await this.estadoDoRun(runId) : await this.execute(runId);
     return { status, run, ...(motivo === undefined ? {} : { motivo }) };
   }
 
@@ -137,9 +138,29 @@ export class Executor {
     approvalId: string,
     outcome: "published" | "retry",
   ): Promise<{ status: "approved" | "pending"; run: "done" | "paused" | "failed" }> {
+    const avulso = await this.ehAvulso(approvalId);
     const { runId, status } = await this.deps.gate.settleStuck(approvalId, outcome);
     if (status === "pending") return { status, run: "paused" };
-    return { status, run: await this.execute(runId) };
+    return { status, run: avulso ? await this.estadoDoRun(runId) : await this.execute(runId) };
+  }
+
+  /**
+   * A pendência é de um passo avulso (`steps.origem`): decidir fecha só ele. O
+   * run já terminou ou está esperando outra coisa, e retomá-lo executaria o que
+   * ele deixou para trás.
+   */
+  private async ehAvulso(approvalId: string): Promise<boolean> {
+    const [linha] = await db
+      .select({ origem: schema.steps.origem })
+      .from(schema.approvals)
+      .innerJoin(schema.steps, eq(schema.approvals.stepId, schema.steps.id))
+      .where(eq(schema.approvals.id, approvalId));
+    return linha?.origem === "avulso";
+  }
+
+  private async estadoDoRun(runId: string): Promise<"done" | "paused" | "failed"> {
+    const [run] = await db.select({ status: schema.runs.status }).from(schema.runs).where(eq(schema.runs.id, runId));
+    return resultadoDoRunParado(run?.status ?? "failed");
   }
 
   /**
@@ -962,7 +983,7 @@ export class Executor {
  * modelo, inclusive ausentes: o modelo leu o diff e não escolhe o que o
  * evento diz. Saída que não é objeto passa como veio.
  */
-function aplicarCamposDoEvento(saida: unknown, doEvento: Record<string, unknown>): unknown {
+export function aplicarCamposDoEvento(saida: unknown, doEvento: Record<string, unknown>): unknown {
   if (Object.keys(doEvento).length === 0) return saida;
   return { ...(saida !== null && typeof saida === "object" ? (saida as object) : {}), ...doEvento };
 }

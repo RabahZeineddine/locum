@@ -377,6 +377,11 @@ export class RunService {
       throw new Error(`run ${runId} ainda esta em andamento; espere terminar para reexecutar`);
     }
 
+    // O avulso nasceu de uma proposta, não do spec: não há o que rodar de novo. Pede-se uma ação nova.
+    if (detail.steps.some((s) => s.stepKey === stepKey && s.origem === "avulso")) {
+      throw new Error(`"${stepKey}" e um passo avulso e nao e reexecutado; proponha uma acao nova`);
+    }
+
     const affected = dependents(detail.spec, stepKey);
     const targets = detail.steps.filter((s) => affected.has(s.stepKey));
 
@@ -401,6 +406,7 @@ export class RunService {
       }
     }
     await this.reset(detail, targets);
+    await this.expirarAvulsosDerivados(runId, affected);
 
     const runner = await this.makeRunner();
     if (options.wait === false) {
@@ -408,6 +414,25 @@ export class RunService {
       return "queued";
     }
     return runner.execute(runId, { manual: true });
+  }
+
+  /**
+   * O avulso que deriva de um passo reexecutado parte do resultado antigo: a
+   * pendência dele não pode ser aprovada sobre o que o run descartou.
+   */
+  private async expirarAvulsosDerivados(runId: string, reexecutados: ReadonlySet<string>): Promise<void> {
+    const avulsos = await this.db
+      .select()
+      .from(schema.steps)
+      .where(and(eq(schema.steps.runId, runId), eq(schema.steps.origem, "avulso"), eq(schema.steps.status, "awaiting_approval")));
+    const ids = avulsos.filter((s) => reexecutados.has((s.input as { derivaDe?: string | null } | null)?.derivaDe ?? "")).map((s) => s.id);
+    if (ids.length === 0) return;
+    const agora = Math.floor(Date.now() / 1000);
+    await this.db
+      .update(schema.approvals)
+      .set({ status: "expired", decidedAt: agora })
+      .where(and(inArray(schema.approvals.stepId, ids), eq(schema.approvals.status, "pending")));
+    await this.db.update(schema.steps).set({ status: "skipped", error: "expired", endedAt: agora }).where(inArray(schema.steps.id, ids));
   }
 
   private async reset(run: RunRow & { spec: AgentSpec }, targets: StepRow[]): Promise<void> {

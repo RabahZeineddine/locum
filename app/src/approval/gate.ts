@@ -76,6 +76,13 @@ export type ActionHandler = {
    */
   outputSchema?: EsquemaJson;
   /**
+   * O que o conteúdo da ação aceita (JSON Schema), para propor um passo avulso:
+   * a tela monta o formulário e o MCP valida por ele. Só o conteúdo, nunca o
+   * alvo (dono, repositório, pull, conversa), que vem do evento do run.
+   * Ausente, a ação não é oferecida como avulsa.
+   */
+  inputSchema?: EsquemaJson;
+  /**
    * Campos do payload que só o evento do run pode dizer: o executor os põe por
    * cima da saída do modelo, e ausentes no evento ficam ausentes. A review do
    * GitHub declara `headSha`: o commit avaliado não é escolha do modelo.
@@ -153,12 +160,28 @@ export class ApprovalGate {
     return this.handlers.get(kind)?.camposDoEvento ?? [];
   }
 
-  describe(): { kind: string; modes: readonly ActionMode[]; holdsByContent: boolean; outputSchema: EsquemaJson; paramsDoPacote?: ParamsDoPacote }[] {
+  /** Se a ação tem handler, e o esquema do conteúdo que ela aceita como avulsa, quando declarou. */
+  existe(kind: string): boolean {
+    return this.handlers.has(kind);
+  }
+
+  inputSchema(kind: string): EsquemaJson | undefined {
+    return this.handlers.get(kind)?.inputSchema;
+  }
+
+  /** O modo é aceito pela ação (ver `ActionHandler.modes`). */
+  aceitaModo(kind: string, mode: ActionMode): boolean {
+    const modes = this.handlers.get(kind)?.modes;
+    return modes === undefined || modes.includes(mode);
+  }
+
+  describe(): { kind: string; modes: readonly ActionMode[]; holdsByContent: boolean; outputSchema: EsquemaJson; inputSchema?: EsquemaJson; paramsDoPacote?: ParamsDoPacote }[] {
     return [...this.handlers.entries()].map(([kind, handler]) => ({
       kind,
       modes: handler.modes ?? (["approve", "draft", "auto"] as const),
       holdsByContent: typeof handler.holdForApproval === "function",
       outputSchema: handler.outputSchema ?? SAIDA_PADRAO_DA_ACAO,
+      ...(handler.inputSchema === undefined ? {} : { inputSchema: handler.inputSchema }),
       ...(handler.paramsDoPacote === undefined ? {} : { paramsDoPacote: handler.paramsDoPacote }),
     }));
   }
