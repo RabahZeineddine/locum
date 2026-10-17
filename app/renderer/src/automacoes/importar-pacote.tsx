@@ -233,6 +233,30 @@ export function ImportarPacote({
             </div>
           ) : null}
 
+          {previa.skills.length > 0 ? (
+            <div className="flex flex-col gap-1" data-locum-pacote-skills="">
+              <span className="text-muted-foreground text-xs">{t("pacote.import.skills")}</span>
+              <ul className="flex flex-col gap-1 text-xs">
+                {previa.skills.map((k) => (
+                  <li className="flex flex-col gap-0.5" data-locum-pacote-skill={`${k.nome}:${k.situacao}`} key={k.nome}>
+                    <span className="flex items-center gap-2">
+                      <StatusDot estado={k.situacao === "ausente" || k.situacao === "conflito" ? "aviso" : "ok"} />
+                      <span className="flex-1 truncate font-mono">{k.nome}</span>
+                      <Badge variant="outline">{t(`pacote.import.skillState.${k.situacao}`)}</Badge>
+                    </span>
+                    {k.diferenca === undefined ? null : (
+                      <details className="text-muted-foreground pl-5">
+                        <summary className="cursor-pointer">{t("pacote.import.skillDiff")}</summary>
+                        <span className="whitespace-pre-wrap break-words font-mono">{t("pacote.import.diffHere")}: {k.diferenca.descricaoDaqui}{"\n"}{k.diferenca.daqui}</span>
+                        <span className="whitespace-pre-wrap break-words font-mono">{t("pacote.import.diffPackage")}: {k.diferenca.descricaoDoPacote}{"\n"}{k.diferenca.pacote}</span>
+                      </details>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
           <div className="flex flex-col gap-1" data-locum-pacote-nos="">
             <span className="text-muted-foreground text-xs">{t("pacote.import.fill.title")}</span>
             <ul className="flex flex-col gap-1 text-xs">

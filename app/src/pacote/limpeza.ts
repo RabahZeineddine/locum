@@ -106,7 +106,7 @@ export function limparTexto(texto: string, home: string = homedir()): Limpeza {
  * servidor, ferramenta) é estrutura: mexer nele quebraria o fluxo, e o formato
  * já não carrega nada sensível nele.
  */
-const TEXTO_LIVRE = new Set(["prompt", "instructions", "context", "description", "input", "value", "against", "title", "path", "cases", "name", "repoMatch", "labels", "pergunta"]);
+const TEXTO_LIVRE = new Set(["prompt", "instructions", "context", "description", "input", "value", "against", "title", "path", "cases", "name", "repoMatch", "labels", "pergunta", "corpo", "descricao"]);
 
 /** Limpa as strings dos campos de texto livre, em profundidade, sem mexer no resto. */
 export function limparValor<T>(valor: T, home?: string): { valor: T; removidos: number } {

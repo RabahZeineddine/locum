@@ -2648,7 +2648,8 @@
         "generic": "Fill in the field {{campo}}, which the package left out.",
         "dismiss": "Dismiss",
         "dismissHint": "Keep the field as it is and remove the warning",
-        "enableBlocked": "Incomplete trigger: fill in or dismiss what is missing before turning it on."
+        "enableBlocked": "Incomplete trigger: fill in or dismiss what is missing before turning it on.",
+        "skill-ausente": "This skill is not in the package and does not exist here ({{campo}}): install it or dismiss the notice."
       }
     },
     "github": {
@@ -3249,8 +3250,18 @@
           "filtros-de-pessoa": "pick the people filters; without them it covers everyone",
           "dono-do-github": "pick the GitHub owner; without it it covers everyone",
           "gatilho-sem-canal": "pick the channel",
-          "generic": "fill in the field"
+          "generic": "fill in the field",
+          "skill-ausente": "install the skill or dismiss the notice"
         }
+      },
+      "skills": "Skills",
+      "skillDiff": "The local one stays; see the difference",
+      "skillState": {
+        "nova": "will be created",
+        "igual": "same as the local one",
+        "conflito": "exists and differs: the local one stays",
+        "existente": "already here",
+        "ausente": "not in the package"
       }
     }
   },

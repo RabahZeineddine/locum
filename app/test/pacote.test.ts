@@ -586,7 +586,7 @@ test("arquivo que não é pacote dá erro claro, sem quebrar", async () => {
   await recusa("isto não é json", /JSON válido/);
   await recusa("[]", /não é um pacote/);
   await recusa(JSON.stringify({ nome: "outro formato" }), /não é um pacote/);
-  await recusa(JSON.stringify({ formato: NOME_DO_FORMATO, versao: 2 }), /versão 2 do formato.*lê a 1.*Atualize/);
+  await recusa(JSON.stringify({ formato: NOME_DO_FORMATO, versao: 99 }), /versão 99 do formato.*lê a 2.*Atualize/);
   await recusa(JSON.stringify({ formato: NOME_DO_FORMATO, versao: "1" }), /versão 1 do formato/);
   await recusa("x".repeat(3 * 1024 * 1024), /grande demais/);
 });

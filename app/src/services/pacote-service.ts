@@ -20,6 +20,9 @@ import {
   VERSAO_DO_FORMATO,
   EXTENSAO_DO_PACOTE,
   lerPacote,
+  NOME_DE_SKILL,
+  TETO_DO_CORPO_DA_SKILL,
+  type SkillDoPacote,
   ondeDoGatilhoNoPacote,
   type AgentDoPacote,
   type CodigoOmitido,
@@ -61,6 +64,10 @@ export interface AmbienteDoPacote {
   acoes?(): Promise<Record<string, ParamsDoPacote>>;
   /** Nomes das skills que esta máquina tem. */
   skills(): Promise<string[]>;
+  /** A descrição e o corpo de uma skill daqui, ou nulo se não existe. Sem isto o pacote não leva o conteúdo. */
+  conteudoDaSkill?(nome: string): Promise<{ descricao: string; corpo: string } | null>;
+  /** Cria a skill no Locum, com o nome pedido. Sem isto a importação não cria skills. */
+  criarSkill?(skill: { nome: string; descricao: string; corpo: string }): Promise<void>;
 }
 
 const ambientePadrao: AmbienteDoPacote = {
@@ -76,6 +83,19 @@ const ambientePadrao: AmbienteDoPacote = {
   skills: async () => {
     const { discoverSkills } = await import("../skills/loader.js");
     return [...discoverSkills().keys()];
+  },
+  conteudoDaSkill: async (nome) => {
+    const { skillsService } = await import("./skills-service.js");
+    try {
+      const skill = await skillsService.obter(nome);
+      return { descricao: skill.description, corpo: skill.corpo };
+    } catch {
+      return null;
+    }
+  },
+  criarSkill: async ({ nome, descricao, corpo }) => {
+    const { skillsService } = await import("./skills-service.js");
+    await skillsService.criar({ name: nome, description: descricao, body: corpo });
   },
   conexoes: async () => {
     const { connectionService } = await import("./connection-service.js");
@@ -195,12 +215,21 @@ export interface PreviaDoPacote {
   gatilhos: { tipo: string; precisaCanal: boolean; precisaChats: boolean; criado: boolean }[];
   /** Os passos que a automação nova terá, na ordem do pacote. */
   passos: { chave: string; nome: string; tipo: string }[];
+  /** O que o pacote faz com cada skill citada. */
+  skills: SkillNaPrevia[];
   /** O que fica a preencher por nó e por gatilho: o mesmo que a importação grava em `pendentes`. */
   aPreencher: PendenciaDoPacote[];
   /** O que o pacote deixou de fora de propósito, para a pessoa escolher aqui. */
   omitidos: Pacote["omitidos"];
   /** Passos de ação que o pacote trazia em modo `auto` e entram em `approve`. */
   acoesRebaixadas: string[];
+}
+
+export interface SkillNaPrevia {
+  nome: string;
+  /** `nova` é criada; `conflito` fica como está aqui (a skill da máquina vence), com a diferença à vista; `ausente` não veio no pacote e não existe aqui. */
+  situacao: "nova" | "igual" | "conflito" | "existente" | "ausente";
+  diferenca?: { daqui: string; pacote: string; descricaoDaqui: string; descricaoDoPacote: string };
 }
 
 export interface EscolhasDaImportacao {
@@ -344,6 +373,7 @@ export class PacoteService {
     const gatilhos: GatilhoDoPacote[] = [];
     for (const [i, g] of automacao.triggers.entries()) gatilhos.push(await this.gatilhoParaPacote(g.config, ondeDoGatilhoNoPacote(i), omitir));
 
+    const requisitos = await this.requisitos(spec, agents, gatilhos);
     const base = {
       formato: NOME_DO_FORMATO,
       versao: VERSAO_DO_FORMATO,
@@ -360,7 +390,8 @@ export class PacoteService {
         gatilhos,
       },
       agents,
-      requisitos: await this.requisitos(spec, agents, gatilhos),
+      requisitos,
+      skills: await this.conteudoDasSkills(requisitos.skills.map((k) => k.nome)),
       omitidos,
     };
 
@@ -372,6 +403,41 @@ export class PacoteService {
       texto: `${JSON.stringify(pacote, null, 2)}\n`,
       nomeDoArquivo: `${spec.id}${EXTENSAO_DO_PACOTE}`,
     };
+  }
+
+  /** O conteúdo das skills citadas que esta máquina tem; o que não tem fica só como requisito. */
+  private async conteudoDasSkills(nomes: readonly string[]): Promise<SkillDoPacote[]> {
+    if (this.ambiente.conteudoDaSkill === undefined) return [];
+    const lista: SkillDoPacote[] = [];
+    for (const nome of nomes) {
+      const skill = NOME_DE_SKILL.test(nome) ? await this.ambiente.conteudoDaSkill(nome) : null;
+      if (skill !== null && Buffer.byteLength(skill.corpo) <= TETO_DO_CORPO_DA_SKILL) lista.push({ nome, descricao: skill.descricao, corpo: skill.corpo });
+    }
+    return lista;
+  }
+
+  /** Cada skill do pacote frente a esta máquina: nova, igual, em conflito (mesmo nome, outro texto), já aqui sem texto no pacote, ou ausente. */
+  private async situacaoDasSkills(pacote: Pacote, locais: readonly string[]): Promise<SkillNaPrevia[]> {
+    const traz = new Map(pacote.skills.map((k) => [k.nome, k]));
+    const lista: SkillNaPrevia[] = [];
+    for (const { nome } of pacote.requisitos.skills) {
+      const doPacote = traz.get(nome);
+      const aqui = locais.includes(nome);
+      if (doPacote === undefined) {
+        lista.push({ nome, situacao: aqui ? "existente" : "ausente" });
+      } else if (!aqui) {
+        lista.push({ nome, situacao: "nova" });
+      } else {
+        const atual = await this.ambiente.conteudoDaSkill?.(nome);
+        const igual = atual != null && atual.corpo.trim() === doPacote.corpo.trim() && atual.descricao.trim() === doPacote.descricao.trim();
+        lista.push(
+          igual || atual == null
+            ? { nome, situacao: "igual" }
+            : { nome, situacao: "conflito", diferenca: { daqui: atual.corpo, pacote: doPacote.corpo, descricaoDaqui: atual.descricao, descricaoDoPacote: doPacote.descricao } },
+        );
+      }
+    }
+    return lista;
   }
 
   private async agentParaPacote(id: string): Promise<AgentDoPacote> {
@@ -600,11 +666,12 @@ export class PacoteService {
       p.type === "model" && p.profile === undefined ? [modeloNaPrevia(`passo:${p.key}`, p.name, p.model)] : [],
     );
 
+    const situacoesDasSkills = await this.situacaoDasSkills(pacote, skills);
     return {
       automacao: { id: pacote.automacao.id, nome: pacote.automacao.spec.name, existe: automacaoExiste, idSugerido },
       agents,
       passosDeIA,
-      dependencias: this.dependencias(pacote, { conexoes, servidores, provedores, disponiveis, skills }),
+      dependencias: this.dependencias(pacote, { conexoes, servidores, provedores, disponiveis, skills: [...skills, ...pacote.skills.map((k) => k.nome)] }),
       ferramentas: await this.ferramentasDoPacote(pacote),
       urlsAPreencher: pacote.automacao.spec.steps.flatMap((p) =>
         p.type === "action" && Object.values(declaracoes[p.action] ?? {}).includes("url")
@@ -619,7 +686,8 @@ export class PacoteService {
         criado: configuracaoDoGatilho(g) !== null,
       })),
       passos: pacote.automacao.spec.steps.map((p) => ({ chave: p.key, nome: p.name, tipo: p.type === "action" ? p.action : p.type })),
-      aPreencher: pendenciasDoPacote(pacote, declaracoes),
+      skills: situacoesDasSkills,
+      aPreencher: pendenciasDoPacote(pacote, declaracoes, ausentesDasSkills(situacoesDasSkills, usosDasDependencias(pacote).skills)),
       omitidos: pacote.omitidos,
       acoesRebaixadas: pacote.automacao.spec.steps.flatMap((p) => (p.type === "action" && p.mode === "auto" ? [p.key] : [])),
     };
@@ -811,7 +879,7 @@ export class PacoteService {
     // O que ficou a preencher também fica gravado na automação: a pendência do resultado some quando a tela fecha.
     // O id de cada gatilho é escolhido já: a pendência dele aponta para o id, e dois gatilhos do mesmo tipo não a dividem.
     const idsDosGatilhos: string[] = pacote.automacao.gatilhos.map(() => randomUUID());
-    const pendentes: Pendencia[] = pendenciasDoPacote(pacote, declaracoes).map((p) => ({
+    const pendentes: Pendencia[] = pendenciasDoPacote(pacote, declaracoes, ausentesDasSkills(previa.skills, usosDasDependencias(pacote).skills)).map((p) => ({
       onde: p.no.tipo === "passo" ? p.no.chave : ondeDoGatilho(idsDosGatilhos[p.no.posicao]!),
       campo: p.campo,
       motivo: p.motivo,
@@ -905,7 +973,10 @@ export class PacoteService {
       gatilhos.push({ config, enabled: false, idNovo: idsDosGatilhos[i]! });
     }
 
-    // Gravação: agents primeiro, a automação por último, que é o que referencia.
+    // Gravação: skills e agents primeiro, a automação por último, que é o que referencia.
+    for (const nova of pacote.skills.filter((k) => previa.skills.some((p) => p.nome === k.nome && p.situacao === "nova"))) {
+      await this.ambiente.criarSkill?.({ nome: nova.nome, descricao: nova.descricao, corpo: nova.corpo });
+    }
     const resultado: ResultadoDaImportacao["agents"] = [];
     for (const agent of pacote.agents) {
       const alvo = destino.get(agent.id)!;
@@ -993,6 +1064,11 @@ function mapearConexao(c: AgentConnection, conexao: (id: string) => string, serv
 }
 
 /** Quem usa cada dependência, para a prévia dizer "usado por" em cada uma. */
+/** As skills sem texto no pacote que esta máquina também não tem, com quem as usa. */
+function ausentesDasSkills(situacoes: readonly SkillNaPrevia[], usos: ReadonlyMap<string, string[]>): Map<string, string[]> {
+  return new Map(situacoes.filter((k) => k.situacao === "ausente").map((k) => [k.nome, usos.get(k.nome) ?? []]));
+}
+
 function usosDasDependencias(pacote: Pacote): {
   conexoes: Map<string, string[]>;
   servidores: Map<string, string[]>;

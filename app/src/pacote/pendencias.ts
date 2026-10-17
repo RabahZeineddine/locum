@@ -19,7 +19,7 @@ export interface PendenciaDoPacote {
 }
 
 /** O que o pacote avisa mas não deixa nada a preencher, ou que a importação já cobre por outro caminho. */
-const INFORMATIVOS = new Set<CodigoOmitido>(["texto-limpo", "escrita-removida", "url-a-preencher", "chats-a-escolher", "gatilho-sem-canal"]);
+const INFORMATIVOS = new Set<CodigoOmitido>(["texto-limpo", "escrita-removida", "url-a-preencher", "chats-a-escolher", "gatilho-sem-canal", "skill-ausente"]);
 /** Omitido que vale o passo inteiro, sem nome de param: o campo é o do próprio passo. */
 const CAMPO_SEM_PARAMS: Partial<Record<CodigoOmitido, string>> = { tracker: "target" };
 
@@ -30,7 +30,14 @@ export function configuracaoDoGatilho(g: GatilhoDoPacote): Record<string, unknow
   return TriggerConfig.safeParse(config).success ? config : null;
 }
 
-export function pendenciasDoPacote(pacote: Pacote, declaracoes: Readonly<Record<string, ParamsDoPacote>>): PendenciaDoPacote[] {
+/** Quem usa a skill no pacote: `automacao` ou `agent:<id>`, como em `usadoPor` da prévia. */
+export type UsosDasSkills = ReadonlyMap<string, readonly string[]>;
+
+export function pendenciasDoPacote(
+  pacote: Pacote,
+  declaracoes: Readonly<Record<string, ParamsDoPacote>>,
+  skillsAusentes: UsosDasSkills = new Map(),
+): PendenciaDoPacote[] {
   const lista: PendenciaDoPacote[] = [];
   const acrescentar = (p: PendenciaDoPacote): void => {
     const mesmoNo = (a: NoDoPacote, b: NoDoPacote): boolean => (a.tipo === "passo" ? b.tipo === "passo" && a.chave === b.chave : b.tipo === "gatilho" && a.posicao === b.posicao);
@@ -70,6 +77,15 @@ export function pendenciasDoPacote(pacote: Pacote, declaracoes: Readonly<Record<
     // O gatilho não chega a existir: a pendência fica na automação, no campo que o cadastro recusou.
     const faltando = TriggerConfig.safeParse({ ...g }).error?.issues[0]?.path.join(".");
     acrescentar({ no: { tipo: "gatilho", posicao, kind: g.kind }, campo: faltando ?? g.kind, motivo: "gatilho-sem-canal", criado: false });
+  }
+
+  // Skill que o pacote não trouxe e esta máquina não tem: fica no passo que a usa, direto ou pelo agent.
+  for (const [nome, usadoPor] of skillsAusentes) {
+    for (const p of pacote.automacao.spec.steps) {
+      if (p.type !== "model") continue;
+      const usa = usadoPor.includes("automacao") || (p.profile !== undefined && usadoPor.includes(`agent:${p.profile}`));
+      if (usa) acrescentar({ no: { tipo: "passo", chave: p.key, nome: p.name }, campo: `skills.${nome}`, motivo: "skill-ausente", criado: true });
+    }
   }
   return lista;
 }

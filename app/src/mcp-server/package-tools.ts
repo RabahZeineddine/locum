@@ -11,12 +11,12 @@ import { def } from "./tool-def.js";
  */
 export function registerPackageTools(server: McpServer): void {
   def(server, "preview_package", "read",
-    "Reads the text of a package (.locum.json) and says what importing it would do on this machine: automation id, each agent as new, same id (with the differences), same name or equal, dependencies that are ok, missing or need connecting, every tool the package turns on with its class (write tools of a connection are highlighted), models and what is left to choose. Each omitted param is listed by name in omitidos (argumentos, destino-a-escolher, url-a-preencher, with params), and aPreencher lists per step and per trigger (by position) the fields left to fill, the same ones the import writes as pending; gatilhos[].criado is false for a trigger that is not created until a channel is chosen. Writes nothing.",
+    "Reads the text of a package (.locum.json) and says what importing it would do on this machine: automation id, each agent as new, same id (with the differences), same name or equal, dependencies that are ok, missing or need connecting, every tool the package turns on with its class (write tools of a connection are highlighted), models and what is left to choose. Each omitted param is listed by name in omitidos (argumentos, destino-a-escolher, url-a-preencher, with params), and aPreencher lists per step and per trigger (by position) the fields left to fill, the same ones the import writes as pending; skills lists each cited skill as nova (created on import), igual, conflito (the local one stays, the difference comes along), existente or ausente (not in the package and not here: it becomes a pending item on the steps that use it); gatilhos[].criado is false for a trigger that is not created until a channel is chosen. Writes nothing.",
     { text: z.string().min(1).describe("the content of the package file") },
     ({ text }) => pacoteService.previa(text));
 
   def(server, "export_package", "read",
-    "The package of an automation and its library agents as text, ready to save as .locum.json (the screen opens a save dialog; here the text comes back). It carries no secret: credentials, cursors and history stay out, and free text is cleaned of tokens, e-mails and home paths. What was left out comes in the package as omitted.",
+    "The package of an automation and its library agents as text, ready to save as .locum.json (the screen opens a save dialog; here the text comes back). It carries no secret: credentials, cursors and history stay out, and the cited skills travel with their text (format version 2), and free text, skills included, is cleaned of tokens, e-mails and home paths. What was left out comes in the package as omitted.",
     { agentId: z.string().describe("automation id") },
     async ({ agentId }) => {
       const { texto, nomeDoArquivo } = await pacoteService.exportar(agentId);

@@ -34,6 +34,7 @@ const TEXTO_DO_MOTIVO: Readonly<Record<string, string>> = {
   "filtros-de-pessoa": "escolha os filtros de pessoa",
   "dono-do-github": "escolha o dono no GitHub",
   "gatilho-sem-canal": "escolha o canal",
+  "skill-ausente": "instale a skill ou dispense o aviso",
 };
 export const textoDoMotivo = (motivo: string): string => TEXTO_DO_MOTIVO[motivo] ?? "preencha o campo";
 

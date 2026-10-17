@@ -2699,7 +2699,8 @@
         "generic": "Preencha o campo {{campo}}, que o pacote deixou de fora.",
         "dismiss": "Dispensar",
         "dismissHint": "Deixar o campo como está e tirar o aviso",
-        "enableBlocked": "Gatilho incompleto: preencha ou dispense o que falta antes de ligar."
+        "enableBlocked": "Gatilho incompleto: preencha ou dispense o que falta antes de ligar.",
+        "skill-ausente": "Esta skill não veio no pacote e não existe aqui ({{campo}}): instale-a ou dispense o aviso."
       }
     },
     "github": {
@@ -3336,8 +3337,18 @@
           "filtros-de-pessoa": "escolha os filtros de pessoa; sem eles vale para todos",
           "dono-do-github": "escolha o dono no GitHub; sem ele vale para todos",
           "gatilho-sem-canal": "escolha o canal",
-          "generic": "preencha o campo"
+          "generic": "preencha o campo",
+          "skill-ausente": "instale a skill ou dispense o aviso"
         }
+      },
+      "skills": "Skills",
+      "skillDiff": "A daqui fica; ver a diferença",
+      "skillState": {
+        "nova": "será criada",
+        "igual": "igual à daqui",
+        "conflito": "já existe diferente: fica a daqui",
+        "existente": "já existe aqui",
+        "ausente": "não veio no pacote"
       }
     }
   },

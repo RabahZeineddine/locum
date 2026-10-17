@@ -45,7 +45,12 @@ export function indicesDoOndeDeGatilho(onde: string, tipos: readonly string[]): 
   if (posicao !== null) return Number(posicao[1]) < tipos.length ? [Number(posicao[1])] : [];
   return tipos.flatMap((tipo, i) => (tipo === onde ? [i] : []));
 }
-export const VERSAO_DO_FORMATO = 1;
+/**
+ * A versão que este Locum grava. A 2 trouxe o conteúdo das skills (`skills`); a 1
+ * continua lida, e o pacote dela chega sem conteúdo de skill.
+ */
+export const VERSAO_DO_FORMATO = 2;
+export const VERSOES_LIDAS: readonly number[] = [1, 2];
 export const EXTENSAO_DO_PACOTE = ".locum.json";
 /** Um pacote de verdade tem poucos KB; acima disto não é um. */
 export const TAMANHO_MAXIMO_DO_PACOTE = 2 * 1024 * 1024;
@@ -172,10 +177,16 @@ const ServidorRequerido = z
 
 const SkillRequerida = z.object({ nome: z.string().min(1) }).strict();
 
+/** A skill que o pacote leva: o texto passa pela mesma limpeza do resto, e o nome é o de uma skill do Locum. */
+export const NOME_DE_SKILL = /^[a-z0-9][a-z0-9-]{0,63}$/;
+export const TETO_DO_CORPO_DA_SKILL = 64 * 1024;
+const SkillDoPacote = z.object({ nome: z.string().regex(NOME_DE_SKILL), descricao: z.string().max(2000), corpo: z.string().max(TETO_DO_CORPO_DA_SKILL) }).strict();
+export type SkillDoPacote = z.infer<typeof SkillDoPacote>;
+
 const ProvedorRequerido = z.object({ provedor: z.string().min(1), modelos: z.array(z.string().min(1)) }).strict();
 
 /** O que a exportação deixou de fora de propósito, para a prévia pedir à pessoa. */
-export const CodigoOmitido = z.enum(["canais", "gatilho-sem-canal", "filtros-de-pessoa", "dono-do-github", "tracker", "argumentos", "texto-limpo", "url-a-preencher", "escrita-removida", "chats-a-escolher", "destino-a-escolher"]);
+export const CodigoOmitido = z.enum(["canais", "gatilho-sem-canal", "filtros-de-pessoa", "dono-do-github", "tracker", "argumentos", "texto-limpo", "url-a-preencher", "escrita-removida", "chats-a-escolher", "destino-a-escolher", "skill-ausente"]);
 export type CodigoOmitido = z.infer<typeof CodigoOmitido>;
 const Omitido = z
   .object({
@@ -190,7 +201,7 @@ const Omitido = z
 export const Pacote = z
   .object({
     formato: z.literal(NOME_DO_FORMATO),
-    versao: z.literal(VERSAO_DO_FORMATO),
+    versao: z.number().int().refine((v) => VERSOES_LIDAS.includes(v), "versão do formato desconhecida"),
     automacao: z
       .object({
         id: IdDoPacote,
@@ -207,6 +218,8 @@ export const Pacote = z
         skills: z.array(SkillRequerida).default([]),
       })
       .strict(),
+    /** O conteúdo das skills citadas, quando a máquina de origem tinha. Pacote da versão 1 não traz. */
+    skills: z.array(SkillDoPacote).max(50).default([]),
     omitidos: z.array(Omitido).default([]),
   })
   .strict();
@@ -259,7 +272,7 @@ export function lerPacote(texto: string): Pacote {
   }
   const cabecalho = bruto as { formato?: unknown; versao?: unknown };
   if (cabecalho.formato !== NOME_DO_FORMATO) throw new PacoteInvalidoError("o arquivo não é um pacote do Locum");
-  if (cabecalho.versao !== VERSAO_DO_FORMATO) {
+  if (typeof cabecalho.versao !== "number" || !VERSOES_LIDAS.includes(cabecalho.versao)) {
     throw new PacoteInvalidoError(
       `o pacote usa a versão ${String(cabecalho.versao)} do formato e este Locum lê a ${VERSAO_DO_FORMATO}. ` +
         "Atualize o Locum, ou peça um pacote exportado por esta versão.",
