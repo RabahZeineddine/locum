@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { aplicarEvento, type Cartao, type ConexaoSemServidor, type DoRunNaConversa, type EstadoDaConversa, type EventoDaConversa, type FalaDoAgent } from "../../src/agent-chat/tipos";
+import { aplicarEvento, type Cartao, type ConexaoSemServidor, type DoRunNaConversa, type EstadoDaConversa, type EventoDaConversa, type MarcaDaConversa, type FalaDoAgent } from "../../src/agent-chat/tipos";
 import type { ChatPorChave } from "./agent-chat";
+import { precisaRelerEstado } from "./releitura-da-conversa";
 import { traduzirErroDoServico } from "./erro-do-servico";
 
 /** De quanto em quanto tempo a tela relê a conversa que o outro processo grava. */
@@ -92,8 +93,8 @@ export function useConversa(api: ChatPorChave & { decidir?: (id: string, cartao:
   // a tela voltar ao normal sozinha quando ele decide ou morre; só a volta daqui a dispensa.
   useEffect(() => {
     let vivo = true;
-    const recarregar = (): void => {
-      if (!outro && (respondendo || aguardando)) return;
+    let anterior: MarcaDaConversa | null = null;
+    const ler = (): void => {
       api.estado(id).then(
         (estado) => {
           if (vivo) aplicarRetrato(estado);
@@ -101,11 +102,30 @@ export function useConversa(api: ChatPorChave & { decidir?: (id: string, cartao:
         () => undefined,
       );
     };
-    window.addEventListener("focus", recarregar);
-    const timer = setInterval(recarregar, RELEITURA_MS);
+    // O tique consulta só a marca leve e pede o estado inteiro quando ela anda.
+    const tique = (): void => {
+      if (!outro && (respondendo || aguardando)) return;
+      api.marca(id).then(
+        (marca) => {
+          if (!vivo) return;
+          const pede = precisaRelerEstado({ marca, anterior, outroProcesso: outro });
+          anterior = marca;
+          if (pede) ler();
+        },
+        () => undefined,
+      );
+    };
+    // Voltar para a janela sempre relê: a marca não cobre tudo o que pode ter mudado fora.
+    const aoFocar = (): void => {
+      if (!outro && (respondendo || aguardando)) return;
+      anterior = null;
+      ler();
+    };
+    window.addEventListener("focus", aoFocar);
+    const timer = setInterval(tique, RELEITURA_MS);
     return () => {
       vivo = false;
-      window.removeEventListener("focus", recarregar);
+      window.removeEventListener("focus", aoFocar);
       clearInterval(timer);
     };
   }, [id, respondendo, aguardando, outro]);

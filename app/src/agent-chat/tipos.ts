@@ -47,6 +47,12 @@ export interface ConexaoSemServidor {
   motivo: string;
 }
 
+/** O retrato leve da conversa, para a janela saber quando vale pedir o estado inteiro: há volta em andamento, e uma versão que muda com o que o estado mostra. */
+export interface MarcaDaConversa {
+  ocupada: boolean;
+  versao: string;
+}
+
 /** O retrato da conversa, para a tela reabrir onde parou e escutar o resto. */
 export interface EstadoDaConversa {
   falas: FalaDoAgent[];

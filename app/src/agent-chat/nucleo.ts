@@ -1,7 +1,8 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { contarGastoDoProvedor } from "../runtimes/limites-lidos.js";
 import { stepCountIs, streamText, tool, type LanguageModel, type ModelMessage, type ToolSet } from "ai";
 import { z } from "zod";
+import type { MarcaDaConversa } from "./tipos.js";
 import type { ToolRef } from "../config/types.js";
 import { BudgetExceeded } from "../executor/budget.js";
 import type { McpRegistry } from "../mcp/registry.js";
@@ -100,6 +101,8 @@ export interface ProvedorDeConversa {
   contexto: (id: string) => Promise<ContextoDaVolta>;
   /** O que o estado mostra além das falas. */
   estado: (id: string) => Promise<DoProvedorNoEstado>;
+  /** Um texto que muda quando algo do que `estado` mostra além das falas muda (o alvo e o gasto do run, por exemplo). Ausente, só as falas contam. */
+  marca?: (id: string) => Promise<string>;
 }
 
 export type DoProvedorNoEstado = Pick<EstadoDaConversa, "semServidor" | "semSkill" | "contaIgnorada"> & Partial<Pick<EstadoDaConversa, "run">>;
@@ -223,6 +226,17 @@ export class NucleoDeConversa {
   async ocupada(id: string): Promise<boolean> {
     const conversa = await this.obter(id);
     return conversa.respondendo || (await this.outroNaConversa(id)) !== null;
+  }
+
+  /**
+   * O retrato mais leve que há: se há volta em andamento e uma marca que muda quando as falas guardadas
+   * ou o que o provedor mostra além delas mudam. A janela a consulta de tempos em tempos e só pede o
+   * `estado` inteiro quando a marca anda.
+   */
+  async marca(id: string): Promise<MarcaDaConversa> {
+    const guardadas = (await this.provedor.armazem.ler(id, "falas")) ?? "";
+    const doProvedor = (await this.provedor.marca?.(id)) ?? "";
+    return { ocupada: await this.ocupada(id), versao: createHash("sha1").update(guardadas).update("\0").update(doProvedor).digest("hex") };
   }
 
   async estado(id: string): Promise<EstadoDaConversa> {

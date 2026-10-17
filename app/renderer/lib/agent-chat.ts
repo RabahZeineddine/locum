@@ -1,5 +1,5 @@
 import { BRIDGE_GLOBAL } from "../../electron/bridge-contract.js";
-import { chaveDoAgent, chaveDoRun, type AlvoDaConversa, type EstadoDaConversa, type EventoDaConversa } from "../../src/agent-chat/tipos.js";
+import { chaveDoAgent, chaveDoRun, type AlvoDaConversa, type EstadoDaConversa, type EventoDaConversa, type MarcaDaConversa } from "../../src/agent-chat/tipos.js";
 
 /**
  * Acesso estreito ao chat do agent, fora do catálogo de `lib/bridge.ts`.
@@ -16,6 +16,7 @@ interface PonteDoChatDoAgent {
     cancel: (id: string) => Promise<void>;
     reset: (id: string) => Promise<void>;
     take: (id: string) => Promise<void>;
+    mark: (id: string) => Promise<MarcaDaConversa>;
   };
   runChat: {
     state: (id: string) => Promise<EstadoDaConversa>;
@@ -24,6 +25,7 @@ interface PonteDoChatDoAgent {
     reset: (id: string) => Promise<void>;
     take: (id: string) => Promise<void>;
     setModel: (id: string, alvo: AlvoDaConversa | null) => Promise<void>;
+    mark: (id: string) => Promise<MarcaDaConversa>;
   };
   chat: { onEvent: (ouvinte: (evento: EventoDaConversa) => void) => () => void };
 }
@@ -39,6 +41,8 @@ export interface ChatPorChave {
   /** A chave dos eventos do fluxo desta conversa (`agent:<id>`, `run:<id>`). */
   chave: (id: string) => string;
   estado: (id: string) => Promise<EstadoDaConversa>;
+  /** O retrato leve, que a releitura periódica consulta antes de pedir o estado inteiro. */
+  marca: (id: string) => Promise<MarcaDaConversa>;
   enviar: (id: string, texto: string) => Promise<void>;
   cancelar: (id: string) => Promise<void>;
   limpar: (id: string) => Promise<void>;
@@ -53,6 +57,7 @@ const assinar = (ouvinte: (evento: EventoDaConversa) => void): (() => void) => p
 export const chatDoAgent: ChatPorChave & { decidir: (id: string, cartao: string, decisao: "executar" | "recusar") => Promise<void> } = {
   chave: chaveDoAgent,
   estado: (id) => ponte().agentChat.state(id),
+  marca: (id) => ponte().agentChat.mark(id),
   enviar: (id, texto) => ponte().agentChat.send(id, texto),
   decidir: (id, cartao, decisao) => ponte().agentChat.decide(id, cartao, decisao),
   cancelar: (id) => ponte().agentChat.cancel(id),
@@ -65,6 +70,7 @@ export const chatDoAgent: ChatPorChave & { decidir: (id: string, cartao: string,
 export const chatDoRun: ChatPorChave & { definirAlvo: (id: string, alvo: AlvoDaConversa | null) => Promise<void> } = {
   chave: chaveDoRun,
   estado: (id) => ponte().runChat.state(id),
+  marca: (id) => ponte().runChat.mark(id),
   enviar: (id, texto) => ponte().runChat.send(id, texto),
   cancelar: (id) => ponte().runChat.cancel(id),
   limpar: (id) => ponte().runChat.reset(id),

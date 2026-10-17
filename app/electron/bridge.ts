@@ -362,6 +362,7 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "agentChat.cancel": async (id) => agentChat.cancelar(id),
     "agentChat.reset": (id) => agentChat.limpar(id),
     "agentChat.take": (id) => agentChat.tomar(id),
+    "agentChat.mark": (id) => agentChat.marca(id),
 
     "runChat.state": (runId) => runChat.estado(runId),
     // Volta assim que a volta começa, como a do agent: a resposta chega pelo canal de evento, com a chave `run:<id>`.
@@ -384,6 +385,7 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "runChat.cancel": async (runId) => runChat.cancelar(runId),
     "runChat.reset": (runId) => runChat.limpar(runId),
     "runChat.take": (runId) => runChat.tomar(runId),
+    "runChat.mark": (runId) => runChat.marca(runId),
     "runChat.setModel": (runId, alvo) => runChat.definirAlvo(runId, alvo),
 
     "mcp.list": () => mcpService.list(),

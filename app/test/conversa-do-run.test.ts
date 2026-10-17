@@ -561,3 +561,25 @@ test("o teto por execução do agent da biblioteca compara só com o gasto da co
   assert.equal(c.modelo.recebidos.length, 1, "a conversa já gastou o teto do agent");
   assert.ok(c.eventos.some((e) => e.tipo === "erro"));
 });
+
+test("a marca leve muda com fala, alvo e gasto, e fica igual quando nada mudou", async () => {
+  const { runId } = await montarRun();
+  const c = montar();
+  const zero = await c.conversas.marca(runId);
+  assert.deepEqual(await c.conversas.marca(runId), zero, "sem mudança, a mesma marca");
+  assert.equal(zero.ocupada, false);
+
+  await c.conversas.definirAlvo(runId, { modelo: "falso/roteiro" });
+  const comAlvo = await c.conversas.marca(runId);
+  assert.notEqual(comAlvo.versao, zero.versao, "trocar o alvo muda a marca");
+
+  await c.conversas.enviar(runId, "oi");
+  const comFala = await c.conversas.marca(runId);
+  assert.notEqual(comFala.versao, comAlvo.versao, "uma fala nova muda a marca");
+
+  await db.update(schema.runs).set({ conversaTokens: 5 }).where(eq(schema.runs.id, runId));
+  assert.notEqual((await c.conversas.marca(runId)).versao, comFala.versao, "o gasto da conversa muda a marca");
+
+  // O estado completo segue sendo a fonte; a marca só diz quando vale pedi-lo.
+  assert.equal((await c.conversas.estado(runId)).falas.length, 2);
+});

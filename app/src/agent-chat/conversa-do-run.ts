@@ -261,6 +261,11 @@ function provedorDoRun(deps: DepsDaConversaDoRun): ProvedorDeConversa {
   return {
     chave: chaveDoRun,
     armazem: armazemDoRun(db),
+    // O que o estado mostra além das falas e que outro processo muda: o alvo, o gasto e a automação arquivada.
+    marca: async (id) => {
+      const d = await detalhe(id);
+      return JSON.stringify([resolverAlvo(d), d.conversaUsd, d.conversaTokens, d.agentArchived]);
+    },
     estado: async (id) => {
       const d = await detalhe(id);
       const { alvo, padrao } = resolverAlvo(d);

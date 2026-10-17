@@ -628,6 +628,8 @@ interface ServiceApi {
   "agentChat.cancel": ConversasDeAgent["cancelar"];
   "agentChat.reset": ConversasDeAgent["limpar"];
   "agentChat.take": ConversasDeAgent["tomar"];
+  /** Só se há volta em andamento e uma versão que muda com o estado: a janela relê o estado inteiro quando ela anda. */
+  "agentChat.mark": ConversasDeAgent["marca"];
   /**
    * A conversa de um run que já rodou (ADR 0009). `send` volta logo e o fluxo chega
    * pelo canal de evento, com a chave `run:<id>`. Não há cartão: o que a conversa
@@ -638,6 +640,7 @@ interface ServiceApi {
   "runChat.cancel": ConversasDoRun["cancelar"];
   "runChat.reset": ConversasDoRun["limpar"];
   "runChat.take": ConversasDoRun["tomar"];
+  "runChat.mark": ConversasDoRun["marca"];
   "runChat.setModel": ConversasDoRun["definirAlvo"];
 }
 
@@ -871,11 +874,13 @@ export const BRIDGE_CHANNELS = [
   "agentChat.cancel",
   "agentChat.reset",
   "agentChat.take",
+  "agentChat.mark",
   "runChat.state",
   "runChat.send",
   "runChat.cancel",
   "runChat.reset",
   "runChat.take",
+  "runChat.mark",
   "runChat.setModel",
 ] as const satisfies readonly (keyof LocumApi)[];
 
