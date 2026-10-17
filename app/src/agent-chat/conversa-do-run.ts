@@ -89,7 +89,7 @@ export class ConversasDoRun extends NucleoDeConversa {
   /** Troca com quem a conversa fala. Nulo volta ao padrão. */
   async definirAlvo(runId: string, alvo: AlvoDaConversa | null): Promise<void> {
     const db = this.dependencias.db ?? defaultDb;
-    if ((await this.estado(runId)).respondendo) throw new Error(this.dependencias.texto("agentChat.errors.busy"));
+    if (await this.ocupada(runId)) throw new Error(this.dependencias.texto("agentChat.errors.busy"));
     if (alvo !== null && "agent" in alvo) await this.dependencias.library.resolveProfile(alvo.agent);
     if (db.select({ id: schema.runs.id }).from(schema.runs).where(eq(schema.runs.id, runId)).get() === undefined) throw new Error(`run ${runId} nao encontrado`);
     db.insert(schema.runConversations)
@@ -110,15 +110,15 @@ function provedorDoRun(deps: DepsDaConversaDoRun): ProvedorDeConversa {
   };
 
   /** O alvo escolhido, ou o do primeiro passo de modelo do run. */
-  const resolverAlvo = (d: RunDetail): { alvo: AlvoDaConversa; padrao: boolean } => {
+  const resolverAlvo = (d: RunDetail): { alvo: AlvoDaConversa | null; padrao: boolean } => {
     const guardado = db.select({ alvo: schema.runConversations.alvo }).from(schema.runConversations).where(eq(schema.runConversations.runId, d.id)).get()?.alvo as AlvoDaConversa | null | undefined;
     if (guardado !== null && guardado !== undefined) return { alvo: guardado, padrao: false };
     const passo = d.spec.steps.find((p) => p.type === "model");
-    if (passo === undefined || passo.type !== "model") throw new Error("o run nao tem passo de modelo: escolha um agent ou um modelo para a conversa");
+    if (passo === undefined || passo.type !== "model") return { alvo: null, padrao: true };
     return { alvo: passo.profile === undefined ? { modelo: passo.model } : { agent: passo.profile }, padrao: true };
   };
 
-  const alvoNaTela = (alvo: AlvoDaConversa): DoRunNaConversa["alvo"] => ("agent" in alvo ? { tipo: "agent", id: alvo.agent } : { tipo: "modelo", id: alvo.modelo });
+  const alvoNaTela = (alvo: AlvoDaConversa | null): DoRunNaConversa["alvo"] => (alvo === null ? null : "agent" in alvo ? { tipo: "agent", id: alvo.agent } : { tipo: "modelo", id: alvo.modelo });
 
   /** O que o modelo vê do run, na ordem de importância e dentro do teto. */
   const montarContexto = (d: RunDetail): { corpo: string; cortado: string[]; marca: string } => {
@@ -254,6 +254,7 @@ function provedorDoRun(deps: DepsDaConversaDoRun): ProvedorDeConversa {
         contaIgnorada: 0,
         run: {
           alvo: alvoNaTela(alvo),
+          motivoSemAlvo: alvo === null ? deps.texto("conversaDoRun.errors.noTarget") : null,
           padrao,
           arquivada: d.agentArchived,
           contexto: { teto, cortado: montarContexto(d).cortado },
@@ -264,6 +265,7 @@ function provedorDoRun(deps: DepsDaConversaDoRun): ProvedorDeConversa {
     contexto: async (id): Promise<ContextoDaVolta> => {
       const d = await detalhe(id);
       const { alvo } = resolverAlvo(d);
+      if (alvo === null) throw new Error(deps.texto("conversaDoRun.errors.noTarget"));
       const perfil = "agent" in alvo ? await deps.library.resolveProfile(alvo.agent) : undefined;
       const spec: AgentProfile | undefined = perfil?.version.spec;
       const { corpo, marca } = montarContexto(d);

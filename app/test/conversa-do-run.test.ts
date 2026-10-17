@@ -37,16 +37,18 @@ function gateDeTeste() {
   return { gate: new ApprovalGate(new Map<string, ActionHandler>([["github.review_comment", githubReviewHandler(() => fake)]])), criadas };
 }
 
-async function montarRun(opcoes: { arquivada?: boolean; saida?: unknown } = {}) {
+async function montarRun(opcoes: { arquivada?: boolean; saida?: unknown; soAcao?: boolean } = {}) {
   const agentId = `rev-${randomUUID().slice(0, 8)}`;
   const versao = await new AgentService().upsert(
     AgentSpec.parse({
       id: agentId,
       name: "Revisor",
-      steps: [
-        { type: "model", key: "ler", name: "Ler", model: "anthropic/modelo", prompt: "revise" },
-        { type: "action", key: "revisar", name: "Revisar", action: "github.review_comment", needs: ["ler"] },
-      ],
+      steps: opcoes.soAcao === true
+        ? [{ type: "action", key: "ler", name: "Ler", action: "github.review_comment" }, { type: "action", key: "revisar", name: "Revisar", action: "github.review_comment", needs: ["ler"] }]
+        : [
+            { type: "model", key: "ler", name: "Ler", model: "anthropic/modelo", prompt: "revise" },
+            { type: "action", key: "revisar", name: "Revisar", action: "github.review_comment", needs: ["ler"] },
+          ],
     }),
     undefined,
     "human",
@@ -329,4 +331,21 @@ test("o system da conversa segue o idioma do app", async () => {
   } finally {
     await i18nService.setPreference(null);
   }
+});
+
+test("run só de ação, sem passo de modelo: o estado abre sem alvo e diz por quê, escolher um alvo funciona e enviar sem alvo recusa", async () => {
+  const { runId } = await montarRun({ soAcao: true });
+  const c = montar();
+  const estado = await c.conversas.estado(runId);
+  assert.equal(estado.run?.alvo, null);
+  assert.equal(estado.run?.motivoSemAlvo, "conversaDoRun.errors.noTarget");
+
+  await c.conversas.enviar(runId, "oi");
+  assert.ok(c.eventos.some((e) => e.tipo === "erro" && e.mensagem === "conversaDoRun.errors.noTarget"), "a recusa chega à tela com a mensagem clara");
+  assert.equal(c.modelo.recebidos.length, 0, "nenhum modelo foi chamado");
+
+  await c.conversas.definirAlvo(runId, { agent: "revisor-pr" });
+  assert.deepEqual((await c.conversas.estado(runId)).run?.alvo, { tipo: "agent", id: "revisor-pr" });
+  await c.conversas.enviar(runId, "oi");
+  assert.equal((await c.conversas.estado(runId)).falas.at(-1)?.de, "assistant");
 });

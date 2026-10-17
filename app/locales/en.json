@@ -3550,6 +3550,9 @@
       "run": "Run {{id}} of the automation \"{{nome}}\", state {{estado}}.",
       "runArchived": "Run {{id}} of the automation \"{{nome}}\", state {{estado}}. The automation is archived: you can only read, and the write tools refuse.",
       "context": "Run context:\n{{corpo}}"
+    },
+    "errors": {
+      "noTarget": "This run has no model step, so there is nobody to talk to yet. Pick an agent or a model for the conversation."
     }
   }
 }

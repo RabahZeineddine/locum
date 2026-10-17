@@ -219,6 +219,12 @@ export class NucleoDeConversa {
     return this.deps.prazos?.travaMs ?? VALIDADE_DA_TRAVA_MS;
   }
 
+  /** Há uma volta em andamento, deste processo ou de outro. Mais leve que `estado`: não monta o que o provedor mostra. */
+  async ocupada(id: string): Promise<boolean> {
+    const conversa = await this.obter(id);
+    return conversa.respondendo || (await this.outroNaConversa(id)) !== null;
+  }
+
   async estado(id: string): Promise<EstadoDaConversa> {
     const conversa = await this.obter(id);
     await this.expirarVencidos(conversa);

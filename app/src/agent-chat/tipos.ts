@@ -69,8 +69,10 @@ export interface EstadoDaConversa {
 
 /** O que a conversa de um run diz de si, para a pessoa saber com quem fala e o que o modelo viu. */
 export interface DoRunNaConversa {
-  /** Quem conversa agora: um agent da biblioteca ou um modelo solto. */
-  alvo: { tipo: "agent"; id: string } | { tipo: "modelo"; id: string };
+  /** Quem conversa agora: um agent da biblioteca ou um modelo solto. Nulo quando o run não tem passo de modelo e a pessoa ainda não escolheu. */
+  alvo: { tipo: "agent"; id: string } | { tipo: "modelo"; id: string } | null;
+  /** Por que não há alvo, no idioma do app. Nulo quando há. */
+  motivoSemAlvo: string | null;
   /** O alvo é o padrão (o do primeiro passo de modelo do run) ou foi escolhido. */
   padrao: boolean;
   /** O run é de uma automação arquivada: a conversa só lê. */

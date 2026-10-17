@@ -3646,6 +3646,9 @@
       "run": "Run {{id}} da automação \"{{nome}}\", estado {{estado}}.",
       "runArchived": "Run {{id}} da automação \"{{nome}}\", estado {{estado}}. A automação está arquivada: só se lê, e as ferramentas de escrita recusam.",
       "context": "Contexto do run:\n{{corpo}}"
+    },
+    "errors": {
+      "noTarget": "Este run não tem passo de modelo, então ainda não há com quem conversar. Escolha um agent ou um modelo para a conversa."
     }
   }
 }
