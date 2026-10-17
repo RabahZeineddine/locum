@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { refDoTeams } from "../teams/ref.js";
+import type { ParamsDoPacote } from "../pacote/params.js";
 
 // O renderer, o MCP e o executor importam este arquivo: nada de Node aqui.
 
@@ -160,6 +161,9 @@ export const REGISTRO_DE_CONVERSA: RegistroDeConversa = {
     },
   },
 };
+
+/** O param `destino` no pacote: `fixo` é uma conversa desta máquina e não viaja; `evento` e `novo` viajam. */
+export const PARAMS_DE_DESTINO_NO_PACOTE: ParamsDoPacote = { destino: "destino" };
 
 /** Os campos de endereço do evento de todos os apps de conversa. */
 export function camposDeEndereco(registro: RegistroDeConversa = REGISTRO_DE_CONVERSA): string[] {

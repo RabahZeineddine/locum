@@ -727,6 +727,8 @@ export function githubReviewHandler(client: () => ReviewClient = octokit): Actio
   };
 
   return {
+    // O PR de destino é desta máquina (dono, repositório e número); o marcador do evento viaja.
+    paramsDoPacote: { owner: "local", repo: "local", pull: "local" },
     // Aprovar ou pedir mudança no pull request de outra pessoa é decisão
     // assinada por quem revisa, e por isso nunca sai sem clique, nem com o
     // passo em modo automático. Só o comentário pode pular a fila.

@@ -3302,6 +3302,8 @@
       },
       "declaredRead": "o arquivo dizia leitura, vale a classificação daqui. Para usar, ligue a ferramenta na conexão do agent (aba Ferramentas): cada uso vai pedir confirmação.",
       "urlFill": "O endereço do passo {{passo}} não vem no pacote: preencha na automação.",
+      "paramsFill": "O passo {{passo}} não trouxe no pacote: {{params}}. Preencha na automação.",
+      "destinoFill": "O passo {{passo}} falava com uma conversa fixa desta pessoa. Escolha o destino na automação; sem isso ele responde no evento.",
       "urlFillHost": "O endereço do passo {{passo}} não vem no pacote: preencha na automação (era em {{host}}).",
       "toolRemoved": "não entra: escrita não roda como ferramenta avulsa. Para escrever, use um nó de ação da automação, que passa pela fila.",
       "toolAsks": "entra e pede confirmação a cada uso"

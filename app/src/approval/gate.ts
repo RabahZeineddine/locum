@@ -3,6 +3,7 @@ import { and, eq, lte } from "drizzle-orm";
 import { db, schema } from "../db/index.js";
 import type { EsquemaJson } from "../config/referencias.js";
 import type { ActionMode } from "../config/types.js";
+import type { ParamsDoPacote } from "../pacote/params.js";
 
 /**
  * Quanto tempo em `publishing` faz a pendência contar como parada. Publicar
@@ -58,6 +59,12 @@ export type ActionHandler = {
    */
   outputSchema?: EsquemaJson;
   /**
+   * Como cada param do passo desta ação viaja no pacote (`.locum.json`): portátil,
+   * texto limpo, destino, url ou local. Param que a ação não declara não viaja, e
+   * vira pendência na importação. Todo handler declara, mesmo vazio: um teste cobra.
+   */
+  paramsDoPacote?: ParamsDoPacote;
+  /**
    * Monta o que vai para a fila a partir da saida do passo.
    *
    * O que este metodo devolve e o que fica gravado na pendencia, e e o que
@@ -110,12 +117,13 @@ export class ApprovalGate {
    * divergem na primeira ação nova. A gate continua recusando o modo errado na
    * hora de publicar, com ou sem a tela ter avisado.
    */
-  describe(): { kind: string; modes: readonly ActionMode[]; holdsByContent: boolean; outputSchema: EsquemaJson }[] {
+  describe(): { kind: string; modes: readonly ActionMode[]; holdsByContent: boolean; outputSchema: EsquemaJson; paramsDoPacote?: ParamsDoPacote }[] {
     return [...this.handlers.entries()].map(([kind, handler]) => ({
       kind,
       modes: handler.modes ?? (["approve", "draft", "auto"] as const),
       holdsByContent: typeof handler.holdForApproval === "function",
       outputSchema: handler.outputSchema ?? SAIDA_PADRAO_DA_ACAO,
+      ...(handler.paramsDoPacote === undefined ? {} : { paramsDoPacote: handler.paramsDoPacote }),
     }));
   }
 

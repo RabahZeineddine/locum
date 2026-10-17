@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { ActionHandler } from "../approval/gate.js";
 import { exigirDestino } from "../acao/destino.js";
-import { reacaoDoPasso } from "../reacao/passo.js";
+import { PARAMS_DE_REACAO_NO_PACOTE, reacaoDoPasso } from "../reacao/passo.js";
 import { alvoDaReacao, reagirNoTeams, type TeamsReactionOptions } from "./reaction.js";
 
 /** O que fica gravado na pendência: a mensagem, a reação e o que sai antes dela. */
@@ -39,6 +39,7 @@ export type TeamsReactProposal = z.infer<typeof TeamsReactProposal>;
 export function teamsReactHandler(options: TeamsReactionOptions = {}): ActionHandler {
   return {
     modes: ["approve", "auto"],
+    paramsDoPacote: PARAMS_DE_REACAO_NO_PACOTE,
 
     async propose(payload) {
       // Reação só cai na mensagem do evento; outro destino é recusado.

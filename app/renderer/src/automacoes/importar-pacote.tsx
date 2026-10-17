@@ -233,6 +233,19 @@ export function ImportarPacote({
             </div>
           ) : null}
 
+          {previa.omitidos.some((o) => o.params !== undefined && o.codigo !== "url-a-preencher") ? (
+            <ul className="flex flex-col gap-0.5 text-xs" data-locum-pacote-params="">
+              {previa.omitidos.flatMap((o) =>
+                o.params === undefined || o.codigo === "url-a-preencher" ? [] : [
+                  <li className="flex items-center gap-2" key={`${o.codigo}:${o.onde}`}>
+                    <StatusDot estado="aviso" />
+                    {t(o.codigo === "destino-a-escolher" ? "pacote.import.destinoFill" : "pacote.import.paramsFill", { passo: o.onde, params: o.params.join(", ") })}
+                  </li>,
+                ],
+              )}
+            </ul>
+          ) : null}
+
           {previa.urlsAPreencher.length > 0 ? (
             <ul className="flex flex-col gap-0.5 text-xs" data-locum-pacote-urls="">
               {previa.urlsAPreencher.map((u) => (

@@ -46,21 +46,18 @@ const PassoDeIA = ModelStep.strict();
 const PassoDeLogica = LogicStep.strict();
 
 /**
- * Passo de ação sem o destino. `target` é o id de um tracker desta máquina, e
- * em `params` só ficam o que nomeia a ferramenta ou o endereço: argumentos e
- * cabeçalhos carregam id de canal, de conta e token, e não viajam.
+ * Passo de ação sem o `target` (o tracker é desta máquina). Em `params` viaja o
+ * que a ação declara como portátil ou texto limpo (`ActionHandler.paramsDoPacote`),
+ * e a importação aplica a mesma declaração de novo: o arquivo pode ter sido
+ * mexido à mão. `origem` é a URL reduzida a esquema e host.
  */
 const PassoDeAcao = ActionStep.omit({ target: true, params: true })
   .extend({
     params: z
-      .object({
-        server: z.string().min(1).optional(),
-        tool: z.string().min(1).optional(),
-        method: z.string().min(1).optional(),
-        /** Só esquema e host (`https://hooks.slack.com`): o caminho de um webhook é o segredo dele. */
-        origem: z.string().regex(/^https?:\/\/[^\s/?#@]+$/, "só esquema e host, sem caminho").optional(),
+      .record(z.string(), z.unknown())
+      .refine((p) => p.origem === undefined || (typeof p.origem === "string" && /^https?:\/\/[^\s/?#@]+$/.test(p.origem)), {
+        message: "origem: só esquema e host, sem caminho",
       })
-      .strict()
       .optional(),
   })
   .strict();
@@ -147,9 +144,17 @@ const SkillRequerida = z.object({ nome: z.string().min(1) }).strict();
 const ProvedorRequerido = z.object({ provedor: z.string().min(1), modelos: z.array(z.string().min(1)) }).strict();
 
 /** O que a exportação deixou de fora de propósito, para a prévia pedir à pessoa. */
-export const CodigoOmitido = z.enum(["canais", "gatilho-sem-canal", "filtros-de-pessoa", "dono-do-github", "tracker", "argumentos", "texto-limpo", "url-a-preencher", "escrita-removida", "chats-a-escolher"]);
+export const CodigoOmitido = z.enum(["canais", "gatilho-sem-canal", "filtros-de-pessoa", "dono-do-github", "tracker", "argumentos", "texto-limpo", "url-a-preencher", "escrita-removida", "chats-a-escolher", "destino-a-escolher"]);
 export type CodigoOmitido = z.infer<typeof CodigoOmitido>;
-const Omitido = z.object({ codigo: CodigoOmitido, onde: z.string().min(1), quantos: z.number().int().positive().optional() }).strict();
+const Omitido = z
+  .object({
+    codigo: CodigoOmitido,
+    onde: z.string().min(1),
+    quantos: z.number().int().positive().optional(),
+    /** Os params que ficaram de fora, por nome (`args.token` dentro de um param composto). */
+    params: z.array(z.string().min(1)).optional(),
+  })
+  .strict();
 
 export const Pacote = z
   .object({

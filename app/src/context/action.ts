@@ -37,6 +37,7 @@ export function contextUpdateHandler(options: ContextUpdateHandlerOptions = {}):
 
   return {
     modes: ["approve"],
+    paramsDoPacote: {},
 
     async propose(payload) {
       return ContextUpdateProposal.parse(payload);

@@ -202,7 +202,7 @@ test("o pacote exportado não carrega segredo, id de canal, conta, e-mail nem ca
     assert.doesNotMatch(texto, /[\w.+-]+@[\w-]+\.[a-z]{2,}/i, "sobrou algo com cara de e-mail");
     assert.doesNotMatch(texto, /\/(?:Users|home)\//, "sobrou caminho de home");
     for (const chave of ["credentialRef", "cursor", "headers", "env", "lastError", "channelId", "teamId", "chatId"]) {
-      assert.ok(!texto.includes(`"${chave}"`), `o pacote tem o campo ${chave}`);
+      assert.ok(!texto.includes(`"${chave}":`), `o pacote tem o campo ${chave}`);
     }
 
     // O que ficou de fora é dito, para a prévia pedir à pessoa.
@@ -210,9 +210,9 @@ test("o pacote exportado não carrega segredo, id de canal, conta, e-mail nem ca
     for (const esperado of ["canais", "dono-do-github", "filtros-de-pessoa", "tracker", "argumentos", "texto-limpo"] as const) {
       assert.ok(codigos.has(esperado), `faltou avisar ${esperado}`);
     }
-    // O que serve de sugestão continua: servidor e ferramenta do passo, sem argumento.
+    // O que serve de sugestão continua: servidor e ferramenta do passo, sem o argumento que era um id.
     const aviso = pacote.automacao.spec.steps.find((p) => p.key === "avisar");
-    assert.deepEqual(aviso?.type === "action" && aviso.params, { server: "ms365", tool: "send-chat-message" });
+    assert.deepEqual(aviso?.type === "action" && aviso.params, { server: "ms365", tool: "send-chat-message", args: {} });
     // O que não é segredo continua: o filtro de rótulo.
     const poll = pacote.automacao.gatilhos.find((g) => g.kind === "poll");
     assert.deepEqual(poll?.kind === "poll" && poll.filters, { labels: { include: ["review"] } });
