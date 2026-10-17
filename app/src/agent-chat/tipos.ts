@@ -67,6 +67,9 @@ export interface EstadoDaConversa {
   run?: DoRunNaConversa;
 }
 
+/** Com quem a conversa de um run fala, como a escolha da pessoa: um agent da biblioteca ou um modelo (`provedor/modelo`). */
+export type AlvoDaConversa = { agent: string } | { modelo: string };
+
 /** O que a conversa de um run diz de si, para a pessoa saber com quem fala e o que o modelo viu. */
 export interface DoRunNaConversa {
   /** Quem conversa agora: um agent da biblioteca ou um modelo solto. Nulo quando o run não tem passo de modelo e a pessoa ainda não escolheu. */

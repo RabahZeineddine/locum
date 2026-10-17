@@ -1,7 +1,9 @@
 import { Button } from "@/components/ui/button";
 import { StatusDot, type Estado as EstadoDoPonto } from "@/components/ui/status-dot";
-import { gravarRevisao, gravarTexto, decidir } from "@/lib/aprovar";
-import { BridgeError, read, useRead, type ReadResult, type ReadState } from "@/lib/bridge";
+import { gravarRevisao, gravarTexto, decidir, esquecerEdicao } from "@/lib/aprovar";
+import { BridgeError, invalidateReads, read, useRead, type ReadResult, type ReadState } from "@/lib/bridge";
+import { marcaDaAlteracao } from "@/lib/conversa-do-run";
+import { pedeRecarregar, traduzirErroDoServico } from "@/lib/erro-do-servico";
 import { comContexto, diffLinhas, type LinhaDoDiff } from "@/lib/diff";
 import {
   CONFIANCAS,
@@ -66,7 +68,48 @@ const PONTO: Record<Severidade, EstadoDoPonto> = {
  * continua precisando de tela para explicar o que aconteceu. Buscando só nas
  * pendentes, ela sumiria assim que fechasse.
  */
-export function Revisao({ detalhe, navegar }: TelaProps) {
+export function Revisao(props: TelaProps) {
+  const { t, i18n } = useTranslation();
+  const aprovacao = useRead("approvals.get", props.detalhe ?? "");
+  const pendencia = aprovacao.status === "ready" ? aprovacao.data : undefined;
+  // A decisão que o serviço recusou, como veio; e a contagem de recargas, que remonta a tela com a pendência de agora.
+  const [recusa, setRecusa] = useState<string | null>(null);
+  const [recargas, setRecargas] = useState(0);
+  const alteradaPelaConversa = marcaDaAlteracao(t, pendencia?.alteradaPelaConversaEm, i18n.language);
+
+  function recarregar(): void {
+    if (pendencia) esquecerEdicao(pendencia.id);
+    setRecusa(null);
+    setRecargas((n) => n + 1);
+    invalidateReads("approvals.get");
+    invalidateReads("approvals.listPending");
+  }
+
+  return (
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-3">
+      {alteradaPelaConversa === null ? null : (
+        <p className="text-muted-foreground flex items-center gap-1.5 text-xs" data-locum-alterada-pela-conversa>
+          <StatusDot estado="aviso" />
+          {alteradaPelaConversa}
+        </p>
+      )}
+      {recusa === null ? null : (
+        <p className="border-border bg-muted/40 flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-[13px]" data-locum-decisao-recusada>
+          <StatusDot estado="erro" />
+          <span className="min-w-0 break-words">{traduzirErroDoServico(t, recusa)}</span>
+          {pedeRecarregar(recusa) && (
+            <Button className="ml-auto cursor-pointer" data-locum-recarregar-pendencia onClick={recarregar} size="sm" variant="outline">
+              {t("inbox.recarregarPendencia")}
+            </Button>
+          )}
+        </p>
+      )}
+      <RevisaoDaPendencia {...props} aoRecusar={setRecusa} key={recargas} />
+    </div>
+  );
+}
+
+function RevisaoDaPendencia({ detalhe, navegar, aoRecusar }: TelaProps & { aoRecusar: (mensagem: string | null) => void }) {
   const { t } = useTranslation();
   const aprovacao = useRead("approvals.get", detalhe ?? "");
   const pendencia = aprovacao.status === "ready" ? aprovacao.data : undefined;
@@ -179,6 +222,7 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
   async function resolver(decisao: "approved" | "rejected") {
     if (!pendencia) return;
     setResolvendo(true);
+    aoRecusar(null);
     try {
       const resultado = await decidir(pendencia.id, decisao, pendencia.hash);
       if (resultado.status === "conflict") {
@@ -187,6 +231,8 @@ export function Revisao({ detalhe, navegar }: TelaProps) {
         return;
       }
       navegar("inbox");
+    } catch (e) {
+      aoRecusar(e instanceof Error ? e.message : String(e));
     } finally {
       setResolvendo(false);
     }

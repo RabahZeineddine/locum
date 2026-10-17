@@ -10,3 +10,8 @@ export function traduzirErroDoServico(
   const lido = lerErroComCodigo(mensagem);
   return lido === null ? mensagem : t(`erroDoServico.${lido.codigo}`, { argumento: argumento(lido.codigo, lido.argumento) });
 }
+
+/** O erro diz que o que a pessoa viu mudou: a saída é ler de novo, e não tentar outra vez. */
+export function pedeRecarregar(mensagem: string): boolean {
+  return lerErroComCodigo(mensagem)?.codigo === "pendencia_mudou";
+}

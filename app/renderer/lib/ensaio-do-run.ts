@@ -27,17 +27,23 @@ export function passosEmEnsaio(steps: readonly { stepKey: string; output: unknow
   return achados;
 }
 
-const RUN_E_PASSO = /^([0-9a-f-]{36})(?:@(.+))?$/i;
+const RUN_E_PASSO = /^([0-9a-f-]{36})(?:@([^/]+))?(?:\/(conversa))?$/i;
 
 /**
  * O `detalhe` da rota de Execuções: o id do run, com o passo depois de `@`
- * quando a pessoa vem de "Ver o que sairia". Nulo quando não é um run (o
- * detalhe também carrega o filtro por agent).
+ * quando a pessoa vem de "Ver o que sairia", e `/conversa` no fim quando ela vem
+ * pedir para conversar sobre o run. Nulo quando não é um run (o detalhe também
+ * carrega o filtro por agent).
  */
-export function passoDoDetalhe(detalhe: string | null | undefined): { runId: string; stepKey: string | null } | null {
+export function passoDoDetalhe(detalhe: string | null | undefined): { runId: string; stepKey: string | null; aba: "conversa" | null } | null {
   if (detalhe === null || detalhe === undefined) return null;
   const achou = RUN_E_PASSO.exec(detalhe);
-  return achou === null ? null : { runId: achou[1]!, stepKey: achou[2] ?? null };
+  return achou === null ? null : { runId: achou[1]!, stepKey: achou[2] ?? null, aba: achou[3] === undefined ? null : "conversa" };
+}
+
+/** O detalhe da rota que abre o run já na aba Conversa. */
+export function detalheDaConversa(runId: string): string {
+  return `${runId}/conversa`;
 }
 
 /** O detalhe da rota que abre o run já no passo. */

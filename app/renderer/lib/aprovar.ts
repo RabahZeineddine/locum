@@ -45,6 +45,11 @@ export async function decidir(approvalId: string, decisao: Decisao, hashVisto?: 
   return res;
 }
 
+/** Recarregar a pendência: o hash que esta janela guardou da edição dela deixa de valer, e a decisão volta a levar o que a tela mostrar. */
+export function esquecerEdicao(approvalId: string): void {
+  hashDaEdicao.delete(approvalId);
+}
+
 /**
  * Grava os achados revisados. Continua sendo edição de uma pessoa, e não
  * publicação: a pendência segue esperando o clique.

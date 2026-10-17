@@ -404,6 +404,9 @@
     "conflict": "Isso mudou desde que entrou na fila. Abra para ver o que aconteceu.",
     "semCommitAvaliado": "Sem commit avaliado: a review sai sem fixar o commit.",
     "propostaPelaConversa": "Proposta pela conversa do run",
+    "conversarSobreORun": "Conversar sobre este run",
+    "alteradaPelaConversa": "Alterada pela conversa às {{hora}}",
+    "recarregarPendencia": "Recarregar a pendência",
     "context_update": {
       "target": "Atualização de contexto: {{slug}}",
       "kind": "Contexto",

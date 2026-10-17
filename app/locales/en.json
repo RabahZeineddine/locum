@@ -389,6 +389,9 @@
     "conflict": "This item changed since it was queued. Open it to see what happened.",
     "semCommitAvaliado": "No evaluated commit: the review goes out without pinning the commit.",
     "propostaPelaConversa": "Proposed by the run conversation",
+    "conversarSobreORun": "Talk about this run",
+    "alteradaPelaConversa": "Changed by the conversation at {{hora}}",
+    "recarregarPendencia": "Reload the pending item",
     "context_update": {
       "target": "Context update: {{slug}}",
       "kind": "Context",

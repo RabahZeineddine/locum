@@ -21,12 +21,11 @@ import {
   type ProvedorDeConversa,
 } from "./nucleo.js";
 import { erroComCodigo } from "../services/erro-com-codigo.js";
-import { chaveDoRun, type DoRunNaConversa } from "./tipos.js";
+import { chaveDoRun, type AlvoDaConversa, type DoRunNaConversa } from "./tipos.js";
 
 type Db = typeof defaultDb;
 
-/** Quem conversa: o que a pessoa escolheu, ou (nulo) o padrão do run. */
-export type AlvoDaConversa = { agent: string } | { modelo: string };
+export type { AlvoDaConversa };
 
 /**
  * Limite técnico do que entra no contexto inicial (caracteres). Passado dele, o resto

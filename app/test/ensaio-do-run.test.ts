@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ensaioDoPasso, estimativaAcimaDoTeto, passoDoDetalhe, passosEmEnsaio, ondeSairia } from "../renderer/lib/ensaio-do-run.js";
+import { detalheDaConversa, ensaioDoPasso, estimativaAcimaDoTeto, passoDoDetalhe, passosEmEnsaio, ondeSairia } from "../renderer/lib/ensaio-do-run.js";
 
 const ensaio = { state: "ensaio", motivo: "sem-conversa", text: "Revisão: tudo certo" };
 
@@ -24,8 +24,10 @@ test("passosEmEnsaio devolve a chave de cada passo em ensaio, na ordem", () => {
 
 test("passoDoDetalhe separa o run do passo no detalhe da rota", () => {
   const id = "0b0c5f0e-1111-4222-8333-444455556666";
-  assert.deepEqual(passoDoDetalhe(id), { runId: id, stepKey: null });
-  assert.deepEqual(passoDoDetalhe(`${id}@postar`), { runId: id, stepKey: "postar" });
+  assert.deepEqual(passoDoDetalhe(id), { runId: id, stepKey: null, aba: null });
+  assert.deepEqual(passoDoDetalhe(`${id}@postar`), { runId: id, stepKey: "postar", aba: null });
+  assert.deepEqual(passoDoDetalhe(detalheDaConversa(id)), { runId: id, stepKey: null, aba: "conversa" });
+  assert.deepEqual(passoDoDetalhe(`${id}@postar/conversa`), { runId: id, stepKey: "postar", aba: "conversa" });
   assert.equal(passoDoDetalhe("observability-watch"), null);
   assert.equal(passoDoDetalhe(null), null);
 });
