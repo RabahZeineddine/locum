@@ -694,7 +694,8 @@ export const ENTRADA_DA_REVIEW: EsquemaJson = {
     summary: { type: "string", description: "The review body. Empty publishes only the invisible marks." },
     findings: {
       type: "array",
-      description: "Findings with a file and line become inline comments.",
+      description: "Findings with a file and line become inline comments. Empty by default.",
+      default: [],
       items: {
         type: "object",
         properties: {
@@ -709,7 +710,7 @@ export const ENTRADA_DA_REVIEW: EsquemaJson = {
       },
     },
   },
-  required: ["verdict", "findings"],
+  required: ["verdict"],
   additionalProperties: false,
 };
 

@@ -59,6 +59,7 @@ import { useCurrentInitiative } from "../current-initiative";
 import { GrafoDaExecucao } from "../grafo";
 import { LeituraDoDigest, lerDigest } from "../leitura-do-digest";
 import type { TelaProps } from "../rotas";
+import { aceitaAcaoNova, NovaAcao } from "./nova-acao";
 
 export type Execucao = ReadResult<"runs.list">[number];
 type Detalhe = NonNullable<ReadResult<"runs.get">>;
@@ -405,7 +406,10 @@ function Execucao({ navegar, runId, passoAberto }: { navegar: TelaProps["navegar
             {t("runs.dryRun.badge")}
           </span>
         ) : null}
-        <span className="num ml-auto text-[13px]">{dinheiro(t, detalhe)}</span>
+        <span className="num ml-auto flex items-center gap-3 text-[13px]">
+          {aceitaAcaoNova(detalhe) ? <NovaAcao detalhe={detalhe} navegar={navegar} /> : null}
+          {dinheiro(t, detalhe)}
+        </span>
       </div>
       {acimaDoTeto === null ? null : (
         <p className="text-muted-foreground -mt-3 text-right text-xs" data-locum-run-acima-do-teto="">
@@ -759,6 +763,11 @@ function PassoDaExecucao({
       <div className="flex flex-wrap items-center gap-2 text-[13px]">
         <span className="text-muted-foreground num">{passo.idx + 1}</span>
         <span className="font-medium">{passo.name}</span>
+        {passo.origem === "avulso" ? (
+          <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[11px] font-medium" data-locum-passo-avulso="">
+            {t("runs.step.standalone")}
+          </span>
+        ) : null}
         <Estado rotulo={naoRodou ? t("runs.step.notRun") : undefined} status={passo.status} />
         {ensaio === null ? null : (
           <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[11px] font-medium" data-locum-ensaio="">
@@ -775,7 +784,7 @@ function PassoDaExecucao({
             {t("runs.step.tokens", { tokens: passo.promptTokens + passo.completionTokens })}
           </span>
           <span>{t("runs.step.cost", { cost: passo.costUsd.toFixed(3) })}</span>
-          <Reexecutar runId={runId} stepKey={passo.stepKey} />
+          {passo.origem === "avulso" ? null : <Reexecutar runId={runId} stepKey={passo.stepKey} />}
         </span>
       </div>
 

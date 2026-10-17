@@ -243,7 +243,14 @@ test("reexecutar o passo de que o avulso deriva expira a pendência dele", async
 test("describe expõe o inputSchema só das ações que o declaram", () => {
   const { gate } = montarGate();
   const porKind = Object.fromEntries(gate.describe().map((a) => [a.kind, a.inputSchema]));
-  assert.deepEqual((porKind["github.review_comment"] as { required: string[] }).required, ["verdict", "findings"]);
+  assert.deepEqual((porKind["github.review_comment"] as { required: string[] }).required, ["verdict"]);
   assert.equal(porKind["teste.auto"], undefined);
   assert.equal("owner" in ((porKind["github.review_comment"] as { properties: object }).properties), false, "o alvo não entra no esquema de conteúdo");
+});
+
+test("o padrão do esquema vale também para quem propõe pelo serviço: sem achados, a lista vai vazia", async () => {
+  const { gate } = montarGate();
+  const { runId } = await montar();
+  await new PassoAvulsoService(db, gate).proporAcao(runId, { kind: "github.review_comment", conteudo: { verdict: "APPROVE" } });
+  assert.deepEqual((await pendencias(runId))[0]!.payload, { verdict: "APPROVE", findings: [], owner: "acme", repo: "api", repoName: "api", pull: 7, headSha: "aaa111" });
 });

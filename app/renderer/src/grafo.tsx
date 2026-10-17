@@ -9,6 +9,7 @@ import {
 } from "@/components/ai-elements/node";
 import type { ReadResult } from "@/lib/bridge";
 import { ALTURA_DO_NO, LARGURA_DO_NO, montarGrafo } from "@/lib/grafo";
+import { passosDoGrafo } from "@/lib/passo-avulso";
 import { cn } from "@/lib/utils";
 import type {
   Edge as ArestaDoFluxo,
@@ -27,7 +28,7 @@ type PassoDoRun = Detalhe["steps"][number];
 /**
  * O grafo de uma execucao, somente leitura.
  *
- * A forma vem do spec, porque e la que mora o `needs`: a tabela `steps` guarda
+ * A forma vem do spec (mais os passos avulsos, que so existem na tabela), porque e la que mora o `needs`: a tabela `steps` guarda
  * a ordem em que o executor rodou, que e uma linearizacao, e desenhar a partir
  * dela transformaria todo grafo numa fila. O estado vem do run, casado por
  * chave de passo.
@@ -39,7 +40,8 @@ type PassoDoRun = Detalhe["steps"][number];
 export function GrafoDaExecucao({ detalhe }: { detalhe: Detalhe }) {
   const { nos, arestas } = useMemo(() => {
     const porChave = new Map(detalhe.steps.map((s) => [s.stepKey, s]));
-    const grafo = montarGrafo(detalhe.spec.steps);
+    // O spec dá a forma; os passos avulsos vêm da tabela `steps` e entram depois dos do fluxo.
+    const grafo = montarGrafo(passosDoGrafo(detalhe.spec.steps, detalhe.steps));
 
     const flowNodes: NoDoFluxo<DadosDoPasso>[] = grafo.nos.map((no) => {
       const doSpec = detalhe.spec.steps.find((s) => s.key === no.key);
@@ -121,6 +123,8 @@ type DadosDoPasso = {
   modo: string | null;
   temEntrada: boolean;
   temSaida: boolean;
+  /** Passo proposto depois, sobre o run que ja rodou (`steps.origem`). */
+  avulso: boolean;
 };
 
 function dados(
@@ -129,22 +133,26 @@ function dados(
   doRun: PassoDoRun | undefined,
 ): DadosDoPasso {
   const acao = doSpec?.type === "action" ? doSpec : undefined;
+  const avulso = doRun?.origem === "avulso";
+  // O avulso nasce em approve e o que ele faz esta na definicao gravada em `input`.
+  const definicao = avulso ? (doRun?.input as { kind?: string; derivaDe?: unknown } | null) : null;
 
   return {
+    avulso,
     chave,
     detalhe:
       doRun?.modelUsed != null
         ? rotuloDoModelo(doRun.modelUsed)
         : doSpec?.type === "model"
           ? rotuloDoModelo(doSpec.model)
-          : (acao?.action ?? chave),
-    modo: acao?.mode ?? null,
+          : (acao?.action ?? definicao?.kind ?? chave),
+    modo: avulso ? "approve" : (acao?.mode ?? null),
     erro: doRun?.error ?? null,
     substituicao: doRun?.error ? null : (doRun?.substitutionReason ?? null),
     nome: doSpec?.name ?? doRun?.name ?? chave,
     opcional: doSpec?.optional ?? false,
     status: doRun?.status ?? "pending",
-    temEntrada: (doSpec?.needs.length ?? 0) > 0,
+    temEntrada: avulso ? typeof definicao?.derivaDe === "string" : (doSpec?.needs.length ?? 0) > 0,
     temSaida: true,
   };
 }
@@ -186,6 +194,9 @@ function NoDoPasso({ data }: PropsDoNo<NoDoFluxo<DadosDoPasso>>) {
           <span className="text-muted-foreground">{rotuloDeEstado(t, data.status)}</span>
           {data.opcional ? (
             <span className="text-muted-foreground">{t("graph.optional")}</span>
+          ) : null}
+          {data.avulso ? (
+            <span className="text-muted-foreground" data-locum-no-avulso="">{t("graph.standalone")}</span>
           ) : null}
           {data.modo === "approve" ? (
             <span className="text-amber-500">{t("graph.onlyWithClick")}</span>

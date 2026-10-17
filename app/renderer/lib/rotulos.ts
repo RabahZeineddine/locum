@@ -56,7 +56,7 @@ export function rotuloDeEstado(t: TFunction, estado: string): string {
 }
 
 /** Codigo de passo pulado ou rejeitado, gravado em ingles por `gate.ts` e `executor.ts`. */
-export const MOTIVOS_DE_PASSO = ["outside_initiative", "rejected", "publish_conflict", "not_run"] as const;
+export const MOTIVOS_DE_PASSO = ["outside_initiative", "rejected", "publish_conflict", "not_run", "expired"] as const;
 export type MotivoDePasso = (typeof MOTIVOS_DE_PASSO)[number];
 
 export function rotuloDoMotivo(t: TFunction, motivo: string): string {

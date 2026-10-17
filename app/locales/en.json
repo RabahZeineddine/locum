@@ -337,7 +337,8 @@
   },
   "graph": {
     "optional": "optional",
-    "onlyWithClick": "only with a click"
+    "onlyWithClick": "only with a click",
+    "standalone": "standalone"
   },
   "inbox": {
     "title": "Inbox",
@@ -696,7 +697,8 @@
         "starting": "starting the model and tools…",
         "working": "working…"
       },
-      "notRun": "did not run"
+      "notRun": "did not run",
+      "standalone": "standalone"
     },
     "progress": "{{done}}/{{total}} steps",
     "waiting_steps": "{{count}} waiting",
@@ -717,7 +719,8 @@
       "publish_conflict": "the target changed before this could be published",
       "publish_conflict_head": "the pull request got new commits after the evaluation (evaluated {{avaliado}}, current {{atual}}): nothing was published",
       "dependency_rejected": "skipped because step {{step}} was rejected",
-      "not_run": "an earlier step failed, so this one did not run"
+      "not_run": "an earlier step failed, so this one did not run",
+      "expired": "the approval expired because the step it derives from was re-run"
     },
     "tabs": {
       "executive": "Executive View",
@@ -766,7 +769,29 @@
         "outro": "would go to the step destination"
       }
     },
-    "overCap": "Estimate of {{estimate}} USD is above the {{cap}} USD per-run cap, not billed (subscription)."
+    "overCap": "Estimate of {{estimate}} USD is above the {{cap}} USD per-run cap, not billed (subscription).",
+    "newAction": {
+      "button": "New action",
+      "title": "New action on this run",
+      "description": "Proposes an action on what this run already assessed. It becomes a standalone step and waits for your approval in the Queue.",
+      "target": "Target, from the run's event",
+      "noTarget": "this run has no event: the action has no target",
+      "kind": "Action",
+      "choose": "choose",
+      "none": "no action can be proposed by hand",
+      "derivesFrom": "Derives from step",
+      "derivesNone": "none",
+      "propose": "Propose",
+      "cancel": "Cancel",
+      "close": "Close",
+      "queued": "{{step}} is in the Queue, waiting for your approval.",
+      "openQueue": "Open the Queue",
+      "error": {
+        "obrigatorio": "required field",
+        "tipo": "value of another type",
+        "json": "invalid JSON"
+      }
+    }
   },
   "settings": {
     "refused": "the bridge refused {{channel}}: {{message}}",

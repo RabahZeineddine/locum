@@ -280,6 +280,8 @@ export const AO_VIVO: Record<ReadChannel, boolean> = {
  */
 export const ACTION_CHANNELS = [
   "runs.rerunStep",
+  // Propor uma ação nova sobre um run que já rodou: cria a pendência na Fila, não publica.
+  "runs.proporAcao",
   // Rodar um agent num pull request digitado na tela. O run anda até o passo
   // de ação e para na fila de aprovação, como qualquer outro.
   "runs.start",

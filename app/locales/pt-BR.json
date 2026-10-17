@@ -349,7 +349,8 @@
   },
   "graph": {
     "optional": "opcional",
-    "onlyWithClick": "só com clique"
+    "onlyWithClick": "só com clique",
+    "standalone": "avulso"
   },
   "inbox": {
     "title": "Fila",
@@ -718,7 +719,8 @@
         "starting": "subindo o modelo e as ferramentas…",
         "working": "trabalhando…"
       },
-      "notRun": "não rodou"
+      "notRun": "não rodou",
+      "standalone": "avulso"
     },
     "progress": "{{done}}/{{total}} passos",
     "waiting_steps": "{{count}} aguardando",
@@ -741,7 +743,8 @@
       "publish_conflict": "o alvo mudou antes disso poder ser publicado",
       "publish_conflict_head": "o pull request recebeu commits depois da avaliação (avaliado {{avaliado}}, atual {{atual}}): nada foi publicado",
       "dependency_rejected": "pulado porque o passo {{step}} foi recusado",
-      "not_run": "um passo anterior falhou, então este não rodou"
+      "not_run": "um passo anterior falhou, então este não rodou",
+      "expired": "a pendência expirou porque o passo de que ela deriva foi reexecutado"
     },
     "tabs": {
       "executive": "Visão Executiva",
@@ -790,7 +793,29 @@
         "outro": "sairia no destino do passo"
       }
     },
-    "overCap": "Estimativa de {{estimate}} USD acima do teto de {{cap}} USD por run, não cobrado (assinatura)."
+    "overCap": "Estimativa de {{estimate}} USD acima do teto de {{cap}} USD por run, não cobrado (assinatura).",
+    "newAction": {
+      "button": "Nova ação",
+      "title": "Nova ação neste run",
+      "description": "Propõe uma ação sobre o que este run já avaliou. Ela vira um passo avulso e espera sua aprovação na Fila.",
+      "target": "Alvo, vindo do evento do run",
+      "noTarget": "este run não tem evento: a ação não tem alvo",
+      "kind": "Ação",
+      "choose": "escolha",
+      "none": "nenhuma ação aceita ser proposta à mão",
+      "derivesFrom": "Deriva do passo",
+      "derivesNone": "nenhum",
+      "propose": "Propor",
+      "cancel": "Cancelar",
+      "close": "Fechar",
+      "queued": "{{step}} está na Fila, esperando sua aprovação.",
+      "openQueue": "Abrir a Fila",
+      "error": {
+        "obrigatorio": "campo obrigatório",
+        "tipo": "valor de outro tipo",
+        "json": "JSON inválido"
+      }
+    }
   },
   "settings": {
     "refused": "a ponte recusou {{channel}}: {{message}}",
