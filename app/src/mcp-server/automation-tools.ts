@@ -55,6 +55,7 @@ async function listAutomations() {
         name: agent.name,
         latestVersion: latest?.version ?? null,
         stepCount: latest?.spec.steps.length ?? 0,
+        pending: latest?.spec.pendentes ?? [],
         enabled: triggers.some((t) => t.enabled),
         triggers,
       };
@@ -71,6 +72,7 @@ async function getAutomation(agentId: string) {
     version: automacao.version.version,
     note: automacao.version.note,
     spec: automacao.version.spec,
+    pending: automacao.version.spec.pendentes ?? [],
     enabled: automacao.triggers.some((t) => t.enabled),
     triggers: await Promise.all(automacao.triggers.map(paraLeitura)),
   };
@@ -78,11 +80,11 @@ async function getAutomation(agentId: string) {
 
 export function registerAutomationTools(server: McpServer): void {
   def(server, "list_automations", "read",
-    "Lists the automations (a flow agent plus its triggers) with the latest version, the step count, whether any trigger is on, and each trigger with kind, enabled state and last error.",
+    "Lists the automations (a flow agent plus its triggers) with the latest version, the step count, whether any trigger is on, the fields still to fill (pending: where, field path and reason code) and each trigger with kind, enabled state and last error.",
     {}, listAutomations);
 
   def(server, "get_automation", "read",
-    "An automation with the spec of its latest version and its triggers (config, enabled state and last error of each).",
+    "An automation with the spec of its latest version and its triggers (config, enabled state and last error of each). pending lists the fields still to fill after a package import (where: a step key or gatilho:<kind>; field: the path inside it; reason: a code such as destino-a-escolher). A step with a pending field does not run (the run fails naming it) and the automation cannot be turned on; saving with the field filled clears it.",
     { agentId: z.string().describe("automation id, as shown by list_automations") },
     ({ agentId }) => getAutomation(agentId));
 
@@ -139,7 +141,7 @@ export function registerAutomationTools(server: McpServer): void {
     async ({ config }) => (await import("../services/trigger-preview.js")).previaDoGatilho(config as unknown as TriggerConfigInput));
 
   def(server, "save_automation", "publish",
-    "Records an automation as the app screen does when it saves: the flow spec (AgentSpec, as in upsert_agent) as a new immutable version, and its triggers in one call. Triggers with an id update that trigger, the ones without id are new, and existing triggers left out of the list are removed. Saved as a person: an action step can be set to auto here, and then it publishes without approval once the automation runs (upsert_agent, in contrast, lowers actions to approval). An mcp.call that writes is the exception: it only publishes without approval with params.autoEscrita: true, written on the node itself (a {{...}} reference does not count); without it the call goes to the approval queue even in auto. A new trigger starts disabled unless enabled is true, which turns it on (so this tool acts like set_automation_enabled: " + EFEITO_DE_LIGAR + "). A Teams trigger from a package that waits for its chats refuses to be saved empty unless valerParaTodosOsChats is true. Without create the automation must already exist; with create the id must be free.",
+    "Records an automation as the app screen does when it saves: the flow spec (AgentSpec, as in upsert_agent) as a new immutable version, and its triggers in one call. Triggers with an id update that trigger, the ones without id are new, and existing triggers left out of the list are removed. Saved as a person: an action step can be set to auto here, and then it publishes without approval once the automation runs (upsert_agent, in contrast, lowers actions to approval). An mcp.call that writes is the exception: it only publishes without approval with params.autoEscrita: true, written on the node itself (a {{...}} reference does not count); without it the call goes to the approval queue even in auto. A new trigger starts disabled unless enabled is true, which turns it on (so this tool acts like set_automation_enabled: " + EFEITO_DE_LIGAR + "). A Teams trigger from a package that waits for its chats refuses to be saved empty unless valerParaTodosOsChats is true. Fields still to fill (spec.pendentes) are cleared when the saved step or trigger has a value at the path; enabled true is refused while any remains. Without create the automation must already exist; with create the id must be free.",
     {
       spec: z.record(z.string(), z.unknown()).describe("full AgentSpec: id, name, steps and the rest of the get_agent format"),
       triggers: z
@@ -171,13 +173,14 @@ export function registerAutomationTools(server: McpServer): void {
       return {
         agentId: salvo.version.agentId,
         version: salvo.version.version,
+        pending: salvo.version.spec.pendentes ?? [],
         ...(semValor.length > 0 ? { hiddenWithoutValue: semValor } : {}),
         triggers: await Promise.all(salvo.triggers.map(paraLeitura)),
       };
     });
 
   def(server, "set_automation_enabled", "publish",
-    "Turns every trigger of an automation on or off. " + EFEITO_DE_LIGAR + " Turning off stops it waking by itself; the agent can still run by hand. A Teams trigger from a package that still waits for its chats blocks turning on.",
+    "Turns every trigger of an automation on or off. " + EFEITO_DE_LIGAR + " Turning off stops it waking by itself; the agent can still run by hand. A Teams trigger from a package that still waits for its chats, or an automation with fields still to fill (pending), blocks turning on.",
     { agentId: z.string(), enabled: z.boolean() },
     async ({ agentId, enabled }) => {
       if (!(await agentService.get(agentId))) throw new Error(`automacao "${agentId}" nao cadastrada`);
@@ -185,7 +188,7 @@ export function registerAutomationTools(server: McpServer): void {
     });
 
   def(server, "set_trigger_enabled", "publish",
-    "Turns one trigger on or off. " + EFEITO_DE_LIGAR + " A Teams trigger from a package that still waits for its chats (chatsPendentes) blocks turning on until the chats are chosen.",
+    "Turns one trigger on or off. " + EFEITO_DE_LIGAR + " A Teams trigger from a package that still waits for its chats (chatsPendentes) blocks turning on until the chats are chosen, and so does an automation with fields still to fill (pending).",
     { triggerId: z.string().min(1), enabled: z.boolean() },
     async ({ triggerId, enabled }) => paraLeitura(await triggerService.setEnabled(triggerId, enabled)));
 

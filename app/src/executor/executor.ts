@@ -1,3 +1,4 @@
+import { PassoIncompletoError, pendenciasDoPasso } from "../config/pendencia.js";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -326,6 +327,10 @@ export class Executor {
           foraDoCaminho.add(step.key);
           continue;
         }
+
+        // Campo a preencher não cai em padrão: o nó incompleto para o run em vez de rodar com o que sobrou.
+        const incompletas = pendenciasDoPasso(spec, step.key);
+        if (incompletas.length > 0) throw new PassoIncompletoError(step.key, incompletas);
 
         if (step.type === "logic") {
           const saida = runLogic(step, payload, outputs);

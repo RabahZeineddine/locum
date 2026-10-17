@@ -349,8 +349,16 @@ test("gatilho restrito a chats: o pacote só diz quantos, e a importação não 
   // Escolhidos os chats, liga.
   const escolhido = { ...gatilho.config, chats: [{ chatId: CHAT_DO_TEAMS }] };
   await bruno.triggers.set("revisao-de-pr", escolhido, { id: gatilho.id });
+  await dispensarPendencias(bruno, "revisao-de-pr");
   assert.equal((await bruno.triggers.setEnabled(gatilho.id, true)).enabled, true);
 });
+
+/** A pessoa que revê o que o pacote deixou a preencher e dispensa o que não precisa: grava o spec sem as pendências. */
+async function dispensarPendencias(m: Maquina, id: string): Promise<void> {
+  const { version, triggers } = (await m.automations.get(id))!;
+  const { pendentes: _pendentes, ...spec } = version.spec;
+  await m.automations.save({ spec, triggers: triggers.map((g) => ({ id: g.id, config: g.config })), note: "pendências revistas" });
+}
 
 test("pacote antigo, sem chatsRestritos, segue válido e o gatilho liga", async () => {
   const dono = maquina();
@@ -361,6 +369,7 @@ test("pacote antigo, sem chatsRestritos, segue válido e o gatilho liga", async 
   const r = await bruno.pacotes.importar(JSON.stringify(pacote));
   assert.ok(!r.pendencias.some((p) => p.codigo === "chats-a-escolher"));
   const gatilho = (await bruno.automations.get("revisao-de-pr"))!.triggers.find((g) => g.config.kind === "teams-inbox")!;
+  await dispensarPendencias(bruno, "revisao-de-pr");
   assert.equal((await bruno.triggers.setEnabled(gatilho.id, true)).enabled, true);
 });
 

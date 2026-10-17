@@ -110,6 +110,7 @@ export const MARCAS_DO_SPEC: Campos<typeof AgentSpec> = {
   steps: "portavel",
   budget: "portavel",
   layout: "portavel",
+  pendentes: "dobrado",
 };
 
 /** Os passos de IA e de lógica viajam inteiros; o de ação tem o `target` local e os `params` pela declaração da ação. */

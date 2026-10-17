@@ -1,4 +1,5 @@
 import { TriggerConfig, type AgentSpec, type TriggerConfigInput } from "../config/types.js";
+import { limparPendenciasPreenchidas, recusaDeLigar } from "../config/pendencia.js";
 import { agentService, ID_DE_AGENT, mensagemDeVersao, isReserved, type AgentService, type AgentVersion } from "./agent-service.js";
 import { dependenciaDeEvento, recusaSemEvento, type MotivoDeEvento } from "../executor/dependencia-de-evento.js";
 import { eventoManual, type EventoManual, type EventoRecente } from "./evento-manual.js";
@@ -110,6 +111,16 @@ export class AutomationService {
       if (recusa !== null) throw new Error(recusa);
     }
 
+    // O gatilho que passou a ter o campo preenchido tira a pendência dele; o que sobra trava o ligar.
+    const spec = limparPendenciasPreenchidas(
+      input.spec,
+      triggers.map((g) => TriggerConfig.parse(g.config)),
+    );
+    if (triggers.some((g) => g.enabled === true)) {
+      const recusa = recusaDeLigar(spec.pendentes, triggers.filter((g) => g.enabled === true).map((g) => TriggerConfig.parse(g.config).kind));
+      if (recusa !== null) throw new Error(recusa);
+    }
+
     let version: AgentVersion;
     if (input.create === true) {
       if (!ID_DE_AGENT.test(agentId)) {
@@ -117,10 +128,10 @@ export class AutomationService {
       }
       if ((await this.agents.get(agentId)) !== undefined) throw new Error(`já existe uma automação "${agentId}"`);
       const nota = input.note.trim() || "criada no canvas";
-      version = await this.agents.upsert(input.spec, nota, "human");
+      version = await this.agents.upsert(spec, nota, "human");
     } else {
       // A versão esperada é conferida dentro da transação que grava a versão nova.
-      version = await this.agents.saveEdited(agentId, input.spec, input.note, input.expectedVersion);
+      version = await this.agents.saveEdited(agentId, spec, input.note, input.expectedVersion);
     }
 
     const mantidos = new Set<string>();
@@ -152,6 +163,10 @@ export class AutomationService {
     const gatilhos = await this.triggers.list(agentId);
     // Confere antes de ligar o primeiro: um gatilho barrado no meio deixaria a automação meio ligada.
     if (enabled && gatilhos.some((g) => !g.enabled && esperaChats(g.config))) throw new Error(MOTIVO_CHATS);
+    if (enabled) {
+      const recusa = recusaDeLigar((await this.agents.getLatestVersion(agentId))?.spec.pendentes, gatilhos.map((g) => g.config.kind));
+      if (recusa !== null) throw new Error(recusa);
+    }
     for (const gatilho of gatilhos) {
       if (gatilho.enabled !== enabled) await this.triggers.setEnabled(gatilho.id, enabled);
     }

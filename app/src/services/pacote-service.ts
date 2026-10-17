@@ -24,6 +24,7 @@ import {
   type GatilhoDoPacote,
   type PassoDoPacote,
 } from "../pacote/formato.js";
+import { ondeDoGatilho, type Pendencia } from "../config/pendencia.js";
 import { limparValor } from "../pacote/limpeza.js";
 import { MARCAS_DOS_GATILHOS } from "../pacote/marcacao.js";
 import { aplicarMarcas, origemDaUrl, paramsDoPacoteParaPasso, paramsParaPacote, type ParamsDoPacote } from "../pacote/params.js";
@@ -236,6 +237,10 @@ export interface PacoteExportado {
 
 /* ------------------------------------------------------------------ ajudas */
 
+/** O que o pacote avisa mas não deixa nada a preencher, ou que a importação já cobre por outro caminho. */
+const INFORMATIVOS = new Set<CodigoOmitido>(["texto-limpo", "escrita-removida", "url-a-preencher", "chats-a-escolher", "gatilho-sem-canal"]);
+/** Omitido que vale o passo inteiro, sem nome de param: o campo é o do próprio passo. */
+const CAMPO_SEM_PARAMS: Partial<Record<CodigoOmitido, string>> = { tracker: "target" };
 const INTERNOS = new Set([SERVIDOR_NATIVO, SERVIDOR_CONTA]);
 const CATALOGO = new Map(CATALOG.map((c) => [c.id, c]));
 
@@ -796,6 +801,25 @@ export class PacoteService {
       .filter((o) => o.codigo !== "texto-limpo" && o.codigo !== "url-a-preencher")
       .map((o) => ({ codigo: o.codigo, onde: o.onde, ...(o.params === undefined ? {} : { params: o.params }) }));
 
+    // O que ficou a preencher também fica gravado na automação: a pendência do resultado some quando a tela fecha.
+    const chavesDosPassos = new Set(pacote.automacao.spec.steps.map((p) => p.key));
+    const tiposDosGatilhos = new Set(pacote.automacao.gatilhos.map((g) => g.kind));
+    const pendentes: Pendencia[] = [];
+    const pendente = (onde: string, campo: string, motivo: string): void => {
+      if (!pendentes.some((p) => p.onde === onde && p.campo === campo)) pendentes.push({ onde, campo, motivo });
+    };
+    for (const o of pacote.omitidos) {
+      if (INFORMATIVOS.has(o.codigo)) continue;
+      const onde = chavesDosPassos.has(o.onde) ? o.onde : tiposDosGatilhos.has(o.onde as GatilhoDoPacote["kind"]) ? ondeDoGatilho(o.onde) : undefined;
+      if (onde === undefined) continue;
+      const doPasso = onde === o.onde;
+      for (const nome of o.params ?? (CAMPO_SEM_PARAMS[o.codigo] === undefined ? [] : [CAMPO_SEM_PARAMS[o.codigo]!])) {
+        // Os chats do Teams já esperam pela escolha no próprio gatilho (`chatsPendentes`).
+        if (!doPasso && o.onde === "teams-inbox" && nome === "chats") continue;
+        pendente(onde, doPasso && o.params !== undefined ? `params.${nome}` : nome, o.codigo);
+      }
+    }
+
     // Validação completa antes de gravar qualquer agent. A classe das
     // ferramentas é recalculada aqui: a do arquivo nunca vale.
     const specsDosAgents = new Map<string, AgentProfile>();
@@ -849,9 +873,12 @@ export class PacoteService {
       } else if (p.type === "action") {
         const declaracao = declaracoes[p.action] ?? {};
         const { params: viajantes, origem, descartados } = paramsDoPacoteParaPasso(declaracao, p.params ?? {});
-        if (Object.values(declaracao).includes("url")) pendencias.push({ codigo: "url-a-preencher", onde: p.key, ...(origem === undefined ? {} : { dica: origem }) });
+        const urls = Object.entries(declaracao).filter(([, como]) => como === "url");
+        if (urls.length > 0) pendencias.push({ codigo: "url-a-preencher", onde: p.key, ...(origem === undefined ? {} : { dica: origem }) });
+        for (const [nome] of urls) pendente(p.key, `params.${nome}`, "url-a-preencher");
         // O que o arquivo traz e a ação não deixa viajar (pacote mexido à mão) não entra, e fica dito.
         if (descartados.length > 0) pendencias.push({ codigo: "argumentos", onde: p.key, params: descartados });
+        for (const nome of descartados) pendente(p.key, `params.${nome}`, "argumentos");
         const params = { ...viajantes, ...(typeof viajantes.server === "string" ? { server: servidor(viajantes.server) } : {}) };
         // Ação em `auto` publicaria sem que ninguém tenha dito que pode: entra em aprovação.
         passos.push({ ...p, mode: p.mode === "auto" ? "approve" : p.mode, ...(p.params === undefined ? {} : { params }) });
@@ -874,6 +901,9 @@ export class PacoteService {
       const config = gatilhoParaCadastro(g, servidor);
       if (config === null) {
         pendencias.push({ codigo: "gatilho-sem-canal", onde: g.kind });
+        // O gatilho não chega a existir: a pendência fica na automação, no campo que o cadastro recusou.
+        const faltando = TriggerConfig.safeParse({ ...g }).error?.issues[0]?.path.join(".");
+        pendente(ondeDoGatilho(g.kind), faltando ?? g.kind, "gatilho-sem-canal");
         continue;
       }
       TriggerConfig.parse(config);
@@ -896,7 +926,7 @@ export class PacoteService {
       const salvo = await this.library.saveProfile({ spec: novoSpec, note: "importado de pacote", ...(antes === null ? { create: true } : {}) });
       resultado.push({ id: alvo.id, acao: antes === null ? "criado" : salvo.version === antes.version ? "igual" : "atualizado", versao: salvo.version });
     }
-    await this.automations.save({ spec, triggers: gatilhos, note: "importada de pacote", create: true });
+    await this.automations.save({ spec: pendentes.length === 0 ? spec : { ...spec, pendentes }, triggers: gatilhos, note: "importada de pacote", create: true });
 
     return { automacaoId, agents: resultado, gatilhos: gatilhos.length, pendencias };
   }

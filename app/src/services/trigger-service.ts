@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
 import { TriggerConfig, type TriggerConfigInput } from "../config/types.js";
+import { Pendencia, recusaDeLigar } from "../config/pendencia.js";
 import { esquecerDescartes } from "../triggers/descartes.js";
 import { limparErro } from "../triggers/erros.js";
 import { isReserved } from "./agent-service.js";
@@ -146,6 +147,17 @@ export class TriggerService {
     return toEntry(inserted!);
   }
 
+  /** Os campos a preencher da última versão da automação: com algum, nenhum gatilho dela liga. */
+  async pendencias(agentId: string): Promise<Pendencia[]> {
+    const [ultima] = await this.db
+      .select({ spec: schema.agentVersions.spec })
+      .from(schema.agentVersions)
+      .where(eq(schema.agentVersions.agentId, agentId))
+      .orderBy(desc(schema.agentVersions.version))
+      .limit(1);
+    return (ultima?.spec as { pendentes?: Pendencia[] } | undefined)?.pendentes ?? [];
+  }
+
   async setEnabled(id: string, enabled: boolean): Promise<TriggerEntry> {
     const existing = await this.row(id);
     if (!existing) throw new Error(`gatilho ${id} nao cadastrado`);
@@ -153,6 +165,10 @@ export class TriggerService {
       throw new Error(`"${existing.agentId}" e um agent do sistema e nao aceita escrita`);
     }
     if (enabled && esperaChats(toEntry(existing).config)) throw new Error(MOTIVO_CHATS);
+    if (enabled) {
+      const recusa = recusaDeLigar(await this.pendencias(existing.agentId), [existing.kind]);
+      if (recusa !== null) throw new Error(recusa);
+    }
     const [updated] = await this.db
       .update(schema.triggers)
       .set({ enabled })

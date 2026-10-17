@@ -5,6 +5,7 @@ import { desc, eq } from "drizzle-orm";
 import { db as defaultDb, schema } from "../db/index.js";
 import { AgentBudgetPatch, AgentSpec, resolveTools, serversInScope, type ActionMode, type ActionStep, type AgentBudget, type ToolRef } from "../config/types.js";
 import { today } from "../executor/budget.js";
+import { limparPendenciasPreenchidas } from "../config/pendencia.js";
 import { splitModelId } from "../providers/registry.js";
 import { SUBSCRIPTION_RUNTIMES } from "../runtimes/types.js";
 
@@ -244,6 +245,8 @@ export class AgentService {
       this.refuseWriteByAccount(parsed);
     }
     const guarded = actor === "human" ? { spec: parsed, downgrades: [] } : demoteActions(parsed, latest?.spec);
+    // Só a pessoa dispensa uma pendência por omissão: o que o agent grava não apaga o que ficou a preencher.
+    if (actor !== "human") guarded.spec = manterPendencias(guarded.spec, latest?.spec);
 
     return this.write(guarded, latest, note);
   }
@@ -254,7 +257,8 @@ export class AgentService {
     note?: string,
     expectedVersion?: number,
   ): Promise<AgentVersion> {
-    const parsed = guarded.spec;
+    // O campo que ganhou valor deixa de ser pendência, por qualquer caminho de gravação.
+    const parsed = limparPendenciasPreenchidas(guarded.spec);
     refuseReserved(parsed.id);
     // O destino de resposta e de reação é conferido ao gravar: marcador de passo, tipo que a ação não aceita ou conversa de outro app.
     for (const passo of parsed.steps) {
@@ -692,3 +696,12 @@ function sameSpec(stored: unknown, spec: AgentSpec): boolean {
 }
 
 export const agentService = new AgentService();
+
+/** As pendências da versão anterior que o spec novo deixou de trazer voltam: omitir não é preencher. */
+function manterPendencias(novo: AgentSpec, anterior: unknown): AgentSpec {
+  const antigas = (anterior as Pick<AgentSpec, "pendentes"> | undefined)?.pendentes ?? [];
+  if (antigas.length === 0) return novo;
+  const tem = new Set((novo.pendentes ?? []).map((p) => `${p.onde}\u0000${p.campo}`));
+  const voltam = antigas.filter((p) => !tem.has(`${p.onde}\u0000${p.campo}`));
+  return voltam.length === 0 ? novo : { ...novo, pendentes: [...(novo.pendentes ?? []), ...voltam] };
+}
