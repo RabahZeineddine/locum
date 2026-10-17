@@ -35,7 +35,17 @@ const TEXTO_DO_MOTIVO: Readonly<Record<string, string>> = {
   "dono-do-github": "escolha o dono no GitHub",
   "gatilho-sem-canal": "escolha o canal",
   "skill-ausente": "instale a skill ou dispense o aviso",
+  "passo-a-revisar": "revise o nó e dispense o aviso",
 };
+/**
+ * Como cada motivo se resolve. O padrão é `valor`: o campo ganha valor. `existe`: o
+ * recurso que o campo nomeia passa a existir nesta máquina (a skill). `dispensa`: não há
+ * campo a conferir (o passo inteiro está por revisar) e só a pessoa dispensando resolve.
+ */
+export type Resolucao = "valor" | "existe" | "dispensa";
+const RESOLUCAO_DO_MOTIVO: Readonly<Record<string, Resolucao>> = { "skill-ausente": "existe", "passo-a-revisar": "dispensa" };
+export const resolucaoDoMotivo = (motivo: string): Resolucao => RESOLUCAO_DO_MOTIVO[motivo] ?? "valor";
+
 export const textoDoMotivo = (motivo: string): string => TEXTO_DO_MOTIVO[motivo] ?? "preencha o campo";
 
 export function descreverPendencia(p: Pendencia): string {
@@ -96,27 +106,45 @@ export interface GatilhoIdentificado {
   config: object;
 }
 
+export interface OpcoesDaLimpeza {
+  /** Os gatilhos como a gravação os conhece. Sem a lista, a pendência de gatilho fica como está. */
+  gatilhos?: readonly GatilhoIdentificado[];
+  /** Os gatilhos que saíram da lista: a pendência deles some junto. */
+  removidos?: ReadonlySet<string>;
+  /** Se o recurso que a pendência nomeia existe aqui (motivo de resolução `existe`). Sem isto a pendência fica. */
+  existe?: (p: Pendencia) => boolean;
+}
+
+/** A pendência já foi resolvida pelo critério do motivo dela. */
+function resolvida(p: Pendencia, valorDe: () => unknown, existe: OpcoesDaLimpeza["existe"]): boolean {
+  switch (resolucaoDoMotivo(p.motivo)) {
+    case "dispensa":
+      return false;
+    case "existe":
+      return existe?.(p) === true;
+    case "valor":
+      return temValor(valorDe());
+  }
+}
+
 /**
- * Tira as pendências que o spec (ou os gatilhos, quando conhecidos) já preenche.
- * Pendência de gatilho sem a lista de gatilhos fica como está: só quem grava os
- * dois juntos sabe se foi preenchida. Com a lista, a do gatilho que saiu dela
- * (`removidos`) some junto; a do que nunca foi cadastrado fica até a pessoa dispensar.
+ * Tira as pendências que o spec (ou os gatilhos, quando conhecidos) já resolve, cada uma
+ * pelo critério do motivo dela. Pendência de gatilho sem a lista de gatilhos fica como
+ * está: só quem grava os dois juntos sabe se foi preenchida. Com a lista, a do gatilho que
+ * saiu dela (`removidos`) some junto; a do que nunca foi cadastrado fica até a pessoa dispensar.
  */
-export function limparPendenciasPreenchidas<S extends { steps: readonly object[]; pendentes?: Pendencia[] | undefined }>(
-  spec: S,
-  gatilhos?: readonly GatilhoIdentificado[],
-  removidos: ReadonlySet<string> = new Set(),
-): S {
+export function limparPendenciasPreenchidas<S extends { steps: readonly object[]; pendentes?: Pendencia[] | undefined }>(spec: S, opcoes: OpcoesDaLimpeza = {}): S {
   if (spec.pendentes === undefined) return spec;
+  const { gatilhos, removidos = new Set<string>(), existe } = opcoes;
   const restantes = spec.pendentes.filter((p) => {
     const id = idDoGatilhoNoOnde(p.onde);
     if (id !== undefined) {
       if (gatilhos === undefined) return true;
       const gatilho = gatilhos.find((g) => g.id === id);
-      return gatilho === undefined ? !removidos.has(id) : !temValor(valorNoCaminho(gatilho.config, p.campo));
+      return gatilho === undefined ? !removidos.has(id) : !resolvida(p, () => valorNoCaminho(gatilho.config, p.campo), existe);
     }
     const passo = spec.steps.find((s) => (s as { key?: unknown }).key === p.onde);
-    return passo === undefined ? false : !temValor(valorNoCaminho(passo, p.campo));
+    return passo === undefined ? false : !resolvida(p, () => valorNoCaminho(passo, p.campo), existe);
   });
   if (restantes.length === spec.pendentes.length) return spec;
   const { pendentes: _antes, ...resto } = spec;

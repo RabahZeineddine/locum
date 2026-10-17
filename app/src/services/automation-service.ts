@@ -124,7 +124,7 @@ export class AutomationService {
     });
     const ficam = new Set(identificados.flatMap((g) => (g.id === undefined ? [] : [g.id])));
     const removidos = new Set(atuais.filter((a) => !ficam.has(a.id) && (input.knownTriggerIds === undefined || input.knownTriggerIds.includes(a.id))).map((a) => a.id));
-    const spec = limparPendenciasPreenchidas(input.spec, identificados, removidos);
+    const spec = limparPendenciasPreenchidas(input.spec, { gatilhos: identificados, removidos });
     if (identificados.some((g) => g.ligar)) {
       const recusa = recusaDeLigar(spec.pendentes, identificados.flatMap((g) => (g.ligar && g.id !== undefined ? [g.id] : [])));
       if (recusa !== null) throw new Error(recusa);

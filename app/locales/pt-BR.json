@@ -2700,7 +2700,8 @@
         "dismiss": "Dispensar",
         "dismissHint": "Deixar o campo como está e tirar o aviso",
         "enableBlocked": "Gatilho incompleto: preencha ou dispense o que falta antes de ligar.",
-        "skill-ausente": "Esta skill não veio no pacote e não existe aqui ({{campo}}): instale-a ou dispense o aviso."
+        "skill-ausente": "Esta skill não veio no pacote e não existe aqui ({{campo}}): instale-a ou dispense o aviso.",
+        "passo-a-revisar": "Este nó veio de um pacote antigo, sem dizer o que faltou: revise-o e dispense o aviso."
       }
     },
     "github": {
@@ -3338,7 +3339,8 @@
           "dono-do-github": "escolha o dono no GitHub; sem ele vale para todos",
           "gatilho-sem-canal": "escolha o canal",
           "generic": "preencha o campo",
-          "skill-ausente": "instale a skill ou dispense o aviso"
+          "skill-ausente": "instale a skill ou dispense o aviso",
+          "passo-a-revisar": "revise o nó e dispense o aviso"
         }
       },
       "skills": "Skills",

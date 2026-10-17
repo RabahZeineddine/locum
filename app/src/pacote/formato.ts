@@ -186,7 +186,7 @@ export type SkillDoPacote = z.infer<typeof SkillDoPacote>;
 const ProvedorRequerido = z.object({ provedor: z.string().min(1), modelos: z.array(z.string().min(1)) }).strict();
 
 /** O que a exportação deixou de fora de propósito, para a prévia pedir à pessoa. */
-export const CodigoOmitido = z.enum(["canais", "gatilho-sem-canal", "filtros-de-pessoa", "dono-do-github", "tracker", "argumentos", "texto-limpo", "url-a-preencher", "escrita-removida", "chats-a-escolher", "destino-a-escolher", "skill-ausente"]);
+export const CodigoOmitido = z.enum(["canais", "gatilho-sem-canal", "filtros-de-pessoa", "dono-do-github", "tracker", "argumentos", "texto-limpo", "url-a-preencher", "escrita-removida", "chats-a-escolher", "destino-a-escolher", "skill-ausente", "passo-a-revisar"]);
 export type CodigoOmitido = z.infer<typeof CodigoOmitido>;
 const Omitido = z
   .object({

@@ -614,7 +614,7 @@ export interface Problema {
 }
 
 /** Os motivos de pendência que o dicionário diz por extenso; outro cai no texto genérico. */
-const MOTIVOS_DICIONADOS = new Set(["destino-a-escolher", "url-a-preencher", "argumentos", "tracker", "canais", "filtros-de-pessoa", "dono-do-github", "gatilho-sem-canal", "skill-ausente"]);
+const MOTIVOS_DICIONADOS = new Set(["destino-a-escolher", "url-a-preencher", "argumentos", "tracker", "canais", "filtros-de-pessoa", "dono-do-github", "gatilho-sem-canal", "skill-ausente", "passo-a-revisar"]);
 
 /** O campo que o pacote deixou a preencher, como problema do nó: aviso, que não impede salvar. */
 export function problemasDePendencia(r: Rascunho): Problema[] {

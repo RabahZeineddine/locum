@@ -1,6 +1,7 @@
 import { TriggerConfig } from "../config/types.js";
-import type { CodigoOmitido, GatilhoDoPacote, Pacote } from "./formato.js";
-import { indicesDoOndeDeGatilho } from "./formato.js";
+import { MARCAS_DOS_GATILHOS } from "./marcacao.js";
+import type { GatilhoDoPacote, Pacote } from "./formato.js";
+import { CodigoOmitido, indicesDoOndeDeGatilho } from "./formato.js";
 import { paramsDoPacoteParaPasso, type ParamsDoPacote } from "./params.js";
 
 /** Onde no pacote fica o que a pessoa vai preencher: um passo (pela chave) ou um gatilho (pela posição na lista). */
@@ -22,6 +23,35 @@ export interface PendenciaDoPacote {
 const INFORMATIVOS = new Set<CodigoOmitido>(["texto-limpo", "escrita-removida", "url-a-preencher", "chats-a-escolher", "gatilho-sem-canal", "skill-ausente"]);
 /** Omitido que vale o passo inteiro, sem nome de param: o campo é o do próprio passo. */
 const CAMPO_SEM_PARAMS: Partial<Record<CodigoOmitido, string>> = { tracker: "target" };
+
+/**
+ * Os campos que um omitido sem nome de param aponta: o do próprio passo (`target`), ou, no gatilho,
+ * os que a marcação diz serem argumentos de ferramenta.
+ */
+function camposSemNome(codigo: CodigoOmitido, no: NoDoPacote): string[] {
+  if (no.tipo === "passo") return CAMPO_SEM_PARAMS[codigo] === undefined ? [] : [CAMPO_SEM_PARAMS[codigo]!];
+  if (codigo !== "argumentos") return [];
+  return Object.entries(MARCAS_DOS_GATILHOS[no.kind as keyof typeof MARCAS_DOS_GATILHOS] ?? {}).flatMap(([campo, marca]) => (marca === "argumentos" ? [campo] : []));
+}
+
+/** O que a importação recalcula do próprio pacote: a pendência com estes motivos não precisa ser levada adiante. */
+const RECALCULADOS = new Set<CodigoOmitido>(["url-a-preencher", "skill-ausente", "chats-a-escolher", "gatilho-sem-canal"]);
+
+/**
+ * A pendência gravada na automação como omitido do pacote, para quem recebe o pacote
+ * reexportado ficar com a mesma pendência: o inverso do que `pendenciasDoPacote` lê.
+ * Devolve `null` para a que a importação refaz sozinha.
+ */
+export function omitidoDaPendencia(motivo: string, campo: string, tipo: "passo" | "gatilho"): { codigo: CodigoOmitido; params?: string[] } | null {
+  const codigo = CodigoOmitido.safeParse(motivo);
+  if (!codigo.success || RECALCULADOS.has(codigo.data)) return null;
+  const nome = tipo === "passo" ? (campo.startsWith("params.") ? campo.slice("params.".length) : undefined) : campo;
+  if (tipo === "passo" && nome === undefined) {
+    // Campo do próprio passo: o que a importação já lê sem nome de param (`target`), ou o passo inteiro.
+    return CAMPO_SEM_PARAMS[codigo.data] === campo ? { codigo: codigo.data } : campo === "params" ? { codigo: "passo-a-revisar" } : null;
+  }
+  return { codigo: codigo.data, params: [nome!] };
+}
 
 /** A configuração do gatilho como o cadastro a lê, ou `null` quando falta o que o pacote não traz (o canal). */
 export function configuracaoDoGatilho(g: GatilhoDoPacote): Record<string, unknown> | null {
@@ -55,7 +85,12 @@ export function pendenciasDoPacote(
         ? [{ tipo: "passo", chave: passo.key, nome: passo.name }]
         : indicesDoOndeDeGatilho(o.onde, gatilhos.map((g) => g.kind)).map((posicao) => ({ tipo: "gatilho", posicao, kind: gatilhos[posicao]!.kind }));
     for (const no of nos) {
-      for (const nome of o.params ?? (CAMPO_SEM_PARAMS[o.codigo] === undefined ? [] : [CAMPO_SEM_PARAMS[o.codigo]!])) {
+      // Omitido sem nome de param (pacote antigo): o passo inteiro fica a revisar, porque não se sabe o que faltou.
+      if (no.tipo === "passo" && o.params === undefined && CAMPO_SEM_PARAMS[o.codigo] === undefined) {
+        acrescentar({ no, campo: "params", motivo: "passo-a-revisar", criado: true });
+        continue;
+      }
+      for (const nome of o.params ?? camposSemNome(o.codigo, no)) {
         // Os chats do Teams já esperam pela escolha no próprio gatilho (`chatsPendentes`).
         if (no.tipo === "gatilho" && no.kind === "teams-inbox" && nome === "chats") continue;
         acrescentar({ no, campo: no.tipo === "passo" && o.params !== undefined ? `params.${nome}` : nome, motivo: o.codigo, criado: no.tipo === "passo" || criados[no.posicao]! });

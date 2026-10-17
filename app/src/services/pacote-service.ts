@@ -29,8 +29,8 @@ import {
   type GatilhoDoPacote,
   type PassoDoPacote,
 } from "../pacote/formato.js";
-import { configuracaoDoGatilho, pendenciasDoPacote, type PendenciaDoPacote } from "../pacote/pendencias.js";
-import { ondeDoGatilho, type Pendencia } from "../config/pendencia.js";
+import { configuracaoDoGatilho, omitidoDaPendencia, pendenciasDoPacote, type PendenciaDoPacote } from "../pacote/pendencias.js";
+import { idDoGatilhoNoOnde, ondeDoGatilho, type Pendencia } from "../config/pendencia.js";
 import { limparValor } from "../pacote/limpeza.js";
 import { MARCAS_DOS_GATILHOS } from "../pacote/marcacao.js";
 import { aplicarMarcas, origemDaUrl, paramsDoPacoteParaPasso, paramsParaPacote, type ParamsDoPacote } from "../pacote/params.js";
@@ -372,6 +372,19 @@ export class PacoteService {
     for (const p of spec.steps) passos.push(await this.passoParaPacote(p, omitir, declaracoes));
     const gatilhos: GatilhoDoPacote[] = [];
     for (const [i, g] of automacao.triggers.entries()) gatilhos.push(await this.gatilhoParaPacote(g.config, ondeDoGatilhoNoPacote(i), omitir));
+
+    // A pendência ainda aberta segue como omitido: quem recebe este pacote herda o que o anterior não preencheu.
+    const posicaoDoGatilho = new Map(automacao.triggers.map((g, i) => [g.id, i]));
+    for (const p of spec.pendentes ?? []) {
+      const idDoGatilho = idDoGatilhoNoOnde(p.onde);
+      const posicao = idDoGatilho === undefined ? undefined : posicaoDoGatilho.get(idDoGatilho);
+      if (idDoGatilho !== undefined ? posicao === undefined : !spec.steps.some((s) => s.key === p.onde)) continue;
+      const o = omitidoDaPendencia(p.motivo, p.campo, idDoGatilho === undefined ? "passo" : "gatilho");
+      if (o === null) continue;
+      const onde = posicao === undefined ? p.onde : ondeDoGatilhoNoPacote(posicao);
+      const dito = omitidos.some((x) => x.codigo === o.codigo && x.onde === onde && (o.params === undefined || o.params.every((n) => x.params?.includes(n))));
+      if (!dito) omitir(o.codigo, onde, undefined, o.params);
+    }
 
     const requisitos = await this.requisitos(spec, agents, gatilhos);
     const base = {
