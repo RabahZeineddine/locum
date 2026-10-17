@@ -1,4 +1,4 @@
-import { notInArray, sql } from "drizzle-orm";
+import { and, isNull, notInArray, sql } from "drizzle-orm";
 import type { SQLiteTable } from "drizzle-orm/sqlite-core";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { db, schema } from "../db/index.js";
@@ -107,6 +107,6 @@ async function agentCount(): Promise<number> {
   const [row] = await db
     .select({ n: sql<number>`count(*)` })
     .from(schema.agents)
-    .where(notInArray(schema.agents.id, [...RESERVED_AGENT_IDS]));
+    .where(and(notInArray(schema.agents.id, [...RESERVED_AGENT_IDS]), isNull(schema.agents.archivedAt)));
   return row?.n ?? 0;
 }

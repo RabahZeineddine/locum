@@ -24,6 +24,12 @@ export const agents = sqliteTable("agents", {
    * pelo servico.
    */
   initiativeId: text("initiative_id"),
+  /**
+   * Quando a automação foi arquivada (segundos). Nula é a automação em uso. A
+   * arquivada sai das listas e do agendador, mas o id continua ocupado e o
+   * histórico de runs, aprovações e versões fica.
+   */
+  archivedAt: integer("archived_at"),
   createdAt: integer("created_at").notNull().default(now),
 });
 

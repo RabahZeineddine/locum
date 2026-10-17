@@ -7,6 +7,7 @@ import type { McpService } from "../src/services/mcp-service.js";
 import type { SlackService } from "../src/services/slack-service.js";
 import type { TriggerEntry, TriggerService } from "../src/services/trigger-service.js";
 import { Scheduler, type PollFn, type SweepFn, type ViewerFn } from "../src/triggers/scheduler.js";
+import { comTrava } from "../src/triggers/trava.js";
 import { bancoDeTeste } from "./helpers/db.js";
 
 const MINUTO = 60_000;
@@ -29,6 +30,7 @@ function montar({ gatilhos, poll, sweep, viewer, db = bancoDeTeste(), pendencias
   const triggers = {
     enabled: async () => gatilhos.filter((g) => g.enabled),
     list: async () => gatilhos,
+    get: async (id: string) => gatilhos.find((g) => g.id === id),
     pendencias: async (agentId: string) => pendencias[agentId] ?? [],
   } as unknown as TriggerService;
   const executions = {
@@ -109,6 +111,23 @@ test("o gatilho entrega a autoria e a conta do token à varredura, que é quem f
   assert.deepEqual(recebido, [{ includeDrafts: false, authorship: "mine", triggerId: "meus", viewer: "eu" }]);
 });
 
+test("gatilho removido enquanto a batida esperava a trava não grava cursor nem dispara", async () => {
+  const gatilhos = [gatilho("g1", { kind: "schedule", everyMinutes: 30 } as TriggerConfig)];
+  const { db, scheduler, iniciados } = montar({ gatilhos });
+  let solta!: () => void;
+  const arquivando = comTrava("gatilho:g1", () => new Promise<void>((r) => (solta = r)));
+  const batida = scheduler.tick({ at: T0 });
+  await new Promise((r) => setTimeout(r, 20));
+  gatilhos.pop();
+  solta();
+  await arquivando;
+
+  const { outcomes } = await batida;
+  assert.deepEqual([outcomes[0]?.status, outcomes[0]?.detail], ["skipped", "gatilho removido"]);
+  assert.equal(iniciados.length, 0);
+  assert.equal(db.select().from(schema.cursors).all().length, 0);
+});
+
 test("duas batidas juntas no mesmo banco disparam o gatilho uma vez só", async () => {
   // O app e o `locum tick` do terminal, cada um com o seu agendador.
   const gatilhos = [gatilho("g1", { kind: "schedule", everyMinutes: 30 } as TriggerConfig)];
@@ -163,7 +182,7 @@ test("evento que não abre run não impede os outros da mesma janela", async () 
   ];
   const scheduler = new Scheduler(
     db,
-    { enabled: async () => gatilhos, list: async () => gatilhos, pendencias: async () => [] } as unknown as TriggerService,
+    { enabled: async () => gatilhos, list: async () => gatilhos, get: async (id: string) => gatilhos.find((g) => g.id === id), pendencias: async () => [] } as unknown as TriggerService,
     executions,
     {} as McpService,
     {} as SlackService,
@@ -201,7 +220,7 @@ test("evento que não abriu run volta na batida seguinte, mesmo sem vir na varre
   let batidas = 0;
   const scheduler = new Scheduler(
     db,
-    { enabled: async () => gatilhos, list: async () => gatilhos, pendencias: async () => [] } as unknown as TriggerService,
+    { enabled: async () => gatilhos, list: async () => gatilhos, get: async (id: string) => gatilhos.find((g) => g.id === id), pendencias: async () => [] } as unknown as TriggerService,
     executions,
     {} as McpService,
     {} as SlackService,
@@ -240,7 +259,7 @@ test("evento que segue sem run depois de um dia sai da lista de retry", async ()
   let batidas = 0;
   const scheduler = new Scheduler(
     db,
-    { enabled: async () => gatilhos, list: async () => gatilhos, pendencias: async () => [] } as unknown as TriggerService,
+    { enabled: async () => gatilhos, list: async () => gatilhos, get: async (id: string) => gatilhos.find((g) => g.id === id), pendencias: async () => [] } as unknown as TriggerService,
     executions,
     {} as McpService,
     {} as SlackService,
@@ -335,6 +354,7 @@ test("canal do Slack sem conexão falha com o caminho para ligar", async () => {
   const triggers = {
     enabled: async () => gatilhos,
     list: async () => gatilhos,
+    get: async (id: string) => gatilhos.find((g) => g.id === id),
     pendencias: async () => [],
   } as unknown as TriggerService;
   const scheduler = new Scheduler(

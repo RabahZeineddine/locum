@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { db } from "../db/index.js";
 import { agentService } from "../services/agent-service.js";
-import { automationService } from "../services/automation-service.js";
+import { automationService, type BloqueioDeArquivar } from "../services/automation-service.js";
 import { esperaChats, triggerService, type TriggerEntry } from "../services/trigger-service.js";
 import { scheduler } from "../triggers/scheduler.js";
 import { lerDescartes } from "../triggers/descartes.js";
@@ -44,8 +44,8 @@ async function paraLeitura(entrada: TriggerEntry) {
   };
 }
 
-async function listAutomations() {
-  const agents = await agentService.list();
+async function listAutomations({ archived }: { archived?: boolean | undefined }) {
+  const agents = await agentService.list({ arquivadas: archived === true ? "so" : "nao" });
   return Promise.all(
     agents.map(async (agent) => {
       const latest = await agentService.getLatestVersion(agent.id);
@@ -79,10 +79,21 @@ async function getAutomation(agentId: string) {
   };
 }
 
+const ACAO_DO_BLOQUEIO: Record<BloqueioDeArquivar["kind"], (n: number) => string> = {
+  running: (n) => `${n} run(s) queued or running: open the app so each one finishes, is resumed or cancelled, then archive`,
+  pending: (n) => `${n} approval(s) pending: decide them in the approval queue, then archive`,
+  publishing: (n) => `${n} approval(s) publishing: resolve the stuck publication in the approval queue (check at the destination whether it went out), then archive`,
+};
+
+function frasesDeBloqueio(blockers: BloqueioDeArquivar[]): string {
+  return blockers.map((b) => ACAO_DO_BLOQUEIO[b.kind](b.count)).join("; ");
+}
+
 export function registerAutomationTools(server: McpServer): void {
   def(server, "list_automations", "read",
     "Lists the automations (a flow agent plus its triggers) with the latest version, the step count, whether any trigger is on, the fields still to fill (pending: where, field path and reason code) and each trigger with kind, enabled state and last error.",
-    {}, listAutomations);
+    { archived: z.boolean().optional().describe("true lists the archived automations instead of the ones in use") },
+    listAutomations);
 
   def(server, "get_automation", "read",
     "An automation with the spec of its latest version and its triggers (config, enabled state and last error of each). pending lists the fields still to fill after a package import (where: a step key or gatilho:<trigger id>; field: the path inside it; reason: a code such as destino-a-escolher). downgraded lists the action steps that came as auto in a package and entered in approval (step, reason): setting the step to auto in save_automation, as a person, brings it back and clears the mark. A step with a pending field does not run (the run fails naming it) and the automation cannot be turned on; saving with the field filled clears it.",
@@ -206,10 +217,19 @@ export function registerAutomationTools(server: McpServer): void {
       return { triggerId, removed: await triggerService.remove(triggerId) };
     });
 
-  def(server, "remove_automation", "danger",
-    "Deletes an automation with its triggers, versions and run history (steps, findings, approvals already decided, metrics, budget, trigger cursors and manual test events). Irreversible. Refused while a run is queued or running, or an approval is pending or publishing: the message says what to do. Daily usage is kept. PRs it reviewed in the last 24h may be reviewed again by another automation.",
+  def(server, "archive_automation", "danger",
+    "Archives an automation: it leaves list_automations and the scheduler, and its triggers are deleted together with the state tied to them (cursors, discards, last error). Runs, findings, approvals and versions stay, as the trail of what was published in the person's name, and the id stays taken. unarchive_automation brings it back without triggers and off; the triggers must be created again. Refused while a run is queued or running, or an approval is pending or publishing, and for an automation linked to an initiative (a person decides that, on the screen): the message says what to do.",
     { agentId: z.string().describe("automation id, as shown by list_automations") },
-    ({ agentId }) => automationService.remove(agentId));
+    async ({ agentId }) => {
+      const previa = await automationService.archivePreview(agentId);
+      if (previa.blockers.length > 0) throw new Error(frasesDeBloqueio(previa.blockers));
+      return automationService.archive(agentId, "agent");
+    });
+
+  def(server, "unarchive_automation", "write",
+    "Takes an automation out of the archive: it goes back to list_automations, without triggers and off. Create the triggers again with save_automation or set_trigger; a person turns them on.",
+    { agentId: z.string().describe("automation id, as listed by list_automations with archived true") },
+    ({ agentId }) => automationService.unarchive(agentId));
 
   def(server, "allow_all_chats_for_trigger", "danger",
     "The 'valid for all chats' button of a Teams trigger that came from a package and waits for its chats to be chosen: it clears the pending choice and leaves the chats list empty, so the trigger watches ALL group and direct chats of the account. To watch only some chats, use set_trigger with the chats list instead (ids from list_teams_chats).",

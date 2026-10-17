@@ -393,6 +393,13 @@ export class Scheduler {
       runs: [] as string[],
     };
 
+    // Quem tem a trava confere que o gatilho ainda existe: arquivar a automação ou remover o gatilho
+    // pode ter acontecido enquanto esta batida esperava, e gravar cursor, descarte ou erro de gatilho
+    // sumido deixaria estado órfão.
+    if ((await this.triggers.get(trigger.id)) === undefined) {
+      return { ...base, status: "skipped", detail: "gatilho removido", nextDueAt: null };
+    }
+
     if (!temRelogio(trigger.config)) {
       return {
         ...base,

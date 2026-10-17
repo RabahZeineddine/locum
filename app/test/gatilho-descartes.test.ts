@@ -35,7 +35,7 @@ function montar(opcoes: { gatilho: () => TriggerEntry; poll: PollFn; viewer?: st
   // O run de mentira não tem versão de agent por trás.
   db.run(sql`PRAGMA foreign_keys = OFF`);
   const iniciados: { eventId: string | null }[] = [];
-  const triggers = { enabled: async () => [opcoes.gatilho()], list: async () => [opcoes.gatilho()], pendencias: async () => [] } as unknown as TriggerService;
+  const triggers = { enabled: async () => [opcoes.gatilho()], list: async () => [opcoes.gatilho()], get: async () => opcoes.gatilho(), pendencias: async () => [] } as unknown as TriggerService;
   const executions = {
     startForEvent: async (input: { eventId: string | null; triggerId: string }) => {
       iniciados.push({ eventId: input.eventId });

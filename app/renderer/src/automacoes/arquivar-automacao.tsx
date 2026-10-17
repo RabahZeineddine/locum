@@ -3,38 +3,39 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { StatusDot } from "@/components/ui/status-dot";
 import { call, read, type ReadResult } from "@/lib/bridge";
 import { semPrefixoDoIpc } from "@/lib/erro-da-ponte";
-import { Loader2, Trash2 } from "lucide-react";
+import { Loader2, Archive } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
-type Previa = ReadResult<"automations.removePreview">;
+type Previa = ReadResult<"automations.archivePreview">;
 
 /**
- * A zona de perigo no fim do editor: excluir a automação com gatilhos e
- * histórico. O clique pergunta ao serviço o que sairia e o que impede, e só o
- * confirmar apaga. `aoExcluir` recebe o retorno do serviço, para o editor
- * limpar o que guardou no navegador antes de sair da tela.
+ * A zona de perigo no fim do editor: arquivar a automação. O clique pergunta ao
+ * serviço o que sai, o que fica e o que impede, e só o confirmar arquiva.
+ * `aoArquivar` deixa o editor limpar o que guardou no navegador antes de sair da tela.
  */
-export function ExcluirAutomacao({
+export function ArquivarAutomacao({
   agentId,
   nome,
-  aoExcluir,
+  aoArquivar,
   desabilitado,
+  edicaoNaoSalva,
 }: {
   agentId: string;
   nome: string;
-  aoExcluir: (r: { triggers: number; runs: number }) => void;
+  aoArquivar: () => void;
   desabilitado: boolean;
+  edicaoNaoSalva: boolean;
 }) {
   const { t } = useTranslation();
   const [previa, setPrevia] = useState<Previa | null>(null);
   const [consultando, setConsultando] = useState(false);
-  const [excluindo, setExcluindo] = useState(false);
+  const [arquivando, setArquivando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
   const mensagem = (e: unknown): string => semPrefixoDoIpc(e instanceof Error ? e.message : String(e));
   const fechar = (): void => {
-    if (excluindo) return;
+    if (arquivando) return;
     setPrevia(null);
     setErro(null);
   };
@@ -42,25 +43,25 @@ export function ExcluirAutomacao({
   const abrir = (): void => {
     setConsultando(true);
     setErro(null);
-    read("automations.removePreview", agentId).then(
+    read("automations.archivePreview", agentId).then(
       (p) => {
         setConsultando(false);
         setPrevia(p);
       },
       (e: unknown) => {
         setConsultando(false);
-        setErro(t("automations.editor.remove.previewFailed", { erro: mensagem(e) }));
+        setErro(t("automations.editor.archive.previewFailed", { erro: mensagem(e) }));
       },
     );
   };
 
-  const excluir = (): void => {
-    setExcluindo(true);
+  const arquivar = (): void => {
+    setArquivando(true);
     setErro(null);
-    call("automations.remove", agentId).then(
-      (r) => aoExcluir({ triggers: r.triggers, runs: r.runs }),
+    call("automations.archive", agentId).then(
+      () => aoArquivar(),
       (e: unknown) => {
-        setExcluindo(false);
+        setArquivando(false);
         setErro(mensagem(e));
       },
     );
@@ -69,71 +70,80 @@ export function ExcluirAutomacao({
   return (
     <>
       <div className="border-destructive/40 flex flex-wrap items-center gap-3 rounded-lg border px-3 py-2" data-locum-automacao-zona-de-perigo="">
-        <span className="text-destructive text-xs font-medium">{t("automations.editor.remove.zone")}</span>
-        <span className="text-muted-foreground mr-auto text-xs">{t("automations.editor.remove.hint")}</span>
+        <span className="text-destructive text-xs font-medium">{t("automations.editor.archive.zone")}</span>
+        <span className="text-muted-foreground mr-auto text-xs">{t("automations.editor.archive.hint")}</span>
         {previa === null && erro !== null ? (
-          <span className="text-xs" data-locum-automacao-excluir-erro="">
+          <span className="text-xs" data-locum-automacao-arquivar-erro="">
             <StatusDot estado="erro" /> {erro}
           </span>
         ) : null}
         <Button
           className="cursor-pointer"
-          data-locum-automacao-excluir=""
+          data-locum-automacao-arquivar=""
           disabled={desabilitado || consultando}
           onClick={abrir}
           size="sm"
           variant="ghost"
         >
-          {consultando ? <Loader2 className="animate-spin" /> : <Trash2 aria-hidden />}
-          {t("automations.editor.remove.button")}
+          {consultando ? <Loader2 className="animate-spin" /> : <Archive aria-hidden />}
+          {t("automations.editor.archive.button")}
         </Button>
       </div>
 
       <Dialog onOpenChange={(aberto) => !aberto && fechar()} open={previa !== null}>
-        <DialogContent data-locum-automacao-excluir-dialogo="">
+        <DialogContent data-locum-automacao-arquivar-dialogo="">
           <DialogHeader>
-            <DialogTitle>{t("automations.editor.remove.title", { name: nome })}</DialogTitle>
-            <DialogDescription>
-              {previa === null
-                ? ""
-                : t("automations.editor.remove.counts", {
-                    triggers: t("automations.editor.remove.triggers", { count: previa.triggers }),
-                    runs: t("automations.editor.remove.runs", { count: previa.runs }),
-                  })}{" "}
-              {t("automations.editor.remove.irreversible")}
-            </DialogDescription>
+            <DialogTitle>{t("automations.editor.archive.title", { name: nome })}</DialogTitle>
+            <DialogDescription>{t("automations.editor.archive.restore")}</DialogDescription>
           </DialogHeader>
-          <p className="text-muted-foreground text-xs">{t("automations.editor.remove.dedupe")}</p>
+          {previa === null ? null : (
+            <div className="text-muted-foreground flex flex-col gap-1.5 text-xs" data-locum-automacao-arquivar-resumo="">
+              <p>{t("automations.editor.archive.leaves", { triggers: t("automations.editor.archive.triggers", { count: previa.triggers }) })}</p>
+              <p>
+                {t("automations.editor.archive.stays", {
+                  itens: [
+                    t("automations.editor.archive.runs", { count: previa.runs }),
+                    t("automations.editor.archive.approvals", { count: previa.approvals }),
+                    t("automations.editor.archive.findings", { count: previa.findings }),
+                    t("automations.editor.archive.versions", { count: previa.versions }),
+                  ].join(", "),
+                })}
+              </p>
+              <p>{t("automations.editor.archive.dedupe")}</p>
+              {previa.initiative === null ? null : <p data-locum-automacao-arquivar-iniciativa="">{t("automations.editor.archive.initiative", { title: previa.initiative.title })}</p>}
+              {edicaoNaoSalva ? <p className="text-foreground" data-locum-automacao-arquivar-nao-salva="">{t("automations.editor.archive.unsaved")}</p> : null}
+            </div>
+          )}
           {previa !== null && previa.blockers.length > 0 ? (
-            <div className="flex flex-col gap-1 text-xs" data-locum-automacao-excluir-bloqueios="">
-              <span className="font-medium">{t("automations.editor.remove.blocked")}</span>
+            <div className="flex flex-col gap-1 text-xs" data-locum-automacao-arquivar-bloqueios="">
+              <span className="font-medium">{t("automations.editor.archive.blocked")}</span>
               <ul className="text-muted-foreground list-disc pl-5">
                 {previa.blockers.map((b) => (
-                  <li key={b}>{b}</li>
+                  <li key={b.kind}>{t(`automations.editor.archive.blocker_${b.kind}`, { count: b.count })}</li>
                 ))}
               </ul>
             </div>
           ) : null}
           {erro === null ? null : (
-            <p className="flex items-center gap-1.5 text-xs" data-locum-automacao-excluir-erro="">
+            <p className="flex items-center gap-1.5 text-xs" data-locum-automacao-arquivar-erro="">
               <StatusDot estado="erro" />
               {erro}
             </p>
           )}
           <DialogFooter>
-            <Button className="cursor-pointer" data-locum-automacao-excluir-cancelar="" disabled={excluindo} onClick={fechar} size="sm" variant="ghost">
-              {t("automations.editor.remove.cancel")}
+            <Button className="cursor-pointer" data-locum-automacao-arquivar-cancelar="" disabled={arquivando} onClick={fechar} size="sm" variant="ghost">
+              {t("automations.editor.archive.cancel")}
             </Button>
             <Button
               className="cursor-pointer"
-              data-locum-automacao-excluir-confirmar=""
-              disabled={excluindo || previa === null || previa.blockers.length > 0}
-              onClick={excluir}
+              data-locum-automacao-arquivar-confirmar=""
+              disabled={arquivando || previa === null || previa.blockers.length > 0}
+              onClick={arquivar}
               size="sm"
               variant="destructive"
             >
-              {excluindo ? <Loader2 className="animate-spin" /> : null}
-              {t("automations.editor.remove.confirm")}
+              {arquivando ? <Loader2 className="animate-spin" /> : null}
+              {t("automations.editor.archive.confirm")}
             </Button>
           </DialogFooter>
         </DialogContent>

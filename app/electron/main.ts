@@ -2303,7 +2303,7 @@ async function checkAutomacaoNova(window: BrowserWindow): Promise<void> {
     id = await abrirNova();
     if ((await agentService.get(id)) !== undefined) throw new Error("abrir uma automacao nova ja gravou o agent");
     if (!(await existe("[data-locum-automacao-nova-aviso]"))) throw new Error("o editor nao disse que a automacao ainda nao foi gravada");
-    if (await existe("[data-locum-automacao-excluir]")) throw new Error("o editor da automacao ainda nao gravada mostra o botao de excluir");
+    if (await existe("[data-locum-automacao-arquivar]")) throw new Error("o editor da automacao ainda nao gravada mostra o botao de arquivar");
     await clicar("[data-locum-rota=agents]");
     await esperar("sair sem pergunta", async () => (await rota()).startsWith("agents|"));
     if (await existe("[data-locum-saida]")) throw new Error("abandonar a automacao nova sem editar pediu confirmacao");
@@ -2318,13 +2318,13 @@ async function checkAutomacaoNova(window: BrowserWindow): Promise<void> {
     await esperar("o editor ja gravado", async () => !(await existe("[data-locum-automacao-nova-aviso]")));
     if ((await provisorias()) !== 0) throw new Error("salvar nao apagou a provisoria");
 
-    // Excluir: o botao so existe na automacao ja gravada, o dialogo abre com a previa, e cancelar nao apaga nada.
-    await esperar("o botao de excluir no editor gravado", () => existe("[data-locum-automacao-excluir]"));
-    await clicar("[data-locum-automacao-excluir]");
-    await esperar("o dialogo de excluir", () => existe("[data-locum-automacao-excluir-confirmar]"));
-    await clicar("[data-locum-automacao-excluir-cancelar]");
-    await esperar("o dialogo de excluir fechar", async () => !(await existe("[data-locum-automacao-excluir-confirmar]")));
-    if ((await agentService.get(id)) === undefined) throw new Error("cancelar o dialogo de excluir apagou a automacao");
+    // Arquivar: o botao so existe na automacao ja gravada, o dialogo abre com a previa, e cancelar nao arquiva nada.
+    await esperar("o botao de arquivar no editor gravado", () => existe("[data-locum-automacao-arquivar]"));
+    await clicar("[data-locum-automacao-arquivar]");
+    await esperar("o dialogo de arquivar", () => existe("[data-locum-automacao-arquivar-confirmar]"));
+    await clicar("[data-locum-automacao-arquivar-cancelar]");
+    await esperar("o dialogo de arquivar fechar", async () => !(await existe("[data-locum-automacao-arquivar-confirmar]")));
+    if ((await agentService.get(id))?.archivedAt !== null) throw new Error("cancelar o dialogo de arquivar arquivou a automacao");
 
     // O MCP grava no meio: salvar com a versao antiga e recusado, e recarregar guarda as edicoes.
     const gravada = await automationService.get(id);

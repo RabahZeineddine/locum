@@ -689,9 +689,9 @@ test("save_automation mantém a pendência de uma versão a outra e só dismissP
   assert.deepEqual(dispensada.pending, []);
 });
 
-test("remove_automation apaga com o histórico, aparece como destrutiva e recusa o que não existe", async () => {
+test("archive_automation arquiva, aparece como destrutiva, diz o bloqueio pela contagem e a arquivada só aparece com archived", async () => {
   const client = await ligarCliente();
-  const ferramenta = (await client.listTools()).tools.find((t) => t.name === "remove_automation");
+  const ferramenta = (await client.listTools()).tools.find((t) => t.name === "archive_automation");
   assert.equal(ferramenta?.annotations?.destructiveHint, true);
 
   const agentId = id("auto");
@@ -699,11 +699,26 @@ test("remove_automation apaga com o histórico, aparece como destrutiva e recusa
   const versao = (await agentService.getLatestVersion(agentId))!;
   const runId = `run-${agentId}`;
   db.insert(schema.runs).values({ id: runId, agentVersionId: versao.id, status: "running" }).run();
-  recusa(await client.callTool({ name: "remove_automation", arguments: { agentId } }), /abra o app/);
-  assert.ok(await agentService.get(agentId));
+  recusa(await client.callTool({ name: "archive_automation", arguments: { agentId } }), /1 run\(s\) queued or running: open the app/);
+  assert.equal((await agentService.get(agentId))?.archivedAt, null);
 
   db.update(schema.runs).set({ status: "done" }).where(eq(schema.runs.id, runId)).run();
-  assert.deepEqual(ok(await client.callTool({ name: "remove_automation", arguments: { agentId } })), { agentId, removed: true, triggers: gatilhos.length, runs: 1 });
-  assert.equal(await agentService.get(agentId), undefined);
-  recusa(await client.callTool({ name: "remove_automation", arguments: { agentId } }), /nao cadastrada/);
+  assert.deepEqual(ok(await client.callTool({ name: "archive_automation", arguments: { agentId } })), { agentId, archived: true, triggers: gatilhos.length });
+  assert.equal(ok<{ id: string }[]>(await client.callTool({ name: "list_automations", arguments: {} })).some((a) => a.id === agentId), false);
+  assert.equal(ok<{ id: string }[]>(await client.callTool({ name: "list_automations", arguments: { archived: true } })).some((a) => a.id === agentId), true);
+  assert.equal(db.select().from(schema.runs).where(eq(schema.runs.id, runId)).all().length, 1);
+
+  assert.deepEqual(ok(await client.callTool({ name: "unarchive_automation", arguments: { agentId } })), { agentId, archived: false });
+  assert.equal(ok<{ id: string }[]>(await client.callTool({ name: "list_automations", arguments: {} })).some((a) => a.id === agentId), true);
+  recusa(await client.callTool({ name: "archive_automation", arguments: { agentId: "nao-existe-x" } }), /nao cadastrada/);
+});
+
+test("archive_automation recusa a automação ligada a uma iniciativa: é decisão de uma pessoa, na tela", async () => {
+  const client = await ligarCliente();
+  const agentId = id("auto");
+  await comoPessoa(agentId, [ler], [{ kind: "manual" }]);
+  db.insert(schema.initiatives).values({ id: `ini-${agentId}`, slug: `ini-${agentId}`, title: "T", objective: "o", doneCriteria: "c", contextPath: "/tmp/ctx" }).run();
+  db.update(schema.agents).set({ initiativeId: `ini-${agentId}` }).where(eq(schema.agents.id, agentId)).run();
+  recusa(await client.callTool({ name: "archive_automation", arguments: { agentId } }), /decisão de uma pessoa, na tela/);
+  assert.equal((await agentService.get(agentId))?.archivedAt, null);
 });

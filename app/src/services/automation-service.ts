@@ -1,9 +1,12 @@
-import { and, count, eq, inArray, notExists, or, sql } from "drizzle-orm";
+import { and, count, eq, inArray, isNotNull, or } from "drizzle-orm";
 import { TriggerConfig, type AgentSpec, type TriggerConfigInput } from "../config/types.js";
 import { limparPendenciasPreenchidas, recusaDeLigar, recusaDeRodar } from "../config/pendencia.js";
 import { recursoExiste } from "./pendencia-recursos.js";
 import { manterRebaixados } from "../config/rebaixado.js";
 import { db as defaultDb, schema } from "../db/index.js";
+import { esquecerGatilho } from "../triggers/estado-do-gatilho.js";
+import { comTrava } from "../triggers/trava.js";
+import type { EscopoActor } from "./initiative-service.js";
 import { agentService, ID_DE_AGENT, mensagemDeVersao, isReserved, type AgentService, type AgentVersion } from "./agent-service.js";
 import { dependenciaDeEvento, recusaSemEvento, type MotivoDeEvento } from "../executor/dependencia-de-evento.js";
 import { eventoManual, type EventoManual, type EventoRecente } from "./evento-manual.js";
@@ -12,16 +15,31 @@ import { esperaChats, MOTIVO_CHATS, recusaDaGravacao, triggerService, type Trigg
 
 type Db = typeof defaultDb;
 
-/** Fontes de cursor presas a um gatilho, com o id dele na chave. As demais (mcp-poll, teams-inbox, github, digest) são da conexão. */
-const FONTES_DO_GATILHO = ["gatilho-descartes", "gatilho-erro", "scheduler", "scheduler-retry"];
+/** O que impede arquivar: runs em curso ou aprovações paradas, com a contagem. A frase vem de quem mostra. */
+export type BloqueioDeArquivar = { kind: "running" | "pending" | "publishing"; count: number };
 
-/** O que a exclusão leva, e o que a impede. Mesma resposta para a prévia e para o remove. */
-export interface PreviaDeRemocao {
+/** O que arquivar leva e o que deixa. Mesma resposta para a prévia e para o arquivar. */
+export interface PreviaDeArquivamento {
   agentId: string;
+  /** Saem: os gatilhos e o estado preso a eles. */
   triggers: number;
+  /** Ficam: o histórico do que a automação publicou. */
   runs: number;
-  /** Cada motivo diz o que impede e o que fazer. Vazio quando pode apagar. */
-  blockers: string[];
+  approvals: number;
+  findings: number;
+  versions: number;
+  /** A iniciativa a que a automação está ligada; o vínculo fica. */
+  initiative: { slug: string; title: string } | null;
+  /** Vazio quando pode arquivar. */
+  blockers: BloqueioDeArquivar[];
+}
+
+/** Arquivar recusado pelos bloqueios que existiam na hora de gravar. */
+export class ArquivarRecusado extends Error {
+  constructor(readonly blockers: BloqueioDeArquivar[]) {
+    super(`arquivar recusado: ${blockers.map((b) => `${b.kind}=${b.count}`).join(", ")}`);
+    this.name = "ArquivarRecusado";
+  }
 }
 
 /** Um gatilho como o canvas manda: com `id` quando já existia. */
@@ -79,6 +97,8 @@ export interface Automation {
   version: AgentVersion;
   /** Quando o agent nasceu: um id reaproveitado depois de apagado tem outra data. */
   createdAt: number;
+  /** Quando foi arquivada (segundos), ou nulo. */
+  archivedAt: number | null;
   triggers: TriggerEntry[];
 }
 
@@ -108,11 +128,12 @@ export class AutomationService {
     const version = await this.agents.getLatestVersion(agentId);
     const agent = await this.agents.get(agentId);
     if (version === undefined || agent === undefined) return null;
-    return { version, createdAt: agent.createdAt, triggers: await this.triggers.list(agentId) };
+    return { version, createdAt: agent.createdAt, archivedAt: agent.archivedAt, triggers: await this.triggers.list(agentId) };
   }
 
   async save(input: AutomationSaveInput): Promise<Automation & { avisos: AvisoDaAutomacao[] }> {
     const agentId = input.spec.id;
+    if (input.create !== true) await this.recusarSeArquivada(agentId);
     // Primeiro, para a recusa por versão valer sobre as dos gatilhos (um gatilho que sumiu junto com a versão
     // nova é efeito dela). A conferência que vale é a de dentro da transação que grava, em `saveEdited`.
     if (input.expectedVersion !== undefined && input.create !== true) {
@@ -161,7 +182,12 @@ export class AutomationService {
       if (!ID_DE_AGENT.test(agentId)) {
         throw new Error("identificador em minúsculas, números e hífen, de 2 a 63 caracteres");
       }
-      if ((await this.agents.get(agentId)) !== undefined) throw new Error(`já existe uma automação "${agentId}"`);
+      const existente = await this.agents.get(agentId);
+      if (existente !== undefined) {
+        throw new Error(
+          existente.archivedAt === null ? `já existe uma automação "${agentId}"` : `o id "${agentId}" é de uma automação arquivada; desarquive a automação ou escolha outro id`,
+        );
+      }
       const nota = input.note.trim() || "criada no canvas";
       version = await this.agents.upsert(spec, nota, "human");
     } else {
@@ -186,7 +212,7 @@ export class AutomationService {
     }
 
     const gravados = await this.triggers.list(agentId);
-    return { version, createdAt: (await this.agents.get(agentId))!.createdAt, triggers: gravados, avisos: avisosDaGravacao(version.spec, gravados) };
+    return { version, createdAt: (await this.agents.get(agentId))!.createdAt, archivedAt: null, triggers: gravados, avisos: avisosDaGravacao(version.spec, gravados) };
   }
 
   /**
@@ -220,6 +246,7 @@ export class AutomationService {
    * se ela acorda sozinha, que é a pergunta que a pessoa faz ao olhar a lista.
    */
   async setEnabled(agentId: string, enabled: boolean): Promise<TriggerEntry[]> {
+    await this.recusarSeArquivada(agentId);
     const gatilhos = await this.triggers.list(agentId);
     // Confere antes de ligar o primeiro: um gatilho barrado no meio deixaria a automação meio ligada.
     if (enabled && gatilhos.some((g) => !g.enabled && esperaChats(g.config))) throw new Error(MOTIVO_CHATS);
@@ -259,6 +286,7 @@ export class AutomationService {
     agentId: string,
     evento: { eventId?: string; prUrl?: string } = {},
   ): Promise<{ runId: string; eventId: string | null; aviso?: { provedor: string; ate: number } }> {
+    await this.recusarSeArquivada(agentId);
     if (isReserved(agentId)) throw new Error(`"${agentId}" e um agent do sistema e nao aceita escrita`);
     if (evento.eventId !== undefined && evento.prUrl !== undefined) throw new Error("diga eventId ou prUrl, não os dois");
 
@@ -295,69 +323,76 @@ export class AutomationService {
   }
 
   /**
-   * O que `remove` levaria e o que o impede, sem apagar nada. A tela mostra o
-   * mesmo número que a ferramenta MCP devolve.
+   * O que `archive` levaria e o que deixa, sem gravar nada. A tela mostra o
+   * mesmo dado que a ferramenta MCP devolve.
    */
-  async removePreview(agentId: string): Promise<PreviaDeRemocao> {
+  async archivePreview(agentId: string): Promise<PreviaDeArquivamento> {
     await this.recusarSeNaoExiste(agentId);
     return this.inspecionar(this.db, agentId);
   }
 
   /**
-   * Apaga a automação com gatilhos, versões, runs e tudo que pende deles.
-   * Irreversível.
+   * Arquiva a automação: ela some das listas e do agendador, e os gatilhos
+   * saem com o estado preso a eles. Runs, aprovações, achados e versões ficam,
+   * porque são o que foi publicado em nome da pessoa e a dedupe de review
+   * (`carregarRevisados`) lê as aprovações. O id continua ocupado.
    *
-   * Fica de propósito: `usage_daily` (gasto histórico). Reaproveitar o mesmo id
-   * no mesmo dia herda o gasto do dia para o teto diário. A dedupe de review de
-   * 24h (`carregarRevisados`, em sources/teams-inbox.ts) deixa de contar os PRs
-   * que esta automação revisou, e outra automação pode revisá-los de novo.
+   * Pelo MCP (`actor` diferente de `human`), automação ligada a iniciativa é
+   * recusada: sair do escopo dela é decisão de uma pessoa.
    */
-  async remove(agentId: string): Promise<{ agentId: string; removed: true; triggers: number; runs: number }> {
+  async archive(agentId: string, actor: EscopoActor = "human"): Promise<{ agentId: string; archived: true; triggers: number }> {
     await this.recusarSeNaoExiste(agentId);
+    const gatilhos = await this.triggers.list(agentId);
+    // O agendador segura a trava do gatilho enquanto bate; arquivar espera a batida acabar.
+    const travar = (ids: string[], trabalho: () => Promise<number>): Promise<number> =>
+      ids.reduceRight<() => Promise<number>>((dentro, id) => () => comTrava(`gatilho:${id}`, dentro), trabalho)();
 
-    const { triggers, runs } = this.db.transaction(
-      (tx) => {
-        // Outro remove pode ter apagado o agent depois da checagem de fora.
-        if (tx.select({ id: schema.agents.id }).from(schema.agents).where(eq(schema.agents.id, agentId)).get() === undefined) {
-          throw new Error(`automacao "${agentId}" nao cadastrada`);
-        }
-        const previa = this.inspecionar(tx, agentId);
-        if (previa.blockers.length > 0) throw new Error(previa.blockers.join("; "));
+    const triggers = await travar(
+      gatilhos.map((g) => g.id),
+      async () =>
+        this.db.transaction(
+          (tx) => {
+            const agent = tx.select().from(schema.agents).where(eq(schema.agents.id, agentId)).get();
+            if (agent === undefined) throw new Error(`automacao "${agentId}" nao cadastrada`);
+            if (agent.archivedAt !== null) throw new Error(`automacao "${agentId}" ja esta arquivada`);
+            if (actor !== "human" && agent.initiativeId !== null) {
+              const previa = this.inspecionar(tx, agentId);
+              throw new Error(
+                `automação "${agentId}" está ligada à iniciativa "${previa.initiative?.slug ?? agent.initiativeId}"; arquivar é decisão de uma pessoa, na tela do Locum`,
+              );
+            }
+            const previa = this.inspecionar(tx, agentId);
+            if (previa.blockers.length > 0) throw new ArquivarRecusado(previa.blockers);
 
-        const versoes = tx.select({ id: schema.agentVersions.id }).from(schema.agentVersions).where(eq(schema.agentVersions.agentId, agentId));
-        const runsIds = tx.select({ id: schema.runs.id }).from(schema.runs).where(inArray(schema.runs.agentVersionId, versoes));
-        const stepsIds = tx.select({ id: schema.steps.id }).from(schema.steps).where(inArray(schema.steps.runId, runsIds));
-        const findingsIds = tx.select({ id: schema.findings.id }).from(schema.findings).where(inArray(schema.findings.runId, runsIds));
-        const gatilhosIds = tx.select({ id: schema.triggers.id }).from(schema.triggers).where(eq(schema.triggers.agentId, agentId));
-
-        tx.delete(schema.findingOutcomes).where(inArray(schema.findingOutcomes.findingId, findingsIds)).run();
-        tx.delete(schema.findings).where(inArray(schema.findings.runId, runsIds)).run();
-        tx.delete(schema.approvals).where(or(inArray(schema.approvals.runId, runsIds), inArray(schema.approvals.stepId, stepsIds))).run();
-        tx.delete(schema.steps).where(inArray(schema.steps.runId, runsIds)).run();
-        tx.delete(schema.runs).where(inArray(schema.runs.agentVersionId, versoes)).run();
-        tx.delete(schema.agentMetrics).where(inArray(schema.agentMetrics.agentVersionId, versoes)).run();
-        tx.delete(schema.cursors).where(and(inArray(schema.cursors.source, FONTES_DO_GATILHO), inArray(schema.cursors.key, gatilhosIds))).run();
-        tx.delete(schema.triggers).where(eq(schema.triggers.agentId, agentId)).run();
-        // O teto global tem agent nulo e não é desta automação.
-        tx.delete(schema.budgets).where(eq(schema.budgets.agentId, agentId)).run();
-        // Eventos de ensaio (link colado) desta automação que não viraram run de ninguém.
-        tx.delete(schema.events)
-          .where(
-            and(
-              eq(schema.events.source, "manual"),
-              sql`json_extract(${schema.events.payload}, '$.automacao') = ${agentId}`,
-              notExists(tx.select({ one: sql`1` }).from(schema.runs).where(eq(schema.runs.eventId, schema.events.id))),
-            ),
-          )
-          .run();
-        tx.delete(schema.agentVersions).where(eq(schema.agentVersions.agentId, agentId)).run();
-        tx.delete(schema.agents).where(eq(schema.agents.id, agentId)).run();
-        return { triggers: previa.triggers, runs: previa.runs };
-      },
-      { behavior: "immediate" },
+            const ids = tx.select({ id: schema.triggers.id }).from(schema.triggers).where(eq(schema.triggers.agentId, agentId)).all();
+            for (const { id } of ids) esquecerGatilho(tx, id);
+            tx.delete(schema.triggers).where(eq(schema.triggers.agentId, agentId)).run();
+            tx.update(schema.agents)
+              .set({ archivedAt: Math.floor(Date.now() / 1000), enabled: false })
+              .where(eq(schema.agents.id, agentId))
+              .run();
+            return previa.triggers;
+          },
+          { behavior: "immediate" },
+        ),
     );
+    return { agentId, archived: true, triggers };
+  }
 
-    return { agentId, removed: true, triggers, runs };
+  /** Tira do arquivo: volta para a lista, sem gatilhos e desligada. A pessoa recria os gatilhos e liga. */
+  async unarchive(agentId: string): Promise<{ agentId: string; archived: false }> {
+    await this.recusarSeNaoExiste(agentId);
+    const feito = await this.db
+      .update(schema.agents)
+      .set({ archivedAt: null, enabled: false })
+      .where(and(eq(schema.agents.id, agentId), isNotNull(schema.agents.archivedAt)))
+      .returning({ id: schema.agents.id });
+    if (feito.length === 0) throw new Error(`automacao "${agentId}" nao esta arquivada`);
+    return { agentId, archived: false };
+  }
+
+  private async recusarSeArquivada(agentId: string): Promise<void> {
+    if ((await this.agents.get(agentId))?.archivedAt != null) throw new Error(`automacao "${agentId}" esta arquivada; desarquive para editar ou ligar`);
   }
 
   private async recusarSeNaoExiste(agentId: string): Promise<void> {
@@ -365,34 +400,39 @@ export class AutomationService {
     if (isReserved(agentId)) throw new Error(`"${agentId}" e um agent do sistema e nao aceita escrita`);
   }
 
-  /** Contagens e recusas. Síncrona, para rodar dentro da transação do `remove` com o mesmo resultado da prévia. */
-  private inspecionar(leitor: Pick<Db, "select">, agentId: string): PreviaDeRemocao {
+  /** Contagens e bloqueios. Síncrona, para rodar dentro da transação do `archive` com o mesmo resultado da prévia. */
+  private inspecionar(leitor: Pick<Db, "select">, agentId: string): PreviaDeArquivamento {
     const versoes = leitor.select({ id: schema.agentVersions.id }).from(schema.agentVersions).where(eq(schema.agentVersions.agentId, agentId));
     const runsIds = leitor.select({ id: schema.runs.id }).from(schema.runs).where(inArray(schema.runs.agentVersionId, versoes));
     const stepsIds = leitor.select({ id: schema.steps.id }).from(schema.steps).where(inArray(schema.steps.runId, runsIds));
     const contar = (n: { n: number } | undefined): number => n?.n ?? 0;
 
+    const daAprovacao = or(inArray(schema.approvals.runId, runsIds), inArray(schema.approvals.stepId, stepsIds));
+    const aprovacoes = (status?: string): number =>
+      contar(leitor.select({ n: count() }).from(schema.approvals).where(and(status === undefined ? undefined : eq(schema.approvals.status, status), daAprovacao)).get());
     const emCurso = contar(
       leitor.select({ n: count() }).from(schema.runs).where(and(inArray(schema.runs.agentVersionId, versoes), inArray(schema.runs.status, ["queued", "running"]))).get(),
     );
-    const daAprovacao = or(inArray(schema.approvals.runId, runsIds), inArray(schema.approvals.stepId, stepsIds));
-    const aprovacoes = (status: string): number =>
-      contar(leitor.select({ n: count() }).from(schema.approvals).where(and(eq(schema.approvals.status, status), daAprovacao)).get());
-    const pendentes = aprovacoes("pending");
-    const publicando = aprovacoes("publishing");
 
-    const blockers: string[] = [];
-    if (emCurso > 0) {
-      blockers.push(`${emCurso} execução(ões) na fila ou rodando: abra o app para a execução terminar ou ser retomada ou cancelada, e exclua depois`);
-    }
-    if (pendentes > 0) blockers.push(`${pendentes} aprovação(ões) pendente(s): decida a pendência na fila de aprovações e exclua depois`);
-    if (publicando > 0) {
-      blockers.push(`${publicando} aprovação(ões) em publicação: resolva a publicação parada na fila de aprovações (confira no destino se saiu) e exclua depois`);
-    }
+    const blockers: BloqueioDeArquivar[] = [
+      { kind: "running" as const, count: emCurso },
+      { kind: "pending" as const, count: aprovacoes("pending") },
+      { kind: "publishing" as const, count: aprovacoes("publishing") },
+    ].filter((b) => b.count > 0);
+
+    const agent = leitor.select({ initiativeId: schema.agents.initiativeId }).from(schema.agents).where(eq(schema.agents.id, agentId)).get();
+    const iniciativa =
+      agent?.initiativeId == null
+        ? undefined
+        : leitor.select({ slug: schema.initiatives.slug, title: schema.initiatives.title }).from(schema.initiatives).where(eq(schema.initiatives.id, agent.initiativeId)).get();
     return {
       agentId,
       triggers: contar(leitor.select({ n: count() }).from(schema.triggers).where(eq(schema.triggers.agentId, agentId)).get()),
       runs: contar(leitor.select({ n: count() }).from(schema.runs).where(inArray(schema.runs.agentVersionId, versoes)).get()),
+      approvals: aprovacoes(),
+      findings: contar(leitor.select({ n: count() }).from(schema.findings).where(inArray(schema.findings.runId, runsIds)).get()),
+      versions: contar(leitor.select({ n: count() }).from(schema.agentVersions).where(eq(schema.agentVersions.agentId, agentId)).get()),
+      initiative: iniciativa ?? null,
       blockers,
     };
   }

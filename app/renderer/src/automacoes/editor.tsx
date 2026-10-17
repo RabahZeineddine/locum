@@ -86,7 +86,7 @@ import { esquemasDasConexoes, useFerramentasDasConexoes, useSaidasDoUltimoRun, t
 import { useTranslation } from "react-i18next";
 import type { RotaId } from "../rotas";
 import { useToasts } from "../toasts";
-import { ExcluirAutomacao } from "./excluir-automacao";
+import { ArquivarAutomacao } from "./arquivar-automacao";
 import { ModalDeAgent } from "./modal-de-agent";
 import { useExecutarAgora } from "./executar-com";
 import { PainelDoNo } from "./painel";
@@ -96,6 +96,9 @@ type Automacao = NonNullable<ReadResult<"automations.get">>;
 
 /** O agent do sistema que guarda o contexto: não é uma automação e não se exclui pela tela. */
 const AGENT_DO_CONTEXTO = "locum-context";
+
+/** As leituras que mudam quando a automação sai da lista: ela, suas execuções e a fila. */
+const LEITURAS_DA_AUTOMACAO = ["automations.get", "agents.list", "agents.overview", "triggers.list", "runs.list", "approvals.listPending", "approvals.listStuck"] as const;
 
 /**
  * O canvas de uma automação.
@@ -952,23 +955,18 @@ function EditorCarregado({
       </div>
 
       {nova || agentId === AGENT_DO_CONTEXTO ? null : (
-        <ExcluirAutomacao
+        <ArquivarAutomacao
           agentId={agentId}
-          aoExcluir={({ triggers, runs }) => {
+          aoArquivar={() => {
             // Antes de navegar: com o rascunho ainda no navegador, a próxima abertura do id o ofereceria de volta.
             excluida.current = true;
             apagarRastroLocal(globalThis.localStorage, agentId);
-            invalidateReads();
-            toasts.informar(
-              t("automations.editor.remove.done", {
-                name: salvo.spec.name,
-                triggers: t("automations.editor.remove.triggers", { count: triggers }),
-                runs: t("automations.editor.remove.runs", { count: runs }),
-              }),
-            );
+            for (const canal of LEITURAS_DA_AUTOMACAO) invalidateReads(canal);
+            toasts.informar(t("automations.editor.archive.done", { name: salvo.spec.name }));
             voltar();
           }}
           desabilitado={ocupado !== null}
+          edicaoNaoSalva={mudou}
           nome={salvo.spec.name}
         />
       )}

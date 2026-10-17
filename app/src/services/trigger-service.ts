@@ -129,10 +129,11 @@ export class TriggerService {
     if (isReserved(agentId)) throw new Error(`"${agentId}" e um agent do sistema e nao aceita escrita`);
     const parsed = TriggerConfig.parse(config);
     const agent = await this.db
-      .select({ id: schema.agents.id })
+      .select({ id: schema.agents.id, archivedAt: schema.agents.archivedAt })
       .from(schema.agents)
       .where(eq(schema.agents.id, agentId));
     if (agent.length === 0) throw new Error(`agent "${agentId}" nao cadastrado`);
+    if (agent[0]!.archivedAt !== null) throw new Error(`automacao "${agentId}" esta arquivada; desarquive antes de criar gatilho`);
 
     const existing = options.id
       ? await this.requireRow(options.id, agentId)

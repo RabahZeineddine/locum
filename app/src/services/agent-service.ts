@@ -131,9 +131,13 @@ export interface AgentBudgetView {
 export class AgentService {
   constructor(private readonly db: Db = defaultDb) {}
 
-  async list(): Promise<AgentRow[]> {
+  /** As automações em uso. `arquivadas` troca pelas arquivadas, ou junta as duas com `todas`. */
+  async list(opcoes: { arquivadas?: "nao" | "so" | "todas" } = {}): Promise<AgentRow[]> {
+    const filtro = opcoes.arquivadas ?? "nao";
     const rows = await this.db.select().from(schema.agents);
-    return rows.filter((row) => !isReserved(row.id));
+    return rows.filter(
+      (row) => !isReserved(row.id) && (filtro === "todas" || (filtro === "so") === (row.archivedAt !== null)),
+    );
   }
 
   async get(agentId: string): Promise<AgentRow | undefined> {
@@ -171,7 +175,7 @@ export class AgentService {
    * quer a lista, nunca uma linha so.
    */
   async budgets(): Promise<AgentBudgetView[]> {
-    const rows = (await this.db.select().from(schema.agents)).filter((row) => !isReserved(row.id));
+    const rows = (await this.db.select().from(schema.agents)).filter((row) => !isReserved(row.id) && row.archivedAt === null);
     const versions = await this.db
       .select()
       .from(schema.agentVersions)
@@ -490,8 +494,8 @@ export class AgentService {
    * última execução deu certo. Montado aqui e não na janela porque seriam
    * quatro leituras por agent, e a regra de qual versão conta é desta camada.
    */
-  async overview(): Promise<AgentOverview[]> {
-    const linhas = await this.list();
+  async overview(opcoes: { arquivadas?: "nao" | "so" } = {}): Promise<AgentOverview[]> {
+    const linhas = await this.list(opcoes);
     const gatilhos = await this.db.select().from(schema.triggers);
 
     return Promise.all(

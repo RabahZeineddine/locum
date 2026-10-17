@@ -25,7 +25,7 @@ export interface Toasts {
   acompanhar(run: { runId: string; nome: string; aviso?: string; aoTerminar?: () => void }): void;
   /** Um aviso que não é de run, como a recusa de começar. */
   recusar(texto: string): void;
-  /** Um aviso de que algo deu certo, como a automação excluída. */
+  /** Um aviso de que algo deu certo, como a automação arquivada. */
   informar(texto: string): void;
   abrirRun(runId: string): void;
 }

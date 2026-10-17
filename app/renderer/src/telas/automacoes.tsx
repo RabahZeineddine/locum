@@ -189,7 +189,8 @@ function LinhaDeTemplate({
 
 function ListaDeAutomacoes({ navegar }: Pick<TelaProps, "navegar">) {
   const { t } = useTranslation();
-  const inicial = useRead("agents.overview");
+  const [arquivadas, setArquivadas] = useState(false);
+  const inicial = useRead("agents.overview", { arquivadas: arquivadas ? "so" : "nao" });
   const [criando, setCriando] = useState(false);
   useAcaoDaTela("nova-automacao", () => setCriando(true));
   const [pacote, setPacote] = useState<{ nome: string; texto: string } | null>(null);
@@ -203,6 +204,13 @@ function ListaDeAutomacoes({ navegar }: Pick<TelaProps, "navegar">) {
   }, [inicial.data]);
   const reler = (): void => {
     invalidateReads("agents.overview");
+  };
+  const [erroAoDesarquivar, setErroAoDesarquivar] = useState<string | null>(null);
+  const desarquivar = (agentId: string): void => {
+    setErroAoDesarquivar(null);
+    call("automations.unarchive", agentId).then(reler, (e: unknown) =>
+      setErroAoDesarquivar(semPrefixoDoIpc(e instanceof Error ? e.message : String(e))),
+    );
   };
 
   const escolherArquivo = (): void => {
@@ -272,7 +280,23 @@ function ListaDeAutomacoes({ navegar }: Pick<TelaProps, "navegar">) {
         />
       ) : null}
 
-      {provisorias.length === 0 ? null : (
+      <div className="flex gap-1" data-locum-automacao-filtro="">
+        {([false, true] as const).map((so) => (
+          <Button
+            className="cursor-pointer"
+            data-locum-automacao-filtro-arquivadas={so ? "sim" : "nao"}
+            key={String(so)}
+            onClick={() => setArquivadas(so)}
+            size="sm"
+            variant={arquivadas === so ? "secondary" : "ghost"}
+          >
+            {t(so ? "automations.list.filterArchived" : "automations.list.filterInUse")}
+          </Button>
+        ))}
+      </div>
+      {erroAoDesarquivar === null ? null : <p className="text-destructive text-xs">{erroAoDesarquivar}</p>}
+
+      {arquivadas ? null : provisorias.length === 0 ? null : (
         <ListGroup>
           {provisorias.map(({ agentId, provisoria }) => (
             <ListRow
@@ -310,6 +334,26 @@ function ListaDeAutomacoes({ navegar }: Pick<TelaProps, "navegar">) {
 
       {inicial.status === "loading" ? (
         <p className="text-muted-foreground text-[13px]">{t("automations.editor.loading")}</p>
+      ) : arquivadas ? (
+        lista.length === 0 ? (
+          <p className="text-muted-foreground text-[13px]">{t("automations.list.archivedEmpty")}</p>
+        ) : (
+          <ListGroup>
+            {lista.map((linha) => (
+              <ListRow className="min-h-11" data-locum-automacao-arquivada={linha.id} key={linha.id} rotulo={linha.name}>
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="truncate font-medium">{linha.name}</span>
+                </span>
+                <Badge variant="outline">{t("automations.list.archivedBadge")}</Badge>
+                <span className="flex shrink-0 items-center" onClick={(e) => e.stopPropagation()}>
+                  <Button className="cursor-pointer" data-locum-automacao-desarquivar={linha.id} onClick={() => desarquivar(linha.id)} size="sm" variant="outline">
+                    {t("automations.list.unarchive")}
+                  </Button>
+                </span>
+              </ListRow>
+            ))}
+          </ListGroup>
+        )
       ) : lista.length === 0 && provisorias.length === 0 && !criando ? (
         <EmptyState
           acao={
