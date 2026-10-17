@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { ActionStep, AgentProfile, AgentSpec, LogicStep, ModelStep, TriggerConfig } from "../src/config/types.js";
 import { Pacote } from "../src/pacote/formato.js";
-import { MARCAS_DO_AGENT, MARCAS_DO_PASSO_DE_ACAO, MARCAS_DO_SPEC, MARCAS_DOS_GATILHOS, ehLocal, temFilhos, type MapaDeMarcas } from "../src/pacote/marcacao.js";
+import { MARCAS_DO_AGENT, MARCAS_DO_PASSO_DE_ACAO, MARCAS_DO_SPEC, MARCAS_DOS_GATILHOS, ehLocal, temFilhos, type MapaDeMarcas, type Marca } from "../src/pacote/marcacao.js";
 
 /** Campo novo num esquema sem marcação faz um destes testes falhar: nada some em silêncio no pacote. */
 
@@ -40,6 +40,10 @@ test("o formato do pacote carrega os campos portáveis e só tira o que é local
       assert.equal(fica, !(marca === "dobrado" || ehLocal(marca)), `${kind}.${campo}`);
     }
   }
-  const agent = Pacote.shape.agents.element.shape;
-  for (const [campo, marca] of Object.entries(MARCAS_DO_AGENT)) assert.equal(campo in agent, marca !== "dobrado", `agent.${campo}`);
+  const viaja = (marca: Marca): boolean => !(marca === "dobrado" || marca === "seguro" || ehLocal(marca));
+  const agent = (Pacote.shape.agents.element as unknown as { shape: Record<string, unknown> }).shape;
+  for (const [campo, marca] of Object.entries(MARCAS_DO_AGENT)) assert.equal(campo in agent, viaja(marca), `agent.${campo}`);
+  // O id do spec é o da automação, e fora ele o pacote carrega exatamente o que a marcação diz.
+  const spec = (Pacote.shape.automacao.shape.spec as unknown as { shape: Record<string, unknown> }).shape;
+  for (const [campo, marca] of Object.entries(MARCAS_DO_SPEC)) assert.equal(campo in spec, campo !== "id" && viaja(marca), `spec.${campo}`);
 });

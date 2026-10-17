@@ -11,11 +11,12 @@ import type { MapaDeMarcas } from "./marcacao.js";
  * - `argumentos`: como `texto`, e ainda omite o argumento que o esquema da ferramenta marca como sensível.
  * - `destino`: o destino de uma ação de conversa; `fixo` é local, `evento` e `novo` viajam.
  * - `url`: só esquema e host viajam (`origem`); o resto é a preencher.
+ * - `seguro`: não viaja e não vira pendência; o padrão dele é o seguro (licença dada à mão, como `autoEscrita`).
  * - `local`: é desta máquina (id de conta, conversa, dono); não viaja e vira pendência. É também o que a ação não declarou.
  *
  * Valor que é só marcador (`{{event.x}}`, `{{steps.x.y}}`) é estrutura do fluxo e viaja em qualquer categoria.
  */
-export type ViagemDoParam = "portavel" | "texto" | "argumentos" | "destino" | "url" | "local";
+export type ViagemDoParam = "portavel" | "texto" | "argumentos" | "destino" | "url" | "seguro" | "local";
 export type ParamsDoPacote = Readonly<Record<string, ViagemDoParam>>;
 
 const MARCADOR = /^\{\{\s*(?:event|steps)\.[\w.-]+\s*\}\}$/;
@@ -91,6 +92,19 @@ function limparEmProfundidade(
   return valor;
 }
 
+/** Texto livre, em profundidade: cada trecho passa pela limpeza e o que é credencial vira marca no próprio lugar. */
+function limparLivre(valor: unknown, home: string | undefined, limpos: { n: number }): unknown {
+  if (ehMarcador(valor)) return valor;
+  if (typeof valor === "string") {
+    const l = limparTexto(valor, home);
+    limpos.n += l.removidos;
+    return l.texto;
+  }
+  if (Array.isArray(valor)) return valor.map((v) => limparLivre(v, home, limpos));
+  if (ehObjeto(valor)) return Object.fromEntries(Object.entries(valor).map(([k, v]) => [k, limparLivre(v, home, limpos)]));
+  return valor;
+}
+
 /** Aplica a declaração aos `params` de um passo, na ida. */
 export function paramsParaPacote(declaracao: ParamsDoPacote, params: Record<string, unknown>, opcoes: OpcoesDosParams = {}): ParamsNoPacote {
   const saida: ParamsNoPacote = { params: {}, omitidos: [], limpos: 0, destinosFixos: [], urls: [] };
@@ -132,6 +146,8 @@ export function paramsParaPacote(declaracao: ParamsDoPacote, params: Record<stri
         saida.urls.push({ param: nome, ...(origem === undefined ? {} : { origem }) });
         break;
       }
+      case "seguro":
+        break;
       case "local":
         saida.omitidos.push(nome);
         break;
@@ -155,12 +171,27 @@ export function paramsDoPacoteParaPasso(declaracao: ParamsDoPacote, params: Reco
       continue;
     }
     const como = declaracao[nome] ?? "local";
+    if (como === "seguro") continue;
     if (ehMarcador(valor)) saida[nome] = valor;
     else if (como === "local" || como === "url") descartados.push(nome);
     else if (como === "destino" && ehObjeto(valor) && valor.tipo === "fixo") descartados.push(nome);
     else saida[nome] = valor;
   }
   return { params: saida, ...(origem === undefined ? {} : { origem }), descartados };
+}
+
+/** Um literal de argumento que viaja no pacote: o que quem exporta precisa ver para decidir. */
+export interface LiteralQueViaja {
+  campo: string;
+  valor: string;
+}
+
+/** Os literais (texto, número, booleano) de um valor que viaja, com o caminho; marcador `{{...}}` é estrutura e não entra. */
+export function literaisQueViajam(valor: unknown, caminho: string): LiteralQueViaja[] {
+  if (ehMarcador(valor) || valor === null || valor === undefined) return [];
+  if (Array.isArray(valor)) return valor.flatMap((v, i) => literaisQueViajam(v, `${caminho}.${i}`));
+  if (ehObjeto(valor)) return Object.entries(valor).flatMap(([k, v]) => literaisQueViajam(v, `${caminho}.${k}`));
+  return [{ campo: caminho, valor: String(valor) }];
 }
 
 export interface MarcasAplicadas {
@@ -189,11 +220,13 @@ export function aplicarMarcas(marcas: MapaDeMarcas, valor: Record<string, unknow
     const nome = `${prefixo}${campo}`;
     const marca = marcas[campo];
     if (marca === undefined) omitir("argumentos", nome, 1);
-    else if (marca === "dobrado") continue;
+    else if (marca === "dobrado" || marca === "seguro") continue;
     else if (marca === "portavel") saida.valor[campo] = v;
     else if (marca === "texto") {
-      const limpo = limparEmProfundidade(v, [campo], { home: opcoes.home, sensivel: undefined, omitidos: [], limpos: { n: 0 } }, false);
-      saida.valor[campo] = limpo ?? v;
+      // Texto escrito por gente: a limpeza troca o que for credencial ou dado pessoal por marca. Nunca volta cru.
+      const limpos = { n: 0 };
+      saida.valor[campo] = limparLivre(v, opcoes.home, limpos);
+      saida.limpos += limpos.n;
     } else if (marca === "argumentos") {
       const r = paramsParaPacote({ [campo]: "argumentos" }, { [campo]: v }, opcoes);
       Object.assign(saida.valor, r.params);

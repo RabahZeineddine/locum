@@ -335,7 +335,10 @@ function EditorCarregado({
     setAviso(null);
     call("pacote.exportFile", agentId).then(
       (r) => {
-        if (r !== null) setAviso({ tipo: "ok", texto: t("pacote.export.done", { arquivo: r.nomeDoArquivo }) });
+        if (r === null) return;
+        // O que viajou como literal nos argumentos de ferramenta: quem exporta confere antes de mandar o arquivo.
+        const literais = r.avisos.map((a) => `${a.onde} ${a.campo} = ${a.valor}`).join("; ");
+        setAviso({ tipo: "ok", texto: r.avisos.length === 0 ? t("pacote.export.done", { arquivo: r.nomeDoArquivo }) : t("pacote.export.doneWithLiterals", { arquivo: r.nomeDoArquivo, literais }) });
       },
       (e: unknown) => setAviso({ tipo: "erro", texto: semPrefixoDoIpc(e instanceof Error ? e.message : String(e)) }),
     );

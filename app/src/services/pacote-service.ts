@@ -32,8 +32,8 @@ import {
 import { configuracaoDoGatilho, omitidoDaPendencia, pendenciasDoPacote, type PendenciaDoPacote } from "../pacote/pendencias.js";
 import { idDoGatilhoNoOnde, ondeDoGatilho, type Pendencia } from "../config/pendencia.js";
 import { limparValor } from "../pacote/limpeza.js";
-import { MARCAS_DOS_GATILHOS } from "../pacote/marcacao.js";
-import { aplicarMarcas, origemDaUrl, paramsDoPacoteParaPasso, paramsParaPacote, type ParamsDoPacote } from "../pacote/params.js";
+import { MARCAS_DO_AGENT, MARCAS_DO_SPEC, MARCAS_DOS_GATILHOS } from "../pacote/marcacao.js";
+import { aplicarMarcas, literaisQueViajam, origemDaUrl, paramsDoPacoteParaPasso, paramsParaPacote, type ParamsDoPacote } from "../pacote/params.js";
 import { ehLeitura, ehLeituraDa, type FerramentaClassificavel } from "../config/leitura.js";
 
 /**
@@ -264,11 +264,26 @@ export class DecisaoPendenteError extends Error {
   }
 }
 
+/** O que a marcação de texto do spec e dos agents limpou, para entrar na conta do `texto-limpo`. */
+interface TextosDoPacote {
+  limpos: number;
+}
+
+/** Um literal de argumento (de `mcp.call` ou `mcp-poll`) que viaja no pacote: login, organização, o que for. */
+export interface AvisoDeLiteral {
+  /** A chave do passo, ou `gatilho:<posição>`. */
+  onde: string;
+  campo: string;
+  valor: string;
+}
+
 /** O pacote exportado: o texto do arquivo e o nome sugerido para ele. */
 export interface PacoteExportado {
   texto: string;
   nomeDoArquivo: string;
   pacote: Pacote;
+  /** O que viajou como literal nos argumentos de ferramenta, para quem exporta conferir antes de mandar. */
+  avisos: AvisoDeLiteral[];
 }
 
 /* ------------------------------------------------------------------ ajudas */
@@ -366,12 +381,15 @@ export class PacoteService {
     // Agents que o fluxo usa, na ordem em que aparecem.
     const idsDosAgents = [...new Set(spec.steps.flatMap((p) => (p.type === "model" && p.profile !== undefined ? [p.profile] : [])))];
     const agents: AgentDoPacote[] = [];
-    for (const id of idsDosAgents) agents.push(await this.agentParaPacote(id));
+    // O que a marcação deixou de fora por ser credencial, e quanto texto limpou, do agent e do spec.
+    const dosTextos: TextosDoPacote = { limpos: 0 };
+    for (const id of idsDosAgents) agents.push(await this.agentParaPacote(id, omitir, dosTextos));
 
+    const avisos: AvisoDeLiteral[] = [];
     const passos: PassoDoPacote[] = [];
-    for (const p of spec.steps) passos.push(await this.passoParaPacote(p, omitir, declaracoes));
+    for (const p of spec.steps) passos.push(await this.passoParaPacote(p, omitir, declaracoes, avisos));
     const gatilhos: GatilhoDoPacote[] = [];
-    for (const [i, g] of automacao.triggers.entries()) gatilhos.push(await this.gatilhoParaPacote(g.config, ondeDoGatilhoNoPacote(i), omitir));
+    for (const [i, g] of automacao.triggers.entries()) gatilhos.push(await this.gatilhoParaPacote(g.config, ondeDoGatilhoNoPacote(i), omitir, avisos));
 
     // A pendência ainda aberta segue como omitido: quem recebe este pacote herda o que o anterior não preencheu.
     const posicaoDoGatilho = new Map(automacao.triggers.map((g, i) => [g.id, i]));
@@ -387,21 +405,15 @@ export class PacoteService {
     }
 
     const requisitos = await this.requisitos(spec, agents, gatilhos);
+    // O spec e o agent saem pela mesma marcação que a importação lê: campo portável novo viaja sem mexer aqui.
+    const doSpec = aplicarMarcas(MARCAS_DO_SPEC, { ...spec, steps: passos } as unknown as Record<string, unknown>, this.opcoesDeTexto());
+    for (const [codigo, d] of doSpec.omitidos) omitir(codigo, "automacao", d.quantos, d.nomes);
+    dosTextos.limpos += doSpec.limpos;
+    const { id: idDoSpec, ...specNoPacote } = doSpec.valor;
     const base = {
       formato: NOME_DO_FORMATO,
       versao: VERSAO_DO_FORMATO,
-      automacao: {
-        id: spec.id,
-        spec: {
-          name: spec.name,
-          defaultTools: spec.defaultTools,
-          skills: spec.skills,
-          steps: passos,
-          budget: spec.budget,
-          ...(spec.layout === undefined ? {} : { layout: spec.layout }),
-        },
-        gatilhos,
-      },
+      automacao: { id: idDoSpec, spec: specNoPacote, gatilhos },
       agents,
       requisitos,
       skills: await this.conteudoDasSkills(requisitos.skills.map((k) => k.nome)),
@@ -410,11 +422,13 @@ export class PacoteService {
 
     const limpo = limparValor(base, this.home);
     const pacote = Pacote.parse(limpo.valor);
-    if (limpo.removidos > 0) pacote.omitidos.push({ codigo: "texto-limpo", onde: "automacao", quantos: limpo.removidos });
+    const limpos = limpo.removidos + dosTextos.limpos;
+    if (limpos > 0) pacote.omitidos.push({ codigo: "texto-limpo", onde: "automacao", quantos: limpos });
     return {
       pacote,
       texto: `${JSON.stringify(pacote, null, 2)}\n`,
       nomeDoArquivo: `${spec.id}${EXTENSAO_DO_PACOTE}`,
+      avisos,
     };
   }
 
@@ -453,14 +467,19 @@ export class PacoteService {
     return lista;
   }
 
-  private async agentParaPacote(id: string): Promise<AgentDoPacote> {
+  private async agentParaPacote(id: string, omitir?: (c: CodigoOmitido, onde: string, q?: number, params?: string[]) => void, textos?: TextosDoPacote): Promise<AgentDoPacote> {
     const versao = await this.library.getProfile(id);
     if (versao === null) throw new Error(`o agent "${id}", usado pela automação, não existe`);
-    return this.perfilParaPacote(versao.spec);
+    return this.perfilParaPacote(versao.spec, omitir, textos);
   }
 
-  /** O agent na forma do pacote: o toolset vira ferramentas avulsas dele. */
-  private async perfilParaPacote(s: AgentProfile): Promise<AgentDoPacote> {
+  /** O que a limpeza de texto precisa saber: o home a esconder. */
+  private opcoesDeTexto(): { home?: string } {
+    return this.home === undefined ? {} : { home: this.home };
+  }
+
+  /** O agent na forma do pacote: o toolset vira ferramentas avulsas dele, e o resto pela marcação do agent. */
+  private async perfilParaPacote(s: AgentProfile, omitir?: (c: CodigoOmitido, onde: string, q?: number, params?: string[]) => void, textos?: TextosDoPacote): Promise<AgentDoPacote> {
     const id = s.id;
     // O toolset vira ferramentas do próprio agent: o pacote não carrega conjuntos compartilhados.
     const doToolset: ToolRef[] = [];
@@ -469,20 +488,14 @@ export class PacoteService {
       if (toolset === null) throw new Error(`o agent "${id}" usa o toolset "${toolsetId}", que não existe mais`);
       doToolset.push(...toolset.tools);
     }
-    return {
-      id: s.id,
-      name: s.name,
-      description: s.description,
-      context: s.context,
-      instructions: s.instructions,
-      model: s.model,
-      ...(s.temperature === undefined ? {} : { temperature: s.temperature }),
-      tools: semRepetir([...doToolset, ...s.tools]),
-      connections: s.connections,
-      skills: s.skills.map((k) => (typeof k === "string" ? { skill: k, when: { always: true } } : k)),
-      budget: s.budget,
-      maxSteps: s.maxSteps,
-    };
+    const r = aplicarMarcas(
+      MARCAS_DO_AGENT,
+      { ...s, tools: semRepetir([...doToolset, ...s.tools]), skills: s.skills.map((k) => (typeof k === "string" ? { skill: k, when: { always: true } } : k)) } as unknown as Record<string, unknown>,
+      this.opcoesDeTexto(),
+    );
+    for (const [codigo, d] of r.omitidos) omitir?.(codigo, `agent:${id}`, d.quantos, d.nomes);
+    if (textos !== undefined) textos.limpos += r.limpos;
+    return r.valor as unknown as AgentDoPacote;
   }
 
   /** O que cada ação declara sobre a viagem dos params; a de uma ação desconhecida é vazia (nada viaja). */
@@ -494,6 +507,7 @@ export class PacoteService {
     passo: Step,
     omitir: (c: CodigoOmitido, onde: string, q?: number, params?: string[]) => void,
     declaracoes: Record<string, ParamsDoPacote>,
+    avisos: AvisoDeLiteral[],
   ): Promise<PassoDoPacote> {
     if (passo.type !== "action") return passo;
     const { target, params, ...resto } = passo;
@@ -507,6 +521,9 @@ export class PacoteService {
     if (fixos.size > 0) omitir("destino-a-escolher", passo.key, fixos.size, [...fixos]);
     if (urls.size > 0) omitir("url-a-preencher", passo.key, undefined, [...urls]);
     if (r.limpos > 0) omitir("texto-limpo", passo.key, r.limpos);
+    for (const [nome, como] of Object.entries(declaracoes[passo.action] ?? {})) {
+      if (como === "argumentos") for (const l of literaisQueViajam(r.params[nome], nome)) avisos.push({ onde: passo.key, ...l });
+    }
     return { ...resto, ...(Object.keys(r.params).length === 0 ? {} : { params: r.params }) };
   }
 
@@ -531,6 +548,7 @@ export class PacoteService {
     config: GatilhoConfig,
     onde: string,
     omitir: (c: CodigoOmitido, onde: string, q?: number, params?: string[]) => void,
+    avisos: AvisoDeLiteral[],
   ): Promise<GatilhoDoPacote> {
     const sensivel = await this.sensivelDaFerramenta(config as unknown as Record<string, unknown>);
     const r = aplicarMarcas(MARCAS_DOS_GATILHOS[config.kind], config as unknown as Record<string, unknown>, {
@@ -539,6 +557,9 @@ export class PacoteService {
     });
     for (const [codigo, d] of r.omitidos) omitir(codigo, onde, d.quantos, d.nomes);
     if (r.limpos > 0) omitir("texto-limpo", onde, r.limpos);
+    for (const [campo, marca] of Object.entries(MARCAS_DOS_GATILHOS[config.kind] as Record<string, unknown>)) {
+      if (marca === "argumentos") for (const l of literaisQueViajam(r.valor[campo], campo)) avisos.push({ onde, ...l });
+    }
     if (config.kind !== "teams-inbox") return r.valor as GatilhoDoPacote;
     // Quantos chats restringiam o gatilho, sem os ids; chats ainda por escolher contam também.
     const restritos = config.chats.length > 0 ? config.chats.length : config.chatsPendentes;
@@ -920,7 +941,7 @@ export class PacoteService {
       specsDosAgents.set(
         alvo.id,
         AgentProfile.parse({
-          ...agent,
+          ...aplicarMarcas(MARCAS_DO_AGENT, agent as unknown as Record<string, unknown>, this.opcoesDeTexto()).valor,
           id: alvo.id,
           model: modelo(`agent:${agent.id}`, agent.model),
           toolsets,
@@ -963,13 +984,10 @@ export class PacoteService {
       }
     }
     const spec = AgentSpec.parse({
+      ...aplicarMarcas(MARCAS_DO_SPEC, pacote.automacao.spec as unknown as Record<string, unknown>, this.opcoesDeTexto()).valor,
       id: automacaoId,
-      name: pacote.automacao.spec.name,
       defaultTools: await soLeitura(pacote.automacao.spec.defaultTools, "automacao"),
-      skills: pacote.automacao.spec.skills,
       steps: passos,
-      budget: pacote.automacao.spec.budget,
-      ...(pacote.automacao.spec.layout === undefined ? {} : { layout: pacote.automacao.spec.layout }),
     });
 
     const gatilhos: { config: TriggerConfigInput; enabled: false; idNovo: string }[] = [];

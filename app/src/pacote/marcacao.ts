@@ -27,11 +27,12 @@ import type { CodigoOmitido } from "./formato.js";
  * - `portavel`: vai como está.
  * - `texto`: texto escrito por gente; passa pela limpeza de texto.
  * - `argumentos`: argumentos de uma ferramenta (marcador viaja; literal limpo ou omitido).
+ * - `seguro`: não viaja e não vira pendência: o padrão dele é o seguro, e quem recebe só ganha o campo dizendo à mão (licença, como `autoEscrita`).
  * - `{ local }`: é desta máquina e da pessoa; não viaja, e a prévia pede para escolher (o código diz o quê).
  * - `{ filhos }`: objeto cujos campos têm marcação própria.
  * - `dobrado`: viaja por outro campo (o toolset do agent vira ferramentas avulsas; os chats do Teams viram `chatsRestritos`).
  */
-export type Marca = "portavel" | "texto" | "argumentos" | "dobrado" | { local: CodigoOmitido } | { filhos: MapaDeMarcas };
+export type Marca = "portavel" | "texto" | "argumentos" | "dobrado" | "seguro" | { local: CodigoOmitido } | { filhos: MapaDeMarcas };
 export type MapaDeMarcas = Readonly<Record<string, Marca>>;
 type Campos<S extends { shape: object }> = Record<keyof S["shape"], Marca>;
 

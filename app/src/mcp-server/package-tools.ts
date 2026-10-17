@@ -16,11 +16,11 @@ export function registerPackageTools(server: McpServer): void {
     ({ text }) => pacoteService.previa(text));
 
   def(server, "export_package", "read",
-    "The package of an automation and its library agents as text, ready to save as .locum.json (the screen opens a save dialog; here the text comes back). It carries no secret: credentials, cursors and history stay out, and the cited skills travel with their text (format version 2), and free text, skills included, is cleaned of tokens, e-mails and home paths. What was left out comes in the package as omitted.",
+    "The package of an automation and its library agents as text, ready to save as .locum.json (the screen opens a save dialog; here the text comes back). It carries no secret: credentials, cursors and history stay out, and the cited skills travel with their text (format version 2), and free text, skills included, is cleaned of tokens, e-mails and home paths. What was left out comes in the package as omitted. warnings lists the literals that did travel in the arguments of mcp.call steps and mcp-poll triggers (where, field, value: a login or an organization, for instance), so you decide before sending the file.",
     { agentId: z.string().describe("automation id") },
     async ({ agentId }) => {
-      const { texto, nomeDoArquivo } = await pacoteService.exportar(agentId);
-      return { fileName: nomeDoArquivo, text: texto };
+      const { texto, nomeDoArquivo, avisos } = await pacoteService.exportar(agentId);
+      return { fileName: nomeDoArquivo, text: texto, warnings: avisos };
     });
 
   def(server, "import_package", "danger",

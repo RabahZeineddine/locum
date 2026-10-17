@@ -3221,7 +3221,8 @@
       "button": "Exportar",
       "hint": "Gera um arquivo .locum.json sem segredos, para outra pessoa importar",
       "saveFirst": "Salve a automação antes de exportar",
-      "done": "Exportado para {{arquivo}}"
+      "done": "Exportado para {{arquivo}}",
+      "doneWithLiterals": "Exportado para {{arquivo}}. Estes valores viajaram nos argumentos, confira antes de mandar: {{literais}}"
     },
     "import": {
       "button": "Importar",

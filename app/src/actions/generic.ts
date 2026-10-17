@@ -63,8 +63,8 @@ export function saidaDaResposta(resultado: RespostaMcp | undefined): unknown {
 export function mcpCallHandler(options: McpCallOptions): ActionHandler {
   return {
     // O formato é o da ferramenta chamada: o catálogo troca este esquema pelo `outputSchema` dela quando o app o declara.
-    // `args` pode ter credencial: marcador viaja, literal passa pela limpeza e o esquema da ferramenta diz o que é sensível. `autoEscrita` não viaja: é licença dada à mão.
-    paramsDoPacote: { server: "portavel", tool: "portavel", args: "argumentos" },
+    // `args` pode ter credencial: marcador viaja, literal passa pela limpeza e o esquema da ferramenta diz o que é sensível. `autoEscrita` não viaja nem vira pendência: é licença dada à mão, e sem ela a escrita vai para a aprovação.
+    paramsDoPacote: { server: "portavel", tool: "portavel", args: "argumentos", autoEscrita: "seguro" },
     outputSchema: { description: "The tool's response: structuredContent, the JSON it printed, or { text }." },
     async propose(payload) {
       // Só os campos da chamada: o resto do evento que o executor junta não é

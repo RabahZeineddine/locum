@@ -2,6 +2,8 @@ import { z } from "zod";
 import {
   ActionStep,
   AgentBudget,
+  AgentProfile,
+  AgentSpec,
   AgentConnection,
   CronTrigger,
   LogicStep,
@@ -20,7 +22,7 @@ import {
   topoSort,
   type Step,
 } from "../config/types.js";
-import { MARCAS_DOS_GATILHOS, ehLocal, temFilhos, type MapaDeMarcas } from "./marcacao.js";
+import { MARCAS_DO_AGENT, MARCAS_DO_SPEC, MARCAS_DOS_GATILHOS, ehLocal, temFilhos, type MapaDeMarcas } from "./marcacao.js";
 
 /**
  * O pacote: o arquivo `.locum.json` que uma automação vira para ir a outra
@@ -81,16 +83,39 @@ const PassoDeAcao = ActionStep.omit({ target: true, params: true })
 
 const Passo = z.discriminatedUnion("type", [PassoDeIA, PassoDeAcao, PassoDeLogica]);
 
+/**
+ * Os campos de um esquema que viajam, pela marcação (`marcacao.ts`): o que ela não diz
+ * dobrado, seguro ou local entra com o esquema do próprio campo, e `apertados` troca o
+ * que o pacote exige mais estrito. Campo portável novo no esquema entra sem mexer aqui.
+ */
+function camposQueViajam(schema: z.ZodObject<any>, marcas: MapaDeMarcas, apertados: Record<string, z.ZodType>, fora: readonly string[] = []): Record<string, z.ZodType> {
+  const campos: Record<string, z.ZodType> = {};
+  for (const [campo, marca] of Object.entries(marcas)) {
+    if (fora.includes(campo) || marca === "dobrado" || marca === "seguro" || ehLocal(marca)) continue;
+    campos[campo] = apertados[campo] ?? (schema.shape[campo] as z.ZodType);
+  }
+  return campos;
+}
+
+/** O spec no pacote: o id é o da automação, as pendências e o toolset ficam de fora, e os passos têm o esquema acima. */
+export type SpecDoPacote = Omit<z.infer<typeof AgentSpec>, "id" | "steps" | "pendentes" | "rebaixados"> & { steps: z.infer<typeof Passo>[] };
 const SpecDoPacote = z
-  .object({
-    name: z.string().trim().min(1),
-    defaultTools: z.array(ToolRef.strict()).default([]),
-    skills: z.array(SkillRule.strict()).default([]),
-    steps: z.array(Passo).min(1),
-    budget: AgentBudget.strict().default({}),
-    layout: z.record(z.string(), z.object({ x: z.number(), y: z.number() }).strict()).optional(),
-  })
-  .strict();
+  .object(
+    camposQueViajam(
+      AgentSpec,
+      MARCAS_DO_SPEC,
+      {
+        name: z.string().trim().min(1),
+        defaultTools: z.array(ToolRef.strict()).default([]),
+        skills: z.array(SkillRule.strict()).default([]),
+        steps: z.array(Passo).min(1),
+        budget: AgentBudget.strict().default({}),
+        layout: z.record(z.string(), z.object({ x: z.number(), y: z.number() }).strict()).optional(),
+      },
+      ["id"],
+    ),
+  )
+  .strict() as unknown as z.ZodType<SpecDoPacote>;
 
 /* --------------------------------------------------------------- gatilhos */
 
@@ -98,12 +123,12 @@ const SpecDoPacote = z
  * O esquema sem o que é desta máquina, derivado da marcação (`marcacao.ts`):
  * campo local ou dobrado sai, e um objeto com `filhos` é derivado do mesmo jeito.
  */
-type Fora<M> = { [K in keyof M]: M[K] extends "dobrado" | { readonly local: unknown } ? K : never }[keyof M];
+type Fora<M> = { [K in keyof M]: M[K] extends "dobrado" | "seguro" | { readonly local: unknown } ? K : never }[keyof M];
 function semLocais<S extends z.ZodObject<any>, M extends MapaDeMarcas>(schema: S, marcas: M): z.ZodType<Omit<z.infer<S>, Fora<M>>> {
   const fora: Record<string, true> = {};
   const trocas: Record<string, z.ZodType> = {};
   for (const [campo, marca] of Object.entries(marcas)) {
-    if (marca === "dobrado" || ehLocal(marca)) fora[campo] = true;
+    if (marca === "dobrado" || marca === "seguro" || ehLocal(marca)) fora[campo] = true;
     else if (temFilhos(marca)) {
       const nested = (schema.shape[campo] as unknown as z.ZodOptional<z.ZodObject<any>>).unwrap();
       trocas[campo] = (semLocais(nested, marca.filhos) as unknown as z.ZodOptional<z.ZodObject<any>>).optional();
@@ -137,24 +162,28 @@ export type GatilhoDoPacote = z.infer<typeof GatilhoDoPacote>;
 
 /* ----------------------------------------------------------------- agents */
 
+/** O agent no pacote: o toolset virou ferramentas avulsas dele, e as skills são sempre regras. */
+export type AgentDoPacote = Omit<z.infer<typeof AgentProfile>, "toolsets" | "skills"> & { skills: z.infer<typeof SkillRule>[] };
 const AgentDoPacote = z
-  .object({
-    id: IdDoPacote,
-    name: z.string().trim().min(1),
-    description: z.string().default(""),
-    context: z.string().default(""),
-    instructions: z.string().default(""),
-    /** Sugestão: quem importa liga ao provedor e ao modelo que tem. */
-    model: z.string().min(1),
-    temperature: z.number().min(0).max(2).optional(),
-    tools: z.array(ToolRef.strict()).default([]),
-    connections: z.array(AgentConnection.strict()).default([]),
-    skills: z.array(SkillRule.strict()).default([]),
-    budget: AgentBudget.strict().default({}),
-    maxSteps: z.number().int().positive().default(12),
-  })
-  .strict();
-export type AgentDoPacote = z.infer<typeof AgentDoPacote>;
+  .object(
+    camposQueViajam(AgentProfile, MARCAS_DO_AGENT, {
+      id: IdDoPacote,
+      name: z.string().trim().min(1),
+      description: z.string().default(""),
+      context: z.string().default(""),
+      instructions: z.string().default(""),
+      /** Sugestão: quem importa liga ao provedor e ao modelo que tem. */
+      model: z.string().min(1),
+      temperature: z.number().min(0).max(2).optional(),
+      tools: z.array(ToolRef.strict()).default([]),
+      connections: z.array(AgentConnection.strict()).default([]),
+      skills: z.array(SkillRule.strict()).default([]),
+      budget: AgentBudget.strict().default({}),
+      maxSteps: z.number().int().positive().default(12),
+    }),
+  )
+  .strict() as unknown as z.ZodType<AgentDoPacote>;
+
 
 /* ------------------------------------------------------------- requisitos */
 

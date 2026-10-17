@@ -5,6 +5,8 @@ import { buildGate } from "../src/executor/build.js";
 import { AgentService } from "../src/services/agent-service.js";
 import { AutomationService } from "../src/services/automation-service.js";
 import { LibraryService } from "../src/services/library-service.js";
+import { MARCAS_DOS_GATILHOS } from "../src/pacote/marcacao.js";
+import { aplicarMarcas } from "../src/pacote/params.js";
 import { PacoteService, type AmbienteDoPacote } from "../src/services/pacote-service.js";
 import { TriggerService } from "../src/services/trigger-service.js";
 import { bancoDeTeste } from "./helpers/db.js";
@@ -169,4 +171,35 @@ test("gatilho mcp-poll: marcador e literal limpo viajam, credencial sai por nome
   assert.deepEqual(pacote.omitidos.find((o) => o.onde === "gatilho:0" && o.codigo === "argumentos")?.params?.sort(), ["args.dono", "args.token"]);
   assert.deepEqual(pacote.omitidos.find((o) => o.codigo === "canais"), { codigo: "canais", onde: "gatilho:1", quantos: 1, params: ["channels"] });
   assert.ok(resultado.pendencias.some((p) => p.codigo === "gatilho-sem-canal" && p.onde === "gatilho:1"));
+});
+
+test("mcp.call: autoEscrita é licença dada à mão, não viaja e não vira pendência", async () => {
+  const spec = reviewDoTeams();
+  spec.steps.push({
+    ...base, type: "action", key: "chamar", name: "Chamar", needs: ["revisar"], action: "mcp.call", mode: "auto",
+    params: { server: "ms365", tool: "enviar", args: { titulo: "Revisão pronta" }, autoEscrita: true },
+  });
+  const { texto, pacote, resultado, importada } = await ida(spec);
+  assert.ok(!texto.includes("autoEscrita"), "a licença viajou");
+  assert.ok(![...pacote.omitidos].some((o) => o.params?.includes("autoEscrita")), "a licença virou omitido");
+  assert.ok(!resultado.pendencias.some((p) => p.params?.includes("autoEscrita")));
+  assert.ok(!(importada.pendentes ?? []).some((p) => p.campo === "params.autoEscrita"));
+  const passo = importada.steps.find((p) => p.key === "chamar");
+  assert.deepEqual(passo?.type === "action" && passo.params, { server: "ms365", tool: "enviar", args: { titulo: "Revisão pronta" } });
+
+  // Um arquivo mexido à mão com a licença não a entrega: o passo entra sem ela e sem pendência.
+  const mexido = JSON.parse(texto) as { automacao: { spec: { steps: { key: string; params?: Record<string, unknown> }[] } } };
+  mexido.automacao.spec.steps.find((p) => p.key === "chamar")!.params!.autoEscrita = true;
+  const outra = maquina();
+  const r = await outra.pacotes.importar(JSON.stringify(mexido));
+  const gravada = (await outra.automations.get(r.automacaoId))!;
+  const chamado = gravada.version.spec.steps.find((p) => p.key === "chamar");
+  assert.equal(chamado?.type === "action" && chamado.params?.autoEscrita, undefined);
+  assert.ok(!(gravada.version.spec.pendentes ?? []).some((p) => p.campo === "params.autoEscrita"));
+});
+
+test("campo de texto marcado que carrega credencial sai limpo no lugar e a limpeza é contada, nunca cru", () => {
+  const r = aplicarMarcas(MARCAS_DOS_GATILHOS.webhook, { kind: "webhook", path: `/hook/${TOKEN}` }, { home: HOME });
+  assert.deepEqual(r.valor, { kind: "webhook", path: "/hook/[segredo removido]" });
+  assert.equal(r.limpos, 1);
 });
