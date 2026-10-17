@@ -662,7 +662,17 @@
     },
     "rerun": {
       "title": "rerun {{step}}",
-      "refused": "the rerun was refused"
+      "refused": "the rerun was refused",
+      "dialog": {
+        "title": "Re-run {{step}}",
+        "description": "The step and the ones that depend on it run again. The instruction is optional and applies only to this step.",
+        "instruction": "Extra instruction (optional)",
+        "placeholder": "E.g. also review the error handling in X and comment",
+        "willRun": "Steps that run again",
+        "toQueue": "With the instruction, these go to the Queue instead of going out on their own:",
+        "cancel": "Cancel",
+        "confirm": "Re-run"
+      }
     },
     "step": {
       "action": "action",
@@ -698,7 +708,12 @@
         "working": "working…"
       },
       "notRun": "did not run",
-      "standalone": "standalone"
+      "standalone": "standalone",
+      "instruction": "Instruction from whoever re-ran it",
+      "downgraded": {
+        "rebaixado-na-reexecucao": "Went to the Queue instead of going out on its own, because this re-run has an instruction.",
+        "generic": "Went to the Queue instead of going out on its own."
+      }
     },
     "progress": "{{done}}/{{total}} steps",
     "waiting_steps": "{{count}} waiting",

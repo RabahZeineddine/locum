@@ -57,6 +57,7 @@ export const FERRAMENTA_DO_CANAL: Record<string, string> = {
   "runs.findings": "list_findings",
   "runs.findingsByRun": "list_findings_by_run",
   "runs.rerunStep": "rerun_step",
+  "runs.rerunPreview": "preview_rerun",
   "runs.proporAcao": "propose_run_action",
   "runs.start": "run_agent",
 

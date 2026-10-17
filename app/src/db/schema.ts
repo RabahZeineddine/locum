@@ -181,6 +181,12 @@ export const steps = sqliteTable(
     name: text("name").notNull(),
     /** `fluxo`: veio do spec da automação. `avulso`: proposto depois, sobre um run que já rodou (ADR 0007). */
     origem: text("origem").notNull().default("fluxo"),
+    /** Instrução de quem reexecutou o passo de modelo (só ele a tem); entra no fim do prompt. Nulo sem reexecução com instrução. */
+    instrucao: text("instrucao"),
+    /** O rótulo do bloco da instrução no prompt. Nulo: vale o padrão do executor. */
+    instrucaoRotulo: text("instrucao_rotulo"),
+    /** Código de por que este passo de ação foi de `auto` para `approve` neste run (ver `config/rebaixado.ts`). Nulo: roda no modo do spec. */
+    rebaixado: text("rebaixado"),
     status: text("status").notNull().default("pending"),
     attempt: integer("attempt").notNull().default(0),
     modelRequested: text("model_requested"),

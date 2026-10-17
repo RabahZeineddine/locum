@@ -203,6 +203,8 @@ interface ServiceApi {
   /** Os achados de várias execuções numa ida só, que é o que a inbox precisa. */
   "runs.findingsByRun": RunService["findingsByRun"];
   "runs.rerunStep": RunService["rerunStep"];
+  /** O que a reexecução faria (passos e ações que vão para a Fila), antes de confirmar. Não escreve. */
+  "runs.rerunPreview": RunService["rerunPreview"];
   /** Propor uma ação nova sobre um run que já rodou (passo avulso, sempre na Fila). */
   "runs.proporAcao": PassoAvulsoService["proporAcao"];
   /** Rodar um agent num pull request escolhido na tela, sem linha de comando. */
@@ -683,6 +685,7 @@ export const BRIDGE_CHANNELS = [
   "runs.get",
   "runs.findings",
   "runs.findingsByRun",
+  "runs.rerunPreview",
   "runs.rerunStep",
   "runs.proporAcao",
   "runs.start",

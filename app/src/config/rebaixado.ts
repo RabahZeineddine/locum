@@ -13,6 +13,8 @@ export const Rebaixado = z.object({
 export type Rebaixado = z.infer<typeof Rebaixado>;
 
 export const REBAIXADO_NA_IMPORTACAO = "rebaixado-na-importacao";
+/** Reexecução com instrução: a ação a jusante que estava em `auto` espera na Fila (`steps.rebaixado`, só naquele run). */
+export const REBAIXADO_NA_REEXECUCAO = "rebaixado-na-reexecucao";
 
 type ComPassos = { steps: readonly object[]; rebaixados?: Rebaixado[] | undefined };
 

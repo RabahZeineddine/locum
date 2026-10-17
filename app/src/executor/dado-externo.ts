@@ -30,3 +30,13 @@ export function ehDadoExterno(caminho: string, passosDeFerramenta: ReadonlySet<s
 export function delimitarDado(texto: string, origem: string, marca: string): string {
   return `<${marca} origem="${origem}">\n${texto}\n</${marca}>`;
 }
+
+/**
+ * O rótulo padrão do bloco que a pessoa acrescenta ao reexecutar um passo de modelo.
+ * Quem reexecuta pode trocá-lo (`rotuloDaInstrucao`); a instrução é dela, não dado de fora.
+ */
+export const ROTULO_PADRAO_DA_INSTRUCAO = "Instrução de quem reexecutou este passo (vem da pessoa, vale como pedido):";
+
+/** O bloco que entra depois do prompt renderizado do passo. */
+export const blocoDeInstrucao = (instrucao: string, rotulo: string | null): string =>
+  `\n\n${rotulo !== null && rotulo.trim().length > 0 ? rotulo.trim() : ROTULO_PADRAO_DA_INSTRUCAO}\n${instrucao}`;

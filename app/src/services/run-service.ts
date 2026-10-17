@@ -3,6 +3,7 @@ import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 import { db as defaultDb, schema } from "../db/index.js";
 import { recusarSeArquivada } from "../db/arquivada.js";
 import { AgentSpec } from "../config/types.js";
+import { REBAIXADO_NA_REEXECUCAO } from "../config/rebaixado.js";
 import { buildExecutor } from "../executor/build.js";
 import { isReserved } from "./agent-service.js";
 import { LibraryService } from "./library-service.js";
@@ -367,8 +368,9 @@ export class RunService {
   async rerunStep(
     runId: string,
     stepKey: string,
-    options: { wait?: boolean } = {},
+    options: { wait?: boolean; instrucao?: string; rotuloDaInstrucao?: string } = {},
   ): Promise<"queued" | "done" | "paused" | "failed"> {
+    const instrucao = options.instrucao?.trim() ? options.instrucao.trim() : undefined;
     const detail = await this.get(runId);
     if (!detail) throw new Error(`run ${runId} nao encontrado`);
     if (isReserved(detail.agentId)) {
@@ -390,6 +392,7 @@ export class RunService {
 
     const affected = dependents(detail.spec, stepKey);
     const targets = detail.steps.filter((s) => affected.has(s.stepKey));
+    if (instrucao !== undefined) exigirPassoDeModelo(detail.spec, stepKey);
 
     // A publicação que está saindo agora vai fechar o passo como publicado
     // quando terminar. Zerar o passo debaixo dela abriria uma pendência nova
@@ -423,6 +426,7 @@ export class RunService {
       }
     }
     await this.reset(detail, targets);
+    await this.gravarInstrucao(detail.spec, stepKey, affected, targets, instrucao, options.rotuloDaInstrucao);
     await this.expirarAvulsosDerivados(derivados);
 
     const runner = await this.makeRunner();
@@ -431,6 +435,63 @@ export class RunService {
       return "queued";
     }
     return runner.execute(runId, { manual: true });
+  }
+
+  /**
+   * Depois do zero: a instrução fica só no passo reexecutado (os dependentes a perdem), e a
+   * ação a jusante que ia sair em `auto` fica marcada para esperar na Fila. Sem instrução
+   * nada é marcado: a reexecução segue o spec.
+   */
+  private async gravarInstrucao(
+    spec: AgentSpec,
+    stepKey: string,
+    afetados: ReadonlySet<string>,
+    targets: StepRow[],
+    instrucao: string | undefined,
+    rotulo: string | undefined,
+  ): Promise<void> {
+    const ids = (chaves: string[]) => targets.filter((s) => chaves.includes(s.stepKey)).map((s) => s.id);
+    if (targets.length > 0) {
+      await this.db.update(schema.steps).set({ instrucao: null, instrucaoRotulo: null, rebaixado: null }).where(inArray(schema.steps.id, ids([...afetados])));
+    }
+    if (instrucao === undefined) return;
+    const origem = targets.find((s) => s.stepKey === stepKey);
+    if (origem !== undefined) {
+      await this.db
+        .update(schema.steps)
+        .set({ instrucao, instrucaoRotulo: rotulo?.trim() ? rotulo.trim() : null })
+        .where(eq(schema.steps.id, origem.id));
+    }
+    const rebaixar = ids(acoesEmAuto(spec, afetados).map((p) => p.key));
+    if (rebaixar.length > 0) {
+      await this.db.update(schema.steps).set({ rebaixado: REBAIXADO_NA_REEXECUCAO }).where(inArray(schema.steps.id, rebaixar));
+    }
+  }
+
+  /**
+   * O que a reexecução faria, antes de confirmar: os passos que voltam a rodar e, com
+   * instrução, as ações a jusante que iriam para a Fila por terem estado em `auto`.
+   */
+  async rerunPreview(
+    runId: string,
+    stepKey: string,
+    options: { comInstrucao?: boolean } = {},
+  ): Promise<RerunPreview> {
+    const detail = await this.get(runId);
+    if (!detail) throw new Error(`run ${runId} nao encontrado`);
+    if (detail.steps.some((s) => s.stepKey === stepKey && s.origem === "avulso")) {
+      throw new Error(`"${stepKey}" e um passo avulso e nao e reexecutado; proponha uma acao nova`);
+    }
+    const afetados = dependents(detail.spec, stepKey);
+    const comInstrucao = options.comInstrucao === true;
+    if (comInstrucao) exigirPassoDeModelo(detail.spec, stepKey);
+    const dosAfetados = detail.spec.steps.filter((p) => afetados.has(p.key));
+    return {
+      passos: dosAfetados.map((p) => ({ stepKey: p.key, name: p.name, type: p.type })),
+      rebaixados: comInstrucao
+        ? acoesEmAuto(detail.spec, afetados).map((p) => ({ stepKey: p.key, name: p.name, action: p.action }))
+        : [],
+    };
   }
 
   /** Os avulsos ainda esperando decisão cujo `derivaDe` é um dos passos reexecutados. */
@@ -551,6 +612,25 @@ const SEM_PASSOS: StepCounts = {
   findingCount: 0,
   stepDryRun: 0,
 };
+
+export interface RerunPreview {
+  /** Os passos do fluxo que voltam a rodar, na ordem do spec. */
+  passos: { stepKey: string; name: string; type: string }[];
+  /** As ações a jusante que estavam em `auto` e esperam na Fila por causa da instrução. */
+  rebaixados: { stepKey: string; name: string; action: string }[];
+}
+
+/** Instrução só tem onde entrar no prompt de um passo de modelo. */
+function exigirPassoDeModelo(spec: AgentSpec, stepKey: string): void {
+  if (spec.steps.find((p) => p.key === stepKey)?.type !== "model") {
+    throw new Error(`"${stepKey}" nao e um passo de modelo; so ele aceita instrucao, porque so ele tem prompt`);
+  }
+}
+
+/** Os passos de ação em `auto` entre os reexecutados, fora o próprio passo pedido. */
+function acoesEmAuto(spec: AgentSpec, afetados: ReadonlySet<string>) {
+  return spec.steps.flatMap((p) => (p.type === "action" && p.mode === "auto" && afetados.has(p.key) ? [p] : []));
+}
 
 /** O passo pedido mais o fecho transitivo de quem depende dele. */
 function dependents(spec: AgentSpec, stepKey: string): Set<string> {

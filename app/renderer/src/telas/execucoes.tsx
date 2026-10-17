@@ -61,6 +61,7 @@ import { GrafoDaExecucao } from "../grafo";
 import { LeituraDoDigest, lerDigest } from "../leitura-do-digest";
 import type { TelaProps } from "../rotas";
 import { aceitaAcaoNova, NovaAcao } from "./nova-acao";
+import { Reexecutar } from "./reexecutar";
 
 export type Execucao = ReadResult<"runs.list">[number];
 type Detalhe = NonNullable<ReadResult<"runs.get">>;
@@ -443,6 +444,7 @@ function Execucao({ navegar, runId, passoAberto }: { navegar: TelaProps["navegar
           <li key={passo.id}>
             <PassoDaExecucao
               acao={acaoDoPasso(detalhe, passo.stepKey)}
+              modelo={detalhe.spec.steps.find((s) => s.key === passo.stepKey)?.type === "model"}
               marcado={passo.stepKey === comSaida}
               passo={passo}
               runId={detalhe.id}
@@ -712,6 +714,7 @@ function SecaoDetalhesTecnicos({
             <li key={passo.id}>
               <PassoDaExecucao
                 acao={acaoDoPasso(detalhe, passo.stepKey)}
+                modelo={detalhe.spec.steps.find((s) => s.key === passo.stepKey)?.type === "model"}
                 marcado={passo.stepKey === comSaida}
                 passo={passo}
                 runId={detalhe.id}
@@ -734,9 +737,12 @@ function SecaoDetalhesTecnicos({
 function PassoDaExecucao({
   acao,
   marcado,
+  modelo,
   passo,
   runId,
 }: {
+  /** O passo é de modelo: reexecutar abre o diálogo com a instrução. */
+  modelo: boolean;
   /** A ação do passo no agent que rodou, quando ele é de ação: diz para onde o ensaio sairia. */
   acao: string | undefined;
   marcado: boolean;
@@ -785,13 +791,25 @@ function PassoDaExecucao({
             {t("runs.step.tokens", { tokens: passo.promptTokens + passo.completionTokens })}
           </span>
           <span>{t("runs.step.cost", { cost: passo.costUsd.toFixed(3) })}</span>
-          {passo.origem === "avulso" ? null : <Reexecutar runId={runId} stepKey={passo.stepKey} />}
+          {passo.origem === "avulso" ? null : <Reexecutar modelo={modelo} runId={runId} stepKey={passo.stepKey} />}
         </span>
       </div>
 
       {passo.error !== null ? (
         <p className="mt-2 text-destructive text-xs">{rotuloDoMotivo(t, passo.error)}</p>
       ) : null}
+
+      {passo.instrucao === null ? null : (
+        <div className="bg-muted/50 mt-2 flex flex-col gap-0.5 rounded-md border p-2 text-xs" data-locum-passo-instrucao="">
+          <span className="text-muted-foreground font-medium">{t("runs.step.instruction")}</span>
+          <span className="text-[13px] whitespace-pre-wrap break-words">{passo.instrucao}</span>
+        </div>
+      )}
+      {passo.rebaixado === null ? null : (
+        <p className="text-muted-foreground mt-2 text-xs" data-locum-passo-rebaixado="">
+          {t(`runs.step.downgraded.${passo.rebaixado}`, { defaultValue: t("runs.step.downgraded.generic") })}
+        </p>
+      )}
 
       {ensaio === null ? null : (
         <div
@@ -937,40 +955,6 @@ function AtividadeDoPasso({ atividade, rodando }: { atividade: Atividade[]; roda
         ) : null}
       </ol>
     </div>
-  );
-}
-
-/**
- * O botao de reexecutar.
- *
- * Ele manda `wait: false` porque o pipeline leva minutos: esperar o desfecho
- * deixaria a promessa do IPC pendurada e a tela travada com um botao que nao
- * volta. O servico zera o passo e os que dependem dele antes de soltar o
- * executor, entao o que a tela le depois ja e o estado novo.
- */
-function Reexecutar({ runId, stepKey }: { runId: string; stepKey: string }) {
-  const { t } = useTranslation();
-  const [estado, setEstado] = useState<"parado" | "pedindo" | "erro">("parado");
-
-  return (
-    <Button
-      data-locum-rerun={stepKey}
-      disabled={estado === "pedindo"}
-      onClick={() => {
-        setEstado("pedindo");
-        call("runs.rerunStep", runId, stepKey, { wait: false }).then(
-          () => globalThis.location.reload(),
-          () => setEstado("erro"),
-        );
-      }}
-      size="sm"
-      title={
-        estado === "erro" ? t("runs.rerun.refused") : t("runs.rerun.title", { step: stepKey })
-      }
-      variant="ghost"
-    >
-      <RotateCcw className={cn("size-3.5", estado === "erro" && "text-destructive")} />
-    </Button>
   );
 }
 

@@ -683,7 +683,17 @@
     },
     "rerun": {
       "title": "reexecutar {{step}}",
-      "refused": "a reexecução foi recusada"
+      "refused": "a reexecução foi recusada",
+      "dialog": {
+        "title": "Reexecutar {{step}}",
+        "description": "O passo e os que dependem dele rodam de novo. A instrução é opcional e vale só para este passo.",
+        "instruction": "Instrução extra (opcional)",
+        "placeholder": "Ex.: revise também o tratamento de erro em X e comente",
+        "willRun": "Passos que voltam a rodar",
+        "toQueue": "Com a instrução, vão para a Fila em vez de sair sozinhas:",
+        "cancel": "Cancelar",
+        "confirm": "Reexecutar"
+      }
     },
     "step": {
       "action": "ação",
@@ -720,7 +730,12 @@
         "working": "trabalhando…"
       },
       "notRun": "não rodou",
-      "standalone": "avulso"
+      "standalone": "avulso",
+      "instruction": "Instrução de quem reexecutou",
+      "downgraded": {
+        "rebaixado-na-reexecucao": "Foi para a Fila em vez de sair sozinho, porque esta reexecução tem instrução.",
+        "generic": "Foi para a Fila em vez de sair sozinho."
+      }
     },
     "progress": "{{done}}/{{total}} passos",
     "waiting_steps": "{{count}} aguardando",

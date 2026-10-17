@@ -57,15 +57,38 @@ export function registerRunTools(server: McpServer): void {
         runId: z.string(),
         stepKey: z.string().describe("step key in the spec, as shown by get_run"),
         wait: z.boolean().optional().describe("true holds the response until the run stops"),
+        instruction: z
+          .string()
+          .optional()
+          .describe(
+            "extra instruction for a model step, appended after its prompt (it comes from the person, not from outside data). Refused for steps that are not model steps. With it, every downstream action in auto waits in the queue as approve in this re-run; see preview_rerun",
+          ),
+        instructionLabel: z
+          .string()
+          .optional()
+          .describe("text that heads the instruction block in the prompt; the default says it came from whoever re-ran the step"),
       },
     },
-    async ({ runId, stepKey, wait }) =>
+    async ({ runId, stepKey, wait, instruction, instructionLabel }) =>
       respond(async () => ({
         runId,
         stepKey,
-        status: await runService.rerunStep(runId, stepKey, { wait: wait ?? false }),
+        status: await runService.rerunStep(runId, stepKey, {
+          wait: wait ?? false,
+          ...(instruction === undefined ? {} : { instrucao: instruction }),
+          ...(instructionLabel === undefined ? {} : { rotuloDaInstrucao: instructionLabel }),
+        }),
       })),
   );
+
+  def(server, "preview_rerun", "read",
+    "What rerun_step would do, before confirming: the steps that run again and, when withInstruction is true, the downstream actions in auto that go to the queue as approve because of the instruction. Writes nothing.",
+    {
+      runId: z.string().min(1),
+      stepKey: z.string().min(1).describe("step key in the spec, as shown by get_run"),
+      withInstruction: z.boolean().optional().describe("true previews a re-run with an instruction (refused for steps that are not model steps)"),
+    },
+    ({ runId, stepKey, withInstruction }) => runService.rerunPreview(runId, stepKey, { comInstrucao: withInstruction ?? false }));
 
   def(server, "propose_run_action", "write",
     "Proposes a new action on a run that already ran (a standalone step). It only creates a pending approval in the queue; a person approves it there, and nothing is published here. The content must follow the inputSchema that describe_steps gives for the action kind (only kinds with an inputSchema are accepted). The target (repository, pull request, conversation) always comes from the run's event and cannot be set in the content. Refused while the run is queued or running, for an archived automation and for a dry run. Approving it runs only this step and does not resume the run.",

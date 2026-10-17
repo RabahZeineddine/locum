@@ -26,7 +26,7 @@ import { discoverSkills, selectSkills, skillsAusentes, skillsIndisponiveis, skil
 import { ApprovalGate, settleStep } from "../approval/gate.js";
 import { BudgetExceeded, assertWithinBudget, recordSpend, type Spend } from "./budget.js";
 import { ehLeituraNaAcao, type FerramentaClassificavel } from "../config/leitura.js";
-import { avisoDeDadoExterno, delimitarDado, ehDadoExterno, novaMarca } from "./dado-externo.js";
+import { avisoDeDadoExterno, blocoDeInstrucao, delimitarDado, ehDadoExterno, novaMarca } from "./dado-externo.js";
 import { ACOES_DE_CONVERSA_REGISTRO, camposDeEndereco, destinoDoPasso, REGISTRO_DE_CONVERSA, type RegistroDeConversa } from "../acao/destino.js";
 import { ACOES_DE_REACAO, descreverReacao, reacaoDoPasso } from "../reacao/passo.js";
 import { ACOES_DE_CONVERSA, dependenciaDeEvento, recusaSemEvento } from "./dependencia-de-evento.js";
@@ -793,6 +793,9 @@ export class Executor {
       // procurando "o contexto da iniciativa" pelo disco.
       const passosDeFerramenta = new Set(spec.steps.filter((p) => p.type === "action" && p.action === "mcp.call").map((p) => p.key));
       const { prompt: promptDoPasso, aviso: avisoDeDado } = renderPromptDeModelo(step.prompt, payload, outputs, passosDeFerramenta);
+      const reexecutado = await this.loadStep(runId, step.key);
+      const promptComInstrucao =
+        reexecutado?.instrucao != null ? promptDoPasso + blocoDeInstrucao(reexecutado.instrucao, reexecutado.instrucaoRotulo) : promptDoPasso;
       const system = [perfil?.system ?? "", args.contextoDaIniciativa ?? "", skillsPreamble(skills, true, runtime.id), avisoDeDado ?? ""]
         .filter((s) => s.length > 0)
         .join("\n\n");
@@ -801,7 +804,7 @@ export class Executor {
         provider: resolution.provider,
         model: resolution.model,
         system: system.length > 0 ? system : undefined,
-        prompt: promptDoPasso,
+        prompt: promptComInstrucao,
         stablePrefix: stablePrefix(step.prompt),
         tools,
         mcpServers: [...new Set(doLocum.map((t) => t.server))],
@@ -972,6 +975,8 @@ export class Executor {
     // Escrita em automático só quando a pessoa escolheu (`autoEscrita` no nó). A
     // classificação é a do cache no momento do run: sem anotação de leitura, ou
     // sem cache, a chamada espera na Fila com o motivo.
+    // Reexecução com instrução: o que ia sair sozinho espera o clique (`steps.rebaixado`, gravado no rerun).
+    const rebaixadoNoRun = ((await this.loadStep(runId, step.key))?.rebaixado ?? null) !== null;
     const seguraNaFila = await escritaSemEscolha(step, args.payload, outputs, this.deps.ferramentasGuardadas ?? ferramentasDoCache);
     const { state, output: resposta } = await this.deps.gate.submitComSaida(
       {
@@ -982,7 +987,7 @@ export class Executor {
         payload: seguraNaFila ? { ...(payload as object), aviso: "nao-e-leitura" } : payload,
         target: step.target ?? null,
       },
-      seguraNaFila ? "approve" : step.mode,
+      seguraNaFila || (rebaixadoNoRun && step.mode === "auto") ? "approve" : step.mode,
     );
 
     if (state === "pending") {

@@ -207,6 +207,7 @@ function buildHandlers(bridgeHandlers: BridgeHandlers): LocumApi {
     "runs.findings": (runId) => runService.findings(runId),
     "runs.findingsByRun": (runIds) => runService.findingsByRun(runIds),
     "runs.rerunStep": (runId, stepKey, options) => runService.rerunStep(runId, stepKey, options),
+    "runs.rerunPreview": (runId, stepKey, options) => runService.rerunPreview(runId, stepKey, options),
     "runs.proporAcao": (runId, proposta) => passoAvulsoService.proporAcao(runId, proposta),
     "runs.start": (input) => executionService.start(input),
 
